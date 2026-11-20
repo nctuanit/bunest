@@ -1,0 +1,158 @@
+import { Injectable, type Type } from "@bunest/common";
+import { DiscoveryService } from "@bunest/core";
+import {
+  WorkflowRegistry,
+  type WorkflowDefinition,
+} from "../services/workflow-registry.service";
+import { WORKFLOW_METADATA } from "../workflows.constants";
+import type {
+  WorkflowEventRoute,
+  WorkflowSignalRoute,
+  WorkflowStartRoute,
+} from "./interfaces/workflow-event-route.interface";
+import { eventRoutesOf } from "./utils/event-routes.util";
+
+/** What publishing one event class does. */
+export interface WorkflowEventTargets {
+  /** At most one per workflow name: the highest registered version's `@StartOn()`. */
+  starts: Array<{
+    workflow: Type<unknown>;
+    name: string;
+    route: WorkflowStartRoute;
+  }>;
+  /** From every registered version: an older version's instances still wait for their signals. */
+  signals: Array<{
+    workflow: Type<unknown>;
+    name: string;
+    route: WorkflowSignalRoute;
+  }>;
+}
+
+/** Reads `@StartOn()` and `@SignalOn()` from the registered workflows. */
+@Injectable()
+export class WorkflowEventsExplorer {
+  constructor(
+    private readonly discovery: DiscoveryService,
+    private readonly registry: WorkflowRegistry,
+  ) {}
+
+  explore(): Map<Function, WorkflowEventTargets> {
+    this.rejectRoutesOutsideWorkflows();
+    const table = new Map<Function, WorkflowEventTargets>();
+    const targetsOf = (event: Function): WorkflowEventTargets => {
+      let targets = table.get(event);
+      if (!targets) {
+        targets = { starts: [], signals: [] };
+        table.set(event, targets);
+      }
+      return targets;
+    };
+    for (const { name, version } of this.registry.versions()) {
+      const definition = this.registry.get(name, version);
+      if (!definition) {
+        continue;
+      }
+      const routes = eventRoutesOf(definition.type);
+      assertNoDuplicates(definition.type, routes);
+      // Like start(Class): an event starts the highest registered version, never an older one
+      // that is only kept registered to drain, and never twice.
+      const latest = this.registry.latest(name)?.version === version;
+      for (const route of routes) {
+        if (route.kind === "signal") {
+          targetsOf(route.event).signals.push({
+            workflow: definition.type,
+            name,
+            route,
+          });
+        } else if (latest) {
+          assertStartKeys(definition, route);
+          targetsOf(route.event).starts.push({
+            workflow: definition.type,
+            name,
+            route,
+          });
+        }
+      }
+    }
+    return table;
+  }
+
+  private rejectRoutesOutsideWorkflows(): void {
+    for (const wrapper of this.discovery.getProviders()) {
+      const rawWrapper = wrapper as unknown as {
+        metatype?: Type<unknown> | Function;
+        inject?: unknown;
+        instance?: Record<string, unknown>;
+      };
+      const type = (
+        !rawWrapper.metatype || rawWrapper.inject
+          ? rawWrapper.instance?.constructor
+          : rawWrapper.metatype
+      ) as Function | undefined;
+      if (
+        type &&
+        eventRoutesOf(type).length > 0 &&
+        !Reflect.getMetadata(WORKFLOW_METADATA, type)
+      ) {
+        throw new Error(
+          `${type.name} has @StartOn() or @SignalOn() but no @Workflow(). Events start and signal workflows: ` +
+            "put them on the @Workflow() class.",
+        );
+      }
+    }
+  }
+}
+
+/** A key `@StartOn()` gives an instance would count for nothing, and fail every start, without a limit per key. */
+function assertStartKeys(
+  definition: WorkflowDefinition,
+  route: WorkflowStartRoute,
+): void {
+  const limits: Array<{
+    option: "concurrencyKey" | "rateLimitKey";
+    perKey: unknown;
+    what: string;
+    declare: string;
+  }> = [
+    {
+      option: "concurrencyKey",
+      perKey: definition.concurrency?.perKey,
+      what: "concurrency limit",
+      declare: "{ concurrency: { limit, key } }",
+    },
+    {
+      option: "rateLimitKey",
+      perKey: definition.rateLimit?.perKey,
+      what: "rate limit",
+      declare: "{ rateLimit: { max, duration, key } }",
+    },
+  ];
+  for (const { option, perKey, what, declare } of limits) {
+    if (route[option] !== undefined && perKey == null) {
+      throw new Error(
+        `${definition.type.name} has @StartOn(${route.event.name}) with a ${option}, but workflow "${definition.name}" has no ${what} per ` +
+          `key, so the key would count for nothing. Declare one with @Workflow(name, ${declare}).`,
+      );
+    }
+  }
+}
+
+function assertNoDuplicates(
+  workflow: Function,
+  routes: WorkflowEventRoute[],
+): void {
+  // Per event class (not its name): two classes may share a name.
+  const seen = new Map<Function, Set<string>>();
+  for (const route of routes) {
+    const kinds = seen.get(route.event) ?? new Set<string>();
+    const kind = route.kind === "start" ? "start" : `signal:${route.signal}`;
+    if (kinds.has(kind)) {
+      throw new Error(
+        route.kind === "start"
+          ? `${workflow.name} has @StartOn(${route.event.name}) twice. An event starts one instance of a workflow: keep one.`
+          : `${workflow.name} has @SignalOn(${route.event.name}) for the signal "${route.signal}" twice: keep one.`,
+      );
+    }
+    seen.set(route.event, kinds.add(kind));
+  }
+}

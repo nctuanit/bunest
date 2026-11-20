@@ -1,0 +1,29 @@
+{
+  "name": "bunest-nestjs-comparison-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone isolated head-to-head benchmark comparing Bunest vs real upstream NestJS (Fastify & Express) on Bun and Node.js",
+  "type": "module",
+  "scripts": {
+    "build:node": "tsc -p tsconfig.node.json && bun -e \"await Bun.write('dist/package.json', JSON.stringify({ type: 'commonjs' }, null, 2) + '\\n')\"",
+    "bench": "bun run build:node && bun run src/runner.ts",
+    "bench:quick": "bun run build:node && bun run src/runner.ts --quick",
+    "verify": "bun run build:node && bun run src/runner.ts --verify-only"
+  },
+  "dependencies": {
+    "@nestjs/common": "latest",
+    "@nestjs/core": "latest",
+    "@nestjs/platform-express": "latest",
+    "@nestjs/platform-fastify": "latest",
+    "@nestjs/platform-node": "latest",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "fastify": "latest",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

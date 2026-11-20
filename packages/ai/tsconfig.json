@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "paths": {
+      "@bunest/ai": ["./src/index.ts"],
+      "@bunest/ai/testing": ["./src/testing/index.ts"],
+      "@bunest/ai/workflows": ["./src/workflows/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

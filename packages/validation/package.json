@@ -1,0 +1,40 @@
+{
+  "name": "@bunest/validation",
+  "version": "0.1.0",
+  "description": "DTO validation pipe, class serializer interceptor, and schema validator adapters for Bunest",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/validation"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external class-validator --external class-transformer --external reflect-metadata",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1"
+  }
+}

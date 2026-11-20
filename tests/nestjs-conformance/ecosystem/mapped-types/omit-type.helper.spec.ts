@@ -1,0 +1,180 @@
+import "reflect-metadata";
+import { describe, expect, it } from "bun:test";
+import {
+  Expose,
+  Transform,
+  Type,
+  instanceToInstance,
+  plainToInstance,
+} from "class-transformer";
+import {
+  IsNumber,
+  MinLength,
+  getMetadataStorage,
+  validate,
+} from "class-validator";
+import { OmitType } from "../../../../packages/mapped-types/src";
+import { describeConformance } from "../../_helpers/index";
+
+function getValidationMetadataByTarget(target: Function) {
+  return getMetadataStorage().getTargetValidationMetadatas(
+    target,
+    null as unknown as string,
+    false,
+    false,
+  );
+}
+
+describeConformance(
+  "OmitType",
+  {
+    upstreamPath: "mapped-types/tests/omit-type.helper.spec.ts",
+    category: "DIRECT_PORT",
+    adrs: ["ADR-002", "ADR-005"],
+  },
+  () => {
+    class CreateUserDto {
+      @MinLength(10)
+      login!: string;
+
+      @Transform(({ value }) => value + "_transformed")
+      @MinLength(10)
+      password = "defaultPassword";
+    }
+
+    class UpdateUserDto extends OmitType(CreateUserDto, ["login"]) {}
+
+    describe("Validation metadata", () => {
+      it('should inherit metadata with "login" property excluded', () => {
+        const validationKeys = getValidationMetadataByTarget(UpdateUserDto).map(
+          (item) => item.propertyName,
+        );
+        expect(validationKeys).toEqual(["password"]);
+      });
+
+      describe("when object does not fulfil validation rules", () => {
+        it('"validate" should return validation errors', async () => {
+          const updateDto = new UpdateUserDto();
+          updateDto.password = "1234567";
+          // @ts-expect-error login is omitted
+          updateDto.login;
+
+          const validationErrors = await validate(updateDto);
+
+          expect(validationErrors.length).toEqual(1);
+          expect(validationErrors[0]!.constraints).toEqual({
+            minLength: "password must be longer than or equal to 10 characters",
+          });
+        });
+      });
+
+      describe("otherwise", () => {
+        it('"validate" should return an empty array', async () => {
+          const updateDto = new UpdateUserDto();
+          updateDto.password = "1234567891011";
+
+          const validationErrors = await validate(updateDto);
+          expect(validationErrors.length).toEqual(0);
+        });
+      });
+    });
+
+    describe("Transformer metadata", () => {
+      it("should inherit transformer metadata", () => {
+        const password = "1234567891011";
+        const updateDto = new UpdateUserDto();
+        updateDto.password = password;
+
+        const transformedDto = instanceToInstance(updateDto);
+        expect(transformedDto.password).toEqual(password + "_transformed");
+      });
+
+      it("should inherit expose and type transformer metadata", () => {
+        let isGrandparentTypeExecute = false;
+        let isParentTypeExecute = false;
+        class Grandparent {
+          @Expose()
+          a!: string | number;
+
+          @Expose()
+          @Type(function grandparentType() {
+            isGrandparentTypeExecute = true;
+            return Number;
+          })
+          b!: string | number;
+        }
+        class Parent extends OmitType(Grandparent, ["a"]) {
+          @Expose()
+          @Type(function parentType() {
+            isParentTypeExecute = true;
+            return String;
+          })
+          override b!: number;
+          c!: string; // not expose
+
+          @Type(() => Number)
+          d!: string | number;
+        }
+        class Children extends OmitType(Parent, ["d"]) {
+          @Expose()
+          d!: string;
+        }
+
+        const childrenOmitInstance = plainToInstance(
+          Children,
+          { a: "a", b: "b", c: "c", d: "d" },
+          { excludeExtraneousValues: true },
+        );
+
+        const expectKeySet = new Set(["b", "d"]);
+        const concreteKeyList = Object.keys(childrenOmitInstance);
+        for (let i = 0; i < concreteKeyList.length; i++) {
+          expect(expectKeySet.has(concreteKeyList[i]!)).toEqual(true);
+        }
+        expect(concreteKeyList.length).toEqual(expectKeySet.size);
+        expect(isGrandparentTypeExecute).toEqual(false);
+        expect(isParentTypeExecute).toEqual(true);
+        expect(childrenOmitInstance.b).toEqual("b" as any);
+        expect(childrenOmitInstance.c).toEqual(undefined as any);
+        expect(childrenOmitInstance.d).toEqual("d");
+      });
+    });
+
+    describe("Property initializers", () => {
+      it("should inherit property initializers", () => {
+        const updateUserDto = new UpdateUserDto();
+        expect((updateUserDto as any)["login"]).toBeUndefined();
+        expect(updateUserDto.password).toEqual("defaultPassword");
+      });
+    });
+
+    describe("when a key is a number", () => {
+      class PricesDto {
+        @IsNumber()
+        0!: number;
+
+        @IsNumber()
+        1!: number;
+      }
+
+      class PublicPricesDto extends OmitType(PricesDto, [1]) {}
+
+      it("should not inherit the validation metadata of the omitted property", () => {
+        const validationKeys = getValidationMetadataByTarget(
+          PublicPricesDto,
+        ).map((item) => item.propertyName);
+        expect(validationKeys).toEqual(["0"]);
+      });
+
+      it("should not whitelist the omitted property", async () => {
+        const dto = Object.assign(new PublicPricesDto(), { 0: 1, 1: 2 });
+
+        const validationErrors = await validate(dto, {
+          whitelist: true,
+          forbidNonWhitelisted: true,
+        });
+        expect(validationErrors.map((error) => error.property)).toEqual(["1"]);
+      });
+    });
+  },
+);

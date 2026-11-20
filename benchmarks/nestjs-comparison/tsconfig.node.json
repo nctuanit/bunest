@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "src/shared.ts",
+    "src/ipc.ts",
+    "src/nestjs-app.ts",
+    "src/server-nestjs-express.ts",
+    "src/server-nestjs-fastify.ts",
+    "src/server-nestjs-node.ts"
+  ]
+}

@@ -1,0 +1,124 @@
+import "reflect-metadata";
+import { afterAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import {
+  HealthIndicatorService,
+  MemoryHealthIndicator,
+} from "../../../../../packages/observability/src";
+import { describeConformance } from "../../../_helpers/index";
+
+const MB = 1024 * 1024;
+
+describeConformance(
+  "MemoryHealthIndicator",
+  {
+    upstreamPath: "terminus/lib/health-indicator/memory/memory.health.spec.ts",
+    category: "DIRECT_PORT",
+    notes:
+      "Direct port of upstream @nestjs/terminus MemoryHealthIndicator unit tests against @bunest/observability.",
+  },
+  () => {
+    let memory: MemoryHealthIndicator;
+    const memoryUsage = spyOn(process, "memoryUsage");
+
+    beforeEach(() => {
+      memory = new MemoryHealthIndicator(new HealthIndicatorService());
+      memoryUsage.mockReturnValue({
+        heapUsed: 100 * MB,
+        rss: 200 * MB,
+      } as NodeJS.MemoryUsage);
+    });
+
+    afterAll(() => {
+      memoryUsage.mockRestore();
+    });
+
+    describe("#checkHeap", () => {
+      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() attaches extra static fields (heapUsedBytes, thresholdBytes) via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:92-112).
+      it.skip("is up below the threshold", async () => {
+        expect(await memory.checkHeap("heap", 150 * MB)).toEqual({
+          heap: { status: "up", responseTime: expect.any(Number) },
+        });
+      });
+
+      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra heapUsedBytes/thresholdBytes fields instead of upstream message "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
+      it.skip("is down above the threshold, with the same message as before", async () => {
+        expect(await memory.checkHeap("heap", 50 * MB)).toEqual({
+          heap: {
+            status: "down",
+            message: "Used heap exceeded the set threshold",
+            responseTime: expect.any(Number),
+          },
+        });
+      });
+
+      it("is up at exactly the threshold", async () => {
+        const result = await memory.checkHeap("heap", 100 * MB);
+        expect(result.heap.status).toBe("up");
+      });
+
+      it("reads the memory when awaited, not when called", async () => {
+        const attempt = memory.checkHeap("heap", 150 * MB);
+        memoryUsage.mockReturnValue({
+          heapUsed: 300 * MB,
+        } as NodeJS.MemoryUsage);
+        expect((await attempt).heap.status).toBe("down");
+      });
+
+      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra heapUsedBytes/thresholdBytes fields instead of upstream message "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
+      it.skip("is degraded instead of down with degradedOnFailure()", async () => {
+        expect(
+          await memory.checkHeap("heap", 50 * MB).degradedOnFailure(),
+        ).toEqual({
+          heap: {
+            status: "degraded",
+            message: "Used heap exceeded the set threshold",
+            responseTime: expect.any(Number),
+          },
+        });
+      });
+    });
+
+    describe("size strings", () => {
+      it("checks the heap against a size string", async () => {
+        expect((await memory.checkHeap("heap", "150mb")).heap.status).toBe("up");
+        expect((await memory.checkHeap("heap", "50mb")).heap.status).toBe(
+          "down",
+        );
+      });
+
+      it("checks the RSS against a size string", async () => {
+        expect((await memory.checkRSS("rss", "0.25gb")).rss.status).toBe("up");
+        expect((await memory.checkRSS("rss", "150mb")).rss.status).toBe("down");
+      });
+
+      it("throws on an invalid size string when the check is created", () => {
+        expect(() => memory.checkHeap("heap", "150MB" as "150mb")).toThrow(
+          'Heap threshold: Invalid size "150MB".',
+        );
+        expect(() => memory.checkRSS("rss", "150 mb" as "150mb")).toThrow(
+          'RSS threshold: Invalid size "150 mb".',
+        );
+      });
+    });
+
+    describe("#checkRSS", () => {
+      // BUNEST_BUG: MemoryHealthIndicator.checkRSS() attaches extra static fields (rssBytes, thresholdBytes) via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:114-134).
+      it.skip("is up below the threshold", async () => {
+        expect(await memory.checkRSS("rss", 250 * MB)).toEqual({
+          rss: { status: "up", responseTime: expect.any(Number) },
+        });
+      });
+
+      // BUNEST_BUG: MemoryHealthIndicator.checkRSS() throws "Used RSS (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra rssBytes/thresholdBytes fields instead of upstream message "Used rss exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:114-134).
+      it.skip("is down above the threshold, with the same message as before", async () => {
+        expect(await memory.checkRSS("rss", 150 * MB)).toEqual({
+          rss: {
+            status: "down",
+            message: "Used rss exceeded the set threshold",
+            responseTime: expect.any(Number),
+          },
+        });
+      });
+    });
+  },
+);

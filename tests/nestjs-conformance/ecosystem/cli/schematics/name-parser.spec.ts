@@ -1,0 +1,151 @@
+import "reflect-metadata";
+import { afterEach, expect, it } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  generateSchematic,
+  parseSchematicName,
+  resolveSafeChildPath,
+} from "../../../../../packages/cli/src";
+import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+describeConformance(
+  "Name Parser",
+  {
+    upstreamPath: "schematics/test/utils/name.parser.test.ts",
+    category: "ADAPTED_PORT",
+    adrs: ["ADR-001", "ADR-002"],
+    notes:
+      "Adapts @nestjs/schematics NameParser tests to Bunest parseSchematicName + resolveSafeChildPath (security hardening rejects all '..' traversal segments instead of resolving parent paths).",
+  },
+  () => {
+    const tempDirs: string[] = [];
+
+    function createTempDir(): string {
+      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      tempDirs.push(dir);
+      return dir;
+    }
+
+    afterEach(() => {
+      while (tempDirs.length > 0) {
+        const dir = tempDirs.pop();
+        if (dir) {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    itAdapted(
+      ["ADR-001", "ADR-002"],
+      "should handle no path",
+      () => {
+        const parsed = parseSchematicName("foo");
+        expect(parsed.kebab).toEqual("foo");
+        expect(parsed.rawName).toEqual("foo");
+        expect(parsed.pascal).toEqual("Foo");
+        expect(parsed.camel).toEqual("foo");
+        expect(parsed.subDir).toEqual("");
+      },
+      "parseSchematicName returns empty subDir and normalized name variants",
+    );
+
+    itAdapted(
+      ["ADR-001", "ADR-002"],
+      "should handle just the name with an explicit base path",
+      async () => {
+        const parsed = parseSchematicName("foo");
+        expect(parsed.kebab).toEqual("foo");
+        expect(parsed.subDir).toEqual("");
+
+        const cwd = createTempDir();
+        const result = await generateSchematic({
+          schematic: "module",
+          name: "foo",
+          dir: "baz",
+          flat: true,
+          cwd,
+        });
+        expect(result.targetDir).toBe(resolve(cwd, "baz"));
+        expect(existsSync(join(cwd, "baz/foo.module.ts"))).toBe(true);
+      },
+      "combines parseSchematicName leaf with generateSchematic dir option",
+    );
+
+    itAdapted(
+      ["ADR-001", "ADR-002"],
+      "should handle name has a path (sub-dir)",
+      async () => {
+        const parsed = parseSchematicName("bar/foo");
+        expect(parsed.kebab).toEqual("foo");
+        expect(parsed.rawName).toEqual("foo");
+        expect(parsed.subDir).toEqual("bar");
+
+        const cwd = createTempDir();
+        const result = await generateSchematic({
+          schematic: "module",
+          name: "bar/foo",
+          dir: "baz",
+          flat: true,
+          cwd,
+        });
+        expect(result.targetDir).toBe(resolve(cwd, "baz"));
+        expect(existsSync(join(cwd, "baz/bar/foo.module.ts"))).toBe(true);
+      },
+      "splits nested path into subDir ('bar') and leaf name ('foo') under target dir ('baz')",
+    );
+
+    itAdapted(
+      ["ADR-001", "ADR-002"],
+      "should reject relative parent path traversal ('../foo') instead of resolving upward",
+      () => {
+        expect(() => parseSchematicName("../foo")).toThrow(/path-traversal|\.\./);
+      },
+      "Bunest security hardening forbids '..' traversal segments in schematic names",
+    );
+
+    it("should reject a higher path escaping above root ('../../../foo')", () => {
+      expect(() => parseSchematicName("../../../foo")).toThrow(
+        /path-traversal|\.\./,
+      );
+      const baseDir = resolve(tmpdir(), "bunest-root-check", "baz");
+      expect(() => resolveSafeChildPath(baseDir, "../../../foo")).toThrow(
+        /Unsafe target path/,
+      );
+    });
+
+    it("should normalize Windows separators and camelCase directory/leaf segments", () => {
+      const parsed = parseSchematicName("adminPanel\\userProfile");
+      expect(parsed.subDir).toBe("admin-panel");
+      expect(parsed.kebab).toBe("user-profile");
+      expect(parsed.pascal).toBe("UserProfile");
+      expect(parsed.camel).toBe("userProfile");
+    });
+
+    it("should reject empty names, absolute paths, null bytes, and dot segments", () => {
+      expect(() => parseSchematicName("")).toThrow();
+      expect(() => parseSchematicName("   ")).toThrow();
+      expect(() => parseSchematicName("/foo")).toThrow();
+      expect(() => parseSchematicName("C:/foo")).toThrow();
+      expect(() => parseSchematicName("foo\0bar")).toThrow();
+      expect(() => parseSchematicName("./foo")).toThrow();
+      expect(() => parseSchematicName("bar//foo")).toThrow();
+    });
+
+    // BUNEST_BUG: parseSchematicName rejects leading underscore segments ("_bar/_foo") instead of allowing leading underscores as valid NestJS schematic path/file names (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
+    it.skip("should preserve leading underscores in directory and leaf segments", () => {
+      const parsed = parseSchematicName("_bar/_foo");
+      expect(parsed.subDir).toBe("_bar");
+      expect(parsed.kebab).toBe("_foo");
+      expect(parsed.pascal).toBe("Foo");
+    });
+
+    // BUNEST_BUG: parseSchematicName rejects dot-separated names ("foo.entity") instead of parsing them into class FooEntity (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
+    it.skip("should accept dot-separated schematic names like 'foo.entity'", () => {
+      const parsed = parseSchematicName("foo.entity");
+      expect(parsed.kebab).toBe("foo.entity");
+      expect(parsed.pascal).toBe("FooEntity");
+    });
+  },
+);

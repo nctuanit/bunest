@@ -1,0 +1,25 @@
+{
+  "name": "@bunest/example-distributed-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Distributed order processing with CQRS, SQLite, Queues with retries, Events, and end-to-end W3C tracing, metrics, and health checks",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/cqrs": "workspace:*",
+    "@bunest/events": "workspace:*",
+    "@bunest/observability": "workspace:*",
+    "@bunest/queues": "workspace:*",
+    "@bunest/sqlite": "workspace:*",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

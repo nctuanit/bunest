@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    // Runtime & language target (Bun-only native ESNext)
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "types": ["bun"],
+
+    // Legacy TypeScript decorators + design:* metadata emission (ADR-002)
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // IMPORTANT: verbatimModuleSyntax: true is intentionally enabled!
+    // Verified empirically on Bun 1.4.3 + TypeScript 7:
+    // - Value-importing classes (`import { CreateUserDto }`) used in decorated
+    //   constructor/method signatures is ALLOWED and preserves `design:paramtypes`
+    //   runtime metadata.
+    // - Interfaces & type aliases MUST use `import type`, preventing Bun's
+    //   single-file transpiler from emitting broken runtime imports that crash
+    //   with SyntaxError or fail `bun build`.
+    // Rule: value-import DI/DTO classes; `import type` interfaces and type aliases.
+    "verbatimModuleSyntax": true,
+
+    // Strict type-checking defaults
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  }
+}

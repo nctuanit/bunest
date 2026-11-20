@@ -1,0 +1,41 @@
+{
+  "name": "@bunest/axios",
+  "version": "0.1.0",
+  "description": "Zero-dependency NestJS-compatible HttpModule & HttpService built on Bun's native fetch() API",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/axios"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external reflect-metadata",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/core": "workspace:*"
+  }
+}

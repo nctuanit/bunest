@@ -1,0 +1,14 @@
+{
+  "name": "@bunest/docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NestJS-style documentation portal for the Bunest framework",
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun run src/server.ts",
+    "build": "bun run src/build.ts",
+    "preview": "bun run src/server.ts --static",
+    "test": "bun test"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@bunest/testing",
+  "version": "0.1.0",
+  "description": "Testing module builder, DI/enhancer overrides, in-memory HTTP test client, and mock fixtures for Bunest",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/testing"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external @bunest/http --external @bunest/core --external reflect-metadata",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/http": "workspace:*"
+  }
+}

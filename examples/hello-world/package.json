@@ -1,0 +1,20 @@
+{
+  "name": "@bunest/example-hello-world",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal NestJS-style Bunest application running natively on Bun.serve()",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

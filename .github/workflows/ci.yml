@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-verify:
+    name: ${{ matrix.os }} (Bun ${{ matrix.bun-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        bun-version: ["1.4.3", "latest"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun ${{ matrix.bun-version }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ matrix.bun-version }}
+
+      - name: Print runtime environment
+        run: bun --version
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck (bun check)
+        run: bun run typecheck
+
+      - name: Typecheck (tsc --noEmit)
+        run: bunx tsc --noEmit
+
+      - name: Run full test suite
+        run: bun test
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Run release verification & CLI clean-project smoke test
+        run: bun run verify:release
+
+  coverage:
+    name: Coverage Report (Ubuntu / Bun 1.4.3)
+    runs-on: ubuntu-latest
+    needs: test-and-verify
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.3
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: bun run test:coverage

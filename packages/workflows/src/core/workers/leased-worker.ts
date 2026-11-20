@@ -1,0 +1,448 @@
+import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
+import { Logger } from '@bunest/common';
+import type { Clock } from '../interfaces/clock.interface';
+import type { LeasedRun, LeasedWorkerOptions, LeaseRequest } from '../interfaces/leased-worker-options.interface';
+import { systemClock } from '../time/clock';
+import { parseDuration } from '../time/duration';
+import { setRepeatingTimer, setTimer } from '../utils/timer.util';
+
+/**
+ * A claim-execute loop under leases, any number of processes sharing a store: it claims due items (as many as it has
+ * free slots), executes them, renews each one's lease every `heartbeatInterval` (a third of the lease by default), and
+ * aborts an item's `signal` when a renewal finds its lease gone. An item has one renewal in flight at a time, so a store
+ * that holds a renewal up (a lock its row waits on) gets no more of them meanwhile: one asked for in the meantime goes
+ * out once that one answered, or beside it once it went a heartbeat interval unanswered (a connection that died without
+ * an error never answers), and none more while those two are in flight. It looks for work every `pollInterval`, and at
+ * once after `kick()` (a local write made something due) or when an item ends. `drain()` runs due items on demand, for
+ * tests and scripts.
+ *
+ * Shutdown is graceful: call `shutdown()` from `onModuleDestroy`. It stops claiming, waits for the claims in flight
+ * (what they claim starts, told to stop at once), aborts every running item's `signal`, and waits up to
+ * `shutdownTimeout` for them; the ones still running are then detached (no more renewals) and keep their lease until
+ * it expires, as their work may still be going on.
+ *
+ * ```ts
+ * @Injectable()
+ * export class JobWorker implements OnApplicationBootstrap, OnModuleDestroy {
+ *   private readonly worker = new LeasedWorker<Job>({
+ *     claim: (lease, limit) => this.store.claim(lease, limit),
+ *     renew: (job, until) => this.store.renew(job.id, job.token, until),
+ *     execute: (job, run) => this.run(job, run),
+ *   });
+ *
+ *   constructor(private readonly store: JobStore) {}
+ *
+ *   onApplicationBootstrap() {
+ *     this.worker.start();
+ *   }
+ *
+ *   onModuleDestroy() {
+ *     return this.worker.shutdown();
+ *   }
+ * }
+ * ```
+ */
+export class LeasedWorker<T> {
+  private readonly options: LeasedWorkerOptions<T>;
+  /** The worker's id, shown as the lease owner. */
+  readonly owner: string;
+  /** The lease duration, in milliseconds. */
+  readonly leaseMs: number;
+  private readonly logger: Logger;
+  private readonly clock: Clock;
+  private readonly concurrency: number;
+  private readonly pollMs: number;
+  private readonly heartbeatMs: number;
+  private readonly shutdownMs: number;
+  private readonly produceMs: number;
+  private readonly runs = new Set<Run<T>>();
+  /** Claims in flight: shutdown waits for them, so nothing they claim starts unobserved. */
+  private readonly claiming = new Set<Promise<T[]>>();
+  private stopped = false;
+  /** Ends the `drain()` rounds waiting now, at shutdown. */
+  private readonly stopping = new Set<() => void>();
+  private wake?: () => void;
+  private kicked = false;
+  private loop?: Promise<void>;
+  /** When the loop next calls `produce()` (`performance.now()`). */
+  private produceAt = 0;
+
+  constructor(options: LeasedWorkerOptions<T>) {
+    this.options = options;
+    const name = options.name ?? 'worker';
+    this.logger = new Logger(name);
+    this.clock = options.clock ?? systemClock;
+    this.owner = options.owner ?? `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
+    this.leaseMs = parseDuration(options.leaseDuration ?? '30s');
+    this.concurrency = options.concurrency ?? 10;
+    this.pollMs = parseDuration(options.pollInterval ?? '1s');
+    this.heartbeatMs = parseDuration(options.heartbeatInterval ?? Math.floor(this.leaseMs / 3));
+    this.shutdownMs = parseDuration(options.shutdownTimeout ?? '10s');
+    this.produceMs = parseDuration(options.produceInterval ?? 0);
+    if (!Number.isInteger(this.concurrency) || this.concurrency < 1) {
+      throw new TypeError(`${name}.concurrency (${this.concurrency}) must be a positive integer.`);
+    }
+    if (this.pollMs <= 0 || this.heartbeatMs <= 0) {
+      throw new TypeError(`${name}.pollInterval and ${name}.heartbeatInterval must be positive, such as "1s".`);
+    }
+    if (this.heartbeatMs >= this.leaseMs) {
+      throw new TypeError(`${name}.heartbeatInterval (${this.heartbeatMs}ms) must be shorter than ${name}.leaseDuration (${this.leaseMs}ms).`);
+    }
+  }
+
+  /** The items it executes now. */
+  get running(): T[] {
+    return [...this.runs].map((run) => run.item);
+  }
+
+  /** Starts the polling loop (once). Without it, the worker only runs what `drain()` asks for. */
+  start(): void {
+    if (!this.loop && !this.stopped) {
+      this.loop = this.poll();
+    }
+  }
+
+  /** Look for work now instead of at the next poll (after a write in this process made something due). */
+  kick(): void {
+    this.kicked = true;
+    this.wake?.();
+  }
+
+  /**
+   * Executes every due item, round after round (`produce()`, then a claim of `concurrency` items, awaited), until a
+   * round finds nothing: for tests (with a `ManualClock`), scripts, and workers a cron drives. Resolves to the
+   * number of items it executed. A claim or production that fails rejects it.
+   */
+  async drain(options: { maxRounds?: number } = {}): Promise<number> {
+    let total = 0;
+    for (let round = 0; round < (options.maxRounds ?? 1_000) && !this.stopped; round++) {
+      const produced = this.options.produce ? await this.options.produce() : 0;
+      const executions = await this.claim(this.concurrency);
+      if (executions.length === 0 && produced === 0) {
+        break;
+      }
+      total += executions.length;
+      await this.untilStopped(Promise.all(executions));
+    }
+    return total;
+  }
+
+  /**
+   * Stops for good: no more claims, the claims in flight awaited, every running item's `signal` aborted, and at most
+   * `shutdownTimeout` spent waiting for them before the rest are detached. Call it from `onModuleDestroy`.
+   */
+  async shutdown(): Promise<void> {
+    if (this.stopped) {
+      return;
+    }
+    this.stopped = true;
+    for (const stop of this.stopping) {
+      stop();
+    }
+    this.wake?.();
+    // What a claim in flight claims starts now, told to stop at once, so it is handed back before the store closes.
+    await Promise.allSettled(this.claiming);
+    for (const run of this.runs) {
+      run.halt();
+    }
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled([...this.runs].map((run) => run.done)),
+      new Promise<void>((resolve) => {
+        timer = setTimer(resolve, this.shutdownMs);
+      }),
+    ]);
+    clearTimeout(timer);
+    for (const run of this.runs) {
+      run.detach();
+    }
+    await this.loop;
+  }
+
+  /**
+   * Waits for `work`, or until shutdown. It races a promise of its own, not one the worker keeps: each race leaves a
+   * reaction on its inputs until they settle, so a long-lived one would keep one per round.
+   */
+  private async untilStopped(work: Promise<unknown>): Promise<void> {
+    let stop!: () => void;
+    const stopped = new Promise<void>((resolve) => {
+      stop = resolve;
+    });
+    if (this.stopped) {
+      stop();
+    }
+    this.stopping.add(stop);
+    try {
+      await Promise.race([work, stopped]);
+    } finally {
+      this.stopping.delete(stop);
+    }
+  }
+
+  private async poll(): Promise<void> {
+    while (!this.stopped) {
+      if (this.options.produce && performance.now() >= this.produceAt) {
+        this.produceAt = performance.now() + this.produceMs;
+        try {
+          await this.options.produce();
+        } catch (error) {
+          this.report(error, 'produce');
+        }
+      }
+      const free = this.concurrency - this.runs.size;
+      if (free > 0) {
+        try {
+          const executions = await this.claim(free);
+          for (const execution of executions) {
+            void execution.finally(() => this.kick());
+          }
+        } catch (error) {
+          this.report(error, 'claim');
+        }
+      }
+      await this.idle();
+    }
+  }
+
+  private idle(): Promise<void> {
+    if (this.kicked || this.stopped) {
+      this.kicked = false;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.wake = undefined;
+        resolve();
+      };
+      const timer = setTimer(done, this.pollMs);
+      this.wake = () => {
+        this.kicked = false;
+        done();
+      };
+    });
+  }
+
+  /** Claims due items and starts executing them (before any caller sees them). */
+  private async claim(limit: number): Promise<Promise<void>[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    const now = this.clock.now();
+    const lease: LeaseRequest = { owner: this.owner, token: randomUUID(), now, until: now + this.leaseMs };
+    const claim = this.options.claim(lease, limit);
+    this.claiming.add(claim);
+    try {
+      const items = await claim;
+      return items.map((item) => this.launch(item));
+    } finally {
+      this.claiming.delete(claim);
+    }
+  }
+
+  private launch(item: T): Promise<void> {
+    const run: Run<T> = new Run(item, this.heartbeatMs, (): Promise<boolean> => this.renew(run));
+    this.runs.add(run);
+    if (this.stopped) {
+      run.halt();
+    }
+    run.heartbeat = setRepeatingTimer(() => void run.renew(), this.heartbeatMs);
+    run.heartbeat.unref();
+    let executing: Promise<void>;
+    try {
+      executing = this.options.execute(item, run);
+    } catch (error) {
+      executing = Promise.reject(error);
+    }
+    run.done = executing
+      .catch((error) => this.report(error, 'execute'))
+      .finally(() => {
+        run.end();
+        this.runs.delete(run);
+      });
+    return run.done;
+  }
+
+  private renew(run: Run<T>): Promise<boolean> {
+    return this.options.renew(run.item, this.clock.now() + this.leaseMs);
+  }
+
+  private report(error: unknown, stage: 'claim' | 'produce' | 'execute'): void {
+    if (this.options.onError) {
+      this.options.onError(error, stage);
+    } else {
+      this.logger.error(`${stage === 'claim' ? 'Claiming' : stage === 'produce' ? 'Producing' : 'Executing'} failed; the worker carries on.`, error);
+    }
+  }
+}
+
+interface InFlightRenewal {
+  seq: number;
+  late: boolean;
+  timer: NodeJS.Timeout;
+}
+
+/** A claimed item's run: its signal, its heartbeat, and what became of its lease. */
+class Run<T> implements LeasedRun {
+  readonly item: T;
+  private readonly heartbeatMs: number;
+  private readonly renewer: () => Promise<boolean>;
+  private readonly controller = new AbortController();
+  private lost = false;
+  private isDetached = false;
+  /** Its `execute` settled: no more renewals. */
+  private ended = false;
+  /** The renewals in flight: one, or two once the older went a heartbeat interval unanswered. */
+  private readonly inFlight = new Set<InFlightRenewal>();
+  /** How many renewals went out: the next one's `seq` follows. */
+  private sent = 0;
+  /** The `seq` of the latest renewal that landed (the store wrote its `until`). */
+  private landed = 0;
+  private again?: { promise: Promise<boolean>; resolve: (held: boolean) => void };
+  heartbeat?: NodeJS.Timeout;
+  done!: Promise<void>;
+
+  constructor(item: T, heartbeatMs: number, renewer: () => Promise<boolean>) {
+    this.item = item;
+    this.heartbeatMs = heartbeatMs;
+    this.renewer = renewer;
+  }
+
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  get leaseLost(): boolean {
+    return this.lost;
+  }
+
+  get detached(): boolean {
+    return this.isDetached;
+  }
+
+  /**
+   * Renews the lease (a heartbeat's tick, or the item's own call), one renewal at a time: a store that holds one up
+   * would otherwise get another at each tick, each holding a connection, and an older one could land after a newer
+   * one, shortening the lease. One asked for while another is in flight sends nothing then: it goes out once that one
+   * answered, its `until` read then (so after a renewal that was held up, the lease's deadline counts from when it
+   * answered), those asked for meanwhile sharing it, and resolves with its answer. A renewal a heartbeat interval
+   * unanswered no longer holds the next one back, as it may never answer (a connection that died without an error):
+   * the next goes out beside it, and no third while both are in flight. One that lands after a later one did leaves
+   * its older `until`, so one more follows it. None goes once the lease is lost (an answer, or `loseLease()`), the run
+   * ended, or it was detached: those asked for meanwhile resolve as `renew()` would then.
+   */
+  renew(): Promise<boolean> {
+    if (this.lost || this.isDetached || this.ended) {
+      return Promise.resolve(!this.lost);
+    }
+    return this.canSend() ? this.send() : this.ask();
+  }
+
+  /** Whether a renewal can go out now: none is in flight, or one went a heartbeat interval unanswered; never a third. */
+  private canSend(): boolean {
+    const [oldest, next] = this.inFlight;
+    return !oldest || (!next && oldest.late);
+  }
+
+  /** Asks for the renewal that goes out as soon as one can (`flush()`): its callers' answer. */
+  private ask(): Promise<boolean> {
+    if (!this.again) {
+      let resolve!: (held: boolean) => void;
+      const promise = new Promise<boolean>((resolved) => {
+        resolve = resolved;
+      });
+      this.again = { promise, resolve };
+    }
+    return this.again.promise;
+  }
+
+  /**
+   * Sends the renewal asked for meanwhile if one can go out now (a renewal answered, or went a heartbeat interval
+   * unanswered). None goes once the lease is lost, the run ended or was detached: its callers hear what `renew()` would
+   * say then.
+   */
+  private flush(): void {
+    const again = this.again;
+    if (!again) {
+      return;
+    }
+    if (this.lost || this.isDetached || this.ended) {
+      this.again = undefined;
+      again.resolve(!this.lost);
+    } else if (this.canSend()) {
+      this.again = undefined;
+      void this.send().then(again.resolve);
+    }
+  }
+
+  /** Sends a renewal, and once it answered, before its callers hear it, the one asked for meanwhile if it can go. */
+  private send(): Promise<boolean> {
+    const renewal: InFlightRenewal = {
+      seq: ++this.sent,
+      late: false,
+      // Unanswered for a heartbeat interval, it no longer holds the next one back.
+      timer: setTimer(() => {
+        renewal.late = true;
+        this.flush();
+      }, this.heartbeatMs).unref(),
+    };
+    this.inFlight.add(renewal);
+    const answer = this.renewOnce(renewal.seq);
+    void answer.then(() => {
+      clearTimeout(renewal.timer);
+      this.inFlight.delete(renewal);
+      this.flush();
+    });
+    return answer;
+  }
+
+  /** One renewal: `false` once it found the lease gone; one that fails keeps the lease. */
+  private async renewOnce(seq: number): Promise<boolean> {
+    let held: boolean;
+    try {
+      held = await this.renewer();
+    } catch {
+      // Transient: the next heartbeat tries again before the lease runs out.
+      return true;
+    }
+    if (!held) {
+      this.loseLease();
+      return false;
+    }
+    // It landed after a later renewal did (on a slower connection): the store keeps its older `until` now.
+    if (seq < this.landed) {
+      void this.ask();
+    }
+    this.landed = Math.max(this.landed, seq);
+    return true;
+  }
+
+  loseLease(): void {
+    if (this.lost) {
+      return;
+    }
+    this.lost = true;
+    clearInterval(this.heartbeat);
+    this.controller.abort(new Error('The lease was lost: another worker may run this item now.'));
+  }
+
+  /** The worker shuts down: its work should stop. */
+  halt(): void {
+    if (!this.controller.signal.aborted) {
+      this.controller.abort(new Error('The worker is shutting down.'));
+    }
+  }
+
+  /** The worker stopped waiting for it: no more renewals. */
+  detach(): void {
+    this.isDetached = true;
+    clearInterval(this.heartbeat);
+  }
+
+  /** Its `execute` settled: no more heartbeats, and no more renewals. */
+  end(): void {
+    this.ended = true;
+    clearInterval(this.heartbeat);
+  }
+}

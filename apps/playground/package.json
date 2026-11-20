@@ -1,0 +1,26 @@
+{
+  "name": "@bunest/playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive all-in-one Bunest showcase with CRUD, OpenAPI Swagger, Health, Prometheus Metrics, and Devtools Graph",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/observability": "workspace:*",
+    "@bunest/sqlite": "workspace:*",
+    "@bunest/swagger": "workspace:*",
+    "@bunest/validation": "workspace:*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

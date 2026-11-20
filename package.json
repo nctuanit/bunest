@@ -1,0 +1,35 @@
+{
+  "name": "bunest",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "typecheck": "bun check",
+    "build": "bun run --workspaces --if-present build",
+    "bench": "bun run benchmarks/run.ts",
+    "lint": "bun check",
+    "verify:release": "bun run scripts/verify-release.ts",
+    "docs:dev": "bun run --cwd apps/docs dev",
+    "docs:build": "bun run --cwd apps/docs build",
+    "docs:preview": "bun run --cwd apps/docs preview"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
+}

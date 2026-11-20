@@ -1,0 +1,54 @@
+# @bunest/cli
+
+Bun-native CLI (`bunest`) for scaffolding projects, generating schematics, running dev watch mode, starting builds, inspecting environment info, and launching interactive REPL sessions.
+
+## Features
+
+- **Project Scaffolding & Schematics**: Create new Bunest projects (`bunest new`) and generate controllers, services, modules, guards, pipes, interceptors, filters, and resources (`bunest generate`).
+- **Build & Dev Workflows**: Run development watch mode (`bunest dev`), production builds (`bunest build`), application startup (`bunest start`), library installation (`bunest add`), upgrades (`bunest upgrade`), and deployments (`bunest deploy`).
+- **Interactive REPL & Diagnostics**: Launch an interactive DI-aware REPL (`bunest repl`) and print runtime/workspace info (`bunest info`).
+- **Metadata Plugin**: `bunestMetadataPlugin` and `generateMetadataFile` extract controller and DTO metadata at build time for OpenAPI/Swagger and validation tooling.
+
+## Installation
+
+```bash
+bun add -d @bunest/cli
+```
+
+## Quick Start
+
+```bash
+# Scaffold a new Bunest project
+bunx bunest new my-app
+
+# Generate a new resource schematic
+bunx bunest generate resource users
+
+# Start development server with watch mode
+bunx bunest dev
+
+# Build for production
+bunx bunest build
+```
+
+Programmatic usage:
+
+```ts
+import { runCli } from "@bunest/cli";
+
+const result = await runCli(["info"]);
+console.log(result.exitCode);
+```
+
+## Key Exports
+
+- **CLI Runner & Parser**: `runCli`, `parseCliArgs`, `HELP_TEXT`, `CLI_VERSION`
+- **Commands**: `createProject`, `generateSchematic`, `buildProject`, `runDevServer`, `runStartCommand`, `addLibrary`, `upgradeProject`, `deployProject`, `runReplCommand`, `getEnvironmentInfo`, `formatEnvironmentInfo`
+- **Configuration**: `loadCliConfiguration`, `resolveProjectConfiguration`, `resolveEntryFile`, `AVAILABLE_BUILDERS`, `DEFAULT_CONFIGURATION`
+- **Metadata Plugin**: `bunestMetadataPlugin`, `generateMetadataFile`, `transformControllerMetadataSource`, `transformDtoMetadataSource`
+- **Templates & Utilities**: `buildProjectTemplateFiles`, `buildSchematicFiles`, `resolveSchematicType`, `SCHEMATIC_ALIASES`, `writePlannedFiles`, `FileCollisionError`, `parseSchematicName`, `validateProjectName`, `resolveSafeChildPath`, `toCamelCase`, `toKebabCase`, `toPascalCase`
+
+## Documentation
+
+- [Bunest Documentation](../../README.md)
+- [ADR Index](../../docs/adr/README.md)

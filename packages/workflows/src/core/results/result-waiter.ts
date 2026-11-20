@@ -1,0 +1,199 @@
+import { setImmediate as nextMacrotask } from 'node:timers/promises';
+import type { ResultOutcome, ResultWaiterOptions, ResultWaitOptions } from '../interfaces/result-waiter-options.interface';
+import { parseDuration } from '../time/duration';
+import { MAX_TIMER_DELAY, setTimer } from '../utils/timer.util';
+
+/** What a read in flight gives way to: an outcome settled locally, or the waiter closing. */
+const SETTLED = Symbol('settled');
+/** What a read in flight gives way to when the wait's timeout passes. */
+const EXPIRED = Symbol('expired');
+
+interface PendingWait<T> {
+  outcome?: ResultOutcome<T>;
+  closed: boolean;
+  wake?: () => void;
+  settle?: () => void;
+  giveUp?: () => void;
+}
+
+/**
+ * Waits for the outcome of something another part of the application runs (a workflow instance, a job): at once
+ * when this process ends it and says so (`settle()`), else by reading the store with a backoff (every 25 ms at
+ * first, doubling up to every second), which sees what other processes ended. A wait rejects past its `timeout`
+ * (the work goes on), when its `signal` aborts, and as soon as the waiter closes, without reading the store again
+ * nor waiting for a read in flight (it ends in the background, and its answer or failure is ignored):
+ * close it in `beforeApplicationShutdown`, which Bunest runs after `onModuleDestroy` (where workers drain, so work that
+ * ends during the drain still answers) and before the HTTP server closes.
+ *
+ * ```ts
+ * @Injectable()
+ * export class JobResults implements BeforeApplicationShutdown {
+ *   private readonly results = new ResultWaiter<unknown>({ read: (id) => this.readOutcome(id) });
+ *
+ *   constructor(events: JobEvents) {
+ *     events.completed$.subscribe((job) => this.results.settle(job.id, { value: job.result }));
+ *   }
+ *
+ *   result(id: string, options?: ResultWaitOptions) {
+ *     return this.results.wait(id, options);
+ *   }
+ *
+ *   beforeApplicationShutdown() {
+ *     return this.results.close();
+ *   }
+ * }
+ * ```
+ */
+export class ResultWaiter<T = unknown> {
+  private readonly options: ResultWaiterOptions<T>;
+  private readonly waits = new Map<string, Set<PendingWait<T>>>();
+  private readonly closing = new AbortController();
+
+  constructor(options: ResultWaiterOptions<T>) {
+    this.options = options;
+  }
+
+  /** Whether `close()` was called: every wait since rejects at once. */
+  get closed(): boolean {
+    return this.closing.signal.aborted;
+  }
+
+  /**
+   * Resolves with the value `id` ended with, or rejects with its outcome's error; past `timeout` with the
+   * `timeoutError`, when `signal` aborts with its reason, and once the waiter closed with the `closedError`.
+   */
+  async wait(id: string, options: ResultWaitOptions = {}): Promise<T> {
+    const timeoutMs = options.timeout === undefined ? Infinity : parseDuration(options.timeout);
+    const deadline = performance.now() + timeoutMs;
+    options.signal?.throwIfAborted();
+    const wait: PendingWait<T> = { closed: this.closed };
+    const nudge = () => {
+      wait.giveUp?.();
+      wait.wake?.();
+    };
+    const close = () => {
+      wait.closed = true;
+      wait.settle?.();
+      nudge();
+    };
+    this.add(id, wait);
+    this.closing.signal.addEventListener('abort', close);
+    options.signal?.addEventListener('abort', nudge);
+    try {
+      for (let delay = 25; ; delay = Math.min(delay * 2, 1_000)) {
+        const read = wait.outcome || wait.closed ? SETTLED : await this.read(id, wait, deadline, options.signal);
+        if (wait.outcome) {
+          return unwrap(wait.outcome);
+        }
+        if (read === SETTLED) {
+          throw this.options.closedError?.(id) ?? new Error(`The waiter closed while waiting for the result of "${id}".`);
+        }
+        if (read && read !== EXPIRED) {
+          return unwrap(read);
+        }
+        options.signal?.throwIfAborted();
+        const remaining = deadline - performance.now();
+        if (read === EXPIRED || remaining <= 0) {
+          throw this.options.timeoutError?.(id, timeoutMs) ?? new Error(`"${id}" didn't end within ${timeoutMs}ms.`);
+        }
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, Math.min(delay, remaining));
+          wait.wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+        wait.wake = undefined;
+      }
+    } finally {
+      this.remove(id, wait);
+      this.closing.signal.removeEventListener('abort', close);
+      options.signal?.removeEventListener('abort', nudge);
+    }
+  }
+
+  /**
+   * Settles the waits for `id` with its outcome at once, without a read, and a read in flight gives way to it: for
+   * what this process saw end. A function is only called when something waits for `id`. The first outcome wins.
+   */
+  settle(id: string, outcome: ResultOutcome<T> | (() => ResultOutcome<T>)): void {
+    const waits = this.waits.get(id);
+    if (!waits) {
+      return;
+    }
+    const settled = typeof outcome === 'function' ? outcome() : outcome;
+    for (const wait of waits) {
+      wait.outcome ??= settled;
+      wait.settle?.();
+      wait.wake?.();
+    }
+  }
+
+  /**
+   * Ends every wait (they reject with the `closedError`), and makes later ones reject at once. Resolves after a
+   * macrotask, so the callers that stopped waiting have answered by then: Node's `server.close()` closes only the
+   * connections idle at that moment, and one that answers later stays open until its keep-alive timeout.
+   */
+  async close(): Promise<void> {
+    this.closing.abort();
+    await nextMacrotask();
+  }
+
+  /**
+   * Reads `id`, unless the wait settles, times out or is aborted first: the read is then given up, and left to end in
+   * the background (`Promise.race` handles its failure). It races a promise of its own, not one the whole wait
+   * shares: each race leaves a reaction on its inputs until they settle, so a shared one would keep one per poll.
+   */
+  private async read(
+    id: string,
+    wait: PendingWait<T>,
+    deadline: number,
+    signal?: AbortSignal,
+  ): Promise<ResultOutcome<T> | null | typeof SETTLED | typeof EXPIRED> {
+    // Aborted during the backoff's sleep: no read for a caller that went away.
+    if (signal?.aborted) {
+      return null;
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const givenWay = new Promise<null | typeof SETTLED | typeof EXPIRED>((resolve) => {
+      wait.settle = () => resolve(SETTLED);
+      wait.giveUp = () => resolve(null);
+      const remaining = deadline - performance.now();
+      if (remaining !== Infinity) {
+        // A deadline beyond what a timer supports: the read is given up at the longest delay, and the next one waits on.
+        const expired = remaining <= MAX_TIMER_DELAY ? EXPIRED : null;
+        timer = setTimer(() => resolve(expired), Math.max(remaining, 0));
+      }
+    });
+    try {
+      return await Promise.race([this.options.read(id), givenWay]);
+    } finally {
+      wait.settle = undefined;
+      wait.giveUp = undefined;
+      clearTimeout(timer);
+    }
+  }
+
+  private add(id: string, wait: PendingWait<T>): void {
+    let waits = this.waits.get(id);
+    if (!waits) {
+      this.waits.set(id, (waits = new Set()));
+    }
+    waits.add(wait);
+  }
+
+  private remove(id: string, wait: PendingWait<T>): void {
+    const waits = this.waits.get(id);
+    waits?.delete(wait);
+    if (waits?.size === 0) {
+      this.waits.delete(id);
+    }
+  }
+}
+
+function unwrap<T>(outcome: ResultOutcome<T>): T {
+  if ('error' in outcome) {
+    throw outcome.error;
+  }
+  return outcome.value;
+}

@@ -1,0 +1,1259 @@
+export interface NavPage {
+  /** URL slug without leading slash ("" for root introduction page) */
+  slug: string;
+  /** Display title in sidebar & <title> */
+  title: string;
+  /** Relative markdown file path under apps/docs/content/ */
+  file: string;
+  /** Short badge displayed in sidebar or page header (optional) */
+  badge?: string;
+  /** Short summary used in search & meta description */
+  description: string;
+  /** Extra search keywords (decorators, classes, ADRs) */
+  keywords?: readonly string[];
+}
+
+export interface NavCategory {
+  id: string;
+  title: string;
+  defaultOpen?: boolean;
+  pages: readonly NavPage[];
+}
+
+export interface FlattenedPage extends NavPage {
+  categoryId: string;
+  categoryTitle: string;
+  href: string;
+  prev?: { title: string; href: string; categoryTitle: string };
+  next?: { title: string; href: string; categoryTitle: string };
+}
+
+export const INTRO_PAGE: NavPage = {
+  slug: "",
+  title: "Introduction",
+  file: "introduction.md",
+  description:
+    "Bunest is a progressive, NestJS-style TypeScript backend framework built natively on Bun.",
+  keywords: [
+    "bunest",
+    "nestjs",
+    "bun",
+    "philosophy",
+    "introduction",
+    "getting started",
+    "Bun.serve",
+  ],
+};
+
+export const NAV_CATEGORIES: readonly NavCategory[] = [
+  {
+    id: "overview",
+    title: "OVERVIEW",
+    defaultOpen: true,
+    pages: [
+      {
+        slug: "overview/first-steps",
+        title: "First steps",
+        file: "overview/first-steps.md",
+        description:
+          "Install Bunest, configure tsconfig.json for legacy decorators, and boot your first application.",
+        keywords: [
+          "setup",
+          "install",
+          "tsconfig",
+          "reflect-metadata",
+          "BunestFactory",
+          "verbatimModuleSyntax",
+          "ADR-002",
+        ],
+      },
+      {
+        slug: "overview/controllers",
+        title: "Controllers",
+        file: "overview/controllers.md",
+        description:
+          "Handle incoming HTTP requests with @Controller, method decorators, parameter binding, and status codes.",
+        keywords: [
+          "@Controller",
+          "@Get",
+          "@Post",
+          "@Put",
+          "@Patch",
+          "@Delete",
+          "@Body",
+          "@Param",
+          "@Query",
+          "@Headers",
+          "@HttpCode",
+          "@Header",
+          "@Redirect",
+          "routing",
+          "RFC-001",
+          "ADR-003",
+          "ADR-006",
+        ],
+      },
+      {
+        slug: "overview/providers",
+        title: "Providers",
+        file: "overview/providers.md",
+        description:
+          "Services, repositories, dependency injection via constructor types, and @Injectable() metadata.",
+        keywords: [
+          "@Injectable",
+          "@Inject",
+          "@Optional",
+          "DI",
+          "dependency injection",
+          "services",
+          "design:paramtypes",
+        ],
+      },
+      {
+        slug: "overview/modules",
+        title: "Modules",
+        file: "overview/modules.md",
+        description:
+          "Organize application structure with @Module(), provider encapsulation, re-exports, @Global(), and DynamicModule.",
+        keywords: [
+          "@Module",
+          "@Global",
+          "DynamicModule",
+          "exports",
+          "imports",
+          "re-export",
+          "forRoot",
+          "ADR-007",
+        ],
+      },
+      {
+        slug: "overview/middleware",
+        title: "Middleware",
+        file: "overview/middleware.md",
+        description:
+          "Intercept requests before guards and route handlers with BunestMiddleware and MiddlewareConsumer.",
+        keywords: [
+          "BunestMiddleware",
+          "MiddlewareConsumer",
+          "BunestModule",
+          "configure",
+          "forRoutes",
+          "exclude",
+          "app.use",
+        ],
+      },
+      {
+        slug: "overview/exception-filters",
+        title: "Exception filters",
+        file: "overview/exception-filters.md",
+        description:
+          "Centralized error handling with HttpException, built-in HTTP exceptions, @Catch(), and @UseFilters().",
+        keywords: [
+          "HttpException",
+          "BadRequestException",
+          "NotFoundException",
+          "UnauthorizedException",
+          "ForbiddenException",
+          "@Catch",
+          "@UseFilters",
+          "APP_FILTER",
+          "ExceptionFilter",
+        ],
+      },
+      {
+        slug: "overview/pipes",
+        title: "Pipes",
+        file: "overview/pipes.md",
+        description:
+          "Transform and validate route inputs with built-in parse pipes, custom PipeTransform, and @UsePipes().",
+        keywords: [
+          "PipeTransform",
+          "@UsePipes",
+          "APP_PIPE",
+          "ParseIntPipe",
+          "ParseFloatPipe",
+          "ParseBoolPipe",
+          "ParseUUIDPipe",
+          "ParseEnumPipe",
+          "ParseArrayPipe",
+          "DefaultValuePipe",
+        ],
+      },
+      {
+        slug: "overview/guards",
+        title: "Guards",
+        file: "overview/guards.md",
+        description:
+          "Implement authentication and role-based authorization with CanActivate, Reflector, and @UseGuards().",
+        keywords: [
+          "CanActivate",
+          "@UseGuards",
+          "APP_GUARD",
+          "Reflector",
+          "@SetMetadata",
+          "auth",
+          "RBAC",
+        ],
+      },
+      {
+        slug: "overview/interceptors",
+        title: "Interceptors",
+        file: "overview/interceptors.md",
+        description:
+          "Wrap route execution with Bunest's zero-RxJS Promise onion CallHandler, response mapping, and caching.",
+        keywords: [
+          "BunestInterceptor",
+          "CallHandler",
+          "@UseInterceptors",
+          "APP_INTERCEPTOR",
+          "onion",
+          "Promise",
+          "ADR-008",
+        ],
+      },
+      {
+        slug: "overview/custom-decorators",
+        title: "Custom decorators",
+        file: "overview/custom-decorators.md",
+        description:
+          "Create reusable parameter decorators with createParamDecorator() and typed metadata decorators via Reflector.",
+        keywords: [
+          "createParamDecorator",
+          "Reflector.createDecorator",
+          "@SetMetadata",
+          "CustomDecorator",
+          "ADR-004",
+        ],
+      },
+    ],
+  },
+  {
+    id: "fundamentals",
+    title: "FUNDAMENTALS",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "fundamentals/custom-providers",
+        title: "Custom providers",
+        file: "fundamentals/custom-providers.md",
+        description:
+          "Configure DI tokens using useClass, useValue, async useFactory, useExisting, and optional factory dependencies.",
+        keywords: [
+          "useClass",
+          "useValue",
+          "useFactory",
+          "useExisting",
+          "InjectionToken",
+          "Provider",
+          "async provider",
+        ],
+      },
+      {
+        slug: "fundamentals/injection-scopes",
+        title: "Injection scopes",
+        file: "fundamentals/injection-scopes.md",
+        badge: "Strict",
+        description:
+          "Singleton, Transient, and Request scopes with AsyncLocalStorage propagation and fail-fast ScopeLeakException.",
+        keywords: [
+          "Scope.SINGLETON",
+          "Scope.TRANSIENT",
+          "Scope.REQUEST",
+          "ScopeLeakException",
+          "AsyncLocalStorage",
+          "RequestContainer",
+          "REQUEST",
+          "REQUEST_CONTEXT",
+          "ADR-012",
+        ],
+      },
+      {
+        slug: "fundamentals/circular-dependency",
+        title: "Circular dependency",
+        file: "fundamentals/circular-dependency.md",
+        description:
+          "Detect dependency cycles at bootstrap and resolve intentional cycles with forwardRef().",
+        keywords: [
+          "forwardRef",
+          "CircularDependencyException",
+          "cycle",
+          "DFS",
+          "ADR-007",
+        ],
+      },
+      {
+        slug: "fundamentals/module-reference",
+        title: "Module reference",
+        file: "fundamentals/module-reference.md",
+        description:
+          "Dynamically retrieve or instantiate providers using ModuleRef.get(), resolve(), and create().",
+        keywords: ["ModuleRef", "strict", "resolve", "create", "DIContainer"],
+      },
+      {
+        slug: "fundamentals/lifecycle-events",
+        title: "Lifecycle events",
+        file: "fundamentals/lifecycle-events.md",
+        description:
+          "Hook into deterministic topological bootstrap and reverse-order graceful shutdown lifecycle hooks.",
+        keywords: [
+          "OnModuleInit",
+          "OnApplicationBootstrap",
+          "OnModuleDestroy",
+          "BeforeApplicationShutdown",
+          "OnApplicationShutdown",
+          "OnRequestDestroy",
+          "LifecycleManager",
+        ],
+      },
+      {
+        slug: "fundamentals/execution-context",
+        title: "Execution context",
+        file: "fundamentals/execution-context.md",
+        description:
+          "Inspect the active controller class, handler method, Reflector metadata, and native Web Request via ExecutionContext.",
+        keywords: [
+          "ExecutionContext",
+          "ArgumentsHost",
+          "switchToHttp",
+          "getClass",
+          "getHandler",
+          "Reflector",
+          "getAllAndOverride",
+          "getAllAndMerge",
+        ],
+      },
+      {
+        slug: "fundamentals/testing",
+        title: "Testing",
+        file: "fundamentals/testing.md",
+        badge: "E2E & DI",
+        description:
+          "Unit and E2E testing with @bunest/testing: Test.createTestingModule, overrides, auto-mocking, zero-socket request(app), TestClient, app.inject(), SSE, and ContextId.",
+        keywords: [
+          "@bunest/testing",
+          "Test",
+          "createTestingModule",
+          "TestingModule",
+          "TestingModuleBuilder",
+          "overrideProvider",
+          "overrideGuard",
+          "overridePipe",
+          "overrideInterceptor",
+          "overrideFilter",
+          "overrideModule",
+          "useMocker",
+          "createAutoMocker",
+          "ModuleMocker",
+          "TestingLogger",
+          "CapturingLogger",
+          "ContextIdFactory",
+          "registerRequestByContextId",
+          "TestClient",
+          "TestAgent",
+          "request",
+          "supertest",
+          "inject",
+          "readSseEvents",
+          "createNodeHttpServer",
+          "createMockExecutionContext",
+          "e2e",
+          "bun:test",
+        ],
+      },
+    ],
+  },
+  {
+    id: "techniques",
+    title: "TECHNIQUES",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "techniques/validation",
+        title: "Validation",
+        file: "techniques/validation.md",
+        badge: "Core",
+        description:
+          "Secure-by-default DTO validation with ValidationPipe, class-validator, prototype-pollution guards, and SchemaValidationPipe (Zod/Valibot).",
+        keywords: [
+          "ValidationPipe",
+          "SchemaValidationPipe",
+          "class-validator",
+          "class-transformer",
+          "whitelist",
+          "forbidNonWhitelisted",
+          "prototype pollution",
+          "Zod",
+          "ADR-005",
+          "ADR-009",
+        ],
+      },
+      {
+        slug: "techniques/serialization",
+        title: "Serialization",
+        file: "techniques/serialization.md",
+        description:
+          "Strip sensitive fields and shape responses cleanly with ClassSerializerInterceptor and @SerializeOptions().",
+        keywords: [
+          "ClassSerializerInterceptor",
+          "@SerializeOptions",
+          "@Exclude",
+          "@Expose",
+          "instanceToPlain",
+          "@bunest/validation",
+        ],
+      },
+      {
+        slug: "techniques/cookies-cors",
+        title: "Cookies & CORS",
+        file: "techniques/cookies-cors.md",
+        description:
+          "Read native Bun CookieMap via @Cookies(), append Set-Cookie via @Res(), and configure CORS preflight & origins.",
+        keywords: [
+          "@Cookies",
+          "CookieOptions",
+          "CorsOptions",
+          "Set-Cookie",
+          "preflight",
+          "OPTIONS",
+          "@Ip",
+          "trustProxy",
+        ],
+      },
+      {
+        slug: "techniques/streaming-uploads",
+        title: "Streaming & File upload",
+        file: "techniques/streaming-uploads.md",
+        description:
+          "Zero-copy Bun.file() responses, ReadableStream passthrough, and multipart @UploadedFile / @UploadedFiles.",
+        keywords: [
+          "Bun.file",
+          "ReadableStream",
+          "Blob",
+          "@UploadedFile",
+          "@UploadedFiles",
+          "UploadedFileInfo",
+          "multipart",
+          "sendfile",
+        ],
+      },
+      {
+        slug: "techniques/sse",
+        title: "Server-Sent Events",
+        file: "techniques/sse.md",
+        description:
+          "Push real-time events over HTTP using @Sse(), AsyncIterable<SseMessageEvent>, and automatic abort cleanup.",
+        keywords: [
+          "@Sse",
+          "SseMessageEvent",
+          "text/event-stream",
+          "AsyncGenerator",
+          "request.signal",
+          "ADR-010",
+        ],
+      },
+      {
+        slug: "techniques/logger",
+        title: "Logger",
+        file: "techniques/logger.md",
+        description:
+          "Structured text and JSON logging with automatic deep secret redaction built into @bunest/common.",
+        keywords: [
+          "Logger",
+          "LoggerService",
+          "LoggerOptions",
+          "DEFAULT_REDACT_KEYS",
+          "redact",
+          "json",
+          "LogLevel",
+        ],
+      },
+      {
+        slug: "techniques/configuration",
+        title: "Configuration",
+        file: "techniques/configuration.md",
+        description:
+          "Typed .env loading, variable expansion, registerAs namespaces, DTO/Standard Schema validation, and @InjectConfig/@ConfigValue via @bunest/config.",
+        keywords: [
+          "@bunest/config",
+          "ConfigModule",
+          "ConfigService",
+          "registerAs",
+          "@InjectConfig",
+          "@ConfigValue",
+          "ConditionalModule",
+        ],
+      },
+      {
+        slug: "techniques/caching",
+        title: "Caching",
+        file: "techniques/caching.md",
+        description:
+          "Declarative @Cacheable/@CacheEvict/@CachePut service aspects, CacheInterceptor, MemoryCacheStore, and RedisCacheStore via @bunest/cache.",
+        keywords: [
+          "@bunest/cache",
+          "CacheModule",
+          "CacheService",
+          "CacheInterceptor",
+          "@Cacheable",
+          "@CacheEvict",
+          "@CachePut",
+          "MemoryCacheStore",
+          "RedisCacheStore",
+        ],
+      },
+      {
+        slug: "techniques/task-scheduling",
+        title: "Task scheduling",
+        file: "techniques/task-scheduling.md",
+        description:
+          "Pure-TS 5/6-field DST-aware cron jobs, @Cron, CronExpression, @Interval, @Timeout, and SchedulerRegistry via @bunest/scheduler.",
+        keywords: [
+          "@bunest/scheduler",
+          "ScheduleModule",
+          "@Cron",
+          "CronExpression",
+          "@Interval",
+          "@Timeout",
+          "SchedulerRegistry",
+        ],
+      },
+      {
+        slug: "techniques/events",
+        title: "Events",
+        file: "techniques/events.md",
+        description:
+          "In-process event dispatching with EventEmitterModule, @OnEvent, @EmitEvent, @EventPayload, and wildcard matching via @bunest/events.",
+        keywords: [
+          "@bunest/events",
+          "EventEmitterModule",
+          "EventEmitter2",
+          "@OnEvent",
+          "@EmitEvent",
+          "@EventPayload",
+        ],
+      },
+      {
+        slug: "techniques/queues",
+        title: "Queues & Bull",
+        file: "techniques/queues.md",
+        description:
+          "Background job queues with @bunest/queues, @bunest/bull, and @bunest/bullmq using MemoryQueueDriver and atomic Lua RedisQueueDriver.",
+        keywords: [
+          "@bunest/queues",
+          "@bunest/bull",
+          "@bunest/bullmq",
+          "QueueModule",
+          "BullModule",
+          "BullMQModule",
+          "@Processor",
+          "@Process",
+        ],
+      },
+      {
+        slug: "techniques/http-client",
+        title: "HTTP client & Axios",
+        file: "techniques/http-client.md",
+        description:
+          "Zero-dependency native fetch() HTTP clients with @bunest/http-client and drop-in @nestjs/axios parity via @bunest/axios.",
+        keywords: [
+          "@bunest/http-client",
+          "@bunest/axios",
+          "HttpClientModule",
+          "HttpClient",
+          "HttpModule",
+          "HttpService",
+        ],
+      },
+      {
+        slug: "techniques/i18n",
+        title: "Internationalization (i18n)",
+        file: "techniques/i18n.md",
+        description:
+          "Per-request AsyncLocalStorage locale resolution, typed translations, Intl formatting, and localized validation via @bunest/i18n.",
+        keywords: [
+          "@bunest/i18n",
+          "I18nModule",
+          "I18nService",
+          "@CurrentLocale",
+          "I18nContext",
+        ],
+      },
+      {
+        slug: "techniques/mail",
+        title: "Mail",
+        file: "techniques/mail.md",
+        description:
+          "Typed mail classes, HTML templates, and native SMTP, Resend, Postmark, SendGrid & SES transports via @bunest/mail.",
+        keywords: [
+          "@bunest/mail",
+          "MailModule",
+          "MailService",
+          "ResendTransport",
+          "SmtpTransport",
+          "InMemoryMailTransport",
+        ],
+      },
+      {
+        slug: "techniques/storage",
+        title: "Storage & Static files",
+        file: "techniques/storage.md",
+        description:
+          "Multi-disk local/memory/S3/R2/MinIO object storage with WebCrypto SigV4 (@bunest/storage) and static serving (@bunest/serve-static).",
+        keywords: [
+          "@bunest/storage",
+          "@bunest/serve-static",
+          "StorageModule",
+          "LocalDisk",
+          "S3Disk",
+          "ServeStaticModule",
+        ],
+      },
+      {
+        slug: "techniques/mapped-types",
+        title: "Mapped types",
+        file: "techniques/mapped-types.md",
+        description:
+          "Derive DTO classes while preserving validation and OpenAPI metadata using PartialType, PickType, OmitType, and IntersectionType.",
+        keywords: [
+          "@bunest/mapped-types",
+          "PartialType",
+          "PickType",
+          "OmitType",
+          "IntersectionType",
+          "CompositionType",
+        ],
+      },
+      {
+        slug: "techniques/service-aop",
+        title: "Service-Layer AOP",
+        file: "techniques/service-aop.md",
+        badge: "ADR-014",
+        description:
+          "Zero-overhead DIContainer MethodAspectWeaver, createMethodAspectDecorator, @UseMiddleware, and declarative service decorators.",
+        keywords: [
+          "ADR-014",
+          "MethodAspectWeaver",
+          "createMethodAspectDecorator",
+          "@UseMiddleware",
+          "@InheritMethodEnhancers",
+          "@WithCls",
+          "AOP",
+        ],
+      },
+    ],
+  },
+  {
+    id: "data",
+    title: "DATA & PERSISTENCE",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "data/sqlite",
+        title: "SQLite (bun:sqlite)",
+        file: "data/sqlite.md",
+        badge: "Native",
+        description:
+          "Bun-native bun:sqlite with @Transactional, Spring Data-style @SqliteRepository/JpaRepository derived finders, @Query, and migrations.",
+        keywords: [
+          "@bunest/sqlite",
+          "SqliteModule",
+          "SqliteService",
+          "@SqliteRepository",
+          "JpaRepository",
+          "@Transactional",
+          "@Query",
+          "@Modifying",
+          "@SqlParam",
+        ],
+      },
+      {
+        slug: "data/sql",
+        title: "SQL (Bun.SQL)",
+        file: "data/sql.md",
+        badge: "Native",
+        description:
+          "Multi-dialect Bun.SQL (Postgres/MySQL/SQLite) with SqlModule, @Transactional, and dialect-aware @SqlRepository/SqlCrudRepository.",
+        keywords: [
+          "@bunest/sql",
+          "SqlModule",
+          "SqlService",
+          "@SqlRepository",
+          "SqlCrudRepository",
+          "@SqlQuery",
+          "@Transactional",
+        ],
+      },
+      {
+        slug: "data/orm-adapters",
+        title: "ORM & ODM adapters",
+        file: "data/orm-adapters.md",
+        description:
+          "Zero-dep DI integrations for Prisma, Drizzle, TypeORM, Mongoose, and Sequelize.",
+        keywords: [
+          "@bunest/prisma",
+          "@bunest/drizzle",
+          "@bunest/typeorm",
+          "@bunest/mongoose",
+          "@bunest/sequelize",
+          "PrismaModule",
+          "DrizzleModule",
+          "TypeOrmModule",
+          "MongooseModule",
+          "SequelizeModule",
+        ],
+      },
+      {
+        slug: "data/elasticsearch",
+        title: "Elasticsearch",
+        file: "data/elasticsearch.md",
+        description:
+          "@nestjs/elasticsearch v12 parity with a full Bun-native fetch() REST client.",
+        keywords: [
+          "@bunest/elasticsearch",
+          "ElasticsearchModule",
+          "ElasticsearchService",
+        ],
+      },
+      {
+        slug: "data/store-kit",
+        title: "Store kit",
+        file: "data/store-kit.md",
+        description:
+          "Foundational Bun.SQL store kit with Postgres/MySQL adapters, versioned migrations, CLI, and contract testing.",
+        keywords: [
+          "@bunest/store-kit",
+          "runStoreCli",
+          "postgres",
+          "mysql",
+          "migrations",
+        ],
+      },
+    ],
+  },
+  {
+    id: "security",
+    title: "SECURITY & IDENTITY",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "security/security-module",
+        title: "Security, JWT & Throttler",
+        file: "security/security-module.md",
+        description:
+          "SecurityModule.forRoot, @Auth, @Protected, WebCrypto JWT/JWKS, Argon2id passwords, RBAC, CSRF, and drop-in @bunest/jwt, @bunest/passport, @bunest/throttler facades.",
+        keywords: [
+          "@bunest/security",
+          "@bunest/jwt",
+          "@bunest/passport",
+          "@bunest/throttler",
+          "SecurityModule",
+          "JwtModule",
+          "PassportModule",
+          "ThrottlerModule",
+          "@Auth",
+          "PasswordService",
+        ],
+      },
+      {
+        slug: "security/authentication",
+        title: "Authentication",
+        file: "security/authentication.md",
+        description:
+          "Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, magic links, OIDC/OAuth2, and API keys via @bunest/authentication.",
+        keywords: [
+          "@bunest/authentication",
+          "AuthenticationModule",
+          "AuthenticationGuard",
+          "@Authenticate",
+          "ApiKeyProvider",
+        ],
+      },
+      {
+        slug: "security/authorization",
+        title: "Authorization",
+        file: "security/authorization.md",
+        description:
+          "Policy-based authorization with @Policy classes, @Can/@Can.Anyone, AuthorizationService, and audit events via @bunest/authorization.",
+        keywords: [
+          "@bunest/authorization",
+          "AuthorizationModule",
+          "AuthorizationService",
+          "@Policy",
+          "@Can",
+        ],
+      },
+    ],
+  },
+  {
+    id: "apis",
+    title: "API, GRAPHQL & REALTIME",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "apis/openapi",
+        title: "OpenAPI (Swagger)",
+        file: "apis/openapi.md",
+        description:
+          "OpenAPI 3.1 document generation, DocumentBuilder, @Api* decorators, and Interactive Try-It-Out UI via @bunest/swagger.",
+        keywords: [
+          "@bunest/swagger",
+          "SwaggerModule",
+          "DocumentBuilder",
+          "@ApiTags",
+          "@ApiProperty",
+          "OpenAPI",
+        ],
+      },
+      {
+        slug: "apis/graphql",
+        title: "GraphQL & Apollo",
+        file: "apis/graphql.md",
+        description:
+          "Code-first & schema-first GraphQL, Federation v2 Subgraph/Gateway, BunestDataLoader, and subscriptions via @bunest/graphql & @bunest/apollo.",
+        keywords: [
+          "@bunest/graphql",
+          "@bunest/apollo",
+          "GraphQLModule",
+          "ApolloDriver",
+          "ApolloFederationDriver",
+          "ApolloGatewayDriver",
+          "BunestDataLoader",
+        ],
+      },
+      {
+        slug: "apis/websockets",
+        title: "WebSockets",
+        file: "apis/websockets.md",
+        description:
+          "Native Bun.serve({ websocket }) gateways with @WebSocketGateway, @SubscribeMessage, @Ack, rooms, and enhancers via @bunest/websockets.",
+        keywords: [
+          "@bunest/websockets",
+          "@WebSocketGateway",
+          "@SubscribeMessage",
+          "@Ack",
+          "BunWebSocketAdapter",
+        ],
+      },
+    ],
+  },
+  {
+    id: "distributed",
+    title: "DISTRIBUTED & RELIABILITY",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "distributed/microservices",
+        title: "Microservices",
+        file: "distributed/microservices.md",
+        description:
+          "@MessagePattern, @EventPattern, @GrpcMethod, ClientProxy, hybrid apps, and TCP/InMemory/gRPC/Kafka/MQTT/Redis/NATS/RabbitMQ transports.",
+        keywords: [
+          "@bunest/microservices",
+          "@MessagePattern",
+          "@EventPattern",
+          "@GrpcMethod",
+          "ClientProxy",
+          "Transport",
+        ],
+      },
+      {
+        slug: "distributed/cqrs",
+        title: "CQRS",
+        file: "distributed/cqrs.md",
+        description:
+          "Zero-RxJS CommandBus, QueryBus, EventBus, AggregateRoot, EventPublisher, and @Saga via @bunest/cqrs.",
+        keywords: [
+          "@bunest/cqrs",
+          "CqrsModule",
+          "CommandBus",
+          "QueryBus",
+          "EventBus",
+          "AggregateRoot",
+          "@Saga",
+        ],
+      },
+      {
+        slug: "distributed/resilience",
+        title: "Resilience",
+        file: "distributed/resilience.md",
+        description:
+          "Retry, Timeout, CircuitBreaker, Bulkhead, RateLimit, and Fallback policies for both controllers and @Injectable() services.",
+        keywords: [
+          "@bunest/resilience",
+          "ResilienceModule",
+          "@Retry",
+          "@Timeout",
+          "@CircuitBreaker",
+          "@Bulkhead",
+          "@Fallback",
+        ],
+      },
+      {
+        slug: "distributed/locks-idempotency",
+        title: "Locks & Idempotency",
+        file: "distributed/locks-idempotency.md",
+        description:
+          "Distributed leased locks with fencing tokens (@WithLock, LeaderElection) and @Idempotent request deduplication.",
+        keywords: [
+          "@bunest/locks",
+          "@bunest/idempotency",
+          "LocksModule",
+          "@WithLock",
+          "LeaderElection",
+          "IdempotencyModule",
+          "@Idempotent",
+        ],
+      },
+      {
+        slug: "distributed/outbox-webhooks",
+        title: "Outbox & Webhooks",
+        file: "distributed/outbox-webhooks.md",
+        description:
+          "Transactional outbox/inbox relay (@bunest/outbox) and HMAC-signed, SSRF-protected webhooks (@bunest/webhooks).",
+        keywords: [
+          "@bunest/outbox",
+          "@bunest/webhooks",
+          "OutboxModule",
+          "@OnOutboxMessage",
+          "WebhooksModule",
+          "@VerifyWebhook",
+        ],
+      },
+      {
+        slug: "distributed/workflows",
+        title: "Durable workflows",
+        file: "distributed/workflows.md",
+        description:
+          "Plain-async durable workflows with deterministic replay, signals, timers, sagas, schedules, and SQL stores via @bunest/workflows.",
+        keywords: [
+          "@bunest/workflows",
+          "WorkflowsModule",
+          "InMemoryWorkflowStore",
+          "AesGcmPayloadCodec",
+        ],
+      },
+    ],
+  },
+  {
+    id: "ai",
+    title: "AI & AGENTS",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "ai/ai-sdk",
+        title: "AI SDK",
+        file: "ai/ai-sdk.md",
+        description:
+          "Native OpenAI/Anthropic/Gemini SSE clients, generateText, generateObject, streamText, embeddings, @AgentFunction, and durable agent workflows.",
+        keywords: [
+          "@bunest/ai",
+          "AiModule",
+          "AiService",
+          "@AgentFunction",
+          "generateText",
+          "generateObject",
+        ],
+      },
+      {
+        slug: "ai/mcp",
+        title: "Model Context Protocol (MCP)",
+        file: "ai/mcp.md",
+        description:
+          "Expose @Tool, @Resource, @ResourceTemplate, and @Prompt over Streamable HTTP, SSE, and stdio JSON-RPC 2.0 via @bunest/mcp.",
+        keywords: [
+          "@bunest/mcp",
+          "McpModule",
+          "@Tool",
+          "@Resource",
+          "@Prompt",
+        ],
+      },
+    ],
+  },
+  {
+    id: "observability",
+    title: "OBSERVABILITY & DX",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "observability/observability",
+        title: "Observability, Terminus & Devtools",
+        file: "observability/observability.md",
+        description:
+          "ObservabilityModule, @Span/@Timed/@Counted, W3C tracing, Prometheus metrics, @bunest/terminus health checks, and @bunest/devtools-integration.",
+        keywords: [
+          "@bunest/observability",
+          "@bunest/terminus",
+          "@bunest/devtools-integration",
+          "ObservabilityModule",
+          "@Span",
+          "@Timed",
+          "@Counted",
+          "HealthCheckService",
+          "DevtoolsModule",
+        ],
+      },
+      {
+        slug: "observability/observe",
+        title: "Observe APM",
+        file: "observability/observe.md",
+        description:
+          "Full APM agent with distributed tracing, SLO objectives, PII redaction, cardinality guards, and OTLP export via @bunest/observe.",
+        keywords: [
+          "@bunest/observe",
+          "ObserveModule",
+          "SLO",
+          "PII redaction",
+          "OTLP",
+        ],
+      },
+      {
+        slug: "observability/cli",
+        title: "CLI",
+        file: "observability/cli.md",
+        description:
+          "Project scaffolding, schematics, watch-mode dev server, Bun.build() bundling, REPL, and bunestMetadataPlugin via @bunest/cli.",
+        keywords: [
+          "@bunest/cli",
+          "bunest new",
+          "bunest generate",
+          "bunest build",
+          "bunestMetadataPlugin",
+        ],
+      },
+    ],
+  },
+  {
+    id: "architecture",
+    title: "ARCHITECTURE & ADRs",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "architecture/execution-pipeline",
+        title: "11-Stage Execution Pipeline",
+        file: "architecture/execution-pipeline.md",
+        badge: "ADR-008",
+        description:
+          "Normative 11-stage HTTP request lifecycle, precedence matrix, and exception filter boundary.",
+        keywords: [
+          "pipeline",
+          "ADR-008",
+          "order",
+          "precedence",
+          "onion",
+          "DefaultExceptionFilter",
+        ],
+      },
+      {
+        slug: "architecture/hybrid-router",
+        title: "Hybrid Bun.serve Router",
+        file: "architecture/hybrid-router.md",
+        badge: "ADR-011",
+        description:
+          "How Bunest compiles controllers into native Bun.serve({ routes }) Zig closures plus a controlled fallback radix router.",
+        keywords: [
+          "Bun.serve",
+          "routes",
+          "fallback",
+          "radix",
+          "405",
+          "Allow",
+          "DuplicateRouteException",
+          "ADR-011",
+        ],
+      },
+      {
+        slug: "architecture/response-serialization",
+        title: "Response Serialization",
+        file: "architecture/response-serialization.md",
+        badge: "ADR-010",
+        description:
+          "Return value priority matrix, RFC 9110 empty-body enforcement, default status codes, and header merge precedence.",
+        keywords: [
+          "Response",
+          "ResponseContext",
+          "status codes",
+          "201",
+          "204",
+          "RFC 9110",
+          "ADR-010",
+        ],
+      },
+      {
+        slug: "architecture/adrs",
+        title: "ADR & RFC Index",
+        file: "architecture/adrs.md",
+        description:
+          "Complete index of Bunest Architecture Decision Records (ADR-001 through ADR-012) and RFC-001.",
+        keywords: [
+          "ADR-001",
+          "ADR-002",
+          "ADR-003",
+          "ADR-004",
+          "ADR-005",
+          "ADR-006",
+          "ADR-007",
+          "ADR-008",
+          "ADR-009",
+          "ADR-010",
+          "ADR-011",
+          "ADR-012",
+          "RFC-001",
+        ],
+      },
+      {
+        slug: "architecture/migration-from-nestjs",
+        title: "Migration from NestJS",
+        file: "architecture/migration-from-nestjs.md",
+        description:
+          "Key differences, drop-in similarities, and migration checklist for teams coming from NestJS on Node.js.",
+        keywords: [
+          "migration",
+          "nestjs",
+          "express",
+          "fastify",
+          "rxjs",
+          "differences",
+          "comparison",
+        ],
+      },
+    ],
+  },
+  {
+    id: "ecosystem",
+    title: "ECOSYSTEM",
+    defaultOpen: false,
+    pages: [
+      {
+        slug: "ecosystem/packages",
+        title: "Packages & Monorepo",
+        file: "ecosystem/packages.md",
+        description:
+          "Explore @bunest/common, @bunest/core, @bunest/http, @bunest/validation, @bunest/testing, and the monorepo layout.",
+        keywords: [
+          "@bunest/common",
+          "@bunest/core",
+          "@bunest/http",
+          "@bunest/validation",
+          "@bunest/testing",
+          "monorepo",
+          "workspaces",
+        ],
+      },
+      {
+        slug: "ecosystem/roadmap",
+        title: "Implementation Roadmap",
+        file: "ecosystem/roadmap.md",
+        description:
+          "8-phase Bunest roadmap, milestones from v0.1 to v1.0, quality gates, and benchmark methodology.",
+        keywords: ["roadmap", "phases", "milestones", "v1.0", "benchmarks"],
+      },
+    ],
+  },
+];
+
+export function normalizeBasePath(raw?: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  return trimmed ? `/${trimmed}` : "";
+}
+
+export function getConfiguredBasePath(): string {
+  return normalizeBasePath(
+    process.env.DOCS_BASE_PATH ?? process.env.BASE_PATH ?? "",
+  );
+}
+
+export function withBasePath(path: string, basePath = ""): string {
+  const base = normalizeBasePath(basePath);
+  if (!base) return path;
+  if (
+    path.startsWith("http://") ||
+    path.startsWith("https://") ||
+    path.startsWith("mailto:") ||
+    path.startsWith("#")
+  ) {
+    return path;
+  }
+  if (path === "/" || path === "") {
+    return `${base}/`;
+  }
+  if (path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}#`)) {
+    return path;
+  }
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalized}`;
+}
+
+export function slugToHref(slug: string, basePath = ""): string {
+  const raw = slug === "" ? "/" : `/${slug}`;
+  return withBasePath(raw, basePath);
+}
+
+export function normalizePathname(pathname: string, basePath = ""): string {
+  const base = normalizeBasePath(basePath);
+  let stripped = pathname;
+  if (base && (stripped === base || stripped.startsWith(`${base}/`))) {
+    stripped = stripped.slice(base.length);
+  }
+  const cleaned = stripped.replace(/\/+$/, "").replace(/^\/+/, "");
+  if (cleaned === "" || cleaned === "index.html" || cleaned === "introduction") {
+    return "";
+  }
+  return cleaned.replace(/\.html$/, "");
+}
+
+export function getFlattenedPages(): FlattenedPage[] {
+  const rawList: Array<NavPage & { categoryId: string; categoryTitle: string }> =
+    [
+      {
+        ...INTRO_PAGE,
+        categoryId: "introduction",
+        categoryTitle: "INTRODUCTION",
+      },
+    ];
+
+  for (const category of NAV_CATEGORIES) {
+    for (const page of category.pages) {
+      rawList.push({
+        ...page,
+        categoryId: category.id,
+        categoryTitle: category.title,
+      });
+    }
+  }
+
+  return rawList.map((item, idx) => {
+    const prevItem = idx > 0 ? rawList[idx - 1] : undefined;
+    const nextItem = idx < rawList.length - 1 ? rawList[idx + 1] : undefined;
+
+    return {
+      ...item,
+      href: slugToHref(item.slug),
+      prev: prevItem
+        ? {
+            title: prevItem.title,
+            href: slugToHref(prevItem.slug),
+            categoryTitle: prevItem.categoryTitle,
+          }
+        : undefined,
+      next: nextItem
+        ? {
+            title: nextItem.title,
+            href: slugToHref(nextItem.slug),
+            categoryTitle: nextItem.categoryTitle,
+          }
+        : undefined,
+    };
+  });
+}
+
+export const ALL_PAGES: readonly FlattenedPage[] = getFlattenedPages();
+
+const PAGE_MAP = new Map<string, FlattenedPage>(
+  ALL_PAGES.map((p) => [p.slug, p]),
+);
+
+export function findPageBySlug(slug: string): FlattenedPage | undefined {
+  return PAGE_MAP.get(normalizePathname(slug));
+}

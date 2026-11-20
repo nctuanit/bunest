@@ -1,0 +1,480 @@
+# NestJS Full 22-Package Core + Ecosystem Conformance Report for Bunest
+
+This report documents the end-to-end audit, porting, and holistic verification of upstream NestJS conformance suites from **20 official [`github.com/nestjs/*`](https://github.com/nestjs) repositories** (plus 9 dedicated Devtools & Bun-native persistence parity specs) against all **22 / 22 `@bunest/*` workspace packages** (`bun:test`, Bun >= 1.4.3).
+
+---
+
+## 1. Executive Summary & Live Combined Suite Metrics
+
+### 1.1 Upstream Audit Totals
+
+| Field | Value |
+|---|---|
+| **Official Upstream Repositories Audited** | **20 cloned `github.com/nestjs/*` repos** (`nestjs/nest` v12.5.1 + 19 official ecosystem repos) + 1 closed-source npm package (`@nestjs/devtools-integration@12.0.0`, covered via supplemental parity suite) |
+| **Upstream Test Files Audited** | **1,313 files** (`635` Phase 1 Core + `345` Phase 2 Group A + `333` Phase 2 Group B; **15,437** call-site / **17,339** expanded tests; **310,396** LOC) |
+| **Ported & Supplemental Specs in Bunest** | **678 / 678** target specs (**100% completeness**, 0 missing) — `180 DIRECT_PORT` + `489 ADAPTED_PORT` (`669` upstream files; `7,392` call-site / `8,122` expanded upstream tests) + `9 SUPPLEMENTAL` (1 Devtools parity + 8 Bun-native SQL/SQLite persistence) + `1` harness self-test (`_helpers/verify-helpers.spec.ts`) = **679 spec files** (**702 `.ts` files** total) |
+| **Bunest Package Coverage** | **22 / 22 workspace packages covered (`100%`)** — every directory in `packages/*` is directly imported and exercised by conformance specs |
+| **Excluded Upstream Files** | **644 files** (`49.0%` of 1,313: `299` Core + `118` Group A + `227` Group B; `8,045` call-site / `9,217` expanded tests) — every excluded file is individually cataloged in [`inventory.json`](./inventory.json) with explicit `excludeCategory` & `reason` |
+
+### 1.2 Live Combined Execution Results (`bun test tests/nestjs-conformance`)
+
+Two consecutive whole-suite runs executing **all 679 spec files** (Phase 1 Core + Phase 2 Ecosystem + `_helpers`) inside a single `bun test` process produced **bit-for-bit identical results** with **0 failures**, **0 flakes**, zero hanging timers/sockets/DB handles, and zero cross-file state leaks:
+
+| Metric | Run 1 | Run 2 | Status |
+|---|---:|---:|---|
+| **Spec Files Executed** | 679 | 679 | 336 Phase 1 Core + 342 Phase 2 Ecosystem + 1 `_helpers` |
+| **Total Tests** | **7,106** | **7,106** | 100% deterministic across runs |
+| **Passing Tests** | **5,076** (`71.4%`) | **5,076** (`71.4%`) | **100.0%** of active tests pass |
+| **Skipped Tests (`// BUNEST_BUG:`)** | **2,030** (`28.6%`) | **2,030** (`28.6%`) | **1,766 / 1,766** skip sites (`100%`) annotated |
+| **Failing Tests** | **0** | **0** | Exit code `0` |
+| **`expect()` Assertions Executed** | **12,008** | **12,008** | Plus Supertest `.expect()` checks |
+| **Wall-Clock Duration** | `35.82s` | `30.62s` | Zero hanging handles, zero flakes |
+
+### 1.3 Typecheck, Static Hygiene & Full Workspace Verification
+
+- **Conformance Typecheck (`bun check` across all 702 `.ts` files in `tests/nestjs-conformance/`):** **0 TS errors inside `tests/nestjs-conformance/`** and **0 external TS errors** (verified in 5 chunked batches, all exit `0`).
+- **Full-Repository Typecheck (`bun check`):** `✓ No type errors in 1,581 files [706.92ms]` (exit `0`).
+- **Static Hygiene Audit:**
+  - **702 `.ts` files** (`679` `.spec.ts` + `23` non-spec helper/fixture `.ts` files).
+  - **0** hyphenated `*-spec.ts` files (all upstream `.e2e-spec.ts` normalized to `.e2e.spec.ts` so `bun test` auto-discovers 679 / 679 files).
+  - **1,766 / 1,766** skip call sites (`100%`) annotated with explicit `// BUNEST_BUG:` diagnostics; **0** unannotated skips; **0** `it.todo`.
+  - **0** spec files missing `import "reflect-metadata";` on line 1; **0** `@bunest/*` workspace-alias imports; **0** hardcoded listening ports; **0** stray temp directories or `.db`/`.sqlite`/`.wal`/`.shm` files.
+- **Full Workspace Regression Check (`bun test`, no filter):** **6,270 pass / 2,030 skip / 0 fail / 28,941 `expect()` calls** across **845 files** (`44.90s`, exit `0`). Pre-existing package test suite (166 files): **1,194 pass / 0 skip / 0 fail / 16,933 `expect()` calls** — **zero regressions**.
+
+---
+
+## 2. 22 / 22 Bunest Package Coverage Matrix
+
+Every one of Bunest's 22 workspace packages (`packages/*`) is directly imported and verified by the conformance suite:
+
+| # | Bunest Package | Direct Spec Imports (`packages/<pkg>/src`) | Upstream Source Repo(s) | Primary Conformance Bucket(s) | Primary Bucket Live Results (Pass / Skip / Fail) |
+|---:|---|---:|---|---|---|
+| 1 | `@bunest/axios` | 4 | `nestjs/axios` | `eco-bucket-1` (`ecosystem/axios/`) | 26 / 1 / 0 (2 files) |
+| 2 | `@bunest/cache` | 10 | `nestjs/cache-manager` | `eco-bucket-1` (`ecosystem/cache/`) | 16 / 7 / 0 (10 files) |
+| 3 | `@bunest/cli` | 37 | `nestjs/nest-cli`, `nestjs/schematics` | `eco-bucket-7` (`ecosystem/cli/`) | 382 / 132 / 0 (37 files) |
+| 4 | `@bunest/common` | 478 | `nestjs/nest` (`packages/common`, `integration/*`) + all ecosystem | `bucket-1` (`common/`) + cross-cutting | 622 / 426 / 0 (72 files in `bucket-1` baseline) |
+| 5 | `@bunest/config` | 25 | `nestjs/config` | `eco-bucket-1` (`ecosystem/config/`) | 74 / 66 / 0 (29 files) |
+| 6 | `@bunest/core` | 338 | `nestjs/nest` (`packages/core`, `integration/*`) + all ecosystem | `bucket-2`, `bucket-3`, `bucket-6` | 830+ / 270+ / 0 across Core buckets |
+| 7 | `@bunest/cqrs` | 10 | `nestjs/cqrs` | `eco-bucket-1` (`ecosystem/cqrs/`) | 65 / 30 / 0 (10 files) |
+| 8 | `@bunest/events` | 3 | `nestjs/event-emitter` | `eco-bucket-1` (`ecosystem/events/`) | 35 / 7 / 0 (3 files) |
+| 9 | `@bunest/graphql` | 131 | `nestjs/graphql` (`graphql` + `apollo`), `nestjs/nest` (`integration/graphql-*`) | `bucket-7` (8) + `eco-bucket-3` (60) + `eco-bucket-4` (63) | 256 / 362 / 0 (123 Phase 2 files) + Phase 1 baseline |
+| 10 | `@bunest/http` | 68 | `nestjs/nest` (`integration/http-adapters`, `cookies`, `cors`, `security`, `versioning`, `route-conflict`, `send-files`, `file-upload`) | `bucket-3`, `bucket-4`, `bucket-5` | 1,006+ / 370+ / 0 across HTTP buckets |
+| 11 | `@bunest/mapped-types` | 5 | `nestjs/mapped-types` | `eco-bucket-1` (`ecosystem/mapped-types/`) | 31 / 2 / 0 (5 files) |
+| 12 | `@bunest/microservices` | 59 | `nestjs/nest` (`packages/microservices`, `integration/microservices`) | `bucket-7` (TCP/core) + `bucket-8` (gRPC/Kafka/MQTT/NATS/Redis/RMQ) | 330 / 81 / 0 (`bucket-8`) + `bucket-7` TCP/core |
+| 13 | `@bunest/observability` | 35 | `nestjs/terminus`, `nestjs/observe`, `@nestjs/devtools-integration` (supplemental) | `eco-bucket-6` (`ecosystem/observability/`) | 492 / 50 / 0 (35 files) |
+| 14 | `@bunest/queues` | 9 | `nestjs/bull` (`@nestjs/bull`, `@nestjs/bullmq`, `@nestjs/bull-shared`) | `eco-bucket-5` (`ecosystem/queues/`) | 90 / 28 / 0 (9 files) |
+| 15 | `@bunest/scheduler` | 7 | `nestjs/schedule` | `eco-bucket-1` (`ecosystem/scheduler/`) | 57 / 18 / 0 (7 files) |
+| 16 | `@bunest/security` | 12 | `nestjs/jwt`, `nestjs/throttler`, `nestjs/passport` | `eco-bucket-5` (`ecosystem/security/`) | 124 / 23 / 0 (12 files) |
+| 17 | `@bunest/sql` | 14 | `nestjs/drizzle`, `nestjs/typeorm` (DI patterns), Bun-native `Bun.SQL` | `eco-bucket-8` (`ecosystem/persistence/`) | 187 / 1 / 0 (combined with `@bunest/sqlite`, 22 files) |
+| 18 | `@bunest/sqlite` | 14 | `nestjs/typeorm` (DI/repo patterns), Bun-native `bun:sqlite` | `eco-bucket-8` (`ecosystem/persistence/`) | 187 / 1 / 0 (combined with `@bunest/sql`, 22 files) |
+| 19 | `@bunest/swagger` | 40 | `nestjs/swagger` | `eco-bucket-2` (`ecosystem/swagger/`) | 347 / 174 / 0 (38 files) |
+| 20 | `@bunest/testing` | 8 *(+ transitive via `_helpers/index`)* | `nestjs/nest` (`packages/testing`, `integration/auto-mock`, `testing-module-override`) | `bucket-2` + `_helpers/` + all E2E specs | 309 / 52 / 0 (`bucket-2`) + 9 / 0 / 0 (`_helpers`) |
+| 21 | `@bunest/validation` | 9 | `nestjs/nest` (`ValidationPipe`, `StandardSchemaValidationPipe`, `ClassSerializerInterceptor`, `StandardSchemaSerializerInterceptor`) | `bucket-1` (`common/`) | Covered in `bucket-1` (`common/`) |
+| 22 | `@bunest/websockets` | 26 | `nestjs/nest` (`packages/websockets`, `integration/websockets`) | `bucket-7` (`websockets-graphql-tcp/`) | 304 / 99 / 0 (`bucket-7` combined) |
+
+---
+
+## 3. Complete 16-Bucket Results & 20 Upstream Repository Snapshots
+
+### 3.1 All 16 Worker Buckets + Harness (`679` Spec Files)
+
+| Phase | Bucket | Target Directory | Files (`D`/`A`/`S`) | Pass | Skip | Fail | Total | Pass Rate | Expects |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Harness | **`_helpers`** | `tests/nestjs-conformance/_helpers/` | 1 (harness) | 9 | 0 | 0 | 9 | 100.0% | 80 |
+| Phase 1 | **`bucket-1`** | `tests/nestjs-conformance/common/` | 72 (58 / 14 / 0) | 622* | 426* | 0 | 1,048 | 59.4% | 1,386 |
+| Phase 1 | **`bucket-2`** | `tests/nestjs-conformance/di-lifecycle-testing/` | 59 (32 / 27 / 0) | 309* | 52* | 0 | 361 | 85.6% | 514 |
+| Phase 1 | **`bucket-3`** | `tests/nestjs-conformance/http-pipeline/` | 43 (7 / 36 / 0) | 213* | 117* | 0 | 330 | 64.5% | 331 |
+| Phase 1 | **`bucket-4`** | `tests/nestjs-conformance/http-features/` | 32 (3 / 29 / 0) | 401* | 178* | 0 | 579 | 69.3% | 797 |
+| Phase 1 | **`bucket-5`** | `tests/nestjs-conformance/routing-versioning/` | 14 (0 / 14 / 0) | 392* | 75* | 0 | 467 | 83.9% | 154 |
+| Phase 1 | **`bucket-6`** | `tests/nestjs-conformance/scopes-core/` | 37 (9 / 28 / 0) | 308* | 107* | 0 | 415 | 74.2% | 527 |
+| Phase 1 | **`bucket-7`** | `tests/nestjs-conformance/websockets-graphql-tcp/` | 55 (10 / 45 / 0) | 304* | 99* | 0 | 403 | 75.4% | 815 |
+| Phase 1 | **`bucket-8`** | `tests/nestjs-conformance/microservices-transports/` | 24 (1 / 23 / 0) | 330* | 81* | 0 | 411 | 80.3% | 1,460 |
+| **Phase 1** | **Subtotal (8 Core buckets)** | *(live combined holistic run)* | **336 (120 / 216 / 0)** | **2,885** | **1,129** | **0** | **4,014** | **71.9%** | **5,992** |
+| Phase 2A | **`eco-bucket-1`** | `ecosystem/{axios,cache,config,cqrs,events,mapped-types,scheduler}/` | 66 (32 / 34 / 0) | 304 | 131 | 0 | 435 | 69.9% | 672 |
+| Phase 2A | **`eco-bucket-2`** | `ecosystem/swagger/` | 38 (12 / 26 / 0) | 347 | 174 | 0 | 521 | 66.6% | 588 |
+| Phase 2A | **`eco-bucket-3`** | `ecosystem/graphql/unit/` | 60 (8 / 52 / 0) | 147 | 132 | 0 | 279 | 52.7% | 338 |
+| Phase 2A | **`eco-bucket-4`** | `ecosystem/graphql/{e2e,subscriptions}/` | 63 (0 / 63 / 0) | 109 | 230 | 0 | 339 | 32.2% | 226 |
+| Phase 2B | **`eco-bucket-5`** | `ecosystem/{security,queues}/` | 21 (2 / 19 / 0) | 214 | 51 | 0 | 265 | 80.8% | 419 |
+| Phase 2B | **`eco-bucket-6`** | `ecosystem/observability/` | 35 (6 / 28 / 1) | 492 | 50 | 0 | 542 | 90.8% | 1,604 |
+| Phase 2B | **`eco-bucket-7`** | `ecosystem/cli/` | 37 (0 / 37 / 0) | 382 | 132 | 0 | 514 | 74.3% | 1,248 |
+| Phase 2B | **`eco-bucket-8`** | `ecosystem/persistence/` | 22 (0 / 14 / 8) | 187 | 1 | 0 | 188 | 99.5% | 841 |
+| **Phase 2** | **Subtotal (8 Ecosystem buckets)** | `tests/nestjs-conformance/ecosystem/` | **342 (60 / 273 / 9)** | **2,182** | **901** | **0** | **3,083** | **70.8%** | **5,936** |
+| **Combined** | **All 16 Buckets + Harness** | **`tests/nestjs-conformance/`** | **679 (180 / 489 / 9 + 1)** | **5,076** | **2,030** | **0** | **7,106** | **71.4%** | **12,008** |
+
+*\*Note: Individual Phase 1 bucket rows reflect their Phase 1 verification baseline (`2,879` pass / `1,135` skip); subsequent Bunest core fixes unlocked `+6` additional passing tests in the holistic combined run (`2,885` pass / `1,129` skip, `4,014` total).*
+
+### 3.2 All 20 Official `github.com/nestjs/*` Repository Snapshots (+ Closed-Source `devtools-integration`)
+
+| # | Phase | Upstream Repo | Branch & HEAD SHA | Commit Date | Upstream Version(s) | Audited Files | `DIRECT` | `ADAPTED` | `EXCLUDED` | Supp. | Upstream Tests (Ported / Total) |
+|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | Phase 1 | `nestjs/nest` | `master` @ `b22732df7224` | 2026-11-20 | `@nestjs/*@12.5.1` (root `12.0.0`) | 635 | 120 | 216 | 299 | 0 | 4,598 / 8,975 |
+| 2 | Phase 2A | `nestjs/axios` | `master` @ `28db29ce2551` | 2026-11-18 | `@nestjs/axios@12.0.2` | 3 | 0 | 2 | 1 | 0 | 27 / 32 |
+| 3 | Phase 2A | `nestjs/cache-manager` | `master` @ `cdbba2dcb069` | 2026-11-18 | `@nestjs/cache-manager@12.0.5` | 11 | 0 | 10 | 1 | 0 | 19 / 23 |
+| 4 | Phase 2A | `nestjs/config` | `master` @ `0d5463520317` | 2026-11-18 | `@nestjs/config@12.1.1` | 30 | 21 | 8 | 1 | 0 | 127 / 130 |
+| 5 | Phase 2A | `nestjs/cqrs` | `master` @ `3f7295325d4d` | 2026-11-17 | `@nestjs/cqrs@12.1.3` | 11 | 4 | 6 | 1 | 0 | 69 / 74 |
+| 6 | Phase 2A | `nestjs/event-emitter` | `master` @ `63de9c8039ad` | 2026-11-18 | `@nestjs/event-emitter@12.0.3` | 3 | 0 | 3 | 0 | 0 | 42 / 42 |
+| 7 | Phase 2A | `nestjs/mapped-types` | `master` @ `795f75151fcb` | 2026-11-18 | `@nestjs/mapped-types@12.0.1` | 5 | 5 | 0 | 0 | 0 | 33 / 33 |
+| 8 | Phase 2A | `nestjs/schedule` | `master` @ `ebeeab5282f8` | 2026-11-18 | `@nestjs/schedule@12.0.4` | 7 | 2 | 5 | 0 | 0 | 65 / 65 |
+| 9 | Phase 2A | `nestjs/swagger` | `master` @ `d0b93bea6e1e` | 2026-11-20 | `@nestjs/swagger@12.1.2` | 69 | 12 | 26 | 31 | 0 | 474 / 864 |
+| 10 | Phase 2A | `nestjs/graphql` | `master` @ `cc8050094197` | 2026-11-20 | `@nestjs/{graphql,apollo,mercurius}@14.2.1` | 206 | 8 | 115 | 83 | 0 | 524 / 841 |
+| 11 | Phase 2B | `nestjs/jwt` | `master` @ `47e5bb632272` | 2026-11-17 | `@nestjs/jwt@12.0.5` | 1 | 0 | 1 | 0 | 0 | 55 / 55 |
+| 12 | Phase 2B | `nestjs/throttler` | `master` @ `849929b4dfe8` | 2026-11-17 | `@nestjs/throttler@6.8.0` | 8 | 2 | 6 | 0 | 0 | 74 / 74 |
+| 13 | Phase 2B | `nestjs/passport` | `master` @ `19422a37af31` | 2026-11-18 | `@nestjs/passport@12.0.2` | 3 | 0 | 3 | 0 | 0 | 12 / 12 |
+| 14 | Phase 2B | `nestjs/bull` | `master` @ `2686e032f369` | 2026-11-20 | `@nestjs/{bull,bullmq,bull-shared}@12.0.2` | 14 | 0 | 9 | 5 | 0 | 118 / 168 |
+| 15 | Phase 2B | `nestjs/terminus` | `master` @ `076157215218` | 2026-11-19 | `@nestjs/terminus@12.2.0` | 44 | 6 | 21 | 17 | 0 | 263 / 308 |
+| 16 | Phase 2B | `nestjs/nest-cli` | `master` @ `10872d940088` | 2026-11-20 | `@nestjs/cli@12.0.15` | 104 | 0 | 16 | 88 | 0 | 233 / 1,335 |
+| 17 | Phase 2B | `nestjs/schematics` | `master` @ `1bfa34677961` | 2026-11-20 | `@nestjs/schematics@12.0.16` | 45 | 0 | 21 | 24 | 0 | 347 / 670 |
+| 18 | Phase 2B | `nestjs/typeorm` | `master` @ `aeee46ac21dc` | 2026-11-18 | `@nestjs/typeorm@12.0.3` *(DI patterns)* | 18 | 0 | 9 | 9 | 0 | 17 / 42 |
+| 19 | Phase 2B | `nestjs/drizzle` | `master` @ `6bb2f913b65b` | 2026-11-20 | `@nestjs/drizzle@0.0.2` | 8 | 0 | 5 | 3 | 0 | 28 / 44 |
+| 20 | Phase 2B | `nestjs/observe` | `master` @ `1b0cd51905d3` | 2026-11-19 | `@nestjs/observe@0.3.27` | 88 | 0 | 7 | 81 | 0 | 267 / 1,650 |
+| — | Phase 2B | `devtools-integration` *(not public)* | — | — | npm `@nestjs/devtools-integration@12.0.0` | 0 | 0 | 0 | 0 | 1 | — (supplemental) |
+| — | Phase 2B | Bun-Native Persistence (`@bunest/sql`, `@bunest/sqlite`) | — | — | Bun `Bun.SQL` / `bun:sqlite` ACID/ALS/CRUD/Security | 0 | 0 | 0 | 0 | 8 | — (supplemental) |
+| **Total** | **All Phases** | **20 Cloned Repos + Devtools & Persistence** | — | — | — | **1,313** | **180** | **489** | **644** | **9** | **7,392 / 15,437** |
+
+---
+
+## 4. Complete Exclusion Audit (`644` Excluded Upstream Files)
+
+All `644` excluded upstream files (`8,045` call-site / `9,217` expanded tests across Phase 1 Core + Phase 2 Ecosystem) are cataloged individually in [`inventory.json`](./inventory.json) with explicit `excludeCategory` and `reason` metadata:
+
+| Exclude Category | Files | % of 1,313 | Call-Site Tests | Expanded Tests | Rationale |
+|---|---:|---:|---:|---:|---|
+| `nestjs-internal-class` | 190 | 14.5% | 2,340 | 2,481 | Private NestJS core/swagger/graphql/bull/terminus internal classes (`InstanceWrapper`, `DependenciesScanner`, `SchemaObjectFactory` private helpers, `BullMetadataAccessor`, etc.) not mirrored 1:1 in Bunest's clean-room architecture; public behavior is verified via ported suites. |
+| `platform-adapter-internals` | 91 | 6.9% | 1,483 | 1,948 | Express, Fastify, `node:http`, Socket.IO, `ws`, Multer, and Mercurius/Apollo-Express adapter plumbing — excluded per **ADR-001**. |
+| `duplicate-adapter-variant` | 71 | 5.4% | 996 | 1,029 | Redundant Express / Fastify / `platform-node` / Mercurius matrix copies of identical integration scenarios; every unique behavior is ported once against native `BunHttpAdapter` / `@bunest/graphql`. |
+| `webpack-rspack-swc-tsc-compiler` | 33 | 2.5% | 500 | 526 | `nestjs/nest-cli` webpack/rspack/SWC/tsc bundler runners (Bunest uses native `Bun.build` / `bun` runtime — **ADR-001**). |
+| `observe-internal-service` | 32 | 2.4% | 532 | 562 | `@nestjs/observe` proprietary SaaS cloud backend/transport/ingestion internals. |
+| `observe-apm-instrumentation` | 23 | 1.8% | 491 | 730 | `@nestjs/observe` Node.js monkey-patching APM hooks (Express/Fastify/pg/ioredis/undici). |
+| `external-broker-daemon` | 21 | 1.6% | 100 | 100 | E2E specs requiring live external Docker broker daemons (Redis, RabbitMQ, Kafka, NATS, MQTT); transport conformance is verified in-process in `bucket-8`. |
+| `cli-internal-utility` | 20 | 1.5% | 169 | 178 | Internal `nest-cli` helper utilities not part of `@bunest/cli` public behavior. |
+| `absent-ecosystem-package` | 17 | 1.3% | 34 | 34 | Absent third-party integrations (`@nestjs/mongoose`, `@nestjs/typeorm` in core, and 8 third-party ORM health indicators in `terminus`). |
+| `compiler-plugin-internal` | 17 | 1.3% | 151 | 156 | TypeScript AST / SWC / `ts-morph` compiler plugin transformers in `swagger` and `graphql`. |
+| `commander-cli-internal` | 17 | 1.3% | 306 | 342 | `commander.js` option-parsing internals in `nest-cli` (`@bunest/cli` uses zero-dep native parser). |
+| `angular-devkit-schematic-internal` | 17 | 1.3% | 134 | 135 | `@angular-devkit/schematics` virtual `Tree` / rule engine internals. |
+| `observe-saas-agent-worker` | 15 | 1.1% | 229 | 291 | `@nestjs/observe` SaaS worker-thread telemetry agent. |
+| `angular-devkit-schematics-runner` | 12 | 0.9% | 66 | 69 | `@angular-devkit` external collection runner plumbing in `nest-cli`. |
+| `absent-gateway-driver` | 11 | 0.8% | 21 | 21 | Apollo Gateway supergraph orchestration tests (outside single-subgraph `@bunest/graphql`). |
+| `typeorm-orm-internal` | 9 | 0.7% | 25 | 46 | TypeORM entity/metadata/DataSource ORM internals (DI patterns ported; ORM internals excluded). |
+| `node-package-manager-wrapper` | 6 | 0.5% | 61 | 61 | npm/yarn/pnpm CLI wrapper classes in `nest-cli` (Bunest targets `bun`). |
+| `sample-app` | 6 | 0.5% | 10 | 10 | Example sample apps under `terminus/sample/`. |
+| `observe-cli-tool` | 6 | 0.5% | 65 | 115 | `@nestjs/observe` SaaS CLI linking/auth subcommands. |
+| `already-ported-phase1` | 6 | 0.5% | 6 | 6 | GraphQL baseline integration tests already ported in Phase 1 `bucket-7` (`websockets-graphql-tcp/`). |
+| `angular-monorepo-workspace` | 5 | 0.4% | 112 | 159 | Angular workspace CJS/ESM/Jest monorepo mutation schematics. |
+| `observe-profiler-runtime` | 5 | 0.4% | 66 | 66 | Node.js V8 CPU/heap profiler bindings in `@nestjs/observe`. |
+| `packaging-manifest-internal` | 4 | 0.3% | 16 | 16 | Upstream npm `package.json` / CJS+ESM `exports` packaging manifest self-checks. |
+| `external-db-driver` | 3 | 0.2% | 16 | 20 | Live Docker Postgres/MySQL/`pglite`/`libsql`/`pg.Pool` driver failure tests in `nestjs/drizzle`. |
+| `nestjs-upgrade-migration` | 2 | 0.2% | 77 | 77 | One-off NestJS v11 -> v12 upgrade migration schematics. |
+| `legacy-bull-v3-redis-daemon` | 1 | 0.1% | 21 | 21 | Legacy Bull v3 live Redis daemon E2E suite. |
+| `legacy-bull-v3-internal` | 1 | 0.1% | 8 | 8 | Legacy Bull v3 internal `BullMetadataAccessor`. |
+| `rxjs-only-internal` | 1 | 0.1% | 5 | 5 | RxJS-specific `Observable` subscription internals (`nestjs/cqrs` RxJS stream plumbing — **ADR-008**). |
+| `third-party-library-internal` | 1 | 0.1% | 4 | 4 | External `keyv` library cache-adapter internals (`nestjs/cache-manager`). |
+| `node-tty-process-internal` | 1 | 0.1% | 1 | 1 | Node.js child-process TTY REPL test (REPL commands covered via `createReplContext()`). |
+| **Total Excluded** | **644** | **49.0%** | **8,045** | **9,217** | **Zero silently dropped NestJS features.** |
+
+---
+
+## 5. Intentional Architectural Divergences (ADR-001..ADR-013)
+
+Where Bunest intentionally departs from NestJS by architecture, tests are tagged with `itAdapted("ADR-XXX", ...)` across `489` `ADAPTED_PORT` files and assert **Bunest's documented contract** rather than skipping:
+
+| ADR | Area | Upstream NestJS Behavior | Bunest Documented Behavior | How Conformance Tests Verify It |
+|---|---|---|---|---|
+| **ADR-001** | Runtime & Transport | Node.js `AbstractHttpAdapter` (Express/Fastify/`platform-node`), Socket.IO/`ws`, Multer, Axios, Keyv, Redis, webpack/tsc | Bun-only runtime (`>= 1.4.3`), native `Bun.serve()`, Web `Request`/`Response`/`fetch()`, `Bun.SQL`/`bun:sqlite`, `MemoryCacheStore`, `MemoryQueueDriver`, `Bun.build` | `app.inject()` / `request(app)`, ephemeral `listen(0, "127.0.0.1")`, native `WebSocket`, in-memory stores/queues/SQLite |
+| **ADR-002** | TypeScript & Decorators | Legacy decorators, `verbatimModuleSyntax` typically off | Legacy decorators with `verbatimModuleSyntax: true`; value imports for DI/DTO classes, `import type` for types, `reflect-metadata` first | Enforced across all 702 `.ts` files via `bun check` (`0` errors) |
+| **ADR-003** | Controller Scope | Singleton by default; silently bubbles to request scope on request-scoped dependency | Stateless `Scope.SINGLETON` by default; explicit `@Controller({ scope: Scope.REQUEST })` required | Verified alongside ADR-012 `expectScopeLeak()` tests |
+| **ADR-004** | Param Extraction & Body | Express/Fastify `req.body` pre-parsed by middleware | Lazy single-read Web `Request` body caching; no implicit primitive coercion | Verified in `http-features/` & `common/` param/pipe specs |
+| **ADR-005** | Validation & Schemas | `class-validator` + `class-transformer` + Joi/Zod/Valibot | Same + zero-dep Standard Schema v1 (`~standard`) validation & native magic-byte file sniffing (`detectMagicMimeType`) | `ValidationPipe`, `StandardSchemaValidationPipe`, `@bunest/config`, `@bunest/swagger` |
+| **ADR-006** | Controller Scanning | Scans controller prototypes; lenient on malformed controllers | Copy-on-write inheritance-safe scanner with fail-fast `InvalidControllerException` & canonical duplicate detection | Verified across `common/`, `http-pipeline/`, `routing-versioning/` |
+| **ADR-007** | Module DI & Cycles | Last-imported token may win; allows circular `forwardRef()` on request-scoped providers | Strict encapsulation (`local > import > global`), fail-fast `AmbiguousProviderException`/`InvalidExportException`, §6 singleton-only `forwardRef()` cycles, §7 deterministic shutdown order | Verified in `di-lifecycle-testing/` & `scopes-core/` |
+| **ADR-008** | Execution Pipeline | RxJS `Observable` (`CallHandler`, `HttpService`, CQRS sagas, SSE, RPC) | Zero-RxJS 11-stage `Promise` onion model (`CallHandler.handle(): Promise<T>`, Promise `HttpService`, Promise CQRS buses/sagas); `AsyncIterable` / `ReadableStream` for SSE & GraphQL subscriptions | Adapted interceptors, axios, cqrs, SSE, WS, GraphQL & RPC specs |
+| **ADR-009** | `ValidationPipe` Defaults | `whitelist: false`, `forbidNonWhitelisted: false`, `transform: false`, flat `{ statusCode, message: string[], error }` | Secure defaults: `whitelist: true`, `forbidNonWhitelisted: true`, `forbidUnknownValues: true`, `transform: true`, `{ statusCode, error, message: "Validation failed", details }` | `nestCompatibleValidationPipe()` for upstream defaults + `bunestStrictValidationPipe()` |
+| **ADR-010** | Response Serialization | `@Res()` disables serialization unless `{ passthrough: true }` | `@Res()` injects mutable `ResponseContext` (passthrough-friendly); handlers return plain values, `StreamableFile`, `Blob`/`BunFile`, `ReadableStream`, or native `Response` | Adapted response/filter/streaming/cookie/cache specs |
+| **ADR-011** | Hybrid Routing | Single Express/Fastify router; 404 on wrong method; silent duplicate shadowing | Hybrid `Bun.serve({ routes })` + `FallbackRadixRouter`; O(1) `405 Method Not Allowed` + `Allow` header; fail-fast `DuplicateRouteException` by default | Adapted `405` + `Allow` and `routeConflictPolicy` assertions |
+| **ADR-012** | Request Scope | Silent singleton-to-request scope bubbling up the dependency graph | Fail-fast `ScopeLeakException` at bootstrap whenever a `Scope.SINGLETON` depends on `Scope.REQUEST`; explicit `{ scope: Scope.REQUEST }` or ambient `RequestContext`/`ClsService` required | `expectScopeLeak()` + explicit `{ scope: Scope.REQUEST }` assertions across Core & Ecosystem |
+| **ADR-013** | Zero-Dep Ecosystem Parity | Third-party wrappers (`axios`, `keyv`, `joi`, `cron`, `eventemitter2`, `bullmq`, `ioredis`, `passport`, `commander`) | Canonical zero-dependency Bun-native implementations across all 22 packages preserving NestJS decorator/DI ergonomics | Verified across all 8 Phase 2 `ecosystem/` buckets |
+
+---
+
+## 6. Consolidated & Deduplicated Bunest Compatibility Bug Registry
+
+Every genuine Bunest bug and NestJS parity gap discovered across all 16 buckets (**1,766** annotated `// BUNEST_BUG:` skip call sites expanding to **2,030** skipped tests) is deduplicated below by target Bunest package and prioritized by severity:
+
+- **`P0` (Security / Correctness / Crash / Leak):** Security bypasses, header/CSP injection, prototype pollution, DoS/hangs, resource leaks, wrong status/routing/auth execution, silent data loss.
+- **`P1` (Core API Parity):** Missing NestJS public APIs, broken DI/lifecycle/enhancer contracts, broken streaming/transport/schema/CLI semantics.
+- **`P2` (Edge Cases / Diagnostics / Formatting):** Error message wording, strict RFC edge parsing, minor option/typing combinations.
+
+---
+
+### 6.1 `@bunest/common` (`packages/common/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **COM-01** | **P0** | **`stripProtoKeys()` & `redact()` hang on sparse arrays (`i < arr.length`)** — iterating numeric indices up to `arr.length` causes CPU/memory hangs on high-index sparse arrays (`const a = []; a[1_000_000] = 1`). | `utils/common.utils.ts`, `logger/redact.ts` | `strip-proto-keys.util.spec.ts`, `redact.util.spec.ts` |
+| **COM-02** | **P0** | **`FileTypeValidator` security/correctness gaps** — unanchored `new RegExp(expected, "i")` lets `audio/wav` match `audio/wavpack`; mutates caller `RegExp.lastIndex` (`g`/`y` flags); crashes with `TypeError` when `fileType` is `undefined`; missing `errorMessage` (static/callback), `overrideMimeType`, and no-file/no-buffer error formats. | `pipes/file-validators.ts` | `file-type.validator.spec.ts` |
+| **COM-03** | **P0** | **`redact()` object-graph & special-type bugs** — mishandles `Error`, `Map`/`Set`, `Buffer`, shared DAG references, own `__proto__` keys, and throwing property getters. | `logger/redact.ts` | `redact.util.spec.ts` |
+| **COM-04** | **P1** | **Built-in `Parse*Pipe` sync `transform()` & generic `HttpException`** — `ParseIntPipe`, `ParseFloatPipe`, `ParseBoolPipe`, `ParseEnumPipe`, `ParseUUIDPipe` have synchronous `transform()` and throw base `HttpException(status)` instead of `BadRequestException` / `ConflictException` subclasses. | `pipes/built-in.pipes.ts`, `pipes/parse-file.pipe.ts` | `parse-{int,float,bool,enum,uuid,file}.pipe.spec.ts` |
+| **COM-05** | **P1** | **`DefaultValuePipe` returns shared mutable object/array reference** — does not deep-clone plain objects/arrays (including sparse arrays, null-prototype/symbol keys, own `__proto__`, circular refs). | `pipes/built-in.pipes.ts` | `default-value.pipe.spec.ts` |
+| **COM-06** | **P1** | **`ParseArrayPipe` parity gaps** — empty string `""` returns `[]` instead of `[""]`; does not validate/transform DTO class `items` via `ValidationPipe`; ignores `stopAtFirstError: false`, `maxErrorMessagesLength`, `errorFormat: "grouped"`, indexed `"[i] item..."` messages, and sparse gap closing. | `pipes/built-in.pipes.ts` | `parse-array.pipe.spec.ts` |
+| **COM-07** | **P1** | **`ParseDatePipe`, `ParseEnumPipe`, `ParseUUIDPipe`, `MaxFileSizeValidator`, `ParseFilePipe` gaps** — `ParseDatePipe` lacks `default`, calendar rollover rejection (`"2024-02-30"`), and `@Optional()`; `ParseEnumPipe` accepts `"01"`/`"-0"`/`"+1"`, fails on float enums (`"0.5"`), lacks `computeEnumValues()`; `ParseUUIDPipe` omits versions `1,2,6,8`/numeric `1..8` and nil/max UUIDs in `"all"`; `MaxFileSizeValidator` uses `<=` instead of `<` and lacks `errorMessage`; `ParseFilePipe` rejects minimal `{ path }` file objects. | `pipes/built-in.pipes.ts`, `pipes/file-validators.ts`, `pipes/parse-file.pipe.ts` | `parse-{date,enum,uuid,file}.pipe.spec.ts`, `max-file-size.validator.spec.ts` |
+| **COM-08** | **P1** | **`Logger.overrideLogger()` & `ConsoleLogger` parity gaps** — `Logger.overrideLogger(custom)` does not route `new Logger(context)` instances (also breaks `@bunest/scheduler` request-scoped warning tests); `Logger.isLevelEnabled()` ignores overridden logger levels & severity hierarchy; `LOG_LEVELS` order reversed; `filterLogLevels` misses exclusive `>` ranges; `ConsoleLogger` JSON/text/circular/truncation/error-serialization gaps; default `Logger` does not delegate via `ConsoleLogger` / `staticInstanceRef`. *(Found in Core `bucket-1` & Ecosystem `eco-bucket-1`.)* | `logger/logger.ts`, `logger/console-logger.ts` | `logger.service.spec.ts`, `filter-log-levels.util.spec.ts`, `is-log-level-enabled.util.spec.ts`, `capturing-logger*.spec.ts`, `ecosystem/scheduler/*-request-scoped.spec.ts` |
+| **COM-09** | **P1** | **`HttpException.createBody()` / `toJSON()` & `errorCode` parity gaps** — `createBody(undefined\|null, desc, status)` includes `error: desc` instead of omitting; `""` not treated as nil; numeric messages dropped; `createBody(plainObj)` requires 3 args & mutates input; missing 4th `errorCode` arg / `errorCode` in `getResponse()`; `getDescriptionFrom({})` returns `""` instead of `undefined`; **`HttpException.toJSON()` (`http.exception.ts:167-177`) clobbers non-string `base.error` objects with `this.name` (`"HealthCheckException"`), breaking 14 Terminus 503 E2E health check payloads**. *(Found in Core `bucket-1` & Ecosystem `eco-bucket-6`.)* | `exceptions/http.exception.ts`, `exceptions/built-in.exceptions.ts` | `http.exception.spec.ts`, `*.exception.spec.ts`, `ecosystem/observability/terminus/e2e/*.e2e.spec.ts` |
+| **COM-10** | **P1** | **Decorator & metadata parity gaps** — `@Body`/`@Query`/`@Param` `KeyedParamSchemaOptions` ignores `pipes`; `@RawBody()` & `createParamDecorator()` lack `{ schema, pipes }` and 2nd `enhancers` arg; `applyDecorators()` ignores plain objects and applies class decorators bottom-to-top; `@Catch()` omits `target.prototype`; `@Module()` skips unknown-key validation & reads inherited keys; `@Inject(undefined)` infers `design:paramtypes`; `mixin()` omits `design:paramtypes = []` & overwrites inherited scope; `@Use*` lacks `InvalidDecoratorItemException`; `@Get([])`..`@Unlock([])`/`@Sse("")` don't normalize `[]` to `"/"`; `assignMetadata()` omits `pipes: []`. | `decorators/*.ts`, `utils/common.utils.ts` | `packages/common/decorators/*.spec.ts`, `assign-custom-metadata.util.spec.ts` |
+| **COM-11** | **P1** | **`Reflector` & `StreamableFile` defaults** — `Reflector.createDecorator()` defaults to `undefined` instead of `{}`; `getAll(key, null)` throws `TypeError`; `getAllAndMerge()` scalar/trailing-array edge bugs. `StreamableFile` default `errorHandler`/`errorLogger` are minimal stubs. | `metadata/reflector.ts`, `http/streamable-file.ts` | `reflector.service.spec.ts`, `streamable-file.spec.ts`, `discover-by-meta.spec.ts` |
+| **COM-12** | **P2** | **Minor decorator & formatting gaps** — `@Controller`/`@Version` do not deduplicate version arrays; `@Dependencies()` flattens only 1 level; `ParseUUIDPipe` error says `"uuid v4"` vs `"uuid v 4"`. | `decorators/*.ts`, `pipes/built-in.pipes.ts` | `controller.decorator.spec.ts`, `version.decorator.spec.ts`, `dependencies.decorator.spec.ts`, `parse-uuid.pipe.spec.ts` |
+
+---
+
+### 6.2 `@bunest/validation` (`packages/validation/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **VAL-01** | **P0** | **`ValidationPipe` lacks NestJS v12 cycle-safe nested-binary `@ValidateNested()` guard** — `Buffer` inside nested DTO produces class-validator `unknownValue` error or crashes on circular `@Transform`. | `validation.pipe.ts` | `validation.pipe.spec.ts` |
+| **VAL-02** | **P1** | **`ValidationPipe` `"list"` / `"grouped"` format, status exceptions & Guard 1 gaps** — `"list"` omits parent path prefixes on nested fields; `"grouped"` emits bracket array keys (`test[0].prop1`) instead of dot keys (`test.0.prop1`); both hardcode `new HttpException({ error: "Bad Request" })` instead of status-specific exceptions (`UnprocessableEntityException`); Guard 1 misformats empty `data: ""` and blocks arrays/primitives/`Buffer` on decorator-less DTOs (`forbidUnknownValues: false`); missing `createExceptionFactory()` and protected hooks; `maxErrorMessagesLength: NaN` not defaulted to `1_000_000`. | `validation.pipe.ts` | `validation.pipe.spec.ts` |
+| **VAL-03** | **P1** | **`StandardSchemaValidationPipe` & param schema propagation gaps** — `ArgumentMetadata`/`compileParameters()` does not propagate `param.schema` to zero-arg global `StandardSchemaValidationPipe`; missing `maxErrorMessagesLength`, `transform: false`, `validateOptions`, and overridable `validate()`/`stripProtoKeys()` hooks. | `standard-schema.pipe.ts`, `packages/common/src/interfaces/http.interface.ts` | `standard-schema-validation.pipe.spec.ts`, `schema-in-pipes.spec.ts` |
+| **VAL-04** | **P1** | **`StandardSchemaSerializerInterceptor` & `ClassSerializerInterceptor` parity gaps** — `StandardSchemaSerializerInterceptor` misses `@Optional()` on param 1, ignores `@SerializeOptions({ schema, validateOptions })`, lacks array element-wise & stream serialization, fails on primitives instead of passthrough, lacks `transformToPlain()`/`serialize()`. `ClassSerializerInterceptor` omits `StreamableFile` passthrough, ignores `transformerPackage`, calls `reflector.get()` twice instead of `getAllAndOverride()`, and lacks stream serialization. | `standard-schema-serializer.interceptor.ts`, `class-serializer.interceptor.ts` | `standard-schema-serializer.interceptor.spec.ts`, `class-serializer.interceptor.spec.ts`, `standard-schema-serializer.spec.ts` |
+
+---
+
+### 6.3 `@bunest/core` (`packages/core/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **COR-01** | **P0** | **Durable sub-tree container caching & synthetic enhancer bugs** — `resolveSyntheticEnhancer()` skips `resolveDurableContainerFor()` for durable `APP_FILTER`/`APP_GUARD`; `resolveDurableContainerFor()` caches container before construction succeeds, replaying failed payloads on subsequent requests. | `di/di-container.ts:1040-1045, 1752-1767` | `durable-providers.spec.ts` |
+| **COR-02** | **P0** | **`INQUIRER` injects parent class constructor instead of parent instance** — for both constructor and property `@Inject(INQUIRER)` on `Scope.TRANSIENT` providers, Bunest passes `[class Parent]` instead of the parent instance. *(Found independently in buckets 2 & 6.)* | `di/di-container.ts:3503, 3571-3573` | `parallel-property-injection.spec.ts`, `inquirer.spec.ts` |
+| **COR-03** | **P0** | **`LazyModuleLoader` concurrency, rollback, `overrideModule()` & `ModulesContainer` bugs** — `TestingModuleBuilder.overrideModule().useModule()` is ignored by `LazyModuleLoader.load()`; concurrent/failed lazy loads lack rollback and `ModulesContainer` registration parity. *(Found in buckets 2 & 6.)* | `module/lazy-module-loader.ts`, `di/di-container.ts:1991-2139` | `modules-override.spec.ts`, `lazy-module-loader.spec.ts` |
+| **COR-04** | **P1** | **DI container lookup & scoping parity bugs** — (a) **Module classes not registered as resolvable providers (`app.get(ModuleClass)` throws `UnknownDependencyException`, `di-container.ts:1201,2626-2731`) — blocks 13 tests across 11 `@bunest/config` specs and `GraphQLModule` lookup in `@bunest/graphql`!**; (b) `getSync()` throws `UnknownDependencyException` instead of invalid-scope error for request-scoped controllers; (c) `resolve()` throws on `@Inject(REQUEST)` when `registerRequestByContextId()` wasn't called instead of resolving to `undefined`; (d) `resolve(TransientToken, contextId)` creates fresh instances instead of reusing per `ContextId`; (e) optional transient factory dep throwing at bootstrap is not swallowed to `undefined`. *(Found across Core `bucket-2`/`6`, Ecosystem `eco-bucket-1` & `eco-bucket-4`.)* | `di/di-container.ts` | `core-injectables.spec.ts`, `integration-module.spec.ts`, `scoped-instances.spec.ts`, `scoped-provider-dependencies.spec.ts`, `optional-failing-dependency.spec.ts`, `transient-scope.spec.ts`, `ecosystem/config/e2e/*.spec.ts` (11 files), `ecosystem/graphql/e2e/*.spec.ts` |
+| **COR-05** | **P1** | **Lifecycle hook ordering & shutdown error handling** — (a) intra-module lifecycle hooks execute in provider declaration order instead of constructor/property dependency hierarchy; (b) global dynamic modules (`global: true`) are not sorted ahead of modules implicitly injecting their exports; (c) `callShutdown()` rethrows provider/module shutdown rejections instead of logging & swallowing them (`lifecycle-manager.ts:201`); (d) shutdown hook normalization/overwrite/post-close leaks and `close()` vs in-flight `init()` race. | `lifecycle/lifecycle-manager.ts`, `di/di-container.ts`, `module/module-scanner.ts` | `integration/hooks/*.spec.ts`, `packages/core/hooks/*.hook.spec.ts`, `nest-application-context.spec.ts` |
+| **COR-06** | **P1** | **`bufferLogs: true` startup logging & auto-flush gap** — `NestFactory.create(..., { bufferLogs: true })` / `createMicroservice()` + `init()` / `listen()` / `flushLogs()` emits 0 framework startup logs and never auto-flushes buffered logs; `NestHybridApplicationOptions` lacks `deferInitialization: true`. *(Found in buckets 2, 6 & 7.)* | `application/bunest-factory.ts`, `application/bunest-application.ts`, `application/bunest-application-context.ts` | `buffer-logs.spec.ts`, `capturing-logger.spec.ts`, `buffer-logs-tcp.spec.ts`, `init-hooks.spec.ts`, `nest-application.spec.ts` |
+| **COR-07** | **P1** | **`ConfigurableModuleBuilder` parity & TS bug** — lacks `provideInjectionTokensFrom` in `registerAsync`/`forRootAsync`; `build()` creates a fresh `Symbol` per call instead of sharing a token per builder; `OPTIONS_TYPE`/`ASYNC_OPTIONS_TYPE` lack runtime access error getters; default `ExtraModuleDefinitionOptions = Record<string, never>` causes TS2345 on `registerAsync()` when `setExtras()` is omitted. | `module/configurable-module.builder.ts` | `configurable-module.builder.spec.ts`, `integration-module.spec.ts` |
+| **COR-08** | **P1** | **`ExternalContextCreator` parity & enhancer scoping bugs** — misses helper methods (`getContextModuleKey`, `exchangeKeysForValues`, `getParamValue`, `createPipesFn`, `transformToResult`, `getMetadata`), reads param metadata from `ctor` instead of `ctor.prototype`, skips `createParamDecorator` `factory`/`pipes` and thenable settling, ignores global DI `APP_GUARD`/`APP_INTERCEPTOR`, and resolves enhancers against root module instead of owning module. *(Found in buckets 3 & 6.)* | `helpers/external-context-creator.ts`, `di/di-container.ts:1633` | `external-context-creator.spec.ts`, `scoped-external-context.spec.ts` |
+| **COR-09** | **P1** | **`CoreMiddlewareConsumer` & module middleware registration bugs** — `forRoutes(ControllerClass)` ignores handler paths, `RouterModule` prefixes, and controller `version` (empty `@Controller()` expands to `["/", "/*"]` leaking onto sibling controllers); `configureModuleMiddlewares()` iterates bottom-up `topologicalOrder` instead of `@Global()`-then-parent-first; `RouteInfo` lacks `version`. | `module/middleware-consumer.ts:33-51`, `application/bunest-application.ts:742` | `integration/middleware/*.spec.ts`, `builder.spec.ts` |
+| **COR-10** | **P1** | **Missing public exports & helper parity (`ApplicationConfig`, `DiscoveryService`, `ModulesContainer`, `ExecutionContextHost`, `HttpAdapterHost`, `BaseExceptionFilter`, `RouteConflictDetector`)** — missing `ExecutionContextHost`, `InvalidEnhancerException`, `RouteConflictDetector`/`RouteConflictException`/`RouteSpecificitySorter` exports; `ApplicationConfig` gaps; `DiscoveryService` `getProviders({ include: [] })` returns all, `getModules({ include })` ignores `include`, **`useExisting` duplicates wrappers (also breaks `@bunest/cqrs` & `@bunest/queues` `BullMQExplorer`)**; `InstanceWrapper` lacks `isAlias`; `ModulesContainer.getById(id)` uses `Map.get(id)` instead of `module.id` and lacks RPC target registry; `HttpAdapterHost.httpAdapter` setter skips `onInit`; `BaseExceptionFilter` status/expose edge bugs. *(Found in Core `bucket-3`/`6` & Ecosystem `eco-bucket-1`/`5`.)* | `index.ts`, `application/application-config.ts`, `discovery/discovery.service.ts`, `di/modules-container.ts`, `helpers/http-adapter-host.ts`, `exceptions/base-exception-filter.ts` | `application-config.spec.ts`, `discovery-service.spec.ts`, `modules-container.spec.ts`, `execution-context-host.spec.ts`, `http-adapter-host.spec.ts`, `base-exception-filter.spec.ts`, `ecosystem/cqrs/explorer.service.spec.ts`, `ecosystem/queues/bullmq-explorer.spec.ts` |
+| **COR-11** | **P1** | **`BunestApplication` / `BunestApplicationContext` API gaps** — `select(mod, { abortOnError: true })` throws instead of `process.exit(1)`; missing `app.use(path \| paths[], middleware)` mount-path overload; `app.inject()` lacks zero-arg fluent chain API; `app.getUrl()` does not normalize `0.0.0.0 -> 127.0.0.1` and returns `undefined` instead of rejecting before `listen()`; `app.use(fn)` skips `instrument.instanceDecorator`; `cookies.secret` throws `Error` vs `TypeError`; `enableCsrfProtection()`/`useSecurityHeaders()` lack post-init & duplicate guards; `ModuleScanner` null-prototype `InvalidModuleException`. | `application/bunest-application.ts`, `application/bunest-application-context.ts`, `module/module-scanner.ts` | `select-abort-on-error.spec.ts`, `mount-paths.spec.ts`, `inject.spec.ts`, `get-url.spec.ts`, `nest-application.spec.ts`, `cross-origin-protection.spec.ts`, `module-scanner.spec.ts` |
+| **COR-12** | **P2** | **Inspector, REPL & `MetadataScanner` minor gaps** — `SerializedGraph.insertNode()` overwrites duplicate IDs instead of returning existing node; `PartialGraphHost` initializes `partialGraph` to empty `SerializedGraph` instead of `undefined`; native REPL functions lack `.help` descriptors; `MetadataScanner.getAllMethodNames()` is not memoized per prototype. | `inspector/serialized-graph.ts`, `inspector/partial-graph.host.ts`, `repl/repl.ts`, `discovery/metadata-scanner.ts` | `serialized-graph.spec.ts`, `partial-graph.host.spec.ts`, `repl.spec.ts`, `metadata-scanner.spec.ts` |
+
+---
+
+### 6.4 `@bunest/http` (`packages/http/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **HTT-01** | **P0** | **`serializeCookie()` allows `Set-Cookie` attribute injection & omits strict validation** — fails to reject `;`, NUL, and non-ASCII in `path`/`domain`, non-ASCII/separator cookie names, non-string values, `sameSite: "none"` / `partitioned: true` without `secure: true`, non-integer/unsafe `maxAge`, invalid `Date` `expires`, case/unknown/inherited `sameSite`/`priority`; omits default `Path=/`; lets lone surrogates throw `URIError` instead of `TypeError`. | `security/cookie.ts:206-276` | `serialize-cookie.spec.ts`, `cookies.spec.ts` |
+| **HTT-02** | **P0** | **`compileSecurityHeaders()` missing CSP injection validation** — does not reject CSP header injection (`;`, `,`, CR/LF, tab, non-ASCII), invalid/duplicate directive names, unquoted keywords/nonces, or invalid option schemas; does not require `default-src` when `useDefaults: false`. | `security/security-headers.ts` | `security-headers.spec.ts`, `nest-application.spec.ts` |
+| **HTT-03** | **P0** | **`parseCookieHeader()` prototype pollution & whitespace cookie-shadowing + `signedCookies` bugs** — returns plain `{}` instead of `Object.create(null)`; uses `.trim()` instead of RFC 6265 `[ \t]` (allowing Unicode `\u00a0` to shadow `__Host-` cookies); rejects `string[]`; `hmacSignBase64Url` uses base64url instead of standard unpadded base64; `RequestContext.signedCookies` silently returns `{}` without secret & couples to `this.cookies`. | `security/cookie.ts:12-163`, `context/request-context.ts:237-245` | `cookie-signer.spec.ts`, `parse-cookie-header.spec.ts`, `request-cookies.spec.ts`, `cookies.spec.ts` |
+| **HTT-04** | **P0** | **CSRF protection origin/host/exclude/404 bypass bugs** — default-port `Host` (`app.example:443`/`80`/`[::1]:443`) fails Origin match; `normalizeOrigin` rejects `chrome-extension://` and fails to reject credentialed/dot-segment/backslash origins; `exclude` lacks wildcards, ignores `version`, and duplicates prefixed/unprefixed paths; 404 fallback skips CSRF check. | `security/csrf-protection.ts`, `adapter/bun-http.adapter.ts:835-850` | `cross-origin-protection.spec.ts`, `csrf-protection.spec.ts` |
+| **HTT-05** | **P0** | **`matchesPathPattern()` symmetric `:param` & trailing `/*` over-matching** — `if (pSeg.startsWith(":") \|\| tSeg.startsWith(":")) continue;` causes static middleware/prefix rules to falsely match parametric routes; trailing `/*` falsely matches bare parent paths. *(40+ skips across buckets 3–5.)* | `scanner/path-normalizer.ts:151-167`, `router/route-compiler.ts:475` | `integration/middleware/*.spec.ts`, `trailing-slash-routes.spec.ts`, `integration/versioning/*.spec.ts` |
+| **HTT-06** | **P0** | **Middleware `return next()` duplicates `Set-Cookie` headers & middleware short-circuit skips security headers** — `executeMiddlewareChain` merges `ResponseContext` headers even when `nextCalled === true`; direct middleware responses bypass `applySecurityHeaders()`. | `pipeline/execution-pipeline.ts:482-515` | `cookies.spec.ts`, `security-headers.spec.ts` |
+| **HTT-07** | **P0** | **Malformed percent-encoding returns 200 instead of 400 & raw URL fragment `#` not stripped** — `safeDecodeSegment` swallows `URIError` returning 200; raw request target matches before stripping `#`. | `router/fallback-radix-router.ts:139-145`, `router/route-compiler.ts` | `views.spec.ts`, `exclude-middleware.spec.ts` |
+| **HTT-08** | **P1** | **Path-to-regexp v8 syntax, sub-segment params, optional params & encoded static segments unsupported** — `{*path}`, `*path`, `{/:userId}`, `{.json}`, `:name.:ext`, `v:version`, and encoded static `/discounts/100%25` all 404; middle optional param `users/:id?/posts` matches `/users//posts` with `{ id: "" }`. | `router/fallback-radix-router.ts`, `scanner/path-normalizer.ts` | `reserved-characters.spec.ts`, `route-params.spec.ts`, `wildcard-routes.spec.ts`, `path-syntax.spec.ts` |
+| **HTT-09** | **P1** | **Routing precedence, versioning fall-through & trailing-slash shadowing** — static versioned route `/items/me` (`@Version('2')`) 404s on `v=1` instead of falling through to `/items/:id`; `@Version([VERSION_NEUTRAL, "2"])` falls back to neutral on explicit unmatched `v=1`; `ignoreTrailingSlash: true` shadowed by sibling `/files/*`; `MEDIA_TYPE` `Accept` lacks RFC 9110 quoted-pair unescaping. | `router/route-compiler.ts`, `router/fallback-radix-router.ts`, `adapter/bun-http.adapter.ts`, `scanner/version-resolver.ts` | `route-fall-through.spec.ts`, `trailing-slash-routes.spec.ts`, `media-type-versioning.spec.ts` |
+| **HTT-10** | **P1** | **Route conflict detection & specificity sorting gaps** — `duplicate: "off"` overwrites with last-declared; host-pattern, hostless-vs-host, `RegExp`-host, host-array, and `VERSION_NEUTRAL`-vs-versioned shadow checks missed; optional/mixed-segment specificity misordering. | `scanner/controller-scanner.ts` | `conflict-policy.spec.ts`, `route-conflict-detector.spec.ts`, `route-specificity-sorter.spec.ts` |
+| **HTT-11** | **P1** | **Middleware execution & scoping gaps** — module middleware never runs on unmatched/middleware-only paths; plain-string `forRoutes('prefix')` requires exact segment length; `globalPrefix.exclude` is case-sensitive; `@UseFilters()` on `BunestMiddleware.use()` ignored; `Scope.TRANSIENT` middleware pre-resolved once; middleware plain `{ statusCode, message }` errors become 500. | `router/route-compiler.ts`, `pipeline/execution-pipeline.ts`, `pipeline/exception-handler.ts`, `adapter/bun-http.adapter.ts` | `integration/middleware/*.spec.ts`, `middleware-errors.spec.ts`, `middleware-use-filters.spec.ts`, `transient-middleware.spec.ts` |
+| **HTT-12** | **P1** | **Streaming, SSE, `StreamableFile` & `Transfer-Encoding` parity gaps** — `StreamableFile(Bun.file('missing'))` streams 200 then crashes mid-stream; SSE `formatSseEvent` ignores `comment`/auto-`id`, `BigInt` crashes `pull()`, `@SseSignal()` never aborts on natural completion; non-SSE `AsyncGenerator` serialized as `"{}"`, `ReadableStream` hardcodes `application/octet-stream`; `@Header('Transfer-Encoding', 'chunked')` ignored. | `pipeline/response-serializer.ts`, `pipeline/param-extractor.ts`, `pipeline/execution-pipeline.ts` | `send-files.spec.ts`, `sse-stream.spec.ts`, `sse.spec.ts`, `late-headers.spec.ts`, `streaming.spec.ts`, `transfer-encoding.spec.ts` |
+| **HTT-13** | **P1** | **Multipart, body parser charset, pipeline edge bugs & graceful shutdown default** — multipart omits bracket-notation expansion, returns 0-byte file on `filename=""`, fails to unlink disk files on pipe rejection; body parsers ignore `charset=` & never return 415; custom `@Res()` param decorator still runs pipes; request-scoped controller `@UseFilters` runs on controller DI failure; CORS `CorsOptionsDelegate` `(req, cb)` unsupported; missing `setOnRequestHook`/`setOnResponseHook`; **`BunHttpAdapter` defaults `forceCloseConnections = true` (`bun-http.adapter.ts:509,2215`), causing `app.close()` to call `server.stop(true)` and abort in-flight HTTP requests with `ECONNRESET` instead of draining**. *(Found in Core `bucket-3`/`4` & Ecosystem `eco-bucket-1`.)* | `parsers/body-parser.ts`, `pipeline/param-extractor.ts`, `pipeline/execution-pipeline.ts`, `pipeline/exception-handler.ts`, `security/cors.ts`, `adapter/bun-http.adapter.ts` | `multipart-upload.spec.ts`, `body-parsers.spec.ts`, `response-param.spec.ts`, `foreign-exception-filters.spec.ts`, `cors.spec.ts`, `request-hooks.spec.ts`, `ecosystem/cache/e2e/shutdown.spec.ts` |
+
+---
+
+### 6.5 `@bunest/testing` (`packages/testing/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **TST-01** | **P1** | **`CapturingLogger` NestJS v12 API parity gaps** — does not extend `ConsoleLogger`; accepts `levels` instead of `logLevels`; `CapturedLogEntry` omits `params`/`args`/`error`/`stack`; does not evaluate lazy `() => string` messages; `filter({ context: string })` uses `.includes()` instead of exact match; `matchesStringOrRegExp()` fails to reset global `RegExp.lastIndex`. | `loggers/capturing-logger.ts` | `capturing-logger.service.spec.ts` |
+| **TST-02** | **P2** | **`TestingModule.createNestApplication({ forceConsole: true })`** — does not apply `forceConsole: true` to default static `Logger`. | `testing-module.ts` | `testing-module.spec.ts` |
+
+---
+
+### 6.6 `@bunest/websockets` (`packages/websockets/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **WS-01** | **P0** | **`BaseWsExceptionFilter.catch()` leaks sensitive error properties & lacks sanitization** — spreads `...errPayload` on `WsException(new Error(...))` instead of redacting to `"Internal server error"`; lacks `includeCause`, `causeFactory`, and binary/circular cause sanitization. | `filters/base-ws-exception.filter.ts` | `ws-exceptions-handler.spec.ts`, `ws-error-gateway.spec.ts` |
+| **WS-02** | **P0** | **DI `APP_GUARD` / global & scoped enhancers unwired on `@WebSocketGateway()`** — `WsGatewayExplorer` / `BunWebSocketAdapter` never wire `APP_GUARD`/`APP_PIPE`/`APP_INTERCEPTOR`, resolve gateway `@UseGuards()` against root module instead of owning module, and eagerly resolve `@MessageBody(SocketPipe)` without a per-connection `RequestContainer`. *(Found in buckets 2, 6 & 7.)* | `explorer/ws-gateway.explorer.ts:78`, `adapter/bun-ws.adapter.ts:355` | `request-scoped-forward-ref.spec.ts`, `ws-gateway.spec.ts`, `scoped-ws-gateway.spec.ts` |
+| **WS-03** | **P1** | **`WsGatewayExplorer` & `BunWebSocketAdapter` lifecycle & scoping gaps** — skips `Scope.REQUEST` gateways; `handleOpen()` swallows `handleConnection()` errors instead of routing through `@UseFilters()`; `handleClose()` invokes `handleDisconnect()` re-entrantly; lacks shared-path/`RegExp` namespaces, `setMessageParser()`, and `BunestMicroserviceApplication.useWebSocketAdapter()`. | `explorer/ws-gateway.explorer.ts`, `adapter/bun-ws.adapter.ts`, `packages/core/src/application/bunest-factory.ts` | `connection-hook-error.spec.ts`, `scoped-connection-hook-error.spec.ts`, `disconnect-in-connection-hook.spec.ts`, `gateway.spec.ts` |
+| **WS-04** | **P1** | **WS decorators & `WsException` parity gaps** — `@MessageBody()` lacks `{ schema, pipes }` Standard Schema options; `@SubscribeMessage`/`@Ack` discovery misses `applyMixins()`; `@WebSocketServer()` on static props writes to `Function` and does not default to `null`; `WsException` hardcodes `"WebSocket exception"`. | `decorators/ws.decorators.ts`, `exceptions/ws.exception.ts` | `message-body.decorator.spec.ts`, `gateway-metadata-explorer.spec.ts`, `gateway-server.decorator.spec.ts`, `ws-exception.spec.ts` |
+
+---
+
+### 6.7 `@bunest/microservices` (`packages/microservices/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **MS-01** | **P0** | **`FrameDecoder` `NaN` bypass & `normalizePattern` DoS vulnerability** — `FrameDecoder` lacks a `NaN`/non-numeric guard on `maxFrameBytes`; `normalizePattern` lacks NestJS v12 pattern complexity/depth limits. | `framing.ts`, `interfaces.ts` | `max-buffer-size.spec.ts`, `transform-pattern.utils.spec.ts`, `server-tcp.spec.ts` |
+| **MS-02** | **P0** | **Resource leaks & concurrency races across broker clients/servers** — `TcpClientProxy` & `RedisClientProxy` lack `this.closed` guard during in-flight `connect()`/`open()`, dual-timer `pending` race; `KafkaClientProxy` & `MqttClientProxy` lack `try/finally` on `close()` and leak reply topics; `NatsClientProxy.close()` is a no-op; `RmqClientProxy` has premature `ensureReplyConsumer()`, single-flight race, timer leak on throw, `null` cancel `TypeError`, and `ack()` on missing handlers. | `client-proxy.ts`, `transports/{tcp,kafka,mqtt,nats,redis,rmq}.transport.ts` | `client-{tcp,kafka,mqtt,nats,redis,rmq}.spec.ts`, `server-{rmq,redis}.spec.ts` |
+| **MS-03** | **P1** | **`MicroserviceHost` request-scoping & enhancer gaps** — skips `Scope.REQUEST` controllers, ignores global DI enhancers & `createParamDecorator()`, lacks per-message `RequestContainer` / `ContextIdFactory` strategy, and re-instantiates unregistered pipes per message. | `microservice-host.ts` | `scoped-microservices.spec.ts`, `durable-microservices.spec.ts` |
+| **MS-04** | **P1** | **gRPC transport parity gaps** — `GrpcException` constructor arg order / missing `getCode()` & status subclasses; `addGrpcHandler()` skips package prefix when `service.includes(".")`; lone UTF-16 surrogate triggers `URIError`; missing client/bidirectional streaming, `gracefulShutdown`/`gracePeriod`, and `emitStatus()`; `preRequestHook`/`setOnDispatchHook` bypassed; unary `undefined` returns `OK`; `getService()` cannot invoke server-streaming. | `transports/grpc.transport.ts`, `exceptions.ts` | `grpc-*.spec.ts`, `grpc-exception.spec.ts` |
+| **MS-05** | **P1** | **Cross-transport observability, hooks, records & wildcards** — missing `emitStatus("connected"\|"disconnected")` across all 7 clients; missing `*RecordSerializer` exports; `preRequestHook`/`setOnDispatchHook` bypassed; `TcpServer`/`TcpClientProxy` lack wire metadata, multi-value `AsyncIterable` streaming, `tlsOptions`, and memory-bound controls; missing MQTT 5 `$share/`, NATS/Redis/RMQ wildcards, RMQ dropped metadata headers, and `KafkaContext`/`MqttContext` getters. | `transports/*.transport.ts`, `client-proxy.ts`, `context/*.ts`, `index.ts` | `bucket-7` & `bucket-8` transport/context specs |
+| **MS-06** | **P1** | **Microservice decorators & `RpcException` parity gaps** — `@EventPattern`/`@MessagePattern` lack `transport`/`extras` overloads & array patterns; `@Payload` lacks `{ schema, pipes }`; `@GrpcMethod`/`@GrpcStream*` don't derive `service` from `target.constructor.name`; `RpcException` uses `JSON.stringify(error)` when object payload omits `message`. | `decorators.ts`, `decorators/grpc.decorators.ts`, `exceptions.ts` | `{event,message}-pattern.decorator.spec.ts`, `payload.decorator.spec.ts`, `grpc-method.decorator.spec.ts`, `rpc-exception.spec.ts` |
+
+---
+
+### 6.8 `@bunest/graphql` (`packages/graphql/src/`) *(Core Phase 1 + Ecosystem `eco-bucket-3` & `eco-bucket-4`)*
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **GQL-01** | **P0** | **Prototype-walking `INTERFACE_TYPE` lookup crashes `@ObjectType() extends @InterfaceType()`** — `graphql-schema.factory.ts:791,850` uses `MetadataRegistry.has/get` instead of `hasOwn/getOwn`, misclassifying concrete subclasses (`Recipe extends IRecipe`, `SavingsAccount extends Account`) as duplicate/abstract `GraphQLInterfaceType`. *(Blocks unit & E2E suites across `eco-bucket-3` & `eco-bucket-4`.)* | `schema/graphql-schema.factory.ts:791,850` | `code-first*.spec.ts`, `graphql-sort-auto-schema.spec.ts`, `object-type.factory.spec.ts` |
+| **GQL-02** | **P0** | **Global pipes/guards (`useGlobalPipes`/`APP_PIPE`/`APP_GUARD`) unwired & renamed `@Field({ name })` arg mapping broken** — `buildSchema()` ignores global pipes/guards (including request-scoped guards!), fails to reject unregistered class enhancers on `useFactory`/`useValue` resolvers, and does not map renamed schema argument/input names back to TS property names before pipes/resolvers/subscriptions. | `driver/graphql-http.handler.ts`, `schema/graphql-schema.factory.ts` | `pipes.spec.ts`, `ecosystem/graphql/e2e/*` |
+| **GQL-03** | **P0** | **Request-scoped resolvers skipped, `CONTEXT` token unregistered & shared `context` mutated across requests** — `buildSchema()` skips `Scope.REQUEST` `@Resolver()` providers; `CONTEXT = "REQUEST"` is unregistered in DI/RequestContainer; `options.context` fails on static objects, mutates returned context in place across requests, and isn't inherited by `GraphQLWsHandler`; `executeQuery()` skips `onRequestStart`/`onRequestEnd` on validation errors & `onRequestStart()` swallows async rejections. | `driver/graphql-http.handler.ts`, `constants.ts`, `resolver-decorator-host.ts` | `graphql-request-scoped.spec.ts`, `ecosystem/graphql/e2e/request-scoped*.spec.ts`, `context*.spec.ts` |
+| **GQL-04** | **P1** | **`GraphQLModule.forRootAsync()` & `GraphQLFactory` / `GraphQLFederationFactory` parity gaps** — `forRootAsync()` lacks `useClass`/`useExisting` + `GqlOptionsFactory`; `buildSchemaFirst()` ignores `options.federation` (rejecting `@key`/`@external`/`extend type`, omitting `_service`/`_entities`/`@ResolveReference`/`@Scalar`); `buildCodeFirst()` prints raw `printSchema(schema)` (stripping `@link`/`@key`/`@shareable`/`@inaccessible`/`@override`/`@tag`, leaking `_service`/`_entities`/`_Any`/`_Entity`) and writes `autoSchemaFile` via `node:fs` bypassing DI `FileSystemHelper` & omitting `GRAPHQL_SDL_FILE_HEADER`; code-first short-circuits `options.schema` & ignores `options.resolvers`/`transformResolvers`. | `graphql.module.ts`, `schema/graphql-schema.factory.ts:1548-1714` | `graphql-async-*.spec.ts`, `graphql-federation*.spec.ts`, `federation*-auto-schema-file.spec.ts`, `code-first-resolvers-option.spec.ts` |
+| **GQL-05** | **P1** | **Interface & subtype `@ResolveField()` / `implements` / middleware inheritance gaps** — `@Resolver(() => Interface)` and parent `@ObjectType` `@ResolveField()`s/guards/middleware are not bound onto implementors/subclasses; transitive `implements` omitted; `@ResolveField()` drops overridden model `@Field` middleware & `existingField.extensions`; default `resolveType` picks first `instanceof` match instead of most derived class; no warning/error for unbound `@ResolveField()`. | `schema/graphql-schema.factory.ts`, `decorators/type.decorators.ts` | `code-first-interface-resolvers.spec.ts`, `code-first-type-inheritance.spec.ts`, `code-first-field-middleware.spec.ts`, `federation-interface-resolvers.spec.ts` |
+| **GQL-06** | **P1** | **Decorator overloads, defaults, `@Extensions()`, `@Directive()` AST, enums & string types** — `@Query()`/`@Mutation()`/`@Subscription()` lack schema-first zero-arg/string overloads; `@ResolveField({ name })` options-only & 3rd-arg after `undefined` dropped; `@Resolver({ isAbstract: true })` lacks 1-arg overload & isn't skipped; bare `@Resolver()` overwrites parent target; inherited param decorators dropped on overridden methods; `@ObjectType` `@Field({ defaultValue })` & class initializers/`= null`/prototype getters ignored; mutable `@Args({ defaultValue: [] })` shared across requests; `Directive()` rejects `string[]` and never emits `astNode.directives`; `getGraphQLExtensions` skips ancestor merge & reverses stacked order; `registerEnumType` leaks TS `"NaN"` reverse mapping & namespace exports; `isOneOf` not inherited; `@Field(() => "Query")` falls back to `GraphQLString`; `orphanedTypes` not filtered by `registerIn`. | `decorators/resolver.decorators.ts`, `decorators/type.decorators.ts`, `schema/graphql-schema.factory.ts` | `ecosystem/graphql/unit/*.spec.ts`, `code-first-default-values.spec.ts`, `code-first-extensions.spec.ts`, `enum-union-directives.spec.ts` |
+| **GQL-07** | **P1** | **GraphQL Mapped Types (`PartialType`/`PickType`/`OmitType`/`IntersectionType`) parity gaps** — omit auto-decorator, directives/extensions/middleware cloning (`@UseFieldMiddleware`), `PartialType` options object, list nullability preservation, stricter intersection nullability & middleware merging; `getGraphQLFields` leaks `@ObjectType` fields into `@InputType` subclasses; `getFieldsAndDecoratorForType` doesn't unwrap `[T]` list thunks. | `decorators/type.decorators.ts:734-951` | `ecosystem/graphql/unit/type-helpers/*.spec.ts` |
+| **GQL-08** | **P1** | **HTTP error status preservation, GraphiQL options, subscriptions & `graphql-ws` protocol/lifecycle** — missing `autoTransformHttpErrors` / `preserveHttpStatusForExecutionErrors` / `extensions.originalError` / `extensions.http` stripping; `graphiql` rejects options object & deprecated `playground` overrides `graphiql: false`; `mergeDefaultOptions()` omits global prefix on HTTP/WS paths; `createSubscriptionField()` invokes `op.resolve` unbound; `GraphQLWsHandler` / `GqlSubscriptionService` ignore `options.server`/`noServer: true`, omit `onSubscribe`/`validationRules`/`extra.socket`, map thrown `onConnect` errors to `4401` instead of `4500`; `app.close()` stops HTTP server (`1006`) before `closeAll(1001)`. | `driver/graphql-http.handler.ts`, `driver/abstract-graphql.driver.ts`, `subscriptions/graphql-ws.handler.ts`, `graphiql-ui.ts` | `ecosystem/graphql/subscriptions/*.spec.ts`, `ecosystem/graphql/e2e/graphql-error*.spec.ts`, `graphiql*.spec.ts` |
+| **GQL-09** | **P2** | **AST codegen, `TypeMetadataStorageHost`, `BaseExplorerService` & `GqlArgumentsHost` edge gaps** — `GraphQLAstExplorer` format diffs (non-root arg fields, enum `emitDescriptions`, root `IQuery.__typename`); `GraphQLDefinitionsFactory` (`watch: true`); `TypeMetadataStorageHost.compile()` extended resolver re-attribution & conflict warnings; `BaseExplorerService` (`keepsPrecedence`, `skipGlobalImports`, nested `mod.imports`); `GqlArgumentsHost.create()` 3-arg federation / 4-arg `resolveType`; `CustomScalar` typing (`| null | undefined`, optional `parseLiteral`) & `FieldOptions<any>`. | `schema/graphql-ast.explorer.ts`, `graphql-definitions.factory.ts`, `services/*.ts` | `ecosystem/graphql/unit/*.spec.ts` |
+
+---
+
+### 6.9 `@bunest/axios` (`packages/axios/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **AX-01** | **P1** | **Duck-typed `GenericAbortSignal` crashes Bun `fetch()`** — `combineSignals()` / `executeRequest()` passes non-native `GenericAbortSignal` objects directly to `fetch()` without bridging via an `AbortController`, throwing `TypeError: signal is not of type AbortSignal` (`ERR_INVALID_ARG_TYPE`). | `http.service.ts:261-274,850-871` | `ecosystem/axios/http.service.spec.ts` |
+
+---
+
+### 6.10 `@bunest/mapped-types` (`packages/mapped-types/src/` & `packages/common/src/mapped-types/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **MT-01** | **P1** | **`IntersectionType` stacks `@Transform` decorators on repeated properties instead of overriding** — `inheritDtoMetadata()` (`mapped-types.utils.ts:609`) hardcodes `stackDecorators = true` even when `operation === "intersection"`, applying both `ClassA` and `ClassB` transforms to `repeatedProperty`. *(Also surfaced in `@bunest/swagger` mapped-types specs.)* | `packages/common/src/mapped-types/mapped-types.utils.ts:609` | `ecosystem/mapped-types/intersection-type.helper.spec.ts`, `ecosystem/swagger/` |
+| **MT-02** | **P1** | **`PickType` reverses ancestor `@Transform` execution order (`Parent` runs before `Grandparent`)** — `inheritTransformationMetadata()` (`mapped-types.utils.ts:427-495`) appends ancestor transforms base-to-derived onto the generated class; because `class-transformer` executes same-class transforms in reverse (LIFO) order, `Parent` runs before `Grandparent`. | `packages/common/src/mapped-types/mapped-types.utils.ts:427-495` | `ecosystem/mapped-types/pick-type.helper.spec.ts` |
+
+---
+
+### 6.11 `@bunest/cache` (`packages/cache/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **CAC-01** | **P1** | **`CacheInterceptor` skips all non-HTTP (`rpc`/`ws`) contexts** — `CacheInterceptor.intercept()` (`cache.interceptor.ts:127`) returns `next.handle()` immediately whenever `context.getType() !== "http"`, ignoring explicit `@CacheKey()` on `rpc`/`ws` handlers. | `cache.interceptor.ts:127` | `ecosystem/cache/e2e/non-http-context.spec.ts` |
+| **CAC-02** | **P1** | **`CacheInterceptor` omits `X-Cache: MISS` on non-cacheable streams & caches Web `Response` objects** — lines `178-180` return early for `generator`/`readable-stream`/`node-readable` without calling `setHeadersWhenHttp(context, undefined)`; lines `191-223` explicitly clone and cache Web `Response` instances (`__bunestCachedResponse`) instead of treating `Response` as non-cacheable. | `cache.interceptor.ts:178-180,191-223` | `ecosystem/cache/e2e/streaming.spec.ts` |
+| **CAC-03** | **P1** | **`CacheService` disconnects store in `onModuleDestroy()` instead of `onApplicationShutdown()`** — compounds `HTT-13` (`forceCloseConnections: true` default) during graceful shutdown with in-flight requests. | `cache.service.ts:587` | `ecosystem/cache/e2e/shutdown.spec.ts` |
+
+---
+
+### 6.12 `@bunest/config` (`packages/config/src/`)
+
+*(Note: 13 additional tests across 11 config specs are blocked by Core bug `COR-04a` — `app.get(AppModule)` throwing `UnknownDependencyException`.)*
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **CFG-01** | **P0** | **Raw `.env` written to `process.env` before validation, stripped keys restored & NUL (`\0`) bytes accepted** — `assignVariablesToProcess()` mutates `process.env` synchronously before `validateConfiguration()`; `{ ...baseForMerge, ...result.value }` restores schema-stripped keys; `env-parser.ts` does not reject `\0` bytes; rejected secret values are not `[redacted]` in Standard Schema validation errors. | `config.module.ts:60-69`, `validator.ts:185-200`, `env-parser.ts` | `env-file-loading.spec.ts`, `validated-env.spec.ts` |
+| **CFG-02** | **P1** | **`cache: false` returns stale `process.env` snapshot & validator `undefined` keys fall back to `process.env`** — `this.store` caches initial `process.env` and `get()` checks `this.store` before live `process.env`, shadowing post-bootstrap mutations; keys explicitly mapped to `undefined` by validator fall through to `process.env`; `skipProcessEnv: true` leaks undeclared vars for pass-through schemas & `validatePredefined: false` overwrites converted values when raw strings match. | `config.module.ts:130,142`, `config.service.ts:278-286`, `validator.ts:199-201` | `cache.spec.ts`, `validated-env.spec.ts` |
+| **CFG-03** | **P1** | **Module wiring gaps: plain `ConfigModule`, `forFeature()`, multiple `forRoot()`, async `load` `KEY` & dotted `registerAs`** — `@Module({})` lacks shared `ConfigHostModule`/`ConfigService` export (breaking plain `ConfigModule` & non-global `forFeature()`); multiple `forRoot()` calls collide with `AmbiguousProviderException`; async `load` entries (`Promise<NamespacedConfigFactory>`) skip `KEY` DI registration; dotted `registerAs('database.driver', ...)` is stored flat (`store['database.driver']`) instead of nested. | `config.module.ts:27,93-233`, `config.service.ts:63` | `load-order.spec.ts`, `for-feature.spec.ts`, `validated-env.spec.ts`, `load-files-async.spec.ts`, `load-nested-files.spec.ts` |
+| **CFG-04** | **P1** | **Variable expansion & `ConfigService.set()` gaps** — empty predefined `process.env` (`""`) is not replaced by expanded `.env` value; `expandVariables: { processEnv }` doesn't write back to custom `processEnv`; self-reference expansion with `override: true` (`PLUGIN_PATH=/opt:$PLUGIN_PATH`) returns empty self-ref (`visiting` initialized with `key`); `ConfigService.set()` doesn't update `process.env`, doesn't re-expand dependent `.env` vars, and has no expansion size limit. | `env-parser.ts:301-375,565-572`, `config.module.ts:268`, `config.service.ts:342-369` | `env-file-loading.spec.ts`, `override-expand-env.spec.ts`, `update-env.spec.ts`, `update-env-expanded.spec.ts`, `property-path.spec.ts` |
+| **CFG-05** | **P1** | **Property path, class prototype getters, `validationOptions` forwarding & symbol typing** — `{ ...loaded }` / `{ ...result }` & `hasOwnProperty` strip/ignore class prototype getters and `typeof current !== "object"` rejects string `.length`; `validationOptions` is not forwarded to `validationSchema["~standard"].validate(value, options)` and missing `StandardSchemaV1Options` typing; `KeyOf<Record<string, unknown>>` excludes `symbol` (`config.service.ts:27`). | `config.service.ts:27,72-77`, `config.module.ts:161`, `validator.ts:186,255`, `interfaces/config.interface.ts:138` | `property-path.spec.ts`, `validated-env.spec.ts`, `validation-schema.spec.ts`, `validation-standard-schema.spec.ts`, `load-symbol-files.spec.ts` |
+| **CFG-06** | **P2** | **Validation error message formatting** — Standard Schema failures emit `"Configuration Standard Schema validation failed:\n  - ..."` (and `<env>` for pathless issues) instead of `"Config validation error: ..."`; custom `validate()` errors are wrapped with `"Configuration validation failed: "` instead of preserving `err.message`. | `validator.ts:185-198,262` | `validation-{schema,standard-schema,zod-schema}.spec.ts`, `validate-function.spec.ts` |
+
+---
+
+### 6.13 `@bunest/cqrs` (`packages/cqrs/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **CQRS-01** | **P1** | **`Scope.REQUEST` CQRS handlers fail `@Inject(REQUEST)`** — `CommandBus.execute()`, `QueryBus.execute()`, and `EventBus.dispatchLocal()` call `ref.resolve(token, ctx.id)` without first calling `ref.registerRequestByContextId(ctx, ctx.id)`. | `command-bus.ts`, `query-bus.ts`, `event-bus.ts` | `ecosystem/cqrs/*-scoped*.spec.ts` (5 skips) |
+| **CQRS-02** | **P1** | **`CqrsExplorer` registers `useExisting` aliased `@EventsHandler` twice** — deduplicates only by `InstanceWrapper` reference instead of alias/target instance. | `cqrs.module.ts` | `ecosystem/cqrs/explorer.service.spec.ts` |
+| **CQRS-03** | **P1** | **`AggregateRoot.commit()` data-loss on sync throw & `EventBus.publishAll()` return/typing bugs** — `commit()` splices `internalEvents` before calling `publishAll()` (losing uncommitted events if publisher throws synchronously); `commit(ctx)` short-circuits on empty `internalEvents` without calling `publishAll([], ctx)`; `EventBus.publishAll()` returns `void` instead of per-event result array for `publish()`-only custom publishers; `AggregateRoot.publishAll()` typing rejects `void` subclass overrides (`TS2416`). | `aggregate-root.ts`, `event-bus.ts` | `ecosystem/cqrs/aggregate-root.spec.ts` (18 skips) |
+| **CQRS-04** | **P1** | **`EventBus` saga & unhandled-exception behavior bugs** — default `sagaErrorStrategy` leaves throwing sagas active instead of stopping (`"complete"`); `dispatchLocal()` defaults `rethrowUnhandled` to `true` (rejecting fire-and-forget `publish()`); `handleSagaFailure()` passes the event object as `UnhandledExceptionInfo.cause` instead of saga method name; missing `Logger.prototype.error` logging; `rethrowUnhandled: true` still publishes to `UnhandledExceptionBus` and keeps saga active. | `event-bus.ts` | `ecosystem/cqrs/event-bus.spec.ts` (6 skips) |
+
+---
+
+### 6.14 `@bunest/events` (`packages/events/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **EVT-01** | **P1** | **`@OnEvent()` reverses equal-priority listener discovery order** — calls `MetadataRegistry.prependOwnArray()` instead of `appendOwnArray()`. | `decorators/on-event.decorator.ts` | `ecosystem/events/listener-priority.spec.ts` (3 skips) |
+| **EVT-02** | **P1** | **`@OnEvent()` omits default `suppressErrors: true` & error logging format differs** — falls back to `ignoreErrors = false`, causing sync `emit()` throws and request-scoped instantiation errors to log prefixed single-arg strings instead of `(error.message, error.stack)`. | `event-emitter.explorer.ts`, `event-emitter.service.ts` | `ecosystem/events/event-emitter.spec.ts` (2 skips) |
+| **EVT-03** | **P1** | **Explorer ignores custom method-level `EVENT_LISTENER_METADATA` & wildcard priority ordering** — `EventEmitterExplorer` only reads class-level `ON_EVENT_METADATA` (ignoring custom decorators setting `EVENT_LISTENER_METADATA` on methods); `getMatchingEntries()` iterates in global registration order instead of matching exact event names before wildcards. | `event-emitter.explorer.ts`, `event-emitter.service.ts` | `ecosystem/events/event-emitter.spec.ts`, `listener-priority.spec.ts` (2 skips) |
+
+---
+
+### 6.15 `@bunest/scheduler` (`packages/scheduler/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **SCH-01** | **P1** | **`CronJob` `waitForCompletion`, `onComplete` & async shutdown draining gaps** — `CronJob.fireOnce()` skips updating `lastDate()` when `waitForCompletion && inFlight`; `SchedulerRegistry.onModuleDestroy()` / `stopAll()` is synchronous and does not await in-flight `waitForCompletion: true` callbacks before `onApplicationShutdown`; `CronJob` lacks `onComplete` callback support and shutdown map handling for jobs added/replaced during `onComplete`. | `cron/cron-job.ts`, `scheduler.registry.ts` | `ecosystem/scheduler/cron.spec.ts`, `cron-shutdown.spec.ts` (4 skips) |
+| **SCH-02** | **P2** | **`SchedulerRegistry` error message wording, generics & explorer log context** — missing/duplicate error strings differ from NestJS `NO_SCHEDULER_FOUND` / `DUPLICATE_SCHEDULER` (9 skips); `getInterval()` / `getTimeout()` lack `<T = any>` generic parameter (2 skips); `SchedulerExplorer` logs under `"SchedulerExplorer"` instead of `"Scheduler"` (combined with `COM-08` `Logger.overrideLogger()`, 3 skips). | `scheduler.registry.ts`, `scheduler.explorer.ts` | `ecosystem/scheduler/{cron,interval,timeout}*.spec.ts` (14 skips) |
+
+---
+
+### 6.16 `@bunest/swagger` (`packages/swagger/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **SWG-01** | **P1** | **Decorator & parameter/response metadata bugs** — `ApiBody({ enum, isArray: true })` omits `type: "string"` on array enum `items`; `ApiExtension` stores metadata by reference without shallow-cloning; `ApiHeader({ example })` places `example` on `param` instead of `param.schema`; `ApiQuery` defaults `required: false` instead of `true` & mishandles `example`/`allOf`/`schema`+`type`/`isArray`; `ApiResponse` overwrites instead of merging duplicate status decorators; `ApiSecurity` reverses stacking order (`prependOwnArray`); `ApiTags` omits `Logger.warn` for `parent`/`kind`; stacked `@ApiProperty` overwrites `@ApiPropertyOptional`'s `required: false`. | `swagger-module.ts`, `decorators/api.decorators.ts` | `ecosystem/swagger/decorators/*.spec.ts` |
+| **SWG-02** | **P1** | **CLI plugin `_OPENAPI_METADATA_FACTORY()` & Swagger mapped-types gaps** — no `_OPENAPI_METADATA_FACTORY()` or retroactive `loadPluginMetadata()` inheritance; `DeepPartialType` uses per-call `Map` instead of global cache; `PartialType`/`DeepPartialType` apply `@IsOptional`/`@ValidateIf` to `@ApiProperty`-only fields (whitelisting them); `IntersectionType` stacks & reverses `@Transform` (`MT-01`); `PickType`/`OmitType` inline naming & lazy numeric enum `type` inference diffs. | `schema-explorer.ts`, `plugin-metadata-store.ts`, `deep-partial-type.helper.ts`, `packages/common/src/mapped-types/mapped-types.utils.ts` | `ecosystem/swagger/type-helpers/*.spec.ts`, `plugin/*.spec.ts` |
+| **SWG-03** | **P1** | **`SchemaExplorer` schema generation bugs** — keeps reflected `design:type` alongside `oneOf`/`anyOf`/`allOf`; `enumName` returns bare `$ref` dropping sibling combinators & lazy array thunk; undefined `design:type` emits `{}` instead of circular dependency error; array options (`format`/bounds/`enum`/`oneOf`/`anyOf`) left on outer schema instead of `items`; sibling `$ref` not merged into `allOf`; default DTO instances include `@ApiHideProperty()` keys; missing `BigInt` (`int64`), SWC const-enum plain objects, & nested object-literal type thunks; `registerDtoSchema` ignores class `@ApiExtension()`, partial `@ApiSchema()`, & duplicate name `Logger.warn`; `registerEnumSchema` returns `undefined` instead of `"string"` for mixed enums. | `schema-explorer.ts` | `ecosystem/swagger/services/*.spec.ts`, `e2e/*.e2e.spec.ts` |
+| **SWG-04** | **P1** | **OAS 3.0 / 3.1 / 3.2 version handling & webhooks** — `applyNullable31` & `buildResponses` always emit OAS 3.1 nullable even under `3.0.0` & omit enum `null`, `allOf` `$ref` unwrapping, sibling keyword preservation, redundant `nullable` cleanup, boolean->numeric exclusive bounds, & document-wide conversion; `createDocument` ignores OAS version for `QUERY`/non-standard methods (`additionalOperations`) & `@ApiWebhook()` (plus `DuplicateRouteException` when webhook shares path/method with route). | `schema-explorer.ts`, `swagger-module.ts` | `ecosystem/swagger/e2e/openapi-*.e2e.spec.ts`, `webhooks*.spec.ts` |
+| **SWG-05** | **P1** | **Standard Schema integration gaps** — `defaultStandardSchemaConverter` omits error warn on failing function schemas, `const`->`enum` / `examples`->`example` normalization, & custom converter `#/$defs/...` rewriting; `buildParameters`/`buildRequestBody` ignore `@Query`/`@Param`/`@Body({ schema })` overrides. | `schema-explorer.ts`, `swagger-module.ts` | `ecosystem/swagger/e2e/standard-schema*.e2e.spec.ts` |
+| **SWG-06** | **P1** | **Example depth, dynamic defaults, route scanning, global responses & Swagger UI routes** — `truncateExampleDepth` misses `examples` arrays, nested schemas, non-plain instances, & circular `WeakSet`; `excludeDynamicDefaults` misses non-Date class instances, nested combinators/`additionalProperties`, & inline schemas; `deepScanRoutes` defaults `true` instead of `false` & drops unmatched async global imports; `convertPathToOpenApi` skips `\\:` unescaping & duplicate routes don't merge `security`; `addGlobalResponse()` suppresses default `200`; `SwaggerModule.setup` 404s on `/apidoc/` and `/apidoc/index.html`. | `schema-explorer.ts`, `swagger-module.ts` | `ecosystem/swagger/e2e/*.e2e.spec.ts` |
+
+---
+
+### 6.17 `@bunest/security` (`packages/security/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **SEC-01** | **P0** | **`ThrottlerStorage` block/expiry correctness bugs & `ThrottlerModule.forRoot([...])` non-global leak** — `MemoryThrottlerStorage` leaves `isBlocked: false` / `timeToBlockExpire: 0` when `blockDuration === 0` and hits >= limit (including `limit: 0`, 5 skips); fails to clear pre-block hits after `blockedUntil` expires when `ttl > blockDuration` (1 skip); returns `timeToExpire`/`timeToBlockExpire` in ms instead of NestJS seconds (4 skips); starts 60s `setInterval` eagerly in constructor before subclass `sweepIntervalMs` init / outside lazy ALS-safe first increment (1 skip); `ThrottlerModule.forRoot([...])` omits `global: true`, so root `APP_GUARD` misses feature-imported `THROTTLER_OPTIONS` (4 skips). | `throttler/memory-throttler.storage.ts`, `throttler/throttler.module.ts` | `ecosystem/security/throttler/*.spec.ts` (15 skips) |
+| **SEC-02** | **P0** | **`JwtService` key precedence & deprecation handling** — `inferDefaultSignAlgorithm()` checks `privateKey` before `secret`, signing with RS256 when both are configured (4 skips); missing deprecation warning and wrong fallback precedence for `config.secretOrPrivateKey` (4 skips). | `jwt/jwt.service.ts` | `ecosystem/security/jwt/jwt.service.spec.ts` (8 skips) |
+| **SEC-03** | **P1** | **`ThrottlerGuard` naming/headers & `MixinAuthGuard` option leakage** — `ThrottlerGuard` sorts throttlers by `ttl` before assigning `"default"` name (misnaming longer-TTL default rule as `"rule_1"`) and overwrites unsuffixed `X-RateLimit-*` headers from `state.primary` instead of exclusively from `"default"` (2 skips); `MixinAuthGuard.canActivate()` leaks module-only keys (`defaultStrategy`, `property`) into `strategy.authenticate(req, options)` (1 skip). | `throttler/throttler.guard.ts`, `passport/auth-strategy.ts` | `ecosystem/security/throttler/*.spec.ts`, `ecosystem/security/passport/*.spec.ts` (3 skips) |
+
+---
+
+### 6.18 `@bunest/queues` (`packages/queues/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **QUE-01** | **P0** | **Graceful shutdown closes idle target queues before draining active workers** — `BullMQExplorer.onModuleDestroy()` (`bullmq.adapter.ts:1195`) invokes `QueueRegistry.closeAll()`, closing all queues concurrently during `onModuleDestroy` so draining source jobs fail `target.add()` (`Queue "shutdown_target" is closed`) instead of draining workers in `onModuleDestroy` and closing queues in `onApplicationShutdown`. | `adapters/bullmq.adapter.ts:1195`, `queue.module.ts:256-263` | `ecosystem/queues/bullmq-shutdown.e2e.spec.ts` |
+| **QUE-02** | **P1** | **Durable & request-scoped processor bugs** — `BullMQExplorer.registerProcessor` & `QueueExplorer` call `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`, breaking durable `ContextIdStrategy` sub-trees (2 skips); never assign `_worker = worker` on per-job `Scope.REQUEST` `WorkerHost` instances, throwing `"Worker" has not yet been initialized` on `this.worker` (1 skip). | `adapters/bullmq.adapter.ts:876-908,1012-1014`, `queue.module.ts:353-386` | `bullmq-durable-providers.spec.ts`, `bullmq-request-scoped-processor.spec.ts` |
+| **QUE-03** | **P1** | **`BullModule` async registration & `useExisting` deduplication gaps** — `registerFlowProducerAsync` omits `name` when merging shared config (leaving `opts.name === undefined`, 2 skips); `registerQueueAsync({ name })` without factory/class/existing throws instead of inheriting shared `forRootAsync` config (2 skips); `BullMQExplorer.register()` does not skip `useExisting` alias wrappers or deduplicate instances (2 skips, related to `COR-10`). | `adapters/bullmq.adapter.ts:705-729,1726,1880-1883` | `bullmq-module.e2e.spec.ts`, `bullmq-explorer.spec.ts` |
+| **QUE-04** | **P1** | **Pluggable backend (`queueClass`/`workerClass`/`flowProducerClass`), `QueueEvents` & option forwarding gaps** — `registerProcessor` drops `telemetry`/`skipVersionCheck` and omits 4th arg `backendFactory` on `WorkerCtor` (4 skips); `registerQueueEventsListener` & `QueueEvents` accept only `name: string` dropping `connection`/`telemetry`/`skipVersionCheck`/`backendFactory` (3 skips); `buildQueueInstance` returns early when `BullModule.queueClass` is set without creating inline `processors` via `workerClass` or forwarding 3rd arg `backendFactory` (6 skips); `queueClass`/`flowProducerClass` omit `backendFactory` arg (3 skips); `getQueueOptions` is private with wrong signature & `getFlowProducerOptions` omitted (2 skips). | `adapters/bullmq.adapter.ts`, `hosts/queue-events-host.class.ts` | `bullmq-explorer.spec.ts`, `bullmq-providers.spec.ts`, `bullmq-pluggable-backend.spec.ts` |
+
+---
+
+### 6.19 `@bunest/observability` (`packages/observability/src/`)
+
+*(Note: 14 Terminus 503 E2E tests are additionally blocked by `COM-09` — `HttpException.toJSON()` clobbering `HealthCheckException`'s `body.error` object map with `"HealthCheckException"`.)*
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **OBS-01** | **P0** | **W3C Trace Context security/spec bugs & throwing sampler crash** — `parseTraceParent()` calls `.toLowerCase()`, accepting uppercase hex forbidden by W3C Trace Context §3.2.2.1 (1 skip); `parseTraceState()` fails to drop values containing CRLF (`\r\n`) control characters (header injection vector, 1 skip); `Tracer.startSpan()` does not catch throwing `sampler` callbacks instead of defaulting `sampled = false` (1 skip). | `tracing/trace-context.ts`, `tracing/tracer.ts` | `ecosystem/observability/observe/*.spec.ts` (3 skips) |
+| **OBS-02** | **P1** | **`@HealthCheck()` Swagger integration & `HttpHealthIndicator` error handling** — `@HealthCheck()` sets `HEALTH_CHECK_METADATA` only without emitting OpenAPI 200/503 response schemas (6 skips); `HttpHealthIndicator` swallows non-HTTP `Error`s instead of rethrowing, `responseCheck` fails to unwrap `err.response` on `HttpError`, and non-2xx callback failure emits `"Response did not pass the check"` instead of `"Request failed with status code 400"` (5 skips). | `health/health.decorator.ts`, `health/health.indicators.ts:552-658` | `health-check.schema.spec.ts`, `http.health*.spec.ts` (11 skips) |
+| **OBS-03** | **P2** | **Health indicator message wording, extra fields, deprecation warning & pretty-log `Symbol` handling** — `MemoryHealthIndicator` attaches unrequested `heapUsedBytes`/`rssBytes`/`thresholdBytes` fields and diverges on error messages (9 skips); `DiskHealthIndicator` wording diff (`"The used disk storage has exceeded..."` vs `"Used disk storage exceeded..."`, 7 skips); `HealthCheckAttempt.resolveSuccessData` omits once-per-indicator deprecation warning mentioning `withSuccessData()` (5 skips); `NotServingError` wording diff (3 skips); `MicroserviceHealthIndicator` formats non-Error rejection as `"[object Object]"` (1 skip); `formatErrorLog` uses raw `JSON.stringify` dropping `Symbol`-valued properties (1 skip). | `health/health.indicators.ts`, `health/health-indicator.service.ts`, `health/units.ts`, `health/health.service.ts` | `ecosystem/observability/terminus/*.spec.ts` (26 skips) |
+
+---
+
+### 6.20 `@bunest/cli` (`packages/cli/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **CLI-01** | **P0** | **`resolveSafeChildPath()` path-confinement & `deleteOutDir: true` safety bugs** — `rel.startsWith("..")` falsely rejects valid sibling names like `"..cache"`, accepts `"."` project root, and does not resolve symlinks via `realpathSync`; `buildProject` `deleteOutDir: true` omits path confinement, `allowOutsidePaths`, and `tsBuildInfoFile` cleanup. | `naming.ts`, `commands/build.ts` | `ecosystem/cli/nest-cli/*.spec.ts` |
+| **CLI-02** | **P1** | **Name validation, config discovery & project scaffolding gaps** — `parseSchematicName` / `validateProjectName` reject leading `_`, dotted names (`foo.entity`), scoped `@scope/pkg`, numeric names (`123`), and `"."` (`bunest new .`); `configuration.loader.ts` checks `.nestcli.json` instead of `.nest-cli.json`; `createProject` omits `bunest.json` and default `.gitignore` omits `/.idea` & `/.vscode`. | `naming.ts`, `configuration.loader.ts`, `project.templates.ts` | `ecosystem/cli/nest-cli/*.spec.ts`, `schematics/application*.spec.ts` |
+| **CLI-03** | **P1** | **CLI command flags & metadata plugin gaps** — `build` ignores `--path`, `--emit-declarations`, `compilerOptions.assets` (incl. dotfiles), and positional monorepo project arg; `start` ignores positional monorepo project arg; `new` lacks `--directory` alias; `generate` ignores 3rd positional path arg; `upgrade` ignores `collection`/`observe`; `info` omits installed `@bunest/*` package versions; `generateMetadataFile()` does not auto-enable `.js` imports for `NodeNext`/`Node16`, hardcodes `metadata.ts`, and unconditionally rewrites byte-identical output. | `parser.ts`, `runner.ts`, `commands/{build,start,new,generate,upgrade,info}.ts`, `plugins/metadata.plugin.ts` | `ecosystem/cli/nest-cli/*.spec.ts` |
+| **CLI-04** | **P1** | **Schematics generator parity gaps (`flat`, auto-import, `application`, `configuration`, `resource`, `library`, `sub-app`)** — `generate` defaults `flat: false` for all schematics instead of `flat: true` for `class`/`decorator`/`filter`/`gateway`/`guard`/`interceptor`/`interface`/`provider`; missing auto-import/registration into `app.module.ts`/nearest module (`skipImport`/`module`); camelCase `specFileSuffix` not kebab-cased; `application` ignores `spec: false`/`specFileSuffix`, lacks `directory`/`strict`/`packageManager`/`minimal`, throws `FileCollisionError` on existing `README.md`/`.gitignore`; `configuration` ignores project folder & custom `language`/`collection`; `resource` omits `entities/<singular>.entity.ts`, doesn't singularize plurals, lacks `crud: false` & non-REST transports; `library`/`sub-app` don't update `bunest.json`/`tsconfig.json` `paths`/references or support custom `rootDir`. | `commands/generate.ts`, `schematic.templates.ts`, `project.templates.ts`, `fs-writer.ts` | `ecosystem/cli/schematics/*.spec.ts` |
+
+---
+
+### 6.21 `@bunest/sql` & `@bunest/sqlite` (`packages/sql/src/`, `packages/sqlite/src/`)
+
+| ID | Sev | Summary & Root Cause | Suspected Source File(s) | Affected Spec(s) |
+|---|---|---|---|---|
+| **SQL-01** | **P1** | **`PrismaServiceBase` constructor parameters lack `@Optional()`** — `(client?: TClient, options: PrismaServiceOptions<TClient> = {})` at `packages/sql/src/orm/prisma.module.ts:186` omits `@Optional()`, causing `@Injectable()` subclasses without an explicit zero-arg `constructor() { super(); }` to inherit `design:paramtypes = [Object, Object]` and fail DI with `UnknownDependencyException`. *(Only 1 skip across all 188 persistence tests — 99.5% pass rate!)* | `packages/sql/src/orm/prisma.module.ts:186` | `ecosystem/persistence/bun-native/drizzle-and-prisma-lifecycle.spec.ts` |
+
+---
+
+## 7. Recommended Remediation Roadmap
+
+1. **Tier 1 — Immediate `P0` Security, Crash & Correctness Fixes (Highest ROI):**
+   - `@bunest/http`: `serializeCookie()` attribute-injection (`HTT-01`), `compileSecurityHeaders()` CSP-injection (`HTT-02`), `parseCookieHeader()` null-prototype & RFC 6265 whitespace (`HTT-03`), CSRF origin/host/404 fixes (`HTT-04`), `matchesPathPattern()` `:param`/`/*` over-match fix (`HTT-05` — unlocks **40+ tests**), `Set-Cookie` dedup & middleware security headers (`HTT-06`).
+   - `@bunest/common` / `@bunest/validation`: sparse-array DoS guard (`COM-01`), anchored `FileTypeValidator` (`COM-02`), nested-binary `@ValidateNested()` guard (`VAL-01`), `HttpException.toJSON()` non-string `base.error` preservation (`COM-09` — immediately unlocks **14 Terminus E2E tests**).
+   - `@bunest/core` / `@bunest/websockets` / `@bunest/microservices`: durable sub-tree caching (`COR-01`), `INQUIRER` parent instance (`COR-02`), `BaseWsExceptionFilter` error redaction (`WS-01`), WS `APP_GUARD` wiring (`WS-02`), `FrameDecoder` `NaN` guard & `normalizePattern` depth limit (`MS-01`).
+   - Ecosystem `P0`s: `@bunest/graphql` `hasOwn/getOwn` `INTERFACE_TYPE` lookup (`GQL-01`) & global pipes/guards (`GQL-02`); `@bunest/config` validate-before-`process.env` + `\0` rejection + secret redaction (`CFG-01`); `@bunest/security` `MemoryThrottlerStorage` block/expiry & `JwtService` key precedence (`SEC-01`, `SEC-02`); `@bunest/queues` graceful shutdown worker-before-queue drain (`QUE-01`); `@bunest/observability` W3C `traceparent`/`tracestate` CRLF & sampler catch (`OBS-01`); `@bunest/cli` `resolveSafeChildPath()` symlink/`deleteOutDir` confinement (`CLI-01`).
+2. **Tier 2 — Highest-Leverage `P1` Parity Wins (Unlocking Hundreds of Tests):**
+   - `DIContainer.getSync()` module-class resolution (`COR-04a` — immediately unlocks **13 `@bunest/config` tests** + core/GraphQL lookups) and `DiscoveryService` `useExisting` alias deduplication (`COR-10` — fixes Core, `@bunest/cqrs`, and `@bunest/queues`).
+   - Async `transform()` + typed `HttpException` subclasses in `built-in.pipes.ts` (`COM-04`..`COM-07` — unlocks ~150+ tests in `bucket-1`).
+   - `Logger.overrideLogger()` routing (`COM-08` — fixes Core `bucket-1` & `@bunest/scheduler`).
+   - `@bunest/graphql` request-scoped resolvers, Federation v2 SDL emission, interface `@ResolveField`, and mapped types (`GQL-03`..`GQL-08` — unlocks **300+ GraphQL tests**).
+   - `@bunest/swagger` `SchemaExplorer` combinators/nullable OAS 3.0 vs 3.1/decorators (`SWG-01`..`SWG-06` — unlocks **174 Swagger tests**).
+   - `@bunest/config` `ConfigHostModule` / `cache: false` / expansion / `set()` (`CFG-02`..`CFG-05` — unlocks **50+ Config tests**).
+   - `@bunest/cli` schematics `flat` defaults, auto-import, and `build`/`generate` flags (`CLI-02`..`CLI-04` — unlocks **132 CLI tests**).
+   - `@bunest/sql` `PrismaServiceBase` `@Optional()` (`SQL-01` — brings `@bunest/sql` + `@bunest/sqlite` persistence to **100.0% pass rate, 188 / 188**!).
+3. **Tier 3 — Un-skip & Track Conformance Progress:**
+   - After fixing each item in `packages/*/src/`, remove the corresponding `it.skip` + `// BUNEST_BUG:` comments and run `bun test tests/nestjs-conformance` (all 679 files) and `bun check` to verify regression-free progression toward **100% conformance across all 22 packages**.

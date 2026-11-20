@@ -1,0 +1,46 @@
+{
+  "name": "@bunest/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for Bunest: expose @Tool, @Resource, @ResourceTemplate, and @Prompt over native Streamable HTTP, SSE, and stdio JSON-RPC 2.0",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/mcp"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "bun": "./src/testing/index.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/testing/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/common --external @bunest/core --external @bunest/http --external reflect-metadata",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/http": "workspace:*"
+  }
+}

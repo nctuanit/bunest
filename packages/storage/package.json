@@ -1,0 +1,40 @@
+{
+  "name": "@bunest/storage",
+  "version": "0.1.0",
+  "description": "File storage for Bunest: unified API for local disks, in-memory storage, and S3/R2/MinIO with native SigV4 fetch, streamed uploads, and signed URLs",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/storage"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external @bunest/core --external @bunest/http --external reflect-metadata",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/http": "workspace:*"
+  }
+}

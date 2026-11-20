@@ -1,0 +1,546 @@
+import {
+  Logger,
+  ShutdownSignal,
+  isDynamicModule,
+  type DynamicModule,
+  type InjectionToken,
+  type LogLevel,
+  type LoggerService,
+  type Type,
+} from "@bunest/common";
+import { DIContainer } from "../di/di-container";
+import type {
+  BunestApplicationContextOptions,
+  ContextId,
+  LifecycleManagerLike,
+  ModuleRefGetOptions,
+  RequestScopeContainer,
+  ShutdownSignalInput,
+} from "../interfaces/core-types.interface";
+import { LifecycleManager } from "../lifecycle/lifecycle-manager";
+import type { ModuleNode } from "../module/module-node";
+
+interface BufferedLogEntry {
+  readonly level: LogLevel;
+  readonly message: unknown;
+  readonly optionalParams: unknown[];
+}
+
+function resolveLoggerService(
+  option: BunestApplicationContextOptions["logger"],
+): LoggerService {
+  if (
+    option &&
+    typeof option === "object" &&
+    !Array.isArray(option)
+  ) {
+    return option;
+  }
+  if (option === false) {
+    return new Logger("BunestApplication", { levels: [] });
+  }
+  if (Array.isArray(option)) {
+    return new Logger("BunestApplication", { levels: option });
+  }
+  return new Logger("BunestApplication");
+}
+
+class ApplicationLoggerAdapter implements LoggerService {
+  private target: LoggerService;
+  private buffering: boolean;
+  private readonly buffer: BufferedLogEntry[] = [];
+
+  constructor(initialTarget: LoggerService, bufferLogs: boolean) {
+    this.target = initialTarget;
+    this.buffering = bufferLogs;
+  }
+
+  setTarget(logger: LoggerService, flushNow: boolean): void {
+    this.target = logger;
+    if (flushNow) {
+      this.flush();
+    }
+  }
+
+  flush(): void {
+    if (!this.buffering) {
+      return;
+    }
+    this.buffering = false;
+    if (this.buffer.length === 0) {
+      return;
+    }
+    const entries = this.buffer.splice(0, this.buffer.length);
+    for (const entry of entries) {
+      this.forward(entry.level, entry.message, entry.optionalParams);
+    }
+  }
+
+  log(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("log", message, optionalParams);
+  }
+
+  error(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("error", message, optionalParams);
+  }
+
+  warn(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("warn", message, optionalParams);
+  }
+
+  debug(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("debug", message, optionalParams);
+  }
+
+  verbose(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("verbose", message, optionalParams);
+  }
+
+  fatal(message: unknown, ...optionalParams: unknown[]): void {
+    this.dispatch("fatal", message, optionalParams);
+  }
+
+  setLogLevels(levels: LogLevel[]): void {
+    this.target.setLogLevels?.(levels);
+  }
+
+  private dispatch(
+    level: LogLevel,
+    message: unknown,
+    optionalParams: unknown[],
+  ): void {
+    if (this.buffering) {
+      this.buffer.push({ level, message, optionalParams });
+      return;
+    }
+    this.forward(level, message, optionalParams);
+  }
+
+  private forward(
+    level: LogLevel,
+    message: unknown,
+    optionalParams: unknown[],
+  ): void {
+    switch (level) {
+      case "log":
+        this.target.log(message, ...optionalParams);
+        break;
+      case "error":
+        this.target.error(message, ...optionalParams);
+        break;
+      case "warn":
+        this.target.warn(message, ...optionalParams);
+        break;
+      case "debug":
+        this.target.debug?.(message, ...optionalParams);
+        break;
+      case "verbose":
+        this.target.verbose?.(message, ...optionalParams);
+        break;
+      case "fatal":
+        this.target.fatal?.(message, ...optionalParams);
+        break;
+    }
+  }
+}
+
+/**
+ * Standalone Bunest application context (DI + Modules + Lifecycle without HTTP server),
+ * created via `BunestFactory.createApplicationContext(AppModule)`.
+ */
+export class BunestApplicationContext {
+  protected readonly lifecycle: LifecycleManagerLike;
+  protected readonly loggerAdapter: ApplicationLoggerAdapter;
+  protected logger: LoggerService;
+  protected isInitialized = false;
+  protected isClosed = false;
+  protected scopeModuleId: string;
+  protected readonly strictDefault: boolean;
+  protected contextModule?: ModuleNode;
+  protected readonly appOptions: BunestApplicationContextOptions;
+
+  constructor(
+    protected readonly container: DIContainer,
+    protected readonly options: BunestApplicationContextOptions = {},
+    scopeModuleId?: string,
+    strictDefault = false,
+  ) {
+    this.appOptions = options;
+    this.lifecycle = options.lifecycleManager ?? new LifecycleManager();
+    this.scopeModuleId = scopeModuleId ?? this.container.getGraph().root.id;
+    this.strictDefault = strictDefault;
+    this.selectContextModule();
+
+    this.container.setOnLazyModuleLoaded(async (groups) => {
+      if (this.lifecycle.callModuleInitFor) {
+        await this.lifecycle.callModuleInitFor(groups);
+        return;
+      }
+      for (const group of groups) {
+        for (const instance of group.instances) {
+          const hook = (instance as { onModuleInit?: () => Promise<void> | void })
+            .onModuleInit;
+          if (typeof hook === "function") {
+            await hook.call(instance);
+          }
+        }
+      }
+    });
+
+    const initialLogger = resolveLoggerService(options.logger);
+    this.loggerAdapter = new ApplicationLoggerAdapter(
+      initialLogger,
+      options.bufferLogs === true,
+    );
+    this.logger = this.loggerAdapter;
+
+    if (options.shutdownHooks) {
+      this.enableShutdownHooks();
+    }
+  }
+
+  async init(): Promise<this> {
+    if (this.isInitialized && this.lifecycle.getIsInitialized()) {
+      return this;
+    }
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callModuleInit(groups);
+    await this.lifecycle.callApplicationBootstrap(groups);
+    this.isInitialized = true;
+    return this;
+  }
+
+  get<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    options: { strict?: boolean; each: true },
+  ): TResult[];
+  get<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    options?: { strict?: boolean; each?: false },
+  ): TResult;
+  get<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    options?: ModuleRefGetOptions,
+  ): TResult | TResult[];
+  get<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    options?: ModuleRefGetOptions,
+  ): TResult | TResult[] {
+    const resolvedOptions: ModuleRefGetOptions = {
+      strict: options?.strict ?? this.strictDefault,
+      each: options?.each,
+    };
+    return this.container.getSync<TResult>(
+      token as InjectionToken<TResult>,
+      this.scopeModuleId,
+      resolvedOptions,
+    );
+  }
+
+  resolve<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    contextIdOrContainer: ContextId | RequestScopeContainer | undefined,
+    options: { strict?: boolean; each: true },
+  ): Promise<TResult[]>;
+  resolve<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    contextIdOrContainer?: ContextId | RequestScopeContainer,
+    options?: { strict?: boolean; each?: false },
+  ): Promise<TResult>;
+  resolve<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    contextIdOrContainer?: ContextId | RequestScopeContainer,
+    options?: ModuleRefGetOptions,
+  ): Promise<TResult | TResult[]>;
+  resolve<TInput = unknown, TResult = TInput>(
+    token: InjectionToken<TInput>,
+    contextIdOrContainer?: ContextId | RequestScopeContainer,
+    options?: ModuleRefGetOptions,
+  ): Promise<TResult | TResult[]> {
+    const resolvedOptions: ModuleRefGetOptions = {
+      strict: options?.strict ?? this.strictDefault,
+      each: options?.each,
+    };
+    return this.container.resolveAsync<TResult>(
+      token as InjectionToken<TResult>,
+      this.scopeModuleId,
+      contextIdOrContainer,
+      resolvedOptions,
+    );
+  }
+
+  /**
+   * Registers a request object against a `ContextId` so `Scope.REQUEST` providers
+   * injecting `@Inject(REQUEST)` can be resolved via `resolve(token, contextId)`
+   * without spinning up an HTTP server.
+   */
+  registerRequestByContextId<T = unknown>(
+    request: T,
+    contextId: ContextId,
+  ): void {
+    this.container.registerRequestByContextId(request, contextId);
+  }
+
+  /**
+   * Narrows provider lookups (`get`/`resolve`) to a specific module in the graph,
+   * defaulting to `{ strict: true }`. Chainable and supports `DynamicModule` references.
+   */
+  select<T>(
+    moduleType: Type<T> | DynamicModule,
+    _options?: { abortOnError?: boolean },
+  ): BunestApplicationContext {
+    const targetNode = this.findModuleNode(moduleType);
+    if (!targetNode) {
+      const label = isDynamicModule(moduleType)
+        ? moduleType.module.name || "<DynamicModule>"
+        : moduleType.name || "<anonymous>";
+      throw new Error(
+        `Module "${label}" is not part of this application module graph.`,
+      );
+    }
+
+    return new BunestApplicationContext(
+      this.container,
+      {
+        ...this.options,
+        shutdownHooks: false,
+        lifecycleManager: this.lifecycle,
+      },
+      targetNode.id,
+      true,
+    );
+  }
+
+  useLogger(logger: LoggerService | LogLevel[] | false): this {
+    const resolved = resolveLoggerService(logger);
+    const shouldAutoFlush = this.options.autoFlushLogs !== false;
+    this.loggerAdapter.setTarget(resolved, shouldAutoFlush);
+    return this;
+  }
+
+  flushLogs(): void {
+    this.loggerAdapter.flush();
+  }
+
+  flushLogsOnOverride(): void {
+    this.flushLogsIfAutoFlushEnabled();
+  }
+
+  selectContextModule(): void {
+    const graph = this.container.getGraph();
+    this.contextModule =
+      graph.modules.get(this.scopeModuleId) ?? graph.root;
+    this.scopeModuleId = this.contextModule.id;
+  }
+
+  getLogger(): LoggerService {
+    return this.logger;
+  }
+
+  /**
+   * Destroys a cached durable DI sub-tree container (firing `onRequestDestroy` /
+   * `Symbol.asyncDispose` / `Symbol.dispose` hooks on all durable instances).
+   */
+  async destroyDurableContext(
+    contextIdOrId: ContextId | number | symbol,
+  ): Promise<void> {
+    await this.container.destroyDurableContext(contextIdOrId);
+  }
+
+  getLifecycleManager(): LifecycleManagerLike {
+    return this.lifecycle;
+  }
+
+  getModuleContainer(): DIContainer {
+    return this.container;
+  }
+
+  getModules(): ReadonlyMap<string, ModuleNode> {
+    return this.container.getGraph().modules;
+  }
+
+  enableShutdownHooks(
+    signals: readonly ShutdownSignalInput[] = [
+      ShutdownSignal.SIGINT,
+      ShutdownSignal.SIGTERM,
+    ],
+  ): this {
+    this.listenToShutdownSignals(signals);
+    return this;
+  }
+
+  async close(signal?: string): Promise<void> {
+    if (this.isClosed && this.lifecycle.getIsClosed()) {
+      return;
+    }
+    this.isClosed = true;
+    await this.prepareClose();
+    if (this.lifecycle.getIsClosed()) {
+      try {
+        await this.dispose();
+      } finally {
+        await this.container.destroyContextContainers();
+      }
+      return;
+    }
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callShutdown(groups, signal, async () => {
+      await this.dispose();
+      await this.container.destroyContextContainers();
+    });
+  }
+
+  protected async stopTransport(): Promise<void> {
+    // Subclasses (e.g. BunestApplication) override to stop HTTP/WS servers before destroy hooks
+  }
+
+  protected flushLogsIfAutoFlushEnabled(): void {
+    if (this.options.autoFlushLogs !== false) {
+      this.flushLogs();
+    }
+  }
+
+  protected assertNotInPreviewMode(methodName: string): void {
+    if (this.options.preview) {
+      throw new Error(
+        `Calling "${methodName}" is not allowed when the application is running in preview mode.`,
+      );
+    }
+  }
+
+  protected async callInitHook(): Promise<void> {
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callModuleInit(groups);
+  }
+
+  protected async callBootstrapHook(): Promise<void> {
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callApplicationBootstrap(groups);
+  }
+
+  protected async callDestroyHook(): Promise<void> {
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callShutdown(groups);
+  }
+
+  protected async callBeforeShutdownHook(signal?: string): Promise<void> {
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callShutdown(groups, signal);
+  }
+
+  protected async callShutdownHook(signal?: string): Promise<void> {
+    await this.close(signal);
+  }
+
+  protected async prepareClose(): Promise<void> {
+    // Subclasses override to enter closing/draining state before shutdown hooks
+  }
+
+  protected async dispose(): Promise<void> {
+    await this.stopTransport();
+  }
+
+  protected async shutdown(signal?: string): Promise<void> {
+    await this.close(signal);
+  }
+
+  protected listenToShutdownSignals(
+    signals: readonly ShutdownSignalInput[],
+  ): void {
+    this.lifecycle.enableShutdownHooks(signals, async (sig) => {
+      await this.close(sig);
+    });
+  }
+
+  protected unsubscribeFromProcessSignals(): void {
+    this.lifecycle.cleanupShutdownHooks();
+  }
+
+  protected find<TInput = any, TResult = TInput>(
+    typeOrToken: InjectionToken<TInput>,
+    options?: { moduleId?: string; each?: boolean },
+  ): TResult | TResult[] {
+    return this.container.getSync<TResult>(
+      typeOrToken as InjectionToken<TResult>,
+      options?.moduleId ?? this.scopeModuleId,
+      {
+        strict: options?.moduleId !== undefined ? true : this.strictDefault,
+        each: options?.each,
+      },
+    );
+  }
+
+  protected resolvePerContext<TInput = any, TResult = TInput>(
+    typeOrToken: InjectionToken<TInput>,
+    contextModule: ModuleNode,
+    contextId: ContextId,
+    options?: ModuleRefGetOptions,
+  ): Promise<TResult | TResult[]> {
+    return this.container.resolveAsync<TResult>(
+      typeOrToken as InjectionToken<TResult>,
+      contextModule.id,
+      contextId,
+      options,
+    );
+  }
+
+  protected findModuleNode<T>(
+    moduleType: Type<T> | DynamicModule,
+  ): ModuleNode | undefined {
+    const graph = this.container.getGraph();
+
+    // 1. Exact DynamicModule object match
+    if (isDynamicModule(moduleType)) {
+      const exact = graph.dynamicModuleMap?.get(moduleType);
+      if (exact) {
+        return exact;
+      }
+    }
+
+    const targetClass = isDynamicModule(moduleType)
+      ? moduleType.module
+      : moduleType;
+    const preferDynamic = isDynamicModule(moduleType);
+
+    // 2. Prefer direct/reachable import from current selected module (disambiguates nested modules)
+    const currentNode = graph.modules.get(this.scopeModuleId);
+    if (currentNode) {
+      const visited = new Set<ModuleNode>();
+      const queue: ModuleNode[] = [...currentNode.imports];
+      let fallbackInSubtree: ModuleNode | undefined;
+
+      while (queue.length > 0) {
+        const candidate = queue.shift()!;
+        if (visited.has(candidate)) continue;
+        visited.add(candidate);
+
+        if (candidate.metatype === targetClass) {
+          if (!preferDynamic || candidate.isDynamic) {
+            return candidate;
+          }
+          fallbackInSubtree ??= candidate;
+        }
+        for (const imp of candidate.imports) {
+          if (!visited.has(imp)) {
+            queue.push(imp);
+          }
+        }
+      }
+      if (fallbackInSubtree) {
+        return fallbackInSubtree;
+      }
+    }
+
+    // 3. Fallback across entire module graph
+    let fallback: ModuleNode | undefined;
+    for (const mod of graph.modules.values()) {
+      if (mod.metatype === targetClass) {
+        if (!preferDynamic || mod.isDynamic) {
+          return mod;
+        }
+        fallback ??= mod;
+      }
+    }
+    return fallback;
+  }
+}

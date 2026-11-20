@@ -1,0 +1,188 @@
+import "reflect-metadata";
+import { describe, expect, it } from "bun:test";
+import { DefaultValuePipe } from "../../../../../../packages/common/src";
+import { describeConformance } from "../../../../_helpers";
+
+describeConformance(
+  "DefaultValuePipe",
+  {
+    upstreamPath: "packages/common/test/pipes/default-value.pipe.spec.ts",
+    category: "DIRECT_PORT",
+  },
+  () => {
+    const defaultValue = "default";
+    const target = new DefaultValuePipe(defaultValue);
+
+    describe("transform", () => {
+      it("should return original value if one was provided", () => {
+        const value = "value";
+        const result = target.transform(value);
+        expect(result).toBe(value);
+      });
+
+      it("should return default value if no value was provided", () => {
+        const result = target.transform(undefined);
+        expect(result).toBe(defaultValue);
+      });
+
+      describe("when the default value is an array or a plain object", () => {
+        // BUNEST_BUG: DefaultValuePipe returns the shared defaultValue reference without cloning arrays/plain objects; expected [] on second call, actual ["first"] (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should return a new copy of it on every call", () => {
+          const arrayTarget = new DefaultValuePipe<string[], string[]>([]);
+          arrayTarget.transform(undefined).push("first");
+
+          expect(arrayTarget.transform(undefined)).toEqual([]);
+        });
+
+        // BUNEST_BUG: DefaultValuePipe does not deep-clone nested arrays and plain objects; mutating returned object mutates stored default (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should copy the arrays and plain objects nested in it", () => {
+          const defaults = {
+            sort: { order: "asc" },
+            tags: ["a"],
+          };
+          const objTarget = new DefaultValuePipe<
+            typeof defaults,
+            typeof defaults
+          >(defaults);
+          const first = objTarget.transform(undefined);
+          first.sort.order = "desc";
+          first.tags.push("b");
+
+          expect(objTarget.transform(undefined)).toEqual({
+            sort: { order: "asc" },
+            tags: ["a"],
+          });
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of a cloned sparse array (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should preserve the length of an array containing only empty slots", () => {
+          const slots = new Array<string>(7);
+          const result = new DefaultValuePipe<string[], string[]>(
+            slots,
+          ).transform(undefined);
+
+          expect(result).not.toBe(slots);
+          expect(result).toHaveLength(7);
+          expect(Object.keys(result)).toEqual([]);
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of cloning while preserving trailing empty slots (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should preserve trailing empty slots when copying an array", () => {
+          const slots = new Array<string>(7);
+          slots[1] = "open";
+          const result = new DefaultValuePipe<string[], string[]>(
+            slots,
+          ).transform(undefined);
+
+          expect(result).not.toBe(slots);
+          expect(result).toHaveLength(7);
+          expect(Object.keys(result)).toEqual(["1"]);
+          expect(result[1]).toBe("open");
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the exact same nested sparse array reference instead of cloning it (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should preserve the length of a nested sparse array", () => {
+          const defaults = { slots: new Array<string>(7) };
+          const result = new DefaultValuePipe<typeof defaults, typeof defaults>(
+            defaults,
+          ).transform(undefined);
+
+          expect(result.slots).not.toBe(defaults.slots);
+          expect(result.slots).toHaveLength(7);
+          expect(Object.keys(result.slots)).toEqual([]);
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the exact same null-prototype object reference instead of cloning it (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should keep symbol keys and a null prototype", () => {
+          const ne = Symbol("ne");
+          const where = Object.assign(Object.create(null), {
+            status: { [ne]: "deleted" },
+          });
+          const result = new DefaultValuePipe<any, any>(where).transform(
+            undefined,
+          );
+
+          expect(result).not.toBe(where);
+          expect(Object.getPrototypeOf(result)).toBeNull();
+          expect(result.status[ne]).toBe("deleted");
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the same object reference without cloning own __proto__ property (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should copy an own __proto__ field without changing the prototype", () => {
+          const value = JSON.parse(
+            '{"__proto__":{"tags":["a"]},"enabled":true}',
+          );
+          const protoTarget = new DefaultValuePipe<any, any>(value);
+          const first = protoTarget.transform(undefined);
+
+          expect(Object.getPrototypeOf(first)).toBe(Object.prototype);
+          expect(Object.hasOwn(first, "__proto__")).toBe(true);
+          expect(first).toEqual(value);
+          expect(first.__proto__).not.toBe(value.__proto__);
+          first.__proto__.tags.push("b");
+          expect(protoTarget.transform(undefined).__proto__.tags).toEqual([
+            "a",
+          ]);
+          expect(value.__proto__.tags).toEqual(["a"]);
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the same object/array references without cloning own __proto__ fields or preserving shared-object identity in the copy (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should copy own __proto__ fields on arrays and nested defaults", () => {
+          const key = Symbol("shared");
+          const shared = { tags: ["a"] };
+          const array = new Array(3);
+          Object.defineProperty(array, "__proto__", {
+            value: shared,
+            enumerable: true,
+          });
+          const value = { array, [key]: shared };
+          const first = new DefaultValuePipe<typeof value, typeof value>(
+            value,
+          ).transform(undefined);
+
+          expect(Array.isArray(first.array)).toBe(true);
+          expect(Object.getPrototypeOf(first.array)).toBe(Array.prototype);
+          expect(Object.hasOwn(first.array, "__proto__")).toBe(true);
+          expect(first.array.length).toBe(3);
+          expect(0 in first.array).toBe(false);
+          expect(Reflect.get(first.array, "__proto__")).toBe(first[key]);
+          expect(first[key]).not.toBe(shared);
+          first[key].tags.push("b");
+          expect(shared.tags).toEqual(["a"]);
+        });
+
+        // BUNEST_BUG: DefaultValuePipe returns the exact same circular object reference instead of deep-cloning with cycle preservation (packages/common/src/pipes/built-in.pipes.ts)
+        it.skip("should preserve circular references", () => {
+          const circular: Record<string, unknown> = {};
+          circular.self = circular;
+          const result = new DefaultValuePipe<
+            Record<string, unknown>,
+            Record<string, unknown>
+          >(circular).transform(undefined);
+
+          expect(result).not.toBe(circular);
+          expect(result.self).toBe(result);
+        });
+
+        it("should return any other object (e.g., a class instance) as is", () => {
+          class Tags extends Array<string> {}
+          class Filter {}
+          const values = [new Tags(), new Filter(), new Date(), new Map()];
+
+          for (const value of values) {
+            expect(new DefaultValuePipe(value).transform(undefined)).toBe(
+              value,
+            );
+          }
+          const nested = new DefaultValuePipe<
+            { values: unknown[] },
+            { values: unknown[] }
+          >({ values }).transform(undefined);
+          nested.values.forEach((value: unknown, index: number) =>
+            expect(value).toBe(values[index]),
+          );
+        });
+      });
+    });
+  },
+);

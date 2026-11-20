@@ -1,0 +1,24 @@
+{
+  "name": "@bunest/example-rest-crud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Flagship REST CRUD API with DTO ValidationPipe, OpenAPI 3.1 Swagger docs, and custom ExceptionFilter",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/common": "workspace:*",
+    "@bunest/core": "workspace:*",
+    "@bunest/swagger": "workspace:*",
+    "@bunest/validation": "workspace:*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

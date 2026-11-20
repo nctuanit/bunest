@@ -1,0 +1,130 @@
+import "reflect-metadata";
+import { expect, it } from "bun:test";
+import {
+  DEFAULT_IPV6_SUBNET_PREFIX,
+  normalizeIp,
+} from "../../../../../packages/security/src";
+import { describeConformance } from "../../../_helpers/index";
+
+describeConformance(
+  "normalizeIp",
+  {
+    upstreamPath: "throttler/src/ip.spec.ts",
+    category: "DIRECT_PORT",
+    notes:
+      "Upstream commit 849929b4df (@nestjs/throttler@6.8.0). Direct 1:1 port of all 19 IPv4/IPv6/NAT64/zone-index normalization tests.",
+  },
+  () => {
+    it("leaves IPv4 addresses untouched", () => {
+      expect(normalizeIp("203.0.113.7")).toBe("203.0.113.7");
+    });
+
+    it("collapses IPv4-mapped IPv6 onto the IPv4 form", () => {
+      expect(normalizeIp("::ffff:203.0.113.7")).toBe("203.0.113.7");
+      expect(normalizeIp("::ffff:cb00:7107")).toBe("203.0.113.7");
+    });
+
+    it("collapses NAT64 well-known prefix addresses onto the embedded IPv4", () => {
+      expect(normalizeIp("64:ff9b::203.0.113.7")).toBe("203.0.113.7");
+      expect(normalizeIp("64:ff9b::cb00:7107")).toBe("203.0.113.7");
+      expect(normalizeIp("0064:FF9B:0:0:0:0:CB00:7107")).toBe("203.0.113.7");
+    });
+
+    it("keeps distinct IPv4 clients behind NAT64 distinct", () => {
+      expect(normalizeIp("64:ff9b::1.2.3.4")).not.toBe(
+        normalizeIp("64:ff9b::5.6.7.8"),
+      );
+    });
+
+    it("masks deprecated IPv4-compatible addresses like any other IPv6", () => {
+      expect(normalizeIp("::203.0.113.7")).toBe("::/64");
+      expect(normalizeIp("::cb00:7107")).toBe("::/64");
+      expect(normalizeIp("::0.1.0.0")).toBe("::/64");
+      expect(normalizeIp("::0.0.1.1")).toBe("::/64");
+    });
+
+    it("does not let an IPv4-compatible address share an IPv4 host bucket", () => {
+      expect(normalizeIp("::1.2.3.4")).not.toBe(normalizeIp("1.2.3.4"));
+      expect(normalizeIp("::1.2.3.4")).not.toBe(normalizeIp("::ffff:1.2.3.4"));
+    });
+
+    it("only collapses ::ffff: when the rest of the prefix is zero", () => {
+      expect(normalizeIp("1::ffff:1.2.3.4")).toBe("1::/64");
+      expect(normalizeIp("::1:ffff:1.2.3.4")).toBe("::/64");
+    });
+
+    it("leaves the unspecified address masked", () => {
+      expect(normalizeIp("::")).toBe("::/64");
+    });
+
+    it("masks addresses that only resemble the NAT64 prefix", () => {
+      expect(normalizeIp("64:ff9b:1::1.2.3.4")).toBe("64:ff9b:1::/64");
+      expect(normalizeIp("64:ff9b::1:0:102:304")).toBe("64:ff9b::/64");
+    });
+
+    it("masks IPv6 to the default /64", () => {
+      expect(normalizeIp("2001:db8:0:1:dead:beef:1:2")).toBe(
+        "2001:db8:0:1::/64",
+      );
+    });
+
+    it("maps every address in a /64 onto one bucket", () => {
+      const rotated = [
+        "2001:db8:0:1::1",
+        "2001:db8:0:1::2",
+        "2001:db8:0:1:ffff:ffff:ffff:ffff",
+        "2001:0db8:0000:0001:aaaa:bbbb:cccc:dddd",
+      ].map((ip) => normalizeIp(ip));
+      expect(new Set(rotated).size).toBe(1);
+    });
+
+    it("leaves the IPv6 loopback alone, however it is spelled", () => {
+      expect(normalizeIp("::1")).toBe("::1");
+      expect(normalizeIp("0:0:0:0:0:0:0:1")).toBe("::1");
+      expect(normalizeIp("::0001")).toBe("::1");
+    });
+
+    it("keeps distinct subnets distinct", () => {
+      expect(normalizeIp("2001:db8:0:1::1")).not.toBe(
+        normalizeIp("2001:db8:0:2::1"),
+      );
+    });
+
+    it("honours a custom prefix length", () => {
+      expect(normalizeIp("2001:db8:0:1::1", 48)).toBe("2001:db8::/48");
+      expect(normalizeIp("2001:db8:0:1::1", 128)).toBe("2001:db8:0:1::1/128");
+    });
+
+    it("clamps out-of-range prefixes", () => {
+      expect(normalizeIp("2001:db8::1", -5)).toBe("::/0");
+      expect(normalizeIp("2001:db8::1", 999)).toBe("2001:db8::1/128");
+    });
+
+    it("falls back to the default prefix when given a non-finite one", () => {
+      const expected = normalizeIp("2001:db8:0:1:dead:beef:1:2");
+      expect(normalizeIp("2001:db8:0:1:dead:beef:1:2", Number.NaN)).toBe(
+        expected,
+      );
+      expect(
+        normalizeIp("2001:db8:0:1:dead:beef:1:2", Number.POSITIVE_INFINITY),
+      ).toBe(expected);
+      expect(
+        normalizeIp("2001:db8:0:1:dead:beef:1:2", Number(undefined)),
+      ).toBe(expected);
+    });
+
+    it("strips the zone index so it cannot widen the keyspace", () => {
+      expect(normalizeIp("fe80::1%eth0")).toBe(normalizeIp("fe80::2%eth1"));
+    });
+
+    it("passes through values that are not IP addresses", () => {
+      expect(normalizeIp("user-42")).toBe("user-42");
+      expect(normalizeIp("")).toBe("");
+      expect(normalizeIp(undefined as unknown as string)).toBeUndefined();
+    });
+
+    it("defaults to a /64", () => {
+      expect(DEFAULT_IPV6_SUBNET_PREFIX).toBe(64);
+    });
+  },
+);

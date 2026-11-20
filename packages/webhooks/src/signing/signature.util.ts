@@ -1,0 +1,38 @@
+import type {
+  WebhookHeaders,
+  WebhookSignatureCheck,
+} from "../interfaces/webhook-signature.interface";
+
+/** `header(name)`: a single string value, `undefined` when absent, `null` when repeated. */
+export function header(
+  headers: WebhookHeaders,
+  name: string,
+): string | null | undefined {
+  const value = headers[name];
+  if (Array.isArray(value)) {
+    return value.length === 1 ? value[0] : null;
+  }
+  return value;
+}
+
+export function missing(name: string): WebhookSignatureCheck {
+  return {
+    valid: false,
+    reason: "missing-header",
+    detail: `no ${name} header`,
+  };
+}
+
+export function malformed(detail: string): WebhookSignatureCheck {
+  return { valid: false, reason: "malformed-header", detail };
+}
+
+export const NO_MATCH: Extract<WebhookSignatureCheck, { valid: false }> = {
+  valid: false,
+  reason: "invalid-signature",
+  detail: "no signature matches a configured secret",
+};
+
+export const TIMESTAMP = /^\d{1,12}$/;
+
+export const HEX_SHA256 = /^[0-9a-f]{64}$/i;
