@@ -2871,8 +2871,11 @@ export class DIContainer
   private filterModulesForDiscovery(
     options?: DiscoveryFilterOptions,
   ): readonly ModuleNode[] {
-    if (!options?.include || options.include.length === 0) {
+    if (options?.include === undefined) {
       return this.graph.topologicalOrder;
+    }
+    if (options.include.length === 0) {
+      return [];
     }
     const allowed = new Set<Type<unknown> | ModuleNode>(options.include);
     return this.graph.topologicalOrder.filter(
@@ -2954,6 +2957,9 @@ export class DIContainer
     const wrappers: InstanceWrapper[] = [];
     for (const mod of this.filterModulesForDiscovery(options)) {
       for (const provider of mod.providers.values()) {
+        if (provider.kind === "existing") {
+          continue;
+        }
         wrappers.push(this.buildProviderWrapper(mod, provider));
       }
     }
@@ -2970,8 +2976,8 @@ export class DIContainer
     return wrappers;
   }
 
-  discoverModules(): readonly ModuleNode[] {
-    return [...this.graph.topologicalOrder];
+  discoverModules(options?: DiscoveryFilterOptions): readonly ModuleNode[] {
+    return [...this.filterModulesForDiscovery(options)];
   }
 
   discoverProviderByToken<T = unknown>(
@@ -3604,6 +3610,24 @@ export class DIContainer
     const effectiveContainer =
       reqContainer ??
       (needsReq ? this.createEphemeralRequestContainer() : undefined);
+
+    // NestJS parity: when an explicit ContextId/RequestContainer is provided,
+    // Scope.TRANSIENT providers resolved via ModuleRef.resolve(token, contextId)
+    // are cached per contextId so repeated resolve(token, sameContextId) calls
+    // return the same instance.
+    if (reqContainer && effScope === Scope.TRANSIENT) {
+      const transientKey = `transient-resolve:${this.makeInstanceKey(loc.owner, loc.provider.token)}`;
+      return await reqContainer.getOrCreateScopedInstance<T>(
+        transientKey,
+        async () =>
+          (await this.resolveNormalizedProvider(
+            loc.owner,
+            loc.provider,
+            reqContainer,
+            new Set(),
+          )) as T,
+      );
+    }
 
     return (await this.resolveNormalizedProvider(
       loc.owner,

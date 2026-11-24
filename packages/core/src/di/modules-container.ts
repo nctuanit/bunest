@@ -19,7 +19,16 @@ export class ModulesContainer extends Map<string, ModuleNode> {
   }
 
   getById(id: string): ModuleNode | undefined {
-    return this.get(id);
+    const direct = this.get(id);
+    if (direct && direct.id === id) {
+      return direct;
+    }
+    for (const mod of this.values()) {
+      if (mod.id === id) {
+        return mod;
+      }
+    }
+    return undefined;
   }
 
   /**

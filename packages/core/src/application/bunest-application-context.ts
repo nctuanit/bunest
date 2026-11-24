@@ -151,6 +151,7 @@ export class BunestApplicationContext {
   protected logger: LoggerService;
   protected isInitialized = false;
   protected isClosed = false;
+  protected initPromise?: Promise<this>;
   protected scopeModuleId: string;
   protected readonly strictDefault: boolean;
   protected contextModule?: ModuleNode;
@@ -201,11 +202,26 @@ export class BunestApplicationContext {
     if (this.isInitialized && this.lifecycle.getIsInitialized()) {
       return this;
     }
-    const groups = this.container.getSingletonInstancesByModule();
-    await this.lifecycle.callModuleInit(groups);
-    await this.lifecycle.callApplicationBootstrap(groups);
-    this.isInitialized = true;
-    return this;
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+    const runInit = async (): Promise<this> => {
+      try {
+        const groups = this.container.getSingletonInstancesByModule();
+        await this.lifecycle.callModuleInit(groups);
+        await this.lifecycle.callApplicationBootstrap(groups);
+        this.isInitialized = true;
+        return this;
+      } finally {
+        this.flushLogsIfAutoFlushEnabled();
+      }
+    };
+    this.initPromise = runInit();
+    try {
+      return await this.initPromise;
+    } finally {
+      this.initPromise = undefined;
+    }
   }
 
   get<K extends keyof BunestTokenRegistry>(
@@ -385,7 +401,11 @@ export class BunestApplicationContext {
   }
 
   async close(signal?: string): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise.catch(() => {});
+    }
     if (this.isClosed && this.lifecycle.getIsClosed()) {
+      this.lifecycle.cleanupShutdownHooks();
       return;
     }
     this.isClosed = true;

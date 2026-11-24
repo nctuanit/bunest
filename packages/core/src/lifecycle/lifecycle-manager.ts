@@ -217,15 +217,23 @@ export class LifecycleManager implements LifecycleManagerLike {
     ],
     onSignal: (signal: NodeJS.Signals) => Promise<void> | void,
   ): void {
-    this.cleanupShutdownHooks();
+    const registered = new Set<NodeJS.Signals>(
+      this.signalListeners.map((entry) => entry.signal),
+    );
 
     for (const rawSignal of signals) {
-      const signal = rawSignal as NodeJS.Signals;
+      const normalized = String(rawSignal)
+        .trim()
+        .toUpperCase() as NodeJS.Signals;
+      if (!normalized || registered.has(normalized)) {
+        continue;
+      }
+      registered.add(normalized);
       const handler = () => {
-        void Promise.resolve(onSignal(signal));
+        void Promise.resolve(onSignal(normalized));
       };
-      process.once(signal, handler);
-      this.signalListeners.push({ signal, handler });
+      process.once(normalized, handler);
+      this.signalListeners.push({ signal: normalized, handler });
     }
   }
 
