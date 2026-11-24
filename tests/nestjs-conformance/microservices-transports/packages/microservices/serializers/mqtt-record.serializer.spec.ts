@@ -108,8 +108,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: @bunest/microservices exports MqttRecord and MqttRecordBuilder (packages/microservices/src/records.ts), but does NOT export MqttRecordSerializer and MqttClientProxy.emit()/send() do not unwrap MqttRecord instances into MQTT publish options + plain data payload (packages/microservices/src/transports/mqtt.transport.ts).
-      it.skip("should export MqttRecordSerializer and unwrap MqttRecord in outgoing packets and replies", async () => {
+      it("should export MqttRecordSerializer and unwrap MqttRecord in outgoing packets and replies", async () => {
         const mod =
           (await import("../../../../../../packages/microservices/src")) as Record<
             string,
@@ -159,8 +158,7 @@ describeConformance(
         expect(instance.serialize(null)).toBe("null");
       });
 
-      // BUNEST_BUG: MqttClientProxy.emit() does not unwrap MqttRecord instances into data + publish options (packages/microservices/src/transports/mqtt.transport.ts:433-449, 520-525).
-      it.skip("should unwrap MqttRecord automatically when passed to MqttClientProxy.emit()", async () => {
+      it("should unwrap MqttRecord automatically when passed to MqttClientProxy.emit()", async () => {
         const published: Array<{
           topic: string;
           message: string | Uint8Array;

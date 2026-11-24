@@ -43,7 +43,7 @@ export abstract class ClientProxy<
   private readonly statusListeners = new Set<ClientStatusListener>();
   private readonly eventListeners = new Map<PropertyKey, Set<Function>>();
   protected onDispatchHook?: (packet: ReadPacket) => void;
-  private preRequestHook?: PreRequestHook<{
+  protected preRequestHook?: PreRequestHook<{
     pattern: string;
     data: unknown;
     transport: Transport;
