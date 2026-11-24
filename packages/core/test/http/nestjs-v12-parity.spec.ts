@@ -563,7 +563,7 @@ describe("@bunest/http NestJS v12 Parity Suite", () => {
         new Request("http://localhost/sse-comment/stream"),
       );
       expect(res.status).toBe(200);
-      expect(await res.text()).toBe(": heartbeat\ndata: ok\n\n");
+      expect(await res.text()).toBe(": heartbeat\nid: 1\ndata: ok\n\n");
     });
   });
 

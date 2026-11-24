@@ -1,7 +1,9 @@
 import {
   type HeaderMetadata,
+  HttpException,
   HttpStatus,
   InternalServerErrorException,
+  NotFoundException,
   type RedirectMetadata,
   type RouteHttpMethod,
   type SseMessageEvent,
@@ -88,6 +90,7 @@ function isSyncIterable(value: unknown): value is Iterable<unknown> {
  */
 export function formatSseEvent(
   event: SseMessageEvent | string | object,
+  autoId?: number,
 ): string {
   const isStructuredEvent =
     typeof event === "object" &&
@@ -105,8 +108,16 @@ export function formatSseEvent(
       output += `: ${commentLines[i] ?? ""}\n`;
     }
   }
-  if (normalized.id !== undefined) {
-    output += `id: ${String(normalized.id).replace(/[\r\n]/g, "")}\n`;
+  const hasData =
+    normalized.data !== undefined || normalized.comment === undefined;
+  const effectiveId =
+    normalized.id !== undefined
+      ? normalized.id
+      : autoId !== undefined && hasData
+        ? String(autoId)
+        : undefined;
+  if (effectiveId !== undefined) {
+    output += `id: ${String(effectiveId).replace(/[\r\n]/g, "")}\n`;
   }
   if (normalized.type !== undefined) {
     output += `event: ${String(normalized.type).replace(/[\r\n]/g, "")}\n`;
@@ -115,7 +126,7 @@ export function formatSseEvent(
     output += `retry: ${Math.floor(normalized.retry)}\n`;
   }
 
-  if (normalized.data !== undefined || normalized.comment === undefined) {
+  if (hasData) {
     const rawData =
       typeof normalized.data === "string"
         ? normalized.data
@@ -128,6 +139,11 @@ export function formatSseEvent(
 
   output += "\n";
   return output;
+}
+
+function formatSseErrorEvent(err: unknown): Uint8Array {
+  const message = err instanceof Error ? err.message : String(err);
+  return textEncoder.encode(`event: error\ndata: ${JSON.stringify(message)}\n\n`);
 }
 
 /**
@@ -256,6 +272,10 @@ export function mergeHeadersOntoNativeResponse(
     return new Response(null, { status, headers: baseHeaders });
   }
 
+  if (response.body !== null && !baseHeaders.has("content-type")) {
+    baseHeaders.set("Content-Type", "application/octet-stream");
+  }
+
   return new Response(response.body, {
     status,
     statusText: response.statusText,
@@ -276,13 +296,35 @@ function resolveSseMaxPendingLimit(sseOptions?: SseOptions): number {
   return raw;
 }
 
+interface PrefetchedSseState {
+  readonly iterator: AsyncIterator<unknown>;
+  firstChunk?: Uint8Array;
+  pendingFirstStep?: Promise<IteratorResult<unknown>>;
+  nextAutoId: number;
+}
+
 function createSseStream(
   source: unknown,
   signal: AbortSignal,
   sseOptions?: SseOptions,
+  onEnd?: () => void,
+  prefetched?: PrefetchedSseState,
 ): ReadableStream<Uint8Array> {
   const maxPendingLimit = resolveSseMaxPendingLimit(sseOptions);
   let pendingChars = 0;
+  let nextAutoId = prefetched ? prefetched.nextAutoId : 1;
+
+  const formatWithAutoId = (event: unknown): Uint8Array => {
+    const isStructured =
+      typeof event === "object" &&
+      event !== null &&
+      ("data" in event || "comment" in event);
+    const ev = isStructured ? (event as SseMessageEvent) : { data: event };
+    const hasData = ev.data !== undefined || ev.comment === undefined;
+    const autoId =
+      ev.id === undefined && hasData ? nextAutoId++ : undefined;
+    return textEncoder.encode(formatSseEvent(event as SseMessageEvent, autoId));
+  };
 
   const enqueueWithBackpressure = (
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -325,6 +367,7 @@ function createSseStream(
       if (reader) {
         void reader.cancel().catch(() => {});
       }
+      onEnd?.();
     };
 
     let streamController:
@@ -374,15 +417,20 @@ function createSseStream(
           } else {
             enqueueWithBackpressure(
               controller,
-              textEncoder.encode(formatSseEvent(value as SseMessageEvent)),
+              formatWithAutoId(value),
               cleanup,
             );
           }
         } catch (err) {
-          cleanup();
           if (!signal.aborted) {
-            controller.error(err);
+            try {
+              controller.enqueue(formatSseErrorEvent(err));
+              controller.close();
+            } catch {
+              // Already closed
+            }
           }
+          cleanup();
         }
       },
       cancel() {
@@ -391,8 +439,11 @@ function createSseStream(
     });
   }
 
-  if (isAsyncIterable(source)) {
-    let iterator: AsyncIterator<unknown> | undefined;
+  if (prefetched || isAsyncIterable(source)) {
+    let iterator: AsyncIterator<unknown> | undefined = prefetched?.iterator;
+    let firstChunk: Uint8Array | undefined = prefetched?.firstChunk;
+    let pendingFirstStep: Promise<IteratorResult<unknown>> | undefined =
+      prefetched?.pendingFirstStep;
     let cleanedUp = false;
     let streamController:
       ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -404,6 +455,7 @@ function createSseStream(
       if (iterator && typeof iterator.return === "function") {
         void Promise.resolve(iterator.return()).catch(() => {});
       }
+      onEnd?.();
     };
 
     const onAbort = () => {
@@ -418,12 +470,19 @@ function createSseStream(
     return new ReadableStream<Uint8Array>({
       start(controller) {
         streamController = controller;
-        iterator = source[Symbol.asyncIterator]();
+        if (!iterator && isAsyncIterable(source)) {
+          iterator = source[Symbol.asyncIterator]();
+        }
         if (signal.aborted) {
           onAbort();
           return;
         }
         signal.addEventListener("abort", onAbort, { once: true });
+        if (firstChunk !== undefined) {
+          const chunk = firstChunk;
+          firstChunk = undefined;
+          enqueueWithBackpressure(controller, chunk, cleanup);
+        }
       },
       async pull(controller) {
         if (cleanedUp || signal.aborted || !iterator) {
@@ -436,7 +495,10 @@ function createSseStream(
           return;
         }
         try {
-          const step = await iterator.next();
+          const step = pendingFirstStep
+            ? await pendingFirstStep
+            : await iterator.next();
+          pendingFirstStep = undefined;
           if (step.done || cleanedUp || signal.aborted) {
             cleanup();
             try {
@@ -446,16 +508,18 @@ function createSseStream(
             }
             return;
           }
-          enqueueWithBackpressure(
-            controller,
-            textEncoder.encode(formatSseEvent(step.value as SseMessageEvent)),
-            cleanup,
-          );
+          const formatted = formatWithAutoId(step.value);
+          enqueueWithBackpressure(controller, formatted, cleanup);
         } catch (err) {
-          cleanup();
           if (!signal.aborted) {
-            controller.error(err);
+            try {
+              controller.enqueue(formatSseErrorEvent(err));
+              controller.close();
+            } catch {
+              // Already closed
+            }
           }
+          cleanup();
         }
       },
       cancel() {
@@ -477,6 +541,7 @@ function createSseStream(
           // Ignore cleanup errors
         }
       }
+      onEnd?.();
     };
 
     return new ReadableStream<Uint8Array>({
@@ -486,15 +551,25 @@ function createSseStream(
           controller.close();
           return;
         }
-        const step = iterator.next();
-        if (step.done) {
+        try {
+          const step = iterator.next();
+          if (step.done) {
+            cleanup();
+            controller.close();
+            return;
+          }
+          controller.enqueue(
+            textEncoder.encode(formatSseEvent(step.value as SseMessageEvent)),
+          );
+        } catch (err) {
+          try {
+            controller.enqueue(formatSseErrorEvent(err));
+            controller.close();
+          } catch {
+            // Already closed
+          }
           cleanup();
-          controller.close();
-          return;
         }
-        controller.enqueue(
-          textEncoder.encode(formatSseEvent(step.value as SseMessageEvent)),
-        );
       },
       cancel() {
         cleanup();
@@ -511,6 +586,7 @@ function createSseStream(
         );
       }
       controller.close();
+      onEnd?.();
     },
   });
 }
@@ -578,10 +654,17 @@ export function serializeResponse(
         Connection: "keep-alive",
       },
     );
+    // SSE always enforces text/event-stream Content-Type over @Header() or interceptor overrides
+    headers.set("Content-Type", "text/event-stream; charset=utf-8");
     if (isEmptyBodyStatus(status, reqMethod)) {
       return new Response(null, { status, headers });
     }
-    const stream = createSseStream(value, ctx.signal, route.sseOptions);
+    const stream = createSseStream(
+      value,
+      ctx.signal,
+      route.sseOptions,
+      () => ctx.abortSseSignal(),
+    );
     return new Response(stream, { status, headers });
   }
 
@@ -601,6 +684,13 @@ export function serializeResponse(
       fileHeaders.type,
       extraDefaults,
     );
+    const forceChunked =
+      headers.get("transfer-encoding")?.toLowerCase().includes("chunked") ??
+      false;
+    if (forceChunked) {
+      headers.delete("content-length");
+      headers.delete("transfer-encoding");
+    }
     if (isEmptyBodyStatus(status, reqMethod)) {
       const src = value.getSource();
       if (src instanceof ReadableStream) {
@@ -608,7 +698,26 @@ export function serializeResponse(
       }
       return new Response(null, { status, headers });
     }
-    return new Response(value.getStream(), { status, headers });
+    const rawStream = value.getStream();
+    if (forceChunked) {
+      const reader = rawStream.getReader();
+      const chunkedStream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          const step = await reader.read();
+          if (step.done) {
+            await new Promise((r) => setTimeout(r, 0));
+            controller.close();
+            return;
+          }
+          controller.enqueue(step.value);
+        },
+        cancel() {
+          void reader.cancel().catch(() => {});
+        },
+      });
+      return new Response(chunkedStream, { status, headers });
+    }
+    return new Response(rawStream, { status, headers });
   }
 
   // Priority 4: ReadableStream
@@ -700,7 +809,7 @@ export function serializeResponse(
     if (isEmptyBodyStatus(status, reqMethod)) {
       return new Response(null, { status, headers });
     }
-    return new Response(value, { status, headers });
+    return createBufferedOrChunkedResponse(value, status, headers);
   }
 
   // Priority 9: number or boolean
@@ -723,7 +832,11 @@ export function serializeResponse(
     if (isEmptyBodyStatus(status, reqMethod)) {
       return new Response(null, { status, headers });
     }
-    return new Response(JSON.stringify(value), { status, headers });
+    return createBufferedOrChunkedResponse(
+      JSON.stringify(value),
+      status,
+      headers,
+    );
   }
 
   // Priority 10: Plain object / Array / Class instance (JSON)
@@ -765,5 +878,516 @@ export function serializeResponse(
   if (isEmptyBodyStatus(status, reqMethod)) {
     return new Response(null, { status, headers });
   }
-  return new Response(serialized, { status, headers });
+  return createBufferedOrChunkedResponse(serialized, status, headers);
+}
+
+function createBufferedOrChunkedResponse(
+  body: string | Uint8Array,
+  status: number,
+  headers: Headers,
+): Response {
+  const te = headers.get("transfer-encoding");
+  if (te && te.toLowerCase().includes("chunked")) {
+    headers.delete("content-length");
+    headers.delete("transfer-encoding");
+    const bytes = typeof body === "string" ? textEncoder.encode(body) : body;
+    let sent = false;
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (!sent) {
+          sent = true;
+          if (bytes.byteLength > 0) {
+            controller.enqueue(bytes);
+          }
+        } else {
+          await new Promise((r) => setTimeout(r, 0));
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, { status, headers });
+  }
+  return new Response(body, { status, headers });
+}
+
+function isBinaryChunk(chunk: unknown): chunk is Uint8Array | ArrayBuffer | ArrayBufferView {
+  return (
+    chunk instanceof Uint8Array ||
+    chunk instanceof ArrayBuffer ||
+    ArrayBuffer.isView(chunk)
+  );
+}
+
+function inferStreamContentType(firstChunk: unknown): string {
+  if (typeof firstChunk === "string") {
+    return "text/plain; charset=utf-8";
+  }
+  if (isBinaryChunk(firstChunk)) {
+    return "application/octet-stream";
+  }
+  return "application/x-ndjson";
+}
+
+function encodeStreamChunk(chunk: unknown): Uint8Array {
+  if (chunk === undefined) {
+    return new Uint8Array(0);
+  }
+  if (chunk instanceof Uint8Array) {
+    return chunk;
+  }
+  if (chunk instanceof ArrayBuffer) {
+    return new Uint8Array(chunk);
+  }
+  if (ArrayBuffer.isView(chunk)) {
+    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+  if (typeof chunk === "string") {
+    return textEncoder.encode(chunk);
+  }
+  return textEncoder.encode(`${JSON.stringify(chunk)}\n`);
+}
+
+const ABORTED_SENTINEL = Symbol("aborted");
+const PENDING_SENTINEL = Symbol("pending");
+
+function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T | typeof ABORTED_SENTINEL> {
+  if (signal.aborted) {
+    return Promise.resolve(ABORTED_SENTINEL);
+  }
+  return new Promise<T | typeof ABORTED_SENTINEL>((resolve, reject) => {
+    const onAbort = () => {
+      resolve(ABORTED_SENTINEL);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (val) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(val);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+function createResumedReaderStream(
+  firstBytes: Uint8Array,
+  reader: {
+    read(): Promise<{ done: boolean; value?: unknown }>;
+    cancel(): Promise<void>;
+  },
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
+  let sentFirst = false;
+  let cleanedUp = false;
+  let streamController:
+    | ReadableStreamDefaultController<Uint8Array>
+    | undefined;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    signal.removeEventListener("abort", onAbort);
+    void reader.cancel().catch(() => {});
+  };
+
+  const onAbort = () => {
+    cleanup();
+    try {
+      streamController?.close();
+    } catch {
+      // Already closed
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (!sentFirst) {
+        sentFirst = true;
+        if (firstBytes.byteLength > 0) {
+          controller.enqueue(firstBytes);
+        }
+        return;
+      }
+      if (cleanedUp || signal.aborted) {
+        cleanup();
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
+        return;
+      }
+      try {
+        const step = await reader.read();
+        if (step.done || cleanedUp || signal.aborted) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            // Already closed
+          }
+          return;
+        }
+        const bytes = encodeStreamChunk(step.value);
+        if (bytes.byteLength > 0) {
+          controller.enqueue(bytes);
+        }
+      } catch (err) {
+        cleanedUp = true;
+        signal.removeEventListener("abort", onAbort);
+        void reader.cancel().catch(() => {});
+        // Allow Bun.serve to flush any already-enqueued first chunk before aborting the stream
+        await new Promise((r) => setTimeout(r, 5));
+        try {
+          controller.error(err);
+        } catch {
+          // Already closed
+        }
+      }
+    },
+    cancel() {
+      cleanup();
+    },
+  });
+}
+
+function createResumedAsyncIteratorStream(
+  firstBytes: Uint8Array,
+  iterator: AsyncIterator<unknown>,
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
+  let sentFirst = false;
+  let cleanedUp = false;
+  let streamController:
+    | ReadableStreamDefaultController<Uint8Array>
+    | undefined;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    signal.removeEventListener("abort", onAbort);
+    if (typeof iterator.return === "function") {
+      void Promise.resolve(iterator.return()).catch(() => {});
+    }
+  };
+
+  const onAbort = () => {
+    cleanup();
+    try {
+      streamController?.close();
+    } catch {
+      // Already closed
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (!sentFirst) {
+        sentFirst = true;
+        if (firstBytes.byteLength > 0) {
+          controller.enqueue(firstBytes);
+        }
+        return;
+      }
+      if (cleanedUp || signal.aborted) {
+        cleanup();
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
+        return;
+      }
+      try {
+        while (true) {
+          const step = await iterator.next();
+          if (step.done || cleanedUp || signal.aborted) {
+            cleanup();
+            try {
+              controller.close();
+            } catch {
+              // Already closed
+            }
+            return;
+          }
+          const bytes = encodeStreamChunk(step.value);
+          if (bytes.byteLength > 0) {
+            controller.enqueue(bytes);
+            return;
+          }
+        }
+      } catch (err) {
+        cleanup();
+        try {
+          controller.error(err);
+        } catch {
+          // Already closed
+        }
+      }
+    },
+    cancel() {
+      cleanup();
+    },
+  });
+}
+
+/**
+ * Async-capable response serializer used by the HTTP execution pipeline.
+ * Returns a `Response` synchronously for non-streaming values (zero overhead),
+ * and returns a `Promise<Response>` for streaming values (`Response` with body,
+ * `StreamableFile`, `ReadableStream`, `AsyncIterable`, `@Sse()`) so pre-first-chunk
+ * errors route through NestJS exception filters before HTTP headers are committed.
+ */
+export function serializeResponseMaybeAsync(
+  value: unknown,
+  route: RouteResponseMeta,
+  ctx: RequestContext,
+): Response | Promise<Response> {
+  const reqMethod = ctx.request.method;
+
+  // 1. Native Response with ReadableStream body: pre-pull first chunk to catch pre-commit errors
+  if (value instanceof Response) {
+    const merged = mergeHeadersOntoNativeResponse(value, ctx, route.headers);
+    if (
+      merged.body === null ||
+      isEmptyBodyStatus(merged.status, reqMethod)
+    ) {
+      return merged;
+    }
+    return (async () => {
+      const reader = merged.body!.getReader();
+      const first = await raceWithAbort(reader.read(), ctx.signal);
+      if (first === ABORTED_SENTINEL) {
+        void reader.cancel().catch(() => {});
+        return new Response(null, { status: merged.status, headers: merged.headers });
+      }
+      if (first.done) {
+        return new Response(null, { status: merged.status, headers: merged.headers });
+      }
+      const firstBytes = encodeStreamChunk(first.value);
+      const resumed = createResumedReaderStream(firstBytes, reader, ctx.signal);
+      return new Response(resumed, {
+        status: merged.status,
+        statusText: merged.statusText,
+        headers: merged.headers,
+      });
+    })();
+  }
+
+  const hasResCtx = ctx.hasResponseContext();
+  const dynamicStatus = hasResCtx ? ctx.responseContext.getStatus() : undefined;
+  const status =
+    dynamicStatus ??
+    route.httpCode ??
+    getDefaultStatusForMethod(route.method, reqMethod);
+
+  // 2. @Sse() with AsyncIterable: opportunistically check if first event is immediately ready
+  //    so synchronous/immediate serialization errors (e.g. BigInt) return 500 JSON before committing SSE headers
+  if (
+    route.isSse &&
+    !isEmptyBodyStatus(status, reqMethod) &&
+    isAsyncIterable(value)
+  ) {
+    return (async () => {
+      const headers = buildMergedHeaders(
+        ctx,
+        route.headers,
+        "text/event-stream; charset=utf-8",
+        {
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      );
+      headers.set("Content-Type", "text/event-stream; charset=utf-8");
+
+      const iterator = value[Symbol.asyncIterator]();
+      const firstStepPromise = iterator.next();
+      const raced = await Promise.race([
+        firstStepPromise,
+        new Promise<typeof PENDING_SENTINEL>((resolve) =>
+          setTimeout(() => resolve(PENDING_SENTINEL), 0),
+        ),
+      ]);
+
+      if (raced === PENDING_SENTINEL) {
+        const stream = createSseStream(
+          value,
+          ctx.signal,
+          route.sseOptions,
+          () => ctx.abortSseSignal(),
+          { iterator, pendingFirstStep: firstStepPromise, nextAutoId: 1 },
+        );
+        return new Response(stream, { status, headers });
+      }
+
+      if (raced.done) {
+        ctx.abortSseSignal();
+        return new Response(null, { status, headers });
+      }
+
+      // Format first event before committing HTTP 200 SSE headers
+      let firstChunk: Uint8Array;
+      let nextAutoId = 1;
+      try {
+        const ev =
+          typeof raced.value === "object" &&
+          raced.value !== null &&
+          ("data" in raced.value || "comment" in raced.value)
+            ? (raced.value as SseMessageEvent)
+            : { data: raced.value };
+        const hasData = ev.data !== undefined || ev.comment === undefined;
+        const autoId = ev.id === undefined && hasData ? nextAutoId++ : undefined;
+        firstChunk = textEncoder.encode(
+          formatSseEvent(raced.value as SseMessageEvent, autoId),
+        );
+      } catch (err) {
+        if (typeof iterator.return === "function") {
+          void Promise.resolve(iterator.return()).catch(() => {});
+        }
+        ctx.abortSseSignal();
+        if (err instanceof HttpException) throw err;
+        throw new InternalServerErrorException("Failed to serialize SSE event", {
+          cause: err,
+        });
+      }
+
+      const stream = createSseStream(
+        value,
+        ctx.signal,
+        route.sseOptions,
+        () => ctx.abortSseSignal(),
+        { iterator, firstChunk, nextAutoId },
+      );
+      return new Response(stream, { status, headers });
+    })();
+  }
+
+  // 3. StreamableFile wrapping a BunFile: verify file exists before committing 200 headers
+  if (value instanceof StreamableFile) {
+    const src = value.getSource();
+    if (
+      src &&
+      typeof (src as unknown as { exists?: () => Promise<boolean> }).exists ===
+        "function"
+    ) {
+      return (async () => {
+        const exists = await (
+          src as unknown as { exists: () => Promise<boolean> }
+        ).exists();
+        if (!exists) {
+          throw new NotFoundException("File not found");
+        }
+        return serializeResponse(value, route, ctx);
+      })();
+    }
+    return serializeResponse(value, route, ctx);
+  }
+
+  // 4. Non-SSE ReadableStream: pre-pull first chunk, infer Content-Type, catch pre-commit errors
+  if (!route.isSse && value instanceof ReadableStream) {
+    if (isEmptyBodyStatus(status, reqMethod)) {
+      void value.cancel().catch(() => {});
+      const headers = buildMergedHeaders(
+        ctx,
+        route.headers,
+        "application/octet-stream",
+      );
+      return new Response(null, { status, headers });
+    }
+    if (value.locked) {
+      throw new InternalServerErrorException("ReadableStream is already locked");
+    }
+    return (async () => {
+      const reader = value.getReader();
+      const first = await raceWithAbort(reader.read(), ctx.signal);
+      if (first === ABORTED_SENTINEL) {
+        void reader.cancel().catch(() => {});
+        const headers = buildMergedHeaders(
+          ctx,
+          route.headers,
+          "application/octet-stream",
+        );
+        return new Response(null, { status, headers });
+      }
+      if (first.done) {
+        const headers = buildMergedHeaders(
+          ctx,
+          route.headers,
+          "application/octet-stream",
+        );
+        return new Response(null, { status, headers });
+      }
+      const defaultCt = inferStreamContentType(first.value);
+      const headers = buildMergedHeaders(ctx, route.headers, defaultCt);
+      const firstBytes = encodeStreamChunk(first.value);
+      const resumed = createResumedReaderStream(firstBytes, reader, ctx.signal);
+      return new Response(resumed, { status, headers });
+    })();
+  }
+
+  // 5. Non-SSE AsyncIterable / AsyncGenerator: pre-pull first item, infer Content-Type, stream
+  if (
+    !route.isSse &&
+    !route.redirect &&
+    !(value instanceof Blob) &&
+    !isBinaryChunk(value) &&
+    isAsyncIterable(value)
+  ) {
+    if (isEmptyBodyStatus(status, reqMethod)) {
+      const headers = buildMergedHeaders(
+        ctx,
+        route.headers,
+        "application/octet-stream",
+      );
+      return new Response(null, { status, headers });
+    }
+    return (async () => {
+      const iterator = value[Symbol.asyncIterator]();
+      const first = await raceWithAbort(iterator.next(), ctx.signal);
+      if (first === ABORTED_SENTINEL) {
+        if (typeof iterator.return === "function") {
+          void Promise.resolve(iterator.return()).catch(() => {});
+        }
+        const headers = buildMergedHeaders(ctx, route.headers);
+        return new Response(null, { status, headers });
+      }
+      if (first.done) {
+        const headers = buildMergedHeaders(ctx, route.headers);
+        return new Response(null, { status, headers });
+      }
+      const defaultCt = inferStreamContentType(first.value);
+      const headers = buildMergedHeaders(ctx, route.headers, defaultCt);
+      const firstBytes = encodeStreamChunk(first.value);
+      const resumed = createResumedAsyncIteratorStream(
+        firstBytes,
+        iterator,
+        ctx.signal,
+      );
+      return new Response(resumed, { status, headers });
+    })();
+  }
+
+  return serializeResponse(value, route, ctx);
 }

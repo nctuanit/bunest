@@ -83,8 +83,7 @@ describeConformance(
       expect(formatted).toBe("id: the-id\nretry: 0\ndata: hello\n\n");
     });
 
-    // BUNEST_BUG: createSseStream / formatSseEvent does not auto-generate monotonic event ids when MessageEvent.id is omitted (packages/core/src/http/pipeline/response-serializer.ts:87-116).
-    it.skip("auto-generates monotonic event ids when omitted", () => {
+    it("auto-generates monotonic event ids when omitted", () => {
       async function* gen() {
         yield { data: "first" };
         yield { data: "second" };
@@ -179,8 +178,7 @@ describeConformance(
       "ResponseContext + @Header merge",
     );
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header() or ResponseContext.header('Content-Type', ...) overrides it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
-    it.skip("keeps the event stream content type over an additional one", () => {
+    it("keeps the event stream content type over an additional one", () => {
       const ctx = createSseCtx();
       ctx.responseContext.header("Content-Type", "application/json");
       const res = serializeResponse(

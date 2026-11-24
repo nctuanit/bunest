@@ -650,8 +650,7 @@ describeConformance(
         expect(events.map((e) => e.data)).toEqual(["1", "0", "true"]);
       });
 
-      // BUNEST_BUG: formatSseEvent throws uncaught TypeError on BigInt inside ReadableStream.pull() causing ECONNRESET instead of emitting `event: error` and closing cleanly (packages/core/src/http/pipeline/response-serializer.ts:108, 434).
-      it.skip("should send an error event and end the stream when a later event cannot be serialized", async () => {
+      it("should send an error event and end the stream when a later event cannot be serialized", async () => {
         const response = await fetch(`${app.getUrl()}sse/unserializable`, {
           signal: AbortSignal.timeout(2000),
         });
@@ -662,8 +661,7 @@ describeConformance(
         expect(body).not.toContain('data: {"n":3}');
       });
 
-      // BUNEST_BUG: createSseStream commits HTTP 200 text/event-stream headers before pulling/serializing the first event, so a BigInt serialization failure causes ECONNRESET instead of HTTP 500 JSON (packages/core/src/http/pipeline/response-serializer.ts:108, 434, 554-569).
-      it.skip("should return an error status when the first event cannot be serialized", async () => {
+      it("should return an error status when the first event cannot be serialized", async () => {
         const response = await fetch(
           `${app.getUrl()}sse/unserializable-first`,
           { signal: AbortSignal.timeout(2000) },
@@ -936,8 +934,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: @SseSignal() injects raw ctx.signal (req.signal) without a stream-lifecycle AbortController, so it never aborts when an SSE stream completes naturally (packages/core/src/http/pipeline/param-extractor.ts:201-202, packages/core/src/http/pipeline/response-serializer.ts:567).
-      it.skip("aborts the signal once a stream that runs to completion has ended", async () => {
+      it("aborts the signal once a stream that runs to completion has ended", async () => {
         const base = app.getUrl()!;
         const response = await fetch(`${base}sse/signal/completing`, {
           headers: { accept: "text/event-stream" },

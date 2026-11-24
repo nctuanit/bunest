@@ -28,6 +28,7 @@ import {
   type RequestContext,
   requestContextStorage,
 } from "../context/request-context";
+import { HttpResponseContext } from "../context/response-context";
 import type {
   HttpRuntimeBridge,
   RequestScopeContainer,
@@ -60,6 +61,7 @@ import {
 import {
   mergeHeadersOntoNativeResponse,
   serializeResponse,
+  serializeResponseMaybeAsync,
 } from "./response-serializer";
 
 export type MiddlewareEntry =
@@ -178,7 +180,8 @@ function serializeFastOrFull(
   value: unknown,
   compiled: CompiledRoute,
   ctx: RequestContext,
-): Response {
+  runtime?: PipelineRuntimeConfig,
+): Response | Promise<Response> {
   if (
     compiled.isStandardResponse &&
     !ctx.hasResponseContext() &&
@@ -208,7 +211,11 @@ function serializeFastOrFull(
       }
     }
   }
-  return serializeResponse(value, compiled.route, ctx);
+  const out = serializeResponseMaybeAsync(value, compiled.route, ctx);
+  if (runtime && isThenable(out)) {
+    return out.catch((err) => handleFastError(err, compiled, ctx, runtime));
+  }
+  return out;
 }
 
 function handleFastError(
@@ -247,31 +254,33 @@ async function runSingleArgAsync(
   try {
     let val = isThenable(extracted) ? await extracted : extracted;
 
-    const delegatedToPipe =
-      (!param.skipHigherScopePipes &&
-        hasStandardSchemaValidationPipe(sharedPipes)) ||
-      hasStandardSchemaValidationPipe(paramPipes);
+    if (!(val instanceof HttpResponseContext)) {
+      const delegatedToPipe =
+        (!param.skipHigherScopePipes &&
+          hasStandardSchemaValidationPipe(sharedPipes)) ||
+        hasStandardSchemaValidationPipe(paramPipes);
 
-    if (param.schema && !delegatedToPipe) {
-      val = await runInlineStandardSchema(param.schema, val, param.metadata);
-    }
+      if (param.schema && !delegatedToPipe) {
+        val = await runInlineStandardSchema(param.schema, val, param.metadata);
+      }
 
-    if (!param.skipHigherScopePipes && sharedPipes.length > 0) {
-      for (let i = 0; i < sharedPipes.length; i++) {
-        const pipe = sharedPipes[i];
-        if (pipe) {
-          const transformed = pipe.transform(val, param.metadata);
-          val = isThenable(transformed) ? await transformed : transformed;
+      if (!param.skipHigherScopePipes && sharedPipes.length > 0) {
+        for (let i = 0; i < sharedPipes.length; i++) {
+          const pipe = sharedPipes[i];
+          if (pipe) {
+            const transformed = pipe.transform(val, param.metadata);
+            val = isThenable(transformed) ? await transformed : transformed;
+          }
         }
       }
-    }
 
-    if (paramPipes.length > 0) {
-      for (let i = 0; i < paramPipes.length; i++) {
-        const pipe = paramPipes[i];
-        if (pipe) {
-          const transformed = pipe.transform(val, param.metadata);
-          val = isThenable(transformed) ? await transformed : transformed;
+      if (paramPipes.length > 0) {
+        for (let i = 0; i < paramPipes.length; i++) {
+          const pipe = paramPipes[i];
+          if (pipe) {
+            const transformed = pipe.transform(val, param.metadata);
+            val = isThenable(transformed) ? await transformed : transformed;
+          }
         }
       }
     }
@@ -284,7 +293,7 @@ async function runSingleArgAsync(
       result = await result;
     }
 
-    return serializeFastOrFull(result, compiled, ctx);
+    return await serializeFastOrFull(result, compiled, ctx, runtime);
   } catch (err) {
     return handleFastError(err, compiled, ctx, runtime);
   }
@@ -328,7 +337,7 @@ async function runMultiArgAsync(
       result = await result;
     }
 
-    return serializeFastOrFull(result, compiled, ctx);
+    return await serializeFastOrFull(result, compiled, ctx, runtime);
   } catch (err) {
     return handleFastError(err, compiled, ctx, runtime);
   }
@@ -360,10 +369,10 @@ export function executeFastSingletonRoute(
         );
         if (isThenable(result)) {
           return Promise.resolve(result)
-            .then((val) => serializeFastOrFull(val, compiled, ctx))
+            .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
             .catch((err) => handleFastError(err, compiled, ctx, runtime));
         }
-        return serializeFastOrFull(result, compiled, ctx);
+        return serializeFastOrFull(result, compiled, ctx, runtime);
       }
 
       // 1-arg route fast path (e.g. GET /users/:id, POST /users, POST /users/validated)
@@ -398,10 +407,10 @@ export function executeFastSingletonRoute(
           );
           if (isThenable(result)) {
             return Promise.resolve(result)
-              .then((val) => serializeFastOrFull(val, compiled, ctx))
+              .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
               .catch((err) => handleFastError(err, compiled, ctx, runtime));
           }
-          return serializeFastOrFull(result, compiled, ctx);
+          return serializeFastOrFull(result, compiled, ctx, runtime);
         }
 
         return runSingleArgAsync(
@@ -976,9 +985,14 @@ async function executeFullCompiledRoute(
               route.handlerKey
             ] as (...a: unknown[]) => unknown);
 
-          return await handlerMethod.apply(controllerInstance, args);
+          const rawResult = await handlerMethod.apply(controllerInstance, args);
+          if (rawResult instanceof Response) {
+            innerHandlerResponse = rawResult;
+          }
+          return rawResult;
         };
 
+        let innerHandlerResponse: Response | undefined;
         let handlerResult: unknown;
         if (interceptors.length === 0) {
           handlerResult = await executeInnerStages();
@@ -996,6 +1010,31 @@ async function executeFullCompiledRoute(
             };
           }
           handlerResult = await nextHandler.handle();
+        }
+
+        // Preserve status & headers if an interceptor wrapped the handler's native Response (e.g. `{ data: response }`)
+        if (
+          innerHandlerResponse &&
+          !(handlerResult instanceof Response) &&
+          handlerResult !== null &&
+          typeof handlerResult === "object"
+        ) {
+          const vals = Object.values(handlerResult as Record<string, unknown>);
+          if (vals.includes(innerHandlerResponse)) {
+            if (ctx.responseContext.getStatus() === undefined) {
+              ctx.responseContext.status(innerHandlerResponse.status);
+            }
+            const existingHeaders = ctx.responseContext.getHeadersIfInitialized();
+            innerHandlerResponse.headers.forEach((v, k) => {
+              if (k.toLowerCase() === "content-type") return;
+              if (!existingHeaders || !existingHeaders.has(k)) {
+                ctx.responseContext.header(k, v);
+              }
+            });
+            if (innerHandlerResponse.body) {
+              void innerHandlerResponse.body.cancel().catch(() => {});
+            }
+          }
         }
 
         // Stage 11: Response Serialization (ADR-010) + optional @Render() + Security Headers
@@ -1023,7 +1062,11 @@ async function executeFullCompiledRoute(
           );
           response = serializeResponse(html, route, ctx);
         } else {
-          response = serializeResponse(handlerResult, route, ctx);
+          response = await serializeResponseMaybeAsync(
+            handlerResult,
+            route,
+            ctx,
+          );
         }
         return await finalizeResponse(response);
       });

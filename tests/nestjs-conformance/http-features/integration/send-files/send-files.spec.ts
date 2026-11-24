@@ -244,8 +244,7 @@ describeConformance(
       await request(app).get("/file/not/exist").expect(400);
     });
 
-    // BUNEST_BUG: serializeResponse wraps StreamableFile(Bun.file('missing')).getStream() directly into a 200 Response without pre-checking file existence or invoking errorHandler/exception filters, causing mid-stream ENOENT / ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:572-595).
-    it.skip("should return an error status when StreamableFile wraps a non-existent BunFile", async () => {
+    it("should return an error status when StreamableFile wraps a non-existent BunFile", async () => {
       await app.listen(0, "127.0.0.1");
       const res = await fetch(`${app.getUrl()}file/not/exist/stream`);
       expect(res.status).toBeGreaterThanOrEqual(400);

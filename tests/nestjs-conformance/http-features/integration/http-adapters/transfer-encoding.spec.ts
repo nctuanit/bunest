@@ -110,8 +110,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: serializeResponse builds a buffered string Response for JSON objects even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve ignores the hop-by-hop Transfer-Encoding header and emits Content-Length instead of chunked framing (packages/core/src/http/pipeline/response-serializer.ts:645-749).
-    it.skip("should leave out the Content-Length for an object", async () => {
+    it("should leave out the Content-Length for an object", async () => {
       const res = await request(app.getUrl()!).get("/chunked/object");
 
       expect(res.status).toBe(200);
@@ -120,8 +119,7 @@ describeConformance(
       expect(res.body).toEqual({ hello: "world" });
     });
 
-    // BUNEST_BUG: serializeResponse builds a buffered string Response for text even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve strips Transfer-Encoding and sends Content-Length (packages/core/src/http/pipeline/response-serializer.ts:645-749).
-    it.skip("should leave out the Content-Length for a string", async () => {
+    it("should leave out the Content-Length for a string", async () => {
       const res = await request(app.getUrl()!).get("/chunked/text");
 
       expect(res.status).toBe(200);
@@ -130,8 +128,7 @@ describeConformance(
       expect(res.text).toBe("plain");
     });
 
-    // BUNEST_BUG: serializeResponse sets StreamableFile's Content-Length even when @Header('Transfer-Encoding', 'chunked') is explicitly declared, causing Bun.serve to emit Content-Length instead of chunked framing (packages/core/src/http/pipeline/response-serializer.ts:572-595).
-    it.skip("should leave out the Content-Length of a stream that has one", async () => {
+    it("should leave out the Content-Length of a stream that has one", async () => {
       const res = await request(app.getUrl()!).get("/chunked/stream");
 
       expect(res.status).toBe(200);

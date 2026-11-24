@@ -115,6 +115,7 @@ export class RequestContext {
   private maxBodyBytes?: number;
 
   private _responseContext?: HttpResponseContext;
+  private _sseAbortController?: AbortController;
   private _corsHeaders?: Headers;
   private _pathname?: string;
   private _params?: Record<string, string>;
@@ -183,6 +184,28 @@ export class RequestContext {
 
   get signal(): AbortSignal {
     return this.request.signal;
+  }
+
+  getSseSignal(): AbortSignal {
+    if (!this._sseAbortController) {
+      const ac = new AbortController();
+      this._sseAbortController = ac;
+      const reqSignal = this.request.signal;
+      if (reqSignal.aborted) {
+        ac.abort(reqSignal.reason);
+      } else {
+        reqSignal.addEventListener("abort", () => ac.abort(reqSignal.reason), {
+          once: true,
+        });
+      }
+    }
+    return this._sseAbortController.signal;
+  }
+
+  abortSseSignal(): void {
+    if (this._sseAbortController && !this._sseAbortController.signal.aborted) {
+      this._sseAbortController.abort();
+    }
   }
 
   get params(): Record<string, string> {

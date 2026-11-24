@@ -180,8 +180,7 @@ describeConformance(
       expect(response.headers.get("x-handler")).toBe("set");
     });
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so an interceptor's res.header('Content-Type', 'application/json') overwrites it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
-    it.skip("keeps the event stream content type over one that an interceptor sets", async () => {
+    it("keeps the event stream content type over one that an interceptor sets", async () => {
       const response = await openStream("content-type");
       expect(response.headers.get("content-type")).toContain(
         "text/event-stream",
@@ -199,8 +198,7 @@ describeConformance(
       expect(response.headers.get("x-async-handler")).toBe("set");
     });
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header('Content-Type', 'application/json') overwrites it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
-    it.skip("keeps the event stream content type over one set with @Header()", async () => {
+    it("keeps the event stream content type over one set with @Header()", async () => {
       const response = await openStream("header-content-type");
       expect(response.headers.get("content-type")).toContain(
         "text/event-stream",
