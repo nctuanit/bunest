@@ -74,8 +74,7 @@ describeConformance(
       await Promise.all(modules.splice(0).map((m) => m.close()));
     });
 
-    // BUNEST_BUG: HealthCheckAttempt.resolveSuccessData() in packages/observability/src/health/health-indicator.service.ts:394-406 returns sanitized attempt() return values without emitting the deprecated-return-value warnOnce() warning (expected Logger.prototype.warn to be called with indicator key and "HealthIndicatorService", received 0 calls).
-    it.skip("should log the warnings with the Nest logger by default", async () => {
+    it("should log the warnings with the Nest logger by default", async () => {
       const module = await compile({
         imports: [TerminusModule.forRoot()],
       });
@@ -98,8 +97,7 @@ describeConformance(
       expect(nestWarn).not.toHaveBeenCalled();
     });
 
-    // BUNEST_BUG: HealthCheckAttempt.resolveSuccessData() in packages/observability/src/health/health-indicator.service.ts:394-406 does not emit the deprecated-return-value warnOnce() warning (expected CustomLogger.warn to be called with indicator key and "HealthIndicatorService", received 0 calls).
-    it.skip("should log the warnings with a custom logger", async () => {
+    it("should log the warnings with a custom logger", async () => {
       const module = await compile({
         imports: [TerminusModule.forRoot({ logger: CustomLogger })],
       });
@@ -115,8 +113,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: HealthCheckAttempt.resolveSuccessData() in packages/observability/src/health/health-indicator.service.ts:394-406 does not emit the deprecated-return-value warnOnce() warning (expected async CustomLogger.warn to be called with indicator key and "HealthIndicatorService", received 0 calls).
-    it.skip("should log the warnings with a custom logger from forRootAsync", async () => {
+    it("should log the warnings with a custom logger from forRootAsync", async () => {
       const logger = new CustomLogger();
       const module = await compile({
         imports: [

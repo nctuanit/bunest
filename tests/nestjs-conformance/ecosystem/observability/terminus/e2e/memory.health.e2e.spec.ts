@@ -63,8 +63,7 @@ describeConformance(
     });
 
     describe("#checkHeap", () => {
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() attaches extra heapUsedBytes/thresholdBytes fields via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("should check if the rss threshold is not exceeded", async () => {
+      it("should check if the rss threshold is not exceeded", async () => {
         ctx = await createMemoryHealthApp(({ healthCheck, memory }) =>
           healthCheck.check([
             async () => {
@@ -86,8 +85,7 @@ describeConformance(
         expect(body.details).toEqual(details);
       });
 
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() attaches extra heapUsedBytes/thresholdBytes fields via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("should check if the heap threshold is not exceeded", async () => {
+      it("should check if the heap threshold is not exceeded", async () => {
         ctx = await createMemoryHealthApp(({ healthCheck, memory }) =>
           healthCheck.check([
             async () =>
@@ -107,8 +105,7 @@ describeConformance(
         expect(body.details).toEqual(details);
       });
 
-      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) MemoryHealthIndicator.checkHeap() attaches extra heapUsedBytes/thresholdBytes fields and throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" instead of "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("should check if correctly displays a heap exceeded error", async () => {
+      it("should check if correctly displays a heap exceeded error", async () => {
         ctx = await createMemoryHealthApp(({ healthCheck, memory }) =>
           healthCheck.check([async () => memory.checkHeap("memory_heap", 0)]),
         );
@@ -131,8 +128,7 @@ describeConformance(
     });
 
     describe("#checkHeap builders", () => {
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() attaches extra heapUsedBytes/thresholdBytes fields and throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" instead of "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("should be degraded, not down, with degradedOnFailure()", async () => {
+      it("should be degraded, not down, with degradedOnFailure()", async () => {
         ctx = await createMemoryHealthApp(({ healthCheck, memory }) =>
           healthCheck.check([
             () => memory.checkHeap("memory_heap", 0).degradedOnFailure(),

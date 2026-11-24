@@ -32,15 +32,13 @@ describeConformance(
     });
 
     describe("#checkHeap", () => {
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() attaches extra static fields (heapUsedBytes, thresholdBytes) via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("is up below the threshold", async () => {
+      it("is up below the threshold", async () => {
         expect(await memory.checkHeap("heap", 150 * MB)).toEqual({
           heap: { status: "up", responseTime: expect.any(Number) },
         });
       });
 
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra heapUsedBytes/thresholdBytes fields instead of upstream message "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("is down above the threshold, with the same message as before", async () => {
+      it("is down above the threshold, with the same message as before", async () => {
         expect(await memory.checkHeap("heap", 50 * MB)).toEqual({
           heap: {
             status: "down",
@@ -63,8 +61,7 @@ describeConformance(
         expect((await attempt).heap.status).toBe("down");
       });
 
-      // BUNEST_BUG: MemoryHealthIndicator.checkHeap() throws "Used heap (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra heapUsedBytes/thresholdBytes fields instead of upstream message "Used heap exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:92-112).
-      it.skip("is degraded instead of down with degradedOnFailure()", async () => {
+      it("is degraded instead of down with degradedOnFailure()", async () => {
         expect(
           await memory.checkHeap("heap", 50 * MB).degradedOnFailure(),
         ).toEqual({
@@ -103,15 +100,13 @@ describeConformance(
     });
 
     describe("#checkRSS", () => {
-      // BUNEST_BUG: MemoryHealthIndicator.checkRSS() attaches extra static fields (rssBytes, thresholdBytes) via .withData(...) instead of upstream { status, responseTime } (packages/observability/src/health/health.indicators.ts:114-134).
-      it.skip("is up below the threshold", async () => {
+      it("is up below the threshold", async () => {
         expect(await memory.checkRSS("rss", 250 * MB)).toEqual({
           rss: { status: "up", responseTime: expect.any(Number) },
         });
       });
 
-      // BUNEST_BUG: MemoryHealthIndicator.checkRSS() throws "Used RSS (<n> bytes) exceeded threshold (<t> bytes)" and attaches extra rssBytes/thresholdBytes fields instead of upstream message "Used rss exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:114-134).
-      it.skip("is down above the threshold, with the same message as before", async () => {
+      it("is down above the threshold, with the same message as before", async () => {
         expect(await memory.checkRSS("rss", 150 * MB)).toEqual({
           rss: {
             status: "down",

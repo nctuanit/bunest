@@ -88,8 +88,7 @@ describeConformance(
         expect(body.details).toEqual(details);
       });
 
-      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("should check if correctly displays a threshold exceeded error", async () => {
+      it("should check if correctly displays a threshold exceeded error", async () => {
         ctx = await createDiskHealthApp(({ healthCheck, disk }) =>
           healthCheck.check([
             () => disk.checkStorage("disk", { path: "/", threshold: 0 }),
@@ -137,8 +136,7 @@ describeConformance(
         expect(body.details).toEqual(details);
       });
 
-      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("should check if correctly displays a thresholdPercent exceeded error", async () => {
+      it("should check if correctly displays a thresholdPercent exceeded error", async () => {
         const { free, size } = await defaultCheckDiskSpace("/");
         const thresholdPercent = (size - free) / size;
         ctx = await createDiskHealthApp(({ healthCheck, disk }) =>

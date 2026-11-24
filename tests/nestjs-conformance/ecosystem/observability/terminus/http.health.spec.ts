@@ -172,8 +172,7 @@ describeConformance(
         "Promise-based custom httpClient replaces Observable HttpService",
       );
 
-      // BUNEST_BUG: HttpHealthIndicator.pingCheck() wraps httpClient.request() in HealthIndicatorService.attempt(), swallowing non-HTTP Errors into a { status: "down" } result instead of rethrowing non-HTTP errors (packages/observability/src/health/health.indicators.ts:559-582).
-      it.skip("should throw an error if the response is not an HTTP error", async () => {
+      it("should throw an error if the response is not an HTTP error", async () => {
         httpClientMock.request.mockImplementation(() => {
           throw new Error("Error");
         });
@@ -274,8 +273,7 @@ describeConformance(
         "Terminus v12 returns down result instead of throwing HealthCheckError",
       );
 
-      // BUNEST_BUG: HttpHealthIndicator.responseCheck() wraps httpClient.request() in HealthIndicatorService.attempt(), swallowing non-HTTP Errors into a { status: "down" } result instead of rethrowing non-HTTP errors (packages/observability/src/health/health.indicators.ts:604-656).
-      it.skip("should throw an error if the response is not an HTTP error", async () => {
+      it("should throw an error if the response is not an HTTP error", async () => {
         httpClientMock.request.mockImplementation(() => {
           throw new Error("Error");
         });
@@ -323,8 +321,7 @@ describeConformance(
         "Terminus v12 returns down result when HTTP client throws without response",
       );
 
-      // BUNEST_BUG: HttpHealthIndicator.responseCheck() does not extract err.response when httpClient.request() rejects with an HttpError/AxiosError carrying a response, so callback is never invoked and statusCode/statusText are lost (packages/observability/src/health/health.indicators.ts:608-649).
-      it.skip("should inspect response on HttpError and return down when callback fails", async () => {
+      it("should inspect response on HttpError and return down when callback fails", async () => {
         const callback = mock(
           (res: HttpHealthResponse) => res.statusText === "No",
         );
@@ -358,8 +355,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: HttpHealthIndicator.responseCheck() does not extract err.response when httpClient.request() rejects with an HttpError carrying status 500, returning "down" instead of evaluating callback(res => res.status === 500) to "up" (packages/observability/src/health/health.indicators.ts:608-649).
-      it.skip("should be healthy if the response is status code 500 and the condition says that the status code needs to be 500", async () => {
+      it("should be healthy if the response is status code 500 and the condition says that the status code needs to be 500", async () => {
         httpClientMock.request.mockRejectedValue(
           new MockHttpError("Error", {}, undefined, {
             data: "",

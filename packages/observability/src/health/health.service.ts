@@ -38,6 +38,15 @@ export class HealthCheckException extends ServiceUnavailableException {
     });
     this.result = result;
   }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      status: this.result.status,
+      info: this.result.info,
+      error: this.result.error,
+      details: this.result.details,
+    };
+  }
 }
 
 /**
@@ -142,6 +151,12 @@ async function runIndicatorWithTimeout(
   }
 }
 
+function stringifyWithSymbols(value: unknown): string {
+  return JSON.stringify(value, (_key, val) =>
+    typeof val === "symbol" ? val.toString() : val,
+  );
+}
+
 function formatErrorLog(
   style: "pretty" | "json",
   details: HealthIndicatorResult,
@@ -149,11 +164,11 @@ function formatErrorLog(
   if (style === "pretty") {
     const lines = ["Health Check has failed!"];
     for (const [key, value] of Object.entries(details)) {
-      lines.push(`  - ${key}: ${JSON.stringify(value)}`);
+      lines.push(`  - ${key}: ${stringifyWithSymbols(value)}`);
     }
     return lines.join("\n");
   }
-  return `Health Check has failed! ${JSON.stringify(details)}`;
+  return `Health Check has failed! ${stringifyWithSymbols(details)}`;
 }
 
 /**

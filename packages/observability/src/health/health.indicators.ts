@@ -93,20 +93,13 @@ export class MemoryHealthIndicator extends HealthIndicator {
     heapUsedThreshold: ByteSize,
   ): HealthCheckAttempt<Key> {
     const threshold = toBytes(heapUsedThreshold, "Heap threshold");
-    const heapUsed = process.memoryUsage().heapUsed;
     return this.indicatorService
       .check(key)
       .attempt(() => {
         const current = process.memoryUsage().heapUsed;
         if (current > threshold) {
-          throw new Error(
-            `Used heap (${current} bytes) exceeded threshold (${threshold} bytes)`,
-          );
+          throw new Error("Used heap exceeded the set threshold");
         }
-      })
-      .withData({
-        heapUsedBytes: heapUsed,
-        thresholdBytes: threshold,
       }) as unknown as HealthCheckAttempt<Key>;
   }
 
@@ -115,20 +108,13 @@ export class MemoryHealthIndicator extends HealthIndicator {
     rssThreshold: ByteSize,
   ): HealthCheckAttempt<Key> {
     const threshold = toBytes(rssThreshold, "RSS threshold");
-    const rss = process.memoryUsage().rss;
     return this.indicatorService
       .check(key)
       .attempt(() => {
         const current = process.memoryUsage().rss;
         if (current > threshold) {
-          throw new Error(
-            `Used RSS (${current} bytes) exceeded threshold (${threshold} bytes)`,
-          );
+          throw new Error("Used rss exceeded the set threshold");
         }
-      })
-      .withData({
-        rssBytes: rss,
-        thresholdBytes: threshold,
       }) as unknown as HealthCheckAttempt<Key>;
   }
 }
@@ -723,14 +709,43 @@ export class HttpHealthIndicator
     } = options;
 
     if (httpClient && typeof httpClient.request === "function") {
-      return (await this.indicatorService
+      let unexpectedError: unknown;
+      let hasUnexpectedError = false;
+      const result = (await this.indicatorService
         .check(key)
         .attempt(async () => {
-          const res = await httpClient.request({
-            url: url.toString(),
-            method,
-            headers,
-          });
+          let res: HttpHealthResponse;
+          try {
+            res = await httpClient.request({
+              url: url.toString(),
+              method,
+              headers,
+            });
+          } catch (err) {
+            const isHttpErr =
+              typeof err === "object" &&
+              err !== null &&
+              ((err as { isAxiosError?: unknown }).isAxiosError === true ||
+                (err as { isHttpError?: unknown }).isHttpError === true ||
+                "response" in err ||
+                "config" in err ||
+                (err as { name?: unknown }).name === "HttpError" ||
+                (err as { name?: unknown }).name === "AxiosError");
+            if (!isHttpErr) {
+              unexpectedError = err;
+              hasUnexpectedError = true;
+              throw err;
+            }
+            const errRes = extractThrownResponse(err);
+            if (errRes) {
+              throw new ResponseStatusError(
+                `Request failed with status code ${errRes.status}`,
+                errRes.status,
+                errRes.statusText,
+              );
+            }
+            throw err;
+          }
           if (!is2xxStatus(res)) {
             throw new ResponseStatusError(
               `Request failed with status code ${res.status}`,
@@ -745,6 +760,10 @@ export class HttpHealthIndicator
             : {},
         )
         .withTimeout(timeout)) as unknown as HealthIndicatorResult<Key>;
+      if (hasUnexpectedError) {
+        throw unexpectedError;
+      }
+      return result;
     }
 
     const fetchIndicator = new FetchHealthIndicator(this.indicatorService);
@@ -767,16 +786,41 @@ export class HttpHealthIndicator
       httpClient,
     } = options;
 
-    return (await this.indicatorService
+    let unexpectedError: unknown;
+    let hasUnexpectedError = false;
+
+    const result = (await this.indicatorService
       .check(key)
       .attempt(async ({ signal }) => {
         let httpRes: HttpHealthResponse<T>;
         if (httpClient && typeof httpClient.request === "function") {
-          httpRes = await httpClient.request<T>({
-            url: url.toString(),
-            method,
-            headers,
-          });
+          try {
+            httpRes = await httpClient.request<T>({
+              url: url.toString(),
+              method,
+              headers,
+            });
+          } catch (err) {
+            const isHttpErr =
+              typeof err === "object" &&
+              err !== null &&
+              ((err as { isAxiosError?: unknown }).isAxiosError === true ||
+                (err as { isHttpError?: unknown }).isHttpError === true ||
+                "response" in err ||
+                "config" in err ||
+                (err as { name?: unknown }).name === "HttpError" ||
+                (err as { name?: unknown }).name === "AxiosError");
+            if (!isHttpErr) {
+              unexpectedError = err;
+              hasUnexpectedError = true;
+              throw err;
+            }
+            const errRes = extractThrownResponse(err);
+            if (!errRes) {
+              throw err;
+            }
+            httpRes = errRes as HttpHealthResponse<T>;
+          }
         } else {
           const raw = await fetch(url.toString(), { method, headers, signal });
           const contentType = raw.headers?.get?.("content-type") ?? "";
@@ -807,8 +851,11 @@ export class HttpHealthIndicator
 
         const ok = await callback(httpRes);
         if (!ok) {
+          const message = is2xxStatus(httpRes)
+            ? "Response did not pass the check"
+            : `Request failed with status code ${httpRes.status}`;
           throw new ResponseStatusError(
-            "Response did not pass the check",
+            message,
             httpRes.status,
             httpRes.statusText,
           );
@@ -820,6 +867,11 @@ export class HttpHealthIndicator
           : {},
       )
       .withTimeout(timeout)) as unknown as HealthIndicatorResult<Key>;
+
+    if (hasUnexpectedError) {
+      throw unexpectedError;
+    }
+    return result;
   }
 }
 
@@ -900,7 +952,7 @@ export class DiskHealthIndicator extends HealthIndicator {
       const { free, size } = await this.checkDiskSpace(options.path);
       const used = size - free;
       if (Number.isNaN(size) || size <= 0) {
-        throw new Error("The used disk storage has exceeded the threshold");
+        throw new Error("Used disk storage exceeded the set threshold");
       }
 
       const isHealthy =
@@ -909,7 +961,7 @@ export class DiskHealthIndicator extends HealthIndicator {
           : threshold >= used;
 
       if (!isHealthy) {
-        throw new Error("The used disk storage has exceeded the threshold");
+        throw new Error("Used disk storage exceeded the set threshold");
       }
     }) as unknown as HealthCheckAttempt<Key>;
   }
@@ -1246,6 +1298,20 @@ export class MicroserviceHealthIndicator
         if (options.client && typeof options.client.connect === "function") {
           try {
             await options.client.connect();
+          } catch (err) {
+            if (
+              !(err instanceof Error) &&
+              typeof err !== "string" &&
+              !(
+                typeof err === "object" &&
+                err !== null &&
+                "message" in err &&
+                typeof (err as { message?: unknown }).message === "string"
+              )
+            ) {
+              throw new Error(`${key} is not available`);
+            }
+            throw err;
           } finally {
             await options.client.close?.();
           }

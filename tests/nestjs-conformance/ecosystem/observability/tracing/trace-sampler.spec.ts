@@ -287,8 +287,7 @@ describeConformance(
         "Bunest sampler receives full SpanContext (including baggage/traceState) to allow custom parent-based rules",
       );
 
-      // BUNEST_BUG: `Tracer.startSpan()` in `packages/observability/src/tracing/tracer.ts:81-83` invokes `this.sampler({ name, parentContext: parent })` without a try/catch guard, so a throwing sampler callback crashes application request handling instead of safely falling back to unsampled (`sampled = false`).
-      it.skip("captures nothing and does not crash the caller when the sampler callback throws", () => {
+      it("captures nothing and does not crash the caller when the sampler callback throws", () => {
         const exporter = new InMemorySpanExporter();
         const tracer = new Tracer({
           exporter,
