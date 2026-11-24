@@ -862,8 +862,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaServer.handleMessage() dispatches its own RpcResponseEnvelope reply messages (type: "response", kafka_correlationId present, no kafka_replyTopic) to regex event handlers matching `<topic>.reply` (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("does not dispatch server reply envelopes on `<topic>.reply` to a regex event handler matching the request namespace", async () => {
+      it("does not dispatch server reply envelopes on `<topic>.reply` to a regex event handler matching the request namespace", async () => {
         const server = track(new KafkaServer({ client: harness.client }));
         const regexEventHandler = createSpy();
         server.addEventHandler(/^test\..+$/, regexEventHandler);
@@ -936,8 +935,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaServer.close() awaits consumer.disconnect() without try/finally, so producer.disconnect() is skipped if consumer.disconnect() rejects (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("still disconnects producer when consumer.disconnect() rejects", async () => {
+      it("still disconnects producer when consumer.disconnect() rejects", async () => {
         const consumerDisconnect = createStub().rejects(
           new Error("consumer disconnect error"),
         );
@@ -976,8 +974,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaServer.handleMessage() invokes matched.handler(data, ctx) directly instead of calling super.dispatchMessage() or this.preRequestHook, so server.setPreRequestHook() is never executed (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("invokes setPreRequestHook({ pattern, data, ctx }) before executing a Kafka message handler", async () => {
+      it("invokes setPreRequestHook({ pattern, data, ctx }) before executing a Kafka message handler", async () => {
         const server = track(new KafkaServer({ client: harness.client }));
         const hook = createSpy();
         server.setPreRequestHook(hook);

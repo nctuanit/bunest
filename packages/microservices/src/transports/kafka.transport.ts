@@ -450,12 +450,15 @@ export class KafkaServer extends MicroserviceTransportServer {
   async close(): Promise<void> {
     this.listening = false;
     this.emitStatus(KafkaStatus.DISCONNECTED);
-    if (this.consumer) {
-      await this.consumer.stop?.();
-      await this.consumer.disconnect();
-    }
-    if (this.producer) {
-      await this.producer.disconnect();
+    try {
+      if (this.consumer) {
+        await this.consumer.stop?.();
+        await this.consumer.disconnect();
+      }
+    } finally {
+      if (this.producer) {
+        await this.producer.disconnect();
+      }
     }
   }
 
@@ -551,9 +554,16 @@ export class KafkaServer extends MicroserviceTransportServer {
         };
       } else {
         try {
-          const response = await this.runWithProcessingHooks(ctx, async () =>
-            matched.handler(data, ctx),
-          );
+          const response = await this.runWithProcessingHooks(ctx, async () => {
+            if (this.preRequestHook) {
+              await this.preRequestHook({
+                pattern: matched.pattern,
+                data,
+                ctx,
+              });
+            }
+            return matched.handler(data, ctx);
+          });
           outcome = { response };
         } catch (err) {
           if (err instanceof KafkaRetriableException) {
@@ -588,6 +598,18 @@ export class KafkaServer extends MicroserviceTransportServer {
           ],
         });
       }
+      return;
+    }
+
+    // Ignore RPC reply envelopes (type: "response" with kafka_correlationId and no kafka_replyTopic)
+    // so regex event handlers matching `<topic>.reply` are never triggered by server replies.
+    if (
+      correlationId &&
+      !replyTopic &&
+      data !== null &&
+      typeof data === "object" &&
+      (data as { type?: unknown }).type === "response"
+    ) {
       return;
     }
 
@@ -769,18 +791,28 @@ export class KafkaClientProxy extends ClientProxy {
       entry.reject(new Error("KafkaClientProxy closed."));
     }
     this.pendingReplySubscribes.clear();
-    if (this._consumer && this.consumerConnected) {
-      await this._consumer.stop?.();
-      await this._consumer.disconnect();
-      this.consumerConnected = false;
-      this.consumerConnectPromise = undefined;
-      this.consumerRunning = false;
-      this.consumerRunPromise = undefined;
-    }
-    if (this._producer && this.producerConnected) {
-      await this._producer.disconnect();
-      this.producerConnected = false;
-      this.producerConnectPromise = undefined;
+    this.subscribedReplyTopics.clear();
+    try {
+      if (this._consumer && this.consumerConnected) {
+        try {
+          await this._consumer.stop?.();
+          await this._consumer.disconnect();
+        } finally {
+          this.consumerConnected = false;
+          this.consumerConnectPromise = undefined;
+          this.consumerRunning = false;
+          this.consumerRunPromise = undefined;
+        }
+      }
+    } finally {
+      if (this._producer && this.producerConnected) {
+        try {
+          await this._producer.disconnect();
+        } finally {
+          this.producerConnected = false;
+          this.producerConnectPromise = undefined;
+        }
+      }
     }
   }
 
@@ -793,6 +825,13 @@ export class KafkaClientProxy extends ClientProxy {
     record: KafkaMessageRecord<TReq>,
     options?: SendOptions,
   ): Promise<TRes> {
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: topic,
+        data: record.value,
+        transport: this.transport,
+      });
+    }
     const timeoutMs = Math.max(
       1,
       Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
@@ -840,7 +879,26 @@ export class KafkaClientProxy extends ClientProxy {
     topic: string,
     record: KafkaMessageRecord<TReq>,
   ): Promise<void> {
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: topic,
+        data: record.value,
+        transport: this.transport,
+      });
+    }
     await this.ensureProducerConnected();
+    let sanitizedHeaders: KafkaHeaderMap | undefined;
+    if (record.headers !== undefined) {
+      sanitizedHeaders = {};
+      for (const [k, v] of Object.entries(record.headers)) {
+        if (
+          k !== KAFKA_REPLY_TOPIC_HEADER &&
+          k !== KAFKA_REPLY_PARTITION_HEADER
+        ) {
+          sanitizedHeaders[k] = v;
+        }
+      }
+    }
     await this._producer!.send({
       topic,
       messages: [
@@ -848,7 +906,7 @@ export class KafkaClientProxy extends ClientProxy {
           key: record.key,
           partition: record.partition,
           value: serializeKafkaJson(record.value),
-          headers: record.headers,
+          headers: sanitizedHeaders,
         },
       ],
     });
