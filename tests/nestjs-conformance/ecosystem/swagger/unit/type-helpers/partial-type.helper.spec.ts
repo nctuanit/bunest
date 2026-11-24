@@ -103,8 +103,7 @@ describeConformance(
     });
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not inherit plugin metadata loaded after PartialType(CreateUserDto) ("active" missing)
-      it.skip("should return partial class", async () => {
+      it("should return partial class", async () => {
         await SwaggerModule.loadPluginMetadata(async () => SERIALIZED_METADATA);
 
         const explorer = new SchemaExplorer();

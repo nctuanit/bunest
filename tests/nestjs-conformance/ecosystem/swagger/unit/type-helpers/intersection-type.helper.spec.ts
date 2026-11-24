@@ -71,8 +71,7 @@ describeConformance(
     ) {}
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: SchemaExplorer / IntersectionType (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() properties
-      it.skip("should return combined class", () => {
+      it("should return combined class", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(UpdateUserDto);
         const props = Object.keys(

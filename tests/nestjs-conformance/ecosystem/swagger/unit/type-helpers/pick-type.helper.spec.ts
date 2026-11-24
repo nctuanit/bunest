@@ -46,8 +46,7 @@ describeConformance(
     ]) {}
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: PickType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata ("firstName" missing)
-      it.skip('should pick "login" property', () => {
+      it('should pick "login" property', () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(UpdateUserDto);
         const props = Object.keys(

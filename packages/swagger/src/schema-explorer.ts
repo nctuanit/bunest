@@ -25,6 +25,10 @@ import type {
   SwaggerEnumType,
 } from "./interfaces/openapi.interface";
 import { getPluginModelMetadata } from "./plugin-metadata-store";
+import {
+  SWAGGER_MAPPED_TYPE_META,
+  type SwaggerMappedTypeMeta,
+} from "./type-helpers/mapped-types.helper";
 
 const BUILTIN_PRIMITIVE_CONSTRUCTORS = new Set<Function>([
   String,
@@ -115,6 +119,7 @@ export function isSchemaDecoratedClass(target: Function): boolean {
       MetadataRegistry.hasOwn(SWAGGER_METADATA_KEYS.API_PROPERTIES, ctor) ||
       MetadataRegistry.hasOwn(SWAGGER_METADATA_KEYS.API_SCHEMA, ctor) ||
       getPluginModelMetadata(ctor) !== undefined ||
+      Object.prototype.hasOwnProperty.call(ctor, SWAGGER_MAPPED_TYPE_META) ||
       (Object.prototype.hasOwnProperty.call(ctor, "_OPENAPI_METADATA_FACTORY") &&
         typeof (ctor as { _OPENAPI_METADATA_FACTORY?: unknown })
           ._OPENAPI_METADATA_FACTORY === "function")
@@ -1329,35 +1334,142 @@ export class SchemaExplorer {
     }
   }
 
-  private populateDtoSchema(
-    dto: Type<unknown> | Function,
-    dtoSchema: OpenApiSchema,
-    entitySchema: ReturnType<typeof getEntitySchema> | undefined,
-  ): void {
-    // Collect entity column metadata (from @Entity + @Column + @PrimaryKey across inheritance chain)
-    const entityColumnMap = new Map<string, EntityColumnMetadata>();
-    if (entitySchema) {
-      for (let i = 0; i < entitySchema.columns.length; i++) {
-        const col = entitySchema.columns[i]!;
-        entityColumnMap.set(col.propertyName, col);
-      }
-    }
-
-    // Collect plugin metadata (lowest precedence), then _OPENAPI_METADATA_FACTORY, then @ApiProperty and @ApiHideProperty across inheritance chain
+  private collectDtoProperties(dto: Type<unknown> | Function): {
+    propertyMap: Map<string, ApiPropertyMetadata>;
+    hiddenProps: Set<string>;
+    decoratorKeys: Set<string>;
+  } {
     const propertyMap = new Map<string, ApiPropertyMetadata>();
     const hiddenProps = new Set<string>();
+    const decoratorKeys = new Set<string>();
+
     for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
-      const pluginProps = getPluginModelMetadata(ctor);
-      if (pluginProps) {
-        for (const p of pluginProps) {
-          const existing = propertyMap.get(p.propertyKey);
-          propertyMap.set(p.propertyKey, {
-            ...(p as unknown as ApiPropertyMetadata),
-            ...(existing ?? {}),
-            propertyKey: p.propertyKey,
-          });
+      const mappedMeta = Object.prototype.hasOwnProperty.call(
+        ctor,
+        SWAGGER_MAPPED_TYPE_META,
+      )
+        ? (ctor as unknown as Record<symbol, SwaggerMappedTypeMeta>)[
+            SWAGGER_MAPPED_TYPE_META
+          ]
+        : undefined;
+
+      if (mappedMeta) {
+        const collected = new Map<string, ApiPropertyMetadata>();
+        const collectedHidden = new Set<string>();
+        const collectedDecoratorKeys = new Set<string>();
+        const subResults = mappedMeta.sources.map((src) =>
+          this.collectDtoProperties(src),
+        );
+
+        // Preserve NestJS key order: decorator-declared keys across all sources first,
+        // then factory/plugin-declared keys across all sources.
+        for (const sub of subResults) {
+          for (const [k, v] of sub.propertyMap.entries()) {
+            if (sub.decoratorKeys.has(k)) {
+              collected.set(k, v);
+              collectedDecoratorKeys.add(k);
+            }
+          }
         }
+        for (const sub of subResults) {
+          for (const [k, v] of sub.propertyMap.entries()) {
+            if (!sub.decoratorKeys.has(k)) {
+              collected.set(k, v);
+            }
+          }
+          for (const h of sub.hiddenProps) {
+            collectedHidden.add(h);
+          }
+        }
+
+        const keySet = mappedMeta.keys ? new Set(mappedMeta.keys) : undefined;
+        for (const [k, v] of collected.entries()) {
+          if (mappedMeta.kind === "pick" && keySet && !keySet.has(k)) {
+            continue;
+          }
+          if (mappedMeta.kind === "omit" && keySet && keySet.has(k)) {
+            continue;
+          }
+
+          let nextEntry: ApiPropertyMetadata = { ...v };
+          if (hasExplicitApiRequired(v)) {
+            Object.defineProperty(nextEntry, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+
+          if (
+            mappedMeta.kind === "partial" ||
+            mappedMeta.kind === "deepPartial"
+          ) {
+            nextEntry = { ...nextEntry, required: false };
+            Object.defineProperty(nextEntry, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+
+          if (
+            mappedMeta.kind === "deepPartial" &&
+            mappedMeta.wrapNestedDto
+          ) {
+            let candidate: unknown = nextEntry.type ?? nextEntry.designType;
+            if (isLazyTypeThunk(candidate)) {
+              try {
+                candidate = candidate();
+              } catch {
+                candidate = undefined;
+              }
+            }
+            let nestedCtor: Type<unknown> | undefined;
+            let nestedIsArray = nextEntry.isArray === true;
+            if (Array.isArray(candidate) && isDtoConstructor(candidate[0])) {
+              nestedCtor = candidate[0];
+              nestedIsArray = true;
+            } else if (isDtoConstructor(candidate)) {
+              nestedCtor = candidate;
+            }
+            if (nestedCtor) {
+              const wrapped = mappedMeta.wrapNestedDto(nestedCtor);
+              nextEntry = {
+                ...nextEntry,
+                type: () => wrapped,
+                isArray: nestedIsArray,
+              };
+            }
+          }
+
+          propertyMap.set(k, nextEntry);
+          if (collectedDecoratorKeys.has(k)) {
+            decoratorKeys.add(k);
+          }
+        }
+
+        for (const h of collectedHidden) {
+          if (mappedMeta.kind === "pick" && keySet && !keySet.has(h)) {
+            continue;
+          }
+          if (mappedMeta.kind === "omit" && keySet && keySet.has(h)) {
+            continue;
+          }
+          hiddenProps.add(h);
+        }
+        continue;
       }
+
+      // Compute own metadata sources on `ctor`
+      const ownProps =
+        MetadataRegistry.getOwn<readonly ApiPropertyMetadata[]>(
+          SWAGGER_METADATA_KEYS.API_PROPERTIES,
+          ctor,
+        ) ?? [];
+      const ownPropsByKey = new Map<string, ApiPropertyMetadata>();
+      for (const entry of ownProps) {
+        if (entry) ownPropsByKey.set(entry.propertyKey, entry);
+      }
+
+      const ownFactoryByKey = new Map<string, ApiPropertyOptions>();
       if (
         Object.prototype.hasOwnProperty.call(
           ctor,
@@ -1373,84 +1485,109 @@ export class SchemaExplorer {
         )._OPENAPI_METADATA_FACTORY();
         if (factoryResult && typeof factoryResult === "object") {
           for (const [propKey, propOpts] of Object.entries(factoryResult)) {
-            if (!propOpts || typeof propOpts !== "object") continue;
-            const base = propertyMap.get(propKey);
-            let effectiveType = propOpts.type;
-            if (
-              base?.type === "integer" &&
-              effectiveType !== undefined &&
-              (effectiveType === Number ||
-                (isLazyTypeThunk(effectiveType) && effectiveType() === Number))
-            ) {
-              effectiveType = base.type;
+            if (propOpts && typeof propOpts === "object") {
+              ownFactoryByKey.set(propKey, propOpts);
             }
-            const mergedEntry: ApiPropertyMetadata = {
-              ...(base ?? {}),
-              ...propOpts,
-              ...(effectiveType !== undefined ? { type: effectiveType } : {}),
-              propertyKey: propKey,
-              required:
-                base && hasExplicitApiRequired(base)
-                  ? base.required
-                  : typeof propOpts.required === "boolean"
-                    ? propOpts.required
-                    : (base?.required ?? true),
-            };
-            if (base && hasExplicitApiRequired(base)) {
-              Object.defineProperty(
-                mergedEntry,
-                API_PROPERTY_EXPLICIT_REQUIRED,
-                {
-                  value: true,
-                  enumerable: false,
-                },
-              );
-            }
-            propertyMap.set(propKey, mergedEntry);
           }
         }
       }
-      const ownProps = MetadataRegistry.getOwn<readonly ApiPropertyMetadata[]>(
-        SWAGGER_METADATA_KEYS.API_PROPERTIES,
-        ctor,
-      );
-      if (ownProps) {
-        for (let i = 0; i < ownProps.length; i++) {
-          const entry = ownProps[i];
-          if (entry) {
-            const base = propertyMap.get(entry.propertyKey);
-            const entryHasCombinator =
-              entry.oneOf !== undefined ||
-              entry.anyOf !== undefined ||
-              entry.allOf !== undefined;
-            const sanitizedBase =
-              base && entryHasCombinator && entry.type === undefined
-                ? (() => {
-                    const copy = { ...base };
-                    delete copy.type;
-                    if (entry.additionalProperties === undefined) {
-                      delete copy.additionalProperties;
-                    }
-                    return copy;
-                  })()
-                : base;
-            const mergedEntry = sanitizedBase
-              ? { ...sanitizedBase, ...entry }
-              : entry;
-            if (hasExplicitApiRequired(entry)) {
-              Object.defineProperty(
-                mergedEntry,
-                API_PROPERTY_EXPLICIT_REQUIRED,
-                {
-                  value: true,
-                  enumerable: false,
-                },
-              );
-            }
-            propertyMap.set(entry.propertyKey, mergedEntry);
-          }
+
+      const ownPluginByKey = new Map<string, ApiPropertyOptions>();
+      const pluginProps = getPluginModelMetadata(ctor);
+      if (pluginProps) {
+        for (const p of pluginProps) {
+          ownPluginByKey.set(p.propertyKey, p as unknown as ApiPropertyOptions);
         }
       }
+
+      // Key ordering on `ctor`: @ApiProperty first, then _OPENAPI_METADATA_FACTORY, then plugin store.
+      // Precedence when merging for a key: @ApiProperty > _OPENAPI_METADATA_FACTORY > plugin store.
+      const orderedKeys = new Set<string>([
+        ...ownPropsByKey.keys(),
+        ...ownFactoryByKey.keys(),
+        ...ownPluginByKey.keys(),
+      ]);
+
+      for (const propKey of orderedKeys) {
+        let merged: ApiPropertyMetadata | undefined = propertyMap.get(propKey);
+
+        const pluginOpt = ownPluginByKey.get(propKey);
+        if (pluginOpt) {
+          merged = {
+            ...(pluginOpt as unknown as ApiPropertyMetadata),
+            ...(merged ?? {}),
+            propertyKey: propKey,
+          };
+        }
+
+        const factoryOpt = ownFactoryByKey.get(propKey);
+        if (factoryOpt) {
+          let effectiveType = factoryOpt.type;
+          if (
+            merged?.type === "integer" &&
+            effectiveType !== undefined &&
+            (effectiveType === Number ||
+              (isLazyTypeThunk(effectiveType) && effectiveType() === Number))
+          ) {
+            effectiveType = merged.type;
+          }
+          const prevHadExplicitReq =
+            merged !== undefined && hasExplicitApiRequired(merged);
+          const nextMerged: ApiPropertyMetadata = {
+            ...(merged ?? {}),
+            ...factoryOpt,
+            ...(effectiveType !== undefined ? { type: effectiveType } : {}),
+            propertyKey: propKey,
+            required: prevHadExplicitReq
+              ? merged!.required
+              : typeof factoryOpt.required === "boolean"
+                ? factoryOpt.required
+                : (merged?.required ?? true),
+          };
+          if (prevHadExplicitReq) {
+            Object.defineProperty(nextMerged, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+          merged = nextMerged;
+        }
+
+        const entry = ownPropsByKey.get(propKey);
+        if (entry) {
+          decoratorKeys.add(propKey);
+          const entryHasCombinator =
+            entry.oneOf !== undefined ||
+            entry.anyOf !== undefined ||
+            entry.allOf !== undefined;
+          const sanitizedBase =
+            merged && entryHasCombinator && entry.type === undefined
+              ? (() => {
+                  const copy = { ...merged };
+                  delete copy.type;
+                  if (entry.additionalProperties === undefined) {
+                    delete copy.additionalProperties;
+                  }
+                  return copy;
+                })()
+              : merged;
+          const nextMerged = sanitizedBase
+            ? { ...sanitizedBase, ...entry }
+            : entry;
+          if (hasExplicitApiRequired(entry)) {
+            Object.defineProperty(nextMerged, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+          merged = nextMerged;
+        }
+
+        if (merged) {
+          propertyMap.set(propKey, merged);
+        }
+      }
+
       const ownHidden = MetadataRegistry.getOwn<readonly string[]>(
         SWAGGER_METADATA_KEYS.API_HIDDEN_PROPERTIES,
         ctor,
@@ -1461,6 +1598,26 @@ export class SchemaExplorer {
         }
       }
     }
+
+    return { propertyMap, hiddenProps, decoratorKeys };
+  }
+
+  private populateDtoSchema(
+    dto: Type<unknown> | Function,
+    dtoSchema: OpenApiSchema,
+    entitySchema: ReturnType<typeof getEntitySchema> | undefined,
+  ): void {
+    // Collect entity column metadata (from @Entity + @Column + @PrimaryKey across inheritance chain)
+    const entityColumnMap = new Map<string, EntityColumnMetadata>();
+    if (entitySchema) {
+      for (let i = 0; i < entitySchema.columns.length; i++) {
+        const col = entitySchema.columns[i]!;
+        entityColumnMap.set(col.propertyName, col);
+      }
+    }
+
+    // Collect plugin metadata, _OPENAPI_METADATA_FACTORY, @ApiProperty, @ApiHideProperty, and mapped types
+    const { propertyMap, hiddenProps } = this.collectDtoProperties(dto);
 
     // Collect class-validator hints across the DTO class
     const validatorHints = extractClassValidatorHints(dto);
@@ -1605,7 +1762,11 @@ export class SchemaExplorer {
         schema.items = itemsObj;
       } else {
         schema.enum = enumVals;
-        if (schema.type === undefined || schema.type === "object") {
+        if (
+          apiMeta.type === undefined ||
+          schema.type === undefined ||
+          schema.type === "object"
+        ) {
           const inferred = inferEnumSchemaType(enumVals);
           if (inferred) schema.type = inferred;
         }

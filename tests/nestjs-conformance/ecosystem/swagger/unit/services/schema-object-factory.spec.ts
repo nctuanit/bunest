@@ -664,8 +664,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: PickType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Pick<Base> instead of key-suffixed Pick<Base><Keys>
-      it.skip("should keep inline PickType schemas distinct", () => {
+      it("should keep inline PickType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
           title!: string;
@@ -717,8 +716,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Omit<Base> instead of key-suffixed Omit<Base><Keys>
-      it.skip("should keep inline OmitType schemas distinct", () => {
+      it("should keep inline OmitType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
           title!: string;
@@ -755,8 +753,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: PickType/OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) use base-only + numeric suffix names instead of visible-key-suffixed names
-      it.skip("should not spell properties hidden from the document in inline mapped type names", () => {
+      it("should not spell properties hidden from the document in inline mapped type names", () => {
         class AccountDto {
           @ApiProperty()
           id!: string;
@@ -2960,8 +2957,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: SchemaExplorer / PickType (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should document the type of the re-declaration in mapped types", () => {
+      it("should document the type of the re-declaration in mapped types", () => {
         const { AccountDto, PublicAccountDto } = createDtos();
         class PublicBillingOnlyDto extends PickType(PublicAccountDto, [
           "billing",
@@ -3182,8 +3178,7 @@ describeConformance(
           ["DeepPartialType", () => DeepPartialType(BaseDto)],
         ];
 
-        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts, deep-partial-type.helper.ts) lose/mis-infer lazy numeric enum type as "string" instead of "number"
-        it.skip.each(mappedTypes)(
+        it.each(mappedTypes)(
           "should keep resolving the enums lazily with %s",
           (_name, createMappedType) => {
             const MappedDto = createMappedType();
@@ -3212,8 +3207,7 @@ describeConformance(
           },
         );
 
-        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts) infer lazy numeric enum type as "string" instead of "number" in mapped query DTOs
-        it.skip("should keep resolving the enums lazily in a mapped query DTO", async () => {
+        it("should keep resolving the enums lazily in a mapped query DTO", async () => {
           class MappedQueryDto extends PartialType(BaseDto) {}
 
           @Controller("lq")
