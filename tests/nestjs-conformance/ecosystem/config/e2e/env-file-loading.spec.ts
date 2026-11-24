@@ -49,8 +49,7 @@ describeConformance(
       await removePath(tmpDir, { recursive: true, force: true });
     });
 
-    // BUNEST_BUG: ConfigModule.forRoot() calls assignVariablesToProcess(snapshot.fileValues) synchronously BEFORE validation runs and never writes validated/transformed values back to process.env (expected process.env.MAX_UPLOAD_MB="100" & ADMIN_BYPASS=undefined, received "100000" & "1"; packages/core/src/config/config.module.ts:60-69)
-    it.skip("should assign expanded variables to process.env only after validation", async () => {
+    it("should assign expanded variables to process.env only after validation", async () => {
       const envFilePath = writeEnvFile(
         ".env",
         ["MAX_UPLOAD_MB=100000", "ADMIN_BYPASS=1"].join("\n"),

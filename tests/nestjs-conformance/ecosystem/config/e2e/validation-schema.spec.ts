@@ -77,8 +77,7 @@ describeConformance(
       expect(configService.get("UNRELATED_VARIABLE")).toEqual("unrelated");
     });
 
-    // BUNEST_BUG: validateConfiguration() does not forward options.validationOptions to validationSchema["~standard"].validate(value, options) (and ConfigModuleOptions.validationOptions is typed only as ValidationPipeOptions, not StandardSchemaV1Options) (packages/core/src/config/validator.ts:186, packages/core/src/config/interfaces/config.interface.ts:138)
-    it.skip('should let "allowUnknown" be disabled through validationOptions', async () => {
+    it('should let "allowUnknown" be disabled through validationOptions', async () => {
       process.env.UNRELATED_VARIABLE = "unrelated";
 
       await expect(

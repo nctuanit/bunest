@@ -175,21 +175,47 @@ export async function validateConfiguration<T extends object>(
     : rawConfig;
 
   if (options.validationSchema && isStandardSchema(options.validationSchema)) {
-    const result = await options.validationSchema["~standard"].validate({
-      ...rawConfig,
-    });
+    const validateFn = options.validationSchema["~standard"].validate as (
+      input: Record<string, unknown>,
+      opts?: unknown,
+    ) => Promise<{ issues?: readonly unknown[]; value?: unknown }> | { issues?: readonly unknown[]; value?: unknown };
+    const result = await (options.validationOptions !== undefined
+      ? validateFn({ ...rawConfig }, options.validationOptions)
+      : validateFn({ ...rawConfig }));
     if (result.issues) {
-      const details = formatStandardSchemaIssues(result.issues, "<env>");
-      const lines = details.map(
-        (d) => `  - ${d.field}: ${d.messages.join(", ")}`,
+      const details = formatStandardSchemaIssues(
+        result.issues as Parameters<typeof formatStandardSchemaIssues>[0],
+        "<env>",
+      );
+      const lines = details.map((d) =>
+        d.field === "<env>"
+          ? d.messages.join(", ")
+          : `${d.field}: ${d.messages.join(", ")}`,
       );
       throw new ConfigValidationError(
-        `Configuration Standard Schema validation failed:\n${lines.join("\n")}`,
+        `Config validation error: ${lines.join("; ")}`,
         { details },
       );
     }
     if (result.value && typeof result.value === "object") {
-      return { ...baseForMerge, ...(result.value as Record<string, unknown>) };
+      const valueRec = result.value as Record<string, unknown>;
+      const describedKeys = (
+        options.validationSchema as {
+          describe?: () => { keys?: Record<string, unknown> };
+        }
+      ).describe?.()?.keys;
+      if (describedKeys && typeof describedKeys === "object") {
+        // Schema declares its keys (e.g. Joi): keep undeclared keys from
+        // baseForMerge, but never restore a declared key that the schema stripped.
+        const merged: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(baseForMerge)) {
+          if (!Object.hasOwn(describedKeys, k)) {
+            merged[k] = v;
+          }
+        }
+        return { ...merged, ...valueRec };
+      }
+      return { ...baseForMerge, ...valueRec };
     }
     return baseForMerge;
   }
@@ -244,7 +270,7 @@ export async function validateConfiguration<T extends object>(
     try {
       const result = await fn({ ...rawConfig });
       if (result && typeof result === "object") {
-        return { ...(result as Record<string, unknown>) };
+        return result as Record<string, unknown>;
       }
       return baseForMerge;
     } catch (err) {

@@ -112,8 +112,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: ConfigModule.forRoot() writes raw fileValues to process.env before validation AND validateConfiguration() spreads `{ ...baseForMerge, ...result.value }`, restoring keys explicitly stripped by the schema (expected undefined, received "true"; packages/core/src/config/config.module.ts:60-69, packages/core/src/config/validator.ts:200)
-    it.skip("should not restore a variable the schema strips", async () => {
+    it("should not restore a variable the schema strips", async () => {
       const envFilePath = writeEnvFile(".env", [
         "ALLOW_INSECURE_COOKIES=true",
         "PORT=3000",
@@ -322,8 +321,7 @@ describeConformance(
       expect(configService.get("PORT")).toBe(3000);
     });
 
-    // BUNEST_BUG: When validatePredefined is false, ConfigModule unconditionally runs `Object.assign(store, validated, snapshot.runtimeEnv)`, overwriting schema-converted values with raw process.env strings even when the raw predefined value equals the env file value (expected 3000, received "3000"; packages/core/src/config/config.module.ts:142)
-    it.skip("should serve the converted value of a predefined variable that equals the env file value", async () => {
+    it("should serve the converted value of a predefined variable that equals the env file value", async () => {
       process.env.PORT = "3000";
       const envFilePath = writeEnvFile(".env", ["PORT=3000"]);
       const schema = createStandardSchema<Record<string, unknown>>((raw) => {

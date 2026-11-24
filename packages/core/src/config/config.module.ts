@@ -55,18 +55,80 @@ export class ConfigModule {
       envSource: options.envSource,
     });
 
-    // Populate `process.env` immediately (unless isolated via `envSource` or
-    // `ignoreEnvVars` / `ignoreEnvFile`) so `ConditionalModule.registerWhen()`
-    // observes loaded `.env` values right away.
+    const hasValidatorOption = Boolean(
+      options.validate ||
+      options.validationClass ||
+      options.validationSchema,
+    );
+
+    // Populate `process.env` immediately when no validator is configured, OR
+    // when a synchronous validationSchema passes cleanly (never writing raw or
+    // stripped keys to `process.env` before validation succeeds).
     if (
       !options.envSource &&
       !options.ignoreEnvVars &&
       !options.ignoreEnvFile
     ) {
-      ConfigModule.assignVariablesToProcess(
-        snapshot.fileValues,
-        Boolean(options.override),
-      );
+      if (!hasValidatorOption) {
+        ConfigModule.assignVariablesToProcess(
+          snapshot.fileValues,
+          Boolean(options.override),
+        );
+      } else if (
+        options.validationSchema &&
+        typeof options.validationSchema === "object" &&
+        "~standard" in options.validationSchema
+      ) {
+        try {
+          const validatePredefined = options.validatePredefined !== false;
+          const input = validatePredefined
+            ? { ...snapshot.combined }
+            : { ...snapshot.fileValues };
+          const validateFn = options.validationSchema["~standard"].validate as (
+            v: Record<string, unknown>,
+            opts?: unknown,
+          ) => unknown;
+          const syncRes =
+            options.validationOptions !== undefined
+              ? validateFn(input, options.validationOptions)
+              : validateFn(input);
+          if (
+            syncRes &&
+            typeof syncRes === "object" &&
+            !(syncRes instanceof Promise) &&
+            !("issues" in syncRes && (syncRes as { issues?: unknown }).issues) &&
+            "value" in syncRes &&
+            typeof (syncRes as { value?: unknown }).value === "object" &&
+            (syncRes as { value?: unknown }).value !== null
+          ) {
+            const describedKeys = (
+              options.validationSchema as {
+                describe?: () => { keys?: Record<string, unknown> };
+              }
+            ).describe?.()?.keys;
+            const valRec = (syncRes as { value: Record<string, unknown> }).value;
+            const toAssign: Record<string, string> = {};
+            for (const [k, rawV] of Object.entries(snapshot.fileValues)) {
+              if (Object.hasOwn(valRec, k)) {
+                if (valRec[k] !== undefined && valRec[k] !== null) {
+                  toAssign[k] = String(valRec[k]);
+                }
+              } else if (
+                !describedKeys ||
+                !Object.hasOwn(describedKeys, k)
+              ) {
+                toAssign[k] = String(rawV);
+              }
+            }
+            ConfigModule.assignVariablesToProcess(
+              toAssign,
+              Boolean(options.override),
+            );
+          }
+        } catch {
+          // Validation errors will be surfaced cleanly in CONFIG_STORE_TOKEN factory
+        }
+      }
     }
 
     // Signal any waiting `ConditionalModule.registerWhen()` calls
@@ -133,6 +195,24 @@ export class ConfigModule {
           const store: Record<PropertyKey, unknown> = {};
 
           if (
+            hasValidator &&
+            !options.envSource &&
+            !options.ignoreEnvVars &&
+            !options.ignoreEnvFile
+          ) {
+            const stringified: Record<string, string> = {};
+            for (const [k, v] of Object.entries(validated)) {
+              if (v !== undefined && v !== null && Object.hasOwn(snapshot.fileValues, k)) {
+                stringified[k] = String(v);
+              }
+            }
+            ConfigModule.assignVariablesToProcess(
+              stringified,
+              Boolean(options.override),
+            );
+          }
+
+          if (
             !validatePredefined &&
             !options.ignoreEnvVars &&
             !options.skipProcessEnv
@@ -140,7 +220,12 @@ export class ConfigModule {
             if (options.override) {
               Object.assign(store, snapshot.runtimeEnv, validated);
             } else {
-              Object.assign(store, validated, snapshot.runtimeEnv);
+              Object.assign(store, validated);
+              for (const [k, v] of Object.entries(snapshot.runtimeEnv)) {
+                if (!Object.hasOwn(validated, k) || snapshot.fileValues[k] !== v) {
+                  store[k] = v;
+                }
+              }
             }
           } else {
             Object.assign(store, validated);
