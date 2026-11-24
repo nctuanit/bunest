@@ -219,8 +219,7 @@ describeConformance(
         await host?.close();
       });
 
-      // BUNEST_BUG: MicroserviceHost.collectLoadedInstances() only discovers singleton instances (wrapper.instance !== undefined) and skips Scope.REQUEST controllers, nor does it create a per-message RequestContainer / ContextIdFactory strategy (packages/microservices/src/microservice-host.ts:59-78,318-395); throws RpcException("No @MessagePattern() handler found for pattern \"order.create\"").
-      it.skip("should not answer a request of the tenant with the message they were built for", async () => {
+      it("should not answer a request of the tenant with the message they were built for", async () => {
         AuditTrail.users.length = 0;
         const moduleRef = await Test.createTestingModule({
           imports: [

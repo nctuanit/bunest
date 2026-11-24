@@ -261,8 +261,7 @@ describeConformance(
           );
       };
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts); expected ForbiddenException, handler resolved.
-      it.skip("should run a request-scoped global guard on it", async () => {
+      it("should run a request-scoped global guard on it", async () => {
         const handler = await createRequestScopedHandler(
           [{ provide: APP_GUARD, useClass: RequestScopedDenyGuard }],
           "payroll",
@@ -286,8 +285,7 @@ describeConformance(
         await expect(handler()).rejects.toBeInstanceOf(ForbiddenException);
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts); expected ForbiddenException, handler resolved.
-      it.skip("should run a transient global guard on it", async () => {
+      it("should run a transient global guard on it", async () => {
         const handler = await createStaticHandler(
           [{ provide: APP_GUARD, useClass: TransientDenyGuard }],
           "payroll",
@@ -317,8 +315,7 @@ describeConformance(
         return { wrapper };
       };
 
-      // BUNEST_BUG: ExternalContextCreator resolves enhancer classes against root module instead of the host's owning module (packages/core/src/helpers/external-context-creator.ts:103 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for module-local IS_ALLOWED.
-      it.skip("should run the guards of the module of the host", async () => {
+      it("should run the guards of the module of the host", async () => {
         const { wrapper } = await compile();
         const resolver = wrapper.instance as OrdersResolver;
         const handler = moduleRef!
@@ -328,8 +325,7 @@ describeConformance(
         await expect(handler()).rejects.toBeInstanceOf(ForbiddenException);
       });
 
-      // BUNEST_BUG: ExternalContextCreator resolves enhancer classes against root module even when wrapper.moduleId is passed (packages/core/src/helpers/external-context-creator.ts:103 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for module-local IS_ALLOWED.
-      it.skip("should run the guards of the module of the host when paired with a request-scoped global guard [ADR-012]", async () => {
+      it("should run the guards of the module of the host when paired with a request-scoped global guard [ADR-012]", async () => {
         const { wrapper } = await compile([
           { provide: APP_GUARD, useClass: RequestScopedAllowGuard },
         ]);

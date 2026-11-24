@@ -19,12 +19,14 @@ import {
   MetadataRegistry,
   type PipeLike,
   type PipeTransform,
+  Scope,
   type Type,
   type WsMessageHandler,
 } from "../../common/index";
 import { ContextIdFactory } from "../../di/context-id.factory";
 import type { DIContainer } from "../../di/di-container";
 import type { RequestContainer } from "../../di/request-container";
+import type { ModuleNode } from "../../module/module-node";
 import {
   type BunHttpAdapter,
   type BunServerLike,
@@ -108,6 +110,7 @@ interface RegisteredGateway {
   readonly wildcardHandler?: CompiledWsHandler;
   readonly binaryHandler?: CompiledWsHandler;
   readonly gatewayFilterLikes: readonly ExceptionFilterLike[];
+  readonly staticEnhancerCache: Map<unknown, unknown>;
 }
 
 interface GatewayConnectionLifecycle {
@@ -229,6 +232,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   private globalGuardLikes: GuardLike[] = [];
   private globalPipeLikes: PipeLike[] = [];
   private globalInterceptorLikes: InterceptorLike[] = [];
+  private readonly requestScopedGlobalEnhancers = new Set<unknown>();
   private readonly defaultFilter: BaseWsExceptionFilter;
   protected readonly logger: LoggerService;
   private readonly moduleOptions: WebSocketModuleOptions;
@@ -514,10 +518,15 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
    */
   setContainer(container: DIContainer): void {
     this.container = container;
+    this.requestScopedGlobalEnhancers.clear();
     const collect = <T>(token: symbol): T[] => {
       const items: T[] = [];
       for (const entry of container.getMultiProviderEntries(token)) {
+        const isReq = entry.provider.scope === Scope.REQUEST;
         if (entry.syntheticToken) {
+          if (isReq) {
+            this.requestScopedGlobalEnhancers.add(entry.syntheticToken);
+          }
           items.push(entry.syntheticToken as unknown as T);
         } else if (entry.instance !== undefined) {
           items.push(entry.instance as T);
@@ -526,6 +535,9 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
             entry.provider.useClass,
             entry.module,
           );
+          if (isReq) {
+            this.requestScopedGlobalEnhancers.add(entry.provider.useClass);
+          }
           items.push(entry.provider.useClass as unknown as T);
         }
       }
@@ -799,6 +811,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       wildcardHandler,
       binaryHandler,
       gatewayFilterLikes: gatewayFilters,
+      staticEnhancerCache: new Map(),
     };
 
     if (instance) {
@@ -1141,29 +1154,71 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     return resolved as object;
   }
 
+  private isEnhancerRequestScoped(
+    enhancer: Function,
+    owningModule?: ModuleNode,
+  ): boolean {
+    if (this.requestScopedGlobalEnhancers.has(enhancer)) {
+      return true;
+    }
+    if (
+      MetadataRegistry.get<{ scope?: Scope }>(
+        METADATA_KEYS.INJECTABLE,
+        enhancer,
+      )?.scope === Scope.REQUEST
+    ) {
+      return true;
+    }
+    if (!this.container) {
+      return false;
+    }
+    const wrappers = this.container.getDiscoveryService().getProviders();
+    for (const w of wrappers) {
+      if (
+        (w.token === enhancer || w.metatype === enhancer) &&
+        (!owningModule || w.moduleId === owningModule.id)
+      ) {
+        if (w.scope === Scope.REQUEST || !w.isDependencyTreeStatic) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private async resolveEnhancerForConnection<T>(
     enhancer: Type<T> | T,
     connState: WsConnectionState,
     kind?: "guard" | "pipe" | "interceptor" | "filter",
+    owningModule?: ModuleNode,
+    gateway?: RegisteredGateway,
   ): Promise<T> {
     if (typeof enhancer !== "function") {
       return enhancer;
     }
-    if (connState.enhancerCache.has(enhancer)) {
-      return connState.enhancerCache.get(enhancer) as T;
+    const useStaticGatewayCache =
+      gateway !== undefined &&
+      !gateway.isRequestScoped &&
+      !this.isEnhancerRequestScoped(enhancer, owningModule);
+    const cache = useStaticGatewayCache
+      ? gateway.staticEnhancerCache
+      : connState.enhancerCache;
+
+    if (cache.has(enhancer)) {
+      return cache.get(enhancer) as T;
     }
     let resolved: T;
     if (this.container) {
       resolved = await this.container.resolveEnhancer<T>(
         enhancer,
         connState.requestContainer,
-        undefined,
+        owningModule,
         kind,
       );
     } else {
       resolved = await this.resolveEnhancer<T>(enhancer);
     }
-    connState.enhancerCache.set(enhancer, resolved);
+    cache.set(enhancer, resolved);
     return resolved;
   }
 
@@ -1618,6 +1673,9 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       let paramPipesList: readonly (readonly PipeTransform[])[];
 
       if (this.container) {
+        const gatewayModule = gateway.moduleId
+          ? this.container.getModuleByKey(gateway.moduleId)
+          : undefined;
         const filtersAcc: CompiledWsFilter[] = [];
         for (const f of handler.filterLikes) {
           const filter =
@@ -1625,6 +1683,8 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
               f,
               connState,
               "filter",
+              gatewayModule,
+              gateway,
             );
           filtersAcc.push({
             filter,
@@ -1634,39 +1694,75 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
         resolvedFilters = filtersAcc;
 
         const guardsAcc: CanActivate[] = [];
-        for (const g of [...this.globalGuardLikes, ...handler.guardLikes]) {
+        for (const g of this.globalGuardLikes) {
           guardsAcc.push(
             await this.resolveEnhancerForConnection<CanActivate>(
               g,
               connState,
               "guard",
+              undefined,
+              gateway,
+            ),
+          );
+        }
+        for (const g of handler.guardLikes) {
+          guardsAcc.push(
+            await this.resolveEnhancerForConnection<CanActivate>(
+              g,
+              connState,
+              "guard",
+              gatewayModule,
+              gateway,
             ),
           );
         }
         guards = guardsAcc;
 
         const interceptorsAcc: BunestInterceptor[] = [];
-        for (const ic of [
-          ...this.globalInterceptorLikes,
-          ...handler.interceptorLikes,
-        ]) {
+        for (const ic of this.globalInterceptorLikes) {
           interceptorsAcc.push(
             await this.resolveEnhancerForConnection<BunestInterceptor>(
               ic,
               connState,
               "interceptor",
+              undefined,
+              gateway,
+            ),
+          );
+        }
+        for (const ic of handler.interceptorLikes) {
+          interceptorsAcc.push(
+            await this.resolveEnhancerForConnection<BunestInterceptor>(
+              ic,
+              connState,
+              "interceptor",
+              gatewayModule,
+              gateway,
             ),
           );
         }
         interceptors = interceptorsAcc;
 
         const sharedPipesAcc: PipeTransform[] = [];
-        for (const p of [...this.globalPipeLikes, ...handler.sharedPipeLikes]) {
+        for (const p of this.globalPipeLikes) {
           sharedPipesAcc.push(
             await this.resolveEnhancerForConnection<PipeTransform>(
               p,
               connState,
               "pipe",
+              undefined,
+              gateway,
+            ),
+          );
+        }
+        for (const p of handler.sharedPipeLikes) {
+          sharedPipesAcc.push(
+            await this.resolveEnhancerForConnection<PipeTransform>(
+              p,
+              connState,
+              "pipe",
+              gatewayModule,
+              gateway,
             ),
           );
         }
@@ -1681,6 +1777,8 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
                 p,
                 connState,
                 "pipe",
+                gatewayModule,
+                gateway,
               ),
             );
           }

@@ -349,8 +349,7 @@ describeConformance(
         host = undefined;
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI global enhancers registered via APP_GUARD/APP_PIPE/APP_INTERCEPTOR/APP_FILTER (packages/microservices/src/microservice-host.ts:329-392); message resolved instead of throwing Forbidden resource.
-      it.skip("should deny the message when the global guard is an alias of a request-scoped guard", async () => {
+      it("should deny the message when the global guard is an alias of a request-scoped guard", async () => {
         const moduleRef = await Test.createTestingModule({
           imports: [
             MicroserviceModule.forRoot({
