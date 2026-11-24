@@ -308,24 +308,46 @@ export interface ParseArrayPipeOptions extends Omit<
   separator?: string;
   optional?: boolean;
   itemPipe?: PipeTransform;
-  exceptionFactory?: (error: string) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  exceptionFactory?: (error: any) => unknown;
 }
 
 export type ParseArrayOptions = ParseArrayPipeOptions;
 
 export class ParseArrayPipe implements PipeTransform<
   unknown,
-  unknown[] | undefined
+  Promise<unknown[] | undefined>
 > {
   protected readonly options: ParseArrayPipeOptions;
   protected readonly validationPipe: ValidationPipe;
-  protected exceptionFactory: (error: string) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected exceptionFactory: (error: any) => unknown;
   private readonly separator: string;
+  private readonly stopAtFirstError: boolean;
+  private readonly maxErrorMessagesLength: number;
 
   constructor(options: ParseArrayPipeOptions = {}) {
     this.options = options;
     this.separator = options.separator ?? ",";
-    this.exceptionFactory = buildPipeExceptionFactory(options);
+    this.stopAtFirstError = options.stopAtFirstError ?? true;
+    const hasCustomFactory = typeof options.exceptionFactory === "function";
+    this.maxErrorMessagesLength = hasCustomFactory
+      ? Infinity
+      : resolveMaxErrorMessagesLength(options.maxErrorMessagesLength);
+
+    const status = options.errorHttpStatusCode ?? HttpStatus.BAD_REQUEST;
+    const errorLabel = HTTP_STATUS_REASON_PHRASES[status] ?? "Bad Request";
+    this.exceptionFactory =
+      options.exceptionFactory ??
+      ((error: string | string[]) =>
+        createStatusHttpException(
+          HttpException.createBody(error, errorLabel, status) as Record<
+            string,
+            unknown
+          >,
+          status,
+        ));
+
     const {
       items: _items,
       separator: _sep,
@@ -337,6 +359,10 @@ export class ParseArrayPipe implements PipeTransform<
     this.validationPipe = new ValidationPipe({
       ...validationOpts,
       transform: true,
+      errorFormat: options.errorFormat ?? "list",
+      ...(options.exceptionFactory
+        ? { exceptionFactory: options.exceptionFactory }
+        : {}),
     });
   }
 
@@ -348,11 +374,12 @@ export class ParseArrayPipe implements PipeTransform<
       return undefined;
     }
 
+    const fromString = typeof value === "string";
     let rawItems: unknown[];
     if (Array.isArray(value)) {
       rawItems = value;
-    } else if (typeof value === "string") {
-      rawItems = value === "" ? [] : value.split(this.separator);
+    } else if (fromString) {
+      rawItems = (value as string).split(this.separator);
     } else {
       throw this.exceptionFactory(
         "Validation failed (parsable array expected)",
@@ -364,31 +391,172 @@ export class ParseArrayPipe implements PipeTransform<
     const isPrimitiveItem = this.isExpectedTypePrimitive();
     const result: unknown[] = [];
 
-    for (let index = 0; index < rawItems.length; index++) {
-      const item = rawItems[index];
-      let transformed: unknown = item;
-
-      if (isPrimitiveItem) {
-        transformed = this.validatePrimitive(item, index);
-      } else if (itemType) {
-        transformed = await this.validationPipe.transform(item, {
-          type: metadata?.type ?? "body",
-          metatype: itemType,
-          data: metadata?.data,
-        });
+    // Collect only populated entries so sparse arrays (even with huge length)
+    // are traversed in O(populated items) and gaps are closed.
+    const entries: Array<[number, unknown]> = [];
+    for (const key of Object.keys(rawItems)) {
+      const idx = Number(key);
+      if (Number.isInteger(idx) && idx >= 0 && String(idx) === key) {
+        entries.push([idx, rawItems[idx]]);
       }
+    }
 
-      if (itemPipe) {
-        transformed = await itemPipe.transform(
-          transformed,
-          metadata ?? { type: "custom" },
+    if (this.stopAtFirstError) {
+      for (const [index, item] of entries) {
+        const transformed = await this.transformItem(
+          item,
+          index,
+          fromString,
+          isPrimitiveItem,
+          itemType,
+          itemPipe,
+          metadata,
         );
+        result.push(transformed);
       }
+      return result;
+    }
 
-      result.push(transformed);
+    const collectedErrors: string[] = [];
+    let collectedLength = 0;
+    let omitted = false;
+
+    for (const [index, item] of entries) {
+      try {
+        const transformed = await this.transformItem(
+          item,
+          index,
+          fromString,
+          isPrimitiveItem,
+          itemType,
+          itemPipe,
+          metadata,
+        );
+        if (collectedErrors.length === 0) {
+          result.push(transformed);
+        }
+      } catch (err) {
+        if (!(err instanceof HttpException)) {
+          throw err;
+        }
+        const itemMessages = this.extractItemErrorMessages(err, index);
+        if (itemMessages.length === 0) {
+          continue;
+        }
+        if (collectedLength >= this.maxErrorMessagesLength) {
+          collectedErrors.push(OMITTED_ERRORS_MESSAGE);
+          omitted = true;
+          break;
+        }
+        for (const msg of itemMessages) {
+          collectedErrors.push(msg);
+          collectedLength += msg.length;
+        }
+      }
+    }
+
+    if (collectedErrors.length > 0 || omitted) {
+      throw this.exceptionFactory(collectedErrors);
     }
 
     return result;
+  }
+
+  private async transformItem(
+    item: unknown,
+    index: number,
+    fromString: boolean,
+    isPrimitiveItem: boolean,
+    itemType: ParseArrayPipeOptions["items"],
+    itemPipe: PipeTransform | undefined,
+    metadata?: ArgumentMetadata,
+  ): Promise<unknown> {
+    let transformed: unknown = item;
+
+    if (isPrimitiveItem) {
+      transformed = this.validatePrimitive(item, index);
+    } else if (itemType) {
+      let candidate: unknown = item;
+      if (fromString && typeof candidate === "string") {
+        try {
+          candidate = JSON.parse(candidate);
+        } catch {
+          throw this.exceptionFactory([
+            "Validation failed (object is expected)",
+          ]);
+        }
+      }
+      if (
+        typeof candidate !== "object" ||
+        candidate === null ||
+        Array.isArray(candidate)
+      ) {
+        throw this.exceptionFactory(["Validation failed (object is expected)"]);
+      }
+      transformed = await this.validationPipe.transform(candidate, {
+        type: metadata?.type ?? "body",
+        metatype: itemType,
+        data: metadata?.data,
+      });
+    }
+
+    if (itemPipe) {
+      transformed = await itemPipe.transform(
+        transformed,
+        metadata ?? { type: "custom" },
+      );
+    }
+
+    return transformed;
+  }
+
+  private extractItemErrorMessages(
+    err: HttpException,
+    index: number,
+  ): string[] {
+    const response = err.getResponse();
+    const rawMessage =
+      typeof response === "string"
+        ? response
+        : (response as Record<string, unknown>)?.message;
+    const prefix = `[${index}] `;
+
+    const prefixMessage = (msg: string): string =>
+      msg.startsWith(prefix) ? msg : `${prefix}${msg}`;
+
+    if (typeof rawMessage === "string") {
+      return [prefixMessage(rawMessage)];
+    }
+
+    if (Array.isArray(rawMessage)) {
+      const out: string[] = [];
+      for (const entry of rawMessage) {
+        if (typeof entry === "string") {
+          out.push(prefixMessage(entry));
+        }
+      }
+      return out;
+    }
+
+    if (rawMessage && typeof rawMessage === "object") {
+      const out: string[] = [];
+      for (const [field, value] of Object.entries(
+        rawMessage as Record<string, unknown>,
+      )) {
+        const list = Array.isArray(value) ? value : [value];
+        for (const item of list) {
+          if (typeof item !== "string") continue;
+          if (field === "..." || item === OMITTED_ERRORS_MESSAGE) {
+            out.push(prefixMessage(item));
+          } else {
+            out.push(`${prefix}${field}: ${item}`);
+          }
+        }
+      }
+      return out;
+    }
+
+    return [prefixMessage(err.message)];
   }
 
   protected isExpectedTypePrimitive(): boolean {
@@ -403,21 +571,19 @@ export class ParseArrayPipe implements PipeTransform<
     return typeof value === "string" && STRICT_FLOAT_REGEX.test(value.trim());
   }
 
-  protected validatePrimitive(originalValue: unknown, _index?: number): unknown {
+  protected validatePrimitive(originalValue: unknown, index = 0): unknown {
     const itemType = this.options.items;
     if (itemType === Number) {
-      if (typeof originalValue === "number" && Number.isFinite(originalValue)) {
-        return originalValue === 0 ? 0 : originalValue;
-      }
       if (this.isNumeric(originalValue)) {
-        const num = Number(String(originalValue).trim());
+        const num =
+          typeof originalValue === "number"
+            ? originalValue
+            : Number(String(originalValue).trim());
         if (Number.isFinite(num)) {
           return num === 0 ? 0 : num;
         }
       }
-      throw this.exceptionFactory(
-        "Validation failed (numeric array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a number`);
     }
 
     if (itemType === Boolean) {
@@ -431,9 +597,7 @@ export class ParseArrayPipe implements PipeTransform<
       if (normalized === false || normalized === "false") {
         return false;
       }
-      throw this.exceptionFactory(
-        "Validation failed (boolean array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a boolean value`);
     }
 
     if (itemType === String) {
@@ -444,9 +608,7 @@ export class ParseArrayPipe implements PipeTransform<
       ) {
         return String(originalValue);
       }
-      throw this.exceptionFactory(
-        "Validation failed (string array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a string`);
     }
 
     return originalValue;

@@ -155,7 +155,7 @@ describe("Built-in Pipes", () => {
     it("parses comma-separated strings, arrays, typed items, and custom itemPipe", async () => {
       const strPipe = new ParseArrayPipe();
       expect(await strPipe.transform("a,b,c")).toEqual(["a", "b", "c"]);
-      expect(await strPipe.transform("")).toEqual([]);
+      expect(await strPipe.transform("")).toEqual([""]);
       expect(await strPipe.transform(["x", "y"])).toEqual(["x", "y"]);
 
       const numPipe = new ParseArrayPipe({ items: Number, separator: "|" });
