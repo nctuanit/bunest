@@ -44,8 +44,7 @@ describeConformance(
         expect(methods).toEqual(["test", "test2", "testParent", "testParent2"]);
       });
 
-      // BUNEST_BUG: MetadataScanner.getAllMethodNames() does not cache/memoize the method names array per prototype (packages/core/src/discovery/metadata-scanner.ts:13); repeated calls return distinct array instances.
-      it.skip("should return the same instance for the same prototype", () => {
+      it("should return the same instance for the same prototype", () => {
         const methods1 = scanner.getAllMethodNames(Test.prototype);
         const methods2 = scanner.getAllMethodNames(Test.prototype);
         expect(methods1 === methods2).toEqual(true);

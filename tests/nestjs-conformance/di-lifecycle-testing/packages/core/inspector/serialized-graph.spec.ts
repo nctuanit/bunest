@@ -46,8 +46,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: SerializedGraph.insertNode() overwrites existing node on duplicate id instead of returning the original node (packages/core/src/inspector/serialized-graph.ts:123)
-      it.skip("should return the existing node when the same id is inserted twice", () => {
+      it("should return the existing node when the same id is inserted twice", () => {
         const nodeDefinition: GraphNodeDefinition = {
           id: "duplicate-id",
           label: "AppService",

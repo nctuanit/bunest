@@ -85,8 +85,7 @@ describeConformance(
         expect(metadata).toEqual({ event: "click" });
       });
 
-      // BUNEST_BUG: DiscoveryService.createDecorator() stores undefined instead of default {} metadata when called without arguments (packages/core/src/discovery/discovery.service.ts).
-      it.skip("should use empty object as default metadata when no options provided", () => {
+      it("should use empty object as default metadata when no options provided", () => {
         const TestDecorator = DiscoveryService.createDecorator();
 
         @TestDecorator()
@@ -584,8 +583,7 @@ describeConformance(
         expect(modules).toHaveLength(0);
       });
 
-      // BUNEST_BUG: DiscoveryService.getModules() ignores { include } filter options and always returns all modules (packages/core/src/discovery/discovery.service.ts & packages/core/src/di/di-container.ts:1925-1934).
-      it.skip("should filter modules by include option", async () => {
+      it("should filter modules by include option", async () => {
         @NestModule({})
         class Module1 {}
 
@@ -611,8 +609,7 @@ describeConformance(
         expect(metatypes).not.toContain(Module2);
       });
 
-      // BUNEST_BUG: DiscoveryService.getModules() ignores { include: [] } and returns all modules instead of [] (packages/core/src/discovery/discovery.service.ts & packages/core/src/di/di-container.ts:1925-1934).
-      it.skip("should return empty array when include option is empty", async () => {
+      it("should return empty array when include option is empty", async () => {
         @NestModule({})
         class Module1 {}
 

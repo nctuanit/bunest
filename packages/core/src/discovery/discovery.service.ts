@@ -79,8 +79,8 @@ export class DiscoveryService {
    */
   static createDecorator<T = unknown>(): DiscoverableDecorator<T> {
     const metadataKey = `bunest:discoverable:${++discoverableDecoratorSeq}`;
-    const decoratorFn = ((opts?: T) =>
-      SetMetadata(metadataKey, opts as T)) as DiscoverableDecorator<T>;
+    const decoratorFn = ((opts: T = {} as T) =>
+      SetMetadata(metadataKey, opts)) as DiscoverableDecorator<T>;
     decoratorFn.KEY = metadataKey;
     return decoratorFn;
   }
@@ -152,8 +152,16 @@ export class DiscoveryService {
     return typeof target === "function" && MetadataRegistry.has(key, target);
   }
 
-  getModules(): readonly ModuleNode[] {
-    return this.host.discoverModules();
+  getModules(options?: FilterByInclude): readonly ModuleNode[] {
+    const all = this.host.discoverModules();
+    if (!options || options.include === undefined) {
+      return all;
+    }
+    if (options.include.length === 0) {
+      return [];
+    }
+    const allowed = new Set<unknown>(options.include);
+    return all.filter((mod) => allowed.has(mod) || allowed.has(mod.metatype));
   }
 
   getProviderByToken<T = unknown>(

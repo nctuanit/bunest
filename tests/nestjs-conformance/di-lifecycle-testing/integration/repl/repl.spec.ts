@@ -197,8 +197,7 @@ describeConformance(
     );
 
     describe("<native_function>.help properties", () => {
-      // BUNEST_BUG: createReplContext() functions do not attach NestJS `.help` getter descriptors (help.help, get.help, resolve.help, select.help, debug.help, methods.help) (packages/core/src/repl/repl.ts)
-      it.skip("should expose .help descriptor on native REPL functions (get, resolve, select, debug, methods, help)", () => {
+      it("should expose .help descriptor on native REPL functions (get, resolve, select, debug, methods, help)", () => {
         expect((ctx.help as unknown as { help?: unknown }).help).toBeDefined();
         expect((ctx.get as unknown as { help?: unknown }).help).toBeDefined();
         expect(

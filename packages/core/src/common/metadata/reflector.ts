@@ -54,7 +54,9 @@ export class Reflector {
     ): CustomDecorator<MetadataKey> => {
       const value = options.transform
         ? options.transform(metadataValue as TParam)
-        : metadataValue;
+        : metadataValue === undefined
+          ? ({} as TTransformed)
+          : metadataValue;
 
       const decorator = (
         target: object,
@@ -87,8 +89,11 @@ export class Reflector {
 
   getAll<TResult extends any[] = any[]>(
     metadataKeyOrDecorator: MetadataKeyInput,
-    targets: ReadonlyArray<object | undefined>,
+    targets: ReadonlyArray<object | undefined> | null | undefined,
   ): TResult {
+    if (!Array.isArray(targets)) {
+      return [] as unknown as TResult;
+    }
     const key = resolveKey(metadataKeyOrDecorator);
     return targets.map((target) =>
       target ? MetadataRegistry.get(key, target) : undefined,
@@ -97,8 +102,11 @@ export class Reflector {
 
   getAllAndMerge<TResult = any>(
     metadataKeyOrDecorator: MetadataKeyInput<TResult>,
-    targets: ReadonlyArray<object | undefined>,
+    targets: ReadonlyArray<object | undefined> | null | undefined,
   ): TResult {
+    if (!Array.isArray(targets)) {
+      return [] as unknown as TResult;
+    }
     const key = resolveKey(metadataKeyOrDecorator);
     const targetSet = new Set<object>();
     for (let i = 0; i < targets.length; i++) {
@@ -184,33 +192,26 @@ export class Reflector {
       if (isPlainObject(single)) {
         return { ...single } as unknown as TResult;
       }
-      return single as TResult;
+      return [single] as unknown as TResult;
     }
 
-    const first = values[0];
-    if (Array.isArray(first)) {
-      const merged: unknown[] = [];
-      for (const item of values) {
-        if (Array.isArray(item)) {
-          merged.push(...item);
-        } else {
-          merged.push(item);
-        }
-      }
-      return merged as unknown as TResult;
-    }
-
-    if (isPlainObject(first)) {
+    if (values.every((item) => isPlainObject(item))) {
       let merged: Record<string, unknown> = {};
       for (const item of values) {
-        if (isPlainObject(item)) {
-          merged = { ...merged, ...item };
-        }
+        merged = { ...merged, ...(item as Record<string, unknown>) };
       }
       return merged as unknown as TResult;
     }
 
-    return values as unknown as TResult;
+    const merged: unknown[] = [];
+    for (const item of values) {
+      if (Array.isArray(item)) {
+        merged.push(...item);
+      } else {
+        merged.push(item);
+      }
+    }
+    return merged as unknown as TResult;
   }
 
   getAllAndOverride<TResult = any>(
