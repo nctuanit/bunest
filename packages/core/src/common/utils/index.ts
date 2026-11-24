@@ -295,6 +295,7 @@ export {
 // Retry & backoff utilities
 export {
   computeBackoffDelay,
+  parseRetryAfter,
   resolveBackoff,
   retry,
   sleep,

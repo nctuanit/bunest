@@ -87,8 +87,7 @@ describeConformance(
       expect(method).toEqual(RequestMethod.GET);
     });
 
-    // BUNEST_BUG: Sse() / Sse("") in packages/core/src/common/decorators/http.decorators.ts:184 stores "" instead of normalizing default/empty path to "/" in METADATA_KEYS.ROUTE_PATH (though controller scanner normalizes "" -> "/").
-    it.skip('should set path on "/" by default', () => {
+    it('should set path on "/" by default', () => {
       class TestWithoutPath {
         @Sse()
         public static test() {}

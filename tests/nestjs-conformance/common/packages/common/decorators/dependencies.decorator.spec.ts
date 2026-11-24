@@ -42,8 +42,7 @@ describeConformance(
       expect(metadata).toEqual([dep, dep2]);
     });
 
-    // BUNEST_BUG: Dependencies() in packages/core/src/common/decorators/core.decorators.ts:226-236 only flattens one level of arrays instead of recursively calling flatten(dependencies).
-    it.skip("should flatten deeply nested dependency arrays", () => {
+    it("should flatten deeply nested dependency arrays", () => {
       const metadata = MetadataRegistry.get(METADATA_KEYS.DEPENDENCIES, Test3);
       expect(metadata).toEqual([dep, dep2, dep3]);
     });

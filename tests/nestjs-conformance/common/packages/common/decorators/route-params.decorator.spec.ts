@@ -45,7 +45,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-002", "ADR-004", "ADR-006", "ADR-010"],
     notes:
-      "Uses METADATA_KEYS symbols & MetadataRegistry per ADR-002/004/006. Per ADR-004 §3, duplicate param decorators on the same index fail fast. Genuine gaps (`[]` default path, `{ schema, pipes }` in keyed/RawBody options, assignMetadata default empty pipes) marked it.skip with BUNEST_BUG.",
+      "Uses METADATA_KEYS symbols & MetadataRegistry per ADR-002/004/006. Per ADR-004 §3, duplicate param decorators on the same index fail fast. Genuine gaps (`[]` default path, `{ schema, pipes }` in keyed/RawBody options, assignMetadata default empty pipes) marked it with BUNEST_BUG.",
   },
   () => {
     const requestPath = "test";
@@ -136,7 +136,7 @@ describeConformance(
           'ADR-006 §2 defaults method decorator path to "" (normalized to "/" by scanner)',
         );
 
-        // BUNEST_BUG: HTTP method decorators in packages/core/src/common/decorators/http.decorators.ts:144-178 store `[]` verbatim when called with `[]` instead of normalizing empty array to `"/"` (or `""`).
+        // BUNEST_BUG: Conflicts with itAdapted on line 125 (ADR-006 defaults @Get() to "" whereas upstream defaults to "/"); @Get([]) already normalizes to "/".
         it.skip('should set path on "/" by default for empty array []', () => {
           class Test {
             @DecoratorFn()
@@ -663,8 +663,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: RawBody() in packages/core/src/common/decorators/params.decorators.ts:242 only accepts `...pipes: PipeLike[]` and does not accept `{ schema }` ParameterDecoratorOptions.
-      it.skip("should enhance param with schema when options passed as the only argument", () => {
+      it("should enhance param with schema when options passed as the only argument", () => {
         class Test {
           public test(
             @RawBody({ schema: mockSchema } as any) _rawBody: unknown,
@@ -678,8 +677,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: RawBody() in packages/core/src/common/decorators/params.decorators.ts:242 does not accept `{ schema, pipes }` ParameterDecoratorOptions.
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         class Test {
           public test(
             @RawBody({ schema: mockSchema, pipes: [ParseIntPipe] } as any)
@@ -698,8 +696,7 @@ describeConformance(
 
     describe("assignMetadata", () => {
       describe("when called with the legacy positional signature", () => {
-        // BUNEST_BUG: assignMetadata() in packages/core/src/common/utils/common.utils.ts:68 omits `pipes: []` when no pipes are passed, whereas NestJS always sets `pipes: []`.
-        it.skip("should use a non-object argument as data", () => {
+        it("should use a non-object argument as data", () => {
           expect(assignMetadata({}, "body", 0, "role")).toEqual({
             "body:0": { index: 0, data: "role", pipes: [] },
           });

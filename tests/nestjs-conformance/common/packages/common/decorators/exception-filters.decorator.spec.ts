@@ -46,8 +46,7 @@ describeConformance(
       expect(metadata).toEqual(filters);
     });
 
-    // BUNEST_BUG: UseFilters() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator arguments (does not throw InvalidDecoratorItemException when a primitive like 'test' is passed).
-    it.skip("when object is invalid should throw exception", () => {
+    it("when object is invalid should throw exception", () => {
       let error: unknown = undefined;
       try {
         UseFilters("test" as any)(() => {});

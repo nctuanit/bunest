@@ -40,8 +40,7 @@ describeConformance(
       expect(metadata).toEqual(exceptions);
     });
 
-    // BUNEST_BUG: Catch() in packages/core/src/common/decorators/core.decorators.ts:212 only defines METADATA_KEYS.CATCH_EXCEPTIONS on `target` (the constructor), not on `target.prototype`.
-    it.skip("should enhance the prototype of the class with expected exceptions array", () => {
+    it("should enhance the prototype of the class with expected exceptions array", () => {
       const metadata = MetadataRegistry.getOwn(
         METADATA_KEYS.CATCH_EXCEPTIONS,
         Test.prototype,

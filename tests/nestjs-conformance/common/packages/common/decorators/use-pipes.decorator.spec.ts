@@ -43,8 +43,7 @@ describeConformance(
       expect(metadata).toEqual(pipes);
     });
 
-    // BUNEST_BUG: UsePipes() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
-    it.skip("when object is invalid should throw exception", () => {
+    it("when object is invalid should throw exception", () => {
       let errorClass: unknown = undefined;
       try {
         UsePipes("test" as any)(() => {});

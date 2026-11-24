@@ -172,34 +172,64 @@ export function getAutoModuleMetadata(
   );
 }
 
+const VALID_MODULE_METADATA_KEYS = new Set([
+  "imports",
+  "controllers",
+  "providers",
+  "exports",
+  "autoDiscover",
+]);
+
 /**
  * Defines a Bunest module organizing imports, controllers, providers, and exports.
  */
 export function Module(metadata: ModuleMetadata): ClassDecorator {
+  const hasOwn = Object.prototype.hasOwnProperty;
+  for (const key of Object.keys(metadata)) {
+    if (!VALID_MODULE_METADATA_KEYS.has(key)) {
+      throw new Error(
+        `Invalid property '${key}' passed into the @Module() decorator.`,
+      );
+    }
+  }
+  const ownImports = hasOwn.call(metadata, "imports")
+    ? metadata.imports
+    : undefined;
+  const ownControllers = hasOwn.call(metadata, "controllers")
+    ? metadata.controllers
+    : undefined;
+  const ownProviders = hasOwn.call(metadata, "providers")
+    ? metadata.providers
+    : undefined;
+  const ownExports = hasOwn.call(metadata, "exports")
+    ? metadata.exports
+    : undefined;
+  const ownAutoDiscover = hasOwn.call(metadata, "autoDiscover")
+    ? metadata.autoDiscover
+    : undefined;
+
   return (target: Function) => {
     MetadataRegistry.define<ModuleMetadata>(
       METADATA_KEYS.MODULE,
       {
-        imports: metadata.imports ? [...metadata.imports] : undefined,
-        controllers: metadata.controllers
-          ? [...metadata.controllers]
-          : undefined,
-        providers: metadata.providers ? [...metadata.providers] : undefined,
-        exports: metadata.exports ? [...metadata.exports] : undefined,
-        ...(metadata.autoDiscover !== undefined
+        imports: ownImports ? [...ownImports] : undefined,
+        controllers: ownControllers ? [...ownControllers] : undefined,
+        providers: ownProviders ? [...ownProviders] : undefined,
+        exports: ownExports ? [...ownExports] : undefined,
+        ...(ownAutoDiscover !== undefined
           ? {
               autoDiscover:
-                typeof metadata.autoDiscover === "object"
+                typeof ownAutoDiscover === "object"
                   ? {
-                      ...metadata.autoDiscover,
-                      ...(metadata.autoDiscover.include
-                        ? { include: [...metadata.autoDiscover.include] }
+                      ...ownAutoDiscover,
+                      ...(ownAutoDiscover.include
+                        ? { include: [...ownAutoDiscover.include] }
                         : {}),
-                      ...(metadata.autoDiscover.exclude
-                        ? { exclude: [...metadata.autoDiscover.exclude] }
+                      ...(ownAutoDiscover.exclude
+                        ? { exclude: [...ownAutoDiscover.exclude] }
                         : {}),
                     }
-                  : metadata.autoDiscover,
+                  : ownAutoDiscover,
             }
           : {}),
       },
@@ -293,6 +323,7 @@ export function Injectable(options?: InjectableOptions): ClassDecorator {
 export function Inject<T = unknown>(
   token?: InjectionToken<T> | ForwardReference<T>,
 ): ParameterDecorator & PropertyDecorator {
+  const hasExplicitToken = arguments.length > 0;
   return (
     target: object,
     propertyKey: string | symbol | undefined,
@@ -300,12 +331,12 @@ export function Inject<T = unknown>(
   ) => {
     // Constructor parameter injection
     if (typeof parameterIndex === "number" && propertyKey === undefined) {
-      const resolvedToken =
-        token ??
-        (MetadataRegistry.getParamTypes(target)?.[parameterIndex] as
-          InjectionToken | undefined);
+      const resolvedToken = hasExplicitToken
+        ? (token as InjectionToken | ForwardReference | undefined)
+        : (MetadataRegistry.getParamTypes(target)?.[parameterIndex] as
+            InjectionToken | undefined);
 
-      if (resolvedToken === undefined) {
+      if (!hasExplicitToken && resolvedToken === undefined) {
         throw new Error(
           `@Inject() on ${(target as Function).name ?? "unknown"} constructor parameter #${parameterIndex} requires an explicit token.`,
         );
@@ -320,7 +351,7 @@ export function Inject<T = unknown>(
       const filtered = existing.filter((item) => item.index !== parameterIndex);
       const next: InjectTokenMetadata[] = [
         ...filtered,
-        { index: parameterIndex, token: resolvedToken },
+        { index: parameterIndex, token: resolvedToken as InjectionToken },
       ].sort((a, b) => a.index - b.index);
 
       MetadataRegistry.define(METADATA_KEYS.INJECT_TOKENS, next, target);
@@ -330,12 +361,12 @@ export function Inject<T = unknown>(
     // Property injection
     if (propertyKey !== undefined) {
       const ctor = target.constructor;
-      const resolvedToken =
-        token ??
-        (MetadataRegistry.getType(target, propertyKey) as
-          InjectionToken | undefined);
+      const resolvedToken = hasExplicitToken
+        ? (token as InjectionToken | ForwardReference | undefined)
+        : (MetadataRegistry.getType(target, propertyKey) as
+            InjectionToken | undefined);
 
-      if (resolvedToken === undefined) {
+      if (!hasExplicitToken && resolvedToken === undefined) {
         throw new Error(
           `@Inject() on ${ctor.name}.${String(propertyKey)} requires an explicit token.`,
         );
@@ -352,7 +383,7 @@ export function Inject<T = unknown>(
       );
       const next: PropertyInjectMetadata[] = [
         ...filtered,
-        { propertyKey, token: resolvedToken },
+        { propertyKey, token: resolvedToken as InjectionToken },
       ];
 
       MetadataRegistry.define(METADATA_KEYS.PROPERTY_INJECT_TOKENS, next, ctor);
@@ -434,11 +465,19 @@ export function SetMetadata<K extends MetadataKey = string, V = unknown>(
  */
 export function Catch(...exceptions: Type<unknown>[]): ClassDecorator {
   return (target: Function) => {
+    const copy = [...exceptions];
     MetadataRegistry.define<readonly Type<unknown>[]>(
       METADATA_KEYS.CATCH_EXCEPTIONS,
-      [...exceptions],
+      copy,
       target,
     );
+    if (target.prototype) {
+      MetadataRegistry.define<readonly Type<unknown>[]>(
+        METADATA_KEYS.CATCH_EXCEPTIONS,
+        [...exceptions],
+        target.prototype,
+      );
+    }
   };
 }
 
@@ -447,18 +486,19 @@ export function Catch(...exceptions: Type<unknown>[]): ClassDecorator {
  * for JavaScript / non-`emitDecoratorMetadata` usage).
  */
 export function Dependencies(
-  ...dependencies: Array<
-    InjectionToken | ForwardReference | Array<InjectionToken | ForwardReference>
-  >
+  ...dependencies: Array<unknown>
 ): ClassDecorator {
   const flatDeps: Array<InjectionToken | ForwardReference> = [];
-  for (const dep of dependencies) {
-    if (Array.isArray(dep)) {
-      flatDeps.push(...dep);
-    } else {
-      flatDeps.push(dep);
+  const flattenInto = (items: readonly unknown[]): void => {
+    for (const item of items) {
+      if (Array.isArray(item)) {
+        flattenInto(item);
+      } else {
+        flatDeps.push(item as InjectionToken | ForwardReference);
+      }
     }
-  }
+  };
+  flattenInto(dependencies);
   return (target: Function) => {
     MetadataRegistry.define(METADATA_KEYS.DEPENDENCIES, flatDeps, target);
     const existing =

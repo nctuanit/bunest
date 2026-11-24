@@ -56,8 +56,7 @@ describeConformance(
       expect(metadata).toEqual(guards.concat(guards));
     });
 
-    // BUNEST_BUG: UseGuards() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
-    it.skip("should throw exception when object is invalid", () => {
+    it("should throw exception when object is invalid", () => {
       let error: unknown = undefined;
       try {
         UseGuards("test" as any)({ name: "target" } as any);

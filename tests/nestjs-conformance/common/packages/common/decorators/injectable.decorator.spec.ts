@@ -96,8 +96,7 @@ describeConformance(
         expect(constructorParams).toEqual([Number, String]);
       });
 
-      // BUNEST_BUG: mixin() in packages/core/src/common/utils/common.utils.ts:13 does not define `design:paramtypes` as `[]` for an undecorated class (returns `undefined` instead of `[]`).
-      it.skip("should declare no parameter types for an undecorated class", () => {
+      it("should declare no parameter types for an undecorated class", () => {
         class Undecorated {
           constructor(public options?: unknown) {}
         }
@@ -130,8 +129,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: mixin() in packages/core/src/common/utils/common.utils.ts:18 checks `hasOwn(METADATA_KEYS.INJECTABLE, mixinClass)` instead of `has(...)`, overwriting an inherited parent scope (e.g. Scope.TRANSIENT) with `{ scope: Scope.SINGLETON }`.
-      it.skip("should not hide the scope options of a parent class", () => {
+      it("should not hide the scope options of a parent class", () => {
         const options = { scope: Scope.TRANSIENT };
 
         @Injectable(options)

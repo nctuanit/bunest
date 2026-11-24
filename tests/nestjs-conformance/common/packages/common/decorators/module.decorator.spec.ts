@@ -39,8 +39,7 @@ describeConformance(
       expect(meta?.exports).toEqual(moduleProps.exports as any);
     });
 
-    // BUNEST_BUG: Module() in packages/core/src/common/decorators/core.decorators.ts:21 does not validate keys of the metadata object (silently ignores unknown keys like `test` instead of throwing an Error / InvalidModuleConfigException).
-    it.skip("should throw exception when module properties are invalid", () => {
+    it("should throw exception when module properties are invalid", () => {
       const invalidProps = {
         ...moduleProps,
         test: [],
@@ -49,8 +48,7 @@ describeConformance(
       expect(Module.bind(null, invalidProps as any)).toThrow(Error);
     });
 
-    // BUNEST_BUG: Module() in packages/core/src/common/decorators/core.decorators.ts:25 reads `metadata.exports` directly without checking `Object.prototype.hasOwnProperty.call(metadata, key)`, so prototype-inherited properties leak into stored module metadata.
-    it.skip("should ignore properties inherited through the prototype chain", () => {
+    it("should ignore properties inherited through the prototype chain", () => {
       const inheritedProps = { exports: ["Inherited"] };
       const metadata = Object.create(inheritedProps) as Record<string, unknown>;
       metadata.providers = ["Own"];

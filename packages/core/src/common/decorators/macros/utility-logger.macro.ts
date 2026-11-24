@@ -1,6 +1,7 @@
 import { METADATA_KEYS } from "../../constants/metadata-keys";
 import { Logger } from "../../logger/logger";
 import { MetadataRegistry } from "../../metadata/metadata-registry";
+import { LruCache } from "../../utils/structures.util";
 import { getClassMacroConfig, invalidateMacroPlanCache } from "./macro-plan";
 import {
   MEMOIZE_CACHE_SYM,
@@ -61,7 +62,6 @@ export function WithLogger(
 
 interface MemoizeCacheEntry {
   readonly value: unknown;
-  readonly expiresAt?: number;
 }
 
 /**
@@ -74,7 +74,7 @@ export function clearMemoizeCache(
   const caches = (
     instance as Record<
       symbol,
-      Map<PropertyKey, Map<unknown, MemoizeCacheEntry>> | undefined
+      Map<PropertyKey, LruCache<unknown, MemoizeCacheEntry>> | undefined
     >
   )[MEMOIZE_CACHE_SYM];
   if (!caches) return;
@@ -89,17 +89,19 @@ export function clearMemoizeCache(
  * Memoizes a getter or method per instance (supports both sync values and Promises; auto-evicts rejected Promises).
  */
 export function Memoize(options: MemoizeDecoratorOptions = {}): MethodDecorator {
-  const maxSize = options.maxSize ?? 256;
+  const maxSize = Math.max(1, options.maxSize ?? 256);
 
   return (
     _target: object,
     propertyKey: string | symbol,
     descriptor: PropertyDescriptor,
   ): PropertyDescriptor => {
-    const getStore = (instance: object): Map<unknown, MemoizeCacheEntry> => {
+    const getStore = (
+      instance: object,
+    ): LruCache<unknown, MemoizeCacheEntry> => {
       const host = instance as Record<
         symbol,
-        Map<PropertyKey, Map<unknown, MemoizeCacheEntry>> | undefined
+        Map<PropertyKey, LruCache<unknown, MemoizeCacheEntry>> | undefined
       >;
       let all = host[MEMOIZE_CACHE_SYM];
       if (!all) {
@@ -113,41 +115,34 @@ export function Memoize(options: MemoizeDecoratorOptions = {}): MethodDecorator 
       }
       let store = all.get(propertyKey);
       if (!store) {
-        store = new Map();
+        store = new LruCache<unknown, MemoizeCacheEntry>({
+          maxSize,
+          ttl: options.ttlMs,
+        });
         all.set(propertyKey, store);
       }
       return store;
     };
 
     const readCached = (
-      store: Map<unknown, MemoizeCacheEntry>,
+      store: LruCache<unknown, MemoizeCacheEntry>,
       key: unknown,
     ): { hit: true; value: unknown } | { hit: false } => {
       const entry = store.get(key);
       if (!entry) return { hit: false };
-      if (entry.expiresAt !== undefined && Date.now() > entry.expiresAt) {
-        store.delete(key);
-        return { hit: false };
-      }
       return { hit: true, value: entry.value };
     };
 
     const writeCached = (
-      store: Map<unknown, MemoizeCacheEntry>,
+      store: LruCache<unknown, MemoizeCacheEntry>,
       key: unknown,
       value: unknown,
     ): void => {
-      if (store.size >= maxSize && !store.has(key)) {
-        const oldestKey = store.keys().next().value;
-        store.delete(oldestKey);
-      }
-      const expiresAt =
-        options.ttlMs !== undefined ? Date.now() + options.ttlMs : undefined;
-      store.set(key, { value, expiresAt });
+      store.set(key, { value });
 
       if (value && typeof (value as PromiseLike<unknown>).then === "function") {
         Promise.resolve(value).catch(() => {
-          const current = store.get(key);
+          const current = store.peek(key);
           if (current && current.value === value) {
             store.delete(key);
           }

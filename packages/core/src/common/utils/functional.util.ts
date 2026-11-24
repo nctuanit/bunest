@@ -1,4 +1,5 @@
 import { include, not } from "./predicate.util";
+import { LruCache } from "./structures.util";
 import {
   isError,
   isFunction,
@@ -72,7 +73,6 @@ export function memoize<K, R>(
   fn: (arg: K) => R,
   options: MemoizeOptions<K> = {},
 ): MemoizedFn<K, R> {
-  const cache = new Map<unknown, R>();
   const { maxSize, keyFn } = options;
 
   if (isNotUndefined(maxSize) && (not(isInteger(maxSize)) || maxSize < 1)) {
@@ -81,26 +81,39 @@ export function memoize<K, R>(
     );
   }
 
+  const bounded = isNotUndefined(maxSize)
+    ? new LruCache<unknown, { value: R }>({ maxSize })
+    : undefined;
+  const unbounded = bounded ? undefined : new Map<unknown, R>();
+
   const resolveKey = (arg: K): unknown => (keyFn ? keyFn(arg) : arg);
 
   const memoized = ((arg: K): R => {
     const key = resolveKey(arg);
-    if (include(cache, key)) {
-      return cache.get(key) as R;
+    if (bounded) {
+      const hit = bounded.get(key);
+      if (isNotUndefined(hit)) {
+        return hit.value;
+      }
+      const result = fn(arg);
+      bounded.set(key, { value: result });
+      return result;
+    }
+    if (include(unbounded!, key)) {
+      return unbounded!.get(key) as R;
     }
     const result = fn(arg);
-    if (isNotUndefined(maxSize) && cache.size >= maxSize) {
-      const oldestKey = cache.keys().next().value;
-      cache.delete(oldestKey);
-    }
-    cache.set(key, result);
+    unbounded!.set(key, result);
     return result;
   }) as MemoizedFn<K, R>;
 
-  memoized.clear = () => cache.clear();
-  memoized.delete = (arg: K) => cache.delete(resolveKey(arg));
+  memoized.clear = () => (bounded ? bounded.clear() : unbounded!.clear());
+  memoized.delete = (arg: K) => {
+    const key = resolveKey(arg);
+    return bounded ? bounded.delete(key) : unbounded!.delete(key);
+  };
   Object.defineProperty(memoized, "size", {
-    get: () => cache.size,
+    get: () => (bounded ? bounded.size : unbounded!.size),
     enumerable: true,
   });
 
