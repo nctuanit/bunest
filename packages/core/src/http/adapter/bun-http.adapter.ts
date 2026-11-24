@@ -1506,7 +1506,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         : typeof this.globalPrefix === "string"
           ? this.globalPrefix
           : undefined;
-      this.csrfProtection = compileCsrfProtection(this.csrfOptions, prefix);
+      this.csrfProtection = compileCsrfProtection(
+        this.csrfOptions,
+        prefix,
+        this.globalPrefixOptions?.exclude,
+      );
     }
 
     const defaultFilter = new DefaultExceptionFilter({
@@ -2127,6 +2131,13 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       multipart: this.multipartOptions,
       cookieSecrets: this.cookieSecrets,
     });
+    if (this.csrfProtection) {
+      try {
+        this.csrfProtection.evaluate(req, pathname);
+      } catch (csrfError) {
+        return executeFallbackException(csrfError, ctx, table.runtime);
+      }
+    }
     return executeFallbackException(
       new NotFoundException(`Cannot ${req.method} ${pathname}`),
       ctx,

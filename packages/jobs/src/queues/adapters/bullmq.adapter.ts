@@ -1206,12 +1206,20 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Gracefully drain active BullMQ workers before detaching listeners so
-    // in-flight completion/failure events are still observed.
+    // Phase 1 (onModuleDestroy): drain active BullMQ workers while queues remain
+    // open so in-flight jobs can still enqueue child jobs on other queues.
     if (this.driver) {
       await this.driver.closeWorkers();
     }
-    await Promise.all(this.customWorkers.splice(0).map((w) => w.close()));
+    await Promise.all([
+      ...this.customWorkers.splice(0).map((w) => w.close()),
+      this.registry.closeAllWorkers(),
+    ]);
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    // Phase 2 (onApplicationShutdown): close queues, events, listeners, and driver
+    // after all workers have finished draining.
     await this.registry.closeAll();
 
     for (const qe of this.allQueueEvents.splice(0)) {

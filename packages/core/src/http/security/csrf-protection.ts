@@ -35,12 +35,20 @@ function isNonCanonicalPath(pathname: string): boolean {
   if (
     pathname.includes("//") ||
     pathname.includes(";") ||
-    pathname.includes("\\")
+    pathname.includes("\\") ||
+    /[\x00-\x1f\x7f\u2028\u2029]/.test(pathname)
   ) {
     return true;
   }
   const lower = pathname.toLowerCase();
-  if (lower.includes("%2f") || lower.includes("%2e") || lower.includes("%5c")) {
+  if (
+    lower.includes("%2f") ||
+    lower.includes("%2e") ||
+    lower.includes("%5c") ||
+    lower.includes("%e2%80%a8") ||
+    lower.includes("%e2%80%a9") ||
+    /%(?:0[0-9a-f]|1[0-9a-f]|7f)/.test(lower)
+  ) {
     return true;
   }
   const segments = pathname.split("/");
@@ -67,7 +75,45 @@ function normalizeExcludeRoutePath(
   if (!prefix || prefix === "/") {
     return clean;
   }
+  if (clean === prefix || clean.startsWith(`${prefix}/`)) {
+    return clean;
+  }
   return clean === "/" ? prefix : `${prefix}${clean}`;
+}
+
+function compileExcludePattern(pattern: string): (pathname: string) => boolean {
+  const starIdx = pattern.indexOf("*");
+  if (starIdx === -1) {
+    return (pathname: string) => pathname === pattern;
+  }
+  // Wildcard suffix like `/api/webhooks/*path` or `/api/hooks/github/*`:
+  // must match at least one non-empty character/segment after the prefix
+  // (never matches the parent path or trailing slash alone).
+  const prefix = pattern.slice(0, starIdx);
+  return (pathname: string) => {
+    if (!pathname.startsWith(prefix)) return false;
+    const rest = pathname.slice(prefix.length);
+    return rest.length > 0 && rest !== "/";
+  };
+}
+
+function isRouteExcludedFromGlobalPrefix(
+  rawPath: string,
+  globalPrefixExclude?: readonly (string | RouteInfo)[],
+): boolean {
+  if (!globalPrefixExclude || globalPrefixExclude.length === 0) {
+    return false;
+  }
+  const clean = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+  const matcher = compileExcludePattern(clean);
+  for (const entry of globalPrefixExclude) {
+    const p = typeof entry === "string" ? entry : entry.path;
+    const norm = p.startsWith("/") ? p : `/${p}`;
+    if (norm === clean || matcher(norm)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export interface CompiledCsrfProtection {
@@ -81,6 +127,7 @@ export interface CompiledCsrfProtection {
 export function compileCsrfProtection(
   options: CsrfProtectionOptions<Request> = {},
   globalPrefix?: string,
+  globalPrefixExclude?: readonly (string | RouteInfo)[],
 ): CompiledCsrfProtection {
   const trustedOrigins = new Set<string>();
   if (options.trustedOrigins) {
@@ -92,16 +139,26 @@ export function compileCsrfProtection(
   const excludePredicate =
     typeof options.exclude === "function" ? options.exclude : undefined;
 
-  const excludeRoutes: Array<{ path: string; method?: string }> = [];
+  const excludeRoutes: Array<{
+    match: (pathname: string) => boolean;
+    method?: string;
+  }> = [];
   if (Array.isArray(options.exclude)) {
     for (const entry of options.exclude) {
       if (typeof entry === "string") {
         excludeRoutes.push({
-          path: normalizeExcludeRoutePath(entry, globalPrefix),
+          match: compileExcludePattern(
+            normalizeExcludeRoutePath(entry, globalPrefix),
+          ),
         });
-        if (globalPrefix) {
+        if (
+          globalPrefix &&
+          isRouteExcludedFromGlobalPrefix(entry, globalPrefixExclude)
+        ) {
           excludeRoutes.push({
-            path: entry.startsWith("/") ? entry : `/${entry}`,
+            match: compileExcludePattern(
+              entry.startsWith("/") ? entry : `/${entry}`,
+            ),
           });
         }
       } else {
@@ -112,12 +169,19 @@ export function compileCsrfProtection(
             ? undefined
             : rawMethod;
         excludeRoutes.push({
-          path: normalizeExcludeRoutePath(info.path, globalPrefix),
+          match: compileExcludePattern(
+            normalizeExcludeRoutePath(info.path, globalPrefix),
+          ),
           method,
         });
-        if (globalPrefix) {
+        if (
+          globalPrefix &&
+          isRouteExcludedFromGlobalPrefix(info.path, globalPrefixExclude)
+        ) {
           excludeRoutes.push({
-            path: info.path.startsWith("/") ? info.path : `/${info.path}`,
+            match: compileExcludePattern(
+              info.path.startsWith("/") ? info.path : `/${info.path}`,
+            ),
             method,
           });
         }
@@ -142,7 +206,7 @@ export function compileCsrfProtection(
     for (let i = 0; i < excludeRoutes.length; i++) {
       const rule = excludeRoutes[i];
       if (!rule) continue;
-      if (rule.path !== pathname) continue;
+      if (!rule.match(pathname)) continue;
       if (rule.method !== undefined && rule.method !== method) continue;
       return true;
     }

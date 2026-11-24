@@ -45,8 +45,7 @@ describeConformance(
       expect(normalizeCookieSecrets(undefined)).toBeUndefined();
     });
 
-    // BUNEST_BUG: signCookieValue uses base64url (-/_) via hmacSignBase64Url instead of standard unpadded base64 (+//) used by cookie-signature/NestJS (packages/core/src/http/security/cookie.ts:12-30).
-    it.skip('should produce the cookie-signature format with the "s:" prefix', () => {
+    it('should produce the cookie-signature format with the "s:" prefix', () => {
       const signed = signCookieValue("value", "secret");
       expect(signed).toBe(
         `s:${referenceCookieSignatureSign("value", "secret")}`,
@@ -62,22 +61,19 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: unsignCookieValue checks `if (dotIdx <= 0) return false` (packages/core/src/http/security/cookie.ts:60), rejecting valid signed empty string "" (body is ".<sig>", dotIdx === 0).
-    it.skip("should round-trip empty string values", () => {
+    it("should round-trip empty string values", () => {
       expect(unsignCookieValue(signCookieValue("", "secret"), ["secret"])).toBe(
         "",
       );
     });
 
-    // BUNEST_BUG: unsignCookieValue uses base64url (-/_) instead of standard base64 (+//) and requires the "s:" prefix, rejecting cookie-signature payloads (packages/core/src/http/security/cookie.ts:51-69).
-    it.skip("should verify values signed by cookie-signature, with or without the prefix", () => {
+    it("should verify values signed by cookie-signature, with or without the prefix", () => {
       const signed = referenceCookieSignatureSign("user-42", "secret");
       expect(unsignCookieValue(`s:${signed}`, ["secret"])).toBe("user-42");
       expect(unsignCookieValue(signed, ["secret"])).toBe("user-42");
     });
 
-    // BUNEST_BUG: signCookieValue uses base64url (-/_) instead of standard unpadded base64 (+//), so cookie-signature cannot verify outputs containing - or _ (packages/core/src/http/security/cookie.ts:12-30).
-    it.skip("should produce values that cookie-signature verifies", () => {
+    it("should produce values that cookie-signature verifies", () => {
       const signed = signCookieValue("user-42", "secret");
       expect(referenceCookieSignatureUnsign(signed.slice(2), "secret")).toBe(
         "user-42",
@@ -101,8 +97,7 @@ describeConformance(
       "unsignCookieValue returns false on invalid signature",
     );
 
-    // BUNEST_BUG: unsignCookieValue throws TypeError when given undefined input instead of returning false (packages/core/src/http/security/cookie.ts:51).
-    it.skip("should return false rather than throwing for undefined input", () => {
+    it("should return false rather than throwing for undefined input", () => {
       expect(unsignCookieValue(undefined as any, ["secret"])).toBe(false);
     });
 

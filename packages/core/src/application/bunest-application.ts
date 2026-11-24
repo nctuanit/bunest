@@ -537,8 +537,18 @@ export class BunestApplication extends BunestApplicationContext {
    * Enables built-in NestJS v12 Fetch-Metadata CSRF protection (`Sec-Fetch-Site`
    * with `Origin`/`Host` fallback).
    */
+  private csrfEnabled = false;
+  private securityHeadersEnabled = false;
+
   enableCsrfProtection(options?: CsrfProtectionOptions<Request>): this {
+    if (this.isInitialized) {
+      throw new Error("enableCsrfProtection() must be called before app.init().");
+    }
+    if (this.csrfEnabled) {
+      throw new Error("enableCsrfProtection() can only be called once.");
+    }
     this.httpAdapter.enableCsrfProtection(options);
+    this.csrfEnabled = true;
     this.routesDirty = true;
     return this;
   }
@@ -548,7 +558,14 @@ export class BunestApplication extends BunestApplicationContext {
    * `404`s and error responses) and removes `X-Powered-By`.
    */
   useSecurityHeaders(options?: HttpSecurityHeadersOptions): this {
+    if (this.isInitialized) {
+      throw new Error("useSecurityHeaders() must be called before app.init().");
+    }
+    if (this.securityHeadersEnabled) {
+      throw new Error("useSecurityHeaders() can only be called once.");
+    }
     this.httpAdapter.useSecurityHeaders(options);
+    this.securityHeadersEnabled = true;
     this.routesDirty = true;
     return this;
   }

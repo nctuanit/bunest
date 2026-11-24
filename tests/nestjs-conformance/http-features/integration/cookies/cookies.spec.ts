@@ -423,8 +423,7 @@ describeConformance(
           expect(res.headers["x-injected"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: When a middleware returns `next()` (Promise<Response>), executeMiddlewareChain checks `result instanceof Response` even when `nextCalled === true` and calls finalizeShortCircuitResponse -> mergeHeadersOntoNativeResponse, re-appending every Set-Cookie header once per middleware (packages/core/src/http/pipeline/execution-pipeline.ts:482-486).
-        it.skip("should not duplicate Set-Cookie headers when a middleware returns next()", async () => {
+        it("should not duplicate Set-Cookie headers when a middleware returns next()", async () => {
           const modRef = await Test.createTestingModule({
             imports: [AppModule],
           }).compile();
@@ -477,8 +476,7 @@ describeConformance(
           .expect(200, { theme: "dark" });
       });
 
-      // BUNEST_BUG: RequestContext.signedCookies silently returns {} instead of throwing when no cookie secret is configured (packages/core/src/http/context/request-context.ts:237-245).
-      it.skip("should fail loudly when reading signed cookies", async () => {
+      it("should fail loudly when reading signed cookies", async () => {
         await request(app)
           .get("/signed/uid")
           .set("Cookie", `uid=${signedWith("parser-secret", "42")}`)

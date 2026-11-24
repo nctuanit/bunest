@@ -24,6 +24,94 @@ function canonicalizeValue(value: unknown): unknown {
  * Normalizes a string, number, RegExp, or structured object pattern into a deterministic lookup key.
  * Object keys are canonically sorted so `{ cmd: "sum", v: 1 }` and `{ v: 1, cmd: "sum" }` match.
  */
+const PATTERN_MAX_DEPTH = 6;
+const PATTERN_MAX_KEYS = 20;
+const PATTERN_MAX_TOTAL_KEYS = 100;
+const PATTERN_MAX_KEY_LENGTH = 256;
+const PATTERN_MAX_VALUE_LENGTH = 4096;
+
+function serializePatternValue(
+  value: unknown,
+  depth: number,
+  state: { totalKeys: number; exceededTotalKeys: boolean },
+): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    if (value.length > PATTERN_MAX_VALUE_LENGTH) {
+      return "[VALUE_TOO_LONG]";
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    if (depth >= PATTERN_MAX_DEPTH) {
+      return "[MAX_DEPTH_REACHED]";
+    }
+    if (value.length > PATTERN_MAX_KEYS) {
+      return "[TOO_MANY_KEYS]";
+    }
+    const items = value.map((item) =>
+      serializePatternValue(item, depth + 1, state),
+    );
+    return `[${items.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    if (depth >= PATTERN_MAX_DEPTH) {
+      return "[MAX_DEPTH_REACHED]";
+    }
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    if (keys.length > PATTERN_MAX_KEYS) {
+      return "[TOO_MANY_KEYS]";
+    }
+    state.totalKeys += keys.length;
+    if (state.totalKeys > PATTERN_MAX_TOTAL_KEYS) {
+      state.exceededTotalKeys = true;
+      return "[TOO_MANY_KEYS]";
+    }
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i]!.length > PATTERN_MAX_KEY_LENGTH) {
+        return "[KEY_TOO_LONG]";
+      }
+    }
+    const record = value as Record<string, unknown>;
+    const entries: string[] = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!;
+      const serializedVal = serializePatternValue(record[key], depth + 1, state);
+      if (state.exceededTotalKeys) {
+        return "[TOO_MANY_KEYS]";
+      }
+      entries.push(`${JSON.stringify(key)}:${serializedVal}`);
+    }
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+export function exceedsPatternLimits(pattern: unknown): boolean {
+  if (
+    pattern === null ||
+    pattern === undefined ||
+    typeof pattern !== "object" ||
+    pattern instanceof RegExp
+  ) {
+    return false;
+  }
+  const state = { totalKeys: 0, exceededTotalKeys: false };
+  const serialized = serializePatternValue(pattern, 0, state);
+  return (
+    state.exceededTotalKeys ||
+    serialized.includes("[MAX_DEPTH_REACHED]") ||
+    serialized.includes("[TOO_MANY_KEYS]") ||
+    serialized.includes("[KEY_TOO_LONG]") ||
+    serialized.includes("[VALUE_TOO_LONG]")
+  );
+}
+
 export function normalizePattern(pattern: PatternInput): string {
   if (typeof pattern === "string") {
     return pattern;
@@ -34,7 +122,12 @@ export function normalizePattern(pattern: PatternInput): string {
   if (pattern instanceof RegExp) {
     return pattern.toString();
   }
-  return JSON.stringify(canonicalizeValue(pattern));
+  if (pattern === null || typeof pattern !== "object") {
+    return pattern as unknown as string;
+  }
+  const state = { totalKeys: 0, exceededTotalKeys: false };
+  const serialized = serializePatternValue(pattern, 0, state);
+  return state.exceededTotalKeys ? "[TOO_MANY_KEYS]" : serialized;
 }
 
 export interface RpcRequestEnvelope {

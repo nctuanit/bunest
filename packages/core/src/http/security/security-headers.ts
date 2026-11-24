@@ -67,11 +67,28 @@ function buildCspHeader(
 
   const serializedParts: string[] = [];
   for (const [key, val] of merged.entries()) {
+    if (!/^[a-z0-9-]+$/i.test(key)) {
+      throw new Error(
+        `Invalid Content-Security-Policy directive name "${key}".`,
+      );
+    }
     if (val === true) {
       serializedParts.push(key);
     } else if (Array.isArray(val)) {
+      for (const item of val) {
+        if (typeof item === "string" && /[;,\r\n]/.test(item)) {
+          throw new Error(
+            `Invalid Content-Security-Policy directive "${key}": value contains forbidden character.`,
+          );
+        }
+      }
       serializedParts.push(val.length === 0 ? key : `${key} ${val.join(" ")}`);
     } else if (typeof val === "string") {
+      if (/[;,\r\n]/.test(val)) {
+        throw new Error(
+          `Invalid Content-Security-Policy directive "${key}": value contains forbidden character.`,
+        );
+      }
       serializedParts.push(val.length === 0 ? key : `${key} ${val}`);
     }
   }

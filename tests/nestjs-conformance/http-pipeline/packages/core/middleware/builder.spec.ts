@@ -195,8 +195,7 @@ describeConformance(
             "Single compiled-route match avoids duplicate middleware runs",
           );
 
-          // BUNEST_BUG: matchesPathPattern() treats any segment starting with ":" (e.g. ":id.json") as matching arbitrary segments like "admin" (received true, expected false) and does not parse NestJS v11+ "{*path}" or "*path" wildcard syntax (packages/core/src/http/scanner/path-normalizer.ts:134-158).
-          it.skip("should not treat /docs/:id.json as matching /docs/admin, and should support brace/named wildcards", () => {
+          it("should not treat /docs/:id.json as matching /docs/admin, and should support brace/named wildcards", () => {
             configProxy.forRoutes(
               { path: "/docs/:id.json", method: RequestMethod.GET },
               { path: "/files/{*path}", method: RequestMethod.GET },
@@ -403,8 +402,7 @@ describeConformance(
         expect(matches("GET", "/api/users", "/users")).toBe(true);
       });
 
-      // BUNEST_BUG: matchesPathPattern() only recognizes "*" and "(.*)", not NestJS v11+ "{*path}" brace wildcard syntax; GET /health/ready was not excluded (received true, expected false) (packages/core/src/http/scanner/path-normalizer.ts:134-167).
-      it.skip("should exclude routes using NestJS v11+ brace wildcard syntax (health/{*path})", () => {
+      it("should exclude routes using NestJS v11+ brace wildcard syntax (health/{*path})", () => {
         builder
           .apply(noopMiddleware)
           .exclude("health/{*path}", "health")
@@ -414,8 +412,7 @@ describeConformance(
         expect(matches("GET", "/health/ready", "/health/ready")).toBe(false);
       });
 
-      // BUNEST_BUG: matchesPathPattern() matches trailing wildcard "/webhooks/*" against parent path "/webhooks" (received false, expected true), so excluding "webhooks/*" unintentionally excludes parent "/webhooks" (packages/core/src/http/scanner/path-normalizer.ts:161-167).
-      it.skip("should not exclude the parent route of a wildcard, excluded from the global prefix with a trailing slash", () => {
+      it("should not exclude the parent route of a wildcard, excluded from the global prefix with a trailing slash", () => {
         builder.apply(noopMiddleware).exclude("webhooks/*").forRoutes("*");
 
         // `/webhooks` is the parent path without a child segment and must NOT be excluded by `webhooks/*`
@@ -425,8 +422,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: matchesPathPattern() only performs case-sensitive segment comparison (`pSeg !== tSeg`) and exposes no `caseSensitive` matching option; case-insensitive exclude "HEALTH/:check" failed to exclude "/health/ready" (received true, expected false) (packages/core/src/http/scanner/path-normalizer.ts:155).
-      it.skip("should match excluded routes according to router case sensitivity", () => {
+      it("should match excluded routes according to router case sensitivity", () => {
         builder.apply(noopMiddleware).exclude("HEALTH/:check").forRoutes("*");
 
         // Case-sensitive exact match excludes `/HEALTH/ready`

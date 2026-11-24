@@ -11,6 +11,7 @@ import {
 import {
   extractRequestCookies,
   extractSignedCookies,
+  parseCookieHeader,
   signCookieValue,
 } from "../security/cookie";
 import { extractClientIp } from "../security/ip";
@@ -233,9 +234,15 @@ export class RequestContext {
   }
 
   get signedCookies(): Record<string, string> {
+    if (!this.cookieSecrets || this.cookieSecrets.length === 0) {
+      throw new Error(
+        "Cookie secret is required to read signed cookies. Configure { cookies: { secret } } when creating the application.",
+      );
+    }
     if (!this.cachedSignedCookies) {
+      const rawCookies = parseCookieHeader(this.request.headers.get("cookie"));
       this.cachedSignedCookies = extractSignedCookies(
-        this.cookies,
+        rawCookies,
         this.cookieSecrets,
       );
     }

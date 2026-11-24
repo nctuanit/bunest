@@ -479,8 +479,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.enableCsrfProtection() does not guard against being called after app.init() (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called after init", async () => {
+      it("should throw when called after init", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
         await app.init();
 
@@ -490,8 +489,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.enableCsrfProtection() does not guard against being called twice (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called twice", async () => {
+      it("should throw when called twice", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
         app.enableCsrfProtection();
 
@@ -553,8 +551,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: BunestApplication.useSecurityHeaders() / compileSecurityHeaders() does not reject semicolon/CRLF directive injection in CSP values (packages/core/src/http/security/security-headers.ts).
-      it.skip("should validate CSP directives eagerly", async () => {
+      it("should validate CSP directives eagerly", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
 
         expect(() =>
@@ -566,8 +563,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.useSecurityHeaders() does not guard against being called twice or after app.init() (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called after init or twice", async () => {
+      it("should throw when called after init or twice", async () => {
         const app1 = await BunestFactory.create(AppModule, { logger: false });
         app1.useSecurityHeaders();
         expect(() => app1.useSecurityHeaders()).toThrow(/only be called once/);

@@ -143,6 +143,7 @@ export type {
 
 // Core Interfaces & Transport Config Types
 export {
+  exceedsPatternLimits,
   normalizePattern,
   type AsyncMicroserviceOptions,
   type AsyncOptions,

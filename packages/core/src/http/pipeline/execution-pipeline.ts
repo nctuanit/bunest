@@ -506,7 +506,7 @@ async function executeMiddlewareChain(
     const result = await invokeMiddleware(mw, ctx, next);
 
     if (result instanceof Response) {
-      return finalizeShortCircuitResponse(result, ctx);
+      return nextCalled ? result : finalizeShortCircuitResponse(result, ctx);
     }
 
     if (nextCalled && nextPromise) {
@@ -827,7 +827,10 @@ async function executeFullCompiledRoute(
       }
 
       // Stage 4: Middleware -> Stages 5..11
-      return await executeMiddlewareChain(middlewares, ctx, async () => {
+      const mwResponse = await executeMiddlewareChain(
+        middlewares,
+        ctx,
+        async () => {
         // Stage 5: Guards (Global -> Controller -> Method)
         let guards: readonly CanActivate[];
         if (compiled.singletonGuards) {
@@ -1012,6 +1015,9 @@ async function executeFullCompiledRoute(
         }
         return await finalizeResponse(response);
       });
+      return runtime.securityHeaders
+        ? applySecurityHeaders(mwResponse, runtime.securityHeaders)
+        : mwResponse;
     } catch (rawError) {
       const error = runtime.mapException
         ? runtime.mapException(rawError)

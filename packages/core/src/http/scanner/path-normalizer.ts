@@ -101,19 +101,52 @@ export function isNativeBunRoutePath(normalizedPath: string): boolean {
   return true;
 }
 
+function isWildcardSegment(seg: string): boolean {
+  return (
+    seg === "*" ||
+    seg === "(.*)" ||
+    (seg.startsWith("*") && seg.length > 1) ||
+    (seg.startsWith("{*") && seg.endsWith("}"))
+  );
+}
+
+function segmentMatches(
+  pSeg: string,
+  tSeg: string,
+  caseSensitive: boolean,
+): boolean {
+  if (SIMPLE_PARAM_SEGMENT_RE.test(pSeg)) {
+    return true;
+  }
+  // Parameterized segment with literal suffix/prefix, e.g. `:id.json`
+  const paramMatch = PARAM_PREFIX_RE.exec(pSeg);
+  if (paramMatch && paramMatch[2]) {
+    const suffix = paramMatch[2];
+    const cmpTarget = caseSensitive ? tSeg : tSeg.toLowerCase();
+    const cmpSuffix = caseSensitive ? suffix : suffix.toLowerCase();
+    return cmpTarget.length > cmpSuffix.length && cmpTarget.endsWith(cmpSuffix);
+  }
+  if (caseSensitive) {
+    return pSeg === tSeg;
+  }
+  return pSeg.toLowerCase() === tSeg.toLowerCase();
+}
+
 /**
  * Matches a route path against a middleware or global-prefix-exclude pattern.
  */
 export function matchesPathPattern(
   pattern: string,
   targetPath: string,
+  caseSensitive = false,
 ): boolean {
   const trimmed = pattern.trim();
   if (
     trimmed === "*" ||
     trimmed === "/*" ||
     trimmed === "(.*)" ||
-    trimmed === "/(.*)"
+    trimmed === "/(.*)" ||
+    /^\/*(?:\*[A-Za-z0-9_]+|\{\*[A-Za-z0-9_]+\})$/.test(trimmed)
   ) {
     return true;
   }
@@ -121,7 +154,11 @@ export function matchesPathPattern(
   const normalizedPattern = normalizePath(trimmed);
   const normalizedTarget = normalizePath(targetPath);
 
-  if (normalizedPattern === normalizedTarget) {
+  if (
+    caseSensitive
+      ? normalizedPattern === normalizedTarget
+      : normalizedPattern.toLowerCase() === normalizedTarget.toLowerCase()
+  ) {
     return true;
   }
 
@@ -134,14 +171,13 @@ export function matchesPathPattern(
     const pSeg = patternSegments[i];
     if (pSeg === undefined) break;
 
-    if (pSeg === "*" || pSeg === "(.*)") {
-      // Trailing wildcard matches the prefix itself as well as any child path
-      if (i === patternSegments.length - 1) {
-        return true;
-      }
-      // Mid-pattern wildcard consumes one segment
+    if (isWildcardSegment(pSeg)) {
       if (i >= targetSegments.length) {
         return false;
+      }
+      // Trailing wildcard matches one or more child segments (not the parent path itself)
+      if (i === patternSegments.length - 1) {
+        return true;
       }
       continue;
     }
@@ -151,22 +187,9 @@ export function matchesPathPattern(
       return false;
     }
 
-    if (pSeg.startsWith(":") || tSeg.startsWith(":")) {
-      continue;
-    }
-
-    if (pSeg !== tSeg) {
+    if (!segmentMatches(pSeg, tSeg, caseSensitive)) {
       return false;
     }
-  }
-
-  // Handle trailing wildcard when pattern has one extra `*` segment (e.g. `/users/*` matching `/users`)
-  if (
-    patternSegments.length === targetSegments.length + 1 &&
-    (patternSegments[patternSegments.length - 1] === "*" ||
-      patternSegments[patternSegments.length - 1] === "(.*)")
-  ) {
-    return true;
   }
 
   return patternSegments.length === targetSegments.length;

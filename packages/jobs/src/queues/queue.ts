@@ -306,6 +306,22 @@ export class Queue<TData = unknown, TResult = unknown> {
     });
   }
 
+  private workersClosing = false;
+
+  /**
+   * Stops dequeuing new jobs and drains in-flight jobs without marking the
+   * queue closed, so active jobs can still enqueue child jobs onto other queues
+   * during graceful application shutdown.
+   */
+  async closeWorkers(timeoutMs: number = this.shutdownTimeoutMs): Promise<void> {
+    if (this.closed || this.workersClosing) {
+      return;
+    }
+    this.workersClosing = true;
+    this.clearDelayedTimer();
+    await this.drain(timeoutMs);
+  }
+
   /**
    * Stops dequeuing new jobs, clears delayed timers, and drains in-flight jobs up to
    * `timeoutMs` (defaults to `shutdownTimeoutMs`). Idempotent.
@@ -315,6 +331,7 @@ export class Queue<TData = unknown, TResult = unknown> {
       return;
     }
     this.closed = true;
+    this.workersClosing = true;
     this.clearDelayedTimer();
     this.unbindDriverStalled?.();
     this.unbindDriverStalled = undefined;
@@ -345,7 +362,7 @@ export class Queue<TData = unknown, TResult = unknown> {
   }
 
   private triggerPump(): void {
-    if (this.closed || this.paused || !this.hasHandlers()) {
+    if (this.closed || this.workersClosing || this.paused || !this.hasHandlers()) {
       return;
     }
     if (this.pumping) {

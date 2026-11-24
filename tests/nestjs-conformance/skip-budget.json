@@ -3,10 +3,10 @@
   "totals": {
     "files": 672,
     "tests": 6971,
-    "pass": 5112,
-    "skip": 1859,
+    "pass": 5190,
+    "skip": 1781,
     "fail": 0,
-    "assertions": 11761
+    "assertions": 11940
   },
   "buckets": {
     "_helpers": {
@@ -20,10 +20,10 @@
     "common": {
       "files": 72,
       "tests": 1048,
-      "pass": 699,
-      "skip": 349,
+      "pass": 714,
+      "skip": 334,
       "fail": 0,
-      "assertions": 1558
+      "assertions": 1594
     },
     "di-lifecycle-testing": {
       "files": 59,
@@ -108,10 +108,10 @@
     "ecosystem/queues": {
       "files": 9,
       "tests": 118,
-      "pass": 90,
-      "skip": 28,
+      "pass": 91,
+      "skip": 27,
       "fail": 0,
-      "assertions": 136
+      "assertions": 138
     },
     "ecosystem/scheduler": {
       "files": 7,
@@ -140,18 +140,18 @@
     "http-features": {
       "files": 32,
       "tests": 579,
-      "pass": 410,
-      "skip": 169,
+      "pass": 456,
+      "skip": 123,
       "fail": 0,
-      "assertions": 813
+      "assertions": 917
     },
     "http-pipeline": {
       "files": 43,
       "tests": 330,
-      "pass": 221,
-      "skip": 109,
+      "pass": 225,
+      "skip": 105,
       "fail": 0,
-      "assertions": 349
+      "assertions": 367
     },
     "microservices-transports": {
       "files": 24,
@@ -172,18 +172,18 @@
     "scopes-core": {
       "files": 37,
       "tests": 415,
-      "pass": 322,
-      "skip": 93,
+      "pass": 326,
+      "skip": 89,
       "fail": 0,
-      "assertions": 541
+      "assertions": 547
     },
     "websockets-graphql-tcp": {
       "files": 55,
       "tests": 403,
-      "pass": 322,
-      "skip": 81,
+      "pass": 330,
+      "skip": 73,
       "fail": 0,
-      "assertions": 847
+      "assertions": 860
     }
   }
 }
