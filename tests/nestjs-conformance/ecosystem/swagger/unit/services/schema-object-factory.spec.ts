@@ -129,8 +129,7 @@ describeConformance(
         role!: Role;
       }
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should convert zod standard schemas into an OpenAPI override", async () => {
+      it("should convert zod standard schemas into an OpenAPI override", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -166,8 +165,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should preserve OpenAPI metadata on zod overrides", async () => {
+      it("should preserve OpenAPI metadata on zod overrides", async () => {
         const std = createStandardSchema(
           {
             type: "string",
@@ -195,8 +193,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should preserve zod unions, enums, and nested OpenAPI metadata on overrides", async () => {
+      it("should preserve zod unions, enums, and nested OpenAPI metadata on overrides", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -279,8 +276,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should convert valibot standard schemas into query properties", async () => {
+      it("should convert valibot standard schemas into query properties", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -316,8 +312,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should preserve OpenAPI metadata on valibot overrides", async () => {
+      it("should preserve OpenAPI metadata on valibot overrides", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -351,8 +346,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should expand valibot unions, enums, and nested metadata into query parameters", async () => {
+      it("should expand valibot unions, enums, and nested metadata into query parameters", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -1905,8 +1899,7 @@ describeConformance(
     });
 
     describe("createFromModel (parameter & body schema generation)", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should override an inferred named query type with a standard schema", async () => {
+      it("should override an inferred named query type with a standard schema", async () => {
         class QueryDto {
           value!: string;
         }
@@ -1932,8 +1925,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema and never promotes standard schema description onto the parameter
-      it.skip("should promote a standard schema description onto a named parameter", async () => {
+      it("should promote a standard schema description onto a named parameter", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -1962,8 +1954,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should not override an explicit parameter description with the schema one", async () => {
+      it("should not override an explicit parameter description with the schema one", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2030,8 +2021,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should expand unnamed query standard schemas into parameter properties", async () => {
+      it("should expand unnamed query standard schemas into parameter properties", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2067,8 +2057,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas or promote property descriptions
-      it.skip("should promote a standard schema property description onto its expanded parameter", async () => {
+      it("should promote a standard schema property description onto its expanded parameter", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2293,8 +2282,7 @@ describeConformance(
     });
 
     describe("expandStandardSchemaParam", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) ignores rp.schema on unnamed @Query({ schema })
-      it.skip("should expand an unnamed query standard schema into one param per property", async () => {
+      it("should expand an unnamed query standard schema into one param per property", async () => {
         @Controller("ex")
         class Ctrl {
           @Get()

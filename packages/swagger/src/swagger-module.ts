@@ -2049,25 +2049,46 @@ export class SwaggerModule {
     }
 
     // 2. Inspect @Param(), @Query(), @Headers() parameter decorators
+    const standardSchemaParamKeys = new Set<string>();
     for (let i = 0; i < routeParams.length; i++) {
       const rp = routeParams[i];
       if (!rp) continue;
 
+      const rawParamSchema = (rp as ParameterMetadata & { schema?: unknown })
+        .schema;
+
       if (rp.source === "param") {
         if (rp.key) {
           const existing = paramMap.get(`path:${rp.key}`);
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`path:${rp.key}`);
+          }
           const schema =
-            rp.metatype !== undefined
+            stdSchema ??
+            (rp.metatype !== undefined
               ? explorer.resolveTypeSchema(rp.metatype, false)
-              : (existing?.schema ?? { type: "string" });
+              : (existing?.schema ?? { type: "string" }));
           const existingSchemaObj =
             existing?.schema && !("$ref" in existing.schema)
               ? existing.schema
+              : undefined;
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
               : undefined;
           put({
             name: rp.key,
             in: "path",
             required: existing?.required ?? true,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : existing?.description !== undefined
+                ? { description: existing.description }
+                : {}),
             schema:
               existingSchemaObj?.pattern &&
               !("$ref" in schema) &&
@@ -2106,16 +2127,55 @@ export class SwaggerModule {
         }
       } else if (rp.source === "query") {
         if (rp.key) {
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`query:${rp.key}`);
+          }
           const schema =
-            rp.metatype !== undefined
+            stdSchema ??
+            (rp.metatype !== undefined
               ? explorer.resolveTypeSchema(rp.metatype, false)
-              : { type: "string" as const };
+              : { type: "string" as const });
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
+              : undefined;
           put({
             name: rp.key,
             in: "query",
             required: false,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : {}),
             schema,
           });
+        } else if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            const reqSet = new Set(stdSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              standardSchemaParamKeys.add(`query:${propName}`);
+              const propDesc =
+                propSchema && !("$ref" in propSchema)
+                  ? propSchema.description
+                  : undefined;
+              put({
+                name: propName,
+                in: "query",
+                required: reqSet.has(propName),
+                ...(propDesc !== undefined ? { description: propDesc } : {}),
+                schema: propSchema,
+              });
+            }
+          }
         } else if (
           rp.metatype &&
           typeof rp.metatype === "function" &&
@@ -2167,7 +2227,9 @@ export class SwaggerModule {
     for (const p of [...ctrlParams, ...methodParams]) {
       const existing = paramMap.get(`path:${p.name}`);
       let schema: OpenApiSchema;
-      if (p.schema) {
+      if (standardSchemaParamKeys.has(`path:${p.name}`) && existing?.schema) {
+        schema = { ...existing.schema };
+      } else if (p.schema) {
         schema = { ...p.schema };
       } else if (p.enumName && p.enum !== undefined) {
         schema = explorer.registerEnumSchema(p.enumName, p.enum, p.enumSchema);
@@ -2238,7 +2300,9 @@ export class SwaggerModule {
       let schema: OpenApiSchema;
       let moveExampleToSchema = false;
 
-      if (q.schema && q.type !== undefined) {
+      if (standardSchemaParamKeys.has(`query:${qName}`) && existing?.schema) {
+        schema = { ...existing.schema };
+      } else if (q.schema && q.type !== undefined) {
         if (q.isArray) {
           const itemResolved = explorer.resolveTypeSchema(q.type, false);
           const itemSchema: OpenApiSchema = { ...(q.schema as OpenApiSchema) };
@@ -2309,7 +2373,11 @@ export class SwaggerModule {
         name: qName,
         in: "query",
         required: q.required ?? true,
-        ...(q.description !== undefined ? { description: q.description } : {}),
+        ...(q.description !== undefined
+          ? { description: q.description }
+          : existing?.description !== undefined
+            ? { description: existing.description }
+            : {}),
         ...(q.deprecated !== undefined ? { deprecated: q.deprecated } : {}),
         ...(q.allowEmptyValue !== undefined
           ? { allowEmptyValue: q.allowEmptyValue }
@@ -2387,8 +2455,21 @@ export class SwaggerModule {
 
     if (apiBody) {
       const contentType = apiBody.contentType ?? "application/json";
+      const wholeBodyParam = routeParams.find(
+        (p) => p.source === "body" && p.key === undefined,
+      );
+      const rawBodyParamSchema = (
+        wholeBodyParam as (ParameterMetadata & { schema?: unknown }) | undefined
+      )?.schema;
+      const bodyParamStdSchema =
+        rawBodyParamSchema !== undefined
+          ? explorer.resolveStandardSchema(rawBodyParamSchema, "input")
+          : undefined;
+
       let schema: OpenApiSchema;
-      if (apiBody.schema) {
+      if (bodyParamStdSchema) {
+        schema = bodyParamStdSchema;
+      } else if (apiBody.schema) {
         schema = { ...(apiBody.schema as OpenApiSchema) };
       } else if (apiBody.type !== undefined) {
         schema = explorer.resolveTypeSchema(

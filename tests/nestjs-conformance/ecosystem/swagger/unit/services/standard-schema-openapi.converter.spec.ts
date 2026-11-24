@@ -163,8 +163,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:130-140) rethrows instead of catching, logging a Logger.warn, and returning undefined for function-shaped standard schemas that fail target conversion
-    it.skip("should skip and warn about a function-shaped standard schema that cannot produce OpenAPI 3.0", () => {
+    it("should skip and warn about a function-shaped standard schema that cannot produce OpenAPI 3.0", () => {
       const warnSpy = spyOn(Logger.prototype, "warn").mockImplementation(
         () => {},
       );
@@ -265,8 +264,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:118-181) does not normalize JSON Schema `examples: [first]` to OpenAPI 3.0 `example: first`
-    it.skip("should convert zod unions, enums, and nested OpenAPI metadata", () => {
+    it("should convert zod unions, enums, and nested OpenAPI metadata", () => {
       const converted = runConverter(
         createZodLikeSchema({
           type: "object",
@@ -424,8 +422,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:118-181) does not normalize JSON Schema `examples: [first]` to OpenAPI 3.0 `example: first`
-    it.skip("should convert valibot unions, enums, and nested metadata", () => {
+    it("should convert valibot unions, enums, and nested metadata", () => {
       const converted = runConverter(
         createValibotLikeSchema({
           type: "object",
@@ -497,8 +494,7 @@ describeConformance(
       ).toBeUndefined();
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:118-181) does not normalize JSON Schema `const` to OpenAPI 3.0 `enum: [value]`
-    it.skip("should normalize const to enum for OpenAPI 3.0 compatibility", () => {
+    it("should normalize const to enum for OpenAPI 3.0 compatibility", () => {
       const converted = runConverter(
         createZodLikeSchema({
           type: "object",
@@ -525,8 +521,7 @@ describeConformance(
       expect((converted?.schema as any).properties.kind.const).toBeUndefined();
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:118-181) does not normalize `const` to narrow `enum` to `[const]`
-    it.skip("should narrow const to the constant value even when a wider enum is present", () => {
+    it("should narrow const to the constant value even when a wider enum is present", () => {
       const converted = runConverter(
         createStandardSchema({
           type: "object",
@@ -580,8 +575,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:118-181) does not normalize `const` -> `enum` or `examples` -> `example` inside extracted `$defs` definitions
-    it.skip("should normalize const and examples inside definitions", () => {
+    it("should normalize const and examples inside definitions", () => {
       const converted = runConverter(
         createStandardSchema({
           $ref: "#/$defs/Kind",
@@ -620,8 +614,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: SchemaExplorer.resolveStandardSchema (packages/swagger/src/schema-explorer.ts:445-467) does not rewrite `#/$defs/...` refs in schemas returned by a custom standardSchemaConverter
-    it.skip("should rewrite a root-level $ref returned by a custom converter", () => {
+    it("should rewrite a root-level $ref returned by a custom converter", () => {
       const converted = runConverter(
         {
           "~standard": {

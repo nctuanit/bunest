@@ -1,4 +1,5 @@
 import {
+  Logger,
   MetadataRegistry,
   StreamableFile,
   getEntitySchema,
@@ -160,6 +161,88 @@ export function isStandardJsonSchema(
   return typeof conv.input === "function" || typeof conv.output === "function";
 }
 
+function rewriteStandardSchemaRefs(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(rewriteStandardSchemaRefs);
+  }
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === "$ref" && typeof v === "string") {
+        out[k] = v
+          .replace(/^#\/\$defs\//, "#/components/schemas/")
+          .replace(/^#\/definitions\//, "#/components/schemas/");
+      } else {
+        out[k] = rewriteStandardSchemaRefs(v);
+      }
+    }
+    return out;
+  }
+  return node;
+}
+
+function normalizeJsonSchemaForOpenApi(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(normalizeJsonSchemaForOpenApi);
+  }
+  if (!node || typeof node !== "object") {
+    return node;
+  }
+  const src = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const [k, v] of Object.entries(src)) {
+    if (k === "$ref" && typeof v === "string") {
+      out[k] = v
+        .replace(/^#\/\$defs\//, "#/components/schemas/")
+        .replace(/^#\/definitions\//, "#/components/schemas/");
+    } else if (k === "const") {
+      out.enum = [v];
+    } else if (k === "examples" && Array.isArray(v)) {
+      if (v.length > 0 && !("example" in src)) {
+        out.example = v[0];
+      }
+    } else if (
+      (k === "properties" || k === "patternProperties" || k === "dependentSchemas") &&
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v)
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] = normalizeJsonSchemaForOpenApi(pv);
+      }
+      out[k] = mapped;
+    } else if (
+      (k === "items" ||
+        k === "additionalProperties" ||
+        k === "not" ||
+        k === "contains" ||
+        k === "if" ||
+        k === "then" ||
+        k === "else") &&
+      v &&
+      typeof v === "object"
+    ) {
+      out[k] = normalizeJsonSchemaForOpenApi(v);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf" || k === "prefixItems") &&
+      Array.isArray(v)
+    ) {
+      out[k] = v.map(normalizeJsonSchemaForOpenApi);
+    } else {
+      out[k] = v;
+    }
+  }
+
+  // If both `const` and `enum` were present, `const` narrows `enum` to `[const]`.
+  if ("const" in src) {
+    out.enum = [src.const];
+  }
+
+  return out;
+}
+
 /**
  * Built-in zero-dependency Standard JSON Schema v1 (`~standard.jsonSchema`) converter.
  * Compatible with Zod v4, Valibot, ArkType, and any StandardJSONSchemaV1 object.
@@ -182,8 +265,20 @@ export const defaultStandardSchemaConverter: StandardSchemaConverter = (
   let raw: Record<string, unknown>;
   try {
     raw = fn({ target: "openapi-3.0" });
-  } catch {
-    raw = fn({ target: "draft-2020-12" });
+  } catch (openApiErr) {
+    try {
+      raw = fn({ target: "draft-2020-12" });
+    } catch {
+      if (typeof schema === "function") {
+        new Logger("SwaggerModule").warn(
+          `Failed to convert standard schema to OpenAPI 3.0: ${
+            openApiErr instanceof Error ? openApiErr.message : String(openApiErr)
+          }`,
+        );
+        return undefined;
+      }
+      throw openApiErr;
+    }
   }
   if (!raw || typeof raw !== "object") {
     return undefined;
@@ -200,31 +295,15 @@ export const defaultStandardSchemaConverter: StandardSchemaConverter = (
   }
   delete cloned.$schema;
 
-  // Rewrite local JSON Schema `#/$defs/X` or `#/definitions/X` to `#/components/schemas/X`
-  const rewriteRefs = (node: unknown): unknown => {
-    if (Array.isArray(node)) {
-      return node.map(rewriteRefs);
-    }
-    if (node && typeof node === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        if (k === "$ref" && typeof v === "string") {
-          out[k] = v
-            .replace(/^#\/\$defs\//, "#/components/schemas/")
-            .replace(/^#\/definitions\//, "#/components/schemas/");
-        } else {
-          out[k] = rewriteRefs(v);
-        }
-      }
-      return out;
-    }
-    return node;
-  };
+  const normalizedComponents: Record<string, unknown> = {};
+  for (const [compName, compDef] of Object.entries(components)) {
+    normalizedComponents[compName] = normalizeJsonSchemaForOpenApi(compDef);
+  }
 
   return {
-    schema: rewriteRefs(cloned),
-    ...(Object.keys(components).length > 0
-      ? { components: rewriteRefs(components) as Record<string, any> }
+    schema: normalizeJsonSchemaForOpenApi(cloned),
+    ...(Object.keys(normalizedComponents).length > 0
+      ? { components: normalizedComponents as Record<string, any> }
       : {}),
   };
 };
@@ -581,11 +660,13 @@ export class SchemaExplorer {
     if (result.components && typeof result.components === "object") {
       for (const [name, compSchema] of Object.entries(result.components)) {
         if (compSchema && typeof compSchema === "object") {
-          this.schemas[name] = compSchema as OpenApiSchema;
+          this.schemas[name] = rewriteStandardSchemaRefs(
+            compSchema,
+          ) as OpenApiSchema;
         }
       }
     }
-    return result.schema as OpenApiSchema;
+    return rewriteStandardSchemaRefs(result.schema) as OpenApiSchema;
   }
 
   /**
