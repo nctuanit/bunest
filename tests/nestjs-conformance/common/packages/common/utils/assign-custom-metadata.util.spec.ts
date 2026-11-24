@@ -86,10 +86,10 @@ describeConformance(
 
     itAdapted(
       "ADR-004",
-      "should omit pipes when not provided in assignMetadata and createParamDecorator",
+      "should default pipes to [] in assignMetadata and omit pipes in createParamDecorator",
       () => {
         const result = assignMetadata({}, "b", 1);
-        expect(result["b:1"]?.pipes).toBeUndefined();
+        expect(result["b:1"]?.pipes).toEqual([]);
 
         const CustomDec = createParamDecorator(factory);
         class TestController {
