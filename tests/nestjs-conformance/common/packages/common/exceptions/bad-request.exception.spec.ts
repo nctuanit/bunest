@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(400);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Bad Request", 400) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Bad Request"` in getResponse(), whereas NestJS returns `{ message: "Bad Request", statusCode: 400 }`.
-    it.skip('should return "Bad Request" as default message', () => {
+    it('should return "Bad Request" as default message', () => {
       const exc = new BadRequestException();
       expect(exc.getResponse()).toEqual({
         message: "Bad Request",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new BadRequestException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

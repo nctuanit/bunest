@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(405);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Method Not Allowed", 405) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Method Not Allowed"` in getResponse(), whereas NestJS returns `{ message: "Method Not Allowed", statusCode: 405 }`.
-    it.skip('should return "Method Not Allowed" as default message', () => {
+    it('should return "Method Not Allowed" as default message', () => {
       const exc = new MethodNotAllowedException();
       expect(exc.getResponse()).toEqual({
         message: "Method Not Allowed",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new MethodNotAllowedException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

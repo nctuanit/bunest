@@ -62,6 +62,31 @@ export class IntrinsicException extends Error {
   }
 }
 
+const BUILT_IN_STATUS_LABELS: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  406: "Not Acceptable",
+  408: "Request Timeout",
+  409: "Conflict",
+  410: "Gone",
+  412: "Precondition Failed",
+  413: "Payload Too Large",
+  415: "Unsupported Media Type",
+  418: "I'm a teapot",
+  421: "Misdirected",
+  422: "Unprocessable Entity",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+  505: "HTTP Version Not Supported",
+};
+
 /**
  * Base HTTP exception with a consistent JSON response payload shape.
  */
@@ -164,10 +189,14 @@ export class HttpException extends Error {
       typeof base.message === "string" || Array.isArray(base.message)
         ? (base.message as string | string[])
         : this.message;
+    const defaultLabel =
+      this.constructor !== HttpException
+        ? (BUILT_IN_STATUS_LABELS[this.status] ?? this.name)
+        : this.name;
     const error =
       typeof base.error === "string"
         ? base.error
-        : (this.options?.description ?? this.name);
+        : (this.options?.description ?? defaultLabel);
 
     return {
       ...base,
@@ -182,40 +211,47 @@ export class HttpException extends Error {
   }
 
   static createBody(
-    objectOrError: string | string[] | Record<string, unknown> | undefined,
-    description: string,
-    statusCode: number,
-  ): HttpExceptionResponse {
-    if (objectOrError === undefined || objectOrError === null) {
+    objectOrError:
+      | string
+      | number
+      | string[]
+      | Record<string, unknown>
+      | null
+      | undefined,
+    description?: string,
+    statusCode?: number,
+    errorCode?: string,
+  ): Record<string, unknown> {
+    if (
+      objectOrError === undefined ||
+      objectOrError === null ||
+      objectOrError === ""
+    ) {
       return {
-        statusCode,
         message: description,
-        error: description,
+        ...(errorCode !== undefined ? { errorCode } : {}),
+        statusCode,
       };
     }
 
-    if (typeof objectOrError === "string" || Array.isArray(objectOrError)) {
-      return {
-        statusCode,
-        message: objectOrError,
-        error: description,
-      };
+    if (typeof objectOrError === "object" && !Array.isArray(objectOrError)) {
+      return objectOrError;
     }
 
     return {
+      message: objectOrError,
+      ...(description !== undefined ? { error: description } : {}),
+      ...(errorCode !== undefined ? { errorCode } : {}),
       statusCode,
-      error: description,
-      message: description,
-      ...objectOrError,
     };
   }
 
   static getDescriptionFrom(
     descriptionOrOptions: string | HttpExceptionOptions,
-  ): string {
+  ): string | undefined {
     return typeof descriptionOrOptions === "string"
       ? descriptionOrOptions
-      : (descriptionOrOptions?.description ?? "");
+      : descriptionOrOptions?.description;
   }
 
   static getHttpExceptionOptionsFrom(

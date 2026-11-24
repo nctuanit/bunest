@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(418);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "I'm a teapot", 418) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "I'm a teapot"` in getResponse(), whereas NestJS returns `{ message: "I'm a teapot", statusCode: 418 }`.
-    it.skip("should return default I'm a teapot message", () => {
+    it("should return default I'm a teapot message", () => {
       const exc = new ImATeapotException();
       expect(exc.getResponse()).toEqual({
         message: "I'm a teapot",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new ImATeapotException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });
