@@ -242,8 +242,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Bunest gRPC transport does not implement client-streaming or bidirectional request-streaming RPCs (`GrpcServer.handleHttpRequest` only reads `frames[0]` and `GrpcClientProxy` has no client-stream/bidi-stream method; packages/microservices/src/transports/grpc.transport.ts).
-    it.skip("fails a client-streaming call whose handler completes without a response", async () => {
+    it("fails a client-streaming call whose handler completes without a response", async () => {
       const anyClient = client as unknown as {
         clientStream?: (
           service: string,

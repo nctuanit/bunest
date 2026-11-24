@@ -188,8 +188,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: GrpcServer inherits setPreRequestHook() from MicroserviceTransportServer, but GrpcServer.handleHttpRequest() invokes route.handler() directly instead of calling this.preRequestHook (packages/microservices/src/transports/grpc.transport.ts:941-947).
-    it.skip("invokes server pre-request hook with GrpcContext metadata before executing handler", async () => {
+    it("invokes server pre-request hook with GrpcContext metadata before executing handler", async () => {
       const processed: Array<Record<string, string>> = [];
       server.setPreRequestHook(({ ctx }) => {
         processed.push((ctx as GrpcContext).getMetadata().toRecord());
@@ -206,8 +205,7 @@ describeConformance(
       expect(processed[0]).toMatchObject({ "x-request-id": "trace-hook" });
     });
 
-    // BUNEST_BUG: GrpcClientProxy does not invoke ClientProxy.setPreRequestHook() on call()/callWithMetadata()/stream()/getService(), and lacks NestJS setOnDispatchHook() for dynamically attaching per-call packet metadata (packages/microservices/src/transports/grpc.transport.ts:1263-1573).
-    it.skip("invokes client dispatch/pre-request hook for every unary and streaming gRPC call", async () => {
+    it("invokes client dispatch/pre-request hook for every unary and streaming gRPC call", async () => {
       const seenPatterns: string[] = [];
       client.setPreRequestHook(({ pattern }) => {
         seenPatterns.push(pattern);

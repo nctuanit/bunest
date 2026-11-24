@@ -240,8 +240,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: GrpcClientProxy.getService() unconditionally forwards every property call to unary `this.call()` and cannot invoke server-streaming methods as AsyncIterable or pass request streams (packages/microservices/src/transports/grpc.transport.ts:1560-1573).
-      it.skip("should support invoking server-streaming methods through getService() proxy", async () => {
+      it("should support invoking server-streaming methods through getService() proxy", async () => {
         const srv = await startGrpcServer();
         srv.addGrpcStreamHandler("StreamSvc", "List", async function* () {
           yield { n: 1 };
@@ -755,8 +754,7 @@ describeConformance(
         expect(hookSpy.calledTwice).toBe(true);
       });
 
-      // BUNEST_BUG: GrpcClientProxy.connect() and close() do not call ClientProxy.emitStatus("connected") / emitStatus("disconnected"), so client.status stays "disconnected" and onStatus() listeners never fire (packages/microservices/src/transports/grpc.transport.ts:1217-1227).
-      it.skip("should update client.status and notify onStatus listeners on connect() and close()", async () => {
+      it("should update client.status and notify onStatus listeners on connect() and close()", async () => {
         const client = new GrpcClientProxy({ url: "http://127.0.0.1:1" });
         clients.push(client);
         const statuses: string[] = [];
