@@ -68,8 +68,7 @@ describeConformance(
       userType = schema.getType("User") as GraphQLObjectType;
     });
 
-    // BUNEST_BUG: Directive() (packages/graphql/src/decorators/type.decorators.ts:532) does not accept string[] SDL arrays and GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1004-1020) never populates astNode.directives on GraphQLObjectType (expected 2 directives, actual 0).
-    it.skip("should attach every class-level directive passed as an array", () => {
+    it("should attach every class-level directive passed as an array", () => {
       const directives = userType.astNode?.directives ?? [];
       expect(directives.length).toBe(2);
       expect(directives.map((d) => tagArg(d))).toEqual(
@@ -77,8 +76,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Directive() (packages/graphql/src/decorators/type.decorators.ts:532) does not accept string[] SDL arrays and GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1063-1091) never populates astNode.directives on GraphQLField (expected 2 directives, actual 0).
-    it.skip("should attach every property-level directive passed as an array", () => {
+    it("should attach every property-level directive passed as an array", () => {
       const idField = userType.getFields().id!;
       const directives = idField.astNode?.directives ?? [];
       expect(directives.length).toBe(2);
@@ -87,8 +85,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1063-1091) stores single-string @Directive() only in extensions.directives and never populates astNode.directives on GraphQLField (expected 1 directive, actual 0).
-    it.skip("should still accept a single SDL string", () => {
+    it("should still accept a single SDL string", () => {
       const nameField = userType.getFields().name!;
       const directives = nameField.astNode?.directives ?? [];
       expect(directives.length).toBe(1);

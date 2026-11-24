@@ -47,6 +47,7 @@ import {
   isInputType,
   isObjectType,
   isOutputType,
+  Kind,
   lexicographicSortSchema,
   parse,
   printSchema,
@@ -66,6 +67,7 @@ import {
   getRegisteredEnumType,
   getUseFieldMiddleware,
   isUnionTypeRef,
+  parseDirectiveNodes,
   resolveImplementedInterfaces,
 } from "../decorators/type.decorators";
 import type {
@@ -1511,9 +1513,19 @@ export class GraphQLSchemaFactory {
       return existing;
     }
 
+    const unionDirectiveNodes = parseDirectiveNodes(ref.directives);
     const unionType = new GraphQLUnionType({
       name: ref.name,
       description: ref.description,
+      ...(unionDirectiveNodes.length > 0
+        ? {
+            astNode: {
+              kind: Kind.UNION_TYPE_DEFINITION,
+              name: { kind: Kind.NAME, value: ref.name },
+              directives: unionDirectiveNodes,
+            },
+          }
+        : {}),
       types: () =>
         (ref.types() as readonly Function[]).map((t) => {
           if (!MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, t)) {
@@ -1631,11 +1643,22 @@ export class GraphQLSchemaFactory {
       meta?.implements,
     );
 
+    const objDirectiveNodes = parseDirectiveNodes(objDirectives);
+
     // Lazy `fields: () => ({ ... })` thunk breaks circular object type references natively!
     const objType = new GraphQLObjectType({
       name: typeName,
       description: resolvedDescription,
       ...(mergedObjExtensions ? { extensions: mergedObjExtensions } : {}),
+      ...(objDirectiveNodes.length > 0
+        ? {
+            astNode: {
+              kind: Kind.OBJECT_TYPE_DEFINITION,
+              name: { kind: Kind.NAME, value: typeName },
+              directives: objDirectiveNodes,
+            },
+          }
+        : {}),
       interfaces: () =>
         allInterfaces.map((iface) =>
           this.getOrCreateInterfaceType(iface, typeName),
@@ -1761,11 +1784,25 @@ export class GraphQLSchemaFactory {
             return undefined;
           };
 
+          const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
           fields[fieldName] = {
             type: resolvedFieldType,
             description: fieldMeta.description,
             deprecationReason: fieldMeta.deprecationReason,
             ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+            ...(fieldDirectiveNodes.length > 0
+              ? {
+                  astNode: {
+                    kind: Kind.FIELD_DEFINITION,
+                    name: { kind: Kind.NAME, value: fieldName },
+                    type: {
+                      kind: Kind.NAMED_TYPE,
+                      name: { kind: Kind.NAME, value: "String" },
+                    },
+                    directives: fieldDirectiveNodes,
+                  },
+                }
+              : {}),
             resolve:
               fieldMw.length > 0
                 ? applyFieldMiddleware(fieldMw, baseResolve)

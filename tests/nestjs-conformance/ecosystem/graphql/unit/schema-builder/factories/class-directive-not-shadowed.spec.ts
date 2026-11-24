@@ -54,8 +54,7 @@ describeConformance(
       accountType = schema.getType("Account") as GraphQLObjectType;
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1004-1020) stores @Directive() SDL strings only in extensions.directives and never populates astNode.directives on GraphQLObjectType (expected ["public"], actual []).
-    it.skip("should keep the class-level directive even when a field declares the same SDL", () => {
+    it("should keep the class-level directive even when a field declares the same SDL", () => {
       const classDirectives = accountType.astNode?.directives ?? [];
       const classTagNames = classDirectives
         .filter((d) => d.name.value === "tag")
@@ -66,8 +65,7 @@ describeConformance(
       expect(classTagNames).toContain("public");
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1063-1091) stores field @Directive() SDL strings only in extensions.directives and never populates astNode.directives on GraphQLField (expected ["public"], actual []).
-    it.skip("should still keep the field-level directive", () => {
+    it("should still keep the field-level directive", () => {
       const emailField = accountType.getFields().email!;
       const fieldDirectives = emailField.astNode?.directives ?? [];
       const fieldTagNames = fieldDirectives

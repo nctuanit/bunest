@@ -388,6 +388,7 @@ export interface GqlParamMetadata {
 export interface EnumValueConfigOptions {
   description?: string;
   deprecationReason?: string;
+  directives?: readonly string[];
 }
 
 export interface EnumTypeOptions {

@@ -8,7 +8,12 @@ import {
   registerMappedTypeMetadataHook,
   type Type,
 } from "@bunest/core";
-import { GraphQLEnumType } from "../engine";
+import {
+  type ConstDirectiveNode,
+  GraphQLEnumType,
+  Kind,
+  parse,
+} from "../engine";
 import { GRAPHQL_METADATA_KEYS } from "../constants";
 import type {
   ArgsTypeOptions,
@@ -35,6 +40,27 @@ import { TypeMetadataStorage } from "../schema/type-metadata.storage";
 import { UnableToFindFieldsError } from "../schema/unable-to-find-fields.error";
 
 const enumRegistry = new Map<object, { readonly enumType: GraphQLEnumType }>();
+
+export function parseDirectiveNodes(
+  sdls: readonly string[] | undefined,
+): ConstDirectiveNode[] {
+  if (!sdls || sdls.length === 0) return [];
+  const joined = sdls
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join(" ");
+  if (!joined) return [];
+  try {
+    const doc = parse(`scalar _BunestDirectiveHost ${joined}`);
+    const def = doc.definitions[0];
+    if (def && "directives" in def && Array.isArray(def.directives)) {
+      return [...(def.directives as readonly ConstDirectiveNode[])];
+    }
+  } catch {
+    // Ignore malformed SDL directive strings
+  }
+  return [];
+}
 const objectTypesWithImplements = new Set<Function>();
 const allRegisteredObjectTypes = new Set<Function>();
 
@@ -125,6 +151,11 @@ export function registerEnumType<T extends Record<string, string | number>>(
       value: string | number;
       description?: string;
       deprecationReason?: string;
+      astNode?: {
+        readonly kind: typeof Kind.ENUM_VALUE_DEFINITION;
+        readonly name: { readonly kind: typeof Kind.NAME; readonly value: string };
+        readonly directives?: readonly ConstDirectiveNode[];
+      };
     }
   > = {};
   for (const [key, val] of Object.entries(enumRef)) {
@@ -141,6 +172,7 @@ export function registerEnumType<T extends Record<string, string | number>>(
       continue;
     }
     const extra = options.valuesMap?.[key];
+    const valueDirectives = parseDirectiveNodes(extra?.directives);
     values[key] = {
       value: val,
       ...(extra?.description !== undefined
@@ -149,13 +181,32 @@ export function registerEnumType<T extends Record<string, string | number>>(
       ...(extra?.deprecationReason !== undefined
         ? { deprecationReason: extra.deprecationReason }
         : {}),
+      ...(valueDirectives.length > 0
+        ? {
+            astNode: {
+              kind: Kind.ENUM_VALUE_DEFINITION,
+              name: { kind: Kind.NAME, value: key },
+              directives: valueDirectives,
+            },
+          }
+        : {}),
     };
   }
 
+  const enumDirectives = parseDirectiveNodes(options.directives);
   const enumType = new GraphQLEnumType({
     name: options.name,
     description: options.description,
     values,
+    ...(enumDirectives.length > 0
+      ? {
+          astNode: {
+            kind: Kind.ENUM_TYPE_DEFINITION,
+            name: { kind: Kind.NAME, value: options.name },
+            directives: enumDirectives,
+          },
+        }
+      : {}),
   });
 
   enumRegistry.set(enumRef, { enumType });
@@ -587,8 +638,9 @@ export function Scalar(
  * class, field, or resolver method (matching NestJS `@Directive()`).
  */
 export function Directive(
-  sdl: string,
+  sdl: string | readonly string[],
 ): ClassDecorator & PropertyDecorator & MethodDecorator {
+  const sdls = Array.isArray(sdl) ? [...sdl] : [sdl];
   return (
     target: object,
     propertyKey?: string | symbol,
@@ -597,39 +649,45 @@ export function Directive(
     if (descriptor && descriptor.value !== undefined) {
       MetadataRegistry.appendOwnArray<string>(
         GRAPHQL_METADATA_KEYS.DIRECTIVES,
-        [sdl],
+        sdls,
         descriptor.value,
       );
-      TypeMetadataStorage.addDirectivePropertyMetadata({
-        target: target.constructor,
-        fieldName: propertyKey !== undefined ? String(propertyKey) : undefined,
-        sdl,
-      });
+      for (const s of sdls) {
+        TypeMetadataStorage.addDirectivePropertyMetadata({
+          target: target.constructor,
+          fieldName: propertyKey !== undefined ? String(propertyKey) : undefined,
+          sdl: s,
+        });
+      }
       return;
     }
     if (propertyKey !== undefined) {
       MetadataRegistry.appendOwnArray<string>(
         GRAPHQL_METADATA_KEYS.DIRECTIVES,
-        [sdl],
+        sdls,
         target.constructor,
         propertyKey,
       );
-      TypeMetadataStorage.addDirectivePropertyMetadata({
-        target: target.constructor,
-        fieldName: String(propertyKey),
-        sdl,
-      });
+      for (const s of sdls) {
+        TypeMetadataStorage.addDirectivePropertyMetadata({
+          target: target.constructor,
+          fieldName: String(propertyKey),
+          sdl: s,
+        });
+      }
       return;
     }
     MetadataRegistry.appendOwnArray<string>(
       GRAPHQL_METADATA_KEYS.DIRECTIVES,
-      [sdl],
+      sdls,
       target,
     );
-    TypeMetadataStorage.addDirectiveMetadata({
-      target: target as Function,
-      sdl,
-    });
+    for (const s of sdls) {
+      TypeMetadataStorage.addDirectiveMetadata({
+        target: target as Function,
+        sdl: s,
+      });
+    }
   };
 }
 
@@ -755,6 +813,19 @@ export function getGraphQLDirectives(
         propertyKey,
       ) ?? []),
     ];
+  }
+  if (typeof target === "function") {
+    const merged: string[] = [];
+    for (const ctor of MetadataRegistry.getPrototypeChain(target)) {
+      const own = MetadataRegistry.getOwn<readonly string[]>(
+        GRAPHQL_METADATA_KEYS.DIRECTIVES,
+        ctor,
+      );
+      if (own) {
+        merged.push(...own);
+      }
+    }
+    return merged;
   }
   return [
     ...(MetadataRegistry.get<readonly string[]>(
