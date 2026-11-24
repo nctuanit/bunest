@@ -46,20 +46,23 @@ export class MaxFileSizeValidator extends FileValidator<
   UploadedFileInfo
 > {
   isValid(file?: UploadedFileInfo): boolean {
-    if (!file || !Number.isFinite(this.validationOptions.maxSize)) {
-      return false;
+    if (!this.validationOptions || !file) {
+      return true;
     }
-    if (this.validationOptions.maxSize < 0) {
+    if (
+      !Number.isFinite(this.validationOptions.maxSize) ||
+      this.validationOptions.maxSize < 0
+    ) {
       return false;
     }
     const size =
       typeof file.size === "number"
         ? file.size
         : (file.buffer?.byteLength ?? 0);
-    return size <= this.validationOptions.maxSize;
+    return size < this.validationOptions.maxSize;
   }
 
-  buildErrorMessage(file: UploadedFileInfo): string {
+  buildErrorMessage(file?: UploadedFileInfo): string {
     const { maxSize, message, errorMessage, ...restConfig } =
       this.validationOptions;
     if (errorMessage !== undefined) {
@@ -73,11 +76,12 @@ export class MaxFileSizeValidator extends FileValidator<
     if (typeof message === "string") {
       return message;
     }
-    const actualSize =
-      typeof file?.size === "number"
-        ? file.size
-        : (file?.buffer?.byteLength ?? 0);
-    return `Validation failed (current file size is ${actualSize}, expected size is less than or equal to ${maxSize})`;
+    if (file && (typeof file.size === "number" || file.buffer !== undefined)) {
+      const actualSize =
+        typeof file.size === "number" ? file.size : file.buffer!.byteLength;
+      return `Validation failed (current file size is ${actualSize}, expected size is less than ${maxSize})`;
+    }
+    return `Validation failed (expected size is less than ${maxSize})`;
   }
 }
 

@@ -58,8 +58,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: ParseFilePipe.transform rejects minimal file objects (e.g. `{ path: "some-path" }`) because `isUploadedFileInfo` requires `fieldname`, `originalname`, and `mimetype`, misclassifying the object as an empty field-map and throwing "File is required" (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should return the file object", async () => {
+        it("should return the file object", async () => {
           const requestFile = {
             path: "some-path",
           } as unknown as UploadedFileInfo;
@@ -75,8 +74,7 @@ describeConformance(
           parseFilePipe = new ParseFilePipe();
         });
 
-        // BUNEST_BUG: ParseFilePipe.transform rejects minimal file objects without `fieldname`/`originalname`/`mimetype` as "File is required" (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should return the file object", async () => {
+        it("should return the file object", async () => {
           const requestFile = {
             path: "some-path",
           } as unknown as UploadedFileInfo;
@@ -94,8 +92,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: ParseFilePipe.transform rejects minimal file objects without `fieldname`/`originalname`/`mimetype` before invoking validators (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should return the file object", async () => {
+        it("should return the file object", async () => {
           const requestFile = {
             path: "some-path",
           } as unknown as UploadedFileInfo;
@@ -114,8 +111,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: createParseFileException throws base HttpException(status=400) instead of BadRequestException (plus minimal file object fails isUploadedFileInfo check) (packages/core/src/common/pipes/parse-file.pipe.ts)
-          it.skip("should throw a BadRequestException", async () => {
+          it("should throw a BadRequestException", async () => {
             const requestFile = {
               path: "some-path",
             } as unknown as UploadedFileInfo;
@@ -134,8 +130,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: createParseFileException throws base HttpException(status=409) instead of ConflictException (packages/core/src/common/pipes/parse-file.pipe.ts)
-          it.skip("should throw this custom Error", async () => {
+          it("should throw this custom Error", async () => {
             const requestFile = {
               path: "some-path",
             } as unknown as UploadedFileInfo;
@@ -172,8 +167,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParseFileException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should throw an error if no file is provided", async () => {
+        it("should throw an error if no file is provided", async () => {
           const requestFile = undefined;
 
           await expect(parseFilePipe.transform(requestFile)).rejects.toThrow(
@@ -181,8 +175,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: createParseFileException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should throw an error if the file is null", async () => {
+        it("should throw an error if the file is null", async () => {
           const requestFile = null as unknown as UploadedFileInfo;
 
           await expect(parseFilePipe.transform(requestFile)).rejects.toThrow(
@@ -190,8 +183,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ParseFilePipe.transform rejects minimal file objects without `fieldname`/`originalname`/`mimetype` as "File is required" (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should pass validation if a file is provided", async () => {
+        it("should pass validation if a file is provided", async () => {
           const requestFile = {
             path: "some-path",
           } as unknown as UploadedFileInfo;
@@ -209,8 +201,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParseFileException throws base HttpException(status=400, "File is required") instead of BadRequestException (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip('should throw a "File is required" error instead of letting the validator silently pass', async () => {
+        it('should throw a "File is required" error instead of letting the validator silently pass', async () => {
           const requestFile = null as unknown as UploadedFileInfo;
 
           await expect(parseFilePipe.transform(requestFile)).rejects.toThrow(
@@ -226,8 +217,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParseFileException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/parse-file.pipe.ts)
-        it.skip("should throw an error if no file is provided", async () => {
+        it("should throw an error if no file is provided", async () => {
           const requestFile = undefined;
 
           await expect(parseFilePipe.transform(requestFile)).rejects.toThrow(
