@@ -284,6 +284,19 @@ export class BunestApplication extends BunestApplicationContext {
     adapter?: BunHttpAdapter,
   ) {
     super(container, options);
+    if (options.cookies?.secret !== undefined) {
+      const secret = options.cookies.secret;
+      if (
+        (typeof secret === "string" && secret.length === 0) ||
+        (Array.isArray(secret) &&
+          (secret.length === 0 ||
+            secret.some((s) => typeof s !== "string" || s.length === 0)))
+      ) {
+        throw new TypeError(
+          "Cookie secret must be a non-empty string or a non-empty array of non-empty strings.",
+        );
+      }
+    }
     if (adapter) {
       this.httpAdapter = adapter;
       if (options.logger !== undefined || options.bufferLogs) {
@@ -329,7 +342,18 @@ export class BunestApplication extends BunestApplicationContext {
       );
     }
     if (this.options.cookies?.secret !== undefined) {
-      const signer = new CookieSigner(this.options.cookies.secret);
+      const secret = this.options.cookies.secret;
+      if (
+        (typeof secret === "string" && secret.length === 0) ||
+        (Array.isArray(secret) &&
+          (secret.length === 0 ||
+            secret.some((s) => typeof s !== "string" || s.length === 0)))
+      ) {
+        throw new TypeError(
+          "Cookie secret must be a non-empty string or a non-empty array of non-empty strings.",
+        );
+      }
+      const signer = new CookieSigner(secret);
       config.setCookieSigner(signer);
       this.httpAdapter.setCookieSigner(signer);
     }
@@ -416,9 +440,19 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   override async init(): Promise<this> {
+    if (this.isInitialized && this.lifecycle.getIsInitialized()) {
+      return this;
+    }
     await this.prepareHttpPipeline();
+    for (const route of this.getRoutes()) {
+      this.logger.log(
+        `Mapped {${route.path}, ${route.method}} route`,
+        "RouterExplorer",
+      );
+    }
     await super.init();
     this.container.getHttpAdapterHost().markInitialized();
+    this.logger.log("Nest application successfully started", "NestApplication");
     return this;
   }
 
@@ -449,68 +483,80 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   useGlobalPipes(...pipes: PipeLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const p of pipes) {
       if (typeof p === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: p as Type<unknown>,
           kind: "pipe",
         });
+        appConfig.addGlobalPipe(p);
+      } else {
+        appConfig.useGlobalPipes(p);
       }
     }
-    this.container.getApplicationConfig().useGlobalPipes(...pipes);
     this.httpAdapter.useGlobalPipes(...pipes);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalGuards(...guards: GuardLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const g of guards) {
       if (typeof g === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: g as Type<unknown>,
           kind: "guard",
         });
+        appConfig.addGlobalGuard(g);
+      } else {
+        appConfig.useGlobalGuards(g);
       }
     }
-    this.container.getApplicationConfig().useGlobalGuards(...guards);
     this.httpAdapter.useGlobalGuards(...guards);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const ic of interceptors) {
       if (typeof ic === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: ic as Type<unknown>,
           kind: "interceptor",
         });
+        appConfig.addGlobalInterceptor(ic);
+      } else {
+        appConfig.useGlobalInterceptors(ic);
       }
     }
-    this.container
-      .getApplicationConfig()
-      .useGlobalInterceptors(...interceptors);
     this.httpAdapter.useGlobalInterceptors(...interceptors);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalFilters(...filters: ExceptionFilterLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const f of filters) {
       if (typeof f === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: f as Type<unknown>,
           kind: "filter",
         });
+        appConfig.addGlobalFilter(f);
+      } else {
+        appConfig.useGlobalFilters(f);
       }
     }
-    this.container.getApplicationConfig().useGlobalFilters(...filters);
     this.httpAdapter.useGlobalFilters(...filters);
     this.routesDirty = true;
     return this;
   }
 
   use(...middlewares: MiddlewareEntry[]): this {
+    const decorator = this.options.instrument?.instanceDecorator;
+    const processed: MiddlewareEntry[] = [];
     for (const mw of middlewares) {
       if (
         typeof mw === "function" &&
@@ -520,9 +566,14 @@ export class BunestApplication extends BunestApplicationContext {
         this.pendingGlobalEnhancerClasses.push({
           cls: mw as Type<unknown>,
         });
+        processed.push(mw);
+      } else if (typeof mw === "function" && decorator) {
+        processed.push(decorator(mw) as MiddlewareEntry);
+      } else {
+        processed.push(mw);
       }
     }
-    this.httpAdapter.use(...middlewares);
+    this.httpAdapter.use(...processed);
     this.routesDirty = true;
     return this;
   }

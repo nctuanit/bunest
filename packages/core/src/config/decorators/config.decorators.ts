@@ -26,6 +26,7 @@ export interface InjectConfigBinding {
   readonly lookupKey: string | symbol;
   readonly defaultValue?: unknown;
   readonly hasDefault: boolean;
+  readonly isNamespaceFactory?: boolean;
 }
 
 export interface ConfigValueMetadata {
@@ -82,6 +83,7 @@ function registerInjectConfigToken(
   let baseToken: string;
   let lookupKey: string | symbol;
 
+  let isNsFactory = false;
   if (typeof keyOrNamespace === "string") {
     const unwrapped = parseConfigurationToken(keyOrNamespace);
     if (unwrapped !== undefined) {
@@ -94,9 +96,11 @@ function registerInjectConfigToken(
   } else if (isNamespacedConfigFactory(keyOrNamespace)) {
     baseToken = keyOrNamespace.KEY;
     lookupKey = keyOrNamespace.namespace;
+    isNsFactory = true;
   } else {
     baseToken = keyOrNamespace.KEY;
     lookupKey = keyOrNamespace.namespace;
+    isNsFactory = true;
   }
 
   if (!hasDefault) {
@@ -105,6 +109,7 @@ function registerInjectConfigToken(
         token: baseToken,
         lookupKey,
         hasDefault: false,
+        isNamespaceFactory: isNsFactory,
       });
     }
     return baseToken;

@@ -79,8 +79,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: BunestApplication.init() does not emit RouterExplorer/NestApplication startup logs into CapturingLogger (packages/core/src/application/bunest-application.ts)
-      it.skip("should capture the framework startup logs", () => {
+      it("should capture the framework startup logs", () => {
         logger.assertLogged(/orders/, "log");
       });
 

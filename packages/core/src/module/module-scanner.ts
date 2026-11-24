@@ -903,9 +903,26 @@ export class ModuleScanner {
       }
       identityKey = metatype;
     } else {
+      const safeTarget =
+        typeof target === "object" &&
+        target !== null &&
+        Object.getPrototypeOf(target) === null
+          ? (() => {
+              const keys = Object.keys(target as Record<string, unknown>);
+              return keys.length > 0
+                ? `<null-prototype object { ${keys.join(", ")} }>`
+                : "<null-prototype object>";
+            })()
+          : target;
+      const firstKey =
+        typeof target === "object" && target !== null
+          ? Object.keys(target as Record<string, unknown>)[0]
+          : undefined;
       throw new InvalidModuleException(
-        target,
-        "expected a @Module() class or DynamicModule",
+        safeTarget,
+        firstKey
+          ? `Invalid property '${firstKey}' — expected a @Module() class or DynamicModule`
+          : "expected a @Module() class or DynamicModule",
       );
     }
 

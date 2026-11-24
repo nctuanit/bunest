@@ -5,14 +5,14 @@ import { SerializedGraph, type SerializedGraphJson } from "./serialized-graph";
  * fails with `snapshot: true`, matching NestJS `PartialGraphHost`.
  */
 export class PartialGraphHost {
-  private static partialGraph: SerializedGraph = new SerializedGraph();
+  private static partialGraph: SerializedGraph | undefined;
 
-  static toJSON(): SerializedGraphJson {
-    return PartialGraphHost.partialGraph.toJSON();
+  static toJSON(): SerializedGraphJson | undefined {
+    return PartialGraphHost.partialGraph?.toJSON();
   }
 
-  static toString(): string {
-    return PartialGraphHost.partialGraph.toString();
+  static toString(): string | undefined {
+    return PartialGraphHost.partialGraph?.toString();
   }
 
   static register(partialGraph: SerializedGraph): void {

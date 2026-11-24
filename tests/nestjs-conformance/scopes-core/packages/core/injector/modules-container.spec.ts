@@ -34,8 +34,7 @@ describeConformance(
     });
 
     describe("getById", () => {
-      // BUNEST_BUG: ModulesContainer.getById(id) delegates to Map.get(id) instead of searching values by module.id (packages/core/src/di/modules-container.ts).
-      it.skip("should return a module by its id even when stored under a different map key", () => {
+      it("should return a module by its id even when stored under a different map key", () => {
         const mockModule = { id: "test-id" } as any;
         container.set("key", mockModule);
 

@@ -156,8 +156,7 @@ describeConformance(
         expect(stderrSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
       });
 
-      // BUNEST_BUG: CapturingLoggerOptions lacks `json`, `colors`, and `logLevels` options (uses `levels` instead of `logLevels`; packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should evaluate a lazy message once when printing in json mode", () => {
+      it("should evaluate a lazy message once when printing in json mode", () => {
         const message = mock(() => "expensive");
         logger = new CapturingLogger({ print: true });
         logger.debug(message);

@@ -45,8 +45,7 @@ describeConformance(
       expect(moduleRef).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: Module classes are not registered as resolvable providers in DIContainer, so testingModule.get(CoreInjectablesModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:2314)
-    it.skip("should provide the current Module as provider", () => {
+    it("should provide the current Module as provider", () => {
       const module = testingModule.get<CoreInjectablesModule>(
         CoreInjectablesModule,
       );

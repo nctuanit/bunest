@@ -68,8 +68,7 @@ describeConformance(
       expect(configService.get("ADMIN_BYPASS")).toBeUndefined();
     });
 
-    // BUNEST_BUG: Empty predefined process.env variable (EMPTY_VAR="") is treated as set instead of replaceable by expanded .env values (expected "myapp.test", received ""; packages/core/src/config/config.module.ts:268, packages/core/src/config/env-parser.ts:351,565-572)
-    it.skip("should replace an empty predefined variable with the expanded value", async () => {
+    it("should replace an empty predefined variable with the expanded value", async () => {
       process.env.EMPTY_VAR = "";
       const envFilePath = writeEnvFile(
         ".env",
@@ -104,8 +103,7 @@ describeConformance(
       expect(process.env.DB_PASSWORD).toBe("p$ssw0rd");
     });
 
-    // BUNEST_BUG: Env file parser/loader does not reject values containing a NUL (\0) byte (expected rejection with 'Environment variable "CALLBACK_URL"', resolved silently; packages/core/src/config/env-parser.ts, packages/core/src/config/config.module.ts)
-    it.skip("should reject a value that contains a NUL character", async () => {
+    it("should reject a value that contains a NUL character", async () => {
       const envFilePath = writeEnvFile(
         ".env",
         Buffer.from("CALLBACK_URL=https://evil.example\0.trusted.example\n"),

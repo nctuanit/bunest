@@ -1,4 +1,5 @@
 import {
+  ConsoleLogger,
   Logger,
   ShutdownSignal,
   isDynamicModule,
@@ -151,6 +152,7 @@ export class BunestApplicationContext {
   protected logger: LoggerService;
   protected isInitialized = false;
   protected isClosed = false;
+  protected initPromise?: Promise<this>;
   protected scopeModuleId: string;
   protected readonly strictDefault: boolean;
   protected contextModule?: ModuleNode;
@@ -185,6 +187,10 @@ export class BunestApplicationContext {
       }
     });
 
+    if ((options as { forceConsole?: boolean }).forceConsole === true) {
+      Logger.overrideLogger(new ConsoleLogger({ forceConsole: true }));
+    }
+
     const initialLogger = resolveLoggerService(options.logger);
     this.loggerAdapter = new ApplicationLoggerAdapter(
       initialLogger,
@@ -201,11 +207,26 @@ export class BunestApplicationContext {
     if (this.isInitialized && this.lifecycle.getIsInitialized()) {
       return this;
     }
-    const groups = this.container.getSingletonInstancesByModule();
-    await this.lifecycle.callModuleInit(groups);
-    await this.lifecycle.callApplicationBootstrap(groups);
-    this.isInitialized = true;
-    return this;
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+    const runInit = async (): Promise<this> => {
+      try {
+        const groups = this.container.getSingletonInstancesByModule();
+        await this.lifecycle.callModuleInit(groups);
+        await this.lifecycle.callApplicationBootstrap(groups);
+        this.isInitialized = true;
+        return this;
+      } finally {
+        this.flushLogsIfAutoFlushEnabled();
+      }
+    };
+    this.initPromise = runInit();
+    try {
+      return await this.initPromise;
+    } finally {
+      this.initPromise = undefined;
+    }
   }
 
   get<K extends keyof BunestTokenRegistry>(
@@ -236,11 +257,19 @@ export class BunestApplicationContext {
       strict: options?.strict ?? this.strictDefault,
       each: options?.each,
     };
-    return this.container.getSync<TResult>(
-      token as InjectionToken<TResult>,
-      this.scopeModuleId,
-      resolvedOptions,
-    );
+    try {
+      return this.container.getSync<TResult>(
+        token as InjectionToken<TResult>,
+        this.scopeModuleId,
+        resolvedOptions,
+      );
+    } catch (err) {
+      if (this.options.abortOnError === true) {
+        process.exit(1);
+        return undefined as unknown as TResult;
+      }
+      throw err;
+    }
   }
 
   resolve<K extends keyof BunestTokenRegistry>(
@@ -303,10 +332,16 @@ export class BunestApplicationContext {
    */
   select<T>(
     moduleType: Type<T> | DynamicModule,
-    _options?: { abortOnError?: boolean },
+    selectOptions?: { abortOnError?: boolean },
   ): BunestApplicationContext {
+    const effectiveAbortOnError =
+      selectOptions?.abortOnError ?? this.options.abortOnError;
     const targetNode = this.findModuleNode(moduleType);
     if (!targetNode) {
+      if (effectiveAbortOnError === true) {
+        process.exit(1);
+        return this;
+      }
       const label = isDynamicModule(moduleType)
         ? moduleType.module.name || "<DynamicModule>"
         : moduleType.name || "<anonymous>";
@@ -319,6 +354,9 @@ export class BunestApplicationContext {
       this.container,
       {
         ...this.options,
+        ...(selectOptions?.abortOnError !== undefined
+          ? { abortOnError: selectOptions.abortOnError }
+          : {}),
         shutdownHooks: false,
         lifecycleManager: this.lifecycle,
       },
@@ -385,7 +423,11 @@ export class BunestApplicationContext {
   }
 
   async close(signal?: string): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise.catch(() => {});
+    }
     if (this.isClosed && this.lifecycle.getIsClosed()) {
+      this.lifecycle.cleanupShutdownHooks();
       return;
     }
     this.isClosed = true;

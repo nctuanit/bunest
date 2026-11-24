@@ -141,8 +141,7 @@ describeConformance(
       expect(created.missing).toBeUndefined();
     });
 
-    // BUNEST_BUG: resolveDependencyToken does not swallow instantiation errors of optional transient factory dependencies during bootstrap and inject undefined (packages/core/src/di/di-container.ts:3426, 3629)
-    it.skip('should still inject "undefined" at bootstrap for a transient dependency that fails', async () => {
+    it('should still inject "undefined" at bootstrap for a transient dependency that fails', async () => {
       const testingModule = await Test.createTestingModule({
         providers: [
           {

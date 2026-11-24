@@ -88,8 +88,7 @@ describeConformance(
       ).toBe(true);
     });
 
-    // BUNEST_BUG: LifecycleManager runs intra-module onApplicationShutdown hooks in provider declaration order instead of reverse constructor dependency hierarchy (packages/core/src/di/di-container.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should sort components within a single module by injection hierarchy - ASC order", async () => {
+    it("should sort components within a single module by injection hierarchy - ASC order", async () => {
       @Injectable()
       class A implements OnApplicationShutdown {
         onApplicationShutdown = createSpy();

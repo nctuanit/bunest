@@ -86,6 +86,10 @@ export class RequestContainer implements RequestScopeContainer {
     return this.scopedInstances.has(key);
   }
 
+  hasAnyScopedInstance(): boolean {
+    return this.scopedInstances.size > 0;
+  }
+
   getScopedInstance<T = unknown>(key: string): T | undefined {
     return this.scopedInstances.get(key) as T | undefined;
   }
