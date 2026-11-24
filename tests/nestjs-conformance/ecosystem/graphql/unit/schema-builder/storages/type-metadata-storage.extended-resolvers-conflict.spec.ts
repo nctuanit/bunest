@@ -55,8 +55,7 @@ describeConformance(
       warn.mockRestore();
     });
 
-    // BUNEST_BUG: Expected sharedQuery.target to be re-attributed to FirstDerivedResolver after TypeMetadataStorage.compile(), got SharedBaseResolver; packages/graphql/src/schema/type-metadata.storage.ts (compile:349-357) only compiles class metadata and does not re-attribute inherited resolver operations to derived resolvers.
-    it.skip("should attribute the handlers to the resolver registered first", () => {
+    it("should attribute the handlers to the resolver registered first", () => {
       const query = TypeMetadataStorage.getQueriesMetadata().find(
         (item) => item.schemaName === "sharedQuery",
       );
@@ -64,8 +63,7 @@ describeConformance(
       expect(query?.target).toBe(FirstDerivedResolverRef);
     });
 
-    // BUNEST_BUG: Expected Logger.prototype.warn to emit a conflict warning mentioning SharedBaseResolver, FirstDerivedResolver, and SecondDerivedResolver, got no warnings; packages/graphql/src/schema/type-metadata.storage.ts (compile:349-357) does not detect or warn when multiple derived resolvers extend the same base resolver.
-    it.skip("should warn that the other resolver never serves the handlers", () => {
+    it("should warn that the other resolver never serves the handlers", () => {
       const message = warnings.find((text) =>
         text.includes("SharedBaseResolver"),
       );

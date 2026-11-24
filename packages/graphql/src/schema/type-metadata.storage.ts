@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/core";
+import { Logger, type Type } from "@bunest/core";
 import type {
   InterfaceImplementsInput,
   PropertyMetadata,
@@ -57,6 +57,7 @@ export interface StoredResolverTypeMetadata {
   description?: string;
   deprecationReason?: string;
   options?: Record<string, unknown>;
+  classMetadata?: StoredResolverClassMetadata;
 }
 
 export interface StoredFieldResolverMetadata {
@@ -70,6 +71,7 @@ export interface StoredFieldResolverMetadata {
   options?: Record<string, unknown>;
   complexity?: unknown;
   middleware?: unknown[];
+  classMetadata?: StoredResolverClassMetadata;
 }
 
 export interface StoredResolverClassMetadata {
@@ -149,6 +151,9 @@ export class TypeMetadataStorageHost {
     StoredExtensionsMetadata[]
   >();
   private readonly methodParams: StoredMethodParamMetadata[] = [];
+  private readonly logger = new Logger("TypeMetadataStorage");
+  private readonly extendedResolverClaims = new Map<Function, Function>();
+  private readonly warnedConflicts = new Set<string>();
 
   addMutationMetadata(metadata: StoredResolverTypeMetadata): void {
     this.mutations.push(metadata);
@@ -361,6 +366,72 @@ export class TypeMetadataStorageHost {
     this.compileClassMetadata(this.getInputTypesMetadata());
     this.compileClassMetadata(this.getInterfacesMetadata());
     this.compileClassMetadata(this.getArgumentsMetadata());
+    this.compileExtendedResolversMetadata();
+  }
+
+  private compileExtendedResolversMetadata(): void {
+    const resolverByTarget = new Map<Function, StoredResolverClassMetadata>();
+    for (const r of this.resolvers) {
+      resolverByTarget.set(r.target, r);
+    }
+
+    const allHandlers: Array<
+      StoredResolverTypeMetadata | StoredFieldResolverMetadata
+    > = [
+      ...this.queries,
+      ...this.mutations,
+      ...this.subscriptions,
+      ...this.fieldResolvers,
+    ];
+
+    // Attach own classMetadata first
+    for (const handler of allHandlers) {
+      if (!handler.classMetadata) {
+        handler.classMetadata = resolverByTarget.get(handler.target);
+      }
+    }
+
+    // Walk resolvers in registration order and re-attribute base resolver handlers
+    for (const resolverMeta of this.resolvers) {
+      const derivedTarget = resolverMeta.target;
+      let parentTarget = Object.getPrototypeOf(derivedTarget) as Function | null;
+      while (
+        parentTarget &&
+        parentTarget !== Function.prototype &&
+        parentTarget !== Object
+      ) {
+        const existingClaim = this.extendedResolverClaims.get(parentTarget);
+        if (
+          existingClaim &&
+          existingClaim !== derivedTarget &&
+          !(derivedTarget.prototype instanceof existingClaim)
+        ) {
+          // Only warn when two distinct branches extend the same base
+          const conflictKey = `${parentTarget.name}:${existingClaim.name}:${derivedTarget.name}`;
+          if (!this.warnedConflicts.has(conflictKey)) {
+            this.warnedConflicts.add(conflictKey);
+            this.logger.warn(
+              `Resolver "${derivedTarget.name}" extends "${parentTarget.name}", whose handlers were already attributed to "${existingClaim.name}". Handlers declared on "${parentTarget.name}" will not be served by "${derivedTarget.name}".`,
+            );
+          }
+          break;
+        }
+
+        let movedAny = false;
+        for (const handler of allHandlers) {
+          if (handler.target === parentTarget) {
+            handler.target = derivedTarget;
+            handler.classMetadata = resolverMeta;
+            movedAny = true;
+          }
+        }
+        if (movedAny || resolverByTarget.has(parentTarget)) {
+          this.extendedResolverClaims.set(parentTarget, derivedTarget);
+        }
+
+        parentTarget = Object.getPrototypeOf(parentTarget) as Function | null;
+      }
+    }
   }
 
   loadClassPluginMetadata(metadata: StoredClassMetadata[]): void {
@@ -420,6 +491,8 @@ export class TypeMetadataStorageHost {
     this.directivesByTarget.clear();
     this.extensionsByTarget.clear();
     this.methodParams.length = 0;
+    this.extendedResolverClaims.clear();
+    this.warnedConflicts.clear();
   }
 }
 

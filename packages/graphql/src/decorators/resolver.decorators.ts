@@ -536,6 +536,19 @@ export function getResolverFields(
       GRAPHQL_METADATA_KEYS.RESOLVE_FIELDS,
       ctor,
     );
+    const ownKeys = new Set<string | symbol>(
+      own ? own.map((rf) => rf.handlerKey) : [],
+    );
+    if (ctor.prototype) {
+      for (const key of byHandler.keys()) {
+        if (
+          Object.prototype.hasOwnProperty.call(ctor.prototype, key) &&
+          !ownKeys.has(key)
+        ) {
+          byHandler.delete(key);
+        }
+      }
+    }
     if (!own) continue;
     for (let i = 0; i < own.length; i++) {
       const rf = own[i];

@@ -1473,6 +1473,15 @@ export class GraphQLSchemaFactory {
             );
           } else if (existingField?.type) {
             fieldType = existingField.type;
+            if (rfMeta.nullable === true) {
+              if (fieldType instanceof GraphQLNonNull) {
+                fieldType = fieldType.ofType;
+              }
+            } else if (rfMeta.nullable === false) {
+              if (!(fieldType instanceof GraphQLNonNull)) {
+                fieldType = new GraphQLNonNull(fieldType);
+              }
+            }
           } else {
             const designReturn = MetadataRegistry.getReturnType(
               compiled.resolverClass.prototype,
@@ -1704,11 +1713,25 @@ export class GraphQLSchemaFactory {
                 ? (parent: Record<string, unknown>) =>
                     parent?.[fieldMeta.propertyKey]
                 : defaultFieldResolver;
+            const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
             fields[fieldName] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
               description: fieldMeta.description,
               deprecationReason: fieldMeta.deprecationReason,
               ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+              ...(fieldDirectiveNodes.length > 0
+                ? {
+                    astNode: {
+                      kind: Kind.FIELD_DEFINITION,
+                      name: { kind: Kind.NAME, value: fieldName },
+                      type: {
+                        kind: Kind.NAMED_TYPE,
+                        name: { kind: Kind.NAME, value: "String" },
+                      },
+                      directives: fieldDirectiveNodes,
+                    },
+                  }
+                : {}),
               resolve:
                 fieldMw.length > 0
                   ? applyFieldMiddleware(fieldMw, baseResolve)
@@ -1856,6 +1879,15 @@ export class GraphQLSchemaFactory {
             );
           } else if (existingField?.type) {
             fieldType = existingField.type;
+            if (rfMeta.nullable === true) {
+              if (fieldType instanceof GraphQLNonNull) {
+                fieldType = fieldType.ofType;
+              }
+            } else if (rfMeta.nullable === false) {
+              if (!(fieldType instanceof GraphQLNonNull)) {
+                fieldType = new GraphQLNonNull(fieldType);
+              }
+            }
           } else {
             const designReturn = MetadataRegistry.getReturnType(
               compiled.resolverClass.prototype,
@@ -1881,22 +1913,47 @@ export class GraphQLSchemaFactory {
             new Set([...globalMiddleware, ...modelMw, ...handlerMw]),
           );
           const baseResolve = this.createResolverFn(compiled);
-          const rfExt = getGraphQLExtensions(
+          const rfExtFromClass = getGraphQLExtensions(
             compiled.resolverClass,
             String(rfMeta.handlerKey),
           );
+          const rfExtFromMethod = getGraphQLExtensions(compiled.handlerFn);
+          const rfExt =
+            rfExtFromClass || rfExtFromMethod
+              ? { ...(rfExtFromClass ?? {}), ...(rfExtFromMethod ?? {}) }
+              : undefined;
+          const rfDirs = [
+            ...getGraphQLDirectives(
+              compiled.resolverClass,
+              String(rfMeta.handlerKey),
+            ),
+            ...getGraphQLDirectives(compiled.handlerFn),
+          ];
+          const existingDirs = Array.isArray(existingField?.extensions?.directives)
+            ? (existingField.extensions.directives as string[])
+            : [];
+          const combinedDirs = [...existingDirs, ...rfDirs];
           const mergedRfExt =
             existingField?.extensions ||
             rfExt ||
+            combinedDirs.length > 0 ||
             rfMeta.complexity !== undefined
               ? {
                   ...(existingField?.extensions ?? {}),
                   ...(rfExt ?? {}),
+                  ...(combinedDirs.length > 0
+                    ? { directives: combinedDirs }
+                    : {}),
                   ...(rfMeta.complexity !== undefined
                     ? { complexity: rfMeta.complexity }
                     : {}),
                 }
               : undefined;
+
+          const combinedDirectiveNodes = [
+            ...(existingField?.astNode?.directives ?? []),
+            ...parseDirectiveNodes(rfDirs),
+          ];
 
           fields[rfMeta.name] = {
             type: fieldType,
@@ -1905,6 +1962,19 @@ export class GraphQLSchemaFactory {
               rfMeta.deprecationReason ?? existingField?.deprecationReason,
             args: argsConfig,
             ...(mergedRfExt ? { extensions: mergedRfExt } : {}),
+            ...(combinedDirectiveNodes.length > 0
+              ? {
+                  astNode: {
+                    kind: Kind.FIELD_DEFINITION,
+                    name: { kind: Kind.NAME, value: rfMeta.name },
+                    type: {
+                      kind: Kind.NAMED_TYPE,
+                      name: { kind: Kind.NAME, value: "String" },
+                    },
+                    directives: combinedDirectiveNodes,
+                  },
+                }
+              : {}),
             resolve:
               rfMw.length > 0
                 ? applyFieldMiddleware(rfMw, baseResolve)
