@@ -111,8 +111,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:564-689) ignores class-level @ApiExtension() metadata on DTO schemas (x-schema-extension missing on Cat)
-    it.skip("should produce a valid OpenAPI 3.0 schema", async () => {
+    it("should produce a valid OpenAPI 3.0 schema", async () => {
       await SwaggerModule.loadPluginMetadata(async () => ({
         "@nestjs/swagger": {
           models: [

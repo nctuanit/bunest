@@ -147,8 +147,7 @@ describeConformance(
     });
 
     describe("Schema", () => {
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string") when oneOf is declared without an explicit type
-      it.skip("should not turn a type inferred for a property declaring oneOf into an explicit one", () => {
+      it("should not turn a type inferred for a property declaring oneOf into an explicit one", () => {
         class NullableBinDto {
           @ApiProperty({
             required: false,
@@ -170,8 +169,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string") when oneOf is declared without an explicit type across mapped types
-      it.skip.each([
+      it.each([
         ["PickType", (base: Type<any>) => PickType(base, ["bin"])],
         ["OmitType", (base: Type<any>) => OmitType(base, [])],
         ["IntersectionType", (base: Type<any>) => IntersectionType(base, base)],

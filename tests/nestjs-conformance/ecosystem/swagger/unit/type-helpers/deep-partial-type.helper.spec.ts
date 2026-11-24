@@ -496,8 +496,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string"/"object") even when oneOf is declared without an explicit type
-    it.skip("should leave the type of a oneOf property inferred", () => {
+    it("should leave the type of a oneOf property inferred", () => {
       class NullableBinDto {
         @ApiProperty({ oneOf: [{ type: "string" }, { type: "null" }] })
         bin!: string | null;
