@@ -1,8 +1,11 @@
-import { Inject, Injectable, type OnModuleInit } from "@bunest/core";
 import {
   DiscoveryService,
+  Inject,
+  Injectable,
   MetadataRegistry,
   MetadataScanner,
+  MultiMap,
+  type OnModuleInit,
   type Subscribable,
 } from "@bunest/core";
 import { NonRetryableMessageError } from "../errors/non-retryable-message.error";
@@ -37,7 +40,7 @@ const NEVER_ABORTED = new AbortController().signal;
  */
 @Injectable()
 export class OutboxDispatcher extends OutboxTransport implements OnModuleInit {
-  private readonly handlers = new Map<string, HandlerEntry[]>();
+  private readonly handlers = new MultiMap<string, HandlerEntry>();
   private scanned = false;
 
   constructor(
@@ -146,13 +149,13 @@ export class OutboxDispatcher extends OutboxTransport implements OnModuleInit {
             invoke: (payload, context) => targetObj[method]!(payload, context),
           };
           for (const topic of meta.topics) {
-            const list = this.handlers.get(topic) ?? [];
+            const list = this.handlers.get(topic);
             if (list.some((e) => e.consumer === entry.consumer)) {
               throw new Error(
                 `Duplicate outbox consumer "${entry.consumer}" for topic "${topic}"`,
               );
             }
-            this.handlers.set(topic, [...list, entry]);
+            this.handlers.add(topic, entry);
           }
         }
       }

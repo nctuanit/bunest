@@ -83,8 +83,7 @@ describeConformance(
         logger.assertLogged(/orders/, "log");
       });
 
-      // BUNEST_BUG: new Logger(OrdersService.name) inside providers does not route through TestingModuleBuilder.setLogger(capturingLogger) (packages/core/src/common/logger/logger.ts)
-      it.skip('should capture the logs of "Logger" instances in providers', async () => {
+      it('should capture the logs of "Logger" instances in providers', async () => {
         logger.assertLogged("Orders service ready", "log");
         await request(app).get("/orders").expect(200);
         logger.assertLogged("Listing orders", "debug");

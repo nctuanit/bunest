@@ -111,8 +111,7 @@ describeConformance(
         expect(proxy.getData()).toBe(resCtx);
       });
 
-      // BUNEST_BUG: @bunest/core does not export ExecutionContextHost (only HttpExecutionContext), and HttpExecutionContext.switchToWs().getPattern() hardcodes "" instead of returning the last argument (packages/core/src/index.ts, packages/core/src/http/context/execution-context.ts:71-77).
-      it.skip("should return the last arg via getPattern on ExecutionContextHost", () => {
+      it("should return the last arg via getPattern on ExecutionContextHost", () => {
         const ExecutionContextHost = (coreExports as Record<string, unknown>)
           .ExecutionContextHost as
           | (new (
@@ -134,8 +133,7 @@ describeConformance(
     });
 
     describe("setType", () => {
-      // BUNEST_BUG: @bunest/core does not export ExecutionContextHost and HttpExecutionContext has no setType() method (packages/core/src/index.ts, packages/core/src/http/context/execution-context.ts:39-41).
-      it.skip("should update the context type", () => {
+      it("should update the context type", () => {
         const ExecutionContextHost = (coreExports as Record<string, unknown>)
           .ExecutionContextHost as
           | (new (args: unknown[]) => {
@@ -149,8 +147,7 @@ describeConformance(
         expect(generic.getType()).toBe("ws");
       });
 
-      // BUNEST_BUG: @bunest/core does not export ExecutionContextHost and HttpExecutionContext has no setType() method (packages/core/src/index.ts, packages/core/src/http/context/execution-context.ts:39-41).
-      it.skip("should not update when type is falsy", () => {
+      it("should not update when type is falsy", () => {
         const ExecutionContextHost = (coreExports as Record<string, unknown>)
           .ExecutionContextHost as
           | (new (args: unknown[]) => {
@@ -164,8 +161,7 @@ describeConformance(
         expect(generic.getType()).toBe("http");
       });
 
-      // BUNEST_BUG: @bunest/core does not export ExecutionContextHost and HttpExecutionContext has no setType() method (packages/core/src/index.ts, packages/core/src/http/context/execution-context.ts:39-41).
-      it.skip("should support custom string types", () => {
+      it("should support custom string types", () => {
         const ExecutionContextHost = (coreExports as Record<string, unknown>)
           .ExecutionContextHost as
           | (new (args: unknown[]) => {
@@ -181,8 +177,7 @@ describeConformance(
     });
 
     describe("constructor defaults", () => {
-      // BUNEST_BUG: @bunest/core does not export ExecutionContextHost supporting optional null constructorRef/handler defaults (packages/core/src/index.ts, packages/core/src/http/context/execution-context.ts:25-37).
-      it.skip("should allow null constructorRef and handler", () => {
+      it("should allow null constructorRef and handler", () => {
         const ExecutionContextHost = (coreExports as Record<string, unknown>)
           .ExecutionContextHost as
           | (new (args: unknown[]) => {

@@ -1,3 +1,4 @@
+import { computeBackoffDelay } from "@bunest/core";
 import type {
   Duration,
   StorageBackoffOptions,
@@ -24,25 +25,14 @@ export function duration(value: Duration, option: string): number {
 function buildBackoffDelay(
   backoff: StorageBackoffOptions | undefined,
 ): (attempt: number) => number {
-  const baseMs = backoff?.delay !== undefined ? toMs(backoff.delay) : 100;
-  const factor = backoff?.factor ?? 2;
-  const maxMs =
-    backoff?.maxDelay !== undefined ? toMs(backoff.maxDelay) : 20_000;
-  const jitter = backoff?.jitter ?? "full";
-
-  return (attempt: number): number => {
-    const raw = Math.min(
-      maxMs,
-      baseMs * Math.pow(factor, Math.max(0, attempt - 1)),
-    );
-    if (jitter === "none") {
-      return raw;
-    }
-    if (jitter === "equal") {
-      return raw / 2 + Math.random() * (raw / 2);
-    }
-    return Math.random() * raw;
+  const resolved = {
+    delay: backoff?.delay !== undefined ? toMs(backoff.delay) : 100,
+    factor: backoff?.factor ?? 2,
+    maxDelay: backoff?.maxDelay !== undefined ? toMs(backoff.maxDelay) : 20_000,
+    jitter: backoff?.jitter ?? ("full" as const),
   };
+
+  return (attempt: number): number => computeBackoffDelay(resolved, attempt);
 }
 
 export function resolveRetry(

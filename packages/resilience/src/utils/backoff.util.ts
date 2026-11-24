@@ -1,3 +1,4 @@
+import { computeBackoffDelay } from "@bunest/core";
 import type { BackoffOptions } from "../interfaces/backoff-options.interface";
 import { durationOption, numberOption } from "./options.util";
 
@@ -31,16 +32,5 @@ export function computeBackoff(
   attempt: number,
   random: () => number = Math.random,
 ): number {
-  const wait = Math.min(
-    backoff.maxDelay,
-    backoff.delay * backoff.factor ** (attempt - 1),
-  );
-  switch (backoff.jitter) {
-    case "full":
-      return Math.floor(random() * wait);
-    case "equal":
-      return Math.floor(wait / 2 + random() * (wait / 2));
-    default:
-      return wait;
-  }
+  return computeBackoffDelay(backoff, attempt, random);
 }

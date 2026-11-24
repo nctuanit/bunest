@@ -80,6 +80,7 @@ import {
   once,
   or,
   parseDuration,
+  parseRetryAfter,
   partition,
   pick,
   pipe,
@@ -495,6 +496,14 @@ describe("Shared Runtime Utils (Duration, Retry, Error, UUID)", () => {
     expect(computeBackoffDelay(resolved, 1)).toBe(100);
     expect(computeBackoffDelay(resolved, 2)).toBe(200);
     expect(computeBackoffDelay(resolved, 4)).toBe(500);
+
+    const now = Date.parse("Tue, 22 Sep 2026 12:00:00 GMT");
+    expect(parseRetryAfter("12", now)).toBe(12_000);
+    expect(parseRetryAfter("Tue, 22 Sep 2026 12:00:30 GMT", now)).toBe(30_000);
+    expect(parseRetryAfter("Tue, 22 Sep 2026 11:59:00 GMT", now)).toBe(0);
+    expect(parseRetryAfter("1.5", now)).toBeUndefined();
+    expect(parseRetryAfter("not-a-date", now)).toBeUndefined();
+    expect(parseRetryAfter(undefined, now)).toBeUndefined();
 
     let attempts = 0;
     const value = await retry(

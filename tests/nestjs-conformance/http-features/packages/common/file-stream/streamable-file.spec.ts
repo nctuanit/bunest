@@ -183,8 +183,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never invokes errorLogger or destroys response when headers are sent.
-        it.skip("should log the error and destroy the response when headers are already sent", () => {
+        it("should log the error and destroy the response when headers are already sent", () => {
           const stream = new ReadableStream<Uint8Array>();
           const errorLogger = createSpy();
           const streamableFile = new StreamableFile(stream).setErrorLogger(
@@ -208,8 +207,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never invokes errorLogger or calls res.end().
-        it.skip("should not destroy the response when the stream fails after it ended", async () => {
+        it("should not destroy the response when the stream fails after it ended", async () => {
           const stream = new ReadableStream<Uint8Array>({
             start(controller) {
               controller.enqueue(new TextEncoder().encode("data"));
@@ -257,8 +255,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — leaves statusCode at 200 instead of 400 and never logs/sends "Bad Request".
-        it.skip("should set status code to BAD_REQUEST and log the error instead of sending its message", () => {
+        it("should set status code to BAD_REQUEST and log the error instead of sending its message", () => {
           const stream = new ReadableStream<Uint8Array>();
           const errorLogger = createSpy();
           const streamableFile = new StreamableFile(stream).setErrorLogger(

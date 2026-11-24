@@ -2,6 +2,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  LruCache,
   type OnModuleDestroy,
   type OnModuleInit,
 } from "../common/index";
@@ -61,10 +62,10 @@ export class I18nService<T = I18nRegisteredTranslations>
   private readonly logger = new Logger("I18nService");
   private readonly warnedKeys = new Set<string>();
   private readonly pluralRules = new Map<string, Intl.PluralRules>();
-  private readonly formatters = new Map<
+  private readonly formatters = new LruCache<
     string,
     Intl.NumberFormat | Intl.DateTimeFormat
-  >();
+  >({ maxSize: MAX_FORMATTERS });
   private readonly defaultLocaleValue: string;
   private supported: string[] = [];
   /** Lower-cased locale -> its configured spelling: supported locales and `fallbacks` keys. */
@@ -456,12 +457,6 @@ export class I18nService<T = I18nRegisteredTranslations>
     let formatter = this.formatters.get(key) as F | undefined;
     if (!formatter) {
       formatter = create();
-      if (this.formatters.size >= MAX_FORMATTERS) {
-        const oldest = this.formatters.keys().next().value;
-        if (oldest !== undefined) {
-          this.formatters.delete(oldest);
-        }
-      }
       this.formatters.set(key, formatter);
     }
     return formatter;

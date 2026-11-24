@@ -1,4 +1,4 @@
-import type { ResponseContext } from "@bunest/core";
+import { LruCache, type ResponseContext } from "@bunest/core";
 import {
   type DocumentNode,
   execute,
@@ -33,17 +33,13 @@ import type {
 import { HeaderMap } from "./header-map";
 
 class InMemoryBoundedCache<V = string> implements KeyValueCache<V> {
-  private readonly store = new Map<string, { value: V; expiresAt?: number }>();
-  constructor(private readonly maxEntries = 2048) {}
+  private readonly store: LruCache<string, V>;
+  constructor(maxEntries = 2048) {
+    this.store = new LruCache<string, V>({ maxSize: maxEntries });
+  }
 
   async get(key: string): Promise<V | undefined> {
-    const entry = this.store.get(key);
-    if (!entry) return undefined;
-    if (entry.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
-      this.store.delete(key);
-      return undefined;
-    }
-    return entry.value;
+    return this.store.get(key);
   }
 
   async set(
@@ -51,20 +47,12 @@ class InMemoryBoundedCache<V = string> implements KeyValueCache<V> {
     value: V,
     options?: { ttl?: number | null },
   ): Promise<void> {
-    if (this.store.size >= this.maxEntries && !this.store.has(key)) {
-      const oldest = this.store.keys().next().value;
-      if (oldest !== undefined) {
-        this.store.delete(oldest);
-      }
-    }
     const ttl = options?.ttl;
-    this.store.set(key, {
+    this.store.set(
+      key,
       value,
-      expiresAt:
-        typeof ttl === "number" && ttl > 0
-          ? Date.now() + ttl * 1000
-          : undefined,
-    });
+      typeof ttl === "number" && ttl > 0 ? ttl * 1000 : undefined,
+    );
   }
 
   async delete(key: string): Promise<boolean> {

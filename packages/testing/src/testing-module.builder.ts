@@ -1,4 +1,5 @@
 import {
+  Logger,
   Module,
   type DynamicModule,
   type InjectionToken,
@@ -153,6 +154,7 @@ export class TestingModuleBuilder {
 
   setLogger(logger: LoggerService | LogLevel[] | false): this {
     this.loggerOption = logger;
+    Logger.overrideLogger(logger);
     return this;
   }
 

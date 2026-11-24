@@ -76,8 +76,7 @@ describeConformance(
         "onInit() immediate replay",
       );
 
-      // BUNEST_BUG: Assigning host.httpAdapter setter does not trigger onInit listeners (expected emitted=true, received false); only explicit host.markInitialized() fires initListeners, whereas upstream NestJS HttpAdapterHost emits init$ inside set httpAdapter() (packages/core/src/helpers/http-adapter-host.ts:18-20,39-45).
-      it.skip("should emit when httpAdapter is set directly without calling markInitialized() [ADR-008: upstream init$ emits inside httpAdapter setter]", async () => {
+      it("should emit when httpAdapter is set directly without calling markInitialized() [ADR-008: upstream init$ emits inside httpAdapter setter]", async () => {
         let emitted = false;
         host.onInit(() => {
           emitted = true;

@@ -1,17 +1,18 @@
-import { randomInt, timingSafeEqualBytes } from "@bunest/core";
+import {
+  randomInt,
+  randomToken,
+  sha256 as coreSha256,
+  timingSafeEqualBytes,
+  timingSafeEqualStr,
+} from "@bunest/core";
 
-export { randomInt, timingSafeEqualBytes };
+export { randomInt, randomToken, timingSafeEqualBytes };
 
 /** Cryptographically secure random bytes. */
 export function randomBytes(length: number): Buffer {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-}
-
-/** 256 random bits, base64url (43 chars). */
-export function randomToken(bytes = 32): string {
-  return randomBytes(bytes).toString("base64url");
 }
 
 /** Pattern of a {@link randomToken} of 32 bytes. */
@@ -23,15 +24,11 @@ export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
  * cannot be replayed.
  */
 export function sha256(value: string): string {
-  return Bun.CryptoHasher.hash("sha256", value, "base64url");
+  return coreSha256(value, "base64url");
 }
 
 /** Constant-time string comparison (length is not secret). */
-export function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return timingSafeEqualBytes(left, right);
-}
+export const safeEqual = timingSafeEqualStr;
 
 const MAX_REDIRECT_LENGTH = 2_048;
 

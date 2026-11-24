@@ -235,6 +235,7 @@ export { RequestContainer } from "./di/request-container";
 
 // NestJS Core Compatibility Helpers & Base Exception Filter
 export { ApplicationConfig } from "./application/application-config";
+export { ExecutionContextHost } from "./helpers/execution-context-host";
 export { HttpAdapterHost } from "./helpers/http-adapter-host";
 export {
   ExternalContextCreator,

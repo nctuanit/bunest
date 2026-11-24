@@ -303,8 +303,7 @@ describeConformance(
         Logger.overrideLogger(true);
       });
 
-      // BUNEST_BUG: Logger.overrideLogger(customLogger) overrides static Logger.warn/log calls but does NOT route existing or newly constructed `new Logger(context)` instances through the overridden logger (packages/core/src/common/logger/logger.ts)
-      it.skip("should capture Logger instances after Logger.overrideLogger", () => {
+      it("should capture Logger instances after Logger.overrideLogger", () => {
         const serviceLogger = new Logger("OrdersService");
         serviceLogger.log("before the override");
 
@@ -341,8 +340,7 @@ describeConformance(
         ).toBeDefined();
       });
 
-      // BUNEST_BUG: new Logger('OrdersService').error(...) ignores Logger.overrideLogger(logger) (packages/core/src/common/logger/logger.ts)
-      it.skip("should capture errors logged by a Logger instance without a stack", () => {
+      it("should capture errors logged by a Logger instance without a stack", () => {
         Logger.overrideLogger(logger);
         new Logger("OrdersService").error("Order failed");
 

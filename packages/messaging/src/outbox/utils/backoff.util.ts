@@ -1,3 +1,4 @@
+import { computeBackoffDelay, describeValue } from "@bunest/core";
 import type { OutboxMessage } from "../interfaces/outbox-message.interface";
 import type {
   OutboxModuleOptions,
@@ -108,29 +109,7 @@ export function resolveRetry(
   };
 }
 
-/** How a startup error names a value of the wrong type: `the string "false"`, `null`, `an object`. */
-export function describeValue(value: unknown): string {
-  if (value === null) {
-    return "null";
-  }
-  if (typeof value === "string") {
-    return `the string ${JSON.stringify(value)}`;
-  }
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "bigint"
-  ) {
-    return `the ${typeof value} ${String(value)}`;
-  }
-  if (typeof value === "function") {
-    return `the function ${value.name || "(anonymous)"}`;
-  }
-  if (typeof value === "object") {
-    return "an object";
-  }
-  return typeof value;
-}
+export { describeValue };
 
 /** `toMs()` for a module option: the error names the option. */
 export function optionMs(value: Duration, option: string): number {
@@ -155,14 +134,5 @@ export function computeBackoff(
   if (typeof backoff === "function") {
     return Math.floor(toMs(backoff(attempt, error, message)));
   }
-  const { delay, factor, maxDelay, jitter } = backoff;
-  const ceiling = Math.min(maxDelay, delay * factor ** (attempt - 1));
-  switch (jitter) {
-    case "none":
-      return Math.floor(ceiling);
-    case "full":
-      return Math.floor(random() * ceiling);
-    default:
-      return Math.floor(ceiling / 2 + (random() * ceiling) / 2);
-  }
+  return computeBackoffDelay(backoff, attempt, random);
 }

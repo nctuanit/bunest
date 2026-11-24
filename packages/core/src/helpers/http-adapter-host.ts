@@ -82,6 +82,9 @@ export class HttpAdapterHost<
 
   set httpAdapter(httpAdapter: T) {
     this._httpAdapter = httpAdapter;
+    if (httpAdapter) {
+      this.markInitialized();
+    }
   }
 
   get httpAdapter(): T {
