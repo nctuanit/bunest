@@ -1,4 +1,5 @@
 import {
+  ConsoleLogger,
   Logger,
   ShutdownSignal,
   isDynamicModule,
@@ -185,6 +186,10 @@ export class BunestApplicationContext {
         }
       }
     });
+
+    if ((options as { forceConsole?: boolean }).forceConsole === true) {
+      Logger.overrideLogger(new ConsoleLogger({ forceConsole: true }));
+    }
 
     const initialLogger = resolveLoggerService(options.logger);
     this.loggerAdapter = new ApplicationLoggerAdapter(
