@@ -1,4 +1,4 @@
-import { HttpStatus, MetadataRegistry, type Type } from "@bunest/core";
+import { HttpStatus, Logger, MetadataRegistry, type Type } from "@bunest/core";
 import { DECORATORS, SWAGGER_METADATA_KEYS } from "../constants";
 import type {
   ApiBodyOptions,
@@ -20,18 +20,37 @@ import type {
 function createClassAndMethodArrayDecorator<T>(
   metadataKey: symbol,
   items: readonly T[],
+  cloneItem?: (item: T) => T,
+  order: "prepend" | "append" = "prepend",
 ): ClassDecorator & MethodDecorator {
   return (
     target: object,
     _propertyKey?: string | symbol,
     descriptor?: PropertyDescriptor,
   ): void => {
-    if (descriptor && descriptor.value !== undefined) {
-      MetadataRegistry.prependOwnArray<T>(metadataKey, items, descriptor.value);
+    const dest =
+      descriptor && descriptor.value !== undefined ? descriptor.value : target;
+    const next = cloneItem ? items.map(cloneItem) : items;
+    if (order === "append") {
+      MetadataRegistry.appendOwnArray<T>(metadataKey, next, dest);
       return;
     }
-    MetadataRegistry.prependOwnArray<T>(metadataKey, items, target);
+    MetadataRegistry.prependOwnArray<T>(metadataKey, next, dest);
   };
+}
+
+function cloneExtensionValue(entry: {
+  readonly key: string;
+  readonly value: unknown;
+}): { readonly key: string; readonly value: unknown } {
+  const { value } = entry;
+  if (Array.isArray(value)) {
+    return { key: entry.key, value: [...value] };
+  }
+  if (value !== null && typeof value === "object") {
+    return { key: entry.key, value: { ...(value as object) } };
+  }
+  return { key: entry.key, value };
 }
 
 /**
@@ -45,6 +64,13 @@ export function ApiTags(
   const tagObjects = tags.filter(
     (t): t is ApiTagOptions => typeof t === "object" && t !== null,
   );
+  for (const tag of tagObjects) {
+    if (tag.parent !== undefined || tag.kind !== undefined) {
+      new Logger("SwaggerModule").warn(
+        `@ApiTags(): tag "${tag.name}" declares OpenAPI 3.2 hierarchy fields (parent/kind), which are ignored at the operation level. Declare them once via DocumentBuilder.addTag() instead.`,
+      );
+    }
+  }
   return (
     target: object,
     _propertyKey?: string | symbol,
@@ -630,7 +656,7 @@ export function ApiExtension(
     readonly value: unknown;
   }>(SWAGGER_METADATA_KEYS.API_EXTENSIONS, [
     { key: extensionKey, value: extensionProperties },
-  ]);
+  ], cloneExtensionValue);
 }
 
 /**
@@ -708,9 +734,13 @@ export function ApiSecurity(
 ): ClassDecorator & MethodDecorator {
   const entry: OpenApiSecurityRequirement =
     typeof name === "string" ? { [name]: [...requirements] } : { ...name };
+  // NestJS accumulates security requirements bottom-to-top (decorator
+  // application order), so append rather than prepend.
   return createClassAndMethodArrayDecorator<OpenApiSecurityRequirement>(
     SWAGGER_METADATA_KEYS.API_SECURITY,
     [entry],
+    (req) => ({ ...req }),
+    "append",
   );
 }
 

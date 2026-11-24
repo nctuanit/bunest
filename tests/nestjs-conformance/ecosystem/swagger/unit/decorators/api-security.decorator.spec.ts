@@ -26,8 +26,7 @@ describeConformance(
         public method(): void {}
       }
 
-      // BUNEST_BUG: ApiSecurity (packages/swagger/src/decorators/api.decorators.ts:698-701) uses prependOwnArray (top-to-bottom order) instead of NestJS bottom-to-top accumulation order
-      it.skip("should merge the requirements on a method", () => {
+      it("should merge the requirements on a method", () => {
         expect(
           MetadataRegistry.get(
             SWAGGER_METADATA_KEYS.API_SECURITY,
@@ -36,8 +35,7 @@ describeConformance(
         ).toEqual([{ second: ["read"] }, { first: [] }]);
       });
 
-      // BUNEST_BUG: ApiSecurity (packages/swagger/src/decorators/api.decorators.ts:698-701) uses prependOwnArray (top-to-bottom order) instead of NestJS bottom-to-top accumulation order
-      it.skip("should merge the requirements on a class", () => {
+      it("should merge the requirements on a class", () => {
         expect(
           MetadataRegistry.get(
             SWAGGER_METADATA_KEYS.API_SECURITY,
@@ -62,8 +60,7 @@ describeConformance(
       @JwtAuth
       class OtherController {}
 
-      // BUNEST_BUG: ApiSecurity (packages/swagger/src/decorators/api.decorators.ts:698-701) uses prependOwnArray (top-to-bottom order) instead of NestJS bottom-to-top accumulation order
-      it.skip("should merge with the requirements of the decorated target", () => {
+      it("should merge with the requirements of the decorated target", () => {
         expect(
           MetadataRegistry.get(
             SWAGGER_METADATA_KEYS.API_SECURITY,
