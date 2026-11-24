@@ -440,9 +440,19 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   override async init(): Promise<this> {
+    if (this.isInitialized && this.lifecycle.getIsInitialized()) {
+      return this;
+    }
     await this.prepareHttpPipeline();
+    for (const route of this.getRoutes()) {
+      this.logger.log(
+        `Mapped {${route.path}, ${route.method}} route`,
+        "RouterExplorer",
+      );
+    }
     await super.init();
     this.container.getHttpAdapterHost().markInitialized();
+    this.logger.log("Nest application successfully started", "NestApplication");
     return this;
   }
 

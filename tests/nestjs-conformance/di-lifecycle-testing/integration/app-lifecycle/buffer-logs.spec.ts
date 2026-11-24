@@ -78,8 +78,7 @@ describeConformance(
       Logger.overrideLogger(true);
     });
 
-    // BUNEST_BUG: NestFactory.create(..., { bufferLogs: true }) + app.init() does not emit buffered framework startup logs ("Starting Nest application...", "Nest application successfully started") into the logger (packages/core/src/application/bunest-factory.ts)
-    it.skip("should flush buffered logs on init() when the app never listens", async () => {
+    it("should flush buffered logs on init() when the app never listens", async () => {
       app = await NestFactory.create(AppModule, { bufferLogs: true, logger });
       expect(logger.messages).toEqual([]);
 
@@ -88,8 +87,7 @@ describeConformance(
       expect(logger.messages.length).toBeGreaterThan(0);
     });
 
-    // BUNEST_BUG: NestFactory.create(..., { bufferLogs: true }) + app.useLogger(logger) + app.init() flushes 0 startup log entries (packages/core/src/application/bunest-factory.ts)
-    it.skip("should flush them to a logger set with useLogger() before init()", async () => {
+    it("should flush them to a logger set with useLogger() before init()", async () => {
       app = await NestFactory.create(AppModule, { bufferLogs: true });
       app.useLogger(logger);
       expect(logger.messages).toEqual([]);
@@ -99,8 +97,7 @@ describeConformance(
       expect(logger.messages.length).toBeGreaterThan(0);
     });
 
-    // BUNEST_BUG: autoFlushLogs: false + app.flushLogs() has 0 buffered startup entries to flush (packages/core/src/application/bunest-factory.ts)
-    it.skip("should keep buffering when autoFlushLogs is false", async () => {
+    it("should keep buffering when autoFlushLogs is false", async () => {
       app = await NestFactory.create(AppModule, {
         bufferLogs: true,
         autoFlushLogs: false,
