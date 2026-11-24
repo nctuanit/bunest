@@ -368,7 +368,7 @@ describe("@bunest/swagger Entity Schema Auto-Generation & design:returntype Auto
         description: "Filter by status",
         schema: {
           type: ["string", "null"],
-          enum: ["draft", "published"],
+          enum: ["draft", "published", null],
         },
       });
       expect(limitQuery).toMatchObject({

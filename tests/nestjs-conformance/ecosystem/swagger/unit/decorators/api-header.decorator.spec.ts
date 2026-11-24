@@ -141,8 +141,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1911) places @ApiHeader({ example }) on the parameter object (param.example) instead of param.schema.example
-      it.skip("keeps `example` on the generated schema", async () => {
+      it("keeps `example` on the generated schema", async () => {
         expect(await getHeaderParams(TestController, "/example")).toEqual([
           {
             name: "X-Example",
@@ -256,8 +255,7 @@ describeConformance(
     });
 
     describe("when the example is a falsy value", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1911) emits falsy @ApiHeader({ example }) on param.example instead of param.schema.example
-      it.skip.each([[0], [false], [""]])(
+      it.each([[0], [false], [""]])(
         "should keep the example %j",
         async (example) => {
           @Controller("")

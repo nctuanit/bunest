@@ -1,4 +1,5 @@
 import {
+  Logger,
   MetadataRegistry,
   StreamableFile,
   getEntitySchema,
@@ -24,6 +25,10 @@ import type {
   SwaggerEnumType,
 } from "./interfaces/openapi.interface";
 import { getPluginModelMetadata } from "./plugin-metadata-store";
+import {
+  SWAGGER_MAPPED_TYPE_META,
+  type SwaggerMappedTypeMeta,
+} from "./type-helpers/mapped-types.helper";
 
 const BUILTIN_PRIMITIVE_CONSTRUCTORS = new Set<Function>([
   String,
@@ -113,7 +118,11 @@ export function isSchemaDecoratedClass(target: Function): boolean {
     if (
       MetadataRegistry.hasOwn(SWAGGER_METADATA_KEYS.API_PROPERTIES, ctor) ||
       MetadataRegistry.hasOwn(SWAGGER_METADATA_KEYS.API_SCHEMA, ctor) ||
-      getPluginModelMetadata(ctor) !== undefined
+      getPluginModelMetadata(ctor) !== undefined ||
+      Object.prototype.hasOwnProperty.call(ctor, SWAGGER_MAPPED_TYPE_META) ||
+      (Object.prototype.hasOwnProperty.call(ctor, "_OPENAPI_METADATA_FACTORY") &&
+        typeof (ctor as { _OPENAPI_METADATA_FACTORY?: unknown })
+          ._OPENAPI_METADATA_FACTORY === "function")
     ) {
       return true;
     }
@@ -160,6 +169,88 @@ export function isStandardJsonSchema(
   return typeof conv.input === "function" || typeof conv.output === "function";
 }
 
+function rewriteStandardSchemaRefs(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(rewriteStandardSchemaRefs);
+  }
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === "$ref" && typeof v === "string") {
+        out[k] = v
+          .replace(/^#\/\$defs\//, "#/components/schemas/")
+          .replace(/^#\/definitions\//, "#/components/schemas/");
+      } else {
+        out[k] = rewriteStandardSchemaRefs(v);
+      }
+    }
+    return out;
+  }
+  return node;
+}
+
+function normalizeJsonSchemaForOpenApi(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(normalizeJsonSchemaForOpenApi);
+  }
+  if (!node || typeof node !== "object") {
+    return node;
+  }
+  const src = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const [k, v] of Object.entries(src)) {
+    if (k === "$ref" && typeof v === "string") {
+      out[k] = v
+        .replace(/^#\/\$defs\//, "#/components/schemas/")
+        .replace(/^#\/definitions\//, "#/components/schemas/");
+    } else if (k === "const") {
+      out.enum = [v];
+    } else if (k === "examples" && Array.isArray(v)) {
+      if (v.length > 0 && !("example" in src)) {
+        out.example = v[0];
+      }
+    } else if (
+      (k === "properties" || k === "patternProperties" || k === "dependentSchemas") &&
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v)
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] = normalizeJsonSchemaForOpenApi(pv);
+      }
+      out[k] = mapped;
+    } else if (
+      (k === "items" ||
+        k === "additionalProperties" ||
+        k === "not" ||
+        k === "contains" ||
+        k === "if" ||
+        k === "then" ||
+        k === "else") &&
+      v &&
+      typeof v === "object"
+    ) {
+      out[k] = normalizeJsonSchemaForOpenApi(v);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf" || k === "prefixItems") &&
+      Array.isArray(v)
+    ) {
+      out[k] = v.map(normalizeJsonSchemaForOpenApi);
+    } else {
+      out[k] = v;
+    }
+  }
+
+  // If both `const` and `enum` were present, `const` narrows `enum` to `[const]`.
+  if ("const" in src) {
+    out.enum = [src.const];
+  }
+
+  return out;
+}
+
 /**
  * Built-in zero-dependency Standard JSON Schema v1 (`~standard.jsonSchema`) converter.
  * Compatible with Zod v4, Valibot, ArkType, and any StandardJSONSchemaV1 object.
@@ -182,8 +273,20 @@ export const defaultStandardSchemaConverter: StandardSchemaConverter = (
   let raw: Record<string, unknown>;
   try {
     raw = fn({ target: "openapi-3.0" });
-  } catch {
-    raw = fn({ target: "draft-2020-12" });
+  } catch (openApiErr) {
+    try {
+      raw = fn({ target: "draft-2020-12" });
+    } catch {
+      if (typeof schema === "function") {
+        new Logger("SwaggerModule").warn(
+          `Failed to convert standard schema to OpenAPI 3.0: ${
+            openApiErr instanceof Error ? openApiErr.message : String(openApiErr)
+          }`,
+        );
+        return undefined;
+      }
+      throw openApiErr;
+    }
   }
   if (!raw || typeof raw !== "object") {
     return undefined;
@@ -200,31 +303,15 @@ export const defaultStandardSchemaConverter: StandardSchemaConverter = (
   }
   delete cloned.$schema;
 
-  // Rewrite local JSON Schema `#/$defs/X` or `#/definitions/X` to `#/components/schemas/X`
-  const rewriteRefs = (node: unknown): unknown => {
-    if (Array.isArray(node)) {
-      return node.map(rewriteRefs);
-    }
-    if (node && typeof node === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        if (k === "$ref" && typeof v === "string") {
-          out[k] = v
-            .replace(/^#\/\$defs\//, "#/components/schemas/")
-            .replace(/^#\/definitions\//, "#/components/schemas/");
-        } else {
-          out[k] = rewriteRefs(v);
-        }
-      }
-      return out;
-    }
-    return node;
-  };
+  const normalizedComponents: Record<string, unknown> = {};
+  for (const [compName, compDef] of Object.entries(components)) {
+    normalizedComponents[compName] = normalizeJsonSchemaForOpenApi(compDef);
+  }
 
   return {
-    schema: rewriteRefs(cloned),
-    ...(Object.keys(components).length > 0
-      ? { components: rewriteRefs(components) as Record<string, any> }
+    schema: normalizeJsonSchemaForOpenApi(cloned),
+    ...(Object.keys(normalizedComponents).length > 0
+      ? { components: normalizedComponents as Record<string, any> }
       : {}),
   };
 };
@@ -254,52 +341,380 @@ function inferEnumSchemaType(
   if (values.every((v) => typeof v === "string")) return "string";
   if (values.every((v) => typeof v === "number")) return "number";
   if (values.every((v) => typeof v === "boolean")) return "boolean";
+  if (values.some((v) => typeof v === "string")) return "string";
   return undefined;
+}
+
+const OAS_ANNOTATION_KEYS = new Set<string>([
+  "title",
+  "description",
+  "default",
+  "deprecated",
+  "readOnly",
+  "writeOnly",
+  "example",
+  "examples",
+  "externalDocs",
+  "xml",
+  "discriminator",
+]);
+
+function isAnnotationKey(key: string): boolean {
+  return OAS_ANNOTATION_KEYS.has(key) || key.startsWith("x-");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function applyNullable30(
+  schema: OpenApiSchema,
+  nullable?: boolean,
+): OpenApiSchema {
+  if (nullable === false) {
+    const out = { ...schema };
+    delete out.nullable;
+    return out;
+  }
+  if (!nullable) {
+    return schema;
+  }
+  if (schema.$ref) {
+    const { $ref, ...siblings } = schema;
+    return {
+      ...siblings,
+      type: "object",
+      nullable: true,
+      allOf: [{ $ref }],
+    };
+  }
+  return { ...schema, nullable: true };
+}
+
+/**
+ * Recursively converts an OpenAPI 3.0 schema (with `nullable: true`, boolean
+ * `exclusiveMinimum`/`exclusiveMaximum`, single-element `allOf: [{ $ref }]`
+ * wrappers, etc.) into an OpenAPI 3.1 JSON Schema 2020-12 compliant schema.
+ */
+export function convertSchemaToOas31(
+  schema: OpenApiSchema,
+  seen = new WeakMap<object, OpenApiSchema>(),
+): OpenApiSchema {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+  if (seen.has(schema)) {
+    return seen.get(schema)!;
+  }
+
+  const out: Record<string, unknown> = {};
+  seen.set(schema, out as OpenApiSchema);
+
+  // 1. Copy fields and recurse into nested schema-valued positions
+  for (const [k, v] of Object.entries(schema)) {
+    if (
+      (k === "properties" || k === "patternProperties") &&
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v)
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] =
+          pv && typeof pv === "object"
+            ? convertSchemaToOas31(pv as OpenApiSchema, seen)
+            : pv;
+      }
+      out[k] = mapped;
+    } else if (k === "items" && v && typeof v === "object") {
+      out[k] = Array.isArray(v)
+        ? v.map((item) =>
+            item && typeof item === "object"
+              ? convertSchemaToOas31(item as OpenApiSchema, seen)
+              : item,
+          )
+        : convertSchemaToOas31(v as OpenApiSchema, seen);
+    } else if (
+      (k === "additionalProperties" || k === "not") &&
+      v &&
+      typeof v === "object"
+    ) {
+      out[k] = convertSchemaToOas31(v as OpenApiSchema, seen);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf") &&
+      Array.isArray(v)
+    ) {
+      out[k] = v.map((branch) =>
+        branch && typeof branch === "object"
+          ? convertSchemaToOas31(branch as OpenApiSchema, seen)
+          : branch,
+      );
+    } else {
+      out[k] = v;
+    }
+  }
+
+  // 2. Convert OAS 3.0 boolean exclusiveMinimum / exclusiveMaximum to OAS 3.1 numeric bounds
+  if (typeof out.exclusiveMinimum === "boolean") {
+    if (out.exclusiveMinimum === true && typeof out.minimum === "number") {
+      out.exclusiveMinimum = out.minimum;
+      delete out.minimum;
+    } else {
+      delete out.exclusiveMinimum;
+    }
+  }
+  if (typeof out.exclusiveMaximum === "boolean") {
+    if (out.exclusiveMaximum === true && typeof out.maximum === "number") {
+      out.exclusiveMaximum = out.maximum;
+      delete out.maximum;
+    } else {
+      delete out.exclusiveMaximum;
+    }
+  }
+
+  // 3. Handle `nullable`
+  const isNullable = out.nullable === true;
+  if ("nullable" in out) {
+    delete out.nullable;
+  }
+  if (!isNullable) {
+    return out as OpenApiSchema;
+  }
+
+  // 3a. Direct `$ref`
+  if (typeof out.$ref === "string") {
+    const { $ref, ...siblings } = out;
+    const res = { ...siblings, anyOf: [{ $ref }, { type: "null" }] } as OpenApiSchema;
+    seen.set(schema, res);
+    return res;
+  }
+
+  // 3b. Unwrap OAS 3.0 single-element `allOf: [{ $ref }]` wrapper (with optional `type: "object"`)
+  if (
+    Array.isArray(out.allOf) &&
+    out.allOf.length === 1 &&
+    out.allOf[0] &&
+    typeof out.allOf[0] === "object" &&
+    typeof (out.allOf[0] as Record<string, unknown>).$ref === "string" &&
+    (out.type === undefined || out.type === "object")
+  ) {
+    const refEntry = out.allOf[0] as Record<string, unknown>;
+    const siblings: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(out)) {
+      if (k !== "allOf" && k !== "type") {
+        siblings[k] = v;
+      }
+    }
+    const res = {
+      ...siblings,
+      anyOf: [refEntry, { type: "null" }],
+    } as OpenApiSchema;
+    seen.set(schema, res);
+    return res;
+  }
+
+  // 3c. Enum (with or without `type`)
+  if (Array.isArray(out.enum)) {
+    if (!out.enum.includes(null)) {
+      out.enum = [...out.enum, null];
+    }
+    if (typeof out.type === "string") {
+      out.type = [out.type, "null"];
+    } else if (Array.isArray(out.type) && !out.type.includes("null")) {
+      out.type = [...out.type, "null"];
+    }
+    return out as OpenApiSchema;
+  }
+
+  // 3d. Simple typed schema (no combinators)
+  const hasCombinator =
+    out.allOf !== undefined ||
+    out.oneOf !== undefined ||
+    out.anyOf !== undefined ||
+    out.not !== undefined;
+  if (!hasCombinator && typeof out.type === "string") {
+    out.type = [out.type, "null"];
+    return out as OpenApiSchema;
+  }
+  if (!hasCombinator && Array.isArray(out.type)) {
+    if (!out.type.includes("null")) {
+      out.type = [...out.type, "null"];
+    }
+    return out as OpenApiSchema;
+  }
+
+  // 3e. Separate annotation siblings from structural/validation keywords
+  const annotations: Record<string, unknown> = {};
+  const core: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(out)) {
+    if (isAnnotationKey(k)) {
+      annotations[k] = v;
+    } else {
+      core[k] = v;
+    }
+  }
+
+  // Pure annotation schema ({ description: "anything" }) asserts nothing -> drop nullable
+  if (Object.keys(core).length === 0) {
+    seen.set(schema, annotations as OpenApiSchema);
+    return annotations as OpenApiSchema;
+  }
+
+  const res = {
+    ...annotations,
+    anyOf: [core, { type: "null" }],
+  } as OpenApiSchema;
+  seen.set(schema, res);
+  return res;
 }
 
 function applyNullable31(
   schema: OpenApiSchema,
   nullable?: boolean,
 ): OpenApiSchema {
-  if (!nullable) {
-    return schema;
+  if (nullable === undefined) {
+    return convertSchemaToOas31(schema);
   }
-  if (schema.$ref) {
-    const { $ref, ...siblings } = schema;
-    return { ...siblings, anyOf: [{ $ref }, { type: "null" }] };
-  }
-  if (typeof schema.type === "string") {
-    return { ...schema, type: [schema.type, "null"] };
-  }
-  if (Array.isArray(schema.type)) {
-    return schema.type.includes("null")
-      ? schema
-      : { ...schema, type: [...schema.type, "null"] };
-  }
-  return { anyOf: [schema, { type: "null" }] };
+  return convertSchemaToOas31({ ...schema, nullable });
 }
 
 function truncateExampleDepth(
   value: unknown,
   maxDepth: number,
   currentDepth = 0,
+  ancestors = new WeakSet<object>(),
 ): unknown {
   if (value === null || typeof value !== "object") {
     return value;
   }
+  if (!Array.isArray(value) && !isPlainObject(value)) {
+    return value;
+  }
+  if (ancestors.has(value)) {
+    return Array.isArray(value) ? [] : {};
+  }
   if (currentDepth >= maxDepth) {
     return Array.isArray(value) ? [] : {};
   }
-  if (Array.isArray(value)) {
-    return value.map((item) =>
-      truncateExampleDepth(item, maxDepth, currentDepth + 1),
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((item) =>
+        truncateExampleDepth(item, maxDepth, currentDepth + 1, ancestors),
+      );
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = truncateExampleDepth(v, maxDepth, currentDepth + 1, ancestors);
+    }
+    return out;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function applyExampleMaxDepthToSchema(
+  schema: OpenApiSchema,
+  ownMaxDepth: number | undefined,
+  childMaxDepth: number | undefined = ownMaxDepth,
+  seen = new WeakSet<object>(),
+): void {
+  if (!schema || typeof schema !== "object") return;
+  if (seen.has(schema)) return;
+  seen.add(schema);
+
+  if (ownMaxDepth !== undefined) {
+    if (schema.example !== undefined) {
+      schema.example = truncateExampleDepth(schema.example, ownMaxDepth);
+    }
+    if (schema.examples !== undefined) {
+      if (Array.isArray(schema.examples)) {
+        schema.examples = schema.examples.map((ex) =>
+          truncateExampleDepth(ex, ownMaxDepth),
+        );
+      } else if (isPlainObject(schema.examples)) {
+        const mapped: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(schema.examples)) {
+          mapped[k] = truncateExampleDepth(v, ownMaxDepth);
+        }
+        schema.examples = mapped as any;
+      }
+    }
+  }
+  if (childMaxDepth === undefined) return;
+
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const prop of Object.values(schema.properties)) {
+      if (prop && typeof prop === "object") {
+        applyExampleMaxDepthToSchema(prop, childMaxDepth, childMaxDepth, seen);
+      }
+    }
+  }
+  if (schema.patternProperties && typeof schema.patternProperties === "object") {
+    for (const prop of Object.values(schema.patternProperties)) {
+      if (prop && typeof prop === "object") {
+        applyExampleMaxDepthToSchema(prop, childMaxDepth, childMaxDepth, seen);
+      }
+    }
+  }
+  if (schema.items && typeof schema.items === "object") {
+    if (Array.isArray(schema.items)) {
+      for (const item of schema.items) {
+        if (item && typeof item === "object") {
+          applyExampleMaxDepthToSchema(
+            item as OpenApiSchema,
+            childMaxDepth,
+            childMaxDepth,
+            seen,
+          );
+        }
+      }
+    } else {
+      applyExampleMaxDepthToSchema(
+        schema.items,
+        childMaxDepth,
+        childMaxDepth,
+        seen,
+      );
+    }
+  }
+  if (
+    schema.additionalProperties &&
+    typeof schema.additionalProperties === "object"
+  ) {
+    applyExampleMaxDepthToSchema(
+      schema.additionalProperties,
+      childMaxDepth,
+      childMaxDepth,
+      seen,
     );
   }
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = truncateExampleDepth(v, maxDepth, currentDepth + 1);
+  for (const key of ["allOf", "oneOf", "anyOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const branch of schema[key]!) {
+        if (branch && typeof branch === "object") {
+          applyExampleMaxDepthToSchema(
+            branch as OpenApiSchema,
+            childMaxDepth,
+            childMaxDepth,
+            seen,
+          );
+        }
+      }
+    }
   }
-  return out;
+  if (schema.not && typeof schema.not === "object") {
+    applyExampleMaxDepthToSchema(
+      schema.not,
+      childMaxDepth,
+      childMaxDepth,
+      seen,
+    );
+  }
 }
 
 interface ExtractedValidatorHints {
@@ -439,6 +854,7 @@ export interface SchemaExplorerOptions {
   readonly excludeDynamicDefaults?: boolean;
   readonly exampleMaxDepth?: number;
   readonly standardSchemaConverter?: StandardSchemaConverter;
+  readonly openApiVersion?: string;
 }
 
 /**
@@ -447,14 +863,105 @@ export interface SchemaExplorerOptions {
  * Standard JSON Schema objects into OpenAPI 3.1 `components.schemas`, handling
  * nested and circular DTO references without infinite recursion.
  */
+/**
+ * Returns true if a schema `default` value is dynamic (a function, Date, or
+ * any non-plain class instance whose prototype is not Object.prototype / null).
+ */
+export function isDynamicDefaultValue(val: unknown): boolean {
+  if (typeof val === "function") return true;
+  if (val === null || typeof val !== "object") return false;
+  if (Array.isArray(val)) return false;
+  const proto = Object.getPrototypeOf(val);
+  return proto !== Object.prototype && proto !== null;
+}
+
+/**
+ * Non-mutating recursive pass that strips dynamic `default` values from a
+ * schema and all nested sub-schemas (`properties`, `items`, `additionalProperties`,
+ * `patternProperties`, `allOf`, `oneOf`, `anyOf`, `not`).
+ */
+export function stripDynamicDefaultsFromSchema<T>(
+  schema: T,
+  seen = new WeakMap<object, unknown>(),
+): T {
+  if (!schema || typeof schema !== "object") return schema;
+  if (seen.has(schema as object)) return seen.get(schema as object) as T;
+  if (Array.isArray(schema)) {
+    const out: unknown[] = [];
+    seen.set(schema as object, out);
+    for (const item of schema) {
+      out.push(stripDynamicDefaultsFromSchema(item, seen));
+    }
+    return out as unknown as T;
+  }
+  const proto = Object.getPrototypeOf(schema);
+  if (proto !== Object.prototype && proto !== null) {
+    return schema;
+  }
+
+  const s = schema as Record<string, unknown>;
+  const clone: Record<string, unknown> = {};
+  seen.set(schema as object, clone);
+
+  for (const [k, v] of Object.entries(s)) {
+    if (k === "default" && isDynamicDefaultValue(v)) {
+      continue;
+    }
+    if (
+      (k === "properties" || k === "patternProperties") &&
+      v &&
+      typeof v === "object"
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] = stripDynamicDefaultsFromSchema(pv, seen);
+      }
+      clone[k] = mapped;
+    } else if (
+      (k === "items" || k === "additionalProperties" || k === "not") &&
+      v &&
+      typeof v === "object"
+    ) {
+      clone[k] = stripDynamicDefaultsFromSchema(v, seen);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf") &&
+      Array.isArray(v)
+    ) {
+      clone[k] = v.map((branch) => stripDynamicDefaultsFromSchema(branch, seen));
+    } else {
+      clone[k] = v;
+    }
+  }
+  return clone as T;
+}
+
 export class SchemaExplorer {
   private readonly schemas: Record<string, OpenApiSchema> = {};
   private readonly classToName = new Map<Function, string>();
   private readonly nameToClass = new Map<string, Function>();
+  private readonly activeDtoStack: string[] = [];
   private readonly options: SchemaExplorerOptions;
 
   constructor(options: SchemaExplorerOptions = {}) {
     this.options = options;
+  }
+
+  private isOas31(): boolean {
+    const ver = this.options.openApiVersion ?? "3.1.0";
+    const parts = ver.split(".").map((n) => Number.parseInt(n, 10));
+    const maj = parts[0] || 3;
+    const min = parts[1] || 0;
+    return maj > 3 || (maj === 3 && min >= 1);
+  }
+
+  private finalizeNullable(
+    schema: OpenApiSchema,
+    nullable?: boolean,
+  ): OpenApiSchema {
+    if (this.isOas31()) {
+      return applyNullable31(schema, nullable);
+    }
+    return applyNullable30(schema, nullable);
   }
 
   getSchemas(): Record<string, OpenApiSchema> {
@@ -509,11 +1016,13 @@ export class SchemaExplorer {
     if (result.components && typeof result.components === "object") {
       for (const [name, compSchema] of Object.entries(result.components)) {
         if (compSchema && typeof compSchema === "object") {
-          this.schemas[name] = compSchema as OpenApiSchema;
+          this.schemas[name] = rewriteStandardSchemaRefs(
+            compSchema,
+          ) as OpenApiSchema;
         }
       }
     }
-    return result.schema as OpenApiSchema;
+    return rewriteStandardSchemaRefs(result.schema) as OpenApiSchema;
   }
 
   /**
@@ -581,6 +1090,8 @@ export class SchemaExplorer {
       baseSchema = { type: "boolean" };
     } else if (resolved === Date) {
       baseSchema = { type: "string", format: "date-time" };
+    } else if (resolved === BigInt) {
+      baseSchema = { type: "integer", format: "int64" };
     } else if (resolved === Array) {
       baseSchema = { type: "array", items: {} };
       return baseSchema;
@@ -595,6 +1106,55 @@ export class SchemaExplorer {
     } else if (isDtoConstructor(resolved)) {
       const refName = this.registerDtoSchema(resolved);
       baseSchema = { $ref: `#/components/schemas/${refName}` };
+    } else if (isPlainObject(resolved)) {
+      const entries = Object.entries(resolved);
+      if (entries.length === 0) {
+        baseSchema = {};
+      } else if (
+        entries.every(
+          ([, v]) =>
+            typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean",
+        )
+      ) {
+        // SWC const-enum plain object (e.g. `{ ACTIVE: "active", PAUSED: "paused" }`)
+        const enumVals = normalizeEnumValues(resolved as SwaggerEnumType);
+        const inferred = inferEnumSchemaType(enumVals);
+        baseSchema = {
+          ...(inferred ? { type: inferred } : {}),
+          enum: enumVals,
+        };
+      } else if (
+        entries.every(
+          ([, v]) =>
+            isPlainObject(v) &&
+            ("type" in v ||
+              "enum" in v ||
+              "oneOf" in v ||
+              "anyOf" in v ||
+              "allOf" in v ||
+              "properties" in v),
+        )
+      ) {
+        // Nested object-literal type descriptor from `type: () => ({ prop: { required, type: () => ... } })`
+        const nestedProps: Record<string, OpenApiSchema> = {};
+        const nestedRequired: string[] = [];
+        for (const [propKey, propDesc] of entries) {
+          const desc = propDesc as ApiPropertyOptions;
+          nestedProps[propKey] = this.buildInlinePropertySchema(desc);
+          if (desc.required !== false) {
+            nestedRequired.push(propKey);
+          }
+        }
+        baseSchema = {
+          type: "object",
+          properties: nestedProps,
+          ...(nestedRequired.length > 0 ? { required: nestedRequired } : {}),
+        };
+      } else {
+        baseSchema = {};
+      }
     } else {
       baseSchema = {};
     }
@@ -627,11 +1187,16 @@ export class SchemaExplorer {
     const baseName = schemaMeta?.name || dto.name || "AnonymousSchema";
     let schemaName = baseName;
     let suffix = 2;
-    while (
+    const collidedWithExisting =
       this.nameToClass.has(schemaName) &&
-      this.nameToClass.get(schemaName) !== dto
-    ) {
-      schemaName = `${baseName}_${suffix++}`;
+      this.nameToClass.get(schemaName) !== dto;
+    if (collidedWithExisting) {
+      while (
+        this.nameToClass.has(schemaName) &&
+        this.nameToClass.get(schemaName) !== dto
+      ) {
+        schemaName = `${baseName}_${suffix++}`;
+      }
     }
 
     const schemaDescription =
@@ -642,61 +1207,387 @@ export class SchemaExplorer {
     this.nameToClass.set(schemaName, dto);
     const dtoSchema: OpenApiSchema = {
       type: "object",
+      ...(schemaMeta?.title !== undefined ? { title: schemaMeta.title } : {}),
       ...(schemaDescription !== undefined
         ? { description: schemaDescription }
         : {}),
+      ...(schemaMeta?.additionalProperties !== undefined
+        ? { additionalProperties: schemaMeta.additionalProperties }
+        : {}),
+      ...(schemaMeta?.minProperties !== undefined
+        ? { minProperties: schemaMeta.minProperties }
+        : {}),
+      ...(schemaMeta?.maxProperties !== undefined
+        ? { maxProperties: schemaMeta.maxProperties }
+        : {}),
+      ...(schemaMeta?.deprecated !== undefined
+        ? { deprecated: schemaMeta.deprecated }
+        : {}),
+      ...(schemaMeta?.example !== undefined
+        ? { example: schemaMeta.example }
+        : {}),
+      ...(schemaMeta?.externalDocs !== undefined
+        ? { externalDocs: schemaMeta.externalDocs }
+        : {}),
       properties: {},
     };
-    this.schemas[schemaName] = dtoSchema;
 
-    // Collect entity column metadata (from @Entity + @Column + @PrimaryKey across inheritance chain)
-    const entityColumnMap = new Map<string, EntityColumnMetadata>();
-    if (entitySchema) {
-      for (let i = 0; i < entitySchema.columns.length; i++) {
-        const col = entitySchema.columns[i]!;
-        entityColumnMap.set(col.propertyName, col);
+    // Apply class-level @ApiExtension() metadata onto the DTO schema
+    const classExtensions = MetadataRegistry.getOwn<
+      readonly { readonly key: string; readonly value: unknown }[]
+    >(SWAGGER_METADATA_KEYS.API_EXTENSIONS, dto);
+    if (classExtensions) {
+      for (const ext of classExtensions) {
+        (dtoSchema as Record<string, unknown>)[ext.key] = ext.value;
       }
     }
 
-    // Collect plugin metadata (lowest precedence), then @ApiProperty and @ApiHideProperty across inheritance chain
-    const propertyMap = new Map<string, ApiPropertyMetadata>();
-    const hiddenProps = new Set<string>();
-    for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
-      const pluginProps = getPluginModelMetadata(ctor);
-      if (pluginProps) {
-        for (const p of pluginProps) {
-          const existing = propertyMap.get(p.propertyKey);
-          propertyMap.set(p.propertyKey, {
-            ...(p as unknown as ApiPropertyMetadata),
-            ...(existing ?? {}),
-            propertyKey: p.propertyKey,
-          });
-        }
+    this.schemas[schemaName] = dtoSchema;
+    this.activeDtoStack.push(schemaName);
+    try {
+      this.populateDtoSchema(dto, dtoSchema, entitySchema);
+    } finally {
+      this.activeDtoStack.pop();
+    }
+
+    if (collidedWithExisting) {
+      const existingSchema = this.schemas[baseName];
+      if (
+        existingSchema &&
+        JSON.stringify(existingSchema) === JSON.stringify(dtoSchema)
+      ) {
+        delete this.schemas[schemaName];
+        this.nameToClass.delete(schemaName);
+        this.classToName.set(dto, baseName);
+        return baseName;
       }
-      const ownProps = MetadataRegistry.getOwn<readonly ApiPropertyMetadata[]>(
-        SWAGGER_METADATA_KEYS.API_PROPERTIES,
+      Logger.warn(
+        `Duplicate DTO detected: "${baseName}". Use @ApiSchema({ name: "..." }) to disambiguate.`,
+      );
+    }
+
+    return schemaName;
+  }
+
+  private collectHiddenProperties(dto: Function): Set<string> {
+    const hidden = new Set<string>();
+    for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
+      const ownHidden = MetadataRegistry.getOwn<readonly string[]>(
+        SWAGGER_METADATA_KEYS.API_HIDDEN_PROPERTIES,
         ctor,
       );
-      if (ownProps) {
-        for (let i = 0; i < ownProps.length; i++) {
-          const entry = ownProps[i];
-          if (entry) {
-            const base = propertyMap.get(entry.propertyKey);
-            const mergedEntry = base ? { ...base, ...entry } : entry;
-            if (hasExplicitApiRequired(entry)) {
-              Object.defineProperty(
-                mergedEntry,
-                API_PROPERTY_EXPLICIT_REQUIRED,
-                {
-                  value: true,
-                  enumerable: false,
-                },
-              );
+      if (ownHidden) {
+        for (const k of ownHidden) hidden.add(k);
+      }
+    }
+    return hidden;
+  }
+
+  private sanitizeDefaultValue(
+    value: unknown,
+    modelCtor?: Function,
+    seen = new WeakSet<object>(),
+  ): unknown {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+      try {
+        return value.map((item) =>
+          this.sanitizeDefaultValue(item, modelCtor, seen),
+        );
+      } finally {
+        seen.delete(value);
+      }
+    }
+    // Determine effective DTO constructor: explicit modelCtor OR instance's own DTO constructor
+    const valueCtor =
+      typeof (value as { constructor?: unknown }).constructor === "function" &&
+      isDtoConstructor((value as { constructor: Function }).constructor)
+        ? (value as { constructor: Function }).constructor
+        : undefined;
+    const effectiveCtor =
+      modelCtor && isDtoConstructor(modelCtor) ? modelCtor : valueCtor;
+
+    if (!effectiveCtor) {
+      return value;
+    }
+
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+    try {
+      const hidden = this.collectHiddenProperties(effectiveCtor);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (hidden.has(k)) {
+          continue;
+        }
+        out[k] = this.sanitizeDefaultValue(v, undefined, seen);
+      }
+      return out;
+    } finally {
+      seen.delete(value);
+    }
+  }
+
+  private collectDtoProperties(dto: Type<unknown> | Function): {
+    propertyMap: Map<string, ApiPropertyMetadata>;
+    hiddenProps: Set<string>;
+    decoratorKeys: Set<string>;
+  } {
+    const propertyMap = new Map<string, ApiPropertyMetadata>();
+    const hiddenProps = new Set<string>();
+    const decoratorKeys = new Set<string>();
+
+    for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
+      const mappedMeta = Object.prototype.hasOwnProperty.call(
+        ctor,
+        SWAGGER_MAPPED_TYPE_META,
+      )
+        ? (ctor as unknown as Record<symbol, SwaggerMappedTypeMeta>)[
+            SWAGGER_MAPPED_TYPE_META
+          ]
+        : undefined;
+
+      if (mappedMeta) {
+        const collected = new Map<string, ApiPropertyMetadata>();
+        const collectedHidden = new Set<string>();
+        const collectedDecoratorKeys = new Set<string>();
+        const subResults = mappedMeta.sources.map((src) =>
+          this.collectDtoProperties(src),
+        );
+
+        // Preserve NestJS key order: decorator-declared keys across all sources first,
+        // then factory/plugin-declared keys across all sources.
+        for (const sub of subResults) {
+          for (const [k, v] of sub.propertyMap.entries()) {
+            if (sub.decoratorKeys.has(k)) {
+              collected.set(k, v);
+              collectedDecoratorKeys.add(k);
             }
-            propertyMap.set(entry.propertyKey, mergedEntry);
+          }
+        }
+        for (const sub of subResults) {
+          for (const [k, v] of sub.propertyMap.entries()) {
+            if (!sub.decoratorKeys.has(k)) {
+              collected.set(k, v);
+            }
+          }
+          for (const h of sub.hiddenProps) {
+            collectedHidden.add(h);
+          }
+        }
+
+        const keySet = mappedMeta.keys ? new Set(mappedMeta.keys) : undefined;
+        for (const [k, v] of collected.entries()) {
+          if (mappedMeta.kind === "pick" && keySet && !keySet.has(k)) {
+            continue;
+          }
+          if (mappedMeta.kind === "omit" && keySet && keySet.has(k)) {
+            continue;
+          }
+
+          let nextEntry: ApiPropertyMetadata = { ...v };
+          if (hasExplicitApiRequired(v)) {
+            Object.defineProperty(nextEntry, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+
+          if (
+            mappedMeta.kind === "partial" ||
+            mappedMeta.kind === "deepPartial"
+          ) {
+            nextEntry = { ...nextEntry, required: false };
+            Object.defineProperty(nextEntry, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+
+          if (
+            mappedMeta.kind === "deepPartial" &&
+            mappedMeta.wrapNestedDto
+          ) {
+            let candidate: unknown = nextEntry.type ?? nextEntry.designType;
+            if (isLazyTypeThunk(candidate)) {
+              try {
+                candidate = candidate();
+              } catch {
+                candidate = undefined;
+              }
+            }
+            let nestedCtor: Type<unknown> | undefined;
+            let nestedIsArray = nextEntry.isArray === true;
+            if (Array.isArray(candidate) && isDtoConstructor(candidate[0])) {
+              nestedCtor = candidate[0];
+              nestedIsArray = true;
+            } else if (isDtoConstructor(candidate)) {
+              nestedCtor = candidate;
+            }
+            if (nestedCtor) {
+              const wrapped = mappedMeta.wrapNestedDto(nestedCtor);
+              nextEntry = {
+                ...nextEntry,
+                type: () => wrapped,
+                isArray: nestedIsArray,
+              };
+            }
+          }
+
+          propertyMap.set(k, nextEntry);
+          if (collectedDecoratorKeys.has(k)) {
+            decoratorKeys.add(k);
+          }
+        }
+
+        for (const h of collectedHidden) {
+          if (mappedMeta.kind === "pick" && keySet && !keySet.has(h)) {
+            continue;
+          }
+          if (mappedMeta.kind === "omit" && keySet && keySet.has(h)) {
+            continue;
+          }
+          hiddenProps.add(h);
+        }
+        continue;
+      }
+
+      // Compute own metadata sources on `ctor`
+      const ownProps =
+        MetadataRegistry.getOwn<readonly ApiPropertyMetadata[]>(
+          SWAGGER_METADATA_KEYS.API_PROPERTIES,
+          ctor,
+        ) ?? [];
+      const ownPropsByKey = new Map<string, ApiPropertyMetadata>();
+      for (const entry of ownProps) {
+        if (entry) ownPropsByKey.set(entry.propertyKey, entry);
+      }
+
+      const ownFactoryByKey = new Map<string, ApiPropertyOptions>();
+      if (
+        Object.prototype.hasOwnProperty.call(
+          ctor,
+          "_OPENAPI_METADATA_FACTORY",
+        ) &&
+        typeof (ctor as { _OPENAPI_METADATA_FACTORY?: unknown })
+          ._OPENAPI_METADATA_FACTORY === "function"
+      ) {
+        const factoryResult = (
+          ctor as unknown as {
+            _OPENAPI_METADATA_FACTORY: () => Record<string, ApiPropertyOptions>;
+          }
+        )._OPENAPI_METADATA_FACTORY();
+        if (factoryResult && typeof factoryResult === "object") {
+          for (const [propKey, propOpts] of Object.entries(factoryResult)) {
+            if (propOpts && typeof propOpts === "object") {
+              ownFactoryByKey.set(propKey, propOpts);
+            }
           }
         }
       }
+
+      const ownPluginByKey = new Map<string, ApiPropertyOptions>();
+      const pluginProps = getPluginModelMetadata(ctor);
+      if (pluginProps) {
+        for (const p of pluginProps) {
+          ownPluginByKey.set(p.propertyKey, p as unknown as ApiPropertyOptions);
+        }
+      }
+
+      // Key ordering on `ctor`: @ApiProperty first, then _OPENAPI_METADATA_FACTORY, then plugin store.
+      // Precedence when merging for a key: @ApiProperty > _OPENAPI_METADATA_FACTORY > plugin store.
+      const orderedKeys = new Set<string>([
+        ...ownPropsByKey.keys(),
+        ...ownFactoryByKey.keys(),
+        ...ownPluginByKey.keys(),
+      ]);
+
+      for (const propKey of orderedKeys) {
+        let merged: ApiPropertyMetadata | undefined = propertyMap.get(propKey);
+
+        const pluginOpt = ownPluginByKey.get(propKey);
+        if (pluginOpt) {
+          merged = {
+            ...(pluginOpt as unknown as ApiPropertyMetadata),
+            ...(merged ?? {}),
+            propertyKey: propKey,
+          };
+        }
+
+        const factoryOpt = ownFactoryByKey.get(propKey);
+        if (factoryOpt) {
+          let effectiveType = factoryOpt.type;
+          if (
+            merged?.type === "integer" &&
+            effectiveType !== undefined &&
+            (effectiveType === Number ||
+              (isLazyTypeThunk(effectiveType) && effectiveType() === Number))
+          ) {
+            effectiveType = merged.type;
+          }
+          const prevHadExplicitReq =
+            merged !== undefined && hasExplicitApiRequired(merged);
+          const nextMerged: ApiPropertyMetadata = {
+            ...(merged ?? {}),
+            ...factoryOpt,
+            ...(effectiveType !== undefined ? { type: effectiveType } : {}),
+            propertyKey: propKey,
+            required: prevHadExplicitReq
+              ? merged!.required
+              : typeof factoryOpt.required === "boolean"
+                ? factoryOpt.required
+                : (merged?.required ?? true),
+          };
+          if (prevHadExplicitReq) {
+            Object.defineProperty(nextMerged, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+          merged = nextMerged;
+        }
+
+        const entry = ownPropsByKey.get(propKey);
+        if (entry) {
+          decoratorKeys.add(propKey);
+          const entryHasCombinator =
+            entry.oneOf !== undefined ||
+            entry.anyOf !== undefined ||
+            entry.allOf !== undefined;
+          const sanitizedBase =
+            merged && entryHasCombinator && entry.type === undefined
+              ? (() => {
+                  const copy = { ...merged };
+                  delete copy.type;
+                  if (entry.additionalProperties === undefined) {
+                    delete copy.additionalProperties;
+                  }
+                  return copy;
+                })()
+              : merged;
+          const nextMerged = sanitizedBase
+            ? { ...sanitizedBase, ...entry }
+            : entry;
+          if (hasExplicitApiRequired(entry)) {
+            Object.defineProperty(nextMerged, API_PROPERTY_EXPLICIT_REQUIRED, {
+              value: true,
+              enumerable: false,
+            });
+          }
+          merged = nextMerged;
+        }
+
+        if (merged) {
+          propertyMap.set(propKey, merged);
+        }
+      }
+
       const ownHidden = MetadataRegistry.getOwn<readonly string[]>(
         SWAGGER_METADATA_KEYS.API_HIDDEN_PROPERTIES,
         ctor,
@@ -707,6 +1598,26 @@ export class SchemaExplorer {
         }
       }
     }
+
+    return { propertyMap, hiddenProps, decoratorKeys };
+  }
+
+  private populateDtoSchema(
+    dto: Type<unknown> | Function,
+    dtoSchema: OpenApiSchema,
+    entitySchema: ReturnType<typeof getEntitySchema> | undefined,
+  ): void {
+    // Collect entity column metadata (from @Entity + @Column + @PrimaryKey across inheritance chain)
+    const entityColumnMap = new Map<string, EntityColumnMetadata>();
+    if (entitySchema) {
+      for (let i = 0; i < entitySchema.columns.length; i++) {
+        const col = entitySchema.columns[i]!;
+        entityColumnMap.set(col.propertyName, col);
+      }
+    }
+
+    // Collect plugin metadata, _OPENAPI_METADATA_FACTORY, @ApiProperty, @ApiHideProperty, and mapped types
+    const { propertyMap, hiddenProps } = this.collectDtoProperties(dto);
 
     // Collect class-validator hints across the DTO class
     const validatorHints = extractClassValidatorHints(dto);
@@ -770,8 +1681,6 @@ export class SchemaExplorer {
     if (required.length > 0) {
       dtoSchema.required = required;
     }
-
-    return schemaName;
   }
 
   private buildInlinePropertySchema(
@@ -788,7 +1697,7 @@ export class SchemaExplorer {
       schema = {};
     }
     this.applyApiPropertyOptionsToSchema(schema, opts);
-    return applyNullable31(schema, opts.nullable);
+    return this.finalizeNullable(schema, opts.nullable);
   }
 
   private applyApiPropertyOptionsToSchema(
@@ -799,16 +1708,34 @@ export class SchemaExplorer {
     if (apiMeta.description !== undefined) {
       schema.description = apiMeta.description;
     }
-    if (apiMeta.format !== undefined) schema.format = apiMeta.format;
+    if (apiMeta.format !== undefined) {
+      if (schema.type === "array" && schema.items && !("$ref" in schema.items)) {
+        schema.items = { ...schema.items, format: apiMeta.format };
+      } else {
+        schema.format = apiMeta.format;
+      }
+    }
     if (apiMeta.default !== undefined) {
-      const isDynamic =
-        typeof apiMeta.default === "function" ||
-        apiMeta.default instanceof Date;
+      const isDynamic = isDynamicDefaultValue(apiMeta.default);
       if (!(this.options.excludeDynamicDefaults && isDynamic)) {
-        schema.default =
+        const rawDefault =
           typeof apiMeta.default === "function"
             ? (apiMeta.default as () => unknown)()
             : apiMeta.default;
+        let defaultModelCtor: Function | undefined;
+        if (apiMeta.type !== undefined) {
+          let unwrapped: unknown = isLazyTypeThunk(apiMeta.type)
+            ? apiMeta.type()
+            : apiMeta.type;
+          if (Array.isArray(unwrapped)) unwrapped = unwrapped[0];
+          if (isDtoConstructor(unwrapped)) {
+            defaultModelCtor = unwrapped;
+          }
+        }
+        schema.default = this.sanitizeDefaultValue(
+          rawDefault,
+          defaultModelCtor,
+        );
       }
     }
     const maxDepth = apiMeta.exampleMaxDepth ?? this.options.exampleMaxDepth;
@@ -824,22 +1751,48 @@ export class SchemaExplorer {
         : { ...apiMeta.examples };
     }
     if (apiMeta.enum !== undefined && !apiMeta.enumName) {
-      schema.enum = normalizeEnumValues(apiMeta.enum);
+      const enumVals = normalizeEnumValues(apiMeta.enum);
+      if (schema.type === "array" && schema.items && !("$ref" in schema.items)) {
+        const itemsObj = { ...schema.items };
+        itemsObj.enum = enumVals;
+        if (itemsObj.type === undefined || itemsObj.type === "object") {
+          const inferred = inferEnumSchemaType(enumVals);
+          if (inferred) itemsObj.type = inferred;
+        }
+        schema.items = itemsObj;
+      } else {
+        schema.enum = enumVals;
+        if (
+          apiMeta.type === undefined ||
+          schema.type === undefined ||
+          schema.type === "object"
+        ) {
+          const inferred = inferEnumSchemaType(enumVals);
+          if (inferred) schema.type = inferred;
+        }
+      }
     }
     if (apiMeta["x-enumNames"] !== undefined) {
       schema["x-enumNames"] = [...apiMeta["x-enumNames"]];
     }
     if (apiMeta.const !== undefined) schema.const = apiMeta.const;
-    if (apiMeta.minimum !== undefined) schema.minimum = apiMeta.minimum;
-    if (apiMeta.maximum !== undefined) schema.maximum = apiMeta.maximum;
+    const isArrayWithInlineItems =
+      schema.type === "array" &&
+      schema.items !== undefined &&
+      !("$ref" in schema.items);
+    const numericTarget: OpenApiSchema = isArrayWithInlineItems
+      ? (schema.items = { ...schema.items })
+      : schema;
+    if (apiMeta.minimum !== undefined) numericTarget.minimum = apiMeta.minimum;
+    if (apiMeta.maximum !== undefined) numericTarget.maximum = apiMeta.maximum;
     if (apiMeta.exclusiveMinimum !== undefined) {
-      schema.exclusiveMinimum = apiMeta.exclusiveMinimum;
+      numericTarget.exclusiveMinimum = apiMeta.exclusiveMinimum;
     }
     if (apiMeta.exclusiveMaximum !== undefined) {
-      schema.exclusiveMaximum = apiMeta.exclusiveMaximum;
+      numericTarget.exclusiveMaximum = apiMeta.exclusiveMaximum;
     }
     if (apiMeta.multipleOf !== undefined) {
-      schema.multipleOf = apiMeta.multipleOf;
+      numericTarget.multipleOf = apiMeta.multipleOf;
     }
     if (apiMeta.minLength !== undefined) schema.minLength = apiMeta.minLength;
     if (apiMeta.maxLength !== undefined) schema.maxLength = apiMeta.maxLength;
@@ -884,9 +1837,37 @@ export class SchemaExplorer {
     if (apiMeta.patternProperties !== undefined) {
       schema.patternProperties = apiMeta.patternProperties;
     }
-    if (apiMeta.allOf !== undefined) schema.allOf = [...apiMeta.allOf];
-    if (apiMeta.anyOf !== undefined) schema.anyOf = [...apiMeta.anyOf];
-    if (apiMeta.oneOf !== undefined) schema.oneOf = [...apiMeta.oneOf];
+    if (apiMeta.allOf !== undefined) {
+      if (schema.$ref) {
+        const refVal = schema.$ref;
+        delete schema.$ref;
+        schema.allOf = [...apiMeta.allOf, { $ref: refVal }];
+      } else {
+        schema.allOf = [...apiMeta.allOf];
+      }
+    }
+    if (apiMeta.anyOf !== undefined) {
+      if (schema.type === "array") {
+        const curItems =
+          schema.items && !("$ref" in schema.items) ? { ...schema.items } : {};
+        if (curItems.type === "object") delete curItems.type;
+        curItems.anyOf = [...apiMeta.anyOf];
+        schema.items = curItems;
+      } else {
+        schema.anyOf = [...apiMeta.anyOf];
+      }
+    }
+    if (apiMeta.oneOf !== undefined) {
+      if (schema.type === "array") {
+        const curItems =
+          schema.items && !("$ref" in schema.items) ? { ...schema.items } : {};
+        if (curItems.type === "object") delete curItems.type;
+        curItems.oneOf = [...apiMeta.oneOf];
+        schema.items = curItems;
+      } else {
+        schema.oneOf = [...apiMeta.oneOf];
+      }
+    }
     if (apiMeta.not !== undefined) schema.not = apiMeta.not;
     if (apiMeta.discriminator !== undefined) {
       schema.discriminator = { ...apiMeta.discriminator };
@@ -900,6 +1881,20 @@ export class SchemaExplorer {
     }
     if (apiMeta.contentMediaType !== undefined) {
       schema.contentMediaType = apiMeta.contentMediaType;
+    }
+    if (this.options.excludeDynamicDefaults) {
+      const cleaned = stripDynamicDefaultsFromSchema(schema);
+      for (const key of Object.keys(schema)) {
+        delete (schema as Record<string, unknown>)[key];
+      }
+      Object.assign(schema, cleaned);
+    }
+    if (maxDepth !== undefined || this.options.exampleMaxDepth !== undefined) {
+      applyExampleMaxDepthToSchema(
+        schema,
+        maxDepth,
+        this.options.exampleMaxDepth,
+      );
     }
   }
 
@@ -995,8 +1990,17 @@ export class SchemaExplorer {
     entityCol?: EntityColumnMetadata,
   ): OpenApiSchema {
     if (apiMeta?.schema) {
-      return applyNullable31(
-        { ...apiMeta.schema },
+      const cloned = { ...apiMeta.schema };
+      const maxDepth = apiMeta.exampleMaxDepth ?? this.options.exampleMaxDepth;
+      if (maxDepth !== undefined || this.options.exampleMaxDepth !== undefined) {
+        applyExampleMaxDepthToSchema(
+          cloned,
+          maxDepth,
+          this.options.exampleMaxDepth,
+        );
+      }
+      return this.finalizeNullable(
+        cloned,
         apiMeta.nullable ?? entityCol?.nullable,
       );
     }
@@ -1009,9 +2013,20 @@ export class SchemaExplorer {
         apiMeta.enumSchema,
         apiMeta["x-enumNames"],
       );
-      const base: OpenApiSchema = apiMeta.isArray
-        ? { type: "array", items: enumRef }
-        : enumRef;
+      const unwrappedEnumType =
+        apiMeta.type !== undefined && isLazyTypeThunk(apiMeta.type)
+          ? apiMeta.type()
+          : apiMeta.type;
+      const isEnumArray =
+        apiMeta.isArray === true || Array.isArray(unwrappedEnumType);
+      let base: OpenApiSchema;
+      if (apiMeta.oneOf !== undefined) {
+        base = { oneOf: [...apiMeta.oneOf, enumRef] };
+      } else if (apiMeta.anyOf !== undefined) {
+        base = { anyOf: [...apiMeta.anyOf, enumRef] };
+      } else {
+        base = isEnumArray ? { type: "array", items: enumRef } : enumRef;
+      }
       if (apiMeta.description !== undefined) {
         base.description = apiMeta.description;
       } else if (entityCol?.description !== undefined) {
@@ -1029,7 +2044,10 @@ export class SchemaExplorer {
       }
       if (apiMeta.deprecated !== undefined)
         base.deprecated = apiMeta.deprecated;
-      return applyNullable31(base, apiMeta.nullable ?? entityCol?.nullable);
+      return this.finalizeNullable(
+        base,
+        apiMeta.nullable ?? entityCol?.nullable,
+      );
     }
 
     const reflectedDesignType =
@@ -1038,6 +2056,20 @@ export class SchemaExplorer {
       MetadataRegistry.getType(dto.prototype, propKey);
 
     const explicitType = apiMeta?.type;
+    // Detect circular dependency when a lazy type thunk returns `undefined`
+    if (explicitType !== undefined && isLazyTypeThunk(explicitType)) {
+      const thunkVal = explicitType();
+      if (thunkVal === undefined) {
+        const chain = this.activeDtoStack.map((n) => `[${n}]`).join(" ");
+        throw new Error(
+          `${chain} A circular dependency has been detected (property key: "${propKey}"). Please, make sure that each side of a bidirectional relationships are using lazy resolvers ("type: () => ClassType").`,
+        );
+      }
+    }
+    const hasExplicitCombinator =
+      apiMeta?.oneOf !== undefined ||
+      apiMeta?.anyOf !== undefined ||
+      apiMeta?.allOf !== undefined;
     const isArray =
       apiMeta?.isArray === true ||
       Array.isArray(explicitType) ||
@@ -1048,6 +2080,8 @@ export class SchemaExplorer {
     let schema: OpenApiSchema;
     if (explicitType !== undefined) {
       schema = this.resolveTypeSchema(explicitType, apiMeta?.isArray === true);
+    } else if (hasExplicitCombinator && !isArray) {
+      schema = {};
     } else if (entityCol !== undefined) {
       schema = this.resolveEntityColumnBaseSchema(entityCol);
     } else if (
@@ -1109,7 +2143,7 @@ export class SchemaExplorer {
 
     const effectiveNullable =
       apiMeta?.nullable !== undefined ? apiMeta.nullable : entityCol?.nullable;
-    return applyNullable31(schema, effectiveNullable);
+    return this.finalizeNullable(schema, effectiveNullable);
   }
 }
 

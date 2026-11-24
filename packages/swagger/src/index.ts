@@ -202,15 +202,15 @@ export {
   type SchemaExplorerOptions,
 } from "./schema-explorer";
 export { DeepPartialType } from "./type-helpers/deep-partial-type.helper";
-export { renderSwaggerHtml, serializeSafeJsonForHtml } from "./swagger-ui";
-export { serializeToYaml } from "./utils/yaml-serializer";
-export { convertPathToOpenApi, SwaggerModule } from "./swagger-module";
-
-// Re-export Mapped DTO Types (preserves both class-validator & @ApiProperty metadata)
 export {
-  CompositionType,
   IntersectionType,
   OmitType,
   PartialType,
   PickType,
-} from "@bunest/core";
+} from "./type-helpers/mapped-types.helper";
+export { renderSwaggerHtml, serializeSafeJsonForHtml } from "./swagger-ui";
+export { serializeToYaml } from "./utils/yaml-serializer";
+export { convertPathToOpenApi, SwaggerModule } from "./swagger-module";
+
+// Re-export CompositionType from core
+export { CompositionType } from "@bunest/core";

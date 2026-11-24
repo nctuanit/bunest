@@ -401,26 +401,39 @@ export function ApiProperty(
         ? options.pattern.source
         : options.pattern;
 
+    const existingEntry = existing.find((item) => item.propertyKey === key);
+    const existingHasExplicitRequired =
+      existingEntry !== undefined &&
+      Boolean(
+        (existingEntry as unknown as Record<symbol, unknown>)[
+          API_PROPERTY_EXPLICIT_REQUIRED
+        ],
+      );
+
     const hasExplicitRequired =
       options.selfRequired !== undefined ||
       typeof options.required === "boolean";
 
+    const mergedRequired = hasExplicitRequired
+      ? options.selfRequired !== undefined
+        ? options.selfRequired
+        : Boolean(options.required)
+      : existingEntry !== undefined
+        ? existingEntry.required
+        : true;
+
     const entry: ApiPropertyMetadata = {
+      ...(existingEntry ?? {}),
       ...options,
       ...(normalizedPattern !== undefined
         ? { pattern: normalizedPattern }
         : {}),
       propertyKey: key,
-      required:
-        options.selfRequired !== undefined
-          ? options.selfRequired
-          : typeof options.required === "boolean"
-            ? options.required
-            : true,
-      designType,
+      required: mergedRequired,
+      designType: designType ?? existingEntry?.designType,
     };
 
-    if (hasExplicitRequired) {
+    if (hasExplicitRequired || existingHasExplicitRequired) {
       Object.defineProperty(entry, API_PROPERTY_EXPLICIT_REQUIRED, {
         value: true,
         enumerable: false,

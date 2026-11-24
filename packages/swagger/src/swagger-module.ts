@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Logger,
   METADATA_KEYS,
   MetadataRegistry,
   Req,
@@ -76,10 +77,13 @@ import {
   registerLoadedPluginMetadata,
 } from "./plugin-metadata-store";
 import {
+  applyNullable30,
+  convertSchemaToOas31,
   isDtoConstructor,
   isSchemaDecoratedClass,
   normalizeEnumValues,
   SchemaExplorer,
+  stripDynamicDefaultsFromSchema,
 } from "./schema-explorer";
 import { renderSwaggerHtml } from "./swagger-ui";
 import { serializeToYaml } from "./utils/yaml-serializer";
@@ -103,7 +107,54 @@ const ALL_EXPANDED_METHODS: readonly LowerHttpMethod[] = [
   "delete",
 ];
 
+const STANDARD_OAS_METHODS = new Set<string>([
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+]);
+
+function parseOpenApiVersion(version?: string): [number, number, number] {
+  const parts = (version || "3.1.0")
+    .split(".")
+    .map((n) => Number.parseInt(n, 10));
+  return [parts[0] || 3, parts[1] || 0, parts[2] || 0];
+}
+
+function isOpenApiAtLeast(
+  version: string | undefined,
+  major: number,
+  minor: number,
+): boolean {
+  const [maj, min] = parseOpenApiVersion(version);
+  return maj > major || (maj === major && min >= minor);
+}
+
+function mergeSecurityRequirements(
+  existing: OpenApiSecurityRequirement[] | undefined,
+  incoming: OpenApiSecurityRequirement[] | undefined,
+): OpenApiSecurityRequirement[] | undefined {
+  if (!existing || existing.length === 0) return incoming;
+  if (!incoming || incoming.length === 0) return existing;
+  const merged = [...existing];
+  const seen = new Set(existing.map((r) => JSON.stringify(r)));
+  for (const req of incoming) {
+    const key = JSON.stringify(req);
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(req);
+    }
+  }
+  return merged;
+}
+
 const PARAM_SEGMENT_RE = /^:([A-Za-z_][A-Za-z0-9_]*)(?:\((.+)\))?(\?)?$/;
+const NAMED_WILDCARD_RE = /^\*([A-Za-z_][A-Za-z0-9_]*)$/;
+const OPTIONAL_BRACE_PARAM_RE = /\{\/(:[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?)\}/g;
 
 interface ConvertedPathInfo {
   readonly openApiPath: string;
@@ -119,7 +170,12 @@ interface ConvertedPathInfo {
  * into an OpenAPI 3.1 path template (`/users/{id}/orders/{orderId}`).
  */
 export function convertPathToOpenApi(fullPath: string): ConvertedPathInfo {
-  const normalized = normalizePath(fullPath);
+  // Expand Express v5 optional brace groups like `group-first{/:id}` -> `group-first/:id?`
+  const expandedBraces = fullPath.replace(
+    OPTIONAL_BRACE_PARAM_RE,
+    "/$1?",
+  );
+  const normalized = normalizePath(expandedBraces);
   if (normalized === "/") {
     return { openApiPath: "/", pathParams: [] };
   }
@@ -133,10 +189,18 @@ export function convertPathToOpenApi(fullPath: string): ConvertedPathInfo {
     const seg = segments[i]!;
     if (seg === "*") {
       const wildcardName =
-        wildcardIdx === 0 ? "wildcard" : `wildcard${wildcardIdx + 1}`;
+        wildcardIdx === 0 ? "path" : `path${wildcardIdx + 1}`;
       wildcardIdx++;
       outSegments.push(`{${wildcardName}}`);
       pathParams.push({ name: wildcardName, optional: false });
+      continue;
+    }
+
+    const namedWildcard = NAMED_WILDCARD_RE.exec(seg);
+    if (namedWildcard) {
+      const name = namedWildcard[1]!;
+      outSegments.push(`{${name}}`);
+      pathParams.push({ name, optional: false });
       continue;
     }
 
@@ -150,7 +214,8 @@ export function convertPathToOpenApi(fullPath: string): ConvertedPathInfo {
       continue;
     }
 
-    outSegments.push(seg);
+    // Unescape literal colons (`\:`) in static route segments
+    outSegments.push(seg.replace(/\\:/g, ":"));
   }
 
   return {
@@ -209,7 +274,7 @@ function resolveRoutesForDocument(
     allowedControllers = new Set<Function>();
     const includeTargets = new Set<Function>(docOptions.include);
     const matchedModules = new Set<unknown>();
-    const deepScan = docOptions.deepScanRoutes !== false;
+    const deepScan = docOptions.deepScanRoutes === true;
 
     const moduleNodeByClass = new Map<
       Function,
@@ -227,9 +292,31 @@ function resolveRoutesForDocument(
       for (const ctrl of mod.controllers) {
         allowedControllers!.add(ctrl);
       }
-      if (deepScan && Array.isArray(mod.imports)) {
-        for (const child of mod.imports) {
-          if (child) collectFromModule(child);
+      if (deepScan) {
+        if (Array.isArray(mod.imports)) {
+          for (const child of mod.imports) {
+            if (child) collectFromModule(child);
+          }
+        }
+        // If raw @Module({ imports }) contains an async Promise import that cannot
+        // be matched synchronously, preserve NestJS fallback by including global modules.
+        const rawModMeta = MetadataRegistry.getOwn<{
+          imports?: readonly unknown[];
+        }>(METADATA_KEYS.MODULE, mod.metatype);
+        if (
+          Array.isArray(rawModMeta?.imports) &&
+          rawModMeta.imports.some(
+            (imp) =>
+              imp !== null &&
+              typeof imp === "object" &&
+              typeof (imp as { then?: unknown }).then === "function",
+          )
+        ) {
+          for (const candidate of graph.topologicalOrder) {
+            if (candidate.isGlobal) {
+              collectFromModule(candidate);
+            }
+          }
         }
       }
     };
@@ -266,6 +353,7 @@ function resolveRoutesForDocument(
       controllerPrefixes:
         controllerPrefixes.size > 0 ? controllerPrefixes : undefined,
       versioning,
+      routeConflictPolicy: "allow",
     });
   }
 
@@ -587,7 +675,11 @@ function applyQuerySchemaExtras(
   if (q.patternProperties !== undefined) {
     schema.patternProperties = q.patternProperties;
   }
-  if (q.allOf !== undefined) schema.allOf = q.allOf;
+  if (q.allOf !== undefined) {
+    schema.allOf = schema.allOf
+      ? [...schema.allOf, ...q.allOf]
+      : [...q.allOf];
+  }
   if (q.anyOf !== undefined) schema.anyOf = q.anyOf;
   if (q.oneOf !== undefined) schema.oneOf = q.oneOf;
   if (q.not !== undefined) schema.not = q.not;
@@ -595,6 +687,110 @@ function applyQuerySchemaExtras(
   if (q.xml !== undefined) schema.xml = q.xml;
   if (q.externalDocs !== undefined) schema.externalDocs = q.externalDocs;
   if (q["x-enumNames"] !== undefined) schema["x-enumNames"] = q["x-enumNames"];
+}
+
+function transformDocumentSchemas(
+  doc: OpenApiDocument,
+  transform: (schema: OpenApiSchema) => OpenApiSchema,
+): void {
+  const transformContent = (
+    content: Record<string, OpenApiMediaType> | undefined,
+  ): void => {
+    if (!content) return;
+    for (const [ct, media] of Object.entries(content)) {
+      if (media?.schema) {
+        content[ct] = { ...media, schema: transform(media.schema) };
+      }
+    }
+  };
+
+  const transformOperation = (op: OpenApiOperation | undefined): void => {
+    if (!op) return;
+    if (Array.isArray(op.parameters)) {
+      op.parameters = op.parameters.map((param) => {
+        const p = { ...param };
+        if (p.schema) p.schema = transform(p.schema);
+        if (p.content) {
+          p.content = { ...p.content };
+          transformContent(p.content);
+        }
+        return p;
+      });
+    }
+    if (op.requestBody?.content) {
+      op.requestBody = {
+        ...op.requestBody,
+        content: { ...op.requestBody.content },
+      };
+      transformContent(op.requestBody.content);
+    }
+    if (op.responses) {
+      for (const [status, resp] of Object.entries(op.responses)) {
+        if (!resp || resp.$ref) continue;
+        const r = { ...resp };
+        if (r.content) {
+          r.content = { ...r.content };
+          transformContent(r.content);
+        }
+        if (r.headers) {
+          const newHeaders: Record<string, any> = {};
+          for (const [hk, hv] of Object.entries(r.headers)) {
+            if (hv && typeof hv === "object" && "schema" in hv && hv.schema) {
+              newHeaders[hk] = { ...hv, schema: transform(hv.schema) };
+            } else {
+              newHeaders[hk] = hv;
+            }
+          }
+          r.headers = newHeaders;
+        }
+        op.responses[status] = r;
+      }
+    }
+    if (op.callbacks) {
+      for (const cb of Object.values(op.callbacks)) {
+        if (!cb || typeof cb !== "object") continue;
+        for (const cbPathItem of Object.values(cb as Record<string, OpenApiPathItem>)) {
+          transformPathItem(cbPathItem);
+        }
+      }
+    }
+  };
+
+  const transformPathItem = (pathItem: OpenApiPathItem | undefined): void => {
+    if (!pathItem) return;
+    for (const m of [
+      "get",
+      "put",
+      "post",
+      "delete",
+      "options",
+      "head",
+      "patch",
+      "trace",
+      "query",
+    ] as const) {
+      if (pathItem[m]) transformOperation(pathItem[m]);
+    }
+    if (pathItem.additionalOperations) {
+      for (const op of Object.values(pathItem.additionalOperations)) {
+        transformOperation(op);
+      }
+    }
+  };
+
+  if (doc.components?.schemas) {
+    for (const [name, schema] of Object.entries(doc.components.schemas)) {
+      doc.components.schemas[name] = transform(schema);
+    }
+  }
+  for (const pathItem of Object.values(doc.paths)) {
+    transformPathItem(pathItem);
+  }
+  if (doc.webhooks) {
+    for (const pathItem of Object.values(doc.webhooks)) {
+      transformPathItem(pathItem);
+    }
+  }
 }
 
 interface TrackedOperationRecord {
@@ -637,6 +833,7 @@ export class SwaggerModule {
       excludeDynamicDefaults: options.excludeDynamicDefaults,
       exampleMaxDepth: options.exampleMaxDepth,
       standardSchemaConverter: options.standardSchemaConverter,
+      openApiVersion: config.openapi || "3.1.0",
     });
     const builderExtras = getDocumentBuilderExtras(config);
 
@@ -655,8 +852,17 @@ export class SwaggerModule {
       ? undefined
       : rawGlobalPrefix;
 
+    const openApiVersion = config.openapi || "3.1.0";
+    const supportsWebhooks = isOpenApiAtLeast(openApiVersion, 3, 1);
+    const supportsOas32 = isOpenApiAtLeast(openApiVersion, 3, 2);
+    const swaggerLogger = new Logger("SwaggerModule");
+
     const paths: Record<string, OpenApiPathItem> = {};
     const webhooks: WebhooksObject = {};
+    const regularPathMethods = new Set<string>();
+    const webhookPathMethods = new Set<string>();
+    const visitedControllers = new Set<Type<unknown>>();
+    const visitedRouteHandlers = new Set<string>();
     const usedOperationIds = new Set<string>();
     const discoveredTagOptions = new Map<string, ApiTagOptions>();
     const trackedOperations: TrackedOperationRecord[] = [];
@@ -876,13 +1082,16 @@ export class SwaggerModule {
           hasMultipleVersions,
         );
 
-        const targetContainer = isWebhook ? webhooks : paths;
-        const containerKey = isWebhook ? webhookName : openApiPath;
+        const emitAsWebhook = isWebhook && supportsWebhooks;
+        const targetContainer = emitAsWebhook ? webhooks : paths;
+        const containerKey = emitAsWebhook ? webhookName : openApiPath;
 
-        if (!targetContainer[containerKey]) {
-          targetContainer[containerKey] = {};
-        }
-        const pathItem = targetContainer[containerKey]!;
+        const ensurePathItem = (): OpenApiPathItem => {
+          if (!targetContainer[containerKey]) {
+            targetContainer[containerKey] = {};
+          }
+          return targetContainer[containerKey]!;
+        };
 
         const registerOpForLinks = (finalOp: OpenApiOperation): void => {
           const ctrlKey = controller.name || "Controller";
@@ -917,41 +1126,171 @@ export class SwaggerModule {
           }
         };
 
-        if (route.method === "ALL") {
-          for (const m of ALL_EXPANDED_METHODS) {
-            if (!pathItem[m]) {
-              const finalOp: OpenApiOperation = {
-                ...operation,
-                ...(operation.operationId !== undefined
-                  ? {
-                      operationId: claimUniqueOperationId(
-                        `${operation.operationId}_${m}`,
-                        target.versionTag,
-                        false,
-                      ),
-                    }
-                  : {}),
-              };
-              pathItem[m] = finalOp;
-              registerOpForLinks(finalOp);
+        const assignOperation = (
+          methodUpper: string,
+          opIdSuffix?: string,
+        ): void => {
+          const lowerMethod = methodUpper.toLowerCase();
+          const isQuery = lowerMethod === "query";
+          const isStandard = STANDARD_OAS_METHODS.has(lowerMethod);
+
+          if (isQuery && !supportsOas32) {
+            return;
+          }
+          if (!isStandard && !isQuery && !supportsOas32) {
+            return;
+          }
+
+          const slotKey = `${containerKey}\0${methodUpper}`;
+
+          // For OAS < 3.1, webhooks fall back to `paths` and must yield to regular routes on collision
+          if (!emitAsWebhook) {
+            if (isWebhook && regularPathMethods.has(slotKey)) {
+              swaggerLogger.warn(
+                `Webhook "${methodUpper} ${openApiPath}" shares its path and method with a route, so it is left out of the OpenAPI ${openApiVersion} document. Use OpenAPI 3.1 or later to document both.`,
+              );
+              return;
+            }
+            if (!isWebhook && webhookPathMethods.has(slotKey)) {
+              swaggerLogger.warn(
+                `Webhook "${methodUpper} ${openApiPath}" shares its path and method with a route, so it is left out of the OpenAPI ${openApiVersion} document. Use OpenAPI 3.1 or later to document both.`,
+              );
+              webhookPathMethods.delete(slotKey);
+              const existingItem = targetContainer[containerKey];
+              if (existingItem) {
+                if (isStandard || isQuery) {
+                  delete existingItem[lowerMethod as LowerHttpMethod];
+                } else if (existingItem.additionalOperations) {
+                  delete existingItem.additionalOperations[methodUpper];
+                }
+              }
             }
           }
-        } else {
-          const lowerMethod = route.method.toLowerCase() as LowerHttpMethod;
+
+          const pathItem = ensurePathItem();
+          const baseOpId =
+            operation.operationId !== undefined
+              ? opIdSuffix
+                ? `${operation.operationId}_${opIdSuffix}`
+                : operation.operationId
+              : undefined;
+
+          const existingOp =
+            isStandard || isQuery
+              ? pathItem[lowerMethod as LowerHttpMethod]
+              : pathItem.additionalOperations?.[methodUpper];
+
+          const mergedSecurity = mergeSecurityRequirements(
+            existingOp?.security,
+            operation.security,
+          );
+
           const finalOp: OpenApiOperation = {
             ...operation,
-            ...(operation.operationId !== undefined
+            ...(mergedSecurity !== undefined
+              ? { security: mergedSecurity }
+              : {}),
+            ...(baseOpId !== undefined
               ? {
                   operationId: claimUniqueOperationId(
-                    operation.operationId,
+                    baseOpId,
                     target.versionTag,
                     false,
                   ),
                 }
               : {}),
           };
-          pathItem[lowerMethod] = finalOp;
+
+          if (isStandard || isQuery) {
+            pathItem[lowerMethod as LowerHttpMethod] = finalOp;
+          } else {
+            if (!pathItem.additionalOperations) {
+              pathItem.additionalOperations = {};
+            }
+            pathItem.additionalOperations[methodUpper] = finalOp;
+          }
+
+          if (!emitAsWebhook) {
+            if (isWebhook) {
+              webhookPathMethods.add(slotKey);
+            } else {
+              regularPathMethods.add(slotKey);
+            }
+          }
+
           registerOpForLinks(finalOp);
+        };
+
+        visitedControllers.add(controller);
+        visitedRouteHandlers.add(`${controller.name}\0${String(route.handlerKey)}`);
+
+        if (route.method === "ALL") {
+          for (const m of ALL_EXPANDED_METHODS) {
+            const existingItem = targetContainer[containerKey];
+            if (!existingItem?.[m]) {
+              assignOperation(m.toUpperCase(), m);
+            }
+          }
+          if (supportsOas32) {
+            const existingItem = targetContainer[containerKey];
+            if (!existingItem?.query) {
+              assignOperation("QUERY", "query");
+            }
+            if (!existingItem?.additionalOperations?.SEARCH) {
+              assignOperation("SEARCH", "search");
+            }
+          }
+        } else {
+          assignOperation(route.method.toUpperCase());
+        }
+      }
+    }
+
+    // For OAS < 3.1, warn about any @ApiWebhook handler that was shadowed at scan time
+    // by a regular route with the exact same method and path on the same controller.
+    if (!supportsWebhooks) {
+      for (const ctrl of visitedControllers) {
+        const rawRoutes = MetadataRegistry.getOwn<
+          readonly { path: string | readonly string[]; method: string; handlerKey: string | symbol }[]
+        >(METADATA_KEYS.ROUTES, ctrl);
+        if (!rawRoutes) continue;
+        const ctrlMeta = MetadataRegistry.getOwn<ControllerMetadata>(
+          METADATA_KEYS.CONTROLLER,
+          ctrl,
+        );
+        const ctrlPaths = Array.isArray(ctrlMeta?.path)
+          ? ctrlMeta.path
+          : [ctrlMeta?.path ?? ""];
+        for (const rr of rawRoutes) {
+          const handlerId = `${ctrl.name}\0${String(rr.handlerKey)}`;
+          if (visitedRouteHandlers.has(handlerId)) continue;
+          const fn = (ctrl.prototype as Record<string | symbol, unknown>)[
+            rr.handlerKey
+          ];
+          if (typeof fn !== "function") continue;
+          const whMeta = MetadataRegistry.get<string>(
+            SWAGGER_METADATA_KEYS.API_WEBHOOK,
+            fn,
+          );
+          if (!whMeta) continue;
+          const rPaths = Array.isArray(rr.path) ? rr.path : [rr.path];
+          for (const cp of ctrlPaths) {
+            for (const rp of rPaths) {
+              const joined = normalizePath(
+                ...(globalPrefix ? [globalPrefix] : []),
+                cp,
+                rp,
+              );
+              const { openApiPath } = convertPathToOpenApi(joined);
+              const methodUpper = rr.method.toUpperCase();
+              const slotKey = `${openApiPath}\0${methodUpper}`;
+              if (regularPathMethods.has(slotKey)) {
+                swaggerLogger.warn(
+                  `Webhook "${methodUpper} ${openApiPath}" shares its path and method with a route, so it is left out of the OpenAPI ${openApiVersion} document. Use OpenAPI 3.1 or later to document both.`,
+                );
+              }
+            }
+          }
         }
       }
     }
@@ -1082,6 +1421,16 @@ export class SwaggerModule {
           ? { securitySchemes: { ...existingSchemes } }
           : {}),
       };
+    }
+
+    if (options.excludeDynamicDefaults) {
+      transformDocumentSchemas(document, (s) =>
+        stripDynamicDefaultsFromSchema(s),
+      );
+    }
+
+    if (supportsWebhooks) {
+      transformDocumentSchemas(document, (s) => convertSchemaToOas31(s));
     }
 
     return document;
@@ -1334,12 +1683,18 @@ export class SwaggerModule {
     }
 
     // Conditionally apply `@Get(...)` only for enabled endpoints so disabled routes return 404
+    const indexHtmlPath =
+      docsPath === "/" ? "/index.html" : `${docsPath}/index.html`;
     if (serveUi) {
       const desc = Object.getOwnPropertyDescriptor(
         SwaggerUiController.prototype,
         "serveUi",
       )!;
-      Get(docsPath)(SwaggerUiController.prototype, "serveUi", desc);
+      Get([docsPath, indexHtmlPath])(
+        SwaggerUiController.prototype,
+        "serveUi",
+        desc,
+      );
     }
     if (serveJson) {
       const desc = Object.getOwnPropertyDescriptor(
@@ -1358,7 +1713,10 @@ export class SwaggerModule {
 
     // If useGlobalPrefix !== true, exclude Swagger paths from any current or future global prefix
     if (options.useGlobalPrefix !== true) {
-      if (serveUi) registry.excludedPaths.add(docsPath);
+      if (serveUi) {
+        registry.excludedPaths.add(docsPath);
+        registry.excludedPaths.add(indexHtmlPath);
+      }
       if (serveJson) registry.excludedPaths.add(jsonPath);
       if (serveYaml) registry.excludedPaths.add(yamlPath);
       const { prefix, options: prefixOptions } =
@@ -1374,9 +1732,23 @@ export class SwaggerModule {
       }
     }
 
+    const uiControllerInstance = new SwaggerUiController();
     registry.controllers.push(SwaggerUiController);
-    registry.instances.set(SwaggerUiController, new SwaggerUiController());
+    registry.instances.set(SwaggerUiController, uiControllerInstance);
     registry.dirty = true;
+
+    // Serve Swagger UI on trailing-slash `<docsPath>/` (and with query strings)
+    // even when the app's router has ignoreTrailingSlash = false.
+    if (serveUi && docsPath !== "/") {
+      adapter.get(async (req, res, next) => {
+        const pathname = new URL(req.url).pathname;
+        const effectiveDocs = resolveEffectiveUrl(docsPath);
+        if (effectiveDocs !== "/" && pathname === `${effectiveDocs}/`) {
+          return uiControllerInstance.serveUi(req, res);
+        }
+        next?.();
+      });
+    }
 
     // Mark BunestApplication routes dirty so next fetch() / init() / listen() recompiles cleanly
     bunApp.useGlobalPipes();
@@ -1684,25 +2056,46 @@ export class SwaggerModule {
     }
 
     // 2. Inspect @Param(), @Query(), @Headers() parameter decorators
+    const standardSchemaParamKeys = new Set<string>();
     for (let i = 0; i < routeParams.length; i++) {
       const rp = routeParams[i];
       if (!rp) continue;
 
+      const rawParamSchema = (rp as ParameterMetadata & { schema?: unknown })
+        .schema;
+
       if (rp.source === "param") {
         if (rp.key) {
           const existing = paramMap.get(`path:${rp.key}`);
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`path:${rp.key}`);
+          }
           const schema =
-            rp.metatype !== undefined
+            stdSchema ??
+            (rp.metatype !== undefined
               ? explorer.resolveTypeSchema(rp.metatype, false)
-              : (existing?.schema ?? { type: "string" });
+              : (existing?.schema ?? { type: "string" }));
           const existingSchemaObj =
             existing?.schema && !("$ref" in existing.schema)
               ? existing.schema
+              : undefined;
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
               : undefined;
           put({
             name: rp.key,
             in: "path",
             required: existing?.required ?? true,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : existing?.description !== undefined
+                ? { description: existing.description }
+                : {}),
             schema:
               existingSchemaObj?.pattern &&
               !("$ref" in schema) &&
@@ -1741,16 +2134,55 @@ export class SwaggerModule {
         }
       } else if (rp.source === "query") {
         if (rp.key) {
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`query:${rp.key}`);
+          }
           const schema =
-            rp.metatype !== undefined
+            stdSchema ??
+            (rp.metatype !== undefined
               ? explorer.resolveTypeSchema(rp.metatype, false)
-              : { type: "string" as const };
+              : { type: "string" as const });
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
+              : undefined;
           put({
             name: rp.key,
             in: "query",
             required: false,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : {}),
             schema,
           });
+        } else if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            const reqSet = new Set(stdSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              standardSchemaParamKeys.add(`query:${propName}`);
+              const propDesc =
+                propSchema && !("$ref" in propSchema)
+                  ? propSchema.description
+                  : undefined;
+              put({
+                name: propName,
+                in: "query",
+                required: reqSet.has(propName),
+                ...(propDesc !== undefined ? { description: propDesc } : {}),
+                schema: propSchema,
+              });
+            }
+          }
         } else if (
           rp.metatype &&
           typeof rp.metatype === "function" &&
@@ -1802,7 +2234,9 @@ export class SwaggerModule {
     for (const p of [...ctrlParams, ...methodParams]) {
       const existing = paramMap.get(`path:${p.name}`);
       let schema: OpenApiSchema;
-      if (p.schema) {
+      if (standardSchemaParamKeys.has(`path:${p.name}`) && existing?.schema) {
+        schema = { ...existing.schema };
+      } else if (p.schema) {
         schema = { ...p.schema };
       } else if (p.enumName && p.enum !== undefined) {
         schema = explorer.registerEnumSchema(p.enumName, p.enum, p.enumSchema);
@@ -1871,8 +2305,48 @@ export class SwaggerModule {
       const qName = q.name ?? "query";
       const existing = paramMap.get(`query:${qName}`);
       let schema: OpenApiSchema;
-      if (q.schema) {
+      let moveExampleToSchema = false;
+
+      if (standardSchemaParamKeys.has(`query:${qName}`) && existing?.schema) {
+        schema = { ...existing.schema };
+      } else if (q.schema && q.type !== undefined) {
+        if (q.isArray) {
+          const itemResolved = explorer.resolveTypeSchema(q.type, false);
+          const itemSchema: OpenApiSchema = { ...(q.schema as OpenApiSchema) };
+          if (itemResolved.$ref) {
+            if (itemSchema.allOf) {
+              itemSchema.allOf = [...itemSchema.allOf, { $ref: itemResolved.$ref }];
+            } else if (Object.keys(itemSchema).length > 0) {
+              itemSchema.allOf = [{ $ref: itemResolved.$ref }];
+            } else {
+              itemSchema.$ref = itemResolved.$ref;
+            }
+          } else {
+            Object.assign(itemSchema, itemResolved);
+          }
+          schema = { type: "array", items: itemSchema };
+        } else {
+          const resolved = explorer.resolveTypeSchema(q.type, false);
+          schema = { ...(q.schema as OpenApiSchema) };
+          applyQuerySchemaExtras(schema, q);
+          if (resolved.$ref) {
+            if (schema.allOf) {
+              schema.allOf = [...schema.allOf, { $ref: resolved.$ref }];
+            } else if (Object.keys(schema).length > 0) {
+              schema.allOf = [{ $ref: resolved.$ref }];
+            } else {
+              schema.$ref = resolved.$ref;
+            }
+          } else {
+            Object.assign(schema, resolved);
+          }
+        }
+        if (q.isArray) {
+          applyQuerySchemaExtras(schema, q);
+        }
+      } else if (q.schema) {
         schema = { ...(q.schema as OpenApiSchema) };
+        applyQuerySchemaExtras(schema, q);
       } else if (q.enumName && q.enum !== undefined) {
         const enumRef = explorer.registerEnumSchema(
           q.enumName,
@@ -1881,19 +2355,36 @@ export class SwaggerModule {
           q["x-enumNames"],
         );
         schema = q.isArray ? { type: "array", items: enumRef } : enumRef;
+        applyQuerySchemaExtras(schema, q);
       } else if (q.type !== undefined) {
         schema = explorer.resolveTypeSchema(q.type, q.isArray === true);
+        if (schema.$ref && (q.example !== undefined || q.allOf !== undefined)) {
+          const refVal = schema.$ref;
+          delete schema.$ref;
+          applyQuerySchemaExtras(schema, q);
+          schema.allOf = [...(schema.allOf ?? []), { $ref: refVal }];
+          if (q.example !== undefined) {
+            schema.example = q.example;
+            moveExampleToSchema = true;
+          }
+        } else {
+          applyQuerySchemaExtras(schema, q);
+        }
       } else {
         schema = { ...(existing?.schema ?? { type: "string" }) };
+        applyQuerySchemaExtras(schema, q);
       }
       if (q.enum && !q.enumName) schema.enum = normalizeEnumValues(q.enum);
-      applyQuerySchemaExtras(schema, q);
 
       const paramObj: OpenApiParameter & Record<string, unknown> = {
         name: qName,
         in: "query",
-        required: q.required ?? existing?.required ?? false,
-        ...(q.description !== undefined ? { description: q.description } : {}),
+        required: q.required ?? true,
+        ...(q.description !== undefined
+          ? { description: q.description }
+          : existing?.description !== undefined
+            ? { description: existing.description }
+            : {}),
         ...(q.deprecated !== undefined ? { deprecated: q.deprecated } : {}),
         ...(q.allowEmptyValue !== undefined
           ? { allowEmptyValue: q.allowEmptyValue }
@@ -1903,7 +2394,9 @@ export class SwaggerModule {
         ...(q.allowReserved !== undefined
           ? { allowReserved: q.allowReserved }
           : {}),
-        ...(q.example !== undefined ? { example: q.example } : {}),
+        ...(q.example !== undefined && !moveExampleToSchema
+          ? { example: q.example }
+          : {}),
         ...(q.examples !== undefined ? { examples: q.examples } : {}),
         ...(q.content !== undefined ? { content: q.content } : { schema }),
       };
@@ -1925,6 +2418,9 @@ export class SwaggerModule {
         ? { ...(h.schema as OpenApiSchema) }
         : { type: "string" };
       if (h.enum) schema.enum = normalizeEnumValues(h.enum);
+      if (h.example !== undefined && h.content === undefined) {
+        schema.example = h.example;
+      }
 
       const headerObj: OpenApiParameter & Record<string, unknown> = {
         name: h.name,
@@ -1940,7 +2436,9 @@ export class SwaggerModule {
         ...(h.allowReserved !== undefined
           ? { allowReserved: h.allowReserved }
           : {}),
-        ...(h.example !== undefined ? { example: h.example } : {}),
+        ...(h.example !== undefined && h.content !== undefined
+          ? { example: h.example }
+          : {}),
         ...(h.examples !== undefined ? { examples: h.examples } : {}),
         ...(h.content !== undefined ? { content: h.content } : { schema }),
       };
@@ -1964,8 +2462,21 @@ export class SwaggerModule {
 
     if (apiBody) {
       const contentType = apiBody.contentType ?? "application/json";
+      const wholeBodyParam = routeParams.find(
+        (p) => p.source === "body" && p.key === undefined,
+      );
+      const rawBodyParamSchema = (
+        wholeBodyParam as (ParameterMetadata & { schema?: unknown }) | undefined
+      )?.schema;
+      const bodyParamStdSchema =
+        rawBodyParamSchema !== undefined
+          ? explorer.resolveStandardSchema(rawBodyParamSchema, "input")
+          : undefined;
+
       let schema: OpenApiSchema;
-      if (apiBody.schema) {
+      if (bodyParamStdSchema) {
+        schema = bodyParamStdSchema;
+      } else if (apiBody.schema) {
         schema = { ...(apiBody.schema as OpenApiSchema) };
       } else if (apiBody.type !== undefined) {
         schema = explorer.resolveTypeSchema(
@@ -1974,8 +2485,12 @@ export class SwaggerModule {
         );
       } else if (apiBody.enum !== undefined) {
         const enumVals = normalizeEnumValues(apiBody.enum);
+        const enumType =
+          enumVals.length > 0 && enumVals.every((v) => typeof v === "number")
+            ? "number"
+            : "string";
         schema = apiBody.isArray
-          ? { type: "array", items: { enum: enumVals } }
+          ? { type: "array", items: { type: enumType, enum: enumVals } }
           : { enum: enumVals };
       } else {
         schema = { type: "object" as const };
@@ -2131,9 +2646,13 @@ export class SwaggerModule {
 
     const combined: ApiResponseOptions[] = [
       ...(globalResponses ?? []),
-      ...ctrlResponses,
-      ...methodResponses,
+      ...[...ctrlResponses].reverse(),
+      ...[...methodResponses].reverse(),
     ];
+    const hasExplicitLocalResponses =
+      ctrlResponses.length > 0 ||
+      methodResponses.length > 0 ||
+      (opResponses !== undefined && Object.keys(opResponses).length > 0);
     const responses: Record<string, OpenApiResponse> = {};
     const responseModels = new Map<string, Type<unknown> | Function>();
 
@@ -2188,14 +2707,7 @@ export class SwaggerModule {
       }
 
       if (schema && metaEntry.nullable) {
-        if (schema.$ref) {
-          const { $ref, ...siblings } = schema;
-          schema = { ...siblings, anyOf: [{ $ref }, { type: "null" }] };
-        } else if (typeof schema.type === "string") {
-          schema = { ...schema, type: [schema.type, "null"] };
-        } else {
-          schema = { ...schema, nullable: true };
-        }
+        schema = applyNullable30(schema, metaEntry.nullable);
       }
 
       if (entry.content !== undefined) {
@@ -2219,7 +2731,50 @@ export class SwaggerModule {
         };
       }
 
-      responses[statusKey] = response;
+      const prev = responses[statusKey];
+      if (prev) {
+        const mergedDesc =
+          prev.description && response.description
+            ? `${prev.description}\n\n${response.description}`
+            : response.description || prev.description;
+        let mergedContent = prev.content;
+        if (response.content) {
+          mergedContent = { ...(prev.content ?? {}) };
+          for (const [ct, media] of Object.entries(response.content)) {
+            const existingMedia = mergedContent[ct];
+            if (existingMedia) {
+              mergedContent[ct] = {
+                ...existingMedia,
+                ...media,
+                ...(existingMedia.examples || media.examples
+                  ? {
+                      examples: {
+                        ...(existingMedia.examples ?? {}),
+                        ...(media.examples ?? {}),
+                      },
+                    }
+                  : {}),
+              };
+            } else {
+              mergedContent[ct] = media;
+            }
+          }
+        }
+        responses[statusKey] = {
+          ...prev,
+          ...response,
+          description: mergedDesc,
+          ...(mergedContent !== undefined ? { content: mergedContent } : {}),
+          ...(prev.headers || response.headers
+            ? { headers: { ...(prev.headers ?? {}), ...(response.headers ?? {}) } }
+            : {}),
+          ...(prev.links || response.links
+            ? { links: { ...(prev.links ?? {}), ...(response.links ?? {}) } }
+            : {}),
+        };
+      } else {
+        responses[statusKey] = response;
+      }
     }
 
     const fallbackStatus =
@@ -2274,7 +2829,10 @@ export class SwaggerModule {
           ? "No Content"
           : "OK";
 
-    if (Object.keys(responses).length === 0) {
+    if (
+      Object.keys(responses).length === 0 ||
+      (!hasExplicitLocalResponses && !hasAny2xxResponse && !responses["default"])
+    ) {
       responses[fallbackStatus] = {
         description: defaultStatusDescription,
         ...(inferredReturnSchema !== undefined && fallbackStatus !== "204"

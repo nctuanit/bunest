@@ -86,8 +86,7 @@ describeConformance(
     const bearer = [{ bearer: [] }];
     const config = new DocumentBuilder().addBearerAuth().build();
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:954) overwrites pathItem[lowerMethod] without merging security requirements across handlers sharing a normalized OpenAPI path and method (also convertPathToOpenApi does not map *path / {/:id})
-    it.skip("keeps the security requirements of every route pattern", async () => {
+    it("keeps the security requirements of every route pattern", async () => {
       const app = await BunestFactory.create(AppModule, {
         logger: false,
         routeConflictPolicy: "warn",
@@ -115,8 +114,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:954) overwrites pathItem[lowerMethod] without preserving/merging security requirements from earlier conflicting regexp handlers
-    it.skip("keeps the security requirements of every inline regexp", async () => {
+    it("keeps the security requirements of every inline regexp", async () => {
       const app = await BunestFactory.create(RegexpAppModule, {
         logger: false,
         routeConflictPolicy: "warn",

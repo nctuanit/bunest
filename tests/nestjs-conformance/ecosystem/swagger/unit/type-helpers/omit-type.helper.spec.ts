@@ -26,8 +26,7 @@ describeConformance(
   },
   () => {
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: OmitType / SchemaExplorer (packages/core/src/common/mapped-types/mapped-types.utils.ts, packages/swagger/src/plugin-metadata-store.ts) does not inherit SwaggerModule.loadPluginMetadata() properties onto mapped type classes (omits "active")
-      it.skip('should omit "login" property', async () => {
+      it('should omit "login" property', async () => {
         await SwaggerModule.loadPluginMetadata(async () => SERIALIZED_METADATA);
 
         const explorer = new SchemaExplorer();

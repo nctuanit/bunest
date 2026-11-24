@@ -41,8 +41,7 @@ describeConformance(
         expect(getInferredEnumType([false])).toBe("boolean");
       });
 
-      // BUNEST_BUG: SchemaExplorer.registerEnumSchema (packages/swagger/src/schema-explorer.ts:415-425) returns undefined instead of "string" when enum values mix strings and numbers
-      it.skip('should return "string" for mixed string/number values', () => {
+      it('should return "string" for mixed string/number values', () => {
         expect(getInferredEnumType(["a", 1])).toBe("string");
       });
     });

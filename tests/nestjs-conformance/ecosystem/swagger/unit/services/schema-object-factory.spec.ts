@@ -129,8 +129,7 @@ describeConformance(
         role!: Role;
       }
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should convert zod standard schemas into an OpenAPI override", async () => {
+      it("should convert zod standard schemas into an OpenAPI override", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -166,8 +165,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should preserve OpenAPI metadata on zod overrides", async () => {
+      it("should preserve OpenAPI metadata on zod overrides", async () => {
         const std = createStandardSchema(
           {
             type: "string",
@@ -195,8 +193,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should preserve zod unions, enums, and nested OpenAPI metadata on overrides", async () => {
+      it("should preserve zod unions, enums, and nested OpenAPI metadata on overrides", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -279,8 +276,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should convert valibot standard schemas into query properties", async () => {
+      it("should convert valibot standard schemas into query properties", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -316,8 +312,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should preserve OpenAPI metadata on valibot overrides", async () => {
+      it("should preserve OpenAPI metadata on valibot overrides", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -351,8 +346,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should expand valibot unions, enums, and nested metadata into query parameters", async () => {
+      it("should expand valibot unions, enums, and nested metadata into query parameters", async () => {
         const std = createStandardSchema(
           {
             type: "object",
@@ -526,8 +520,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:740-742) sets top-level enum on array schemas instead of moving enum into items (and ignores _OPENAPI_METADATA_FACTORY)
-      it.skip("should merge array enum metadata without keeping a top-level enum", () => {
+      it("should merge array enum metadata without keeping a top-level enum", () => {
         class ValidationShimArrayEnumDto {
           @ApiProperty({ enum: Role, isArray: true })
           roles!: Role[];
@@ -558,8 +551,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:831-848) returns early with bare $ref when enumName is set, dropping sibling oneOf combinators
-      it.skip("should support enumName with oneOf", () => {
+      it("should support enumName with oneOf", () => {
         enum Status {
           Active = "active",
           Inactive = "inactive",
@@ -588,8 +580,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:575-582) silently disambiguates duplicate DTO names with _2 without logging a Logger.warn
-      it.skip("should log a warning when detecting duplicate DTOs with different schemas", () => {
+      it("should log a warning when detecting duplicate DTOs with different schemas", () => {
         const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
           () => {},
         );
@@ -673,8 +664,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: PickType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Pick<Base> instead of key-suffixed Pick<Base><Keys>
-      it.skip("should keep inline PickType schemas distinct", () => {
+      it("should keep inline PickType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
           title!: string;
@@ -726,8 +716,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Omit<Base> instead of key-suffixed Omit<Base><Keys>
-      it.skip("should keep inline OmitType schemas distinct", () => {
+      it("should keep inline OmitType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
           title!: string;
@@ -764,8 +753,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: PickType/OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) use base-only + numeric suffix names instead of visible-key-suffixed names
-      it.skip("should not spell properties hidden from the document in inline mapped type names", () => {
+      it("should not spell properties hidden from the document in inline mapped type names", () => {
         class AccountDto {
           @ApiProperty()
           id!: string;
@@ -909,8 +897,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:526-550,716,860-910) omits BigInt->int64, ignores _OPENAPI_METADATA_FACTORY, keeps format on array instead of items, and retains reflected type: "object" next to oneOf
-      it.skip("should create openapi schema", () => {
+      it("should create openapi schema", () => {
         const { key, schemas } = exploreModel(CreateUserDto, explorer);
 
         expect(schemas[key]).toEqual({
@@ -1033,8 +1020,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-912) keeps reflected design:type ("object") next to oneOf, producing type: ["object", "null"] instead of anyOf: [{ oneOf }, { type: "null" }]
-      it.skip("should drop inferred type for nullable oneOf properties (issue #3928)", () => {
+      it("should drop inferred type for nullable oneOf properties (issue #3928)", () => {
         class DtoWithNullablePrimitiveUnion {
           @ApiProperty({
             oneOf: [{ type: "string" }, { type: "number" }],
@@ -1075,8 +1061,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected type: "object" when oneOf is declared without an explicit type
-      it.skip("should drop the additionalProperties inferred from a record when property declares oneOf", () => {
+      it("should drop the additionalProperties inferred from a record when property declares oneOf", () => {
         class DtoWithRecordAndOneOf {
           @ApiProperty({
             oneOf: [
@@ -1104,8 +1089,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected type: "object" when oneOf is declared alongside explicit additionalProperties
-      it.skip("should keep an explicit additionalProperties when property also declares oneOf", () => {
+      it("should keep an explicit additionalProperties when property also declares oneOf", () => {
         class DtoWithExplicitAdditionalPropertiesAndOneOf {
           @ApiProperty({
             additionalProperties: false,
@@ -1235,8 +1219,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:801) leaves sibling $ref alongside allOf instead of merging { $ref } into allOf
-      it.skip("should keep a user-defined allOf on a model-typed property", () => {
+      it("should keep a user-defined allOf on a model-typed property", () => {
         class AllOfNestedDto {
           @ApiProperty()
           a!: string;
@@ -1255,8 +1238,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:722-725) copies default DTO object verbatim without filtering out @ApiHideProperty() fields
-      it.skip("should not publish properties hidden from a model through a default", () => {
+      it("should not publish properties hidden from a model through a default", () => {
         class SettingsDto {
           @ApiProperty()
           email!: boolean;
@@ -1312,8 +1294,7 @@ describeConformance(
         expect(settings.bypassRateLimit).toBe(true);
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata for nested default key picking
-      it.skip("should read plugin metadata before picking the keys of a nested default", () => {
+      it("should read plugin metadata before picking the keys of a nested default", () => {
         const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
           () => {},
         );
@@ -1434,8 +1415,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:587-594) only copies description from @ApiSchema() and ignores title, deprecated, example, externalDocs, additionalProperties, minProperties, maxProperties
-        it.skip("should apply object-level schema keywords", () => {
+        it("should apply object-level schema keywords", () => {
           @ApiSchema({
             name: "CreateUser",
             title: "Create user",
@@ -1482,8 +1462,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:564-689) ignores class-level @ApiExtension() metadata on DTO schemas
-      it.skip("should include extension properties", () => {
+      it("should include extension properties", () => {
         @ApiExtension("x-test", "value")
         class CreatUserDto {
           @ApiProperty({ minLength: 0, required: true })
@@ -1643,8 +1622,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) retains reflected design:type ("object") next to oneOf when isArray is false
-      it.skip("should drop the reflected type next to a combinator when isArray is false", () => {
+      it("should drop the reflected type next to a combinator when isArray is false", () => {
         class DtoWithScalarUnion {
           @ApiProperty({
             isArray: false,
@@ -1659,8 +1637,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:801-803) leaves oneOf/anyOf on the top-level array schema instead of migrating them into items
-      it.skip("should migrate oneOf and anyOf combinators to array items for generic array types", () => {
+      it("should migrate oneOf and anyOf combinators to array items for generic array types", () => {
         class Cat {}
         class Dog {}
         class DtoWithArrayUnionItems {
@@ -1738,8 +1715,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:831-848) returns bare $ref when enumName is set, dropping existing oneOf
-      it.skip("should add $ref to existing oneOf when enumName is used with oneOf", () => {
+      it("should add $ref to existing oneOf when enumName is used with oneOf", () => {
         class EnumOneOfDto {
           @ApiProperty({
             type: "string",
@@ -1771,8 +1747,7 @@ describeConformance(
         expect(prop).not.toHaveProperty("type");
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:831-848) returns bare $ref when enumName is set, dropping existing anyOf
-      it.skip("should add $ref to existing anyOf when enumName is used with anyOf", () => {
+      it("should add $ref to existing anyOf when enumName is used with anyOf", () => {
         class EnumAnyOfDto {
           @ApiProperty({
             type: "string",
@@ -1905,8 +1880,7 @@ describeConformance(
     });
 
     describe("createFromModel (parameter & body schema generation)", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should override an inferred named query type with a standard schema", async () => {
+      it("should override an inferred named query type with a standard schema", async () => {
         class QueryDto {
           value!: string;
         }
@@ -1932,8 +1906,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema and never promotes standard schema description onto the parameter
-      it.skip("should promote a standard schema description onto a named parameter", async () => {
+      it("should promote a standard schema description onto a named parameter", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -1962,8 +1935,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1706-1717) ignores rp.schema on @Query("filter", { schema })
-      it.skip("should not override an explicit parameter description with the schema one", async () => {
+      it("should not override an explicit parameter description with the schema one", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2030,8 +2002,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas into query parameters
-      it.skip("should expand unnamed query standard schemas into parameter properties", async () => {
+      it("should expand unnamed query standard schemas into parameter properties", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2067,8 +2038,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) does not expand unnamed @Query({ schema }) standard schemas or promote property descriptions
-      it.skip("should promote a standard schema property description onto its expanded parameter", async () => {
+      it("should promote a standard schema property description onto its expanded parameter", async () => {
         @Controller("m")
         class Ctrl {
           @Get()
@@ -2111,8 +2081,7 @@ describeConformance(
         expect(params[1]).not.toHaveProperty("description");
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1874) puts example on param instead of wrapping $ref in schema.allOf + schema.example
-      it.skip("should preserve parent example when a non-body param property has a DTO type", async () => {
+      it("should preserve parent example when a non-body param property has a DTO type", async () => {
         class ChildDto {
           @ApiProperty({ example: "child DTO example 1" })
           childKey1!: string;
@@ -2158,8 +2127,7 @@ describeConformance(
         expect(paramResult?.schema?.allOf).toBeUndefined();
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1858,1874) leaves example on param and does not merge $ref into param-level allOf
-      it.skip("should merge param-level allOf with $ref wrapping and not lose example", async () => {
+      it("should merge param-level allOf with $ref wrapping and not lose example", async () => {
         class FilterDto {
           @ApiProperty()
           value!: string;
@@ -2194,8 +2162,7 @@ describeConformance(
         expect(paramResult?.schema?.$ref).toBeUndefined();
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1842-1858) overwrites schema.allOf with q.allOf instead of merging q.schema.allOf, q.allOf, and { $ref }
-      it.skip("should merge parameter and schema allOf constraints for a named scalar parameter", async () => {
+      it("should merge parameter and schema allOf constraints for a named scalar parameter", async () => {
         class FilterDto {
           @ApiProperty({ type: String })
           code!: string;
@@ -2225,8 +2192,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1842-1858) skips q.type/q.isArray when q.schema is also supplied, dropping array items allOf + $ref
-      it.skip("should keep array parameter allOf constraints separate from item constraints", async () => {
+      it("should keep array parameter allOf constraints separate from item constraints", async () => {
         class FilterDto {
           @ApiProperty({ type: String })
           code!: string;
@@ -2260,8 +2226,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.resolveTypeSchema (packages/swagger/src/schema-explorer.ts:507-550) returns {} for SWC const-enum plain objects passed as query param type
-      it.skip("should create enum schema for query params using SWC const-enum object metadata", async () => {
+      it("should create enum schema for query params using SWC const-enum object metadata", async () => {
         const CampaignStatus = {
           ACTIVE: "active",
           PAUSED: "paused",
@@ -2297,8 +2262,7 @@ describeConformance(
     });
 
     describe("expandStandardSchemaParam", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1718-1742) ignores rp.schema on unnamed @Query({ schema })
-      it.skip("should expand an unnamed query standard schema into one param per property", async () => {
+      it("should expand an unnamed query standard schema into one param per property", async () => {
         @Controller("ex")
         class Ctrl {
           @Get()
@@ -2557,8 +2521,7 @@ describeConformance(
         expect(prop.enum).toEqual([1, 2, 3]);
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should infer string enum type when plugin metadata falls back to Object", () => {
+      it("should infer string enum type when plugin metadata falls back to Object", () => {
         class ObjectFallbackMixedEnumDto {
           static _OPENAPI_METADATA_FACTORY() {
             return {
@@ -2578,8 +2541,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should infer number enum type when plugin metadata falls back to Object", () => {
+      it("should infer number enum type when plugin metadata falls back to Object", () => {
         class ObjectFallbackNumberEnumDto {
           static _OPENAPI_METADATA_FACTORY() {
             return {
@@ -2599,8 +2561,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should move enum metadata into array items when plugin array metadata falls back to Object", () => {
+      it("should move enum metadata into array items when plugin array metadata falls back to Object", () => {
         class ObjectFallbackArrayEnumDto {
           static _OPENAPI_METADATA_FACTORY() {
             return {
@@ -2638,8 +2599,7 @@ describeConformance(
         expect(() => exploreModel(SwcDto, explorer)).not.toThrow();
       });
 
-      // BUNEST_BUG: SchemaExplorer.resolveTypeSchema (packages/swagger/src/schema-explorer.ts:507-550) returns {} for a string const-enum object reflected as design:type
-      it.skip("should produce an enum schema when design:type is a string const-enum object (SWC behavior)", () => {
+      it("should produce an enum schema when design:type is a string const-enum object (SWC behavior)", () => {
         class SwcStringEnumDto {
           @ApiProperty({ type: MyStringEnum as any, required: true })
           status: any;
@@ -2668,8 +2628,7 @@ describeConformance(
     });
 
     describe("circular dependency error message (issue #3655)", () => {
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:850-874) silently returns {} instead of throwing a circular dependency error including class chain [OuterDto] [InnerDto] when design:type is undefined
-      it.skip("should include the class name chain when a circular dependency is detected", () => {
+      it("should include the class name chain when a circular dependency is detected", () => {
         class InnerDto {
           @ApiProperty({ type: () => undefined as any, required: true })
           child: any;
@@ -2887,8 +2846,7 @@ describeConformance(
         expect(requiredOf(GrandchildWithOptionalName)).toEqual([]);
       });
 
-      // BUNEST_BUG: ApiProperty (packages/swagger/src/decorators/api.decorators.ts:127) defaults required: true unconditionally so stacking @ApiProperty({ description }) over @ApiPropertyOptional() on the same class overwrites required: false
-      it.skip("should not change how decorators stacked on the same class are merged", () => {
+      it("should not change how decorators stacked on the same class are merged", () => {
         class StackedDecorators {
           @ApiProperty({ description: "Display name" })
           @ApiPropertyOptional()
@@ -2971,8 +2929,7 @@ describeConformance(
       const refOf = (property: Record<string, any> | undefined) =>
         property?.$ref ?? property?.allOf?.[0]?.$ref;
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip.each([
+      it.each([
         ["alone", false],
         ["after its parent", true],
       ] as const)(
@@ -3000,8 +2957,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: SchemaExplorer / PickType (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should document the type of the re-declaration in mapped types", () => {
+      it("should document the type of the re-declaration in mapped types", () => {
         const { AccountDto, PublicAccountDto } = createDtos();
         class PublicBillingOnlyDto extends PickType(PublicAccountDto, [
           "billing",
@@ -3049,8 +3005,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata (additionalProperties lost)
-      it.skip("should resolve the flat metadata the CLI plugin generates without a circular dependency", () => {
+      it("should resolve the flat metadata the CLI plugin generates without a circular dependency", () => {
         class PluginRecordDto {
           @ApiProperty()
           attributes!: Record<string, string>;
@@ -3149,8 +3104,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:831-840) ignores lazy array thunk `type: () => [String]` when enumName is set (checks only apiMeta.isArray)
-      it.skip("should keep the shape of the generated properties", () => {
+      it("should keep the shape of the generated properties", () => {
         const LazyEnumDto = defineDto();
         registry.push("second");
 
@@ -3224,8 +3178,7 @@ describeConformance(
           ["DeepPartialType", () => DeepPartialType(BaseDto)],
         ];
 
-        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts, deep-partial-type.helper.ts) lose/mis-infer lazy numeric enum type as "string" instead of "number"
-        it.skip.each(mappedTypes)(
+        it.each(mappedTypes)(
           "should keep resolving the enums lazily with %s",
           (_name, createMappedType) => {
             const MappedDto = createMappedType();
@@ -3254,8 +3207,7 @@ describeConformance(
           },
         );
 
-        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts) infer lazy numeric enum type as "string" instead of "number" in mapped query DTOs
-        it.skip("should keep resolving the enums lazily in a mapped query DTO", async () => {
+        it("should keep resolving the enums lazily in a mapped query DTO", async () => {
           class MappedQueryDto extends PartialType(BaseDto) {}
 
           @Controller("lq")
@@ -3356,8 +3308,7 @@ describeConformance(
         list?: object[];
       }
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("object") next to oneOf on query DTO properties
-      it.skip("should not create an Object component", async () => {
+      it("should not create an Object component", async () => {
         @Controller("oq")
         class Ctrl {
           @Get()
@@ -3395,8 +3346,7 @@ describeConformance(
         lazy!: bigint[];
       }
 
-      // BUNEST_BUG: SchemaExplorer.resolveTypeSchema (packages/swagger/src/schema-explorer.ts:526-550) does not map BigInt to { type: "integer", format: "int64" } (emits items: {})
-      it.skip("should document an array of int64 integers", () => {
+      it("should document an array of int64 integers", () => {
         const { schemas } = exploreModel(Ledger, explorer);
 
         expect(schemas.Ledger?.properties).toEqual({
@@ -3438,8 +3388,7 @@ describeConformance(
         address!: Record<string, any>;
       }
 
-      // BUNEST_BUG: SchemaExplorer.resolveTypeSchema (packages/swagger/src/schema-explorer.ts:474-557) does not support nested object-literal type descriptor objects returned from type: () => ({ ... })
-      it.skip("should document whether it is required next to its own required keys", () => {
+      it("should document whether it is required next to its own required keys", () => {
         const { schemas } = exploreModel(Customer, explorer);
 
         expect(schemas.Customer?.properties?.address).toEqual({

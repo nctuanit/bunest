@@ -19,6 +19,7 @@ export interface DocumentBuilderExtras {
   readonly basePath?: string;
 }
 
+const DOCUMENT_BUILDER_EXTRAS_SYMBOL = Symbol("DocumentBuilderExtras");
 const configExtrasMap = new WeakMap<object, DocumentBuilderExtras>();
 
 /**
@@ -27,7 +28,11 @@ const configExtrasMap = new WeakMap<object, DocumentBuilderExtras>();
 export function getDocumentBuilderExtras(
   config: object,
 ): DocumentBuilderExtras | undefined {
-  return configExtrasMap.get(config);
+  return (
+    (config as Record<symbol, DocumentBuilderExtras | undefined>)[
+      DOCUMENT_BUILDER_EXTRAS_SYMBOL
+    ] ?? configExtrasMap.get(config)
+  );
 }
 
 /**
@@ -315,11 +320,17 @@ export class DocumentBuilder {
       this.globalResponses.length > 0 ||
       this.basePath !== undefined
     ) {
-      configExtrasMap.set(result, {
+      const extras: DocumentBuilderExtras = {
         globalParameters: this.globalParameters.map((p) => ({ ...p })),
         globalResponses: this.globalResponses.map((r) => ({ ...r })),
         basePath: this.basePath,
-      });
+      };
+      configExtrasMap.set(result, extras);
+      // Attach as an enumerable symbol so shallow copies (`{ ...config }`) preserve
+      // global parameters/responses without polluting JSON or Object.keys().
+      (result as unknown as Record<symbol, DocumentBuilderExtras>)[
+        DOCUMENT_BUILDER_EXTRAS_SYMBOL
+      ] = extras;
     }
 
     return result;

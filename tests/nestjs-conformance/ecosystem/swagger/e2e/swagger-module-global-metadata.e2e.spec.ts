@@ -31,8 +31,7 @@ describeConformance(
     @Module({ controllers: [CatsController] })
     class AppModule {}
 
-    // BUNEST_BUG: SwaggerModule.buildResponses (packages/swagger/src/swagger-module.ts:2214) skips synthesizing the default 200 success response whenever DocumentBuilder.addGlobalResponse() pre-populates any error status (Object.keys(responses).length > 0)
-    it.skip("applies them only to documents created from the same config", async () => {
+    it("applies them only to documents created from the same config", async () => {
       const app = await BunestFactory.create(AppModule, { logger: false });
       try {
         await app.init();

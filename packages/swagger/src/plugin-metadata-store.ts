@@ -119,11 +119,12 @@ export async function registerLoadedPluginMetadata(
       for (const [className, propsObj] of Object.entries(classesMap)) {
         if (!propsObj || typeof propsObj !== "object") continue;
         const normalized = normalizePropertyRecord(propsObj);
-        modelMetadataByName.set(className, normalized);
 
         const ctor = resolvedModule?.[className];
         if (typeof ctor === "function") {
           modelMetadataByClass.set(ctor, normalized);
+        } else {
+          modelMetadataByName.set(className, normalized);
         }
       }
     }
@@ -141,11 +142,12 @@ export async function registerLoadedPluginMetadata(
       for (const [ctrlName, actionsObj] of Object.entries(controllersMap)) {
         if (!actionsObj || typeof actionsObj !== "object") continue;
         const normalized = normalizeControllerRecord(actionsObj);
-        controllerMetadataByName.set(ctrlName, normalized);
 
         const ctor = resolvedModule?.[ctrlName];
         if (typeof ctor === "function") {
           controllerMetadataByClass.set(ctor, normalized);
+        } else {
+          controllerMetadataByName.set(ctrlName, normalized);
         }
       }
     }

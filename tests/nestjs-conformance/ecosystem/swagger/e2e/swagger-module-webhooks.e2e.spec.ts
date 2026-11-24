@@ -36,8 +36,7 @@ describeConformance(
     @Module({ controllers: [StripeWebhooksController] })
     class AppModule {}
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:880,1072) always emits @ApiWebhook() routes into document.webhooks even when config.openapi < 3.1 instead of placing them in document.paths
-    it.skip("adds webhook routes to paths for OAS < 3.1", async () => {
+    it("adds webhook routes to paths for OAS < 3.1", async () => {
       const app = await BunestFactory.create(AppModule, { logger: false });
       try {
         await app.init();
@@ -75,8 +74,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:650,880) calls scanControllers with default error conflict policy (throwing DuplicateRouteException on POST /invoices) and never drops/warns on colliding OAS 3.0 webhook routes
-    it.skip("keeps the regular operation when a webhook shares its path and method for OAS < 3.1", async () => {
+    it("keeps the regular operation when a webhook shares its path and method for OAS < 3.1", async () => {
       @Controller({ path: "orders", host: "api.example.com" })
       class OrdersController {
         @Post()
