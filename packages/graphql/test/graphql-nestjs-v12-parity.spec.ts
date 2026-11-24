@@ -8,6 +8,7 @@ import {
   Injectable,
   join,
   Module,
+  REQUEST,
   removePath,
   UseFilters,
   UseGuards,
@@ -113,7 +114,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
   test("exports all 23 NestJS GraphQL metadata constants & tokens with exact values", () => {
     expect(ARGS_TYPE_METADATA).toBe("graphql:args_type");
     expect(CLASS_TYPE_METADATA).toBe("graphql:class_type");
-    expect(CONTEXT).toBe("REQUEST");
+    expect(CONTEXT).toBe(REQUEST);
     expect(DEFINITIONS_FILE_HEADER).toContain(
       "THIS FILE WAS AUTOMATICALLY GENERATED",
     );

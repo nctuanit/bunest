@@ -4,8 +4,14 @@ import {
   APP_INTERCEPTOR,
   APP_PIPE,
   ApplicationConfig,
+  type BunestInterceptor,
+  type CanActivate,
+  type ContextId,
+  ContextIdFactory,
+  type ExceptionFilter,
   type ExceptionFilterLike,
   type GuardLike,
+  HttpAdapterHost,
   HttpException,
   Inject,
   Injectable,
@@ -18,6 +24,7 @@ import {
   type OnModuleDestroy,
   Optional,
   type PipeLike,
+  type PipeTransform,
   type ResponseContext,
   type Type,
 } from "@bunest/core";
@@ -50,7 +57,14 @@ import type {
   GraphQLWsOptions,
 } from "../interfaces/graphql.interface";
 import { GraphQLDefinitionsFactory } from "../schema/graphql-definitions.factory";
-import { GraphQLSchemaFactory } from "../schema/graphql-schema.factory";
+import {
+  createRequestScopedResolverProxy,
+  createScopedEnhancer,
+  getGraphQLContextId,
+  GraphQLSchemaFactory,
+  type ScopedGqlEnhancer,
+  setGraphQLContextId,
+} from "../schema/graphql-schema.factory";
 import { createDepthLimitRule } from "../security/validation-rules";
 import { ResolverDecoratorHost } from "../services/resolver-decorator-host";
 import { GraphQLWsHandler } from "../subscriptions/graphql-ws.handler";
@@ -141,8 +155,37 @@ export class GraphQLService
     await this.ensureSchema();
 
     const wsConfig = resolveWsOptionsFromModule(this.options);
-    if (this.options.httpAdapter && wsConfig !== undefined) {
-      this.attachWebSocket(this.options.httpAdapter, wsConfig);
+    if (wsConfig !== undefined) {
+      let adapter: BunHttpAdapter | undefined = this.options.httpAdapter;
+      if (!adapter && this.moduleRef) {
+        try {
+          const host = this.moduleRef.get(HttpAdapterHost, { strict: false });
+          adapter = host?.httpAdapter as BunHttpAdapter | undefined;
+        } catch {
+          // HttpAdapterHost not registered
+        }
+      }
+      if (adapter) {
+        const mergedWsConfig: GraphQLWsOptions = {
+          ...wsConfig,
+          context:
+            wsConfig.context ??
+            (this.options.context
+              ? async (connCtx) => {
+                  const raw =
+                    typeof this.options.context === "function"
+                      ? await this.options.context({
+                          req: connCtx.request,
+                        })
+                      : this.options.context;
+                  return raw && typeof raw === "object"
+                    ? (raw as Record<string, unknown>)
+                    : {};
+                }
+              : undefined),
+        };
+        this.attachWebSocket(adapter, mergedWsConfig);
+      }
     }
   }
 
@@ -225,6 +268,19 @@ export class GraphQLService
   private async buildSchema(): Promise<GraphQLSchema> {
     const resolverInstances: object[] = [];
     const seen = new Set<object>();
+    const seenScopedTokens = new Set<unknown>();
+    const scopedEnhancerClasses = new Set<Function>();
+
+    const globalFilters: (
+      | ExceptionFilterLike
+      | ScopedGqlEnhancer<ExceptionFilter>
+    )[] = [];
+    const globalPipes: (PipeLike | ScopedGqlEnhancer<PipeTransform>)[] = [];
+    const globalGuards: (GuardLike | ScopedGqlEnhancer<CanActivate>)[] = [];
+    const globalInterceptors: (
+      | InterceptorLike
+      | ScopedGqlEnhancer<BunestInterceptor>
+    )[] = [];
 
     if (this.discoveryService) {
       const discoveryOpts =
@@ -236,30 +292,110 @@ export class GraphQLService
         ...this.discoveryService.getControllers(discoveryOpts),
       ];
       for (const wrapper of wrappers) {
-        const instance = wrapper.instance;
-        if (!instance || typeof instance !== "object" || seen.has(instance)) {
-          continue;
+        if (!wrapper.isDependencyTreeStatic && typeof wrapper.metatype === "function") {
+          scopedEnhancerClasses.add(wrapper.metatype);
         }
-        const ctor = (instance as { constructor?: Function }).constructor;
-        if (
-          typeof ctor === "function" &&
-          (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
-            MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
-        ) {
-          seen.add(instance);
-          if (this.metadataScanner) {
-            // Confirm prototype methods exist via public MetadataScanner
-            this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+
+        // Collect request-scoped APP_* global enhancers
+        if (!wrapper.isDependencyTreeStatic) {
+          const resolveToken =
+            typeof wrapper.metatype === "function"
+              ? (wrapper.metatype as Type<unknown>)
+              : undefined;
+          if (wrapper.token === APP_GUARD) {
+            globalGuards.push(
+              createScopedEnhancer<CanActivate>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<CanActivate>,
+                resolveToken,
+              ),
+            );
+            continue;
           }
-          resolverInstances.push(instance);
+          if (wrapper.token === APP_INTERCEPTOR) {
+            globalInterceptors.push(
+              createScopedEnhancer<BunestInterceptor>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<BunestInterceptor>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+          if (wrapper.token === APP_PIPE) {
+            globalPipes.push(
+              createScopedEnhancer<PipeTransform>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<PipeTransform>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+          if (wrapper.token === APP_FILTER) {
+            globalFilters.push(
+              createScopedEnhancer<ExceptionFilter>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<ExceptionFilter>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+        }
+
+        const instance = wrapper.instance;
+        if (
+          instance &&
+          typeof instance === "object" &&
+          wrapper.isDependencyTreeStatic
+        ) {
+          if (seen.has(instance)) {
+            continue;
+          }
+          const ctor = (instance as { constructor?: Function }).constructor;
+          if (
+            typeof ctor === "function" &&
+            (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
+              MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
+          ) {
+            seen.add(instance);
+            if (this.metadataScanner) {
+              this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+            }
+            resolverInstances.push(instance);
+          }
+        } else if (typeof wrapper.metatype === "function") {
+          const ctor = wrapper.metatype;
+          if (
+            !seenScopedTokens.has(wrapper.token) &&
+            (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
+              MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
+          ) {
+            seenScopedTokens.add(wrapper.token);
+            if (this.metadataScanner) {
+              this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+            }
+            const proxy = createRequestScopedResolverProxy(
+              ctor as Type<unknown>,
+              async (contextId: ContextId) =>
+                (await wrapper.moduleRef.resolve(wrapper.token, contextId, {
+                  strict: false,
+                })) as object,
+            );
+            resolverInstances.push(proxy);
+          }
         }
       }
     }
-
-    const globalFilters: ExceptionFilterLike[] = [];
-    const globalPipes: PipeLike[] = [];
-    const globalGuards: GuardLike[] = [];
-    const globalInterceptors: InterceptorLike[] = [];
 
     if (this.moduleRef) {
       try {
@@ -284,7 +420,7 @@ export class GraphQLService
           globalFilters.push(...diFilters);
         }
       } catch {
-        // No APP_FILTER multi-providers registered
+        // No static APP_FILTER multi-providers registered
       }
       try {
         const diPipes = this.moduleRef.get<PipeLike, PipeLike>(APP_PIPE, {
@@ -295,7 +431,7 @@ export class GraphQLService
           globalPipes.push(...diPipes);
         }
       } catch {
-        // No APP_PIPE multi-providers registered
+        // No static APP_PIPE multi-providers registered
       }
       try {
         const diGuards = this.moduleRef.get<GuardLike, GuardLike>(APP_GUARD, {
@@ -306,7 +442,7 @@ export class GraphQLService
           globalGuards.push(...diGuards);
         }
       } catch {
-        // No APP_GUARD multi-providers registered
+        // No static APP_GUARD multi-providers registered
       }
       try {
         const diInterceptors = this.moduleRef.get<
@@ -317,7 +453,7 @@ export class GraphQLService
           globalInterceptors.push(...diInterceptors);
         }
       } catch {
-        // No APP_INTERCEPTOR multi-providers registered
+        // No static APP_INTERCEPTOR multi-providers registered
       }
     }
 
@@ -337,11 +473,36 @@ export class GraphQLService
         }
         return new cls();
       },
-      globalFilters,
+      [],
       {
         pipes: globalPipes,
         guards: globalGuards,
         interceptors: globalInterceptors,
+        filters: globalFilters,
+        isRequestScopedEnhancer: (enhancer) =>
+          typeof enhancer === "function" && scopedEnhancerClasses.has(enhancer),
+        resolveScopedEnhancer: async <T>(
+          enhancer: Type<T> | T,
+          contextId: ContextId,
+        ): Promise<T> => {
+          if (typeof enhancer !== "function") {
+            return enhancer;
+          }
+          const cls = enhancer as Type<T>;
+          if (moduleRef) {
+            return await moduleRef.resolve(cls, contextId, { strict: false });
+          }
+          return new cls();
+        },
+        ensureContextId: (ctx) => {
+          let id = getGraphQLContextId(ctx);
+          if (!id) {
+            id = ContextIdFactory.create();
+            setGraphQLContextId(ctx, id);
+            moduleRef?.registerRequestByContextId(ctx, id);
+          }
+          return id;
+        },
       },
     );
 
@@ -886,14 +1047,29 @@ export class GraphQLService
     wantsSse: boolean,
     isGetRequest: boolean,
   ): Promise<Response> {
-    const contextValue: Record<string, unknown> = this.options.context
-      ? await this.options.context({ req, res })
-      : { req, res };
+    const rawContext =
+      typeof this.options.context === "function"
+        ? await this.options.context({ req, res })
+        : this.options.context && typeof this.options.context === "object"
+          ? this.options.context
+          : undefined;
+    const contextValue: Record<string, unknown> =
+      rawContext && typeof rawContext === "object"
+        ? Object.assign(
+            Object.create(Object.getPrototypeOf(rawContext) as object | null),
+            rawContext,
+          )
+        : {};
     if (!("req" in contextValue)) {
       contextValue.req = req;
     }
     if (res && !("res" in contextValue)) {
       contextValue.res = res;
+    }
+    if (this.moduleRef) {
+      const contextId = ContextIdFactory.create();
+      setGraphQLContextId(contextValue, contextId);
+      this.moduleRef.registerRequestByContextId(contextValue, contextId);
     }
 
     // Parse early to inspect operation kind (mutation over GET / subscription over SSE)

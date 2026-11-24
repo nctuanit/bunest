@@ -253,40 +253,34 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: Expected Scope.REQUEST HelloResolver to instantiate once per request (HelloResolver.COUNTER === 3); actual bootstrap fails with UnknownDependencyException on @Inject(CONTEXT) because packages/graphql/src/constants.ts exports CONTEXT = "REQUEST" (string) instead of a container-bound GraphQL context/REQUEST token, AND packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) skips all Scope.REQUEST resolvers where wrapper.instance === undefined.
-      it.skip("should create resolver for each request", async () => {
+      it("should create resolver for each request", async () => {
         await runThreeRequests();
         expect(HelloResolver.COUNTER).toEqual(3);
       });
 
-      // BUNEST_BUG: Expected Scope.REQUEST UsersService to instantiate once per request (UsersService.COUNTER === 3); actual compile throws UnknownDependencyException for token "REQUEST" (CONTEXT) in packages/graphql/src/constants.ts + packages/core/src/di/di-container.ts, and packages/graphql/src/driver/graphql-http.handler.ts never resolves request-scoped resolvers/services per GraphQL operation.
-      it.skip("should create service for each request", async () => {
+      it("should create service for each request", async () => {
         await runThreeRequests();
         expect(UsersService.COUNTER).toEqual(3);
       });
 
-      // BUNEST_BUG: Expected singleton META provider to be shared across 3 requests (Meta.COUNTER === 1) while request-scoped HelloModule serves GraphQL queries; actual HelloModule fails to compile due to unresolved @Inject(CONTEXT) ("REQUEST") token in packages/graphql/src/constants.ts and missing request-scoped GraphQL resolver support in packages/graphql/src/driver/graphql-http.handler.ts.
-      it.skip("should share static provider across requests", async () => {
+      it("should share static provider across requests", async () => {
         await runThreeRequests();
         expect(Meta.COUNTER).toEqual(1);
       });
 
-      // BUNEST_BUG: Expected Scope.REQUEST Interceptor to instantiate once per request (COUNTER === 3, REQUEST_SCOPED_DATA === [1, 1, 1]); actual packages/graphql/src/schema/graphql-schema.factory.ts (compileMethod) resolves interceptors eagerly once at schema build time instead of per request, and HelloModule fails on CONTEXT token / Scope.REQUEST resolver discovery.
-      it.skip("should create request scoped interceptor for each request", async () => {
+      it("should create request scoped interceptor for each request", async () => {
         await runThreeRequests();
         expect(Interceptor.COUNTER).toEqual(3);
         expect(Interceptor.REQUEST_SCOPED_DATA).toEqual([1, 1, 1]);
       });
 
-      // BUNEST_BUG: Expected Scope.REQUEST Guard to instantiate once per request (COUNTER === 3, REQUEST_SCOPED_DATA === [1, 1, 1]); actual packages/graphql/src/schema/graphql-schema.factory.ts (compileMethod) resolves guards eagerly once at schema build time instead of per request, and HelloModule fails on CONTEXT token / Scope.REQUEST resolver discovery.
-      it.skip("should create request scoped guard for each request", async () => {
+      it("should create request scoped guard for each request", async () => {
         await runThreeRequests();
         expect(Guard.COUNTER).toEqual(3);
         expect(Guard.REQUEST_SCOPED_DATA).toEqual([1, 1, 1]);
       });
 
-      // BUNEST_BUG: Expected @Inject(CONTEXT) in Scope.REQUEST UsersService to receive the per-request GraphQL context ({ req }) across 3 requests; actual packages/graphql/src/constants.ts defines CONTEXT = "REQUEST" which is not registered in DIContainer/RequestContainer (throws UnknownDependencyException at compile time).
-      it.skip("should inject REQUEST context into request-scoped services", async () => {
+      it("should inject REQUEST context into request-scoped services", async () => {
         await runThreeRequests();
         expect(UsersService.REQUEST_CONTEXTS).toHaveLength(3);
         UsersService.REQUEST_CONTEXTS.forEach((context) => {

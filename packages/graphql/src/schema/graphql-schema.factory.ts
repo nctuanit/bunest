@@ -3,6 +3,8 @@ import {
   type BunestInterceptor,
   type CallHandler,
   type CanActivate,
+  type ContextId,
+  ContextIdFactory,
   type ExceptionFilter,
   type ExceptionFilterLike,
   ForbiddenException,
@@ -14,6 +16,7 @@ import {
   Optional,
   type PipeLike,
   type PipeTransform,
+  Scope,
   type Type,
 } from "@bunest/core";
 import {
@@ -92,6 +95,56 @@ export type GqlEnhancerResolverFn = <T = unknown>(
   enhancer: Type<T> | T,
 ) => T | Promise<T>;
 
+export interface ScopedGqlEnhancer<T = unknown> {
+  readonly __gqlScoped: true;
+  readonly metatype?: Type<unknown>;
+  readonly resolve: (contextId: ContextId) => Promise<T>;
+}
+
+type ResolvableEnhancer<T> = T | ScopedGqlEnhancer<T>;
+
+function isScopedEnhancer<T>(
+  value: ResolvableEnhancer<T> | unknown,
+): value is ScopedGqlEnhancer<T> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { __gqlScoped?: unknown }).__gqlScoped === true
+  );
+}
+
+const contextIdMap = new WeakMap<object, ContextId>();
+export function setGraphQLContextId(
+  context: object,
+  contextId: ContextId,
+): void {
+  contextIdMap.set(context, contextId);
+}
+export function getGraphQLContextId(context: object): ContextId | undefined {
+  return contextIdMap.get(context);
+}
+
+const requestScopedResolverFactories = new WeakMap<
+  object,
+  (contextId: ContextId) => Promise<object>
+>();
+
+export function createRequestScopedResolverProxy(
+  ctor: Type<unknown>,
+  resolveInstance: (contextId: ContextId) => Promise<object>,
+): object {
+  const sentinel = Object.create(ctor.prototype as object) as object;
+  requestScopedResolverFactories.set(sentinel, resolveInstance);
+  return sentinel;
+}
+
+export function createScopedEnhancer<T>(
+  resolve: (contextId: ContextId) => Promise<T>,
+  metatype?: Type<unknown>,
+): ScopedGqlEnhancer<T> {
+  return { __gqlScoped: true, metatype, resolve };
+}
+
 function defaultEnhancerResolver<T = unknown>(enhancer: Type<T> | T): T {
   if (typeof enhancer === "function") {
     return new (enhancer as Type<T>)();
@@ -100,22 +153,27 @@ function defaultEnhancerResolver<T = unknown>(enhancer: Type<T> | T): T {
 }
 
 interface CompiledGqlFilter {
-  readonly filter: ExceptionFilter;
+  readonly filter: ResolvableEnhancer<ExceptionFilter>;
   readonly catchTypes: readonly Type<any>[];
 }
 
 function extractGqlFilterCatchTypes(
-  filterLike: ExceptionFilterLike,
-  resolved: ExceptionFilter,
+  filterLike: ExceptionFilterLike | ScopedGqlEnhancer<ExceptionFilter>,
+  resolved?: ExceptionFilter,
 ): readonly Type<any>[] {
   const ctors: Function[] = [];
-  if (typeof filterLike === "function") {
+  if (isScopedEnhancer(filterLike)) {
+    if (filterLike.metatype) {
+      ctors.push(filterLike.metatype);
+    }
+  } else if (typeof filterLike === "function") {
     ctors.push(filterLike);
   } else if (filterLike && typeof filterLike === "object") {
     const c = (filterLike as { constructor?: Function }).constructor;
     if (c) ctors.push(c);
   }
-  const resolvedCtor = (resolved as { constructor?: Function })?.constructor;
+  const resolvedCtor = (resolved as { constructor?: Function } | undefined)
+    ?.constructor;
   if (resolvedCtor && !ctors.includes(resolvedCtor)) {
     ctors.push(resolvedCtor);
   }
@@ -146,14 +204,15 @@ function matchesGqlFilter(
 interface CompiledGqlMethod {
   readonly resolverClass: Type<unknown>;
   readonly instance: object;
+  readonly resolveInstance?: (contextId: ContextId) => Promise<object>;
   readonly handlerKey: string | symbol;
   readonly handlerFn: Function;
   readonly params: readonly GqlParamMetadata[];
   readonly argCount: number;
-  readonly guards: readonly CanActivate[];
-  readonly interceptors: readonly BunestInterceptor[];
-  readonly sharedPipes: readonly PipeTransform[];
-  readonly paramPipes: readonly (readonly PipeTransform[])[];
+  readonly guards: readonly ResolvableEnhancer<CanActivate>[];
+  readonly interceptors: readonly ResolvableEnhancer<BunestInterceptor>[];
+  readonly sharedPipes: readonly ResolvableEnhancer<PipeTransform>[];
+  readonly paramPipes: readonly (readonly ResolvableEnhancer<PipeTransform>[])[];
   readonly filters: readonly CompiledGqlFilter[];
 }
 
@@ -366,10 +425,22 @@ function remapSubscriptionArgs(
 }
 
 export interface GqlGlobalEnhancers {
-  readonly pipes?: readonly PipeLike[];
-  readonly guards?: readonly GuardLike[];
-  readonly interceptors?: readonly InterceptorLike[];
-  readonly filters?: readonly ExceptionFilterLike[];
+  readonly pipes?: readonly (PipeLike | ScopedGqlEnhancer<PipeTransform>)[];
+  readonly guards?: readonly (GuardLike | ScopedGqlEnhancer<CanActivate>)[];
+  readonly interceptors?: readonly (
+    | InterceptorLike
+    | ScopedGqlEnhancer<BunestInterceptor>
+  )[];
+  readonly filters?: readonly (
+    | ExceptionFilterLike
+    | ScopedGqlEnhancer<ExceptionFilter>
+  )[];
+  readonly resolveScopedEnhancer?: <T = unknown>(
+    enhancer: Type<T> | T,
+    contextId: ContextId,
+  ) => Promise<T>;
+  readonly isRequestScopedEnhancer?: (enhancer: unknown) => boolean;
+  readonly ensureContextId?: (context: Record<string, unknown>) => ContextId;
 }
 
 /**
@@ -394,10 +465,22 @@ export class GraphQLSchemaFactory {
       readonly compiled: CompiledGqlMethod;
     }>
   >();
-  private activeGlobalFilters: readonly ExceptionFilterLike[] = [];
-  private activeGlobalPipes: readonly PipeLike[] = [];
-  private activeGlobalGuards: readonly GuardLike[] = [];
-  private activeGlobalInterceptors: readonly InterceptorLike[] = [];
+  private activeGlobalFilters: readonly (
+    | ExceptionFilterLike
+    | ScopedGqlEnhancer<ExceptionFilter>
+  )[] = [];
+  private activeGlobalPipes: readonly (
+    | PipeLike
+    | ScopedGqlEnhancer<PipeTransform>
+  )[] = [];
+  private activeGlobalGuards: readonly (
+    | GuardLike
+    | ScopedGqlEnhancer<CanActivate>
+  )[] = [];
+  private activeGlobalInterceptors: readonly (
+    | InterceptorLike
+    | ScopedGqlEnhancer<BunestInterceptor>
+  )[] = [];
   private activeBuildSchemaOptions: BuildSchemaOptions = {};
   private activeFieldResolverEnhancers?: readonly Enhancer[];
   private readonly typesLoader = new GraphQLTypesLoader();
@@ -460,6 +543,49 @@ export class GraphQLSchemaFactory {
     }
 
     return this.buildCodeFirst(resolverInstances, options);
+  }
+
+  private async compileEnhancer<T>(
+    enhancer: Type<T> | T | ScopedGqlEnhancer<T>,
+  ): Promise<ResolvableEnhancer<T>> {
+    if (isScopedEnhancer<T>(enhancer)) {
+      return enhancer;
+    }
+    if (typeof enhancer === "function") {
+      const cls = enhancer as Type<T>;
+      const injectableMeta = MetadataRegistry.get<{ scope?: Scope }>(
+        METADATA_KEYS.INJECTABLE,
+        cls,
+      );
+      const isScoped =
+        injectableMeta?.scope === Scope.REQUEST ||
+        this.defaultGlobalEnhancers.isRequestScopedEnhancer?.(cls) === true;
+      if (isScoped && this.defaultGlobalEnhancers.resolveScopedEnhancer) {
+        const scopedResolver =
+          this.defaultGlobalEnhancers.resolveScopedEnhancer;
+        return createScopedEnhancer(
+          (contextId) => scopedResolver<T>(cls, contextId),
+          cls,
+        );
+      }
+      try {
+        return await this.resolveEnhancer<T>(cls);
+      } catch (err) {
+        if (this.defaultGlobalEnhancers.resolveScopedEnhancer) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("Request-scoped") || msg.includes("RequestContainer")) {
+            const scopedResolver =
+              this.defaultGlobalEnhancers.resolveScopedEnhancer;
+            return createScopedEnhancer(
+              (contextId) => scopedResolver<T>(cls, contextId),
+              cls,
+            );
+          }
+        }
+        throw err;
+      }
+    }
+    return await this.resolveEnhancer<T>(enhancer);
   }
 
   private async compileMethod(
@@ -533,42 +659,42 @@ export class GraphQLSchemaFactory {
         ) ?? [])
       : [];
 
-    const guards: CanActivate[] = [];
+    const guards: ResolvableEnhancer<CanActivate>[] = [];
     if (enableGuards) {
       for (const g of [
         ...this.activeGlobalGuards,
         ...classGuards,
         ...methodGuards,
       ]) {
-        guards.push(await this.resolveEnhancer<CanActivate>(g));
+        guards.push(await this.compileEnhancer<CanActivate>(g));
       }
     }
 
-    const interceptors: BunestInterceptor[] = [];
+    const interceptors: ResolvableEnhancer<BunestInterceptor>[] = [];
     if (enableInterceptors) {
       for (const ic of [
         ...this.activeGlobalInterceptors,
         ...classInterceptors,
         ...methodInterceptors,
       ]) {
-        interceptors.push(await this.resolveEnhancer<BunestInterceptor>(ic));
+        interceptors.push(await this.compileEnhancer<BunestInterceptor>(ic));
       }
     }
 
-    const sharedPipes: PipeTransform[] = [];
+    const sharedPipes: ResolvableEnhancer<PipeTransform>[] = [];
     for (const p of [
       ...this.activeGlobalPipes,
       ...classPipes,
       ...methodPipes,
     ]) {
-      sharedPipes.push(await this.resolveEnhancer<PipeTransform>(p));
+      sharedPipes.push(await this.compileEnhancer<PipeTransform>(p));
     }
 
-    const paramPipes: PipeTransform[][] = [];
+    const paramPipes: ResolvableEnhancer<PipeTransform>[][] = [];
     for (const param of params) {
-      const list: PipeTransform[] = [];
+      const list: ResolvableEnhancer<PipeTransform>[] = [];
       for (const p of param.pipes ?? []) {
-        list.push(await this.resolveEnhancer<PipeTransform>(p));
+        list.push(await this.compileEnhancer<PipeTransform>(p));
       }
       paramPipes.push(list);
     }
@@ -581,10 +707,13 @@ export class GraphQLSchemaFactory {
         ...classFilters,
         ...this.activeGlobalFilters,
       ]) {
-        const resolved = await this.resolveEnhancer<ExceptionFilter>(f);
+        const compiledFilter = await this.compileEnhancer<ExceptionFilter>(f);
         filters.push({
-          filter: resolved,
-          catchTypes: extractGqlFilterCatchTypes(f, resolved),
+          filter: compiledFilter,
+          catchTypes: extractGqlFilterCatchTypes(
+            f,
+            isScopedEnhancer(compiledFilter) ? undefined : compiledFilter,
+          ),
         });
       }
     }
@@ -592,6 +721,7 @@ export class GraphQLSchemaFactory {
     return {
       resolverClass,
       instance,
+      resolveInstance: requestScopedResolverFactories.get(instance),
       handlerKey,
       handlerFn,
       params,
@@ -614,6 +744,27 @@ export class GraphQLSchemaFactory {
       const ctxObj = contextValue ?? {};
       const argsObj = rawArgs ?? {};
 
+      let cachedContextId: ContextId | undefined;
+      const getCtxId = (): ContextId => {
+        if (!cachedContextId) {
+          cachedContextId =
+            getGraphQLContextId(ctxObj) ??
+            this.defaultGlobalEnhancers.ensureContextId?.(ctxObj) ??
+            ContextIdFactory.create();
+          setGraphQLContextId(ctxObj, cachedContextId);
+        }
+        return cachedContextId;
+      };
+
+      const resolveMaybeScoped = async <T>(
+        entry: ResolvableEnhancer<T>,
+      ): Promise<T> => {
+        if (isScopedEnhancer<T>(entry)) {
+          return await entry.resolve(getCtxId());
+        }
+        return entry;
+      };
+
       const executionContext = new GraphQLExecutionContextHost(
         parent,
         argsObj,
@@ -625,10 +776,11 @@ export class GraphQLSchemaFactory {
       );
 
       try {
-        // 1. Guards (Resolver -> Method)
+        // 1. Guards (Global -> Resolver -> Method)
         for (let i = 0; i < compiled.guards.length; i++) {
-          const guard = compiled.guards[i];
-          if (!guard) continue;
+          const guardEntry = compiled.guards[i];
+          if (!guardEntry) continue;
+          const guard = await resolveMaybeScoped(guardEntry);
           const allowed = await guard.canActivate(executionContext);
           if (!allowed) {
             throw new ForbiddenException("Forbidden resource");
@@ -637,6 +789,10 @@ export class GraphQLSchemaFactory {
 
         // 2. Interceptors wrapping Parameter Extraction -> Pipes -> Resolver Method
         const invokeInner = async (): Promise<unknown> => {
+          const targetInstance = compiled.resolveInstance
+            ? await compiled.resolveInstance(getCtxId())
+            : compiled.instance;
+
           let callArgs: unknown[];
 
           if (compiled.params.length === 0) {
@@ -675,8 +831,9 @@ export class GraphQLSchemaFactory {
               };
 
               for (let p = 0; p < compiled.sharedPipes.length; p++) {
-                const pipe = compiled.sharedPipes[p];
-                if (pipe) {
+                const pipeEntry = compiled.sharedPipes[p];
+                if (pipeEntry) {
+                  const pipe = await resolveMaybeScoped(pipeEntry);
                   value = await pipe.transform(value, argMeta);
                 }
               }
@@ -684,8 +841,9 @@ export class GraphQLSchemaFactory {
               const pPipes = compiled.paramPipes[i];
               if (pPipes) {
                 for (let p = 0; p < pPipes.length; p++) {
-                  const pipe = pPipes[p];
-                  if (pipe) {
+                  const pipeEntry = pPipes[p];
+                  if (pipeEntry) {
+                    const pipe = await resolveMaybeScoped(pipeEntry);
                     value = await pipe.transform(value, argMeta);
                   }
                 }
@@ -697,7 +855,7 @@ export class GraphQLSchemaFactory {
 
           return await (
             compiled.handlerFn as (...a: unknown[]) => unknown
-          ).apply(compiled.instance, callArgs);
+          ).apply(targetInstance, callArgs);
         };
 
         if (compiled.interceptors.length === 0) {
@@ -706,8 +864,9 @@ export class GraphQLSchemaFactory {
 
         let nextHandler: CallHandler = { handle: invokeInner };
         for (let i = compiled.interceptors.length - 1; i >= 0; i--) {
-          const interceptor = compiled.interceptors[i];
-          if (!interceptor) continue;
+          const interceptorEntry = compiled.interceptors[i];
+          if (!interceptorEntry) continue;
+          const interceptor = await resolveMaybeScoped(interceptorEntry);
           const currentNext = nextHandler;
           nextHandler = {
             handle: () =>
@@ -724,7 +883,8 @@ export class GraphQLSchemaFactory {
           if (!matchesGqlFilter(err, entry.catchTypes)) {
             continue;
           }
-          return await entry.filter.catch(err, executionContext);
+          const filterInstance = await resolveMaybeScoped(entry.filter);
+          return await filterInstance.catch(err, executionContext);
         }
         throw err;
       }

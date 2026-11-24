@@ -178,8 +178,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected request-scoped FactoryResolver query { viaFactory } to fail in provider factory and route through GlobalCreationFilter ({ data: null, errors: [{ message: "caught by global filter" }] }); actual res.body.data is undefined (Cannot query field "viaFactory" on type "Query") because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) skips all Scope.REQUEST resolvers where wrapper.instance === undefined and never instantiates resolvers per request.
-      it.skip("routes a request-scoped factory error through global filters", async () => {
+      it("routes a request-scoped factory error through global filters", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ viaFactory }" });
@@ -187,8 +186,7 @@ describeConformance(
         expect(res.body.errors[0].message).toBe("caught by global filter");
       });
 
-      // BUNEST_BUG: Expected request-scoped ConstructorResolver query { viaConstructor } to fail in FailingService constructor and route through ResolverCreationFilter ({ data: null, errors: [{ message: "caught by resolver filter" }] }); actual res.body.data is undefined because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) skips Scope.REQUEST resolvers where wrapper.instance === undefined.
-      it.skip("routes a request-scoped constructor error through resolver filters", async () => {
+      it("routes a request-scoped constructor error through resolver filters", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ viaConstructor }" });
@@ -196,8 +194,7 @@ describeConformance(
         expect(res.body.errors[0].message).toBe("caught by resolver filter");
       });
 
-      // BUNEST_BUG: Expected request-scoped UnfilteredResolver query { viaUnfiltered } to surface original provider factory error ({ data: null, errors: [{ message: "no filter for this one" }] }); actual res.body.data is undefined because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) skips Scope.REQUEST resolvers where wrapper.instance === undefined.
-      it.skip("keeps the original error when no filter matches", async () => {
+      it("keeps the original error when no filter matches", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ viaUnfiltered }" });

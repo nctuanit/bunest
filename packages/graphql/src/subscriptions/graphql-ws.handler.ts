@@ -530,9 +530,12 @@ export class GraphQLWsHandler {
         extra: data.extra,
       };
 
-      const customContext = this.options.context
-        ? await this.options.context(connCtx, msg)
-        : {};
+      const customContext =
+        typeof this.options.context === "function"
+          ? await this.options.context(connCtx, msg)
+          : this.options.context && typeof this.options.context === "object"
+            ? (this.options.context as Record<string, unknown>)
+            : {};
 
       if (entry.isCancelled()) {
         releaseSlot();
@@ -540,10 +543,10 @@ export class GraphQLWsHandler {
       }
 
       const contextValue: Record<string, unknown> = {
-        ...data.extra,
-        ...customContext,
         req: data.request,
         connectionParams: data.connectionParams,
+        ...data.extra,
+        ...customContext,
       };
 
       if (opKind !== "subscription") {
