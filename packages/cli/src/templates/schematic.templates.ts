@@ -101,6 +101,8 @@ export interface BuildSchematicOptions {
   readonly packageName?: string;
   readonly type?: ResourceTransportType;
   readonly crud?: boolean;
+  readonly rootDir?: string;
+  readonly prefix?: string;
 }
 
 function singularizeName(kebab: string): string {
@@ -437,7 +439,8 @@ describe("${pascal}Resolver", () => {
     }
 
     case "library": {
-      const libRoot = joinRel(subDir, "libs", kebab);
+      const libRootBase = options.rootDir ?? "libs";
+      const libRoot = joinRel(subDir, libRootBase, kebab);
       const libSrc = joinRel(libRoot, "src");
       files.push({
         relativePath: joinRel(libSrc, "index.ts"),
@@ -509,7 +512,8 @@ describe("${pascal}Service", () => {
     }
 
     case "sub-app": {
-      const appRoot = joinRel(subDir, "apps", kebab);
+      const appRootBase = options.rootDir ?? "apps";
+      const appRoot = joinRel(subDir, appRootBase, kebab);
       const appSrc = joinRel(appRoot, "src");
       files.push({
         relativePath: joinRel(appSrc, "main.ts"),

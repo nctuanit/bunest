@@ -257,8 +257,7 @@ describeConformance(
       "Bunest relies on Bun.build, bun:test, and bun check instead of rspack/webpack/oxlint/jest",
     );
 
-    // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not create or update bunest.json to register projects.<name> ({ type: "library", root: "libs/<name>", sourceRoot: "libs/<name>/src" }).
-    it.skip("should register the library in bunest.json", async () => {
+    it("should register the library in bunest.json", async () => {
       await generateSchematic({
         schematic: "library",
         name: "project",
@@ -272,8 +271,7 @@ describeConformance(
       expect(config.projects?.project?.root).toBe("libs/project");
     });
 
-    // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not update an existing .bunestrc.json / bunest.json in place while preserving existing sourceRoot and compilerOptions.
-    it.skip("should update existing .bunestrc.json when it is the config file in use", async () => {
+    it("should update existing .bunestrc.json when it is the config file in use", async () => {
       writeTextSync(join(tempDir, ".bunestrc.json"), JSON.stringify({
           sourceRoot: "source",
           compilerOptions: { deleteOutDir: true },
@@ -298,8 +296,7 @@ describeConformance(
       expect(config.projects?.project?.root).toBe("libs/project");
     });
 
-    // BUNEST_BUG: GenerateSchematicOptions and generateSchematic("library") in packages/cli/src/commands/generate.ts lack a "prefix" option and do not add compilerOptions.paths["<prefix>/<name>"] and "<prefix>/<name>/*" to tsconfig.json.
-    it.skip("should add paths to tsconfig.json with custom prefix", async () => {
+    it("should add paths to tsconfig.json with custom prefix", async () => {
       writeTextSync(join(tempDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ESNext" } }));
 
       await generateSchematic({
@@ -326,8 +323,7 @@ describeConformance(
       expect(tsconfig.compilerOptions.target).toBe("ESNext");
     });
 
-    // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not add default "@app/<name>" and "@app/<name>/*" path aliases to tsconfig.json when no prefix is given.
-    it.skip("should default the prefix to @app in tsconfig.json when none is given", async () => {
+    it("should default the prefix to @app in tsconfig.json when none is given", async () => {
       writeTextSync(join(tempDir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
 
       await generateSchematic({
@@ -347,8 +343,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: buildSchematicFiles("library") in packages/cli/src/templates/schematic.templates.ts hardcodes "libs/<kebab>" and does not support a custom rootDir option.
-    it.skip("should support custom rootDir for library output", async () => {
+    it("should support custom rootDir for library output", async () => {
       const result = await generateSchematic({
         schematic: "library",
         name: "project",
@@ -361,8 +356,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not update or sort library keys in tsconfig.json / bunest.json or preserve JSONC comments.
-    it.skip("should preserve comments and sort library names in bunest.json and tsconfig.json", async () => {
+    it("should preserve comments and sort library names in bunest.json and tsconfig.json", async () => {
       writeTextSync(join(tempDir, "bunest.json"), `{\n  // monorepo projects\n  "projects": {\n    "z-lib": {}\n  }\n}`);
       writeTextSync(join(tempDir, "tsconfig.json"), `{\n  // project-wide compiler options\n  "compilerOptions": {\n    "strict": true,\n    "paths": {\n      "z-lib": ["./libs/z-lib/src"]\n    }\n  }\n}`);
 

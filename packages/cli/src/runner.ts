@@ -347,6 +347,8 @@ export async function runCli(
             collection: getStringFlag(flags, "collection"),
             type: resourceType,
             crud,
+            rootDir: getStringFlag(flags, "root-dir"),
+            prefix: getStringFlag(flags, "prefix"),
             skipImport: getBoolFlag(flags, "skip-import"),
             module: getStringFlag(flags, "module"),
             cwd: io.cwd,

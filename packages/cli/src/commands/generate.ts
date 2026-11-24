@@ -19,6 +19,11 @@ import {
   getModuleDeclarationTarget,
 } from "../utils/module-declarator";
 import {
+  updateMonorepoConfig,
+  updateTsconfigForLibrary,
+  updateTsconfigForSubApp,
+} from "../utils/monorepo-updater";
+import {
   parseSchematicName,
   toCamelCase,
   toKebabCase,
@@ -214,6 +219,8 @@ export async function generateSchematic(
     packageName: appMeta?.packageName,
     type: options.type,
     crud: options.crud,
+    rootDir: options.rootDir,
+    prefix: options.prefix,
   });
 
   if (schematic === "application" && !force && !dryRun) {
@@ -235,6 +242,39 @@ export async function generateSchematic(
     dryRun,
     force,
   });
+
+  if (!dryRun && schematic === "library") {
+    const libRootDir = options.rootDir ?? "libs";
+    updateMonorepoConfig({
+      cwd,
+      name: parsedName.kebab,
+      type: "library",
+      rootDir: libRootDir,
+      io,
+    });
+    updateTsconfigForLibrary({
+      cwd,
+      name: parsedName.kebab,
+      rootDir: libRootDir,
+      prefix: options.prefix,
+    });
+  }
+
+  if (!dryRun && schematic === "sub-app") {
+    const appRootDir = options.rootDir ?? "apps";
+    updateMonorepoConfig({
+      cwd,
+      name: parsedName.kebab,
+      type: "application",
+      rootDir: appRootDir,
+      io,
+    });
+    updateTsconfigForSubApp({
+      cwd,
+      name: parsedName.kebab,
+      rootDir: appRootDir,
+    });
+  }
 
   if (!dryRun && !options.skipImport) {
     const declTarget = getModuleDeclarationTarget(schematic, parsedName);

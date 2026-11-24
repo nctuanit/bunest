@@ -104,6 +104,8 @@ export interface GenerateSchematicOptions {
   readonly minimal?: boolean;
   readonly type?: ResourceTransportType;
   readonly crud?: boolean;
+  readonly rootDir?: string;
+  readonly prefix?: string;
   readonly skipImport?: boolean;
   readonly module?: string;
   readonly cwd?: string;

@@ -1,5 +1,6 @@
 import { join, readTextSync, resolve, statPath } from "@bunest/core";
 import type { TypegenConfiguration } from "../typegen/types";
+import { stripJsonc } from "../utils/monorepo-updater";
 
 // ============================================================================
 // NestJS / Bunest CLI Configuration Types (100% @nestjs/cli parity)
@@ -226,7 +227,7 @@ export async function loadCliConfiguration(
       : readTextSync(targetPath);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawText);
+    parsed = JSON.parse(stripJsonc(rawText));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid JSON in configuration file ${targetPath}: ${msg}`);
