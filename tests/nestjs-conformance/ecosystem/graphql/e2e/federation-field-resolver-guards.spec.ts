@@ -139,8 +139,7 @@ describeConformance(
       };
     }
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) does not bind @ResolveField() (and its @UseGuards()) declared on @Resolver(() => Person) onto implementing @ObjectType() Employee; `{ employee { department salary } }` returns HTTP 400 validation error (`data` undefined) instead of `data: null` with `"Forbidden resource"`.
-    it.skip("should run the guards of an interface field resolver on implementing types", async () => {
+    it("should run the guards of an interface field resolver on implementing types", async () => {
       const result = await execute(`{ employee { department salary } }`);
       expect(result.data).toBeNull();
       expect(result.errors?.[0]?.message).toBe("Forbidden resource");
@@ -152,8 +151,7 @@ describeConformance(
       expect(result.errors?.[0]?.message).toBe("Forbidden resource");
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) ignores `options.resolvers` in code-first mode (`applyResolversMap` is only invoked in `buildSchemaFirst`), causing `User.displayName` to fail with `Cannot return null for non-nullable field User.displayName.` instead of returning `"ALICE"`.
-    it.skip('should apply the "resolvers" option to the same type', async () => {
+    it('should apply the "resolvers" option to the same type', async () => {
       const result = await execute(`{ user { displayName } }`);
       expect(result.errors).toBeUndefined();
       expect(result.data).toEqual({ user: { displayName: "ALICE" } });
