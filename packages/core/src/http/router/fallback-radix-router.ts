@@ -152,7 +152,20 @@ function matchVersionGroup(
       }
     }
   }
-  return group.neutral;
+  if (group.neutral) {
+    // `@Version([VERSION_NEUTRAL, "2"])` only accepts unversioned requests or "2", not "1".
+    // Pure `@Version(VERSION_NEUTRAL)` accepts any version or unversioned request.
+    const versions = group.neutral.compiled.route.versions;
+    const hasExplicitAlongWithNeutral =
+      versions !== undefined &&
+      versions.length > 1 &&
+      versions.includes(VERSION_NEUTRAL);
+    if (hasExplicitAlongWithNeutral && requestedVersions.length > 0) {
+      return undefined;
+    }
+    return group.neutral;
+  }
+  return undefined;
 }
 
 function safeDecodeSegment(segment: string): string {

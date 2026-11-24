@@ -61,8 +61,7 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /param/hello (X-API-Version: 1) to return "Parameter V1!", but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/core/src/http/router/route-compiler.ts:475).
-        it.skip("V1", async () => {
+        it("V1", async () => {
           await request(app)
             .get("/param/hello")
             .set({ "X-API-Version": "1" })
@@ -70,8 +69,7 @@ describeConformance(
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /param/hello (X-API-Version: 2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
-        it.skip("V2", async () => {
+        it("V2", async () => {
           await request(app)
             .get("/param/hello")
             .set({ "X-API-Version": "2" })
@@ -329,8 +327,7 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /param/hello (X-API-Version: 1) to return "Parameter V1!", but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/core/src/http/router/route-compiler.ts:475).
-        it.skip("V1", async () => {
+        it("V1", async () => {
           await request(app)
             .get("/param/hello")
             .set({ "X-API-Version": "1" })
@@ -338,8 +335,7 @@ describeConformance(
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /param/hello (X-API-Version: 2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
-        it.skip("V2", async () => {
+        it("V2", async () => {
           await request(app)
             .get("/param/hello")
             .set({ "X-API-Version": "2" })

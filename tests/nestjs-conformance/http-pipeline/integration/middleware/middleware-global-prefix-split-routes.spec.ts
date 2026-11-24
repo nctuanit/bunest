@@ -122,8 +122,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /api/files/x/versions to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not recognize named wildcard `*path` in `files/*path`, treating it as a literal single segment.
-      it.skip(`forRoutes('files/*path') should run on the prefixed routes it covers when it reads as excluded`, async () => {
+      it(`forRoutes('files/*path') should run on the prefixed routes it covers when it reads as excluded`, async () => {
         // "files/:name" matches the text "files/*path", but not the route
         // "files/:name/versions", which the router keeps under the prefix
         await createApp([FilesController], "files/*path", {
@@ -135,8 +134,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /files/x/versions to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not recognize named wildcard `*path` in `files/*path`.
-      it.skip(`forRoutes('files/*path') should run on the excluded routes it covers`, async () => {
+      it(`forRoutes('files/*path') should run on the excluded routes it covers`, async () => {
         await createApp([FilesController], "files/*path", {
           exclude: ["files/:name/versions"],
         });
@@ -146,8 +144,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /health/deep to be excluded from global prefix via `health/{*path}` and return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not support path-to-regexp v8 `{*path}` syntax.
-      it.skip(`an all-methods route should run on a route excluded for GET only`, async () => {
+      it(`an all-methods route should run on a route excluded for GET only`, async () => {
         await createApp(
           [HealthController],
           { path: "health/deep", method: RequestMethod.ALL },
@@ -172,8 +169,7 @@ describeConformance(
       });
 
       describe("mounting a plain string on its sub-paths", () => {
-        // BUNEST_BUG: Expected GET /api/users/42 to run middleware ("middleware") under forRoutes('users'), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) checks exact segment count for plain strings instead of prefix-mounting sub-paths like "/users/:id".
-        it.skip(`forRoutes('users') should run on the prefixed routes below it when it is excluded`, async () => {
+        it(`forRoutes('users') should run on the prefixed routes below it when it is excluded`, async () => {
           await createApp([UsersController], "users", {
             exclude: ["users"],
           });
@@ -183,8 +179,7 @@ describeConformance(
             .expect(200, MIDDLEWARE_VALUE);
         });
 
-        // BUNEST_BUG: Expected GET /api/users/42 to return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) matches static exclusion "users/me" against "/users/:id" (excluding it from prefix), and plain string forRoutes('users') does not mount on sub-paths.
-        it.skip(`forRoutes('users') should run on the excluded routes below it`, async () => {
+        it(`forRoutes('users') should run on the excluded routes below it`, async () => {
           await createApp([UsersController], "users", {
             exclude: ["users/me"],
           });
@@ -228,8 +223,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /documents/42 to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize path-to-regexp v8 `{*splat}` or `*path` catch-all wildcard syntax.
-      it.skip.each<[string, string | RouteInfo]>([
+      it.each<[string, string | RouteInfo]>([
         ["{*splat}", "{*splat}"],
         [
           "RequestMethod.ALL {*splat}",
@@ -253,8 +247,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Expected GET /v1/documents/42 to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize `{*splat}` catch-all wildcard syntax.
-      it.skip(`forRoutes('{*splat}') should run on the wildcard route excluded under the default version`, async () => {
+      it(`forRoutes('{*splat}') should run on the wildcard route excluded under the default version`, async () => {
         await createApp(
           DocumentsController,
           "{*splat}",
@@ -273,8 +266,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /billing/webhooks to be excluded from global prefix via case-insensitive "billing/webHooks" and return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) performs case-sensitive comparison on globalPrefix excludes and does not recognize `{*splat}`.
-      it.skip(`forRoutes('{*splat}') should run on a route excluded in another letter case`, async () => {
+      it(`forRoutes('{*splat}') should run on a route excluded in another letter case`, async () => {
         await createApp(BillingController, "{*splat}", ["billing/webHooks"]);
         await request(app!)
           .get("/billing/webhooks")

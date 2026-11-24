@@ -65,11 +65,14 @@ import {
 } from "../router/route-compiler";
 import { scanControllers } from "../scanner/controller-scanner";
 import {
+  matchesGlobalPrefixExclude,
   matchesRouteInfo,
   normalizePath as normalizeRoutePath,
+  type VersionedRouteRule,
 } from "../scanner/path-normalizer";
 import {
   extractRequestVersions,
+  isRuntimeVersioning,
   normalizeVersionValue,
 } from "../scanner/version-resolver";
 import {
@@ -1522,6 +1525,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         this.csrfOptions,
         prefix,
         this.globalPrefixOptions?.exclude,
+        this.versioningOptions,
       );
     }
 
@@ -1871,8 +1875,17 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         }
       }
 
-      // 2. Native path table match (exact Bun.serve({ routes }) precedence)
-      const nativeHit = table.nativeMatcher.match(pathname);
+      // 2. Native path table match (exact Bun.serve({ routes }) precedence;
+      //    when ignoreTrailingSlash is enabled, try trimmed path first so catch-all `/*` does not shadow `/foo/`)
+      const nativeLookupPath =
+        this.ignoreTrailingSlash && pathname.length > 1 && pathname.endsWith("/")
+          ? pathname.replace(/\/+$/, "") || "/"
+          : pathname;
+      const nativeHit =
+        table.nativeMatcher.match(nativeLookupPath) ??
+        (nativeLookupPath !== pathname
+          ? table.nativeMatcher.match(pathname)
+          : null);
       if (nativeHit) {
         const res = await nativeHit.target(req, server, nativeHit.params);
         if (res.status === 405 && this.rawRoutes.length > 0) {
@@ -1959,6 +1972,198 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
     const response = await registration.upgrade(req, server);
     return { handled: true, response };
+  }
+
+  private async tryDispatchStandaloneModuleMiddlewares(
+    table: CompiledRouteTable,
+    pathname: string,
+    req: Request,
+    server: BunServerLike | undefined,
+  ): Promise<Response | null> {
+    const reqMethod = req.method.toUpperCase() as RouteHttpMethod;
+    const normPath = normalizeRoutePath(pathname);
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(normPath);
+    } catch {
+      decodedPath = normPath;
+    }
+
+    const globalPrefixes =
+      this.globalPrefix === undefined
+        ? []
+        : (Array.isArray(this.globalPrefix)
+            ? this.globalPrefix
+            : [this.globalPrefix]
+          )
+            .map((p) => normalizeRoutePath(p))
+            .filter((p) => p !== "/");
+
+    const candidates: string[] = [normPath];
+    for (const gp of globalPrefixes) {
+      if (normPath === gp) {
+        candidates.push("/");
+      } else if (normPath.startsWith(`${gp}/`)) {
+        candidates.push(normPath.slice(gp.length) || "/");
+      }
+    }
+
+    const runtimeVer = isRuntimeVersioning(this.versioningOptions);
+    const reqVersions =
+      runtimeVer && this.versioningOptions
+        ? extractRequestVersions(req, this.versioningOptions)
+        : undefined;
+
+    const matchingMiddlewares: Array<CompiledMiddlewareConfig["middleware"]> = [];
+    for (let i = 0; i < this.moduleMiddlewares.length; i++) {
+      const cfg = this.moduleMiddlewares[i];
+      if (!cfg) continue;
+
+      if (cfg.include && cfg.include.length > 0) {
+        const included = cfg.include.some((rule) => {
+          // If global prefix is configured and this rule is NOT excluded from global prefix,
+          // only match prefixed path unless rule itself is wildcard or matches unprefixed excluded path.
+          const rulePath = typeof rule === "string" ? rule : rule.path;
+          const ruleNorm = normalizeRoutePath(rulePath);
+          const isWild =
+            rulePath.trim() === "*" ||
+            rulePath.trim() === "/*" ||
+            rulePath.trim().startsWith("{*");
+          const isExcludedFromPrefix =
+            globalPrefixes.length === 0 ||
+            isWild ||
+            matchesGlobalPrefixExclude(
+              reqMethod,
+              ruleNorm,
+              this.globalPrefixOptions?.exclude,
+            );
+          const matchTargets =
+            globalPrefixes.length > 0 && !isWild
+              ? isExcludedFromPrefix
+                ? [normPath]
+                : candidates.slice(1)
+              : candidates;
+          if (matchTargets.length === 0) return false;
+          return matchesRouteInfo(
+            rule as string | VersionedRouteRule,
+            reqMethod,
+            matchTargets,
+            reqVersions,
+            { allowStringPrefixMount: true },
+          );
+        });
+        if (!included) continue;
+      }
+
+      if (cfg.exclude && cfg.exclude.length > 0) {
+        const hasLineTerm = /[\r\n\u2028\u2029]/.test(decodedPath);
+        if (!hasLineTerm) {
+          const excluded = cfg.exclude.some((rule) =>
+            matchesRouteInfo(
+              rule as string | VersionedRouteRule,
+              reqMethod,
+              candidates,
+              reqVersions,
+            ),
+          );
+          if (excluded) continue;
+        }
+      }
+
+      matchingMiddlewares.push(cfg.middleware);
+    }
+
+    if (matchingMiddlewares.length === 0) {
+      return null;
+    }
+
+    const resCtx = this.createResponseContextForRaw();
+    const ctx = new RequestContext({
+      request: req,
+      server,
+      pathname,
+      trustProxy: this.trustProxy,
+      maxBodyBytes: this.bodyLimit,
+      bodyParser: this.bodyParserEnabled,
+      captureRawBody: this.rawBodyEnabled,
+      multipart: this.multipartOptions,
+      cookieSecrets: this.cookieSecrets,
+      responseContext: resCtx,
+    });
+
+    const invokeMiddleware = async (index: number): Promise<Response | null> => {
+      if (index >= matchingMiddlewares.length) {
+        return null;
+      }
+      const entry = matchingMiddlewares[index]!;
+      let resolvedFn:
+        | ((
+            r: Request,
+            res: HttpResponseContext,
+            next: () => Promise<Response>,
+          ) => unknown)
+        | undefined;
+      if (typeof entry === "function") {
+        const isClassCtor =
+          entry.prototype !== undefined &&
+          typeof (entry.prototype as { use?: unknown }).use === "function";
+        if (isClassCtor) {
+          const instance = await this.bridge.resolveEnhancer<{
+            use: (
+              r: Request,
+              res: HttpResponseContext,
+              n: () => Promise<Response>,
+            ) => unknown;
+          }>(entry as unknown as new (...args: unknown[]) => {
+            use: (
+              r: Request,
+              res: HttpResponseContext,
+              n: () => Promise<Response>,
+            ) => unknown;
+          });
+          resolvedFn = (r, res, n) => instance.use(r, res, n);
+        } else {
+          resolvedFn = entry as (
+            r: Request,
+            res: HttpResponseContext,
+            next: () => Promise<Response>,
+          ) => unknown;
+        }
+      } else if (entry && typeof entry === "object" && "use" in entry) {
+        const inst = entry as { use: Function };
+        resolvedFn = (r, res, n) => inst.use(r, res, n);
+      }
+
+      if (!resolvedFn) {
+        return invokeMiddleware(index + 1);
+      }
+
+      let nextResult: Response | null = null;
+      let nextCalled = false;
+      const result = await resolvedFn(req, resCtx, async () => {
+        nextCalled = true;
+        nextResult = await invokeMiddleware(index + 1);
+        return nextResult ?? new Response(null, { status: 404 });
+      });
+
+      const sent = resCtx.getSentResponse();
+      if (result instanceof Response) {
+        return mergeHeadersOntoNativeResponse(result, ctx);
+      }
+      if (sent) {
+        return mergeHeadersOntoNativeResponse(sent, ctx);
+      }
+      if (nextCalled) {
+        return nextResult;
+      }
+      return null;
+    };
+
+    try {
+      return await invokeMiddleware(0);
+    } catch (err) {
+      return executeFallbackException(err, ctx, table.runtime);
+    }
   }
 
   private async dispatchFallback(
@@ -2107,6 +2312,21 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       return this.securityHeaders
         ? applySecurityHeaders(preflight, this.securityHeaders)
         : preflight;
+    }
+
+    // 5.2. Standalone module middleware on unmatched paths (e.g. forRoutes('shop/admin'), forRoutes('*'), forRoutes({ path: 'middleware', method: GET }))
+    if (this.moduleMiddlewares.length > 0) {
+      const standaloneRes = await this.tryDispatchStandaloneModuleMiddlewares(
+        table,
+        pathname,
+        req,
+        server,
+      );
+      if (standaloneRes !== null) {
+        return this.securityHeaders
+          ? applySecurityHeaders(standaloneRes, this.securityHeaders)
+          : standaloneRes;
+      }
     }
 
     // 5.5. Custom NotFoundHandler (`httpAdapter.setNotFoundHandler`)

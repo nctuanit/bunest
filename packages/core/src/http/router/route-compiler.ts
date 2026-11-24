@@ -47,7 +47,12 @@ import {
 } from "../pipeline/execution-pipeline";
 import { compileParameters } from "../pipeline/param-extractor";
 import type { ScannedRoute } from "../scanner/controller-scanner";
-import { matchesMiddlewareForRoute } from "../scanner/path-normalizer";
+import {
+  evaluateMiddlewareForRoute,
+  matchesRouteInfo,
+  normalizePath,
+  type VersionedRouteRule,
+} from "../scanner/path-normalizer";
 import {
   extractRequestVersions,
   isRuntimeVersioning,
@@ -164,7 +169,18 @@ function matchCompiledVersionGroup(
       }
     }
   }
-  return group.neutral;
+  if (group.neutral) {
+    const versions = group.neutral.route.versions;
+    const hasExplicitAlongWithNeutral =
+      versions !== undefined &&
+      versions.length > 1 &&
+      versions.includes(VERSION_NEUTRAL);
+    if (hasExplicitAlongWithNeutral && requestedVersions.length > 0) {
+      return undefined;
+    }
+    return group.neutral;
+  }
+  return undefined;
 }
 
 function computeAllowHeaderForVersion(
@@ -537,20 +553,97 @@ export async function compileRoutes(
     const route = scannedRoutes[i];
     if (!route) continue;
 
-    // Pre-match module middlewares at bootstrap (zero per-request path matching)
+    // Pre-match module middlewares at bootstrap (zero per-request path matching for static routes;
+    // runtime guard only when dynamic exclude or runtime-versioned include/exclude applies)
     const matchedModuleMiddlewares: MiddlewareEntry[] = [];
     for (let m = 0; m < moduleMiddlewares.length; m++) {
       const cfg = moduleMiddlewares[m];
-      if (
-        cfg &&
-        matchesMiddlewareForRoute(
-          cfg,
-          route.method,
-          route.fullPath,
-          route.rawPathWithoutPrefix,
-        )
-      ) {
+      if (!cfg) continue;
+      const mode = evaluateMiddlewareForRoute(
+        cfg,
+        route.method,
+        route.fullPath,
+        route.rawPathWithoutPrefix,
+        route.versions,
+        runtimeVersioning,
+      );
+      if (mode === "always") {
         matchedModuleMiddlewares.push(cfg.middleware);
+      } else if (mode === "runtime") {
+        const innerMw = await resolveMiddlewareSingleton(
+          cfg.middleware,
+          bridge,
+          route.controller,
+        );
+        const rawPrefixLen =
+          route.fullPath !== route.rawPathWithoutPrefix &&
+          route.fullPath.endsWith(route.rawPathWithoutPrefix)
+            ? route.fullPath.length - route.rawPathWithoutPrefix.length
+            : 0;
+        const wrappedMw: MiddlewareEntry = (req, res, next) => {
+          const url = new URL(req.url);
+          const rawPathname = url.pathname;
+          let decodedPathname: string;
+          try {
+            decodedPathname = decodeURIComponent(rawPathname);
+          } catch {
+            decodedPathname = rawPathname;
+          }
+          const reqMethod = req.method.toUpperCase() as HttpMethod;
+          const reqVersions =
+            runtimeVersioning && versioning
+              ? extractRequestVersions(req, versioning)
+              : route.versions;
+          const strippedPathname =
+            rawPrefixLen > 0 && rawPathname.length >= rawPrefixLen
+              ? normalizePath(rawPathname.slice(rawPrefixLen))
+              : rawPathname;
+          const runtimeCandidates =
+            strippedPathname === rawPathname
+              ? [rawPathname]
+              : [rawPathname, strippedPathname];
+
+          if (cfg.include && cfg.include.length > 0) {
+            const included = cfg.include.some((rule) =>
+              matchesRouteInfo(
+                rule as string | VersionedRouteRule,
+                reqMethod,
+                runtimeCandidates,
+                reqVersions,
+                { allowStringPrefixMount: true },
+              ),
+            );
+            if (!included) {
+              return next();
+            }
+          }
+
+          if (cfg.exclude && cfg.exclude.length > 0) {
+            // Line terminators in decoded pathname must never bypass middleware via exclude patterns
+            const hasLineTerminator = /[\r\n\u2028\u2029]/.test(decodedPathname);
+            if (!hasLineTerminator) {
+              const excluded = cfg.exclude.some((rule) =>
+                matchesRouteInfo(
+                  rule as string | VersionedRouteRule,
+                  reqMethod,
+                  runtimeCandidates,
+                  reqVersions,
+                ),
+              );
+              if (excluded) {
+                return next();
+              }
+            }
+          }
+
+          if (innerMw) {
+            return typeof innerMw === "function"
+              ? innerMw(req, res, next)
+              : innerMw.use(req, res, next);
+          }
+          return next();
+        };
+        matchedModuleMiddlewares.push(wrappedMw);
       }
     }
 

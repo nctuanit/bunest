@@ -3,7 +3,15 @@ import {
   RequestMethod,
   type CsrfProtectionOptions,
   type RouteInfo,
+  VERSION_NEUTRAL,
+  type VersioningOptions,
+  type VersionValue,
 } from "../../common/index";
+import {
+  extractRequestVersions,
+  isRuntimeVersioning,
+  normalizeVersionValue,
+} from "../scanner/version-resolver";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -152,7 +160,9 @@ export function compileCsrfProtection(
   options: CsrfProtectionOptions<Request> = {},
   globalPrefix?: string,
   globalPrefixExclude?: readonly (string | RouteInfo)[],
+  versioning?: VersioningOptions,
 ): CompiledCsrfProtection {
+  const runtimeVersioning = isRuntimeVersioning(versioning);
   const trustedOrigins = new Set<string>();
   if (options.trustedOrigins) {
     for (const origin of options.trustedOrigins) {
@@ -166,6 +176,7 @@ export function compileCsrfProtection(
   const excludeRoutes: Array<{
     match: (pathname: string) => boolean;
     method?: string;
+    versions?: readonly (string | typeof VERSION_NEUTRAL)[];
   }> = [];
   if (Array.isArray(options.exclude)) {
     for (const entry of options.exclude) {
@@ -186,17 +197,22 @@ export function compileCsrfProtection(
           });
         }
       } else {
-        const info = entry as RouteInfo;
+        const info = entry as RouteInfo & { version?: VersionValue };
         const rawMethod = String(info.method).toUpperCase();
         const method =
           info.method === RequestMethod.ALL || rawMethod === "ALL"
             ? undefined
             : rawMethod;
+        const versions =
+          info.version !== undefined
+            ? normalizeVersionValue(info.version)
+            : undefined;
         excludeRoutes.push({
           match: compileExcludePattern(
             normalizeExcludeRoutePath(info.path, globalPrefix),
           ),
           method,
+          versions,
         });
         if (
           globalPrefix &&
@@ -207,6 +223,7 @@ export function compileCsrfProtection(
               info.path.startsWith("/") ? info.path : `/${info.path}`,
             ),
             method,
+            versions,
           });
         }
       }
@@ -227,11 +244,22 @@ export function compileCsrfProtection(
     if (isNonCanonicalPath(pathname)) {
       return false;
     }
+    const reqVersions =
+      runtimeVersioning && versioning
+        ? extractRequestVersions(req, versioning)
+        : undefined;
     for (let i = 0; i < excludeRoutes.length; i++) {
       const rule = excludeRoutes[i];
       if (!rule) continue;
       if (!rule.match(pathname)) continue;
       if (rule.method !== undefined && rule.method !== method) continue;
+      if (rule.versions !== undefined && runtimeVersioning) {
+        if (!reqVersions || reqVersions.length === 0) {
+          if (!rule.versions.includes(VERSION_NEUTRAL)) continue;
+        } else if (!reqVersions.some((v) => rule.versions!.includes(v))) {
+          continue;
+        }
+      }
       return true;
     }
     return false;
