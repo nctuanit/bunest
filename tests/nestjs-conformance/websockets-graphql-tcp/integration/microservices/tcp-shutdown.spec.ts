@@ -367,8 +367,7 @@ describeConformance(
         expect(replies).toEqual([]);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` to wait for in-flight handlers to reply before closing sockets and running shutdown hooks (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should let a handler in flight reply before the shutdown hooks run, then close its connection", async () => {
+      it("should let a handler in flight reply before the shutdown hooks run, then close its connection", async () => {
         const server = await createServer({ gracefulShutdown: true });
         const { replies, closed, request } = await connect();
         request(1, 500);
@@ -387,8 +386,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` / `gracePeriod` (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip('should close as soon as the handler is done, well before "gracePeriod"', async () => {
+      it('should close as soon as the handler is done, well before "gracePeriod"', async () => {
         const server = await createServer({
           gracefulShutdown: true,
           gracePeriod: 30_000,
@@ -405,8 +403,7 @@ describeConformance(
         expect(replies).toHaveLength(1);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` closing-state rejection of newly arriving requests on draining sockets (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should not run a handler for a request that arrives on a connection while it is closing", async () => {
+      it("should not run a handler for a request that arrives on a connection while it is closing", async () => {
         const server = await createServer({ gracefulShutdown: true });
         const { replies, closed, request } = await connect();
         request(1, 500);
@@ -422,8 +419,7 @@ describeConformance(
         expect(replies.map(({ id }) => id)).toEqual(["1"]);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` per-connection draining (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should close a connection with nothing in flight right away, and the others once their handlers are done", async () => {
+      it("should close a connection with nothing in flight right away, and the others once their handlers are done", async () => {
         const server = await createServer({ gracefulShutdown: true });
         const idle = await connect();
         const busy = await connect();
@@ -451,8 +447,7 @@ describeConformance(
         expect(busy.replies).toHaveLength(1);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` per-connection independent socket closure (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should close each connection once its own handlers are done, rather than once every handler is", async () => {
+      it("should close each connection once its own handlers are done, rather than once every handler is", async () => {
         const server = await createServer({
           gracefulShutdown: true,
           gracePeriod: 5000,
@@ -486,7 +481,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` listener stop while draining in-flight requests (packages/microservices/src/transports/tcp.transport.ts)
+      // BUNEST_BUG: BunestApplicationContext.close() awaits lifecycle hooks before calling stopTransport()/TcpServer.close(), so a same-tick Bun.connect() races with listener.stop(false) and receives ECONNRESET instead of ECONNREFUSED (packages/core/src/application/bunest-application-context.ts).
       it.skip("should refuse new connections while it waits", async () => {
         const server = await createServer({ gracefulShutdown: true });
         const { request } = await connect();
@@ -532,8 +527,7 @@ describeConformance(
         expect(replies).toEqual([]);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` write-queue flush before socket close for large replies (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should send a large reply in full before it closes the connection", async () => {
+      it("should send a large reply in full before it closes the connection", async () => {
         const size = 8 * 1024 * 1024;
         const server = await createServer({ gracefulShutdown: true });
         const { replies, closed, request } = await connect();
@@ -547,8 +541,7 @@ describeConformance(
         expect((replies[0]!.response as string).length).toBe(size);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` with `gracePeriod: Infinity` (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip('should send a large reply in full when "gracePeriod" is longer than a timer supports', async () => {
+      it('should send a large reply in full when "gracePeriod" is longer than a timer supports', async () => {
         const size = 8 * 1024 * 1024;
         const server = await createServer({
           gracefulShutdown: true,
@@ -565,8 +558,7 @@ describeConformance(
         expect((replies[0]!.response as string).length).toBe(size);
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `tlsOptions` or `gracefulShutdown` (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should let a handler in flight reply over TLS", async () => {
+      it("should let a handler in flight reply over TLS", async () => {
         const server = await createServer({
           gracefulShutdown: true,
           tlsOptions: {},

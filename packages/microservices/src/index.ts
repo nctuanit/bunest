@@ -115,7 +115,13 @@ export {
   NatsRequestJSONDeserializer,
   NatsResponseJSONDeserializer,
 } from "./deserializers";
-export { IdentitySerializer, KafkaRequestSerializer } from "./serializers";
+export {
+  IdentitySerializer,
+  KafkaRequestSerializer,
+  MqttRecordSerializer,
+  NatsRecordSerializer,
+  RmqRecordSerializer,
+} from "./serializers";
 
 // Protocol Helpers
 export {

@@ -270,8 +270,7 @@ describeConformance(
         expect(subscribeCalls).toBe(2);
       });
 
-      // BUNEST_BUG: RedisClientProxy.connect() and RedisClientProxy.close() never call emitStatus("connected") / emitStatus("disconnected"), so client.status remains "disconnected" and onStatus() listeners are never notified (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("transitions client status and notifies onStatus listeners on connect() and close()", async () => {
+      it("transitions client status and notifies onStatus listeners on connect() and close()", async () => {
         const bus = createMockRedisBus();
         const client = trackClient(
           new RedisClientProxy({
@@ -352,8 +351,7 @@ describeConformance(
         expectCalledOnce(closeSpy);
       });
 
-      // BUNEST_BUG: Calling RedisClientProxy.close() while ensureReplyInbox() subscribe is still in-flight does not abort the pending connect/send; once subscribe resolves, replySubscribed flips to true and the pending send() still publishes on the closed client (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("cancels an in-flight send waiting on ensureReplyInbox() when close() is called", async () => {
+      it("cancels an in-flight send waiting on ensureReplyInbox() when close() is called", async () => {
         let resolveSubscribe!: () => void;
         const bus = createMockRedisBus();
         const subClient = bus.createClient({
@@ -900,8 +898,7 @@ describeConformance(
         expect(record.options).toEqual({ headers: { "x-tenant": "acme" } });
       });
 
-      // BUNEST_BUG: RedisClientProxy.sendOnce() and dispatchEvent() do not unwrap RedisRecord instances; they serialize the raw { data, options } wrapper inside envelope.data instead of unwrapping record.data and propagating options.headers (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps RedisRecord data and propagates headers on send() and emit()", async () => {
+      it("unwraps RedisRecord data and propagates headers on send() and emit()", async () => {
         const bus = createMockRedisBus();
         const client = trackClient(
           new RedisClientProxy({

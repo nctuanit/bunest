@@ -63,8 +63,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: @SubscribeMessage and @Ack store metadata on `target.constructor` / `Mixin.prototype` in packages/core/src/ws/decorators/ws.decorators.ts. When TypeScript's `applyMixins()` copies property descriptors from `Mixin.prototype` onto `Host.prototype` (also overwriting `Host.prototype.constructor`), `getGatewayMessageHandlers(Host)` misses `mixedInWithAck` and `getGatewayMethodParams(Host, 'mixedInWithAck')` misses `@Ack()`.
-      it.skip('should find the @Ack() of the handlers of a gateway whose "constructor" a mixin helper overwrote', () => {
+      it('should find the @Ack() of the handlers of a gateway whose "constructor" a mixin helper overwrote', () => {
         class Mixin {
           @SubscribeMessage(ackMessage)
           public mixedInWithAck(@Ack() _ack: Function) {}

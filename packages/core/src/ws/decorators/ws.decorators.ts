@@ -2,8 +2,10 @@ import {
   DESIGN_METADATA_KEYS,
   METADATA_KEYS,
   MetadataRegistry,
+  type ParameterDecoratorOptions,
   type PipeLike,
   Scope,
+  type StandardSchemaV1,
 } from "../../common/index";
 import { WS_METADATA_KEYS } from "../constants";
 import type {
@@ -99,6 +101,19 @@ export function SubscribeMessage<T = string>(event: T): MethodDecorator {
       target.constructor,
     );
 
+    if (typeof descriptor?.value === "function") {
+      const existingFnEntries =
+        MetadataRegistry.getOwn<readonly WsMessageHandlerMetadata[]>(
+          WS_METADATA_KEYS.MESSAGE_HANDLERS,
+          descriptor.value,
+        ) ?? [];
+      MetadataRegistry.define(
+        WS_METADATA_KEYS.MESSAGE_HANDLERS,
+        [...existingFnEntries, entry],
+        descriptor.value,
+      );
+    }
+
     return descriptor;
   };
 }
@@ -135,29 +150,84 @@ function registerWsParam(
     target,
     propertyKey,
   );
+  const methodFn = Object.getOwnPropertyDescriptor(target, propertyKey)?.value;
+  if (typeof methodFn === "function") {
+    MetadataRegistry.define(WS_METADATA_KEYS.MESSAGE_PARAMS, next, methodFn);
+  }
+}
+
+function isWsParameterDecoratorOptions(
+  value: unknown,
+): value is ParameterDecoratorOptions {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+  if (typeof (value as { transform?: unknown }).transform === "function") {
+    return false;
+  }
+  return "schema" in value || "pipes" in value || "property" in value;
 }
 
 /**
  * Extracts the parsed message payload (or a specific property key) and runs
- * any parameter-level pipes (`ValidationPipe`, `ParseIntPipe`, etc.).
+ * any parameter-level pipes (`ValidationPipe`, `ParseIntPipe`, etc.) or schema.
  */
 export function MessageBody(): ParameterDecorator;
+export function MessageBody(
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
 export function MessageBody(...pipes: PipeLike[]): ParameterDecorator;
+export function MessageBody(
+  property: string,
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
 export function MessageBody(
   property: string,
   ...pipes: PipeLike[]
 ): ParameterDecorator;
 export function MessageBody(
-  propertyOrPipe?: string | PipeLike,
-  ...restPipes: PipeLike[]
+  propertyOrPipeOrOptions?: string | PipeLike | ParameterDecoratorOptions,
+  ...restPipesOrOptions: (PipeLike | ParameterDecoratorOptions)[]
 ): ParameterDecorator {
-  const key = typeof propertyOrPipe === "string" ? propertyOrPipe : undefined;
-  const pipes =
-    typeof propertyOrPipe === "string"
-      ? [...restPipes]
-      : propertyOrPipe !== undefined
-        ? [propertyOrPipe, ...restPipes]
-        : [...restPipes];
+  let key: string | undefined;
+  let schema: StandardSchemaV1 | undefined;
+  let pipes: PipeLike[] = [];
+
+  if (typeof propertyOrPipeOrOptions === "string") {
+    key = propertyOrPipeOrOptions;
+    if (
+      restPipesOrOptions.length > 0 &&
+      isWsParameterDecoratorOptions(restPipesOrOptions[0])
+    ) {
+      const opts = restPipesOrOptions[0];
+      schema = opts.schema;
+      pipes = [
+        ...(opts.pipes ?? []),
+        ...(restPipesOrOptions.slice(1) as PipeLike[]),
+      ];
+    } else {
+      pipes = [...(restPipesOrOptions as PipeLike[])];
+    }
+  } else if (isWsParameterDecoratorOptions(propertyOrPipeOrOptions)) {
+    key = propertyOrPipeOrOptions.property;
+    schema = propertyOrPipeOrOptions.schema;
+    pipes = [
+      ...(propertyOrPipeOrOptions.pipes ?? []),
+      ...(restPipesOrOptions as PipeLike[]),
+    ];
+  } else if (propertyOrPipeOrOptions !== undefined) {
+    pipes = [
+      propertyOrPipeOrOptions,
+      ...(restPipesOrOptions as PipeLike[]),
+    ];
+  } else {
+    pipes = [...(restPipesOrOptions as PipeLike[])];
+  }
 
   return (
     target: object,
@@ -169,6 +239,7 @@ export function MessageBody(
       source: "body",
       key,
       pipes: pipes.length > 0 ? pipes : undefined,
+      ...(schema !== undefined ? { schema } : {}),
     });
   };
 }
@@ -215,24 +286,28 @@ export function WebSocketServer(
   _options?: Partial<WebSocketServerOptions>,
 ): PropertyDecorator {
   return (target: object, propertyKey: string | symbol): void => {
+    Reflect.set(target, propertyKey, null);
+    const metaTarget =
+      typeof target === "function" ? target : target.constructor;
     const existing =
       MetadataRegistry.getOwn<readonly (string | symbol)[]>(
         WS_METADATA_KEYS.WEBSOCKET_SERVER_PROPS,
-        target.constructor,
+        metaTarget,
       ) ?? [];
 
     if (!existing.includes(propertyKey)) {
       MetadataRegistry.define(
         WS_METADATA_KEYS.WEBSOCKET_SERVER_PROPS,
         [...existing, propertyKey],
-        target.constructor,
+        metaTarget,
       );
     }
   };
 }
 
 /**
- * Inheritance-safe reader for `@SubscribeMessage` handlers across a gateway's prototype chain.
+ * Inheritance-safe reader for `@SubscribeMessage` handlers across a gateway's prototype chain,
+ * including methods copied onto `gatewayClass.prototype` by mixin helpers (e.g. `applyMixins()`).
  */
 export function getGatewayMessageHandlers(
   gatewayClass: Function,
@@ -263,6 +338,29 @@ export function getGatewayMessageHandlers(
         orderedKeys.push(key);
       }
       byHandler.set(key, list);
+    }
+  }
+
+  // Also discover mixed-in methods whose descriptors were copied onto the prototype
+  const proto = gatewayClass.prototype as object | undefined;
+  if (proto) {
+    const descriptors = Object.getOwnPropertyDescriptors(proto);
+    for (const key of [
+      ...Object.keys(descriptors),
+      ...Object.getOwnPropertySymbols(descriptors),
+    ]) {
+      if (key === "constructor" || byHandler.has(key)) continue;
+      const desc = descriptors[key as keyof typeof descriptors];
+      if (!desc || typeof desc.value !== "function") continue;
+      const fnHandlers = MetadataRegistry.getOwn<
+        readonly WsMessageHandlerMetadata[]
+      >(WS_METADATA_KEYS.MESSAGE_HANDLERS, desc.value);
+      if (!fnHandlers || fnHandlers.length === 0) continue;
+      orderedKeys.push(key);
+      byHandler.set(
+        key,
+        fnHandlers.map((entry) => ({ ...entry, handlerKey: key })),
+      );
     }
   }
 
@@ -297,12 +395,26 @@ export function getGatewayMethodParams(
     return [];
   }
 
-  const rawParams =
+  let rawParams =
     MetadataRegistry.getOwn<readonly WsParamMetadata[]>(
       WS_METADATA_KEYS.MESSAGE_PARAMS,
       definingProto,
       handlerKey,
     ) ?? [];
+
+  if (rawParams.length === 0) {
+    const methodFn = Object.getOwnPropertyDescriptor(
+      definingProto,
+      handlerKey,
+    )?.value;
+    if (typeof methodFn === "function") {
+      rawParams =
+        MetadataRegistry.getOwn<readonly WsParamMetadata[]>(
+          WS_METADATA_KEYS.MESSAGE_PARAMS,
+          methodFn,
+        ) ?? [];
+    }
+  }
 
   const paramTypes = MetadataRegistry.getOwn<Function[]>(
     DESIGN_METADATA_KEYS.PARAMTYPES,

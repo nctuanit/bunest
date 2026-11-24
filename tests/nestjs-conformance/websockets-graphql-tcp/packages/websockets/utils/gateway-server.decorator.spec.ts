@@ -43,8 +43,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: @WebSocketServer() in packages/core/src/ws/decorators/ws.decorators.ts does not initialize the decorated property value to `null` by default (unlike NestJS `target[propertyKey] = null`), and when applied to a `static` property it attaches metadata to `target.constructor` (`Function`) instead of the class itself.
-    it.skip("should set static server property metadata on the class and initialize value to null by default", () => {
+    it("should set static server property metadata on the class and initialize value to null by default", () => {
       class StaticTestGateway {
         @WebSocketServer()
         static server: unknown;

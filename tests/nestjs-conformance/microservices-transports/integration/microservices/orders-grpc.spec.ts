@@ -260,8 +260,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: GrpcServer.addGrpcHandler() skips qualifying `service` with `this.packages` whenever `service.includes(".")` (packages/microservices/src/transports/grpc.transport.ts:733), and resolveRoute() only strips down to lastIndexOf("."). Thus server `{ package: "proto_example" }` + `@GrpcMethod("orders.OrderService")` fails with UNIMPLEMENTED when invoked as `/proto_example.orders.OrderService/Find`.
-    it.skip("GRPC resolves sub-package service name (orders.OrderService) under parent package (proto_example)", async () => {
+    it("GRPC resolves sub-package service name (orders.OrderService) under parent package (proto_example)", async () => {
       const parentSrv = new GrpcServer({
         host: "127.0.0.1",
         port: 0,
@@ -290,8 +289,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: GrpcServer.handleHttpRequest only decodes a single incoming request frame (`frames[0]`) and GrpcClientProxy lacks client-streaming RPC support (packages/microservices/src/transports/grpc.transport.ts:874-886).
-    it.skip("GRPC Sending Stream and receiving a single message from client-streaming handler (streamReq)", async () => {
+    it("GRPC Sending Stream and receiving a single message from client-streaming handler (streamReq)", async () => {
       const anyClient = client as unknown as {
         clientStream?: (
           service: string,
@@ -302,8 +300,7 @@ describeConformance(
       expect(typeof anyClient.clientStream).toBe("function");
     });
 
-    // BUNEST_BUG: GrpcServer / GrpcClientProxy do not implement client-streaming Call passthrough (`streamReqCall`) (packages/microservices/src/transports/grpc.transport.ts).
-    it.skip("GRPC Sending Stream and receiving a single message from Call handler (streamReqCall)", async () => {
+    it("GRPC Sending Stream and receiving a single message from Call handler (streamReqCall)", async () => {
       const anyClient = client as unknown as {
         clientStream?: (
           service: string,

@@ -248,8 +248,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttClientProxy.connect() never calls this.emitStatus("connected"), so client.status stays "disconnected" and onStatus listeners are never notified (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("emits connected status via status getter and onStatus listeners on connect()", async () => {
+      it("emits connected status via status getter and onStatus listeners on connect()", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
         const statuses: string[] = [];
@@ -382,8 +381,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttClientProxy.close() never calls this.emitStatus("disconnected") (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("emits disconnected status via onStatus when closing a connected client", async () => {
+      it("emits disconnected status via onStatus when closing a connected client", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
         const statuses: string[] = [];
@@ -396,8 +394,7 @@ describeConformance(
         expect(statuses).toEqual(["connected", "disconnected"]);
       });
 
-      // BUNEST_BUG: MqttClientProxy.close() awaits client.unsubscribe() without try/finally, so a failing unsubscribe skips clearing subscribedReplyTopics and skips calling client.end() (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("clears subscription state and ends the client even when unsubscribe() rejects during close()", async () => {
+      it("clears subscription state and ends the client even when unsubscribe() rejects during close()", async () => {
         const { client: raw, state } = broker.createClient();
         raw.unsubscribe = async () => {
           throw new Error("unsubscribe failed");
@@ -691,8 +688,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttClientProxy.sendOnce() does not unwrap MqttRecord instances — it embeds the MqttRecord object as req.data and ignores record.options (qos, dup, properties) (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("unwraps MqttRecord passed to send() and applies record publish options", async () => {
+      it("unwraps MqttRecord passed to send() and applies record publish options", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(
           new MqttClientProxy({ client: raw, clientId: "rec-send" }),
@@ -718,8 +714,7 @@ describeConformance(
         await pending;
       });
 
-      // BUNEST_BUG: MqttClientProxy.sendOnce() does not validate publish topic names against MQTT 3.1.1/5.0 Section 4.7.1 (wildcards '+', '#' or '\u0000') (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("rejects invalid MQTT publish topics containing '+', '#', or '\\u0000' without subscribing or publishing", async () => {
+      it("rejects invalid MQTT publish topics containing '+', '#', or '\\u0000' without subscribing or publishing", async () => {
         const { client: raw, state } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
 
@@ -906,8 +901,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttClientProxy.emit() / emitWithOptions() do not unwrap MqttRecord instances or apply record.options (qos, retain, dup, properties) (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("unwraps MqttRecord passed to emit() and forwards record options to client.publish()", async () => {
+      it("unwraps MqttRecord passed to emit() and forwards record options to client.publish()", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
         const record = new MqttRecordBuilder({ temp: 22 })
@@ -929,8 +923,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: MqttClientProxy.emit() does not reject invalid MQTT publish topic names containing wildcards ('+', '#') or '\u0000' (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("rejects emit() on invalid MQTT publish topics containing '+', '#', or '\\u0000'", async () => {
+      it("rejects emit() on invalid MQTT publish topics containing '+', '#', or '\\u0000'", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
 
@@ -1002,8 +995,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttClientProxy.emitWithOptions() bypasses ClientProxy.emit() and never invokes the registered preRequestHook (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("invokes setPreRequestHook before emitWithOptions()", async () => {
+      it("invokes setPreRequestHook before emitWithOptions()", async () => {
         const { client: raw } = broker.createClient();
         const proxy = trackClient(new MqttClientProxy({ client: raw }));
         const hook = createSpy();

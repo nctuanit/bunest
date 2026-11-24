@@ -5,6 +5,7 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
   Optional,
+  Scope,
   type Type,
 } from "../../common/index";
 import { type DIContainer, DiscoveryService, ModuleRef } from "../../index";
@@ -92,6 +93,7 @@ export class WsGatewayExplorer
   ): Promise<void> {
     if (container) {
       this.container = container;
+      this.adapter.setContainer(container);
     }
     this.adapter.attachToHttpAdapter(httpAdapter);
     await this.discoverAndBindGateways();
@@ -118,20 +120,46 @@ export class WsGatewayExplorer
       return;
     }
 
-    this.discovered = true;
-    const instances = discovery.getAllSingletonInstances();
+    if (this.container) {
+      this.adapter.setContainer(this.container);
+    }
 
-    for (let i = 0; i < instances.length; i++) {
-      const instance = instances[i];
-      if (!instance || typeof instance !== "object") {
+    this.discovered = true;
+    const seenClasses = new Set<Function>();
+    const wrappers = [
+      ...discovery.getProviders(),
+      ...discovery.getControllers(),
+    ];
+
+    for (let i = 0; i < wrappers.length; i++) {
+      const wrapper = wrappers[i];
+      if (!wrapper) continue;
+      const ctor =
+        wrapper.metatype ??
+        (wrapper.instance && typeof wrapper.instance === "object"
+          ? (wrapper.instance.constructor as Type<unknown>)
+          : undefined);
+      if (
+        typeof ctor !== "function" ||
+        seenClasses.has(ctor) ||
+        !MetadataRegistry.has(WS_METADATA_KEYS.GATEWAY, ctor)
+      ) {
         continue;
       }
-      const ctor = instance.constructor;
-      if (
-        typeof ctor === "function" &&
-        MetadataRegistry.has(WS_METADATA_KEYS.GATEWAY, ctor)
-      ) {
-        await this.adapter.registerGateway(instance);
+      seenClasses.add(ctor);
+
+      const isRequestScoped =
+        wrapper.scope === Scope.REQUEST ||
+        wrapper.instance === undefined ||
+        wrapper.instance === null;
+
+      if (isRequestScoped) {
+        await this.adapter.registerGatewayClass(
+          ctor as Type<unknown>,
+          wrapper.moduleId,
+        );
+      } else if (typeof wrapper.instance === "object") {
+        await this.adapter.registerGateway(wrapper.instance, wrapper.moduleId);
       }
     }
   }

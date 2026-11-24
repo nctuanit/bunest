@@ -215,8 +215,7 @@ describeConformance(
         },
       };
 
-      // BUNEST_BUG: @Payload() in packages/microservices/src/decorators.ts does not support ParameterDecoratorOptions (`{ schema, pipes }`), storing the options object inside `pipes` instead of extracting `schema`.
-      it.skip("should enhance param with schema when options passed as the only argument", () => {
+      it("should enhance param with schema when options passed as the only argument", () => {
         const dynamicPayload = Payload as (
           ...args: unknown[]
         ) => ParameterDecorator;
@@ -239,8 +238,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: @Payload() in packages/microservices/src/decorators.ts does not support ParameterDecoratorOptions (`{ schema, pipes }`).
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         const dynamicPayload = Payload as (
           ...args: unknown[]
         ) => ParameterDecorator;
@@ -264,8 +262,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: @Payload() in packages/microservices/src/decorators.ts does not support ParameterDecoratorOptions as the second argument with a property key (`@Payload("data", { schema })`).
-      it.skip("should enhance param with schema when options passed as second argument with property", () => {
+      it("should enhance param with schema when options passed as second argument with property", () => {
         const dynamicPayload = Payload as (
           ...args: unknown[]
         ) => ParameterDecorator;

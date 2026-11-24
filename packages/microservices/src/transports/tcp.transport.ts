@@ -14,9 +14,55 @@ import type {
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
+const MAX_TIMEOUT_MS = 2_147_483_647;
+const MAX_PACKET_ID_LENGTH = 256;
+
 interface SocketWriteState {
   readonly decoder: FrameDecoder;
   readonly writeQueue: Uint8Array[];
+  queuedBytes: number;
+  inFlight: number;
+  readonly pendingEnvelopes: RpcEnvelope[];
+  readonly activeStreams: Set<AsyncIterator<unknown>>;
+  incompleteTimer?: ReturnType<typeof setTimeout>;
+  receiveTimer?: ReturnType<typeof setTimeout>;
+  hadPendingBytes: boolean;
+  peerEnded: boolean;
+  closed: boolean;
+  endAfterWriteDrain: boolean;
+  onDrained?: () => void;
+}
+
+function createSocketState(maxFrameBytes?: number): SocketWriteState {
+  return {
+    decoder: new FrameDecoder(maxFrameBytes),
+    writeQueue: [],
+    queuedBytes: 0,
+    inFlight: 0,
+    pendingEnvelopes: [],
+    activeStreams: new Set(),
+    hadPendingBytes: false,
+    peerEnded: false,
+    closed: false,
+    endAfterWriteDrain: false,
+  };
+}
+
+function clearSocketTimers(state: SocketWriteState): void {
+  if (state.incompleteTimer !== undefined) {
+    clearTimeout(state.incompleteTimer);
+    state.incompleteTimer = undefined;
+  }
+  if (state.receiveTimer !== undefined) {
+    clearTimeout(state.receiveTimer);
+    state.receiveTimer = undefined;
+  }
+}
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof (timer as { unref?: () => void }).unref === "function") {
+    (timer as { unref: () => void }).unref();
+  }
 }
 
 function flushWriteQueue(
@@ -28,12 +74,24 @@ function flushWriteQueue(
     const written = socket.write(head);
     if (written === head.byteLength) {
       state.writeQueue.shift();
+      state.queuedBytes = Math.max(0, state.queuedBytes - written);
     } else if (written > 0) {
       state.writeQueue[0] = head.subarray(written);
+      state.queuedBytes = Math.max(0, state.queuedBytes - written);
       break;
     } else {
       break;
     }
+  }
+
+  if (state.writeQueue.length === 0 && state.endAfterWriteDrain) {
+    state.endAfterWriteDrain = false;
+    try {
+      socket.end();
+    } catch {
+      // Ignore already-closed socket
+    }
+    state.onDrained?.();
   }
 }
 
@@ -41,15 +99,127 @@ function enqueueSocketWrite(
   socket: Socket<SocketWriteState>,
   state: SocketWriteState,
   frame: Uint8Array,
-): void {
+  maxSendBufferSize?: number,
+): boolean {
   state.writeQueue.push(frame);
+  state.queuedBytes += frame.byteLength;
   flushWriteQueue(socket, state);
+
+  if (
+    maxSendBufferSize !== undefined &&
+    maxSendBufferSize > 0 &&
+    state.queuedBytes > maxSendBufferSize
+  ) {
+    state.closed = true;
+    clearSocketTimers(state);
+    try {
+      socket.terminate();
+    } catch {
+      try {
+        socket.end();
+      } catch {
+        // ignore
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
+function isValidPacketId(id: unknown): id is string | number {
+  if (typeof id === "number") {
+    return Number.isFinite(id);
+  }
+  if (typeof id === "string") {
+    return id.length <= MAX_PACKET_ID_LENGTH;
+  }
+  return false;
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+interface StreamPushQueue<T> extends AsyncIterable<T> {
+  push(value: T): void;
+  end(): void;
+  fail(err: unknown): void;
+}
+
+function createStreamPushQueue<T>(): StreamPushQueue<T> {
+  const values: T[] = [];
+  const waiters: Array<{
+    resolve: (res: IteratorResult<T>) => void;
+    reject: (err: unknown) => void;
+  }> = [];
+  let ended = false;
+  let failure: { err: unknown } | undefined;
+
+  return {
+    push(value: T) {
+      if (ended || failure) return;
+      const waiter = waiters.shift();
+      if (waiter) {
+        waiter.resolve({ value, done: false });
+      } else {
+        values.push(value);
+      }
+    },
+    end() {
+      if (ended || failure) return;
+      ended = true;
+      while (waiters.length > 0) {
+        waiters.shift()!.resolve({ value: undefined as unknown as T, done: true });
+      }
+    },
+    fail(err: unknown) {
+      if (ended || failure) return;
+      failure = { err };
+      while (waiters.length > 0) {
+        waiters.shift()!.reject(err);
+      }
+    },
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      return {
+        next(): Promise<IteratorResult<T>> {
+          if (values.length > 0) {
+            return Promise.resolve({ value: values.shift()!, done: false });
+          }
+          if (failure) {
+            const err = failure.err;
+            return Promise.reject(err);
+          }
+          if (ended) {
+            return Promise.resolve({
+              value: undefined as unknown as T,
+              done: true,
+            });
+          }
+          return new Promise<IteratorResult<T>>((resolve, reject) => {
+            waiters.push({ resolve, reject });
+          });
+        },
+        return(): Promise<IteratorResult<T>> {
+          ended = true;
+          values.length = 0;
+          return Promise.resolve({
+            value: undefined as unknown as T,
+            done: true,
+          });
+        },
+      };
+    },
+  };
 }
 
 /**
  * Native Bun TCP microservice server (`Bun.listen()`) using 4-byte length-prefixed
  * JSON framing, concurrent multiplexed request correlation IDs, `port: 0` ephemeral
- * binding, and leak-free socket shutdown.
+ * binding, bounded-memory protections, graceful draining, and leak-free socket shutdown.
  */
 export class TcpServer extends MicroserviceTransportServer {
   public readonly transport = Transport.TCP;
@@ -57,15 +227,31 @@ export class TcpServer extends MicroserviceTransportServer {
   private readonly host: string;
   private readonly requestedPort: number;
   private readonly maxFrameBytes?: number;
+  private readonly incompleteMessageTimeout?: number;
+  private readonly messageReceiveTimeout?: number;
+  private readonly maxSendBufferSize?: number;
+  private readonly maxConcurrentMessages?: number;
+  private readonly gracefulShutdown: boolean;
+  private readonly gracePeriod: number;
+  private readonly tlsOptions?: Record<string, unknown>;
 
   private listener: TCPSocketListener<SocketWriteState> | undefined;
   private readonly clients = new Set<Socket<SocketWriteState>>();
+  private closing = false;
+  private drainWaiters: Array<() => void> = [];
 
   constructor(options: TcpTransportOptions = {}) {
     super();
     this.host = options.host ?? "127.0.0.1";
     this.requestedPort = options.port ?? 0;
-    this.maxFrameBytes = options.maxFrameBytes;
+    this.maxFrameBytes = options.maxFrameBytes ?? options.maxBufferSize;
+    this.incompleteMessageTimeout = options.incompleteMessageTimeout;
+    this.messageReceiveTimeout = options.messageReceiveTimeout;
+    this.maxSendBufferSize = options.maxSendBufferSize;
+    this.maxConcurrentMessages = options.maxConcurrentMessages;
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
+    this.tlsOptions = options.tlsOptions;
   }
 
   get address(): { readonly hostname: string; readonly port: number } | null {
@@ -90,25 +276,29 @@ export class TcpServer extends MicroserviceTransportServer {
       return;
     }
 
+    this.closing = false;
     const serverRef = this;
-    this.listener = Bun.listen<SocketWriteState>({
+
+    const listenConfig: Record<string, unknown> = {
       hostname: this.host,
       port: this.requestedPort,
       socket: {
-        open(socket) {
-          socket.data = {
-            decoder: new FrameDecoder(serverRef.maxFrameBytes),
-            writeQueue: [],
-          };
+        open(socket: Socket<SocketWriteState>) {
+          socket.data = createSocketState(serverRef.maxFrameBytes);
           serverRef.clients.add(socket);
         },
-        data(socket, chunk) {
+        data(socket: Socket<SocketWriteState>, chunk: Buffer) {
           const state = socket.data;
-          if (!state) return;
+          if (!state || state.closed) return;
+          if (serverRef.closing) {
+            return;
+          }
+
           let envelopes: RpcEnvelope[];
           try {
             envelopes = state.decoder.push<RpcEnvelope>(chunk);
           } catch (err) {
+            clearSocketTimers(state);
             const errorFrame = encodeFrame({
               type: "response",
               id: "",
@@ -120,23 +310,72 @@ export class TcpServer extends MicroserviceTransportServer {
             return;
           }
 
-          for (const envelope of envelopes) {
-            void serverRef.handleEnvelope(socket, state, envelope);
+          serverRef.updateReceiveTimers(socket, state, envelopes.length > 0);
+
+          if (envelopes.length > 0) {
+            for (const envelope of envelopes) {
+              state.pendingEnvelopes.push(envelope);
+            }
+            serverRef.drainPendingEnvelopes(socket, state);
           }
         },
-        drain(socket) {
+        drain(socket: Socket<SocketWriteState>) {
           if (socket.data) {
             flushWriteQueue(socket, socket.data);
           }
         },
-        close(socket) {
-          serverRef.clients.delete(socket);
+        end(socket: Socket<SocketWriteState>) {
+          const state = socket.data;
+          if (state) {
+            state.peerEnded = true;
+            clearSocketTimers(state);
+            if (state.activeStreams.size > 0) {
+              serverRef.cancelSocketStreams(state);
+            }
+            if (state.inFlight === 0 && state.pendingEnvelopes.length === 0) {
+              state.closed = true;
+              serverRef.clients.delete(socket);
+              serverRef.notifyDrainCheck();
+            }
+          }
         },
-        error(socket) {
+        close(socket: Socket<SocketWriteState>) {
+          const state = socket.data;
+          if (state) {
+            clearSocketTimers(state);
+            serverRef.cancelSocketStreams(state);
+            if (!state.peerEnded || state.pendingEnvelopes.length === 0) {
+              state.closed = true;
+              state.pendingEnvelopes.length = 0;
+            }
+          }
           serverRef.clients.delete(socket);
+          serverRef.notifyDrainCheck();
+        },
+        error(socket: Socket<SocketWriteState>) {
+          const state = socket.data;
+          if (state) {
+            clearSocketTimers(state);
+            state.closed = true;
+            state.pendingEnvelopes.length = 0;
+            serverRef.cancelSocketStreams(state);
+          }
+          serverRef.clients.delete(socket);
+          serverRef.notifyDrainCheck();
         },
       },
-    });
+    };
+
+    if (
+      this.tlsOptions &&
+      ("cert" in this.tlsOptions || "key" in this.tlsOptions)
+    ) {
+      listenConfig.tls = this.tlsOptions;
+    }
+
+    this.listener = Bun.listen<SocketWriteState>(
+      listenConfig as unknown as Parameters<typeof Bun.listen<SocketWriteState>>[0],
+    ) as unknown as TCPSocketListener<SocketWriteState>;
 
     this.listening = true;
     this.emitStatus(TcpStatus.CONNECTED);
@@ -145,10 +384,10 @@ export class TcpServer extends MicroserviceTransportServer {
 
   async close(): Promise<void> {
     this.listening = false;
+    this.closing = true;
     this.emitStatus(TcpStatus.DISCONNECTED);
 
-    // Stop accepting first so connection attempts during shutdown are refused
-    // (ECONNREFUSED) instead of being accepted and immediately reset.
+    // Stop accepting new connections immediately so late arrivals get ECONNREFUSED
     const listener = this.listener;
     this.listener = undefined;
     if (listener) {
@@ -159,14 +398,103 @@ export class TcpServer extends MicroserviceTransportServer {
       }
     }
 
+    if (!this.gracefulShutdown) {
+      for (const socket of [...this.clients]) {
+        const state = socket.data;
+        if (state) {
+          clearSocketTimers(state);
+          state.closed = true;
+          state.pendingEnvelopes.length = 0;
+          this.cancelSocketStreams(state);
+        }
+        try {
+          socket.end();
+        } catch {
+          // Ignore already-closed sockets
+        }
+      }
+      this.clients.clear();
+
+      if (listener) {
+        try {
+          listener.stop(true);
+        } catch {
+          // Ignore if already stopped
+        }
+      }
+      return;
+    }
+
+    // Graceful shutdown: drop queued (unstarted) work, close idle sockets immediately,
+    // and let in-flight handlers finish & flush their replies up to gracePeriod.
     for (const socket of [...this.clients]) {
+      const state = socket.data;
+      if (!state) {
+        try {
+          socket.end();
+        } catch {
+          // ignore
+        }
+        this.clients.delete(socket);
+        continue;
+      }
+      clearSocketTimers(state);
+      state.pendingEnvelopes.length = 0;
+      this.tryCloseDrainedSocket(socket, state);
+    }
+
+    if (this.hasActiveWork()) {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (graceTimer !== undefined) {
+            clearTimeout(graceTimer);
+            graceTimer = undefined;
+          }
+          resolve();
+        };
+
+        this.drainWaiters.push(() => {
+          if (!this.hasActiveWork()) {
+            finish();
+          }
+        });
+
+        if (
+          Number.isFinite(this.gracePeriod) &&
+          this.gracePeriod >= 0 &&
+          this.gracePeriod <= MAX_TIMEOUT_MS
+        ) {
+          graceTimer = setTimeout(finish, this.gracePeriod);
+          unrefTimer(graceTimer);
+        }
+      });
+    }
+
+    // Force-close any sockets still open after gracePeriod
+    for (const socket of [...this.clients]) {
+      const state = socket.data;
+      if (state) {
+        clearSocketTimers(state);
+        state.closed = true;
+        this.cancelSocketStreams(state);
+      }
       try {
-        socket.end();
+        socket.terminate();
       } catch {
-        // Ignore already-closed sockets
+        try {
+          socket.end();
+        } catch {
+          // ignore
+        }
       }
     }
     this.clients.clear();
+    this.drainWaiters = [];
 
     if (listener) {
       try {
@@ -177,15 +505,174 @@ export class TcpServer extends MicroserviceTransportServer {
     }
   }
 
+  private hasActiveWork(): boolean {
+    for (const socket of this.clients) {
+      const state = socket.data;
+      if (state && (state.inFlight > 0 || state.writeQueue.length > 0)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private notifyDrainCheck(): void {
+    if (this.drainWaiters.length === 0) return;
+    if (!this.hasActiveWork()) {
+      const waiters = this.drainWaiters.splice(0);
+      for (const fn of waiters) {
+        fn();
+      }
+    }
+  }
+
+  private tryCloseDrainedSocket(
+    socket: Socket<SocketWriteState>,
+    state: SocketWriteState,
+  ): void {
+    if (!this.closing || state.inFlight > 0) {
+      return;
+    }
+    if (state.writeQueue.length === 0) {
+      state.closed = true;
+      try {
+        socket.end();
+      } catch {
+        // ignore
+      }
+      this.clients.delete(socket);
+      this.notifyDrainCheck();
+    } else {
+      state.endAfterWriteDrain = true;
+      state.onDrained = () => {
+        state.closed = true;
+        this.clients.delete(socket);
+        this.notifyDrainCheck();
+      };
+      flushWriteQueue(socket, state);
+    }
+  }
+
+  private cancelSocketStreams(state: SocketWriteState): void {
+    for (const iter of [...state.activeStreams]) {
+      state.activeStreams.delete(iter);
+      try {
+        void Promise.resolve(iter.return?.()).catch(() => {});
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private updateReceiveTimers(
+    socket: Socket<SocketWriteState>,
+    state: SocketWriteState,
+    completedAnyFrame: boolean,
+  ): void {
+    const hasPending = state.decoder.hasPendingBytes;
+
+    // Reset incompleteMessageTimeout on every data chunk if still mid-frame
+    if (state.incompleteTimer !== undefined) {
+      clearTimeout(state.incompleteTimer);
+      state.incompleteTimer = undefined;
+    }
+    if (
+      hasPending &&
+      this.incompleteMessageTimeout !== undefined &&
+      this.incompleteMessageTimeout > 0
+    ) {
+      state.incompleteTimer = setTimeout(() => {
+        state.closed = true;
+        clearSocketTimers(state);
+        try {
+          socket.terminate();
+        } catch {
+          try {
+            socket.end();
+          } catch {
+            // ignore
+          }
+        }
+        this.clients.delete(socket);
+      }, this.incompleteMessageTimeout);
+      unrefTimer(state.incompleteTimer);
+    }
+
+    // messageReceiveTimeout bounds total wall-clock time to complete a single frame
+    if (completedAnyFrame || !hasPending) {
+      if (state.receiveTimer !== undefined) {
+        clearTimeout(state.receiveTimer);
+        state.receiveTimer = undefined;
+      }
+      state.hadPendingBytes = false;
+    }
+
+    if (
+      hasPending &&
+      !state.hadPendingBytes &&
+      this.messageReceiveTimeout !== undefined &&
+      this.messageReceiveTimeout > 0
+    ) {
+      state.hadPendingBytes = true;
+      state.receiveTimer = setTimeout(() => {
+        state.closed = true;
+        clearSocketTimers(state);
+        try {
+          socket.terminate();
+        } catch {
+          try {
+            socket.end();
+          } catch {
+            // ignore
+          }
+        }
+        this.clients.delete(socket);
+      }, this.messageReceiveTimeout);
+      unrefTimer(state.receiveTimer);
+    }
+  }
+
+  private drainPendingEnvelopes(
+    socket: Socket<SocketWriteState>,
+    state: SocketWriteState,
+  ): void {
+    const maxConc = this.maxConcurrentMessages;
+    while (
+      !state.closed &&
+      !this.closing &&
+      state.pendingEnvelopes.length > 0 &&
+      (maxConc === undefined || maxConc <= 0 || state.inFlight < maxConc)
+    ) {
+      const envelope = state.pendingEnvelopes.shift()!;
+      state.inFlight++;
+      void this.handleEnvelope(socket, state, envelope).finally(() => {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+        if (this.closing) {
+          this.tryCloseDrainedSocket(socket, state);
+          this.notifyDrainCheck();
+        } else {
+          this.drainPendingEnvelopes(socket, state);
+        }
+      });
+    }
+  }
+
   private async handleEnvelope(
     socket: Socket<SocketWriteState>,
     state: SocketWriteState,
     envelope: RpcEnvelope,
   ): Promise<void> {
     const pattern = envelope.type === "response" ? "" : envelope.pattern;
-    const ctx = new TcpContext([socket, pattern], {
-      remoteAddress: socket.remoteAddress,
-    });
+    const packetMeta =
+      envelope.type === "response" ? undefined : envelope.metadata;
+    const ctx =
+      packetMeta !== undefined
+        ? new TcpContext(
+            [socket, pattern, packetMeta as Record<string, string>],
+            packetMeta,
+          )
+        : new TcpContext([socket, pattern], {
+            remoteAddress: socket.remoteAddress,
+          });
 
     if (envelope.type === "event") {
       await this.dispatchEvent(envelope.pattern, envelope.data, ctx);
@@ -193,25 +680,131 @@ export class TcpServer extends MicroserviceTransportServer {
     }
 
     if (envelope.type === "request") {
+      if (!isValidPacketId(envelope.id)) {
+        return;
+      }
+
       const outcome = await this.dispatchMessage(
         envelope.pattern,
         envelope.data,
         ctx,
       );
-      if (!this.clients.has(socket)) {
+      if (state.closed || !this.clients.has(socket)) {
+        if (isAsyncIterable(outcome.response)) {
+          try {
+            const iter = outcome.response[Symbol.asyncIterator]();
+            void Promise.resolve(iter.return?.()).catch(() => {});
+          } catch {
+            // ignore
+          }
+        }
         return;
       }
+
+      if (!outcome.error && isAsyncIterable(outcome.response)) {
+        await this.streamResponse(socket, state, envelope.id, outcome.response);
+        return;
+      }
+
       const responseEnvelope: RpcResponseEnvelope = {
         type: "response",
-        id: envelope.id,
+        id: String(envelope.id),
         response: outcome.response,
         error: outcome.error,
         isDisposed: true,
       };
       try {
-        enqueueSocketWrite(socket, state, encodeFrame(responseEnvelope));
+        const ok = enqueueSocketWrite(
+          socket,
+          state,
+          encodeFrame(responseEnvelope),
+          this.maxSendBufferSize,
+        );
+        if (!ok) {
+          this.clients.delete(socket);
+        }
       } catch {
         this.clients.delete(socket);
+      }
+    }
+  }
+
+  private async streamResponse(
+    socket: Socket<SocketWriteState>,
+    state: SocketWriteState,
+    id: string | number,
+    iterable: AsyncIterable<unknown>,
+  ): Promise<void> {
+    const iterator = iterable[Symbol.asyncIterator]();
+    state.activeStreams.add(iterator);
+    try {
+      while (!state.closed && this.clients.has(socket)) {
+        const step = await iterator.next();
+        if (state.closed || !this.clients.has(socket)) {
+          break;
+        }
+        if (step.done) {
+          const endEnvelope: RpcResponseEnvelope = {
+            type: "response",
+            id: String(id),
+            isDisposed: true,
+          };
+          const ok = enqueueSocketWrite(
+            socket,
+            state,
+            encodeFrame(endEnvelope),
+            this.maxSendBufferSize,
+          );
+          if (!ok) {
+            this.clients.delete(socket);
+          }
+          return;
+        }
+
+        const chunkEnvelope: RpcResponseEnvelope = {
+          type: "response",
+          id: String(id),
+          response: step.value,
+          isDisposed: false,
+        };
+        const ok = enqueueSocketWrite(
+          socket,
+          state,
+          encodeFrame(chunkEnvelope),
+          this.maxSendBufferSize,
+        );
+        if (!ok) {
+          this.clients.delete(socket);
+          return;
+        }
+      }
+    } catch (err) {
+      if (!state.closed && this.clients.has(socket)) {
+        const errEnvelope: RpcResponseEnvelope = {
+          type: "response",
+          id: String(id),
+          error: this.serializeError(err),
+          isDisposed: true,
+        };
+        try {
+          enqueueSocketWrite(
+            socket,
+            state,
+            encodeFrame(errEnvelope),
+            this.maxSendBufferSize,
+          );
+        } catch {
+          this.clients.delete(socket);
+        }
+      }
+    } finally {
+      state.activeStreams.delete(iterator);
+      if (state.closed) {
+        try {
+          await iterator.return?.();
+        } catch {
+          // ignore
+        }
       }
     }
   }
@@ -221,12 +814,13 @@ interface PendingTcpRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (err: unknown) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+  stream?: StreamPushQueue<unknown>;
 }
 
 /**
  * Native Bun TCP microservice client (`Bun.connect()`) with length-prefixed framing,
- * multiplexed request correlation IDs, automatic reconnect, per-request timeouts,
- * and clean socket teardown.
+ * multiplexed request correlation IDs, streaming AsyncIterable responses, automatic
+ * reconnect, per-request timeouts, and clean socket teardown.
  */
 export class TcpClientProxy extends ClientProxy {
   public readonly transport = Transport.TCP;
@@ -281,6 +875,7 @@ export class TcpClientProxy extends ClientProxy {
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
@@ -296,11 +891,14 @@ export class TcpClientProxy extends ClientProxy {
       id,
       pattern,
       data,
+      ...(metadata !== undefined ? { metadata } : {}),
     };
 
     return await new Promise<TRes>((resolve, reject) => {
       const onAbort = () => {
-        if (this.pending.delete(id)) {
+        const entry = this.pending.get(id);
+        if (entry && !entry.stream) {
+          this.pending.delete(id);
           clearTimeout(timer);
           reject(new RpcTimeoutException(pattern, timeoutMs));
         }
@@ -311,14 +909,14 @@ export class TcpClientProxy extends ClientProxy {
       };
 
       const timer = setTimeout(() => {
-        if (this.pending.delete(id)) {
+        const entry = this.pending.get(id);
+        if (entry && !entry.stream) {
+          this.pending.delete(id);
           cleanup();
           reject(new RpcTimeoutException(pattern, timeoutMs));
         }
       }, timeoutMs);
-      if (typeof (timer as { unref?: () => void }).unref === "function") {
-        (timer as { unref: () => void }).unref();
-      }
+      unrefTimer(timer);
 
       this.pending.set(id, {
         resolve: (value: unknown) => {
@@ -349,12 +947,14 @@ export class TcpClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const socket = await this.ensureConnected();
     const envelope: RpcEventEnvelope = {
       type: "event",
       pattern,
       data,
+      ...(metadata !== undefined ? { metadata } : {}),
     };
     enqueueSocketWrite(socket, socket.data, encodeFrame(envelope));
   }
@@ -374,10 +974,7 @@ export class TcpClientProxy extends ClientProxy {
     this.connectPromise = new Promise<Socket<SocketWriteState>>(
       (resolve, reject) => {
         let opened = false;
-        const state: SocketWriteState = {
-          decoder: new FrameDecoder(clientRef.maxFrameBytes),
-          writeQueue: [],
-        };
+        const state = createSocketState(clientRef.maxFrameBytes);
 
         Bun.connect<SocketWriteState>({
           hostname: clientRef.host,
@@ -387,8 +984,21 @@ export class TcpClientProxy extends ClientProxy {
             open(socket) {
               opened = true;
               socket.data = state;
-              clientRef.socket = socket;
               clientRef.connectPromise = undefined;
+              if (clientRef.closed) {
+                try {
+                  socket.terminate();
+                } catch {
+                  try {
+                    socket.end();
+                  } catch {
+                    // ignore
+                  }
+                }
+                reject(new Error("TCP client proxy is closed."));
+                return;
+              }
+              clientRef.socket = socket;
               clientRef.emitStatus("connected");
               clientRef.emitClientEvent("connect");
               resolve(socket);
@@ -449,23 +1059,51 @@ export class TcpClientProxy extends ClientProxy {
     if (!entry) {
       return;
     }
+
+    if (envelope.isDisposed === false) {
+      if (!entry.stream) {
+        clearTimeout(entry.timer);
+        entry.stream = createStreamPushQueue<unknown>();
+        entry.resolve(entry.stream);
+      }
+      entry.stream.push(envelope.response);
+      return;
+    }
+
     clearTimeout(entry.timer);
     this.pending.delete(envelope.id);
 
-    if (envelope.error) {
-      if (envelope.error.isRpcException) {
-        entry.reject(RpcException.fromSerialized(envelope.error));
+    if (entry.stream) {
+      if (envelope.error) {
+        entry.stream.fail(this.deserializeEnvelopeError(envelope.error));
       } else {
-        const err = new Error(envelope.error.message || "Remote RPC error");
-        if (envelope.error.name) {
-          err.name = envelope.error.name;
+        if (envelope.response !== undefined) {
+          entry.stream.push(envelope.response);
         }
-        entry.reject(err);
+        entry.stream.end();
       }
       return;
     }
 
+    if (envelope.error) {
+      entry.reject(this.deserializeEnvelopeError(envelope.error));
+      return;
+    }
+
     entry.resolve(envelope.response);
+  }
+
+  private deserializeEnvelopeError(
+    error: NonNullable<RpcResponseEnvelope["error"]>,
+  ): Error {
+    if (error.isRpcException) {
+      return RpcException.fromSerialized(error);
+    }
+    const err = new Error(error.message || "Remote RPC error");
+    if (error.name) {
+      err.name = error.name;
+    }
+    return err;
   }
 
   private handleDisconnect(err: unknown): void {
@@ -488,7 +1126,11 @@ export class TcpClientProxy extends ClientProxy {
     for (const [id, entry] of this.pending.entries()) {
       clearTimeout(entry.timer);
       this.pending.delete(id);
-      entry.reject(err);
+      if (entry.stream) {
+        entry.stream.fail(err);
+      } else {
+        entry.reject(err);
+      }
     }
   }
 }

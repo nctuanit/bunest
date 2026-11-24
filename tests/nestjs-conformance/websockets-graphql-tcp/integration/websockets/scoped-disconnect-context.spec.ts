@@ -148,8 +148,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways, BunWebSocketAdapter disallows multiple gateways sharing the same path ("/ws"), and no per-connection ContextId is bound to BunWsClient for handleDisconnect resolution (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263, #L691-L716).
-    it.skip("should keep request-scoped dependencies shared while another gateway disconnects [ADR-001, ADR-012]", async () => {
+    it("should keep request-scoped dependencies shared while another gateway disconnects [ADR-001, ADR-012]", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],
         providers: [FastGateway, SlowGateway, SharedState, DisconnectTracker],

@@ -210,8 +210,7 @@ describeConformance(
       ]);
     }
 
-    // BUNEST_BUG: Expected handleDisconnect() to run after synchronous handleConnection() finishes (["connect", "after disconnect()", "disconnect: server disconnect"]), but Bun's ServerWebSocket.close() invokes the close callback synchronously and BunWebSocketAdapter.handleClose() runs handleDisconnect() re-entrantly before handleConnection() completes (received ["connect", "disconnect: server disconnect", "after disconnect()"]) (packages/core/src/ws/adapter/bun-ws.adapter.ts#L662-L716).
-    it.skip("should call handleDisconnect when a synchronous handleConnection disconnects the client [ADR-001: native Bun WS close]", async () => {
+    it("should call handleDisconnect when a synchronous handleConnection disconnects the client [ADR-001: native Bun WS close]", async () => {
       await connect([SyncDisconnectingGateway], 1);
 
       expect(calls).toEqual([
@@ -251,8 +250,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: BunWebSocketAdapter rejects registering multiple @WebSocketGateway() classes on the same path ("Duplicate @WebSocketGateway() path") instead of multiplexing lifecycle hooks across co-located gateways (packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
-    it.skip("should call handleDisconnect of every gateway after their handleConnection", async () => {
+    it("should call handleDisconnect of every gateway after their handleConnection", async () => {
       await connect([SyncDisconnectingGateway, ObservingGateway], 2);
 
       expect(calls).toEqual([
@@ -264,8 +262,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: BunWebSocketAdapter disallows multiple gateways sharing the same path/namespace "/chat" (packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
-    it.skip("should call handleDisconnect of every gateway sharing a namespace after their handleConnection", async () => {
+    it("should call handleDisconnect of every gateway sharing a namespace after their handleConnection", async () => {
       await connect(
         [NamespacedSyncDisconnectingGateway, NamespacedObservingGateway],
         2,
@@ -281,8 +278,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: BunWebSocketAdapter disallows multiple gateways sharing the root "/" path (packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
-    it.skip("should call handleDisconnect of gateways on '/' and default namespace after their handleConnection", async () => {
+    it("should call handleDisconnect of gateways on '/' and default namespace after their handleConnection", async () => {
       await connect(
         [MainNamespaceSyncDisconnectingGateway, MainNamespaceObservingGateway],
         2,
@@ -298,7 +294,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: BunWebSocketAdapter does not support RegExp namespaces or multiple gateways sharing a path (packages/core/src/ws/interfaces/ws.interface.ts#L21, packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
+    // BUNEST_BUG: Test harness `connect(..., 0)` resolves `disconnectHooksCalled` immediately without awaiting WebSocket `open`, so `expect(calls)` runs before the TCP handshake completes.
     it.skip("should call handleConnection of every gateway sharing a RegExp namespace", async () => {
       await connect([RoomGateway, OtherRoomGateway], 0, {
         path: "/room-1",
@@ -307,8 +303,7 @@ describeConformance(
       expect(calls).toEqual(["room connect", "other room connect"]);
     });
 
-    // BUNEST_BUG: WsGatewayExplorer skips @WebSocketGateway({ scope: Scope.REQUEST }) providers and BunWebSocketAdapter disallows multiple gateways on the same path (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
-    it.skip("should call handleDisconnect of a request-scoped gateway after its handleConnection", async () => {
+    it("should call handleDisconnect of a request-scoped gateway after its handleConnection", async () => {
       await connect(
         [
           SyncDisconnectingGateway,
@@ -327,8 +322,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: WsGatewayExplorer skips @WebSocketGateway({ scope: Scope.REQUEST }) providers and BunWebSocketAdapter has no per-connection RequestContainer resolution (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122).
-    it.skip("should call handleDisconnect of a request-scoped gateway after its handleConnection when the client leaves while the gateway is being resolved", async () => {
+    it("should call handleDisconnect of a request-scoped gateway after its handleConnection when the client leaves while the gateway is being resolved", async () => {
       await connect(
         [RequestScopedObservingGateway, connectionStateResolvedOnLeaveProvider],
         1,

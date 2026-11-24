@@ -107,8 +107,7 @@ describeConformance(
       expect(GrpcStatus.UNAUTHENTICATED).toBe(16);
     });
 
-    // BUNEST_BUG: GrpcException.getError() in packages/microservices/src/exceptions.ts:167 includes an extra `status` property (`{ code, status, message }`) whereas NestJS returns `{ code, message }`.
-    it.skip("should expose NestJS-compatible (message, code) constructor and getCode() method", () => {
+    it("should expose NestJS-compatible (message, code) constructor and getCode() method", () => {
       const exception = new GrpcException(
         "resource already exists",
         GrpcStatus.ALREADY_EXISTS,
@@ -122,8 +121,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: GrpcAlreadyExistsException.getError() in packages/microservices/src/exceptions.ts:167 includes an extra `status` property (`{ code, status, message }`) whereas NestJS returns `{ code, message }`.
-    it.skip("should use status-specific exception defaults (GrpcAlreadyExistsException)", async () => {
+    it("should use status-specific exception defaults (GrpcAlreadyExistsException)", async () => {
       const mod =
         (await import("../../../../../../packages/microservices/src")) as Record<
           string,

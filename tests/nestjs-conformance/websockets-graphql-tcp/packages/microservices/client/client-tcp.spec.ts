@@ -613,8 +613,7 @@ describeConformance(
         expect(statuses).toEqual(["connected", "disconnected"]);
       });
 
-      // BUNEST_BUG: In TcpClientProxy.ensureConnected() (packages/microservices/src/transports/tcp.transport.ts), calling close() while connect() is in-flight does not guard `open(socket)` against `this.closed === true`, leaving `this.socket` assigned and leaked after close().
-      it.skip("should close and discard a socket that finishes opening after close() was called", async () => {
+      it("should close and discard a socket that finishes opening after close() was called", async () => {
         const server = await startEchoServer();
         const client = new TcpClientProxy({
           host: "127.0.0.1",

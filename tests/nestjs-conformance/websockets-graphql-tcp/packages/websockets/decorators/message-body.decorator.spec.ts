@@ -106,8 +106,7 @@ describeConformance(
         },
       };
 
-      // BUNEST_BUG: @MessageBody() in packages/core/src/ws/decorators/ws.decorators.ts does not support NestJS v12 ParameterDecoratorOptions ({ schema: StandardSchemaV1, pipes?: PipeLike[] }) unlike @bunest/common @Body()/@Query()/@Param(); passing { schema } puts the options object into `pipes` instead of setting `schema`.
-      it.skip("should enhance param with schema when options passed as the only argument", () => {
+      it("should enhance param with schema when options passed as the only argument", () => {
         const messageBodyAny = MessageBody as (
           ...args: unknown[]
         ) => ParameterDecorator;
@@ -126,8 +125,7 @@ describeConformance(
         expect(params[0]?.pipes ?? []).toEqual([]);
       });
 
-      // BUNEST_BUG: @MessageBody() in packages/core/src/ws/decorators/ws.decorators.ts does not unwrap `{ schema, pipes }` ParameterDecoratorOptions.
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         const messageBodyAny = MessageBody as (
           ...args: unknown[]
         ) => ParameterDecorator;
@@ -149,8 +147,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: @MessageBody('data', { schema }) in packages/core/src/ws/decorators/ws.decorators.ts does not unwrap ParameterDecoratorOptions as the second argument after property key.
-      it.skip("should enhance param with schema when options passed as second argument with property", () => {
+      it("should enhance param with schema when options passed as second argument with property", () => {
         const messageBodyAny = MessageBody as (
           ...args: unknown[]
         ) => ParameterDecorator;
