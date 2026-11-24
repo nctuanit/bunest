@@ -3,6 +3,7 @@ import {
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_PIPE,
+  Logger,
   METADATA_KEYS,
   MetadataRegistry,
   VersioningType,
@@ -911,8 +912,21 @@ export class BunestApplication extends BunestApplicationContext {
     this.diEnhancersWired = true;
 
     const appConfig = this.container.getApplicationConfig();
+    const enhancerLogger = new Logger("ApplicationConfig");
+    const describeProviderValue = (val: unknown): string => {
+      if (typeof val === "function") {
+        return `class ${val.name || "anonymous"}`;
+      }
+      if (Array.isArray(val)) return "an array";
+      if (typeof val === "object" && val !== null) return "an object";
+      return String(val);
+    };
+
     const collectToken = <T>(
       token: InjectionToken,
+      tokenLabel: string,
+      methodName: string,
+      warnOnly: boolean,
       onRequestScoped?: (wrapper: {
         readonly token: InjectionToken<unknown>;
         readonly metatype: Type<unknown> | Function | undefined;
@@ -939,6 +953,28 @@ export class BunestApplication extends BunestApplicationContext {
         if (entry.syntheticToken) {
           items.push(entry.syntheticToken as unknown as T);
         } else if (entry.instance !== undefined) {
+          if (
+            entry.provider.kind === "value" &&
+            typeof (entry.instance as Record<string, unknown> | null)?.[
+              methodName
+            ] !== "function"
+          ) {
+            const valDesc = describeProviderValue(entry.instance);
+            const enhancerType =
+              tokenLabel === "APP_FILTER"
+                ? "exception filter"
+                : tokenLabel === "APP_GUARD"
+                  ? "guard"
+                  : tokenLabel === "APP_PIPE"
+                    ? "pipe"
+                    : "interceptor";
+            const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
+            if (warnOnly) {
+              enhancerLogger.warn(msg);
+            } else {
+              throw new Error(msg);
+            }
+          }
           items.push(entry.instance as T);
         } else if (entry.provider.useClass) {
           this.container.registerEnhancerOwner(
@@ -954,17 +990,33 @@ export class BunestApplication extends BunestApplicationContext {
     // Always place DI multi-providers ahead of imperative app.useGlobal*() enhancers
     // consistently in both BunestFactory.create() and TestingModule.createBunestApplication().
     this.httpAdapter.setDiGlobalEnhancers({
-      guards: collectToken<GuardLike>(APP_GUARD, (w) =>
-        appConfig.addGlobalRequestGuard(w as any),
+      guards: collectToken<GuardLike>(
+        APP_GUARD,
+        "APP_GUARD",
+        "canActivate",
+        false,
+        (w) => appConfig.addGlobalRequestGuard(w as any),
       ),
-      pipes: collectToken<PipeLike>(APP_PIPE, (w) =>
-        appConfig.addGlobalRequestPipe(w as any),
+      pipes: collectToken<PipeLike>(
+        APP_PIPE,
+        "APP_PIPE",
+        "transform",
+        false,
+        (w) => appConfig.addGlobalRequestPipe(w as any),
       ),
-      interceptors: collectToken<InterceptorLike>(APP_INTERCEPTOR, (w) =>
-        appConfig.addGlobalRequestInterceptor(w as any),
+      interceptors: collectToken<InterceptorLike>(
+        APP_INTERCEPTOR,
+        "APP_INTERCEPTOR",
+        "intercept",
+        false,
+        (w) => appConfig.addGlobalRequestInterceptor(w as any),
       ),
-      filters: collectToken<ExceptionFilterLike>(APP_FILTER, (w) =>
-        appConfig.addGlobalRequestFilter(w as any),
+      filters: collectToken<ExceptionFilterLike>(
+        APP_FILTER,
+        "APP_FILTER",
+        "catch",
+        true,
+        (w) => appConfig.addGlobalRequestFilter(w as any),
       ),
     });
   }
