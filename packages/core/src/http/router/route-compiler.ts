@@ -119,7 +119,7 @@ export interface RouteCompilerInput {
   readonly onResponseHook?: Function;
   readonly onVersionNotFound?: (
     req: Request,
-    server: BunServerLike,
+    server: BunServerLike | undefined,
     pathname: string,
   ) => Promise<Response | null>;
   readonly onRouteTriggered?: (

@@ -610,7 +610,7 @@ export class BunestApplication extends BunestApplicationContext {
       });
       middlewares = rest;
     } else {
-      middlewares = [pathOrMiddleware, ...rest];
+      middlewares = [pathOrMiddleware as MiddlewareEntry, ...rest];
     }
 
     const decorator = this.options.instrument?.instanceDecorator;
@@ -634,7 +634,11 @@ export class BunestApplication extends BunestApplicationContext {
 
       if (mountPaths && mountPaths.length > 0 && typeof prepared === "function") {
         const paths = mountPaths;
-        const inner = prepared;
+        const inner = prepared as (
+          r: Request,
+          s: ResponseContext,
+          n: () => Promise<void | Response> | void | Response,
+        ) => void | Response | Promise<void | Response>;
         const scopedMw: MiddlewareEntry = (req, res, next) => {
           const pathname = new URL(req.url).pathname;
           const matches = paths.some(
@@ -643,11 +647,7 @@ export class BunestApplication extends BunestApplicationContext {
           if (!matches) {
             return next();
           }
-          return (inner as (r: Request, s: ResponseContext, n: () => unknown) => unknown)(
-            req,
-            res,
-            next,
-          );
+          return inner(req, res, next);
         };
         processed.push(scopedMw);
       } else {
@@ -993,11 +993,13 @@ export class BunestApplication extends BunestApplicationContext {
         this.executeInject({
           method,
           url,
-          headers,
+          headers:
+            remoteAddress !== undefined
+              ? { "x-forwarded-for": remoteAddress, ...(headers ?? {}) }
+              : headers,
           query,
           payload,
           cookies,
-          remoteAddress,
         }),
     };
     return chain;
