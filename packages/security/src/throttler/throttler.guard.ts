@@ -101,6 +101,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
     ExecutionContext,
     {
       primary?: PrimaryHeaderState;
+      hasDefault: boolean;
       setHeaders: boolean;
     }
   >();
@@ -130,7 +131,16 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
       ? [...this.options]
       : [...(this.options.throttlers ?? [])];
 
+    let defaultAssigned = false;
     this.throttlers = rawThrottlers
+      .map((opt, idx) => ({
+        ...opt,
+        name:
+          opt.name ??
+          (!defaultAssigned
+            ? ((defaultAssigned = true), "default")
+            : `rule_${idx}`),
+      }))
       .sort((first, second) => {
         if (typeof first.ttl === "function") {
           return typeof second.ttl === "function" ? 0 : 1;
@@ -139,11 +149,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
           return -1;
         }
         return first.ttl - second.ttl;
-      })
-      .map((opt, idx) => ({
-        ...opt,
-        name: opt.name ?? (idx === 0 ? "default" : `rule_${idx}`),
-      }));
+      });
 
     if (this.throttlers.length === 0) {
       this.logger.warn(
@@ -200,7 +206,12 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
         [handler, classRef],
       );
 
-    const state: { primary?: PrimaryHeaderState; setHeaders: boolean } = {
+    const state: {
+      primary?: PrimaryHeaderState;
+      hasDefault: boolean;
+      setHeaders: boolean;
+    } = {
+      hasDefault: false,
       setHeaders: this.commonOptions.setHeaders ?? true,
     };
     this.activeHeaderStates.set(context, state);
@@ -278,7 +289,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
         );
       }
 
-      if (state.primary) {
+      if (!state.hasDefault && state.primary) {
         const { res } = this.getRequestResponse(context);
         this.setResponseHeader(
           res,
@@ -350,24 +361,32 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
       throttler.setHeaders ?? this.commonOptions?.setHeaders ?? true;
 
     const remaining = Math.max(0, limit - totalHits);
-    const resetMs = isBlocked ? timeToBlockExpire : timeToExpire;
-    const resetEpochSec = Math.ceil((Date.now() + resetMs) / 1000);
-    const retryAfterSec = Math.max(1, Math.ceil(resetMs / 1000));
+    const resetSec = Math.max(0, isBlocked ? timeToBlockExpire : timeToExpire);
+    const resetEpochSec = Math.ceil(Date.now() / 1000) + Math.ceil(resetSec);
+    const retryAfterSec = Math.max(1, Math.ceil(resetSec));
 
     const headerState = this.activeHeaderStates.get(context);
 
     if (isBlocked || totalHits > limit) {
       if (setHeaders) {
-        this.setResponseHeader(res, `${this.headerPrefix}-Limit`, limit);
-        this.setResponseHeader(res, `${this.headerPrefix}-Remaining`, 0);
         this.setResponseHeader(
           res,
-          `${this.headerPrefix}-Reset`,
+          `${this.headerPrefix}-Limit${suffix}`,
+          limit,
+        );
+        this.setResponseHeader(
+          res,
+          `${this.headerPrefix}-Remaining${suffix}`,
+          0,
+        );
+        this.setResponseHeader(
+          res,
+          `${this.headerPrefix}-Reset${suffix}`,
           resetEpochSec,
         );
-        this.setResponseHeader(res, "Retry-After", retryAfterSec);
+        this.setResponseHeader(res, `Retry-After${suffix}`, retryAfterSec);
         if (suffix) {
-          this.setResponseHeader(res, `Retry-After${suffix}`, retryAfterSec);
+          this.setResponseHeader(res, "Retry-After", retryAfterSec);
         }
       }
 
@@ -388,44 +407,35 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
     }
 
     if (setHeaders) {
-      if (suffix) {
-        this.setResponseHeader(
-          res,
-          `${this.headerPrefix}-Limit${suffix}`,
-          limit,
-        );
-        this.setResponseHeader(
-          res,
-          `${this.headerPrefix}-Remaining${suffix}`,
-          remaining,
-        );
-        this.setResponseHeader(
-          res,
-          `${this.headerPrefix}-Reset${suffix}`,
-          resetEpochSec,
-        );
-      }
+      this.setResponseHeader(
+        res,
+        `${this.headerPrefix}-Limit${suffix}`,
+        limit,
+      );
+      this.setResponseHeader(
+        res,
+        `${this.headerPrefix}-Remaining${suffix}`,
+        remaining,
+      );
+      this.setResponseHeader(
+        res,
+        `${this.headerPrefix}-Reset${suffix}`,
+        resetEpochSec,
+      );
 
       if (headerState) {
-        if (!headerState.primary || remaining < headerState.primary.remaining) {
+        if (!suffix) {
+          headerState.hasDefault = true;
+        } else if (
+          !headerState.primary ||
+          remaining < headerState.primary.remaining
+        ) {
           headerState.primary = {
             limit,
             remaining,
             resetEpochSec,
           };
         }
-      } else {
-        this.setResponseHeader(res, `${this.headerPrefix}-Limit`, limit);
-        this.setResponseHeader(
-          res,
-          `${this.headerPrefix}-Remaining`,
-          remaining,
-        );
-        this.setResponseHeader(
-          res,
-          `${this.headerPrefix}-Reset`,
-          resetEpochSec,
-        );
       }
     }
 
@@ -520,11 +530,14 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
       this.commonOptions?.setHeaders ??
       true;
 
-    const resetMs = throttlerLimitDetail.isBlocked
-      ? throttlerLimitDetail.timeToBlockExpire
-      : throttlerLimitDetail.timeToExpire;
-    const resetEpochSec = Math.ceil((Date.now() + resetMs) / 1000);
-    const retryAfterSec = Math.max(1, Math.ceil(resetMs / 1000));
+    const resetSec = Math.max(
+      0,
+      throttlerLimitDetail.isBlocked
+        ? throttlerLimitDetail.timeToBlockExpire
+        : throttlerLimitDetail.timeToExpire,
+    );
+    const resetEpochSec = Math.ceil(Date.now() / 1000) + Math.ceil(resetSec);
+    const retryAfterSec = Math.max(1, Math.ceil(resetSec));
 
     throw new ThrottlerException(message, {
       headers: setHeaders

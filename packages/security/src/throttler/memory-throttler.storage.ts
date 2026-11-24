@@ -34,6 +34,7 @@ export class MemoryThrottlerStorage
   private readonly buckets = new Map<string, BucketEntry>();
   private readonly _storage = new Map<string, ThrottlerStorageOptions>();
   private sweepTimer?: ReturnType<typeof setInterval>;
+  private destroyed = false;
   protected readonly sweepIntervalMs: number;
 
   constructor(
@@ -42,17 +43,25 @@ export class MemoryThrottlerStorage
     sweepIntervalMs = DEFAULT_SWEEP_INTERVAL,
   ) {
     this.sweepIntervalMs = sweepIntervalMs;
-    if (sweepIntervalMs > 0) {
-      this.sweepTimer = setInterval(() => this.sweepExpired(), sweepIntervalMs);
-      if (
-        typeof this.sweepTimer === "object" &&
-        this.sweepTimer !== null &&
-        "unref" in this.sweepTimer &&
-        typeof this.sweepTimer.unref === "function"
-      ) {
-        this.sweepTimer.unref();
+    queueMicrotask(() => {
+      if (this.destroyed || this.sweepTimer !== undefined) {
+        return;
       }
-    }
+      if (this.sweepIntervalMs > 0) {
+        this.sweepTimer = setInterval(
+          () => this.sweepExpired(),
+          this.sweepIntervalMs,
+        );
+        if (
+          typeof this.sweepTimer === "object" &&
+          this.sweepTimer !== null &&
+          "unref" in this.sweepTimer &&
+          typeof this.sweepTimer.unref === "function"
+        ) {
+          this.sweepTimer.unref();
+        }
+      }
+    });
   }
 
   get storage(): Map<string, ThrottlerStorageOptions> {
@@ -81,9 +90,11 @@ export class MemoryThrottlerStorage
       this.syncStorageEntry(key, throttlerName, bucket, totalHits, true);
       return {
         totalHits,
-        timeToExpire: Math.max(1, bucket.expiresAt - now),
+        timeToExpire: Math.ceil(Math.max(1, bucket.expiresAt - now) / 1000),
         isBlocked: true,
-        timeToBlockExpire: bucket.blockedUntil - now,
+        timeToBlockExpire: Math.ceil(
+          Math.max(1, bucket.blockedUntil - now) / 1000,
+        ),
       };
     }
 
@@ -112,23 +123,22 @@ export class MemoryThrottlerStorage
     // If already at or over limit, do NOT pollute sliding window with rejected hit timestamps
     if (bucket.hits.length >= limit) {
       const oldestHit = bucket.hits[0] ?? now;
-      const timeToExpire = Math.max(1, oldestHit + windowMs - now);
-      let isBlocked = false;
-      let timeToBlockExpire = 0;
+      const timeToExpireMs = Math.max(1, oldestHit + windowMs - now);
+      const timeToExpire = Math.ceil(timeToExpireMs / 1000);
+      let timeToBlockExpire = timeToExpire;
 
       if (blockDuration > 0) {
         bucket.blockedUntil = now + blockDuration;
         bucket.expiresAt = Math.max(bucket.expiresAt, bucket.blockedUntil);
-        isBlocked = true;
-        timeToBlockExpire = blockDuration;
+        timeToBlockExpire = Math.ceil(blockDuration / 1000);
       }
 
       const totalHits = bucket.hits.length + 1;
-      this.syncStorageEntry(key, throttlerName, bucket, totalHits, isBlocked);
+      this.syncStorageEntry(key, throttlerName, bucket, totalHits, true);
       return {
         totalHits,
         timeToExpire,
-        isBlocked,
+        isBlocked: true,
         timeToBlockExpire,
       };
     }
@@ -136,7 +146,7 @@ export class MemoryThrottlerStorage
     bucket.hits.push(now);
     const totalHits = bucket.hits.length;
     const oldestHit = bucket.hits[0] ?? now;
-    const timeToExpire = Math.max(1, oldestHit + windowMs - now);
+    const timeToExpire = Math.ceil(Math.max(1, oldestHit + windowMs - now) / 1000);
     bucket.expiresAt = Math.max(now + windowMs, bucket.blockedUntil);
 
     this.syncStorageEntry(key, throttlerName, bucket, totalHits, false);
@@ -168,6 +178,7 @@ export class MemoryThrottlerStorage
   }
 
   onModuleDestroy(): void {
+    this.destroyed = true;
     if (this.sweepTimer !== undefined) {
       clearInterval(this.sweepTimer);
       this.sweepTimer = undefined;
