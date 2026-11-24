@@ -2153,6 +2153,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       });
 
       const sent = resCtx.getSentResponse();
+      if (nextCalled && nextResult === null && !sent) {
+        return null;
+      }
       if (result instanceof Response) {
         return mergeHeadersOntoNativeResponse(result, ctx);
       }
