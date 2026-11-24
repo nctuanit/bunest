@@ -18,7 +18,9 @@ import {
   type InterceptorLike,
   Logger,
   type LoggerService,
+  METADATA_KEYS,
   MetadataRegistry,
+  ModulesContainer,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
@@ -51,6 +53,10 @@ import {
   type ValidationRule,
 } from "../engine";
 import { GRAPHQL_METADATA_KEYS, GRAPHQL_MODULE_OPTIONS } from "../constants";
+import {
+  getResolverFields,
+  getResolverOperations,
+} from "../decorators/resolver.decorators";
 import type {
   GraphQLModuleOptions,
   GraphQLRequestPayload,
@@ -287,12 +293,36 @@ export class GraphQLService
       | InterceptorLike
       | ScopedGqlEnhancer<BunestInterceptor>
     )[] = [];
+    const scopedGlobalEnhancerNames: string[] = [];
+    const nonEntryResolverWrappers: Array<{
+      ctor: Function;
+      token: unknown;
+      moduleId: string;
+    }> = [];
 
     if (this.discoveryService) {
       const discoveryOpts =
         this.options.include && this.options.include.length > 0
           ? { include: this.options.include as Type<unknown>[] }
           : undefined;
+
+      // Map (moduleId, token) -> { kind, moduleName } from ModuleNode.providers
+      const providerKindMap = new Map<
+        string,
+        Map<unknown, { kind: string; moduleName: string }>
+      >();
+      for (const mod of this.discoveryService.getModules()) {
+        const modMap = new Map<unknown, { kind: string; moduleName: string }>();
+        const modName = mod.metatype?.name ?? mod.id;
+        for (const provider of mod.providers.values()) {
+          modMap.set(provider.token, {
+            kind: provider.kind,
+            moduleName: modName,
+          });
+        }
+        providerKindMap.set(mod.id, modMap);
+      }
+
       const wrappers = [
         ...this.discoveryService.getProviders(discoveryOpts),
         ...this.discoveryService.getControllers(discoveryOpts),
@@ -309,6 +339,7 @@ export class GraphQLService
               ? (wrapper.metatype as Type<unknown>)
               : undefined;
           if (wrapper.token === APP_GUARD) {
+            scopedGlobalEnhancerNames.push(resolveToken?.name ?? "APP_GUARD");
             globalGuards.push(
               createScopedEnhancer<CanActivate>(
                 (ctxId) =>
@@ -321,6 +352,9 @@ export class GraphQLService
             continue;
           }
           if (wrapper.token === APP_INTERCEPTOR) {
+            scopedGlobalEnhancerNames.push(
+              resolveToken?.name ?? "APP_INTERCEPTOR",
+            );
             globalInterceptors.push(
               createScopedEnhancer<BunestInterceptor>(
                 (ctxId) =>
@@ -333,6 +367,7 @@ export class GraphQLService
             continue;
           }
           if (wrapper.token === APP_PIPE) {
+            scopedGlobalEnhancerNames.push(resolveToken?.name ?? "APP_PIPE");
             globalPipes.push(
               createScopedEnhancer<PipeTransform>(
                 (ctxId) =>
@@ -345,6 +380,7 @@ export class GraphQLService
             continue;
           }
           if (wrapper.token === APP_FILTER) {
+            scopedGlobalEnhancerNames.push(resolveToken?.name ?? "APP_FILTER");
             globalFilters.push(
               createScopedEnhancer<ExceptionFilter>(
                 (ctxId) =>
@@ -374,6 +410,19 @@ export class GraphQLService
               MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
           ) {
             seen.add(instance);
+            const pInfo = providerKindMap
+              .get(wrapper.moduleId)
+              ?.get(wrapper.token);
+            if (
+              MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) &&
+              (pInfo?.kind === "factory" || pInfo?.kind === "value")
+            ) {
+              nonEntryResolverWrappers.push({
+                ctor,
+                token: wrapper.token,
+                moduleId: pInfo.moduleName,
+              });
+            }
             if (this.metadataScanner) {
               this.metadataScanner.getAllMethodNames(ctor.prototype as object);
             }
@@ -398,6 +447,112 @@ export class GraphQLService
                 })) as object,
             );
             resolverInstances.push(proxy);
+          }
+        }
+      }
+
+      // Validate non-entry (useFactory / useValue) resolvers against class-referenced and request-scoped global enhancers
+      if (nonEntryResolverWrappers.length > 0) {
+        let modulesContainer: ModulesContainer | undefined;
+        if (this.moduleRef) {
+          try {
+            modulesContainer = this.moduleRef.get(ModulesContainer, {
+              strict: false,
+            });
+          } catch {
+            // ModulesContainer not available
+          }
+        }
+        const enhancerMetaKeys = [
+          METADATA_KEYS.GUARDS,
+          METADATA_KEYS.INTERCEPTORS,
+          METADATA_KEYS.PIPES,
+          METADATA_KEYS.EXCEPTION_FILTERS,
+        ];
+        for (const entry of nonEntryResolverWrappers) {
+          const tokenName =
+            typeof entry.token === "function"
+              ? entry.token.name
+              : String(entry.token);
+          const handlerKeys = [
+            ...getResolverOperations(
+              entry.ctor,
+              GRAPHQL_METADATA_KEYS.QUERIES,
+            ).map((o) => o.handlerKey),
+            ...getResolverOperations(
+              entry.ctor,
+              GRAPHQL_METADATA_KEYS.MUTATIONS,
+            ).map((o) => o.handlerKey),
+            ...getResolverOperations(
+              entry.ctor,
+              GRAPHQL_METADATA_KEYS.SUBSCRIPTIONS,
+            ).map((o) => o.handlerKey),
+            ...getResolverFields(entry.ctor).map((rf) => rf.handlerKey),
+          ];
+
+          for (const handlerKey of handlerKeys) {
+            const handlerFn = (
+              entry.ctor.prototype as Record<string | symbol, unknown>
+            )[handlerKey];
+            for (const metaKey of enhancerMetaKeys) {
+              const classEnhancers = MetadataRegistry.getMergedClassArray<unknown>(
+                metaKey,
+                entry.ctor,
+              );
+              const methodEnhancers =
+                typeof handlerFn === "function"
+                  ? (MetadataRegistry.get<readonly unknown[]>(
+                      metaKey,
+                      handlerFn,
+                    ) ?? [])
+                  : [];
+              for (const enh of [...classEnhancers, ...methodEnhancers]) {
+                if (typeof enh === "function") {
+                  throw new Error(
+                    `The "${entry.ctor.name}.${String(handlerKey)}" GraphQL handler of the "${tokenName}" provider references "${enh.name}" by class, but Nest did not register this enhancer for the provider, so it would never run.`,
+                  );
+                }
+              }
+            }
+          }
+
+          if (scopedGlobalEnhancerNames.length === 0 && this.moduleRef) {
+            try {
+              const appCfg = this.moduleRef.get(ApplicationConfig, {
+                strict: false,
+              }) as
+                | {
+                    getGlobalRequestGuards?: () => readonly { metatype?: Function }[];
+                    getGlobalRequestInterceptors?: () => readonly { metatype?: Function }[];
+                    getGlobalRequestPipes?: () => readonly { metatype?: Function }[];
+                    getGlobalRequestFilters?: () => readonly { metatype?: Function }[];
+                  }
+                | undefined;
+              const reqEnhancers = [
+                ...(appCfg?.getGlobalRequestGuards?.() ?? []),
+                ...(appCfg?.getGlobalRequestInterceptors?.() ?? []),
+                ...(appCfg?.getGlobalRequestPipes?.() ?? []),
+                ...(appCfg?.getGlobalRequestFilters?.() ?? []),
+              ];
+              for (const reqEnh of reqEnhancers) {
+                const name =
+                  typeof reqEnh === "function"
+                    ? (reqEnh as Function).name
+                    : reqEnh?.metatype?.name;
+                if (name) scopedGlobalEnhancerNames.push(name);
+              }
+            } catch {
+              // Ignore if ApplicationConfig unavailable
+            }
+          }
+
+          if (scopedGlobalEnhancerNames.length > 0 && handlerKeys.length > 0) {
+            const modNode = modulesContainer?.get(entry.moduleId);
+            const moduleName =
+              modNode?.metatype?.name ?? entry.moduleId ?? "UnknownModule";
+            throw new Error(
+              `The "${tokenName}" provider of the "${moduleName}" module hosts GraphQL handlers but is not an entry provider, so the request or transient-scoped global enhancer "${scopedGlobalEnhancerNames[0]}" would not run for them.`,
+            );
           }
         }
       }
