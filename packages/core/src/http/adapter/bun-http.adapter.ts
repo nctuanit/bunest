@@ -1004,10 +1004,12 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   override setOnRequestHook(onRequestHook: Function): void {
     this.onRequestHookFn = onRequestHook;
+    this.compiledTable = undefined;
   }
 
   override setOnResponseHook(onResponseHook: Function): void {
     this.onResponseHookFn = onResponseHook;
+    this.compiledTable = undefined;
   }
 
   override registerSecurityHook(hook: SecurityRequestHook<Request>): this {
@@ -1579,7 +1581,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   }
 
   getUrl(): string | undefined {
-    return this.httpServer?.url.toString();
+    const raw = this.httpServer?.url.toString();
+    if (!raw) return undefined;
+    return raw.replace(/^(https?:\/\/)0\.0\.0\.0(?::|\/|$)/, (m, proto) =>
+      m.replace(`${proto}0.0.0.0`, `${proto}127.0.0.1`),
+    );
   }
 
   private async ensureCompiled(): Promise<CompiledRouteTable> {

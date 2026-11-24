@@ -107,6 +107,95 @@ function buildErrorHeaders(
  * Normalizes `HttpException` responses, preserves exception headers (`Allow`, etc.)
  * and CORS headers, and never leaks stack traces or internal messages in production.
  */
+const LOG_HTTP_ERROR_SYMBOL = Symbol.for("bunest.http.logHttpError");
+
+const HTTP_STATUS_PHRASES: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  402: "Payment Required",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  406: "Not Acceptable",
+  408: "Request Timeout",
+  409: "Conflict",
+  410: "Gone",
+  411: "Length Required",
+  412: "Precondition Failed",
+  413: "Payload Too Large",
+  414: "URI Too Long",
+  415: "Unsupported Media Type",
+  416: "Range Not Satisfiable",
+  417: "Expectation Failed",
+  418: "I'm a teapot",
+  422: "Unprocessable Entity",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
+/**
+ * Wraps `http-errors`-shaped objects (`{ statusCode | status, message?, expose? }`)
+ * thrown by middleware into an `HttpException` with `{ cause }` so NestJS
+ * `@Catch(HttpException)` filters and `DefaultExceptionFilter` handle them uniformly.
+ */
+export function wrapHttpLikeMiddlewareError(err: unknown): unknown {
+  if (err instanceof HttpException) {
+    return err;
+  }
+  if (err === null || typeof err !== "object") {
+    return err;
+  }
+  const obj = err as {
+    statusCode?: unknown;
+    status?: unknown;
+    message?: unknown;
+    expose?: unknown;
+  };
+  const rawStatus =
+    typeof obj.statusCode === "number"
+      ? obj.statusCode
+      : typeof obj.status === "number"
+        ? obj.status
+        : undefined;
+  if (
+    rawStatus === undefined ||
+    !Number.isInteger(rawStatus) ||
+    rawStatus < 400 ||
+    rawStatus > 599
+  ) {
+    return err;
+  }
+
+  const phrase = HTTP_STATUS_PHRASES[rawStatus] ?? "Http Exception";
+  const shouldExpose =
+    obj.expose === true || (obj.expose !== false && rawStatus < 500);
+  const message =
+    shouldExpose && typeof obj.message === "string" && obj.message.length > 0
+      ? obj.message
+      : phrase;
+
+  const wrapped = new HttpException(
+    {
+      statusCode: rawStatus,
+      message,
+      error: phrase,
+    },
+    rawStatus,
+    { cause: err },
+  );
+  if (rawStatus >= 500 || obj.expose === false) {
+    Object.defineProperty(wrapped, LOG_HTTP_ERROR_SYMBOL, {
+      value: true,
+      enumerable: false,
+    });
+  }
+  return wrapped;
+}
+
 export class DefaultExceptionFilter implements ExceptionFilter {
   private readonly development?: boolean | (() => boolean | undefined);
   private readonly logger: LoggerService | (() => LoggerService);
@@ -138,10 +227,28 @@ export class DefaultExceptionFilter implements ExceptionFilter {
     const path = reqCtx?.pathname ?? "/";
 
     if (exception instanceof HttpException) {
+      if (
+        (exception as unknown as Record<symbol, unknown>)[
+          LOG_HTTP_ERROR_SYMBOL
+        ] === true
+      ) {
+        const activeLogger = this.resolveLogger();
+        const rootCause =
+          (exception as { cause?: unknown }).cause ?? exception;
+        if (rootCause instanceof Error) {
+          activeLogger.error(rootCause.message, rootCause.stack);
+        } else {
+          activeLogger.error(exception.message, exception.stack);
+        }
+      }
       const status = exception.getStatus();
+      const rawResponse = exception.getResponse();
       const rawJson = exception.toJSON();
       const body: Record<string, unknown> = {
         ...rawJson,
+        ...(rawResponse instanceof Error
+          ? { message: HTTP_STATUS_PHRASES[status] ?? "Http Exception" }
+          : {}),
         timestamp: rawJson.timestamp ?? timestamp,
         path: rawJson.path ?? path,
       };
@@ -246,7 +353,16 @@ export async function executeExceptionFilters(
     }
 
     try {
-      const result = await entry.filter.catch(error, host);
+      const filterObj = entry.filter as {
+        catch?: (e: unknown, h: ArgumentsHost) => unknown;
+        constructor?: { catch?: (e: unknown, h: ArgumentsHost) => unknown };
+      };
+      const result =
+        typeof filterObj.catch === "function"
+          ? await filterObj.catch(error, host)
+          : typeof filterObj.constructor?.catch === "function"
+            ? await filterObj.constructor.catch(error, host)
+            : await entry.filter.catch(error, host);
 
       if (result instanceof Response) {
         return mergeHeadersOntoNativeResponse(result, ctx);
@@ -266,7 +382,21 @@ export async function executeExceptionFilters(
         );
       }
 
-      // Filter returned void after configuring ResponseContext
+      // Filter returned undefined: if it sent a response or mutated ResponseContext, respect it;
+      // otherwise (e.g. a foreign/non-HTTP filter returning undefined), delegate to defaultFilter.
+      const sent = ctx.hasResponseContext()
+        ? ctx.responseContext.getSentResponse()
+        : undefined;
+      if (sent) {
+        return mergeHeadersOntoNativeResponse(sent, ctx);
+      }
+      if (
+        !ctx.hasResponseContext() ||
+        (ctx.responseContext.getStatus() === undefined &&
+          !ctx.responseContext.hasHeaderMutations())
+      ) {
+        return defaultFilter.catch(error, host, ctx);
+      }
       const headers = buildErrorHeaders(
         ctx,
         error instanceof HttpException ? error.getHeaders() : undefined,

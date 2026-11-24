@@ -10,6 +10,7 @@ import {
   HttpStatus,
   type InterceptorLike,
   InternalServerErrorException,
+  Logger,
   type MiddlewareFunction,
   type NextFunction,
   type PipeLike,
@@ -51,6 +52,7 @@ import {
   type DefaultExceptionFilter,
   executeExceptionFilters,
   extractFilterCatchTypes,
+  wrapHttpLikeMiddlewareError,
 } from "./exception-handler";
 import {
   type CompiledParameter,
@@ -518,7 +520,15 @@ async function executeMiddlewareChain(
       return nextPromise!;
     };
 
-    const result = await invokeMiddleware(mw, ctx, next);
+    let result: unknown;
+    try {
+      result = await invokeMiddleware(mw, ctx, next);
+    } catch (mwErr) {
+      if (!nextCalled) {
+        throw wrapHttpLikeMiddlewareError(mwErr);
+      }
+      throw mwErr;
+    }
 
     if (result instanceof Response) {
       return nextCalled ? result : finalizeShortCircuitResponse(result, ctx);
@@ -741,22 +751,15 @@ async function executeFullCompiledRoute(
     };
 
     try {
-      // Optional adapter onRequestHook (only executed when explicitly registered)
-      if (runtime.onRequestHook) {
-        await runAdapterOnRequestHook(
-          runtime.onRequestHook,
-          ctx.request,
-          ctx.responseContext,
-        );
+      const runDownstream = async (): Promise<Response> => {
         const earlySent = ctx.responseContext.getSentResponse();
         if (earlySent) {
           return await finalizeResponse(earlySent);
         }
-      }
 
-      // Resolve per-request filters first if request-scoped so exceptions in stages 3-11
-      // hit method/controller filters properly.
-      if (compiled.requiresRequestScope) {
+        // Resolve per-request filters first if request-scoped so exceptions in stages 3-11
+        // hit method/controller filters properly.
+        if (compiled.requiresRequestScope) {
         const resolvedFilters: CompiledExceptionFilter[] = [];
         for (let i = 0; i < compiled.filterSpecs.length; i++) {
           const item = compiled.filterSpecs[i];
@@ -1073,6 +1076,69 @@ async function executeFullCompiledRoute(
       return runtime.securityHeaders
         ? applySecurityHeaders(mwResponse, runtime.securityHeaders)
         : mwResponse;
+      };
+
+      if (runtime.onRequestHook) {
+        const hookFn = runtime.onRequestHook;
+        if (hookFn.length >= 3) {
+          return await new Promise<Response>((resolve, reject) => {
+            let doneCalled = false;
+            let settled = false;
+            const settleResolve = (res: Response) => {
+              if (!settled) {
+                settled = true;
+                resolve(res);
+              }
+            };
+            const settleReject = (err: unknown) => {
+              if (!settled) {
+                settled = true;
+                reject(err);
+              }
+            };
+            const done = (err?: unknown) => {
+              if (doneCalled) return;
+              doneCalled = true;
+              if (err !== undefined && err !== null) {
+                settleReject(err);
+                return;
+              }
+              // Invoke runDownstream synchronously inside done() so AsyncLocalStorage
+              // contexts established by the hook (e.g. `storage.run('hook', done)`)
+              // propagate across body parsing, handler execution, and onResponseHook.
+              runDownstream().then(settleResolve, settleReject);
+            };
+            try {
+              const maybePromise = hookFn(ctx.request, ctx.responseContext, done);
+              if (isThenable(maybePromise)) {
+                Promise.resolve(maybePromise).then(
+                  () => {
+                    if (!doneCalled) {
+                      done();
+                    }
+                  },
+                  (err) => {
+                    if (doneCalled) {
+                      new Logger("RequestHook").error(err);
+                    } else {
+                      settleReject(err);
+                    }
+                  },
+                );
+              }
+            } catch (err) {
+              if (doneCalled) {
+                new Logger("RequestHook").error(err);
+              } else {
+                settleReject(err);
+              }
+            }
+          });
+        }
+        await hookFn(ctx.request, ctx.responseContext);
+      }
+
+      return await runDownstream();
     } catch (rawError) {
       const error = runtime.mapException
         ? runtime.mapException(rawError)
