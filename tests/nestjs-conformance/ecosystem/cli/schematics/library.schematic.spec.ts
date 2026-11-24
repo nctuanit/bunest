@@ -134,8 +134,7 @@ describeConformance(
       "Normalizes camelCase library name to kebab-case paths and PascalCase symbols",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_project" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "libs/_project/src/_project.module.ts" etc.
-    it.skip("should keep underscores in library's path and file name", async () => {
+    it("should keep underscores in library's path and file name", async () => {
       const result = await generateSchematic({
         schematic: "library",
         name: "_project",

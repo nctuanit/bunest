@@ -180,8 +180,7 @@ describeConformance(
       "Normalizes camelCase controller name to kebab-case path and PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in path segment "_bar" of "_bar/foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_bar/foo/foo.controller.ts".
-    it.skip("manage keep underscores in path", async () => {
+    it("manage keep underscores in path", async () => {
       const result = await generateSchematic({
         schematic: "controller",
         name: "_bar/foo",

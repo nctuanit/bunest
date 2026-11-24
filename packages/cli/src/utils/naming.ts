@@ -8,7 +8,7 @@ import {
 } from "@bunest/core";
 
 const VALID_PROJECT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
-const VALID_SEGMENT_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+const VALID_SEGMENT_REGEX = /^_*[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
 
 export interface ParsedSchematicName {
   readonly subDir: string;
@@ -38,7 +38,7 @@ export function toKebabCase(input: string): string {
 export function toPascalCase(input: string): string {
   const kebab = toKebabCase(input);
   return kebab
-    .split("-")
+    .split(/[-.]+/)
     .filter((part) => part.length > 0)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
@@ -87,6 +87,17 @@ export function validateProjectName(name: string): string {
  * `admin/user-profile`) while strictly blocking path traversal or invalid
  * TypeScript identifier segments.
  */
+function normalizeSchematicSegment(segment: string): string {
+  const leadingUnderscores = /^_+/.exec(segment)?.[0] ?? "";
+  const rest = segment.slice(leadingUnderscores.length);
+  const normalizedRest = rest
+    .split(".")
+    .map((part) => toKebabCase(part))
+    .filter((part) => part.length > 0)
+    .join(".");
+  return `${leadingUnderscores}${normalizedRest}`;
+}
+
 export function parseSchematicName(input: string): ParsedSchematicName {
   const normalized = input.trim().replace(/\\/g, "/");
   if (normalized.length === 0) {
@@ -106,22 +117,29 @@ export function parseSchematicName(input: string): ParsedSchematicName {
   const segments: string[] = [];
 
   for (const segment of rawSegments) {
-    if (segment === "" || segment === "." || segment === "..") {
+    if (
+      segment === "" ||
+      segment === "." ||
+      segment === ".." ||
+      segment.includes("..") ||
+      segment.startsWith(".") ||
+      segment.endsWith(".")
+    ) {
       throw new Error(
         `Invalid schematic name "${input}": empty or path-traversal segments ("..", ".") are not allowed.`,
       );
     }
     if (!VALID_SEGMENT_REGEX.test(segment)) {
       throw new Error(
-        `Invalid schematic name segment "${segment}": must start with a letter and contain only letters, digits, "-", or "_".`,
+        `Invalid schematic name segment "${segment}": must start with a letter or "_" and contain only letters, digits, ".", "-", or "_".`,
       );
     }
     segments.push(segment);
   }
 
   const leaf = segments[segments.length - 1]!;
-  const dirSegments = segments.slice(0, -1).map((s) => toKebabCase(s));
-  const kebab = toKebabCase(leaf);
+  const dirSegments = segments.slice(0, -1).map((s) => normalizeSchematicSegment(s));
+  const kebab = normalizeSchematicSegment(leaf);
   const pascal = toPascalCase(leaf);
   const camel = toCamelCase(leaf);
 

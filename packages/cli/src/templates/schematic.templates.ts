@@ -270,11 +270,12 @@ describe("${pascal}", () => {
     }
 
     case "decorator": {
+      const metadataKey = kebab.replace(/^_+/, "") || kebab;
       files.push({
         relativePath: joinRel(folder, `${kebab}.decorator.ts`),
         content: `import { SetMetadata } from "@bunest/core";
 
-export const ${pascal.toUpperCase()}_KEY = "${kebab}";
+export const ${pascal.toUpperCase()}_KEY = "${metadataKey}";
 
 export const ${pascal} = (...args: string[]) =>
   SetMetadata(${pascal.toUpperCase()}_KEY, args);

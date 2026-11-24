@@ -166,8 +166,7 @@ describeConformance(
       "Normalizes camelCase filter name to kebab-case filename and PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_foo.filter.ts" exporting FooFilter.
-    it.skip("should keep underscores on file path only", async () => {
+    it("should keep underscores on file path only", async () => {
       const result = await generateSchematic({
         schematic: "filter",
         name: "_foo",
@@ -322,8 +321,7 @@ describeConformance(
       "Bunest generates bun:test filter spec with extensionless bundler imports",
     );
 
-    // BUNEST_BUG: generateSchematic("filter") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream filter/schema.json (emits src/foo/foo.filter.ts instead of src/foo.filter.ts).
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "filter",
         name: "foo",

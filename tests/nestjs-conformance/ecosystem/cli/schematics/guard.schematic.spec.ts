@@ -176,8 +176,7 @@ describeConformance(
       "Normalizes camelCase directory segment to kebab-case",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_foo/_bar" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_foo/_bar.guard.ts" exporting BarGuard.
-    it.skip("should keep underscore in path and name", async () => {
+    it("should keep underscore in path and name", async () => {
       const result = await generateSchematic({
         schematic: "guard",
         name: "_foo/_bar",
@@ -289,8 +288,7 @@ describeConformance(
       "Bunest generates bun:test guard spec with extensionless bundler imports",
     );
 
-    // BUNEST_BUG: generateSchematic("guard") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream guard/schema.json (emits src/foo/foo.guard.ts instead of src/foo.guard.ts).
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "guard",
         name: "foo",

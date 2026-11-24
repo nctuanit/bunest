@@ -23,6 +23,17 @@ const WORKSPACE_ROOT_SCHEMATICS = new Set<SchematicType>([
   "application",
 ]);
 
+const DEFAULT_FLAT_SCHEMATICS = new Set<SchematicType>([
+  "class",
+  "decorator",
+  "filter",
+  "gateway",
+  "guard",
+  "interceptor",
+  "interface",
+  "provider",
+]);
+
 /**
  * Generates Bunest source & spec files for a schematic
  * (`bunest generate <schematic> <name>` / `bunest g <schematic> <name>`).
@@ -34,7 +45,8 @@ export async function generateSchematic(
   const schematic = resolveSchematicType(options.schematic);
   const parsedName = parseSchematicName(options.name);
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
-  const { config } = await loadCliConfiguration(cwd, options.config);
+  const loadedConfig = await loadCliConfiguration(cwd, options.config);
+  const { config } = loadedConfig;
   const project = resolveProjectConfiguration(config, options.project);
 
   const genOpts = {
@@ -51,7 +63,16 @@ export async function generateSchematic(
       "src");
 
   const targetDir = resolve(cwd, options.dir ?? defaultBaseDir);
-  const flat = options.flat ?? genOpts.flat ?? false;
+  const configuredFlat =
+    project?.generateOptions?.flat !== undefined
+      ? project.generateOptions.flat
+      : loadedConfig.found
+        ? genOpts.flat
+        : undefined;
+  const flat =
+    options.flat ??
+    configuredFlat ??
+    (io ? false : DEFAULT_FLAT_SCHEMATICS.has(schematic));
 
   let defaultSpec = true;
   if (typeof genOpts.spec === "boolean") {

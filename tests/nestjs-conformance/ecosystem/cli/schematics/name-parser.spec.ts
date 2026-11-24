@@ -147,16 +147,14 @@ describeConformance(
       expect(() => parseSchematicName("bar//foo")).toThrow();
     });
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore segments ("_bar/_foo") instead of allowing leading underscores as valid NestJS schematic path/file names (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
-    it.skip("should preserve leading underscores in directory and leaf segments", () => {
+    it("should preserve leading underscores in directory and leaf segments", () => {
       const parsed = parseSchematicName("_bar/_foo");
       expect(parsed.subDir).toBe("_bar");
       expect(parsed.kebab).toBe("_foo");
       expect(parsed.pascal).toBe("Foo");
     });
 
-    // BUNEST_BUG: parseSchematicName rejects dot-separated names ("foo.entity") instead of parsing them into class FooEntity (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
-    it.skip("should accept dot-separated schematic names like 'foo.entity'", () => {
+    it("should accept dot-separated schematic names like 'foo.entity'", () => {
       const parsed = parseSchematicName("foo.entity");
       expect(parsed.kebab).toBe("foo.entity");
       expect(parsed.pascal).toBe("FooEntity");

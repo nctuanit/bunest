@@ -135,8 +135,7 @@ describeConformance(
       ).toEqual("export interface Foo {}\n");
     });
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_bar/_foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_bar/_foo.interface.ts" containing "export interface Foo {}".
-    it.skip("should keep underscores in interface's path and file names", async () => {
+    it("should keep underscores in interface's path and file names", async () => {
       const result = await generateSchematic({
         schematic: "interface",
         name: "_bar/_foo",
@@ -167,8 +166,7 @@ describeConformance(
       expect(nested[0]?.content).toEqual("export interface Foo {}\n");
     });
 
-    // BUNEST_BUG: generateSchematic("interface") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream interface/schema.json (emits src/foo/foo.interface.ts instead of src/foo.interface.ts).
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "interface",
         name: "foo",

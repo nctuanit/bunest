@@ -99,8 +99,7 @@ describeConformance(
       "emits @bunest/core @Injectable provider with explicit flat: true",
     );
 
-    // BUNEST_BUG: generateSchematic("provider", { name: "foo" }) defaults flat to false (creating foo/foo.ts) instead of upstream provider/schema.json default flat: true (foo.ts) (packages/cli/src/commands/generate.ts:54)
-    it.skip("should default flat to true for provider schematic when flat option is omitted", async () => {
+    it("should default flat to true for provider schematic when flat option is omitted", async () => {
       const cwd = createTempDir();
       const result = await generateSchematic({
         schematic: "provider",
@@ -199,8 +198,7 @@ describeConformance(
       "normalizes kebab-case provider name to PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore ("_bar") instead of generating _bar.ts and _bar.spec.ts with class Bar (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in provider's file name", () => {
+    it("should keep underscores in provider's file name", () => {
       const planned = buildSchematicFiles(
         "provider",
         parseSchematicName("_bar"),
@@ -282,8 +280,7 @@ describeConformance(
       expect(fooModule).toContain("providers: [Foo]");
     });
 
-    // BUNEST_BUG: parseSchematicName rejects dot-separated schematic names ("foo.entity") instead of creating foo.entity.ts with class FooEntity (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
-    it.skip("should remove . from name", () => {
+    it("should remove . from name", () => {
       const planned = buildSchematicFiles(
         "provider",
         parseSchematicName("foo.entity"),

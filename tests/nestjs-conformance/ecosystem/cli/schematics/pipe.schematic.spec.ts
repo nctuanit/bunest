@@ -204,8 +204,7 @@ describeConformance(
       "normalizes camelCase directory segment to kebab-case",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore segments ("_bar/_foo") instead of preserving underscores in path and filename while normalizing class name to FooPipe (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should manage to keep underscores on pipe's path and name", () => {
+    it("should manage to keep underscores on pipe's path and name", () => {
       const planned = buildSchematicFiles(
         "pipe",
         parseSchematicName("_bar/_foo"),

@@ -118,8 +118,7 @@ describeConformance(
         expect(paths).toContain("users/dto/update-user.dto.ts");
       });
 
-      // BUNEST_BUG: parseSchematicName rejects leading underscore ("_users") instead of preserving underscores in resource paths and filenames (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-      it.skip("should keep underscores in resource's path and file name", () => {
+      it("should keep underscores in resource's path and file name", () => {
         const planned = buildSchematicFiles(
           "resource",
           parseSchematicName("_users"),

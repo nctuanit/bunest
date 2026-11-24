@@ -162,8 +162,7 @@ describeConformance(
       "Normalizes camelCase interceptor name to kebab-case filename and PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_bar/_foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_bar/_foo.interceptor.ts" exporting FooInterceptor.
-    it.skip("should keep underscores in interceptor's path and file name", async () => {
+    it("should keep underscores in interceptor's path and file name", async () => {
       const result = await generateSchematic({
         schematic: "interceptor",
         name: "_bar/_foo",
@@ -301,8 +300,7 @@ describeConformance(
       "Bunest generates bun:test interceptor spec with extensionless bundler imports",
     );
 
-    // BUNEST_BUG: generateSchematic("interceptor") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream interceptor/schema.json (emits src/foo/foo.interceptor.ts instead of src/foo.interceptor.ts).
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "interceptor",
         name: "foo",

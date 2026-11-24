@@ -131,8 +131,7 @@ describeConformance(
       "normalizes camelCase sub-app name to kebab-case paths and PascalCase symbols",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore ("_project") instead of creating apps/_project with _project.* files (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in sub-app's path and file name", () => {
+    it("should keep underscores in sub-app's path and file name", () => {
       const planned = buildSchematicFiles(
         "sub-app",
         parseSchematicName("_project"),
