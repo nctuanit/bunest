@@ -244,14 +244,18 @@ export class DefaultExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const rawResponse = exception.getResponse();
       const rawJson = exception.toJSON();
-      const body: Record<string, unknown> = {
-        ...rawJson,
-        ...(rawResponse instanceof Error
-          ? { message: HTTP_STATUS_PHRASES[status] ?? "Http Exception" }
-          : {}),
-        timestamp: rawJson.timestamp ?? timestamp,
-        path: rawJson.path ?? path,
-      };
+      const hasCustomToJSON =
+        exception.toJSON !== HttpException.prototype.toJSON;
+      const body: Record<string, unknown> = hasCustomToJSON
+        ? { ...rawJson }
+        : {
+            ...rawJson,
+            ...(rawResponse instanceof Error
+              ? { message: HTTP_STATUS_PHRASES[status] ?? "Http Exception" }
+              : {}),
+            timestamp: rawJson.timestamp ?? timestamp,
+            path: rawJson.path ?? path,
+          };
       // Ensure stack trace is never accidentally exposed in production
       if (isProd && "stack" in body) {
         delete body.stack;

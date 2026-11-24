@@ -574,6 +574,9 @@ export function executeCompiledRoute(
   runtime: PipelineRuntimeConfig,
   allowedMethodsForPath?: string,
 ): Response | Promise<Response> {
+  if (compiled.route.isSse) {
+    ctx.enableSseSignal();
+  }
   if (compiled.isFastSingleton) {
     return executeFastSingletonRoute(compiled, ctx, runtime);
   }

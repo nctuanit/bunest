@@ -2666,6 +2666,17 @@ export class DIContainer
         this.graph.globalModules,
       );
       if (loc) {
+        if (
+          kind === "guard" &&
+          loc.provider.useClass &&
+          loc.provider.useClass !== cls &&
+          typeof (cls as { prototype?: { canActivate?: unknown } }).prototype
+            ?.canActivate !== "function"
+        ) {
+          throw new Error(
+            `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
+          );
+        }
         return ensureValidEnhancerInstance(
           (await this.resolveNormalizedProvider(
             loc.owner,

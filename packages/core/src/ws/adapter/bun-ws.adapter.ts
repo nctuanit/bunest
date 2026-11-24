@@ -1167,7 +1167,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       METADATA_KEYS.INJECTABLE,
       enhancer,
     )?.scope;
-    if (metaScope === Scope.REQUEST || metaScope === Scope.TRANSIENT) {
+    if (metaScope === Scope.REQUEST) {
       return true;
     }
     if (!this.container) {
@@ -1179,11 +1179,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
         (w.token === enhancer || w.metatype === enhancer) &&
         (!owningModule || w.moduleId === owningModule.id)
       ) {
-        if (
-          w.scope === Scope.REQUEST ||
-          w.scope === Scope.TRANSIENT ||
-          !w.isDependencyTreeStatic
-        ) {
+        if (w.scope === Scope.REQUEST || !w.isDependencyTreeStatic) {
           return true;
         }
       }

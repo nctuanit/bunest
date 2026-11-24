@@ -395,8 +395,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: HealthCheckException (packages/observability/src/health/health.service.ts:26-41) extends ServiceUnavailableException without overriding toJSON(), so HttpException.toJSON() (packages/core/src/common/exceptions/http.exception.ts:167-177) overwrites the non-string `error` map with `"HealthCheckException"` and wraps the 503 response body in a generic HttpException envelope (`statusCode`, `message`, `path`, `timestamp`, `errors`) instead of returning `{ status: "error", info: {}, error: { payments }, details: { payments } }`.
-      it.skip("should respond 503 with the failure data of a failed check", async () => {
+      it("should respond 503 with the failure data of a failed check", async () => {
         const payments = {
           status: "down",
           message: "payment failed: EPAY",
