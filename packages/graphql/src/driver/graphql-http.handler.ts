@@ -157,6 +157,11 @@ export class GraphQLService
 
     const wsConfig = resolveWsOptionsFromModule(this.options);
     if (wsConfig !== undefined) {
+      if (wsConfig.server && wsConfig.server.options?.noServer !== true) {
+        throw new Error(
+          'Custom WebSocketServer passed to "graphql-ws" must be instantiated with "noServer: true".',
+        );
+      }
       let adapter: BunHttpAdapter | undefined = this.options.httpAdapter;
       if (!adapter && this.moduleRef) {
         try {
