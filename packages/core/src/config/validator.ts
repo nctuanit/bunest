@@ -154,6 +154,46 @@ function formatHttpValidationFailure(
   );
 }
 
+function redactRejectedValueInMessage(
+  message: string,
+  field: string,
+  rawConfig: Record<string, unknown>,
+): string {
+  const rawVal =
+    field !== "<env>" && Object.prototype.hasOwnProperty.call(rawConfig, field)
+      ? rawConfig[field]
+      : undefined;
+  if (typeof rawVal !== "string" || rawVal.length === 0) {
+    return message;
+  }
+
+  let sanitized = message;
+  // Joi pattern error format: `"API_KEY" with value "<secret>" fails to match ...`
+  const joiDouble = ` with value "${rawVal}"`;
+  if (sanitized.includes(joiDouble)) {
+    sanitized = sanitized.split(joiDouble).join("");
+  }
+  const joiSingle = ` with value '${rawVal}'`;
+  if (sanitized.includes(joiSingle)) {
+    sanitized = sanitized.split(joiSingle).join("");
+  }
+
+  // Quoted rejected values from any schema library -> `[redacted]`
+  for (const quote of ['"', "'", "`"]) {
+    const quoted = `${quote}${rawVal}${quote}`;
+    if (sanitized.includes(quoted)) {
+      sanitized = sanitized.split(quoted).join("[redacted]");
+    }
+  }
+
+  // Unquoted fallback if still present
+  if (sanitized.includes(rawVal)) {
+    sanitized = sanitized.split(rawVal).join("[redacted]");
+  }
+
+  return sanitized;
+}
+
 /**
  * Validates raw environment configuration using either a DTO class
  * (`ValidationPipe` with `class-validator` + `class-transformer`) or
@@ -186,14 +226,19 @@ export async function validateConfiguration<T extends object>(
       const details = formatStandardSchemaIssues(
         result.issues as Parameters<typeof formatStandardSchemaIssues>[0],
         "<env>",
-      );
+      ).map((d) => ({
+        ...d,
+        messages: d.messages.map((m) =>
+          redactRejectedValueInMessage(m, d.field, rawConfig),
+        ),
+      }));
       const lines = details.map((d) =>
         d.field === "<env>"
           ? d.messages.join(", ")
           : `${d.field}: ${d.messages.join(", ")}`,
       );
       throw new ConfigValidationError(
-        `Config validation error: ${lines.join("; ")}`,
+        `Config validation error: ${lines.join("\n")}`,
         { details },
       );
     }
@@ -205,15 +250,27 @@ export async function validateConfiguration<T extends object>(
         }
       ).describe?.()?.keys;
       if (describedKeys && typeof describedKeys === "object") {
-        // Schema declares its keys (e.g. Joi): keep undeclared keys from
-        // baseForMerge, but never restore a declared key that the schema stripped.
+        // Schema declares its keys (e.g. Joi):
+        // - Never restore a declared key that the schema stripped.
+        // - When skipProcessEnv is true, drop undeclared keys that came only from process.env.
         const merged: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(baseForMerge)) {
           if (!Object.hasOwn(describedKeys, k)) {
             merged[k] = v;
           }
         }
-        return { ...merged, ...valueRec };
+        const fileVals = options.fileValues ?? {};
+        for (const [k, v] of Object.entries(valueRec)) {
+          if (
+            options.skipProcessEnv &&
+            !Object.hasOwn(describedKeys, k) &&
+            !Object.hasOwn(fileVals, k)
+          ) {
+            continue;
+          }
+          merged[k] = v;
+        }
+        return merged;
       }
       return { ...baseForMerge, ...valueRec };
     }
@@ -278,7 +335,7 @@ export async function validateConfiguration<T extends object>(
         throw err;
       }
       throw new ConfigValidationError(
-        `Configuration validation failed: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.message : String(err),
         { cause: err },
       );
     }

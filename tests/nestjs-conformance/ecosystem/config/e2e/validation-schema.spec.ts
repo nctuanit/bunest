@@ -31,8 +31,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should validate loaded env variables", async () => {
+    it("should validate loaded env variables", async () => {
       await expect(
         Test.createTestingModule({
           imports: [AppModule.withSchemaValidation()],
@@ -43,8 +42,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should validate env variables even when ignoreEnvFile is true", async () => {
+    it("should validate env variables even when ignoreEnvFile is true", async () => {
       await expect(
         Test.createTestingModule({
           imports: [AppModule.withSchemaValidation(undefined, true)],

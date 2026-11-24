@@ -107,8 +107,7 @@ describeConformance(
       expect(configService.get("tls.cert.0")).toBe("c".charCodeAt(0));
     });
 
-    // BUNEST_BUG: ConfigModule spreads `{ ...loaded }` when storing registerAs() namespaces (stripping class prototype getters) and readDotPath() uses Object.prototype.hasOwnProperty only (expected "postgres://localhost", received undefined; packages/core/src/config/config.module.ts:161, packages/core/src/config/config.service.ts:77)
-    it.skip("should resolve members of class instances", async () => {
+    it("should resolve members of class instances", async () => {
       class DatabaseConfig {
         host = "localhost";
         get url() {
@@ -123,8 +122,7 @@ describeConformance(
       expect(configService.get("database.url")).toBe("postgres://localhost");
     });
 
-    // BUNEST_BUG: readDotPath() aborts whenever `typeof current !== "object"`, returning undefined for own properties on primitive strings like `.length` (expected 4, received undefined; packages/core/src/config/config.service.ts:72)
-    it.skip("should not let a dotted lookup change a cached value", async () => {
+    it("should not let a dotted lookup change a cached value", async () => {
       process.env.FEATURE_REQUIRE_MFA = "true";
       const configService = await createConfigService({ cache: true });
 
@@ -134,8 +132,7 @@ describeConformance(
       expect(configService.get("FEATURE_REQUIRE_MFA")).toBe("true");
     });
 
-    // BUNEST_BUG: ConfigService.set() does not update process.env or re-expand dependent dotted env variables (expected process.env["toString.call"]="other.test", received "app.test"; packages/core/src/config/config.service.ts:342-369)
-    it.skip("should treat dotted env file variables as names, not paths", async () => {
+    it("should treat dotted env file variables as names, not paths", async () => {
       const envFilePath = join(tmpDir, ".env");
       writeTextSync(
         envFilePath,
