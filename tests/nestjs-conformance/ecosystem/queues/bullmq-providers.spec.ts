@@ -59,8 +59,7 @@ describeConformance(
       BullModule.workerClass = undefined;
     });
 
-    // BUNEST_BUG: Expected BullModule.registerQueue({ telemetry, processors: [callback, path, { callback }, { path }] }) to instantiate 4 Worker instances via BullModule.workerClass receiving `{ telemetry }`, actual instantiates 0 workers because buildQueueInstance() in packages/jobs/src/queues/adapters/bullmq.adapter.ts returns early for custom queueClass without creating inline processor workers (and attachInlineProcessors ignores workerClass, separate path processors, and telemetry).
-    it.skip("should pass telemetry from the queue options to every worker", async () => {
+    it("should pass telemetry from the queue options to every worker", async () => {
       const callback = mock(
         async () => undefined,
       ) as BullQueueProcessorCallback;
@@ -87,8 +86,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected BullModule.registerQueue({ skipVersionCheck: true, processors: [...] }) to instantiate 4 Worker instances via BullModule.workerClass receiving `{ skipVersionCheck: true }`, actual instantiates 0 workers because buildQueueInstance() in packages/jobs/src/queues/adapters/bullmq.adapter.ts does not create BullModule.workerClass workers for inline `processors` or forward `skipVersionCheck`.
-    it.skip("should pass skipVersionCheck from the queue options to every worker", async () => {
+    it("should pass skipVersionCheck from the queue options to every worker", async () => {
       const callback = mock(
         async () => undefined,
       ) as BullQueueProcessorCallback;
@@ -117,8 +115,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected BullModule.forRoot({ skipVersionCheck: true }) + registerQueue({ processors: [...] }) to instantiate Worker via BullModule.workerClass receiving `{ skipVersionCheck: true }`, actual instantiates 0 workers because buildQueueInstance() in packages/jobs/src/queues/adapters/bullmq.adapter.ts skips inline processor worker creation when queueClass/workerClass is configured.
-    it.skip("should pass skipVersionCheck from the root options to every worker", async () => {
+    it("should pass skipVersionCheck from the root options to every worker", async () => {
       moduleRef = await Test.createTestingModule({
         imports: [
           BullModule.forRoot({ connection: {}, skipVersionCheck: true }),
@@ -139,8 +136,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected inline processor `{ callback, skipVersionCheck: false }` to override queue `skipVersionCheck: true` on Worker instantiated via BullModule.workerClass, actual instantiates 0 workers in buildQueueInstance() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
-    it.skip("should let processor options override skipVersionCheck", async () => {
+    it("should let processor options override skipVersionCheck", async () => {
       moduleRef = await Test.createTestingModule({
         imports: [
           BullModule.registerQueue({
@@ -166,8 +162,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected BullModule.forRoot({ telemetry }) + registerQueue({ processors: [...] }) to instantiate Worker via BullModule.workerClass receiving `{ telemetry }`, actual instantiates 0 workers in buildQueueInstance() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
-    it.skip("should pass telemetry from the root options to every worker", async () => {
+    it("should pass telemetry from the root options to every worker", async () => {
       moduleRef = await Test.createTestingModule({
         imports: [
           BullModule.forRoot({ connection: {}, telemetry }),
