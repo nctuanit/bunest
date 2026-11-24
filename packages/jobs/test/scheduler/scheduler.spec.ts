@@ -216,7 +216,7 @@ describe("../../src/scheduler/index", () => {
 
       registry.deleteCronJob("dyn-cron");
       expect(registry.doesExist("cron", "dyn-cron")).toBe(false);
-      expect(() => registry.getCronJob("dyn-cron")).toThrow(/No cron job/);
+      expect(() => registry.getCronJob("dyn-cron")).toThrow(/No Cron Job/i);
 
       let intervalHits = 0;
       registry.scheduleInterval("dyn-int", 15, () => {

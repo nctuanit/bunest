@@ -37,7 +37,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
 
   addCronJob(name: string, job: CronJob): void {
     if (this.cronJobs.has(name)) {
-      throw new Error(`Cron job with name "${name}" already exists.`);
+      throw new Error(
+        `Cron Job with the given name (${name}) already exists. Ignored.`,
+      );
     }
     this.cronJobs.set(name, job);
   }
@@ -45,7 +47,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
   getCronJob(name: string): CronJob {
     const job = this.cronJobs.get(name);
     if (!job) {
-      throw new Error(`No cron job found with name "${name}".`);
+      throw new Error(
+        `No Cron Job was found with the given name (${name}). Check that you created one with a decorator or with the create API.`,
+      );
     }
     return job;
   }
@@ -64,7 +68,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
 
   addInterval(name: string, intervalId: ReturnType<typeof setInterval>): void {
     if (this.intervals.has(name)) {
-      throw new Error(`Interval with name "${name}" already exists.`);
+      throw new Error(
+        `Interval with the given name (${name}) already exists. Ignored.`,
+      );
     }
     intervalId.unref?.();
     this.intervals.set(name, intervalId);
@@ -77,7 +83,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
     options: Omit<IntervalOptions, "name"> = {},
   ): ReturnType<typeof setInterval> {
     if (this.intervals.has(name)) {
-      throw new Error(`Interval with name "${name}" already exists.`);
+      throw new Error(
+        `Interval with the given name (${name}) already exists. Ignored.`,
+      );
     }
 
     const waitForCompletion = options.waitForCompletion ?? false;
@@ -114,7 +122,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
   getInterval(name: string): ReturnType<typeof setInterval> {
     const id = this.intervals.get(name);
     if (id === undefined) {
-      throw new Error(`No interval found with name "${name}".`);
+      throw new Error(
+        `No Interval was found with the given name (${name}). Check that you created one with a decorator or with the create API.`,
+      );
     }
     return id;
   }
@@ -133,7 +143,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
 
   addTimeout(name: string, timeoutId: ReturnType<typeof setTimeout>): void {
     if (this.timeouts.has(name)) {
-      throw new Error(`Timeout with name "${name}" already exists.`);
+      throw new Error(
+        `Timeout with the given name (${name}) already exists. Ignored.`,
+      );
     }
     timeoutId.unref?.();
     this.timeouts.set(name, timeoutId);
@@ -146,7 +158,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
     options: Omit<TimeoutOptions, "name"> = {},
   ): ReturnType<typeof setTimeout> {
     if (this.timeouts.has(name)) {
-      throw new Error(`Timeout with name "${name}" already exists.`);
+      throw new Error(
+        `Timeout with the given name (${name}) already exists. Ignored.`,
+      );
     }
 
     const id = setTimeout(() => {
@@ -173,7 +187,9 @@ export class SchedulerRegistry implements OnModuleDestroy {
   getTimeout(name: string): ReturnType<typeof setTimeout> {
     const id = this.timeouts.get(name);
     if (id === undefined) {
-      throw new Error(`No timeout found with name "${name}".`);
+      throw new Error(
+        `No Timeout was found with the given name (${name}). Check that you created one with a decorator or with the create API.`,
+      );
     }
     return id;
   }
@@ -190,12 +206,27 @@ export class SchedulerRegistry implements OnModuleDestroy {
 
   /**
    * Stops and clears every registered cron job, interval, and timeout cleanly.
+   * Preserves jobs newly registered by an `onComplete` callback during shutdown,
+   * and returns a promise awaiting in-flight `waitForCompletion: true` ticks.
    */
-  stopAll(): void {
-    for (const job of this.cronJobs.values()) {
+  stopAll(): Promise<void> | void {
+    const pendingTicks: Promise<void>[] = [];
+    const initialCronNames = [...this.cronJobs.keys()];
+
+    for (const name of initialCronNames) {
+      const job = this.cronJobs.get(name);
+      if (!job) {
+        continue;
+      }
+      this.cronJobs.delete(name);
       job.stop();
+      if (job.waitForCompletion) {
+        const active = job.getActiveTick();
+        if (active) {
+          pendingTicks.push(active);
+        }
+      }
     }
-    this.cronJobs.clear();
 
     for (const id of this.intervals.values()) {
       clearInterval(id);
@@ -206,9 +237,13 @@ export class SchedulerRegistry implements OnModuleDestroy {
       clearTimeout(id);
     }
     this.timeouts.clear();
+
+    if (pendingTicks.length > 0) {
+      return Promise.allSettled(pendingTicks).then(() => undefined);
+    }
   }
 
-  onModuleDestroy(): void {
-    this.stopAll();
+  async onModuleDestroy(): Promise<void> {
+    await this.stopAll();
   }
 }

@@ -89,8 +89,7 @@ describeConformance(
       expect(timeout).toBeDefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout() missing-timeout error message to match NestJS NO_SCHEDULER_FOUND ("No Timeout was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No timeout found with name "dynamic".'.
-    it.skip(`should delete dynamic timeout`, async () => {
+    it(`should delete dynamic timeout`, async () => {
       const service = app!.get(TimeoutService);
       await app!.init();
       service.addTimeout();
@@ -200,8 +199,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate timeout error message to match NestJS DUPLICATE_SCHEDULER ("Timeout with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Timeout with name "<name>" already exists.'.
-    it.skip.each(["shared", "__proto__"])(
+    it.each(["shared", "__proto__"])(
       "should reject duplicate timeout name %s",
       async (name) => {
         @Injectable()
