@@ -1999,7 +1999,10 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     server: BunServerLike | undefined,
   ): Promise<Response | null> {
     const reqMethod = req.method.toUpperCase() as RouteHttpMethod;
-    const normPath = normalizeRoutePath(pathname);
+    const normPath =
+      !this.ignoreTrailingSlash && pathname.length > 1 && pathname.endsWith("/")
+        ? pathname
+        : normalizeRoutePath(pathname);
     let decodedPath: string;
     try {
       decodedPath = decodeURIComponent(normPath);
@@ -2062,6 +2065,21 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
                 : candidates.slice(1)
               : candidates;
           if (matchTargets.length === 0) return false;
+          if (
+            !this.ignoreTrailingSlash &&
+            pathname.length > 1 &&
+            pathname.endsWith("/") &&
+            !rulePath.endsWith("/") &&
+            !isWild &&
+            !rulePath.includes("*") &&
+            !rulePath.includes("{") &&
+            !(
+              typeof rule === "string" ||
+              (rule as { _fromString?: boolean })._fromString === true
+            )
+          ) {
+            return false;
+          }
           return matchesRouteInfo(
             rule as string | VersionedRouteRule,
             reqMethod,

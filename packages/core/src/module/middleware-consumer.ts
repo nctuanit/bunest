@@ -46,7 +46,13 @@ function toRouteInfos(
   controllerPrefixes?: ReadonlyMap<Type<unknown>, string[]>,
 ): RouteInfo[] {
   if (typeof entry === "string") {
-    return [{ path: normalizeRoutePath(entry), method: RequestMethod.ALL }];
+    return [
+      {
+        path: normalizeRoutePath(entry),
+        method: RequestMethod.ALL,
+        _fromString: true,
+      } as RouteInfo,
+    ];
   }
 
   if (typeof entry === "function") {

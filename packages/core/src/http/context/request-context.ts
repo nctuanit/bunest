@@ -116,6 +116,7 @@ export class RequestContext {
 
   private _responseContext?: HttpResponseContext;
   private _sseAbortController?: AbortController;
+  private _sseSignalEnabled = false;
   private _corsHeaders?: Headers;
   private _pathname?: string;
   private _params?: Record<string, string>;
@@ -186,7 +187,14 @@ export class RequestContext {
     return this.request.signal;
   }
 
+  enableSseSignal(): void {
+    this._sseSignalEnabled = true;
+  }
+
   getSseSignal(): AbortSignal {
+    if (!this._sseSignalEnabled && !this._sseAbortController) {
+      return this.request.signal;
+    }
     if (!this._sseAbortController) {
       const ac = new AbortController();
       this._sseAbortController = ac;

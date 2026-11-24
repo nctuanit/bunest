@@ -300,6 +300,7 @@ export function matchesRouteInfo(
   const allowPrefix =
     options?.allowStringPrefixMount === true &&
     rule.method === RequestMethod.ALL &&
+    (rule as { _fromString?: boolean })._fromString === true &&
     isPlainStaticPrefix(rule.path);
   return candidatePaths.some(
     (p) =>

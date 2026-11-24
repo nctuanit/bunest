@@ -2639,16 +2639,18 @@ export class DIContainer
       return instance;
     }
 
-    // Validate enhancer prototype shape when binding a class directly (e.g. @UseGuards(AbstractGuard)).
-    if (
-      kind === "guard" &&
-      typeof (cls as { prototype?: { canActivate?: unknown } }).prototype
-        ?.canActivate !== "function"
-    ) {
-      throw new Error(
-        `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
-      );
-    }
+    const ensureValidEnhancerInstance = (resolved: T): T => {
+      if (
+        kind === "guard" &&
+        typeof (resolved as { canActivate?: unknown } | null | undefined)
+          ?.canActivate !== "function"
+      ) {
+        throw new Error(
+          `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
+        );
+      }
+      return resolved;
+    };
 
     // Separate provider overrides from enhancer resolution: if `cls` was overridden via
     // overrideProvider(cls) without a matching enhancer override, instantiate `cls` directly
@@ -2664,24 +2666,28 @@ export class DIContainer
         this.graph.globalModules,
       );
       if (loc) {
-        return (await this.resolveNormalizedProvider(
-          loc.owner,
-          loc.provider,
-          reqContainer,
-          new Set(),
-        )) as T;
+        return ensureValidEnhancerInstance(
+          (await this.resolveNormalizedProvider(
+            loc.owner,
+            loc.provider,
+            reqContainer,
+            new Set(),
+          )) as T,
+        );
       }
 
       // 2. Fallback: search across all modules for registered provider
       for (const candidateMod of this.graph.topologicalOrder) {
         const found = candidateMod.providers.get(cls);
         if (found) {
-          return (await this.resolveNormalizedProvider(
-            candidateMod,
-            found,
-            reqContainer,
-            new Set(),
-          )) as T;
+          return ensureValidEnhancerInstance(
+            (await this.resolveNormalizedProvider(
+              candidateMod,
+              found,
+              reqContainer,
+              new Set(),
+            )) as T,
+          );
         }
       }
     }
@@ -2690,22 +2696,26 @@ export class DIContainer
     const scope = getInjectableScope(cls);
     const cacheKey = `enhancer:${kind ?? "any"}:${this.getTokenId(cls)}`;
     if (scope === Scope.SINGLETON && this.singletons.has(cacheKey)) {
-      return this.singletons.get(cacheKey) as T;
+      return ensureValidEnhancerInstance(this.singletons.get(cacheKey) as T);
     }
     if (scope === Scope.REQUEST && reqContainer) {
-      return reqContainer.getOrCreateScopedInstance<T>(
-        cacheKey,
-        async () =>
-          (await this.instantiateClass(cls, mod, reqContainer, new Set())) as T,
+      return ensureValidEnhancerInstance(
+        await reqContainer.getOrCreateScopedInstance<T>(
+          cacheKey,
+          async () =>
+            (await this.instantiateClass(cls, mod, reqContainer, new Set())) as T,
+        ),
       );
     }
 
-    const instance = (await this.instantiateClass(
-      cls,
-      mod,
-      reqContainer,
-      new Set(),
-    )) as T;
+    const instance = ensureValidEnhancerInstance(
+      (await this.instantiateClass(
+        cls,
+        mod,
+        reqContainer,
+        new Set(),
+      )) as T,
+    );
 
     if (scope === Scope.SINGLETON) {
       this.singletons.set(cacheKey, instance);

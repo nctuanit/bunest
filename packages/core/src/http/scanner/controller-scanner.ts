@@ -72,6 +72,7 @@ export interface ScanControllersOptions {
   readonly routeConflictPolicy?: RouteConflictPolicy;
   readonly routeResolutionStrategy?: RouteResolutionStrategy;
   readonly logger?: LoggerService;
+  readonly preserveDuplicates?: boolean;
 }
 
 function normalizeConflictLevels(policy: RouteConflictPolicy | undefined): {
@@ -681,9 +682,10 @@ export function scanControllers(
               allDeclared.push({ entry, versionLabel: duplicateVersionLabel });
 
               // Keep the first declaration in `scanned` when exact duplicates occur
-              // (NestJS duplicate=off/warn first-declaration-wins semantics).
+              // (NestJS duplicate=off/warn first-declaration-wins semantics), unless
+              // `preserveDuplicates` is explicitly requested (e.g. SwaggerModule).
               const exactKey = [...collisionKeys].sort().join("||");
-              if (!exactRouteRegistry.has(exactKey)) {
+              if (options.preserveDuplicates || !exactRouteRegistry.has(exactKey)) {
                 exactRouteRegistry.add(exactKey);
                 scanned.push(entry);
               }

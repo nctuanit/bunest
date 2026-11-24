@@ -749,7 +749,6 @@ export class GraphQLService
       const ext: Record<string, unknown> = {
         ...(formatted.extensions ?? {}),
         code: mappedCode ?? "INTERNAL_SERVER_ERROR",
-        statusCode: status,
         ...(mappedCode ? {} : { status }),
         originalError: rawResponse,
         ...(httpJson.details !== undefined

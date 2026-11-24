@@ -522,7 +522,9 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     const collect = <T>(token: symbol): T[] => {
       const items: T[] = [];
       for (const entry of container.getMultiProviderEntries(token)) {
-        const isReq = entry.provider.scope === Scope.REQUEST;
+        const isReq =
+          entry.provider.scope === Scope.REQUEST ||
+          entry.provider.scope === Scope.TRANSIENT;
         if (entry.syntheticToken) {
           if (isReq) {
             this.requestScopedGlobalEnhancers.add(entry.syntheticToken);
@@ -1161,12 +1163,11 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     if (this.requestScopedGlobalEnhancers.has(enhancer)) {
       return true;
     }
-    if (
-      MetadataRegistry.get<{ scope?: Scope }>(
-        METADATA_KEYS.INJECTABLE,
-        enhancer,
-      )?.scope === Scope.REQUEST
-    ) {
+    const metaScope = MetadataRegistry.get<{ scope?: Scope }>(
+      METADATA_KEYS.INJECTABLE,
+      enhancer,
+    )?.scope;
+    if (metaScope === Scope.REQUEST || metaScope === Scope.TRANSIENT) {
       return true;
     }
     if (!this.container) {
@@ -1178,7 +1179,11 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
         (w.token === enhancer || w.metatype === enhancer) &&
         (!owningModule || w.moduleId === owningModule.id)
       ) {
-        if (w.scope === Scope.REQUEST || !w.isDependencyTreeStatic) {
+        if (
+          w.scope === Scope.REQUEST ||
+          w.scope === Scope.TRANSIENT ||
+          !w.isDependencyTreeStatic
+        ) {
           return true;
         }
       }

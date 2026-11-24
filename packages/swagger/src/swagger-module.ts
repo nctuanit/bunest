@@ -354,6 +354,7 @@ function resolveRoutesForDocument(
         controllerPrefixes.size > 0 ? controllerPrefixes : undefined,
       versioning,
       routeConflictPolicy: "allow",
+      preserveDuplicates: true,
     });
   }
 

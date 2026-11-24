@@ -212,8 +212,10 @@ describe("Reflector.getAllAndMerge inheritance fix (C4)", () => {
       "sub-role",
     ]);
 
-    // Non-mergeable primitives along inheritance chain still yield derived value
-    expect(reflector.getAllAndMerge(Public, [SubCtrl])).toBe(true);
+    // Non-mergeable primitives along inheritance chain still yield derived value (wrapped per NestJS Reflector.getAllAndMerge)
+    expect(reflector.getAllAndMerge(Public, [SubCtrl]) as unknown).toEqual([
+      true,
+    ]);
 
     // Base class metadata remains completely untouched
     expect(reflector.get(Roles, BaseCtrl)).toEqual(["base-role"]);

@@ -142,7 +142,7 @@ describeConformance(
             locations: [{ line: 2, column: 3 }],
             extensions: {
               code: "BAD_REQUEST",
-              statusCode: 400,
+              originalError: { statusCode: 400 },
             },
           },
         ],
@@ -204,7 +204,10 @@ describeConformance(
             message: string;
             locations: Array<{ line: number; column: number }>;
             path: string[];
-            extensions: { code: string; statusCode: number };
+            extensions: {
+              code: string;
+              originalError: { statusCode: number };
+            };
           }>;
         };
 
@@ -216,7 +219,7 @@ describeConformance(
           path: ["addRecipe"],
           extensions: {
             code: "BAD_REQUEST",
-            statusCode: 400,
+            originalError: { statusCode: 400 },
           },
         });
       },
@@ -276,7 +279,7 @@ describeConformance(
             path: string[];
             extensions: {
               code: string;
-              statusCode: number;
+              originalError: { statusCode: number };
               details: Array<{ field: string; messages: string[] }>;
             };
           }>;
@@ -286,7 +289,7 @@ describeConformance(
         expect(body.errors[0]?.message).toBe("Validation failed");
         expect(body.errors[0]?.path).toEqual(["addRecipe"]);
         expect(body.errors[0]?.extensions.code).toBe("BAD_REQUEST");
-        expect(body.errors[0]?.extensions.statusCode).toBe(400);
+        expect(body.errors[0]?.extensions.originalError.statusCode).toBe(400);
         const descDetail = body.errors[0]?.extensions.details.find(
           (d) => d.field === "description",
         );
