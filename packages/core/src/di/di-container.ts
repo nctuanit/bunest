@@ -2862,7 +2862,25 @@ export class DIContainer
     module: ModuleNode;
     instances: object[];
   }> {
-    return this.collectSingletonGroups(this.graph.topologicalOrder);
+    // Order modules bottom-up with global modules (and their imports) ahead of
+    // non-global modules that may implicitly inject global tokens.
+    const ordered: ModuleNode[] = [];
+    const visited = new Set<ModuleNode>();
+    const visitMod = (mod: ModuleNode) => {
+      if (visited.has(mod)) return;
+      visited.add(mod);
+      for (const imp of mod.imports) {
+        visitMod(imp);
+      }
+      ordered.push(mod);
+    };
+    for (const globalMod of this.graph.globalModules) {
+      visitMod(globalMod);
+    }
+    for (const mod of this.graph.topologicalOrder) {
+      visitMod(mod);
+    }
+    return this.collectSingletonGroups(ordered);
   }
 
   private collectSingletonGroups(
@@ -2880,7 +2898,36 @@ export class DIContainer
         }
       };
 
+      // Sort intra-module providers by constructor & property (@Inject) dependency hierarchy
+      // so dependencies run onModuleInit/onApplicationBootstrap first and shutdown hooks last.
+      const orderedProviders: NormalizedProvider[] = [];
+      const visitedProviders = new Set<InjectionToken>();
+      const visitingProviders = new Set<InjectionToken>();
+      const visitProvider = (provider: NormalizedProvider) => {
+        if (
+          visitedProviders.has(provider.token) ||
+          visitingProviders.has(provider.token)
+        ) {
+          return;
+        }
+        visitingProviders.add(provider.token);
+        const deps = this.getProviderDependencies(provider);
+        for (const dep of deps) {
+          if (dep.token === undefined) continue;
+          const localDep = mod.providers.get(dep.token);
+          if (localDep && localDep !== provider) {
+            visitProvider(localDep);
+          }
+        }
+        visitingProviders.delete(provider.token);
+        visitedProviders.add(provider.token);
+        orderedProviders.push(provider);
+      };
       for (const provider of mod.providers.values()) {
+        visitProvider(provider);
+      }
+
+      for (const provider of orderedProviders) {
         if (provider.kind === "existing") continue;
         const key = this.makeInstanceKey(mod, provider.token);
         if (this.singletons.has(key)) {
