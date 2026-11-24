@@ -131,8 +131,7 @@ describeConformance(
       expect(endCalls[0]!.state).toEqual({ startedAt: 1 });
     });
 
-    // BUNEST_BUG: Expected onRequestEnd hook to be invoked (endCalls.length === 1) with validation errors when querying unknownField; actual endCalls.length === 0 because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.executeQuery) returns early on validate() errors before invoking resolverDecoratorHost.onRequestStart / onRequestEnd.
-    it.skip("should expose errors in the end hook", async () => {
+    it("should expose errors in the end hook", async () => {
       await request(app).post("/graphql").send({
         operationName: "GetCat",
         variables: {},
@@ -157,8 +156,7 @@ describeConformance(
       expect(endCalls[0]!.state).toEqual({ startedAt: 2 });
     });
 
-    // BUNEST_BUG: Expected rejecting async onRequestStartHook to fail the GraphQL operation (response.body.data undefined, errors.length > 0); actual HTTP 200 with { data: { getCats: [{ id: 1 }] } } because packages/graphql/src/services/resolver-decorator-host.ts (ResolverDecoratorHost.onRequestStart / handleRejection) catches and swallows rejections instead of propagating them.
-    it.skip("should fail the operation when an async start hook rejects", async () => {
+    it("should fail the operation when an async start hook rejects", async () => {
       const resolverDecoratorHost = app.get(ResolverDecoratorHost);
       resolverDecoratorHost.setOnRequestStartHook(async () => {
         throw new Error("hook failed");

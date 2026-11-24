@@ -485,7 +485,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       );
       expect(r1HookFail.status).toBe(200);
       expect(await r1HookFail.json()).toEqual({
-        data: { greeting: "Hi Resilient" },
+        errors: [{ message: "async start hook failure" }],
       });
       expect(endSawState).toBeUndefined();
       await Bun.sleep(10);

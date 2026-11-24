@@ -53,8 +53,7 @@ describeConformance(
       expect(host.onRequestEnd({})).toBeInstanceOf(Promise);
     });
 
-    // BUNEST_BUG: ResolverDecoratorHost.handleRejection() in packages/graphql/src/services/resolver-decorator-host.ts (lines 114-118) logs ("Unhandled rejection in GraphQL request hook", err) instead of ('The "request end" hook failed.', err.stack).
-    it.skip('should not leave the rejection of an async "request end" hook unhandled', async () => {
+    it('should not leave the rejection of an async "request end" hook unhandled', async () => {
       host.setOnRequestEndHook(async () => {
         throw new Error("insert failed");
       });
@@ -72,8 +71,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: ResolverDecoratorHost.onRequestStart() in packages/graphql/src/services/resolver-decorator-host.ts (lines 86-88, 114-118) returns promise.catch(() => undefined), swallowing the rejection so `await state` resolves to undefined instead of rejecting with "span failed" while attaching a silent rejection handler.
-    it.skip('should not leave the rejection of an async "request start" hook unhandled', async () => {
+    it('should not leave the rejection of an async "request start" hook unhandled', async () => {
       host.setOnRequestStartHook(async () => {
         throw new Error("span failed");
       });

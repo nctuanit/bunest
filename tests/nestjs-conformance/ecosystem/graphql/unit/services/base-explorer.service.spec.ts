@@ -94,8 +94,7 @@ describeConformance(
         ).toBe(own.callback);
       });
 
-      // BUNEST_BUG: BaseExplorerService.keepsPrecedence() in packages/graphql/src/services/base-explorer.service.ts (lines 128-145) throws "Duplicate resolver handler" for two sibling subclasses inheriting the same method from a shared base class (first.declaredOn === second.declaredOn && first.methodName === second.methodName) instead of keeping the first handler.
-      it.skip("should keep the first of two siblings inheriting the same method", () => {
+      it("should keep the first of two siblings inheriting the same method", () => {
         const first = handler(GuardedResolver, BaseResolver, "findAll", "all");
         const second = handler(SiblingResolver, BaseResolver, "findAll", "all");
 
@@ -123,8 +122,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: BaseExplorerService.keepsPrecedence() in packages/graphql/src/services/base-explorer.service.ts (line 141) unconditionally returns false when first.target === second.target without checking first.methodName !== second.methodName, silently overwriting instead of throwing when two distinct methods on one class resolve the same GraphQL field.
-      it.skip("should refuse two methods of one class resolving the same field", () => {
+      it("should refuse two methods of one class resolving the same field", () => {
         const first = handler(GuardedResolver, GuardedResolver, "account", "x");
         const second = handler(
           GuardedResolver,
@@ -166,8 +164,7 @@ describeConformance(
       class AuditModule {}
       class SharedModule {}
 
-      // BUNEST_BUG: BaseExplorerService.getModules() / includeWhitelisted() in packages/graphql/src/services/base-explorer.service.ts (lines 25-52) ignores the `skipGlobalImports` parameter and does not traverse `mod.imports` recursively, returning only [catalog] instead of [catalog, shared] (or [catalog, shared, audit] when skipGlobalImports is false).
-      it.skip("should leave out the global modules an included module sees, when asked to", () => {
+      it("should leave out the global modules an included module sees, when asked to", () => {
         const catalog = createModule(CatalogModule);
         const audit = createModule(AuditModule, true);
         const shared = createModule(SharedModule);

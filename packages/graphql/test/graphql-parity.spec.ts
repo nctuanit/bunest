@@ -397,12 +397,20 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       }),
     );
     const transformedJson = (await transformedRes.json()) as {
-      errors?: Array<{ message: string; extensions?: { statusCode?: number } }>;
+      errors?: Array<{
+        message: string;
+        extensions?: {
+          code?: string;
+          originalError?: { statusCode?: number };
+        };
+      }>;
     };
     expect(transformedJson.errors?.[0]?.message).toBe(
       "filtered:transformedFail:BAD_INPUT:invalid-id",
     );
-    expect(transformedJson.errors?.[0]?.extensions?.statusCode).toBe(400);
+    expect(
+      transformedJson.errors?.[0]?.extensions?.originalError?.statusCode,
+    ).toBe(400);
   });
 
   test("BunestDataLoader unit semantics: maxBatchSize, per-item Error isolation, prime, clear, clearAll", async () => {

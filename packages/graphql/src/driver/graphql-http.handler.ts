@@ -537,6 +537,9 @@ export class GraphQLService
     if (this.options.maxDepth !== undefined && this.options.maxDepth > 0) {
       rules.push(createDepthLimitRule(this.options.maxDepth));
     }
+    if (Array.isArray(this.options.validationRules)) {
+      rules.push(...(this.options.validationRules as ValidationRule[]));
+    }
     return rules;
   }
 
@@ -545,24 +548,49 @@ export class GraphQLService
     const includeStack =
       this.options.includeStacktraceInErrorResponses ?? !isProd;
     const original = err.originalError;
+    const preserveHttp200 =
+      this.options.preserveHttpStatusForExecutionErrors !== false;
 
     let formatted: GraphQLFormattedError = err.toJSON();
 
-    if (original instanceof HttpException) {
+    const HTTP_STATUS_TO_GQL_CODE: Record<number, string> = {
+      400: "BAD_REQUEST",
+      401: "UNAUTHENTICATED",
+      403: "FORBIDDEN",
+      408: "REQUEST_TIMEOUT",
+      413: "PAYLOAD_TOO_LARGE",
+      415: "UNSUPPORTED_MEDIA_TYPE",
+      422: "UNPROCESSABLE_ENTITY",
+      429: "TOO_MANY_REQUESTS",
+      501: "NOT_IMPLEMENTED",
+      502: "BAD_GATEWAY",
+      503: "SERVICE_UNAVAILABLE",
+      504: "GATEWAY_TIMEOUT",
+    };
+
+    if (
+      original instanceof HttpException &&
+      this.options.autoTransformHttpErrors !== false
+    ) {
       const httpJson = original.toJSON();
+      const status = original.getStatus();
+      const rawResponse = original.getResponse();
+      const mappedCode = HTTP_STATUS_TO_GQL_CODE[status];
+      const ext: Record<string, unknown> = {
+        ...(formatted.extensions ?? {}),
+        code: mappedCode ?? "INTERNAL_SERVER_ERROR",
+        ...(mappedCode ? {} : { status }),
+        originalError: rawResponse,
+        ...(httpJson.details !== undefined
+          ? { details: httpJson.details }
+          : {}),
+      };
       formatted = {
         ...formatted,
         message: Array.isArray(httpJson.message)
           ? httpJson.message.join("; ")
           : httpJson.message,
-        extensions: {
-          ...(formatted.extensions ?? {}),
-          code: httpJson.error.toUpperCase().replace(/\s+/g, "_"),
-          statusCode: original.getStatus(),
-          ...(httpJson.details !== undefined
-            ? { details: httpJson.details }
-            : {}),
-        },
+        extensions: ext,
       };
     } else if (original !== undefined && original !== null) {
       // Unexpected resolver error
@@ -595,6 +623,12 @@ export class GraphQLService
       const cleaned = { ...formatted.extensions };
       delete cleaned.stacktrace;
       delete cleaned.stack;
+      formatted = { ...formatted, extensions: cleaned };
+    }
+
+    if (preserveHttp200 && formatted.extensions && "http" in formatted.extensions) {
+      const cleaned = { ...formatted.extensions };
+      delete cleaned.http;
       formatted = { ...formatted, extensions: cleaned };
     }
 
@@ -641,14 +675,55 @@ export class GraphQLService
     };
   }> {
     const schema = await this.ensureSchema();
+    const sanitizedVars =
+      params.variables && isPlainRecord(params.variables)
+        ? sanitizeObject(params.variables)
+        : undefined;
+
+    const hasHooks = this.resolverDecoratorHost?.hasRequestHooks() ?? false;
+    const hookBaseCtx = hasHooks
+      ? {
+          query: params.query,
+          operationName: params.operationName ?? undefined,
+          variables: sanitizedVars,
+          context: params.contextValue ?? {},
+        }
+      : undefined;
+
+    let hookState: unknown;
+    if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+      try {
+        hookState = await this.resolverDecoratorHost.onRequestStart(hookBaseCtx);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: undefined,
+          errors: [err as GraphQLError],
+        });
+        return {
+          status: 200,
+          result: { errors: [{ message }] },
+        };
+      }
+    }
+
     let document: DocumentNode;
     try {
       document = parse(params.query);
     } catch (err) {
+      const formatted = this.formatSingleError(err as GraphQLError);
+      if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: hookState,
+          errors: [err as GraphQLError],
+        });
+      }
       return {
         status: 400,
         result: {
-          errors: [this.formatSingleError(err as GraphQLError)],
+          errors: [formatted],
         },
       };
     }
@@ -659,10 +734,20 @@ export class GraphQLService
       this.getValidationRules(),
     );
     if (validationErrors.length > 0) {
+      const formattedErrors = validationErrors.map((e) =>
+        this.formatSingleError(e),
+      );
+      if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: hookState,
+          errors: validationErrors,
+        });
+      }
       return {
         status: 400,
         result: {
-          errors: validationErrors.map((e) => this.formatSingleError(e)),
+          errors: formattedErrors,
         },
       };
     }
@@ -693,24 +778,6 @@ export class GraphQLService
       };
     }
 
-    const sanitizedVars = params.variables
-      ? sanitizeObject(params.variables)
-      : undefined;
-
-    const hasHooks = this.resolverDecoratorHost?.hasRequestHooks() ?? false;
-    const hookBaseCtx = hasHooks
-      ? {
-          query: params.query,
-          operationName: params.operationName ?? undefined,
-          variables: sanitizedVars,
-          context: params.contextValue ?? {},
-        }
-      : undefined;
-    const hookState =
-      hasHooks && hookBaseCtx
-        ? await this.resolverDecoratorHost!.onRequestStart(hookBaseCtx)
-        : undefined;
-
     const execResult = await execute({
       schema,
       document,
@@ -727,9 +794,32 @@ export class GraphQLService
       });
     }
 
+    const formattedResult = this.formatExecutionResult(execResult);
+    let httpStatus = 200;
+    if (
+      this.options.preserveHttpStatusForExecutionErrors === false &&
+      execResult.errors &&
+      execResult.errors.length > 0
+    ) {
+      for (const err of execResult.errors) {
+        const httpExt = (
+          err.extensions as { http?: { status?: unknown } } | undefined
+        )?.http;
+        if (
+          httpExt &&
+          typeof httpExt.status === "number" &&
+          httpExt.status >= 100 &&
+          httpExt.status < 600
+        ) {
+          httpStatus = httpExt.status;
+          break;
+        }
+      }
+    }
+
     return {
-      status: 200,
-      result: this.formatExecutionResult(execResult),
+      status: httpStatus,
+      result: formattedResult,
     };
   }
 

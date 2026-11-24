@@ -20,6 +20,7 @@ import type {
   GraphQLSchema,
   GraphQLTypeResolver,
   subscribe as graphqlSubscribe,
+  ValidationRule,
   ValueNode,
 } from "../engine";
 
@@ -768,6 +769,20 @@ export interface GraphQLModuleOptions<TDriver extends GraphQLDriver = any> {
    * Include stack traces / internal error messages in GraphQL error responses.
    */
   includeStacktraceInErrorResponses?: boolean;
+  /**
+   * Automatically transform NestJS `HttpException`s into Apollo-compatible GraphQL error extensions.
+   * Defaults to `true`.
+   */
+  autoTransformHttpErrors?: boolean;
+  /**
+   * Keep HTTP 200 for GraphQL execution errors even when `extensions.http.status` is set.
+   * Defaults to `true`.
+   */
+  preserveHttpStatusForExecutionErrors?: boolean;
+  /**
+   * Additional GraphQL validation rules appended to the standard validation rule set.
+   */
+  validationRules?: ValidationRule[];
   /**
    * Custom GraphQL error formatter hook.
    */

@@ -347,11 +347,17 @@ describe("Code-First & Schema-First GraphQL Execution", () => {
       );
       const badJson = (await mBad.json()) as {
         errors?: Array<{
-          extensions?: { statusCode?: number; details?: unknown[] };
+          extensions?: {
+            code?: string;
+            originalError?: { statusCode?: number };
+            details?: unknown[];
+          };
         }>;
       };
       expect(badJson.errors?.length).toBe(1);
-      expect(badJson.errors?.[0]?.extensions?.statusCode).toBe(400);
+      expect(badJson.errors?.[0]?.extensions?.originalError?.statusCode).toBe(
+        400,
+      );
       expect(
         badJson.errors?.[0]?.extensions?.details?.length,
       ).toBeGreaterThanOrEqual(2);
@@ -365,9 +371,16 @@ describe("Code-First & Schema-First GraphQL Execution", () => {
         }),
       );
       const deniedJson = (await denied.json()) as {
-        errors?: Array<{ extensions?: { statusCode?: number; code?: string } }>;
+        errors?: Array<{
+          extensions?: {
+            originalError?: { statusCode?: number };
+            code?: string;
+          };
+        }>;
       };
-      expect(deniedJson.errors?.[0]?.extensions?.statusCode).toBe(403);
+      expect(deniedJson.errors?.[0]?.extensions?.originalError?.statusCode).toBe(
+        403,
+      );
 
       const allowed = await app.fetch(
         new Request("http://localhost/graphql", {

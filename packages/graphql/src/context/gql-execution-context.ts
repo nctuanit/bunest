@@ -7,7 +7,7 @@ import type {
   Type,
   WsArgumentsHost,
 } from "@bunest/core";
-import type { GraphQLResolveInfo } from "../engine";
+import { isType, type GraphQLResolveInfo } from "../engine";
 
 export type GqlContextType = "graphql" | ContextType;
 
@@ -128,8 +128,16 @@ export class GqlArgumentsHost implements GraphQLArgumentsHost {
   static create(context: ArgumentsHost): GqlArgumentsHost {
     const type = context.getType();
     const execCtx = context as Partial<ExecutionContext>;
+    let args = context.getArgs();
+    if ((type as string) === "graphql") {
+      if (args.length === 3) {
+        args = [args[0], undefined, args[1], args[2]];
+      } else if (args.length === 4 && isType(args[3])) {
+        args = [args[0], undefined, args[1], args[2]];
+      }
+    }
     const gqlHost = new GqlArgumentsHost(
-      context.getArgs(),
+      args,
       typeof execCtx.getClass === "function" ? execCtx.getClass() : null,
       typeof execCtx.getHandler === "function" ? execCtx.getHandler() : null,
     );
