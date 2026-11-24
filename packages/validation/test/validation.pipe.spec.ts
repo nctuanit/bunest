@@ -665,8 +665,10 @@ describe("ValidationPipe", () => {
         expect(body.details).toEqual([
           {
             field: "body",
-            constraints: { isObject: "body must be a valid object" },
-            messages: ["body must be a valid object"],
+            constraints: {
+              isObject: "Validation failed (object is expected)",
+            },
+            messages: ["Validation failed (object is expected)"],
           },
         ]);
       }

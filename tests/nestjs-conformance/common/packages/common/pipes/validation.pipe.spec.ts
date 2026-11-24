@@ -208,8 +208,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `mapChildrenToValidationErrors()` / `groupValidationErrors()` hooks (packages/validation/src/validation.pipe.ts)
-      it.skip("should keep the errors that an override returns", () => {
+      it("should keep the errors that an override returns", () => {
         class CustomPipe extends ValidationPipe {
           protected override mapChildrenToValidationErrors(
             error: ValidationError,
@@ -344,8 +343,7 @@ describeConformance(
         expect(length).toBeLessThan(1_010_000);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `flattenValidationErrors()` / `groupValidationErrors()` hooks (packages/validation/src/validation.pipe.ts)
-      it.skip("should add the omission to a copy of the errors", () => {
+      it("should add the omission to a copy of the errors", () => {
         class CustomPipe extends ValidationPipe {
           protected override flattenValidationErrors(
             validationErrors: ValidationError[],
@@ -1012,8 +1010,7 @@ describeConformance(
           ).rejects.toBeDefined();
         });
 
-        // BUNEST_BUG: ValidationPipe calls module-private `closeSparseArrayGaps(value)` instead of overridable `protected closeArrayGaps(value)` hook (packages/validation/src/validation.pipe.ts)
-        it.skip("should let a subclass override closeArrayGaps", async () => {
+        it("should let a subclass override closeArrayGaps", async () => {
           class KeepGapsPipe extends ValidationPipe {
             protected override closeArrayGaps() {}
           }
@@ -1067,8 +1064,7 @@ describeConformance(
             response: { message: ["Validation failed (object is expected)"] },
           };
 
-          // BUNEST_BUG: ValidationPipe Guard 1 uses `metadata?.data ?? metaType` (yielding "" when `data: ""`) and emits `" must be a valid object"` instead of NestJS `"Validation failed (object is expected)"` (packages/validation/src/validation.pipe.ts)
-          it.skip("should throw an error for an array or a primitive", async () => {
+          it("should throw an error for an array or a primitive", async () => {
             for (const options of [
               {},
               { transform: true },
@@ -1084,8 +1080,7 @@ describeConformance(
             }
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 emits `" must be a valid object"` (due to empty `data: ""`) instead of `"Validation failed (object is expected)"` (packages/validation/src/validation.pipe.ts)
-          it.skip("should throw an error for a binary value", async () => {
+          it("should throw an error for a binary value", async () => {
             for (const options of [
               {},
               { transform: true },
@@ -1103,8 +1098,7 @@ describeConformance(
             }
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 intercepts Buffer before class-validator rules run, emitting `" must be a valid object"` instead of DTO property errors `["prop1 must be a string", "prop2 must be a string"]` (packages/validation/src/validation.pipe.ts)
-          it.skip("should validate the rules of the class for a binary value", async () => {
+          it("should validate the rules of the class for a binary value", async () => {
             target = nestCompatibleValidationPipe({
               whitelist: true,
               forbidNonWhitelisted: true,
@@ -1118,8 +1112,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 rejects Buffer even for decorator-less classes (`TestModelNoValidation`) instead of returning binary as-is (packages/validation/src/validation.pipe.ts)
-          it.skip("should return a binary value as it is for a class without rules", async () => {
+          it("should return a binary value as it is for a class without rules", async () => {
             const binary = Buffer.from("abc");
             for (const options of [
               { whitelist: true },
@@ -1136,8 +1129,7 @@ describeConformance(
             expect(binary.toString()).toBe("abc");
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 emits `" must be a valid object"` instead of `"Validation failed (object is expected)"` (packages/validation/src/validation.pipe.ts)
-          it.skip("should throw an error for an empty array when non-whitelisted properties are forbidden", async () => {
+          it("should throw an error for an empty array when non-whitelisted properties are forbidden", async () => {
             target = nestCompatibleValidationPipe({
               whitelist: true,
               forbidNonWhitelisted: true,
@@ -1147,8 +1139,7 @@ describeConformance(
             ).rejects.toMatchObject(rejection);
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 sets constraint `isObject: "items must be a valid object"` instead of NestJS `"Validation failed (object is expected)"` (packages/validation/src/validation.pipe.ts)
-          it.skip("should pass the error to the exception factory", async () => {
+          it("should pass the error to the exception factory", async () => {
             target = nestCompatibleValidationPipe({
               exceptionFactory: (errors) => errors,
             });
@@ -1182,8 +1173,7 @@ describeConformance(
         });
 
         describe("when missing properties are skipped", () => {
-          // BUNEST_BUG: ValidationPipe Guard 1 emits `" must be a valid object"` instead of `"Validation failed (object is expected)"` (packages/validation/src/validation.pipe.ts)
-          it.skip("should throw an error for an array or a primitive", async () => {
+          it("should throw an error for an array or a primitive", async () => {
             target = nestCompatibleValidationPipe({
               skipMissingProperties: true,
             });
@@ -1236,8 +1226,7 @@ describeConformance(
         });
 
         describe("otherwise", () => {
-          // BUNEST_BUG: ValidationPipe Guard 1 rejects arrays/primitives even when metatype (`TestModelNoValidation`) has no validation rules and `forbidUnknownValues: false` (packages/validation/src/validation.pipe.ts)
-          it.skip("should not reject", async () => {
+          it("should not reject", async () => {
             target = nestCompatibleValidationPipe({
               forbidUnknownValues: false,
             });
@@ -1261,8 +1250,7 @@ describeConformance(
             expect(await target.transform(true, objMetadata)).toEqual(true);
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 rejects arrays/Buffer even when metatype (`TestModelNoValidation`) has no validation rules (packages/validation/src/validation.pipe.ts)
-          it.skip('should not leave a "constructor" key on the value', async () => {
+          it('should not leave a "constructor" key on the value', async () => {
             target = nestCompatibleValidationPipe({
               transform: true,
               forbidUnknownValues: false,
@@ -1281,8 +1269,7 @@ describeConformance(
             }
           });
 
-          // BUNEST_BUG: ValidationPipe Guard 1 rejects array `[]` even when metatype (`TestModelNoValidation`) has no validation rules (packages/validation/src/validation.pipe.ts)
-          it.skip("should not make a copy of the value look like an instance of the class", async () => {
+          it("should not make a copy of the value look like an instance of the class", async () => {
             class UserEntity {
               name!: string;
 

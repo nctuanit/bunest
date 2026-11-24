@@ -196,12 +196,29 @@ export class TransformExecutor {
         typeof targetType === "object" && targetType !== null;
       const disc = isDescriptor ? targetType.discriminator : undefined;
 
-      let idx = 0;
-      for (const subValue of value) {
+      const isInputArray = Array.isArray(value);
+      const iterEntries: Array<[number, unknown]> = [];
+      if (isInputArray) {
+        if (!isSetOut) {
+          (newCollection as unknown[]).length = value.length;
+        }
+        for (const key of Object.keys(value)) {
+          const k = Number(key);
+          if (Number.isInteger(k) && k >= 0 && String(k) === key) {
+            iterEntries.push([k, value[k]]);
+          }
+        }
+      } else {
+        let i = 0;
+        for (const subValue of value) {
+          iterEntries.push([i++, subValue]);
+        }
+      }
+
+      for (const [idx, subValue] of iterEntries) {
         const subSource = isSourceArr
           ? (source[idx] as Record<string, unknown> | unknown[] | undefined)
           : undefined;
-        idx += 1;
 
         if (
           this.options.enableCircularCheck &&
@@ -211,6 +228,7 @@ export class TransformExecutor {
         ) {
           if (this.transformationType === TransformationType.CLASS_TO_CLASS) {
             if (isSetOut) newCollection.add(subValue);
+            else if (isInputArray) newCollection[idx] = subValue;
             else newCollection.push(subValue);
           }
           continue;
@@ -285,6 +303,7 @@ export class TransformExecutor {
         }
 
         if (isSetOut) newCollection.add(transformedItem);
+        else if (isInputArray) newCollection[idx] = transformedItem;
         else newCollection.push(transformedItem);
       }
       return newCollection;
