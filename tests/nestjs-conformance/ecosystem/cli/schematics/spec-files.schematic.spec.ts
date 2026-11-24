@@ -143,8 +143,7 @@ describeConformance(
         expect(anySpecLike(result.files)).toEqual([]);
       });
 
-      // BUNEST_BUG: buildSchematicFiles does not normalize camelCase specFileSuffix to kebab-case ("integrationTest" produces ".integrationTest.ts" instead of ".integration-test.ts") (packages/cli/src/templates/schematic.templates.ts:100)
-      it.skip("should normalize a camelCased spec file suffix", async () => {
+      it("should normalize a camelCased spec file suffix", async () => {
         const planned = buildSchematicFiles(
           schematic,
           parseSchematicName("foo"),

@@ -164,6 +164,7 @@ const DEFAULT_CONFIG_FILENAMES = [
   "bunest.json",
   ".bunestrc.json",
   "nest-cli.json",
+  ".nest-cli.json",
   ".nestcli.json",
 ] as const;
 

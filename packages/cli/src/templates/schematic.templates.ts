@@ -1,6 +1,6 @@
 import type { SchematicType } from "../types";
 import type { PlannedFile } from "../utils/fs-writer";
-import type { ParsedSchematicName } from "../utils/naming";
+import { toKebabCase, type ParsedSchematicName } from "../utils/naming";
 import { buildProjectTemplateFiles } from "./project.templates";
 
 export const SCHEMATIC_ALIASES: Readonly<Record<string, SchematicType>> = {
@@ -90,14 +90,32 @@ function joinRel(...parts: readonly string[]): string {
  * requested schematic. All templates strictly obey `verbatimModuleSyntax: true`
  * (`import type` for interfaces, value imports for DI/DTO classes).
  */
+export interface BuildSchematicOptions {
+  readonly flat: boolean;
+  readonly spec: boolean;
+  readonly specFileSuffix?: string;
+  readonly language?: string;
+  readonly collection?: string;
+}
+
+function normalizeSpecFileSuffix(raw?: string): string {
+  const cleaned = (raw ?? "spec").replace(/^\.+/, "");
+  if (!cleaned) return "spec";
+  return cleaned
+    .split(".")
+    .map((part) => toKebabCase(part))
+    .filter((part) => part.length > 0)
+    .join(".") || "spec";
+}
+
 export function buildSchematicFiles(
   schematic: SchematicType,
   parsed: ParsedSchematicName,
-  options: { flat: boolean; spec: boolean; specFileSuffix?: string },
+  options: BuildSchematicOptions,
 ): PlannedFile[] {
   const { subDir, kebab, pascal, camel } = parsed;
   const { flat, spec } = options;
-  const specSuffix = (options.specFileSuffix ?? "spec").replace(/^\.+/, "");
+  const specSuffix = normalizeSpecFileSuffix(options.specFileSuffix);
   const folder = flat ? subDir : joinRel(subDir, kebab);
 
   const files: PlannedFile[] = [];
@@ -367,8 +385,9 @@ describe("${pascal}Resolver", () => {
     }
 
     case "configuration": {
-      const configJson = {
-        collection: "@bunest/schematics",
+      const configJson: Record<string, unknown> = {
+        ...(options.language !== undefined ? { language: options.language } : {}),
+        collection: options.collection ?? "@bunest/schematics",
         sourceRoot: "src",
         entryFile: "main",
         compilerOptions: {
@@ -382,8 +401,9 @@ describe("${pascal}Resolver", () => {
           specFileSuffix: "spec",
         },
       };
+      const configDir = kebab === "bunest" ? subDir : joinRel(subDir, kebab);
       files.push({
-        relativePath: joinRel(subDir, "bunest.json"),
+        relativePath: joinRel(configDir, "bunest.json"),
         content: `${JSON.stringify(configJson, null, 2)}\n`,
       });
       break;
@@ -432,7 +452,7 @@ export class ${pascal}Module {}
               outDir: `../../dist/libs/${kebab}`,
             },
             include: ["src/**/*"],
-            exclude: ["node_modules", "dist", "test", "**/*spec.ts"],
+            exclude: ["node_modules", "dist", "test", `**/*${specSuffix}.ts`],
           },
           null,
           2,
@@ -528,7 +548,7 @@ export class ${pascal}Module {}
               outDir: `../../dist/apps/${kebab}`,
             },
             include: ["src/**/*"],
-            exclude: ["node_modules", "dist", "test", "**/*spec.ts"],
+            exclude: ["node_modules", "dist", "test", `**/*${specSuffix}.ts`],
           },
           null,
           2,

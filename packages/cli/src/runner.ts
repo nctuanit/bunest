@@ -621,7 +621,7 @@ export async function runCli(
       }
 
       case "info": {
-        const info = getEnvironmentInfo();
+        const info = getEnvironmentInfo(io.cwd ?? process.cwd());
         io.stdout(formatEnvironmentInfo(info));
         return { exitCode: 0, output: info };
       }

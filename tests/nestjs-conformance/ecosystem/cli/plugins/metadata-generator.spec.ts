@@ -154,8 +154,7 @@ export class UsersController {
         );
       });
 
-      // BUNEST_BUG: generateMetadataFile() only checks `options.esmCompatible === true` and does not inspect tsconfig.json `moduleResolution: "NodeNext"` / `"Node16"` to auto-enable `.js` extensions when `esmCompatible` is unset (packages/cli/src/plugins/metadata.plugin.ts:2054)
-      it.skip("auto-enables `.js` import extensions when tsconfig uses NodeNext/Node16 moduleResolution", async () => {
+      it("auto-enables `.js` import extensions when tsconfig uses NodeNext/Node16 moduleResolution", async () => {
         seedFixtureProject();
         writeTextSync(join(tmpDir, "tsconfig.json"), JSON.stringify({
             compilerOptions: {

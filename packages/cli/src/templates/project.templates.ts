@@ -199,6 +199,8 @@ Bootstrap errors carry a stable code (\`err.code\`, e.g. \`BUNEST_E001\` unknown
   const gitignore = `node_modules/
 dist/
 .bunest/
+/.idea
+.vscode
 .env
 .env.local
 *.log

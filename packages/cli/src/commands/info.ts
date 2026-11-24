@@ -3,6 +3,7 @@ import {
   getArch,
   getCpuCount,
   getPlatform,
+  join,
   readTextSync,
 } from "@bunest/core";
 import type { EnvironmentInfo } from "../types";
@@ -105,12 +106,40 @@ function detectSystemDetails(platform: string): {
   return { osRelease, cpuModel, totalMemoryBytes, freeMemoryBytes };
 }
 
+function readInstalledBunestPackages(
+  cwd?: string,
+): Record<string, string> | undefined {
+  if (!cwd) return undefined;
+  const pkgPath = join(cwd, "package.json");
+  if (!existsSyncPath(pkgPath)) return undefined;
+  try {
+    const pkg = JSON.parse(readTextSync(pkgPath)) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const merged: Record<string, string> = {
+      ...(pkg.devDependencies ?? {}),
+      ...(pkg.dependencies ?? {}),
+    };
+    const found: Record<string, string> = {};
+    for (const [name, version] of Object.entries(merged)) {
+      if (name.startsWith("@bunest/") || name.startsWith("@nestjs/")) {
+        found[name] = version;
+      }
+    }
+    return Object.keys(found).length > 0 ? found : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Collects Bunest, Bun runtime, OS, CPU, and memory environment metadata.
  */
-export function getEnvironmentInfo(): EnvironmentInfo {
+export function getEnvironmentInfo(cwd?: string): EnvironmentInfo {
   const platform = getPlatform();
   const sys = detectSystemDetails(platform);
+  const packages = readInstalledBunestPackages(cwd);
   return {
     bunestVersion: CLI_VERSION,
     bunVersion: Bun.version,
@@ -122,6 +151,7 @@ export function getEnvironmentInfo(): EnvironmentInfo {
     cpuCores: getCpuCount(),
     totalMemoryBytes: sys.totalMemoryBytes,
     freeMemoryBytes: sys.freeMemoryBytes,
+    ...(packages ? { packages } : {}),
   };
 }
 
@@ -138,5 +168,23 @@ export function formatEnvironmentInfo(info: EnvironmentInfo): string {
     `  CPU        : ${info.cpuModel} (${info.cpuCores} cores)`,
     `  Memory     : ${formatGiB(info.freeMemoryBytes)} free / ${formatGiB(info.totalMemoryBytes)} total`,
   ];
+  if (info.packages && Object.keys(info.packages).length > 0) {
+    lines.push("");
+    lines.push("Bunest Packages");
+    lines.push("===============");
+    const entries = Object.entries(info.packages).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    const hasCore = "@bunest/core" in info.packages;
+    const hasCommon =
+      "@bunest/common" in info.packages || "@nestjs/common" in info.packages;
+    if (hasCore && !hasCommon) {
+      lines.push(`  common version : ${info.packages["@bunest/core"]} (via @bunest/core)`);
+    }
+    for (const [name, version] of entries) {
+      const shortName = name.replace(/^@(?:bunest|nestjs)\//, "");
+      lines.push(`  ${shortName} version : ${version}`);
+    }
+  }
   return lines.join("\n");
 }

@@ -198,8 +198,7 @@ describeConformance(
       ).toBe(true);
     });
 
-    // BUNEST_BUG: buildSchematicFiles("library") in packages/cli/src/templates/schematic.templates.ts hardcodes "**/*spec.ts" in tsconfig.lib.json exclude instead of interpolating options.specFileSuffix ("**/*test.ts").
-    it.skip("should propagate custom specFileSuffix into tsconfig.lib.json exclude", async () => {
+    it("should propagate custom specFileSuffix into tsconfig.lib.json exclude", async () => {
       await generateSchematic({
         schematic: "library",
         name: "project",

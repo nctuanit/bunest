@@ -179,8 +179,7 @@ describeConformance(
         expect(shortParsed.flags.collection).toBe("@other/schematics");
       });
 
-      // BUNEST_BUG: UpgradeProjectOptions declares `collection?: string` and runner.ts forwards `--collection`, but upgradeProject() never reads `options.collection` or `bunest.json`/`nest-cli.json` `collection` (packages/cli/src/commands/upgrade.ts)
-      it.skip("uses the collection from bunest.json when configured and prefers explicit --collection", async () => {
+      it("uses the collection from bunest.json when configured and prefers explicit --collection", async () => {
         writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ collection: "@acme/schematics" }));
         const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
         const result = await upgradeProject({
@@ -282,8 +281,7 @@ describeConformance(
         expect(parseCliArgs(["upgrade"]).flags.observe).toBeUndefined();
       });
 
-      // BUNEST_BUG: UpgradeProjectOptions declares `observe?: boolean` and runner.ts forwards `--observe`/`--no-observe`, but upgradeProject() ignores `options.observe` completely (packages/cli/src/commands/upgrade.ts)
-      it.skip("handles --observe opt-in by including @bunest/observability in upgrade targets", async () => {
+      it("handles --observe opt-in by including @bunest/observability in upgrade targets", async () => {
         writePackageJson({
           name: "observe-demo",
           dependencies: { "@bunest/core": "^0.1.0" },

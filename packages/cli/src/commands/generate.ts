@@ -69,6 +69,8 @@ export async function generateSchematic(
     flat,
     spec,
     specFileSuffix,
+    language: options.language,
+    collection: options.collection,
   });
 
   const files = await writePlannedFiles({

@@ -89,6 +89,8 @@ export interface GenerateSchematicOptions {
   readonly project?: string;
   readonly config?: string;
   readonly specFileSuffix?: string;
+  readonly language?: string;
+  readonly collection?: string;
   readonly cwd?: string;
   readonly flat?: boolean;
   readonly spec?: boolean;
@@ -294,4 +296,5 @@ export interface EnvironmentInfo {
   readonly cpuCores: number;
   readonly totalMemoryBytes: number;
   readonly freeMemoryBytes: number;
+  readonly packages?: Readonly<Record<string, string>>;
 }
