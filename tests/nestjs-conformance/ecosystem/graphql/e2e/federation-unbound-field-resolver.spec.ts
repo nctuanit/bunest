@@ -112,8 +112,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) ignores `options.transformResolvers` in code-first mode and does not warn about unbound @ResolveField() fields (`warnings` is `[]`).
-    it.skip("should warn at startup about the field", () => {
+    it("should warn at startup about the field", () => {
       expect(warnings).toContainEqual(
         expect.stringContaining(
           'No resolver is bound for these fields, which are declared only by a field resolver (@ResolveField()): "Profile.secret".',
@@ -121,8 +120,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) ignores `options.transformResolvers` in code-first mode, so `Profile.secret` stays bound and returns `{ profile: { id: "1", secret: "******" } }` instead of refusing with `'No resolver is bound for field "Profile.secret".'`.
-    it.skip("should refuse to resolve the field instead of reading the parent property", async () => {
+    it("should refuse to resolve the field instead of reading the parent property", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({ query: "{ profile { id secret } }" });
