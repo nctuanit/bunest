@@ -182,8 +182,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLWsHandler passes an empty `extra: {}` without `extra.socket` into `onConnect`, preventing custom socket close code/reason (4000 / "Missing authorization"); returning `false` closes with 4403 instead (packages/graphql/src/subscriptions/graphql-ws.handler.ts:328-349).
-    it.skip("should receive an error if missing token", async () => {
+    it("should receive an error if missing token", async () => {
       ws = new WebSocket(
         `ws://127.0.0.1:${port}/graphql`,
         GRAPHQL_TRANSPORT_WS_PROTOCOL,
@@ -216,8 +215,7 @@ describeConformance(
       expect(closed.reason).toEqual("Missing authorization");
     });
 
-    // BUNEST_BUG: GraphQLWsHandler maps non-ForbiddenException errors thrown in `onConnect` to close code 4401 (UNAUTHORIZED) instead of 4500 per graphql-ws spec (packages/graphql/src/subscriptions/graphql-ws.handler.ts:358-368).
-    it.skip("should receive an error if token is malformed", async () => {
+    it("should receive an error if token is malformed", async () => {
       ws = new WebSocket(
         `ws://127.0.0.1:${port}/graphql`,
         GRAPHQL_TRANSPORT_WS_PROTOCOL,
