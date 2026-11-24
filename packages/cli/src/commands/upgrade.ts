@@ -1,4 +1,5 @@
 import { join, statPath } from "@bunest/core";
+import { loadCliConfiguration } from "../config/configuration.loader";
 import type {
   CliIO,
   SpawnFn,
@@ -31,7 +32,7 @@ export async function upgradeProject(
   const tag = options.tag?.trim();
   const pkgPath = join(cwd, "package.json");
 
-  let packages: string[] = [];
+  const packageSet = new Set<string>();
   try {
     const info = await statPath(pkgPath);
     if (info.isFile()) {
@@ -43,13 +44,40 @@ export async function upgradeProject(
         ...Object.keys(pkg.dependencies ?? {}),
         ...Object.keys(pkg.devDependencies ?? {}),
       ]);
-      packages = [...allDeps]
-        .filter((name) => name.startsWith("@bunest/"))
-        .sort();
+      for (const name of allDeps) {
+        if (name.startsWith("@bunest/")) {
+          packageSet.add(name);
+        }
+      }
     }
   } catch {
     // No package.json in cwd; fall back to plain `bun update`
   }
+
+  let effectiveCollection = options.collection?.trim();
+  if (!effectiveCollection) {
+    try {
+      const loaded = await loadCliConfiguration(cwd);
+      if (
+        loaded.found &&
+        loaded.config.collection &&
+        loaded.config.collection !== "@bunest/schematics"
+      ) {
+        effectiveCollection = loaded.config.collection;
+      }
+    } catch {
+      // ignore invalid config
+    }
+  }
+  if (effectiveCollection) {
+    packageSet.add(effectiveCollection);
+  }
+
+  if (options.observe === true) {
+    packageSet.add("@bunest/observability");
+  }
+
+  const packages = [...packageSet].sort();
 
   const targets =
     tag && packages.length > 0

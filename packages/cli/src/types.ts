@@ -81,14 +81,33 @@ export interface CreateProjectResult {
   readonly dryRun: boolean;
 }
 
+export type ResourceTransportType =
+  | "rest"
+  | "microservice"
+  | "ws"
+  | "graphql-code-first"
+  | "graphql-schema-first";
+
 export interface GenerateSchematicOptions {
   readonly schematic: string;
   readonly name: string;
   readonly dir?: string;
+  readonly directory?: string;
   readonly sourceRoot?: string;
   readonly project?: string;
   readonly config?: string;
   readonly specFileSuffix?: string;
+  readonly language?: string;
+  readonly collection?: string;
+  readonly strict?: boolean;
+  readonly packageManager?: string;
+  readonly minimal?: boolean;
+  readonly type?: ResourceTransportType;
+  readonly crud?: boolean;
+  readonly rootDir?: string;
+  readonly prefix?: string;
+  readonly skipImport?: boolean;
+  readonly module?: string;
   readonly cwd?: string;
   readonly flat?: boolean;
   readonly spec?: boolean;
@@ -115,6 +134,7 @@ export interface BuildProjectOptions {
   readonly entry?: string;
   readonly entryFile?: string;
   readonly sourceRoot?: string;
+  readonly project?: string;
   readonly outdir?: string;
   readonly config?: string;
   readonly path?: string;
@@ -166,6 +186,7 @@ export interface StartCommandOptions {
   readonly entry?: string;
   readonly entryFile?: string;
   readonly sourceRoot?: string;
+  readonly project?: string;
   readonly config?: string;
   readonly path?: string;
   readonly watch?: boolean;
@@ -294,4 +315,5 @@ export interface EnvironmentInfo {
   readonly cpuCores: number;
   readonly totalMemoryBytes: number;
   readonly freeMemoryBytes: number;
+  readonly packages?: Readonly<Record<string, string>>;
 }

@@ -143,8 +143,7 @@ describeConformance(
       expect(pkg.name).toBe("my-app");
     });
 
-    // BUNEST_BUG: `runCli(["new", ...])` only recognizes `--dir`/`-d` and ignores NestJS's `--directory` alias (packages/cli/src/parser.ts, packages/cli/src/runner.ts)
-    it.skip("should respect NestJS --directory flag alias", async () => {
+    it("should respect NestJS --directory flag alias", async () => {
       const cap = createCapturedIO(tmpDir);
       const res = await runCli(
         [
@@ -249,8 +248,7 @@ describeConformance(
       expect(spawnSpy.firstCall?.args[0]).toEqual(["git", "init"]);
     });
 
-    // BUNEST_BUG: buildProjectTemplateFiles() / createProject() does not generate a `bunest.json` configuration file (packages/cli/src/templates/project.templates.ts)
-    it.skip("should generate bunest.json configuration file", async () => {
+    it("should generate bunest.json configuration file", async () => {
       const created = await createProject({
         projectName: "cfg-app",
         cwd: tmpDir,
@@ -326,8 +324,7 @@ describeConformance(
         expect(existsSyncPath(join(tmpDir, "src", "main.ts"))).toBe(true);
       });
 
-      // BUNEST_BUG: validateProjectName(".") rejects "." so `bunest new .` cannot scaffold directly into the current directory (packages/cli/src/utils/naming.ts)
-      it.skip("should allow scaffolding in current directory via `bunest new .`", async () => {
+      it("should allow scaffolding in current directory via `bunest new .`", async () => {
         const cap = createCapturedIO(tmpDir);
         const res = await runCli(
           ["new", ".", "--skip-install", "--skip-git"],

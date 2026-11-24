@@ -129,8 +129,7 @@ describeConformance(
       "Explicit dir or nested path places bunest.json under project/",
     );
 
-    // BUNEST_BUG: buildSchematicFiles("configuration") in packages/cli/src/templates/schematic.templates.ts uses only parsed.subDir (ignoring parsed.kebab), so generateSchematic({ schematic: "configuration", name: "project" }) writes "bunest.json" at workspace root instead of "project/bunest.json".
-    it.skip("should manage a default configuration under named project folder", async () => {
+    it("should manage a default configuration under named project folder", async () => {
       const result = await generateSchematic({
         schematic: "configuration",
         name: "project",
@@ -143,8 +142,7 @@ describeConformance(
       expect(existsSyncPath(join(tempDir, "project/bunest.json"))).toBe(true);
     });
 
-    // BUNEST_BUG: GenerateSchematicOptions in packages/cli/src/types.ts and buildSchematicFiles("configuration") in packages/cli/src/templates/schematic.templates.ts do not accept a custom "language" option and omit "language" from generated bunest.json (note: ADR-001 also scopes Bunest to TypeScript).
-    it.skip("should manage provided language input", async () => {
+    it("should manage provided language input", async () => {
       await generateSchematic({
         schematic: "configuration",
         name: "bunest",
@@ -159,8 +157,7 @@ describeConformance(
       expect(parsed.language).toBe("ts");
     });
 
-    // BUNEST_BUG: GenerateSchematicOptions in packages/cli/src/types.ts and buildSchematicFiles("configuration") in packages/cli/src/templates/schematic.templates.ts hardcode collection: "@bunest/schematics" and ignore custom "collection" input.
-    it.skip("should manage provided collection input", async () => {
+    it("should manage provided collection input", async () => {
       await generateSchematic({
         schematic: "configuration",
         name: "bunest",

@@ -284,15 +284,13 @@ describeConformance(
       expect(existsSyncPath(join(tmpDir, "dist", "main.d.ts"))).toBe(false);
     });
 
-    // BUNEST_BUG: BuildProjectOptions declares `emitDeclarations?: boolean` and runner.ts parses `--emit-declarations`, but buildProject() never invokes declaration emission so zero .d.ts files are written (packages/cli/src/commands/build.ts)
-    it.skip("should emit .d.ts declaration files with --emit-declarations", async () => {
+    it("should emit .d.ts declaration files with --emit-declarations", async () => {
       const res = await buildProject({ cwd: tmpDir, emitDeclarations: true });
       expect(res.success).toBe(true);
       expect(existsSyncPath(join(tmpDir, "dist", "main.d.ts"))).toBe(true);
     });
 
-    // BUNEST_BUG: BuildProjectOptions declares `path?: string` and runner.ts forwards `--path`, but buildProject() ignores `options.path` and never passes a custom tsconfig path to Bun.build() (packages/cli/src/commands/build.ts)
-    it.skip("should build with a custom tsconfig path outside working directory using --path", async () => {
+    it("should build with a custom tsconfig path outside working directory using --path", async () => {
       mkdirSyncPath(join(tmpDir, "config"), { recursive: true });
       mkdirSyncPath(join(tmpDir, "src", "shared"), { recursive: true });
       writeTextSync(join(tmpDir, "config", "tsconfig.build.json"), JSON.stringify(
@@ -318,8 +316,7 @@ describeConformance(
     });
 
     describe("dotfiles in a directory asset (#3522)", () => {
-      // BUNEST_BUG: CompilerOptions declares `assets?: Asset[]`, but buildProject() never copies configured assets (bare directory or wildcard, including dotfiles) to outdir (packages/cli/src/commands/build.ts)
-      it.skip("should copy a dotfile nested under a bare directory asset", async () => {
+      it("should copy a dotfile nested under a bare directory asset", async () => {
         mkdirSyncPath(join(tmpDir, "src", "config", "envs"), { recursive: true });
         writeTextSync(join(tmpDir, "src", "config", "envs", ".development"), "SECRET=1");
         writeTextSync(join(tmpDir, "src", "config", "envs", "prod.env"), "X=1");
@@ -335,8 +332,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: CompilerOptions declares `assets?: Asset[]`, but buildProject() never copies wildcard assets (including dotfiles) to outdir (packages/cli/src/commands/build.ts)
-      it.skip("should keep copying dotfiles for the wildcard asset form", async () => {
+      it("should keep copying dotfiles for the wildcard asset form", async () => {
         mkdirSyncPath(join(tmpDir, "src", "config", "envs"), { recursive: true });
         writeTextSync(join(tmpDir, "src", "config", "envs", ".development"), "SECRET=1");
         writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ compilerOptions: { assets: ["config/envs/*"] } }));
@@ -350,8 +346,7 @@ describeConformance(
     });
 
     describe("monorepo project builds", () => {
-      // BUNEST_BUG: `runCli(["build", "<projectName>"])` ignores positional project arguments and buildProject() never resolves named monorepo projects from `bunest.json` `projects` (packages/cli/src/runner.ts, packages/cli/src/commands/build.ts)
-      it.skip("should build a specific sub-app by name in monorepo mode", async () => {
+      it("should build a specific sub-app by name in monorepo mode", async () => {
         mkdirSyncPath(join(tmpDir, "apps", "secondary", "src"), {
           recursive: true,
         });

@@ -137,8 +137,7 @@ describeConformance(
       ).toEqual("export class Foo {}\n");
     });
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_fooBar" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]) and toKebabCase() does not preserve leading "_" ("_foo-bar/_foo-bar.ts").
-    it.skip("should manage name to normalize while keeping leading underscore", async () => {
+    it("should manage name to normalize while keeping leading underscore", async () => {
       const result = await generateSchematic({
         schematic: "class",
         name: "_fooBar",
@@ -156,8 +155,7 @@ describeConformance(
       ).toEqual("export class FooBar {}\n");
     });
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in segment "_foo" of "barBaz/_foo"; expected "bar-baz/_foo/_foo.ts" with "export class Foo {}".
-    it.skip("should manage path to normalize while keeping leading underscore", async () => {
+    it("should manage path to normalize while keeping leading underscore", async () => {
       const result = await generateSchematic({
         schematic: "class",
         name: "barBaz/_foo",
@@ -191,8 +189,7 @@ describeConformance(
       "Bunest targets TypeScript natively on Bun without JS output templates",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects "." in "foo.entity" (VALID_SEGMENT_REGEX disallows dots); expected "foo.entity.ts" exporting "export class FooEntity {}".
-    it.skip("should remove . from name when deriving class identifier", async () => {
+    it("should remove . from name when deriving class identifier", async () => {
       const result = await generateSchematic({
         schematic: "class",
         name: "foo.entity",
@@ -273,8 +270,7 @@ describeConformance(
       "Bunest uses bun:test and extensionless TS imports under moduleResolution: bundler",
     );
 
-    // BUNEST_BUG: generateSchematic("class") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream class/schema.json.
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "class",
         name: "foo",

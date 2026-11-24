@@ -81,8 +81,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: DEFAULT_CONFIG_FILENAMES checks `.nestcli.json` (no hyphen) instead of NestJS's `.nest-cli.json` (with hyphen), so `.nest-cli.json` is ignored during auto-discovery (packages/cli/src/config/configuration.loader.ts:166-171)
-    it.skip("should auto-discover hyphenated .nest-cli.json fallback", async () => {
+    it("should auto-discover hyphenated .nest-cli.json fallback", async () => {
       writeTextSync(join(tmpDir, ".nest-cli.json"), JSON.stringify({ entryFile: "hyphen-entry" }));
       const loaded = await loadCliConfiguration(tmpDir);
       expect(loaded.found).toBe(true);

@@ -231,7 +231,7 @@ export async function runCli(
         const result = await createProject(
           {
             projectName,
-            dir: getStringFlag(flags, "dir"),
+            dir: getStringFlag(flags, "dir") ?? getStringFlag(flags, "directory"),
             cwd: io.cwd,
             strict,
             skipGit: getBoolFlag(flags, "skip-git"),
@@ -286,7 +286,12 @@ export async function runCli(
         const isConfigSchematic =
           schematic !== undefined &&
           ["config", "configuration"].includes(schematic.trim().toLowerCase());
-        const name = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const baseName = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const extraPath = positionals[2]?.trim();
+        const name =
+          baseName && extraPath
+            ? `${extraPath.replace(/\/+$/, "")}/${baseName}`
+            : baseName;
 
         if (!schematic || !name) {
           io.stderr(
@@ -302,6 +307,32 @@ export async function runCli(
             : specFlag !== undefined
               ? specFlag
               : undefined;
+        const flatFlag = getBoolFlag(flags, "flat");
+        const noFlatFlag = getBoolFlag(flags, "no-flat");
+        const flat =
+          noFlatFlag === true
+            ? false
+            : flatFlag !== undefined
+              ? flatFlag
+              : undefined;
+
+        const crudFlag = getBoolFlag(flags, "crud");
+        const noCrudFlag = getBoolFlag(flags, "no-crud");
+        const crud =
+          noCrudFlag === true
+            ? false
+            : crudFlag !== undefined
+              ? crudFlag
+              : undefined;
+        const rawType = getStringFlag(flags, "type");
+        const resourceType =
+          rawType === "rest" ||
+          rawType === "microservice" ||
+          rawType === "ws" ||
+          rawType === "graphql-code-first" ||
+          rawType === "graphql-schema-first"
+            ? rawType
+            : undefined;
 
         const result = await generateSchematic(
           {
@@ -312,8 +343,16 @@ export async function runCli(
             project: getStringFlag(flags, "project"),
             config: getStringFlag(flags, "config"),
             specFileSuffix: getStringFlag(flags, "spec-file-suffix"),
+            language: getStringFlag(flags, "language"),
+            collection: getStringFlag(flags, "collection"),
+            type: resourceType,
+            crud,
+            rootDir: getStringFlag(flags, "root-dir"),
+            prefix: getStringFlag(flags, "prefix"),
+            skipImport: getBoolFlag(flags, "skip-import"),
+            module: getStringFlag(flags, "module"),
             cwd: io.cwd,
-            flat: getBoolFlag(flags, "flat"),
+            flat,
             spec,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             force: getBoolFlag(flags, "force") ?? false,
@@ -337,6 +376,7 @@ export async function runCli(
             entry: getStringFlag(flags, "entry"),
             entryFile: getStringFlag(flags, "entryFile"),
             sourceRoot: getStringFlag(flags, "sourceRoot"),
+            project: getStringFlag(flags, "project") ?? positionals[0],
             config: getStringFlag(flags, "config"),
             path: getStringFlag(flags, "path"),
             watch: getBoolFlag(flags, "watch") ?? false,
@@ -536,6 +576,7 @@ export async function runCli(
             entry: getStringFlag(flags, "entry"),
             entryFile: getStringFlag(flags, "entryFile"),
             sourceRoot: getStringFlag(flags, "sourceRoot"),
+            project: getStringFlag(flags, "project") ?? positionals[0],
             outdir: getStringFlag(flags, "outdir"),
             config: getStringFlag(flags, "config"),
             path: getStringFlag(flags, "path"),
@@ -621,7 +662,7 @@ export async function runCli(
       }
 
       case "info": {
-        const info = getEnvironmentInfo();
+        const info = getEnvironmentInfo(io.cwd ?? process.cwd());
         io.stdout(formatEnvironmentInfo(info));
         return { exitCode: 0, output: info };
       }

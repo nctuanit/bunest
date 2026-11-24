@@ -2,6 +2,9 @@ import type { PlannedFile } from "../utils/fs-writer";
 
 export interface ProjectTemplateOptions {
   readonly strict?: boolean;
+  readonly spec?: boolean;
+  readonly specFileSuffix?: string;
+  readonly minimal?: boolean;
 }
 
 /**
@@ -13,6 +16,10 @@ export function buildProjectTemplateFiles(
   options: ProjectTemplateOptions = {},
 ): PlannedFile[] {
   const strict = options.strict ?? true;
+  const spec = options.spec ?? true;
+  const specSuffix =
+    (options.specFileSuffix ?? "spec").replace(/^\.+/, "") || "spec";
+  const minimal = options.minimal ?? false;
 
   const packageJson = {
     name: projectName,
@@ -199,6 +206,8 @@ Bootstrap errors carry a stable code (\`err.code\`, e.g. \`BUNEST_E001\` unknown
   const gitignore = `node_modules/
 dist/
 .bunest/
+/.idea
+.vscode
 .env
 .env.local
 *.log
@@ -226,7 +235,51 @@ bun run build
 \`\`\`
 `;
 
-  return [
+  if (minimal) {
+    const minimalMainTs = `import { BunestFactory, Controller, Get, Module } from "@bunest/core";
+
+@Controller()
+class AppController {
+  @Get()
+  getHello(): { message: string } {
+    return { message: "Hello from ${projectName}!" };
+  }
+}
+
+@Module({
+  controllers: [AppController],
+})
+class AppModule {}
+
+async function bootstrap(): Promise<void> {
+  const app = await BunestFactory.create(AppModule);
+  const port = Number(Bun.env.PORT ?? 3000);
+  await app.listen(port);
+}
+
+await bootstrap();
+`;
+    return [
+      {
+        relativePath: "package.json",
+        content: `${JSON.stringify(packageJson, null, 2)}\n`,
+      },
+      {
+        relativePath: "tsconfig.json",
+        content: `${JSON.stringify(tsconfigJson, null, 2)}\n`,
+      },
+      {
+        relativePath: "src/main.ts",
+        content: minimalMainTs,
+      },
+      {
+        relativePath: ".gitignore",
+        content: gitignore,
+      },
+    ];
+  }
+
+  const files: PlannedFile[] = [
     {
       relativePath: "package.json",
       content: `${JSON.stringify(packageJson, null, 2)}\n`,
@@ -251,10 +304,16 @@ bun run build
       relativePath: "src/app.module.ts",
       content: appModuleTs,
     },
-    {
-      relativePath: "test/app.spec.ts",
+  ];
+
+  if (spec) {
+    files.push({
+      relativePath: `test/app.${specSuffix}.ts`,
       content: appSpecTs,
-    },
+    });
+  }
+
+  files.push(
     {
       relativePath: ".gitignore",
       content: gitignore,
@@ -267,5 +326,7 @@ bun run build
       relativePath: "AGENTS.md",
       content: agentsMd,
     },
-  ];
+  );
+
+  return files;
 }

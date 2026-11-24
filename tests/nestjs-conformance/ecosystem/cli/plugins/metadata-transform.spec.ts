@@ -63,8 +63,7 @@ describeConformance(
         expect(onDisk).toContain("controllers:");
       });
 
-      // BUNEST_BUG: BunestMetadataPluginOptions lacks a `filename` option and generateMetadataFile() hardcodes `join(outDir, "metadata.ts")` (packages/cli/src/plugins/metadata.plugin.ts:2053)
-      it.skip("honours a custom filename option when writing static metadata", async () => {
+      it("honours a custom filename option when writing static metadata", async () => {
         const res = await generateMetadataFile({
           rootDir: tmpDir,
           pathToSource: "src",
@@ -114,8 +113,7 @@ describeConformance(
         expect(updated.startsWith("/* eslint-disable */")).toBe(true);
       });
 
-      // BUNEST_BUG: generateMetadataFile() unconditionally calls `Bun.write(outputPath, code)` without comparing existing file bytes, causing unnecessary mtime churn in watch workflows (packages/cli/src/plugins/metadata.plugin.ts:2190)
-      it.skip("skips writing metadata.ts when existing bytes on disk are identical", async () => {
+      it("skips writing metadata.ts when existing bytes on disk are identical", async () => {
         const first = await generateMetadataFile({
           rootDir: tmpDir,
           pathToSource: "src",

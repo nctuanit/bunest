@@ -303,8 +303,7 @@ try {
     });
 
     describe("monorepo project start", () => {
-      // BUNEST_BUG: `runCli(["start", "<projectName>"])` ignores positional project names and runStartCommand() never calls resolveProjectConfiguration() for monorepo sub-apps (packages/cli/src/runner.ts, packages/cli/src/commands/start.ts)
-      it.skip("should start a specific sub-app by name in monorepo mode", async () => {
+      it("should start a specific sub-app by name in monorepo mode", async () => {
         mkdirSyncPath(join(tmpDir, "apps", "worker", "src"), { recursive: true });
         writeTextSync(join(tmpDir, "apps", "worker", "src", "main.ts"), `export const worker = true;\n`);
         writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({
