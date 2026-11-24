@@ -102,8 +102,12 @@ describeConformance(
               expect(configs[0]?.middleware).toBe(noopMiddleware);
               expect(configs[0]?.include).toEqual([
                 { path: "/test", method: RequestMethod.GET },
-                { path: "/path", method: RequestMethod.ALL },
-                { path: "/path/*", method: RequestMethod.ALL },
+                { path: "/path/route", method: RequestMethod.GET },
+                {
+                  path: "/path/versioned",
+                  method: RequestMethod.GET,
+                  version: "1",
+                } as RouteInfo,
               ]);
               expect(matches("GET", "/test")).toBe(true);
               expect(matches("POST", "/test")).toBe(false);
@@ -113,8 +117,7 @@ describeConformance(
             "CoreMiddlewareConsumer expands controllers to prefix + prefix/*",
           );
 
-          // BUNEST_BUG: CoreMiddlewareConsumer.forRoutes(Controller) expands only controller-level paths (`/path`, `/path/*`) with RequestMethod.ALL instead of scanning method-level routes and `@Version()` metadata (packages/core/src/module/middleware-consumer.ts:33-52).
-          it.skip("should extract per-method controller routes and @Version metadata in forRoutes(Controller)", () => {
+          it("should extract per-method controller routes and @Version metadata in forRoutes(Controller)", () => {
             configProxy.forRoutes(route, TestController);
 
             const include = builder.getConfigs()[0]?.include as Array<
@@ -270,8 +273,7 @@ describeConformance(
             expect(matches("GET", "/:tenant")).toBe(true);
           });
 
-          // BUNEST_BUG: RouteInfo lacks a `version` property, CoreMiddlewareConsumer toRouteInfos() strips `version`, and matchesMiddlewareForRoute() has no version filtering (packages/core/src/common/interfaces/pipeline.interface.ts:113-116, packages/core/src/module/middleware-consumer.ts:54-59, packages/core/src/http/scanner/path-normalizer.ts:212-242).
-          it.skip("should preserve version scoping on RouteInfo and not match a route of another version", () => {
+          it("should preserve version scoping on RouteInfo and not match a route of another version", () => {
             const routes = [
               {
                 path: "/accounts/:id",

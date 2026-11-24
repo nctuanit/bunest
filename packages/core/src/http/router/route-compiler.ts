@@ -117,6 +117,11 @@ export interface RouteCompilerInput {
   readonly defaultFilter: DefaultExceptionFilter;
   readonly onRequestHook?: Function;
   readonly onResponseHook?: Function;
+  readonly onVersionNotFound?: (
+    req: Request,
+    server: BunServerLike,
+    pathname: string,
+  ) => Promise<Response | null>;
   readonly onRouteTriggered?: (
     requestMethod: RequestMethod,
     path: string,
@@ -1110,6 +1115,19 @@ export async function compileRoutes(
             runtime,
             versionAllow,
           );
+        }
+
+        if (input.onVersionNotFound) {
+          const mwRes = await input.onVersionNotFound(
+            req,
+            server,
+            ctx.pathname,
+          );
+          if (mwRes !== null) {
+            return securityHeaders
+              ? applySecurityHeaders(mwRes, securityHeaders)
+              : mwRes;
+          }
         }
 
         return executeFallbackException(

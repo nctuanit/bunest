@@ -148,13 +148,11 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected middleware bound via forRoutes(SharedController) to run on RouterModule-prefixed route /first/shared (returning "test_scoped"); actual returns "test" because CoreMiddlewareConsumer.toRouteInfos() extracts only @Controller('shared') -> /shared without applying RouterModule prefixes (/first/shared) when matching routes (packages/core/src/module/middleware-consumer.ts, packages/core/src/http/scanner/controller-scanner.ts).
-    it.skip("forRoutes(SharedController) - /first/shared", async () => {
+    it("forRoutes(SharedController) - /first/shared", async () => {
       await request(app).get("/first/shared").expect(200, SCOPED_VALUE);
     });
 
-    // BUNEST_BUG: Expected middleware bound via forRoutes(SharedController) to run on RouterModule-prefixed route /second/shared (returning "test_scoped"); actual returns "test" because CoreMiddlewareConsumer.toRouteInfos() extracts /shared without RouterModule prefixes (/second/shared) (packages/core/src/module/middleware-consumer.ts, packages/core/src/http/scanner/controller-scanner.ts).
-    it.skip("forRoutes(SharedController) - /second/shared", async () => {
+    it("forRoutes(SharedController) - /second/shared", async () => {
       await request(app).get("/second/shared").expect(200, SCOPED_VALUE);
     });
   },

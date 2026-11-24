@@ -99,8 +99,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: CoreMiddlewareConsumer.toRouteInfos() (packages/core/src/module/middleware-consumer.ts:59-64) strips `version` from RouteInfo objects passed to exclude()/forRoutes().
-    it.skip("should skip the middleware for the excluded version only", async () => {
+    it("should skip the middleware for the excluded version only", async () => {
       await createApp(MiddlewareModule);
       await request(app!)
         .get("/reports")

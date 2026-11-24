@@ -1028,13 +1028,21 @@ export class BunestApplication extends BunestApplicationContext {
     this.moduleMiddlewaresConfigured = true;
 
     const compiledConfigs: CompiledMiddlewareConfig[] = [];
+    const controllerPrefixes = resolveRouterModulePrefixes(
+      this.container.getGraph(),
+    );
 
     for (const mod of this.container.getGraph().topologicalOrder) {
       if (!isConfigurableModule(mod.instance)) {
         continue;
       }
 
-      const consumer = new CoreMiddlewareConsumer(mod.id, this.httpAdapter);
+      const consumer = new CoreMiddlewareConsumer(
+        mod.id,
+        this.httpAdapter,
+        undefined,
+        controllerPrefixes,
+      );
       await mod.instance.configure(consumer);
 
       for (const cfg of consumer.getConfigs()) {

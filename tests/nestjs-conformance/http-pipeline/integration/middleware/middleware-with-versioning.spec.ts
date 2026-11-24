@@ -227,8 +227,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: Expected GET /versioned (without Accept header) to execute middleware returning 200 "test_versioned", got 404. packages/core/src/http/router/route-compiler.ts (matchCompiledVersionGroup) rejects the unversioned request before executing middleware bound via forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL }).
-        it.skip(`forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL })`, async () => {
+        it(`forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL })`, async () => {
           await request(app!).get("/versioned").expect(200, VERSIONED_VALUE);
         });
       });
@@ -296,8 +295,7 @@ describeConformance(
         await request(app!).get("/v1/dogs").expect(200, "1");
       });
 
-      // BUNEST_BUG: Expected GET /v1/dogs (DogsController) to return "0" (not hit by NeutralDogsController middleware), got "1". packages/core/src/module/middleware-consumer.ts (toRouteInfos) emits `/dogs` and `/dogs/*` for NeutralDogsController ignoring its handler path `/neutral` and `version: VERSION_NEUTRAL`, leaking the middleware onto DogsController's `/v1/dogs`.
-      it.skip(`forRoutes(NeutralDogsController) should only run on its own routes`, async () => {
+      it(`forRoutes(NeutralDogsController) should only run on its own routes`, async () => {
         await createApp(NeutralDogsController);
         await request(app!).get("/dogs/neutral").expect(200, "1");
         await request(app!).get("/v1/dogs").expect(200, "0");
