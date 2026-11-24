@@ -191,8 +191,6 @@ export function createRedactor(
         else if (node instanceof Map) result = walkMap(node, state);
         else if (node instanceof Set) result = walkSet(node, state);
         else result = walkObject(node, state);
-      } catch {
-        result = censor;
       } finally {
         ancestors.delete(node);
       }
@@ -203,6 +201,10 @@ export function createRedactor(
       return result;
     };
 
-    return walk(input, emptyState) as T;
+    try {
+      return walk(input, emptyState) as T;
+    } catch {
+      return censor as T;
+    }
   };
 }

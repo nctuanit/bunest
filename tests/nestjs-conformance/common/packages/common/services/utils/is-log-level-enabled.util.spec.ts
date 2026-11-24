@@ -70,8 +70,7 @@ describeConformance(
     });
 
     describe("when target level is more severe than highest configured level", () => {
-      // BUNEST_BUG: ConsoleLogger.isLevelEnabled() checks exact `levels.includes(level)` instead of NestJS severity hierarchy (`targetLevelValue >= highestLogLevelValue`), so `logLevels: ['warn']` returns `false` for `'error'` (packages/core/src/common/logger/console-logger.ts:221-224)
-      it.skip("should enable higher-severity levels (e.g. error when logLevels = ['warn'])", () => {
+      it("should enable higher-severity levels (e.g. error when logLevels = ['warn'])", () => {
         expect(
           new ConsoleLogger({ logLevels: ["warn"] }).isLevelEnabled("error"),
         ).toBe(true);
