@@ -1489,7 +1489,10 @@ export class GraphQLSchemaFactory {
             description: rfMeta.description ?? existingField?.description,
             deprecationReason:
               rfMeta.deprecationReason ?? existingField?.deprecationReason,
-            args: this.buildArgsConfig(compiled.params),
+            args: this.buildArgsConfig(
+            compiled.params,
+            `${compiled.resolverClass.name}#${String(compiled.handlerKey)}`,
+          ),
             ...(existingField?.extensions
               ? { extensions: existingField.extensions }
               : {}),
@@ -1627,13 +1630,7 @@ export class GraphQLSchemaFactory {
 
     const objExtensions = getGraphQLExtensions(cls);
     const objDirectives = getGraphQLDirectives(cls);
-    const mergedObjExtensions =
-      objExtensions || objDirectives.length > 0
-        ? {
-            ...(objExtensions ?? {}),
-            ...(objDirectives.length > 0 ? { directives: objDirectives } : {}),
-          }
-        : undefined;
+    const mergedObjExtensions = objExtensions ? { ...objExtensions } : undefined;
 
     const globalMiddleware =
       this.activeBuildSchemaOptions.fieldMiddleware ?? [];
@@ -2012,8 +2009,50 @@ export class GraphQLSchemaFactory {
 
   private buildArgsConfig(
     params: readonly GqlParamMetadata[],
+    ownerLabel?: string,
   ): Record<string, GraphQLArgumentConfig> {
     const argsConfig: Record<string, GraphQLArgumentConfig> = {};
+    const renamedProps = new Map<
+      string,
+      { readonly schemaName: string; readonly className: string }
+    >();
+    const owner = ownerLabel ?? "resolver";
+    const registerArg = (
+      argName: string,
+      config: GraphQLArgumentConfig,
+      propertyKey?: string,
+      argsClassName?: string,
+    ): void => {
+      if (propertyKey && propertyKey !== argName) {
+        if (Object.prototype.hasOwnProperty.call(argsConfig, propertyKey)) {
+          throw new Error(
+            `The "${propertyKey}" property of "${argsClassName ?? "ArgsType"}" (exposed as "${argName}") is named like the "${propertyKey}" argument of "${owner}", so both cannot be passed to the resolver.`,
+          );
+        }
+        renamedProps.set(propertyKey, {
+          schemaName: argName,
+          className: argsClassName ?? "ArgsType",
+        });
+      } else if (renamedProps.has(argName)) {
+        const info = renamedProps.get(argName)!;
+        throw new Error(
+          `The "${argName}" property of "${info.className}" (exposed as "${info.schemaName}") is named like the "${argName}" argument of "${owner}", so both cannot be passed to the resolver.`,
+        );
+      }
+      const existing = Object.prototype.hasOwnProperty.call(argsConfig, argName)
+        ? argsConfig[argName]
+        : undefined;
+      if (existing) {
+        const sameType = String(existing.type) === String(config.type);
+        const sameDefault = Object.is(existing.defaultValue, config.defaultValue);
+        if (!sameType || !sameDefault) {
+          throw new Error(
+            `Argument "${argName}" of "${owner}" is declared by more than one @Args() parameter with a different type or default value.`,
+          );
+        }
+      }
+      argsConfig[argName] = config;
+    };
 
     for (let i = 0; i < params.length; i++) {
       const param = params[i];
@@ -2051,15 +2090,20 @@ export class GraphQLSchemaFactory {
           ) {
             defaultValue = undefined;
           }
-          argsConfig[argName] = {
-            type: this.resolveInputType(rawType, fieldMeta.nullable),
-            description: fieldMeta.description,
-            defaultValue,
-            ...(fieldMeta.deprecationReason !== undefined
-              ? { deprecationReason: fieldMeta.deprecationReason }
-              : {}),
-            ...(fieldExt ? { extensions: fieldExt } : {}),
-          };
+          registerArg(
+            argName,
+            {
+              type: this.resolveInputType(rawType, fieldMeta.nullable),
+              description: fieldMeta.description,
+              defaultValue,
+              ...(fieldMeta.deprecationReason !== undefined
+                ? { deprecationReason: fieldMeta.deprecationReason }
+                : {}),
+              ...(fieldExt ? { extensions: fieldExt } : {}),
+            },
+            fieldMeta.propertyKey,
+            param.metatype.name,
+          );
         }
         continue;
       }
@@ -2070,14 +2114,14 @@ export class GraphQLSchemaFactory {
           : (param.metatype as ReturnTypeFuncValue | undefined);
         const defaultValue = normalizeDefaultValue(param.defaultValue, rawType);
         assertNullDefaultAllowed(param.key, defaultValue, param.nullable);
-        argsConfig[param.key] = {
+        registerArg(param.key, {
           type: this.resolveInputType(rawType, param.nullable),
           description: param.description,
           defaultValue,
           ...(param.deprecationReason !== undefined
             ? { deprecationReason: param.deprecationReason }
             : {}),
-        };
+        });
       }
     }
 
@@ -2205,7 +2249,10 @@ export class GraphQLSchemaFactory {
           type: this.resolveOutputType(op.returnTypeFn(), op.nullable),
           description: op.description,
           deprecationReason: op.deprecationReason,
-          args: this.buildArgsConfig(compiled.params),
+          args: this.buildArgsConfig(
+            compiled.params,
+            `${compiled.resolverClass.name}#${String(compiled.handlerKey)}`,
+          ),
           ...(op.complexity !== undefined
             ? { extensions: { complexity: op.complexity } }
             : {}),
@@ -2224,7 +2271,10 @@ export class GraphQLSchemaFactory {
           type: this.resolveOutputType(op.returnTypeFn(), op.nullable),
           description: op.description,
           deprecationReason: op.deprecationReason,
-          args: this.buildArgsConfig(compiled.params),
+          args: this.buildArgsConfig(
+            compiled.params,
+            `${compiled.resolverClass.name}#${String(compiled.handlerKey)}`,
+          ),
           ...(op.complexity !== undefined
             ? { extensions: { complexity: op.complexity } }
             : {}),

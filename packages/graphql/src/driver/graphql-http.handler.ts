@@ -983,12 +983,18 @@ export class GraphQLService
       const query = url.searchParams.get("query");
 
       if (!query) {
-        const playgroundEnabled =
-          this.options.playground ??
+        const graphiqlConfig =
           this.options.graphiql ??
+          this.options.playground ??
           !isProductionEnv();
-        if (playgroundEnabled && accept.includes("text/html")) {
-          const html = renderGraphiqlHtml(this.getPath());
+        if (graphiqlConfig && accept.includes("text/html")) {
+          const graphiqlOpts =
+            typeof graphiqlConfig === "object" ? graphiqlConfig : undefined;
+          const html = renderGraphiqlHtml(
+            this.getPath(),
+            undefined,
+            graphiqlOpts,
+          );
           return new Response(html, {
             status: 200,
             headers: {

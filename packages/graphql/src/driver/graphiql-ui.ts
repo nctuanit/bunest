@@ -17,10 +17,23 @@ function escapeJsonForScript(value: unknown): string {
 export function renderGraphiqlHtml(
   endpointPath: string,
   title = "Bunest GraphQL Playground",
+  options?: Record<string, unknown>,
 ): string {
   const safeTitle = escapeHtml(title);
   const safeEndpointJson = escapeJsonForScript(endpointPath);
   const safeEndpointDisplay = escapeHtml(endpointPath);
+  const optionEntries: string[] = [];
+  if (options && typeof options === "object") {
+    for (const [k, v] of Object.entries(options)) {
+      if (v !== undefined) {
+        optionEntries.push(`${k}: ${escapeJsonForScript(v)}`);
+      }
+    }
+  }
+  const graphiqlOptionsBlock =
+    optionEntries.length > 0
+      ? `const graphiqlOptions = { ${optionEntries.join(", ")} };`
+      : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -72,6 +85,7 @@ export function renderGraphiqlHtml(
   <script>
     (function () {
       const endpoint = ${safeEndpointJson};
+      ${graphiqlOptionsBlock}
       const queryEl = document.getElementById("gql-query");
       const varsEl = document.getElementById("gql-vars");
       const outEl = document.getElementById("gql-output");

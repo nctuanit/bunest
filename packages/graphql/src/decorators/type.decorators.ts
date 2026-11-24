@@ -647,9 +647,14 @@ export function Directive(
     descriptor?: PropertyDescriptor,
   ) => {
     if (descriptor && descriptor.value !== undefined) {
-      MetadataRegistry.appendOwnArray<string>(
+      const existing =
+        MetadataRegistry.getOwn<readonly string[]>(
+          GRAPHQL_METADATA_KEYS.DIRECTIVES,
+          descriptor.value,
+        ) ?? [];
+      MetadataRegistry.define(
         GRAPHQL_METADATA_KEYS.DIRECTIVES,
-        sdls,
+        [...sdls, ...existing],
         descriptor.value,
       );
       for (const s of sdls) {
@@ -662,9 +667,15 @@ export function Directive(
       return;
     }
     if (propertyKey !== undefined) {
-      MetadataRegistry.appendOwnArray<string>(
+      const existing =
+        MetadataRegistry.getOwn<readonly string[]>(
+          GRAPHQL_METADATA_KEYS.DIRECTIVES,
+          target.constructor,
+          propertyKey,
+        ) ?? [];
+      MetadataRegistry.define(
         GRAPHQL_METADATA_KEYS.DIRECTIVES,
-        sdls,
+        [...sdls, ...existing],
         target.constructor,
         propertyKey,
       );
@@ -677,9 +688,14 @@ export function Directive(
       }
       return;
     }
-    MetadataRegistry.appendOwnArray<string>(
+    const existing =
+      MetadataRegistry.getOwn<readonly string[]>(
+        GRAPHQL_METADATA_KEYS.DIRECTIVES,
+        target,
+      ) ?? [];
+    MetadataRegistry.define(
       GRAPHQL_METADATA_KEYS.DIRECTIVES,
-      sdls,
+      [...sdls, ...existing],
       target,
     );
     for (const s of sdls) {
@@ -732,7 +748,7 @@ export function Extensions(
         ) ?? {};
       MetadataRegistry.define(
         GRAPHQL_METADATA_KEYS.EXTENSIONS,
-        { ...existing, ...value },
+        { ...value, ...existing },
         descriptor.value,
       );
       TypeMetadataStorage.addExtensionsPropertyMetadata({
@@ -751,7 +767,7 @@ export function Extensions(
         ) ?? {};
       MetadataRegistry.define(
         GRAPHQL_METADATA_KEYS.EXTENSIONS,
-        { ...existing, ...value },
+        { ...value, ...existing },
         target.constructor,
         propertyKey,
       );
@@ -769,7 +785,7 @@ export function Extensions(
       ) ?? {};
     MetadataRegistry.define(
       GRAPHQL_METADATA_KEYS.EXTENSIONS,
-      { ...existing, ...value },
+      { ...value, ...existing },
       target,
     );
     TypeMetadataStorage.addExtensionsMetadata({
@@ -849,6 +865,19 @@ export function getGraphQLExtensions(
       propertyKey,
     );
   }
+  if (typeof target === "function") {
+    let merged: Record<string, unknown> | undefined;
+    for (const ctor of MetadataRegistry.getPrototypeChain(target)) {
+      const own = MetadataRegistry.getOwn<Record<string, unknown>>(
+        GRAPHQL_METADATA_KEYS.EXTENSIONS,
+        ctor,
+      );
+      if (own) {
+        merged = { ...(merged ?? {}), ...own };
+      }
+    }
+    return merged;
+  }
   return MetadataRegistry.get<Record<string, unknown>>(
     GRAPHQL_METADATA_KEYS.EXTENSIONS,
     target,
@@ -871,6 +900,10 @@ export function getGraphQLFields(target: Function): FieldMetadata[] {
       for (let i = 0; i < own.length; i++) {
         const f = own[i];
         if (f) {
+          const prev = byProp.get(f.propertyKey);
+          if (prev && (prev.name ?? prev.propertyKey) !== (f.name ?? f.propertyKey)) {
+            byProp.delete(f.propertyKey);
+          }
           byProp.set(f.propertyKey, f);
         }
       }

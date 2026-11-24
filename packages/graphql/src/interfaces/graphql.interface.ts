@@ -752,11 +752,11 @@ export interface GraphQLModuleOptions<TDriver extends GraphQLDriver = any> {
   /**
    * Enable interactive GraphiQL / Playground HTML on `GET <path>`.
    */
-  playground?: boolean;
+  playground?: boolean | Record<string, unknown>;
   /**
    * Alias for `playground`.
    */
-  graphiql?: boolean;
+  graphiql?: boolean | Record<string, unknown>;
   /**
    * Enable GraphQL introspection queries (`__schema`, `__type`).
    */
