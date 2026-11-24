@@ -912,6 +912,14 @@ export function getGraphQLFields(
 
   for (const ctor of MetadataRegistry.getPrototypeChain(target)) {
     if (ctor !== target && !MetadataRegistry.hasOwn(IS_MAPPED_TYPE_METADATA, ctor)) {
+      const hasAnyGqlTypeDecorator =
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, ctor) ||
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, ctor) ||
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, ctor) ||
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.ARGS_TYPE, ctor);
+      if (!hasAnyGqlTypeDecorator) {
+        continue;
+      }
       if (
         isTargetInput &&
         MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, ctor) &&
@@ -940,6 +948,43 @@ export function getGraphQLFields(
             byProp.delete(f.propertyKey);
           }
           byProp.set(f.propertyKey, f);
+        }
+      }
+    }
+    const factoryFn = Object.prototype.hasOwnProperty.call(
+      ctor,
+      "_GRAPHQL_METADATA_FACTORY",
+    )
+      ? (ctor as { _GRAPHQL_METADATA_FACTORY?: () => Record<string, any> })
+          ._GRAPHQL_METADATA_FACTORY
+      : undefined;
+    if (typeof factoryFn === "function") {
+      const factoryMeta = factoryFn();
+      if (factoryMeta && typeof factoryMeta === "object") {
+        for (const [propKey, cfg] of Object.entries(factoryMeta)) {
+          if (!cfg || typeof cfg !== "object") continue;
+          const prev = byProp.get(propKey);
+          if (prev) {
+            byProp.set(propKey, {
+              ...prev,
+              typeFn: prev.typeFn ?? cfg.type,
+              nullable: prev.nullable ?? cfg.nullable,
+              description: prev.description ?? cfg.description,
+              deprecationReason:
+                prev.deprecationReason ?? cfg.deprecationReason,
+              defaultValue: prev.defaultValue ?? cfg.defaultValue,
+            });
+          } else {
+            byProp.set(propKey, {
+              propertyKey: propKey,
+              name: cfg.name ?? propKey,
+              typeFn: cfg.type,
+              nullable: cfg.nullable,
+              description: cfg.description,
+              deprecationReason: cfg.deprecationReason,
+              defaultValue: cfg.defaultValue,
+            });
+          }
         }
       }
     }

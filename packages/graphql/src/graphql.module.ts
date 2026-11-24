@@ -98,6 +98,9 @@ const SHARED_EXPORTS = [
   ResolverDecoratorHost,
 ];
 
+const startedAdapters = new WeakSet<AbstractGraphQLDriver>();
+const stoppedAdapters = new WeakSet<AbstractGraphQLDriver>();
+
 /**
  * Bunest GraphQL module integrating official `graphql-js` with Bunest DI,
  * HTTP transport (`POST`/`GET <path>`), GraphiQL UI, SSE & `graphql-ws` subscriptions,
@@ -111,6 +114,7 @@ export class GraphQLModule<
 {
   public completeOptions: GqlModuleOptions | undefined;
   private stopPromise?: Promise<void>;
+  private initialized = false;
 
   constructor(
     @Optional()
@@ -118,6 +122,8 @@ export class GraphQLModule<
     private readonly options?: GqlModuleOptions,
     @Optional()
     private readonly _graphQlAdapter?: AbstractGraphQLDriver,
+    @Optional()
+    private readonly graphqlService?: GraphQLService,
   ) {
     this.completeOptions = options;
   }
@@ -127,11 +133,25 @@ export class GraphQLModule<
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
     if (this._graphQlAdapter && this.options) {
       this.completeOptions = await this._graphQlAdapter.mergeDefaultOptions(
         this.options,
       );
-      await this._graphQlAdapter.start(this.completeOptions);
+      if (!startedAdapters.has(this._graphQlAdapter)) {
+        startedAdapters.add(this._graphQlAdapter);
+        await this._graphQlAdapter.start(this.completeOptions);
+      }
+    } else if (this.options) {
+      const schema = this.graphqlService
+        ? await this.graphqlService.ensureSchema()
+        : this.options.schema;
+      this.completeOptions = {
+        path: "/graphql",
+        ...this.options,
+        ...(schema ? { schema } : {}),
+      };
     }
   }
 
@@ -146,10 +166,11 @@ export class GraphQLModule<
   }
 
   private async stop(): Promise<void> {
-    if (!this._graphQlAdapter) {
+    if (!this._graphQlAdapter || stoppedAdapters.has(this._graphQlAdapter)) {
       return;
     }
     if (!this.stopPromise) {
+      stoppedAdapters.add(this._graphQlAdapter);
       this.stopPromise = this._graphQlAdapter.stop();
     }
     await this.stopPromise;
@@ -181,6 +202,7 @@ export class GraphQLModule<
         },
         ...driverProviders,
         ...SHARED_PROVIDERS,
+        GraphQLModule,
       ],
       exports: SHARED_EXPORTS,
     };
@@ -209,7 +231,12 @@ export class GraphQLModule<
       global: options.global ?? true,
       imports: options.imports ?? [],
       controllers: [controller],
-      providers: [...asyncProviders, ...driverProviders, ...SHARED_PROVIDERS],
+      providers: [
+        ...asyncProviders,
+        ...driverProviders,
+        ...SHARED_PROVIDERS,
+        GraphQLModule,
+      ],
       exports: SHARED_EXPORTS,
     };
   }

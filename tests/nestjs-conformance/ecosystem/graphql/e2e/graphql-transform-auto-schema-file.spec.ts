@@ -586,8 +586,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: (1) Schema bootstrap crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`; (2) GraphQLSchemaFactory.buildCodeFirst (:1566-1573) writes via node:fs writeFileSync directly without GRAPHQL_SDL_FILE_HEADER instead of calling DI-injected FileSystemHelper.writeFile.
-    it.skip("should write transformed auto schema file", () => {
+    it("should write transformed auto schema file", () => {
       expect(writeFileMock).toHaveBeenCalledTimes(1);
       expect(writeFileMock).toHaveBeenCalledWith(
         schemaFilePath,

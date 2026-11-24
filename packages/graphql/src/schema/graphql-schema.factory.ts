@@ -2177,6 +2177,22 @@ export class GraphQLSchemaFactory {
                     : undefined,
             };
           }
+          // Reserve key order for interface @ResolveField()s right after interface @Field()s
+          const ifaceMetaForOrder = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+            GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+            iface,
+          );
+          const ifaceRfsForOrder =
+            this.resolveFieldRegistry.get(ifaceMetaForOrder?.name ?? iface.name) ??
+            [];
+          for (const { meta: rfMeta } of ifaceRfsForOrder) {
+            if (!(rfMeta.name in fields)) {
+              fields[rfMeta.name] = undefined as unknown as GraphQLFieldConfig<
+                any,
+                any
+              >;
+            }
+          }
         }
 
         for (const fieldMeta of getGraphQLFields(cls)) {
