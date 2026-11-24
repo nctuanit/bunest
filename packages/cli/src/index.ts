@@ -14,6 +14,18 @@ export {
   type CheckCommandResult,
 } from "./commands/check";
 export {
+  formatVerifyResult,
+  parseTestOutput,
+  parseTypecheckOutput,
+  runVerifyCommand,
+  type VerifyCommandOptions,
+  type VerifyCommandResult,
+  type VerifyIssue,
+  type VerifyReporter,
+  type VerifySpawn,
+  type VerifyStepResult,
+} from "./commands/verify";
+export {
   runCodemodCommand,
   runDelombokCommand,
   type CodemodAction,

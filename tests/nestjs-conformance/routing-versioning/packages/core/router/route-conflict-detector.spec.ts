@@ -166,60 +166,49 @@ describeConformance(
   },
   () => {
     describe("tokenizePath", () => {
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector (nor tokenizePath); route parsing lives privately inside packages/core/src/http/scanner/controller-scanner.ts and packages/core/src/http/router/fallback-radix-router.ts.
-      it.skip("should classify literal segments", () => {
+      it("should classify literal segments", () => {
         expect(normalizePath("/users/me")).toBe("/users/me");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should classify named param segments", () => {
+      it("should classify named param segments", () => {
         expect(canonicalizePath("/users/:userId")).toBe("/users/:_");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should classify named wildcard segments", () => {
+      it("should classify named wildcard segments", () => {
         expect(normalizePath("/files/*path")).toBe("/files/*path");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should classify adapter-normalized wildcard group segments", () => {
+      it("should classify adapter-normalized wildcard group segments", () => {
         expect(normalizePath("/files/{*path}")).toBe("/files/{*path}");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should ignore leading and trailing slashes and empty segments", () => {
+      it("should ignore leading and trailing slashes and empty segments", () => {
         expect(normalizePath("//users//me/")).toBe("/users/me");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should classify segments that mix text and params", () => {
+      it("should classify segments that mix text and params", () => {
         expect(normalizePath("/v:version/items")).toBe("/v:version/items");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should classify a wildcard after text in the same segment as mixed", () => {
+      it("should classify a wildcard after text in the same segment as mixed", () => {
         expect(normalizePath("/static*path")).toBe("/static*path");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should read optional groups as present", () => {
+      it("should read optional groups as present", () => {
         expect(normalizePath("/users{/:userId}")).toBe("/users{/:userId}");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should keep a param with an optional suffix a param, as it matches the same segments", () => {
+      it("should keep a param with an optional suffix a param, as it matches the same segments", () => {
         expect(normalizePath("/users/:id{.:format}")).toBe(
           "/users/:id{.:format}",
         );
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should split paths path-to-regexp cannot parse on '/'", () => {
+      it("should split paths path-to-regexp cannot parse on '/'", () => {
         expect(normalizePath("/files/*")).toBe("/files/*");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should split paths path-to-regexp parses but cannot match on '/'", () => {
+      it("should split paths path-to-regexp parses but cannot match on '/'", () => {
         expect(normalizePath("/files/:name:ext")).toBe("/files/:name:ext");
       });
     });

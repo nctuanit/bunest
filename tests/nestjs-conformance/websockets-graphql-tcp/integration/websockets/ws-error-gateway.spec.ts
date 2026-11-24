@@ -114,8 +114,7 @@ describeConformance(
       "native Bun WS error frame",
     );
 
-    // BUNEST_BUG: Expected BaseWsExceptionFilter to redact Error instances wrapped in WsException(new Error(...)) and emit { status: "error", message: "Internal server error" }, but BaseWsExceptionFilter spreads `...errPayload` directly, leaking enumerable properties like `config.headers.Authorization` to the client (packages/core/src/ws/filters/base-ws-exception.filter.ts#L31-L39).
-    it.skip("should send the unknown error payload for a WsException holding an error", async () => {
+    it("should send the unknown error payload for a WsException holding an error", async () => {
       const port = await startApp(WsErrorGateway);
       ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
 

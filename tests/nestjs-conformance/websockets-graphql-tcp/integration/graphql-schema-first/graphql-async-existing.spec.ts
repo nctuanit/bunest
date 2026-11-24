@@ -112,8 +112,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: GraphQLModule.forRootAsync() in packages/graphql/src/graphql.module.ts only supports `useFactory` and lacks NestJS `useExisting` + `GqlOptionsFactory` support.
-    it.skip("should return query result using GraphQLModule.forRootAsync({ imports: [ConfigModule], useExisting })", async () => {
+    it("should return query result using GraphQLModule.forRootAsync({ imports: [ConfigModule], useExisting })", async () => {
       const asyncExistingOptions = {
         imports: [ConfigModule],
         useExisting: ConfigService,

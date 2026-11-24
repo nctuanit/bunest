@@ -514,8 +514,7 @@ describeConformance(
         expect(outcome).toBe("ECONNREFUSED");
       });
 
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `gracefulShutdown` / `gracePeriod` timeout enforcement (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip('should close after "gracePeriod" when a handler is still running', async () => {
+      it('should close after "gracePeriod" when a handler is still running', async () => {
         const server = await createServer({
           gracefulShutdown: true,
           gracePeriod: 200,

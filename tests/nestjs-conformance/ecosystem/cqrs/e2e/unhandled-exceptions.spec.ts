@@ -79,8 +79,7 @@ describeConformance(
     });
 
     describe("when exception is thrown from event handler", () => {
-      // BUNEST_BUG: Expected EventBus.publish() with default options (rethrowUnhandled omitted -> false) to forward event handler exceptions to UnhandledExceptionBus without rejecting publish(), but packages/messaging/src/cqrs/event-bus.ts:614 checks `rethrowUnhandled !== false` (defaulting to true, inconsistent with line 724 for sagas), producing an unhandled promise rejection when publish() is fire-and-forget.
-      it.skip("should forward exception to UnhandledExceptionBus [ADR-008: SubscribableStream.subscribe() instead of RxJS pipe(take(1))]", async () => {
+      it("should forward exception to UnhandledExceptionBus [ADR-008: SubscribableStream.subscribe() instead of RxJS pipe(take(1))]", async () => {
         const command = new UnhandledExceptionCommand("event");
         const commandBus = moduleRef.get(CommandBus);
 

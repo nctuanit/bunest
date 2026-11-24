@@ -110,8 +110,10 @@ export function stripProtoKeys<T>(value: T): T {
     visited.add(node);
 
     if (Array.isArray(node)) {
-      for (let i = 0; i < node.length; i++) {
-        walk(node[i]);
+      // Iterate own keys only: `for (i < length)` visits every hole of a sparse
+      // array (up to 2^32-1 iterations -> DoS) and reads `length` through proxies.
+      for (const key of Object.keys(node)) {
+        walk((node as unknown as Record<string, unknown>)[key]);
       }
       return;
     }

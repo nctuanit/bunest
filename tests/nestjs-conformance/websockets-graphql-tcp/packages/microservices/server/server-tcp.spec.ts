@@ -787,8 +787,7 @@ describeConformance(
         expect(handler.callCount).toBe(4);
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts has no recursion depth guard, so deeply nested patterns (e.g. depth 100_000) overflow the call stack instead of gracefully returning a 404 / NO_MESSAGE_HANDLER error.
-      it.skip("should handle deeply nested object patterns without overflowing the stack", async () => {
+      it("should handle deeply nested object patterns without overflowing the stack", async () => {
         const server = await createListeningServer();
         const client = new TcpClientProxy({
           host: "127.0.0.1",

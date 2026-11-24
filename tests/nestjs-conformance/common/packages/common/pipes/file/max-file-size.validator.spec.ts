@@ -107,8 +107,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage` string option (only `message`); returns default error message instead of "File size exceeds the limit" (packages/core/src/common/pipes/file-validators.ts)
-      it.skip("should return a static custom error message when the file size exceeds the limit", async () => {
+      it("should return a static custom error message when the file size exceeds the limit", async () => {
         const currentFileSize = oneKb + 1;
         const maxFileSizeValidator = new MaxFileSizeValidator({
           maxSize: oneKb,
@@ -123,8 +122,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage(ctx)` callback option (only `message`); returns default error message (packages/core/src/common/pipes/file-validators.ts)
-      it.skip("should return a dynamic custom error message based on context when the file size exceeds the limit", async () => {
+      it("should return a dynamic custom error message based on context when the file size exceeds the limit", async () => {
         const currentFileSize = oneKb + 1;
         const maxFileSizeValidator = new MaxFileSizeValidator({
           maxSize: oneKb,

@@ -12,6 +12,7 @@ import { runReplCommand } from "./commands/repl";
 import { runStartCommand } from "./commands/start";
 import { runTypegenCommand } from "./commands/typegen";
 import { upgradeProject } from "./commands/upgrade";
+import { runVerifyCommand } from "./commands/verify";
 import { parseCliArgs } from "./parser";
 import type { CliFlagValue, CliIO, CliResult } from "./types";
 import { CLI_VERSION } from "./version";
@@ -88,6 +89,15 @@ Commands:
     --sourceRoot <path>             Source root directory (default: src)
     --tsconfig <path>               Explicit path to tsconfig.json
     --dry-run                       Preview --fix changes without writing files
+
+  verify [test-filter...]           Typecheck + static diagnostics + tests in one AI-friendly report
+    --reporter <agent|pretty|json>  Output format (default: pretty; "agent" = compact, token-cheap)
+    --skip-typecheck                Skip "bun check"
+    --skip-check                    Skip Bunest static diagnostics
+    --skip-tests                    Skip "bun test"
+    --strict                        Treat diagnostic warnings as failures
+    --max-issues <n>                Max issues printed per step (default: 20)
+    --sourceRoot <path>             Source root directory (default: src)
 
   delombok, expand <target>         Expand Class Macro decorators (@Data/@Builder/@WithLogger/...) to explicit TS
     --decorator <Name>              Expand only one specific decorator
@@ -405,6 +415,42 @@ export async function runCli(
             fix: getBoolFlag(flags, "fix") ?? false,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "verify": {
+        const reporterRaw = getStringFlag(flags, "reporter");
+        if (
+          reporterRaw !== undefined &&
+          reporterRaw !== "agent" &&
+          reporterRaw !== "pretty" &&
+          reporterRaw !== "json"
+        ) {
+          io.stderr(
+            `Invalid --reporter "${reporterRaw}". Expected one of: agent, pretty, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const maxIssuesRaw = getStringFlag(flags, "max-issues");
+        const maxIssues =
+          maxIssuesRaw !== undefined && /^\d+$/.test(maxIssuesRaw)
+            ? Number.parseInt(maxIssuesRaw, 10)
+            : undefined;
+        const result = await runVerifyCommand(
+          {
+            cwd: io.cwd,
+            reporter: reporterRaw,
+            skipTypecheck: getBoolFlag(flags, "skip-typecheck") ?? false,
+            skipCheck: getBoolFlag(flags, "skip-check") ?? false,
+            skipTests: getBoolFlag(flags, "skip-tests") ?? false,
+            strict: getBoolFlag(flags, "strict") ?? false,
+            testFilter: positionals.length > 0 ? positionals : undefined,
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            config: getStringFlag(flags, "config"),
+            maxIssues,
           },
           io,
         );

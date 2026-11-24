@@ -157,8 +157,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: NestJS KafkaContext exposes getMetadata(), getConsumer(), getProducer(), and getHeartbeat() methods (packages/microservices/src/transports/kafka.transport.ts lacks these methods on KafkaContext).
-      it.skip("should expose NestJS KafkaContext getConsumer(), getProducer(), getHeartbeat(), and getMetadata() methods", () => {
+      it("should expose NestJS KafkaContext getConsumer(), getProducer(), getHeartbeat(), and getMetadata() methods", () => {
         const anyCtx = context as unknown as Record<string, unknown>;
         expect(typeof anyCtx.getConsumer).toBe("function");
         expect(typeof anyCtx.getProducer).toBe("function");

@@ -104,8 +104,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: GraphQLModule.forRootAsync() in packages/graphql/src/graphql.module.ts only supports `useFactory` and lacks NestJS `useClass` + `GqlOptionsFactory` support (GraphQLModuleAsyncOptions requires `useFactory` and passes `useFactory: options.useFactory` directly to DI).
-    it.skip("should return query result using GraphQLModule.forRootAsync({ useClass })", async () => {
+    it("should return query result using GraphQLModule.forRootAsync({ useClass })", async () => {
       const asyncClassOptions = {
         useClass: ConfigService,
       } as unknown as GraphQLModuleAsyncOptions;

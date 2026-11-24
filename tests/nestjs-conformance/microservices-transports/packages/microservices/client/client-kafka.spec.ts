@@ -460,8 +460,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaClientProxy.connect() never calls this.emitStatus("connected"), so client.status remains "disconnected" and onStatus() listeners are never notified (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("emits connected status via status getter and onStatus listeners on connect()", async () => {
+      it("emits connected status via status getter and onStatus listeners on connect()", async () => {
         const client = trackClient(
           new KafkaClientProxy({ client: kafkaClient }),
         );
@@ -603,8 +602,7 @@ describeConformance(
         expect(producerDisconnect.calledOnce).toBe(true);
       });
 
-      // BUNEST_BUG: KafkaClientProxy.close() never calls this.emitStatus("disconnected") (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("emits disconnected status via onStatus when closing a connected client", async () => {
+      it("emits disconnected status via onStatus when closing a connected client", async () => {
         const client = trackClient(
           new KafkaClientProxy({ client: kafkaClient }),
         );

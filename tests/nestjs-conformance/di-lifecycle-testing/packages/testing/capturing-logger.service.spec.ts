@@ -52,8 +52,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: CapturingLogger implements LoggerService directly rather than extending ConsoleLogger (packages/testing/src/loggers/capturing-logger.ts)
-    it.skip("should be a ConsoleLogger", () => {
+    it("should be a ConsoleLogger", () => {
       expect(logger).toBeInstanceOf(ConsoleLogger);
     });
 
@@ -85,8 +84,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: CapturedLogEntry omits NestJS v12 `params`, `args`, `error`, and `stack` structured fields (packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should record structured params and args fields matching NestJS v12", () => {
+      it("should record structured params and args fields matching NestJS v12", () => {
         logger.log("Order created", { orderId: 1 }, { userId: 2 }, "Orders");
         expect(logger.entries[0] as unknown).toMatchObject({
           level: "log",
@@ -97,8 +95,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: CapturedLogEntry does not extract `error` property from optional params (packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should record an error passed after the message", () => {
+      it("should record an error passed after the message", () => {
         const error = new Error("Payment failed");
         logger.error("Checkout failed", error, "Checkout");
         expect(logger.entries[0] as unknown).toMatchObject({
@@ -109,8 +106,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: CapturingLogger stores Error object as message instead of extracting error.message + entry.error (packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should use the message of an error logged as the message", () => {
+      it("should use the message of an error logged as the message", () => {
         const error = new Error("Payment failed");
         logger.error(error);
         expect(logger.entries[0] as unknown).toMatchObject({
@@ -119,8 +115,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: CapturedLogEntry does not populate dedicated `stack` field (packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should record a stack passed as a string", () => {
+      it("should record a stack passed as a string", () => {
         const stack = "Error: boom\n    at run (app.ts:1:1)";
         logger.error("boom", stack, "App");
         logger.fatal("fatal boom", stack);
@@ -136,8 +131,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: CapturingLogger does not evaluate lazy () => string message functions (packages/testing/src/loggers/capturing-logger.ts)
-      it.skip("should evaluate lazy messages", () => {
+      it("should evaluate lazy messages", () => {
         logger.debug(() => "expensive");
         expect(logger.entries[0]?.message).toBe("expensive");
       });
@@ -222,8 +216,7 @@ describeConformance(
         expect(logger.filter({ level: "log" })).toHaveLength(2);
       });
 
-      // BUNEST_BUG: CapturingLogger.filter({ context: string }) uses substring .includes() instead of exact string match (packages/testing/src/loggers/capturing-logger.ts:94)
-      it.skip("should match a string context exactly", () => {
+      it("should match a string context exactly", () => {
         expect(logger.filter({ context: "Payments" })).toHaveLength(2);
         expect(logger.filter({ context: "Payment" })).toHaveLength(0);
       });
@@ -237,8 +230,7 @@ describeConformance(
         expect(logger.filter({ message: "PAYMENT" })).toHaveLength(0);
       });
 
-      // BUNEST_BUG: matchesStringOrRegExp() does not reset global RegExp.lastIndex, causing alternating matches for /.../g (packages/testing/src/loggers/capturing-logger.ts:96)
-      it.skip("should match a message against a regular expression including global flag", () => {
+      it("should match a message against a regular expression including global flag", () => {
         expect(logger.filter({ message: /payment/i })).toHaveLength(2);
         const globalRe = /Order/g;
         expect(logger.filter({ message: globalRe })).toHaveLength(1);
@@ -362,8 +354,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Logger.isLevelEnabled() does not consult overridden CapturingLogger's configured levels (packages/core/src/common/logger/logger.ts)
-      it.skip("should report its levels through Logger.isLevelEnabled", () => {
+      it("should report its levels through Logger.isLevelEnabled", () => {
         Logger.overrideLogger(new CapturingLogger({ levels: ["warn"] }));
 
         expect(Logger.isLevelEnabled("log")).toBe(false);

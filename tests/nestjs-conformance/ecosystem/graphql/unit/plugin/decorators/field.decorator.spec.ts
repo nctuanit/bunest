@@ -42,8 +42,7 @@ describeConformance(
       expect(arrFields[0]?.defaultValue).toEqual([{ test: "test" }]);
     });
 
-    // BUNEST_BUG: Field() overloads in packages/graphql/src/decorators/type.decorators.ts (lines 399-404) are not generic over ReturnTypeFunc<T> and accept untyped FieldOptions<any>, so mismatched defaultValue types (string for Boolean, wrong object shape for Inner, non-array for [Inner]) do not produce TypeScript compile errors (upstream @ts-expect-error assertions fail with TS2578).
-    it.skip("should reject mismatched defaultValue types at compile time", () => {
+    it("should reject mismatched defaultValue types at compile time", () => {
       class WrongPrimitive {
         // Expected @ts-expect-error: The defaultValue should be a boolean
         @Field(() => Boolean, { defaultValue: "true" })

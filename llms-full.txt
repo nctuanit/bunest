@@ -1,0 +1,1054 @@
+# Bunest
+
+> NestJS-style backend framework built natively on Bun: modules, constructor DI, decorators, guards, pipes, interceptors, validation, OpenAPI, ORM and testing — compiled to native `Bun.serve({ routes })` at bootstrap with zero external runtime dependencies.
+
+Essentials for AI agents:
+
+- Runtime is Bun >= 1.4.5 only; never import `node:*`, Express, Fastify, RxJS or `reflect-metadata` (a Reflect metadata shim is built in).
+- Legacy decorators: tsconfig needs `experimentalDecorators` + `emitDecoratorMetadata`; `verbatimModuleSyntax` is on.
+- Value-import every DI class, DTO and entity (never `import type`), otherwise constructor injection breaks at runtime.
+- Canonical names: `BunestFactory` (not `NestFactory`), `@OrmRepository` + `CrudRepository`, validators from `@bunest/validation/validator` (not `class-validator`).
+- Interceptors return Promises (`CallHandler.handle(): Promise<T>`), not Observables.
+- After every change run `bunest verify --reporter=agent` and fix the first failing step.
+- Bootstrap errors have stable codes (`err.code`, e.g. `BUNEST_E001`); see docs/errors.md for ordered fixes.
+
+## Docs
+
+- [AGENTS.md](AGENTS.md): Rules and verification loop for AI coding agents working in this repo
+- [Quickstart](docs/quickstart.md): Build, document, and test a validated REST CRUD API
+- [Error catalog](docs/errors.md): Every BUNEST_E* error code with ordered fixes
+- [Architecture](docs/architecture.md): Package DAG, bootstrap compiler, HTTP pipeline, DI scopes
+- [Security](docs/security.md): Validation defaults, headers, CORS, JWT, rate limiting
+- [Testing](docs/testing.md): TestingModule, overrides, TestClient, request(app)
+- [NestJS migration](docs/nestjs-migration.md): Import map and differences vs NestJS
+- [ADRs](docs/adr/README.md): Authoritative architectural decisions
+
+## Packages
+
+- [@bunest/ai](packages/ai): Language models, agents, streaming, and Model Context Protocol (MCP) server for Bunest. Imports: `@bunest/ai`, `@bunest/ai/testing`, `@bunest/ai/workflows`, `@bunest/ai/mcp`, `@bunest/ai/mcp/testing`
+- [@bunest/cache](packages/cache): LRU memory & pluggable Redis caching, single-flight stampede protection, tag/prefix invalidation, and HTTP CacheInterceptor for Bunest. Imports: `@bunest/cache`, `@bunest/cache/redis`
+- [@bunest/cli](packages/cli): Bun-native CLI for scaffolding, code generation, dev watch, and building Bunest applications. Imports: `@bunest/cli`, `@bunest/cli/analyzer`
+- [@bunest/core](packages/core): Bun-native core DI container, module graph, common decorators/exceptions/pipes, Bun.serve HTTP engine, ConfigModule, fetch HTTP client, native WebSocket gateways, and I18n for Bunest. Imports: `@bunest/core`, `@bunest/core/common`, `@bunest/core/http`, `@bunest/core/config`, `@bunest/core/client`, `@bunest/core/ws`, `@bunest/core/i18n`
+- [@bunest/elasticsearch](packages/elasticsearch): NestJS v12-compatible Elasticsearch module and full native Bun fetch() REST client with zero external dependencies for Bunest. Imports: `@bunest/elasticsearch`
+- [@bunest/graphql](packages/graphql): Code-first & schema-first GraphQL module, Apollo Server, Federation v2 Subgraph & Gateway drivers, PubSub subscriptions, and GraphiQL explorer for Bunest. Imports: `@bunest/graphql`, `@bunest/graphql/apollo`
+- [@bunest/jobs](packages/jobs): Background job queues (BullMQ parity + native Bun.RedisClient driver) and cron/interval/timeout task scheduler for Bunest. Imports: `@bunest/jobs`, `@bunest/jobs/queues`, `@bunest/jobs/scheduler`, `@bunest/jobs/redis`
+- [@bunest/mail](packages/mail): Transactional email for Bunest: typed mail classes, auto-escaped HTML templates, and SMTP, Resend, Postmark, SendGrid, and Amazon SES transports. Imports: `@bunest/mail`, `@bunest/mail/smtp`, `@bunest/mail/templates`
+- [@bunest/messaging](packages/messaging): EventEmitter, CQRS, Transactional Outbox/Inbox, and Outbound/Inbound Webhooks with PostgreSQL & MySQL stores for Bunest. Imports: `@bunest/messaging`, `@bunest/messaging/events`, `@bunest/messaging/cqrs`, `@bunest/messaging/outbox`, `@bunest/messaging/outbox/testing`, `@bunest/messaging/outbox/postgres`, `@bunest/messaging/outbox/mysql`, `@bunest/messaging/webhooks`, `@bunest/messaging/webhooks/testing`, `@bunest/messaging/webhooks/postgres`, `@bunest/messaging/webhooks/mysql`
+- [@bunest/microservices](packages/microservices): Bun-native TCP, in-memory, and broker (Redis, NATS, RabbitMQ) microservice transports, RPC patterns, and client proxies for Bunest. Imports: `@bunest/microservices`
+- [@bunest/observability](packages/observability): Distributed W3C tracing, OpenTelemetry OTLP export, Prometheus metrics, Terminus-style health checks, correlated logging, and Devtools graph introspection for Bunest. Imports: `@bunest/observability`, `@bunest/observability/tracing`, `@bunest/observability/metrics`, `@bunest/observability/health`, `@bunest/observability/devtools`
+- [@bunest/orm](packages/orm): Circular-safe, zero-dependency Bun-native ORM, declarative compiled-once repositories, migrations, and SQL store kit for Bunest. Imports: `@bunest/orm`, `@bunest/orm/plugin`, `@bunest/orm/store`, `@bunest/orm/postgres`, `@bunest/orm/mysql`, `@bunest/orm/testing`
+- [@bunest/resilience](packages/resilience): Resilience policies (retry, timeout, circuit breaker, bulkhead, fallback), leased distributed locks (@WithLock, leader election), and @Idempotent() deduplication for Bunest. Imports: `@bunest/resilience`, `@bunest/resilience/locks`, `@bunest/resilience/locks/testing`, `@bunest/resilience/idempotency`, `@bunest/resilience/idempotency/testing`
+- [@bunest/security](packages/security): Unified security, authentication (JWT/JWKS, sessions, TOTP MFA, magic links, OIDC/OAuth2, API keys, Bun.password), policy authorization (@Policy/@Can), CSRF (Bun.CSRF), rate limiting, and security headers for Bunest. Imports: `@bunest/security`, `@bunest/security/auth`, `@bunest/security/authz`, `@bunest/security/jwt`, `@bunest/security/throttler`, `@bunest/security/testing`
+- [@bunest/storage](packages/storage): File storage for Bunest: unified API for local disks, in-memory storage, and S3/R2/MinIO with native SigV4 fetch, streamed uploads, and signed URLs. Imports: `@bunest/storage`, `@bunest/storage/s3`, `@bunest/storage/local`, `@bunest/storage/memory`
+- [@bunest/swagger](packages/swagger): OpenAPI 3.1 metadata decorators, DocumentBuilder, schema introspection, and Swagger UI explorer for Bunest. Imports: `@bunest/swagger`
+- [@bunest/testing](packages/testing): Testing module builder, DI/enhancer overrides, in-memory HTTP test client, and mock fixtures for Bunest. Imports: `@bunest/testing`
+- [@bunest/validation](packages/validation): Zero-dependency Bun-native DTO validation & transformation engine (compile-once validator, transformer, ValidationPipe, ClassSerializerInterceptor, Standard Schema). Imports: `@bunest/validation`, `@bunest/validation/validator`, `@bunest/validation/transformer`, `@bunest/validation/standard-schema`
+- [@bunest/workflows](packages/workflows): Durable workflows for Bunest: long-running processes written as plain async code that survive restarts, with replay, signals, timers, sagas, schedules, CQRS, and SQL stores. Imports: `@bunest/workflows`, `@bunest/workflows/testing`, `@bunest/workflows/cqrs`, `@bunest/workflows/postgres`, `@bunest/workflows/mysql`, `@bunest/workflows/core`
+
+## Optional
+
+- [llms-full.txt](llms-full.txt): Full public value-export index per import path, AGENTS.md, quickstart and error catalog in one file
+- [Examples](examples): Runnable reference apps (hello-world, rest-crud, auth-jwt-sqlite, websocket-chat, distributed-worker)
+
+---
+
+# Public API index
+
+Runtime value exports per import path (types/interfaces omitted). Import exactly from the listed path.
+
+## @bunest/ai
+
+Language models, agents, streaming, and Model Context Protocol (MCP) server for Bunest
+
+### `@bunest/ai` (21)
+
+AgentFunction, AI_MODULE_OPTIONS, AiBudgetExceededError, AiConfigurationError, AiEmbeddingModels, AiError, AiExecutionContext, AiModelError, AiModels, AiModule, AiOutputError, AiService, AiTextStream, AiToolError, AiTools, DEFAULT_MODEL_NAME, describeModel, getEmbeddingModelToken, getModelToken, InjectEmbeddingModel, InjectModel
+
+### `@bunest/ai/testing` (8)
+
+callTool, fakeEmbeddingModel, FakeEmbeddingModel, fakeModel, FakeModel, overrideEmbeddingModels, overrideModels, providerError
+
+### `@bunest/ai/workflows` (3)
+
+AiAgents, AiWorkflowsModule, TOOL_APPROVAL
+
+### `@bunest/ai/mcp` (11)
+
+MCP_MODULE_OPTIONS, McpExecutionContext, McpHttpService, McpModule, McpRegistry, McpStdioLogger, McpStdioServer, Prompt, Resource, ResourceTemplate, Tool
+
+### `@bunest/ai/mcp/testing` (1)
+
+connectMcpClient
+
+## @bunest/cache
+
+LRU memory & pluggable Redis caching, single-flight stampede protection, tag/prefix invalidation, and HTTP CacheInterceptor for Bunest
+
+### `@bunest/cache` (22)
+
+Cache, CACHE_KEY_METADATA, CACHE_MANAGER, CACHE_MODULE_OPTIONS, CACHE_STORE, CACHE_TTL_METADATA, Cacheable, CacheableAspectHandler, CacheEvict, CacheEvictAspectHandler, CacheInterceptor, CacheKey, CacheModule, CachePut, CachePutAspectHandler, CacheService, CacheTTL, createBunRedisClient, MemoryCacheStore, NO_CACHE_METADATA, NoCache, RedisCacheStore
+
+### `@bunest/cache/redis` (2)
+
+createBunRedisClient, RedisCacheStore
+
+## @bunest/cli
+
+Bun-native CLI for scaffolding, code generation, dev watch, and building Bunest applications
+
+### `@bunest/cli` (128)
+
+addLibrary, aiToolsTypegenPlugin, ALL_TYPEGEN_TARGETS, analyzeEntityClass, analyzeProjectDiagnostics, applyBunestConfigRuntime, authzTypegenPlugin, AVAILABLE_BUILDERS, buildAddProviderToModuleEdit, buildCollapseLoggerBoilerplateEdit, buildConvertDerivedToQueryEdit, buildConvertTypeImportEdit, buildDelombokEdit, buildGenerateRepositorySource, buildProject, buildProjectTemplateFiles, buildSchematicFiles, buildStaticModuleGraph, buildSyncDiConstructorEdit, buildTypegenSummary, buildWrapMongooseRefEdit, BUILTIN_ARCHITECTURE_RULES, BUILTIN_CLASS_MACRO_NAMES, BUILTIN_DECORATOR_SPECS, BUILTIN_DI_CLASS_DECORATORS, BUILTIN_ENTITY_DECORATOR_NAMES, BUILTIN_FIELD_CONTRIBUTING_MACRO_NAMES, BUILTIN_FIELD_MACRO_NAMES, BUILTIN_ORM_COLUMN_DECORATOR_NAMES, BUILTIN_ORM_PRIMARY_COLUMN_DECORATOR_NAMES, BUILTIN_ORM_RELATION_DECORATOR_NAMES, BUILTIN_REPOSITORY_DECORATOR_NAMES, BUILTIN_SERVICE_AOP_DECORATORS, BUILTIN_TYPEGEN_PLUGINS, BUNEST_CONFIG_FILES, bunestMetadataPlugin, BunestStaticAnalyzer, BunestTypegenScanner, CLI_VERSION, collectConfiguredDiagnosticRules, collectCustomMacros, collectCustomQueryOperators, CONFLICTING_CLASS_MACRO_PAIRS, createBunestPlugin, createProject, CUSTOM_MACROS_REGISTRY_SYMBOL, CUSTOM_ORM_OPERATORS_SYMBOL, CUSTOM_ORM_OPERATORS_VERSION_SYMBOL, DEFAULT_CONFIGURATION, defineDiagnosticRule, defineTypegenPlugin, deployProject, emitBunestDeclaration, FileCollisionError, findBunestConfigPath, findClosestMatch, formatEnvironmentInfo, formatTypegenSummary, formatVerifyResult, generateBunestTypes, generateMetadataFile, generateRepositoryCommand, generateSchematic, getCustomMacrosRegistryMap, getCustomQueryOperatorsRegistryMap, getEnvironmentInfo, getExpandedDecoratorNames, getGlobalMacroDefaultsSnapshot, getRepositoryDerivedCompletions, GLOBAL_MACRO_DEFAULTS_SYMBOL, HELP_TEXT, i18nTypegenPlugin, jobsTypegenPlugin, levenshteinDistance, loadBunestConfig, loadCliConfiguration, matchDerivedPrefix, nodeToLocation, noRepositoryInControllerRule, parseBaseEntityDecoratorAst, parseCliArgs, parseDerivedMethodName, parseSchematicName, parseTestOutput, parseTypecheckOutput, registerBunestPlugin, requireGuardOnMutationsRule, resolveClassMacroMembers, resolveComposedDecorators, resolveEntryFile, resolvePresetDiagnosticRules, resolveProjectConfiguration, resolveSafeChildPath, resolveSchematicType, resolveTypegenConfig, runAllBunestDiagnostics, runCheckCommand, runCli, runCodemodCommand, runCustomDiagnosticRules, runDecoratorDiagnostics, runDelombokCommand, runDevServer, runReplCommand, runStartCommand, runTypegenCommand, runVerifyCommand, sanitizeTypeText, scanEntitiesAndRepositories, scanSqlPlaceholders, SCHEMATIC_ALIASES, selectActiveTypegenPlugins, startTypegenWatcher, toCamelCase, toKebabCase, toPascalCase, transformBunestSource, transformBunestSourceAsync, transformCircularMetadataJs, transformControllerMetadataSource, transformDtoMetadataSource, unwrapCustomMacroDefinition, upgradeProject, validateGeneratedDeclaration, validateProjectName, workflowsTypegenPlugin, writePlannedFiles, writeTypegenOutput
+
+### `@bunest/cli/analyzer` (29)
+
+analyzeEntityClass, analyzeProjectDiagnostics, buildAddProviderToModuleEdit, buildCollapseLoggerBoilerplateEdit, buildConvertDerivedToQueryEdit, buildConvertTypeImportEdit, buildDelombokEdit, buildGenerateRepositorySource, buildStaticModuleGraph, buildSyncDiConstructorEdit, buildWrapMongooseRefEdit, BUILTIN_ARCHITECTURE_RULES, BunestStaticAnalyzer, collectConfiguredDiagnosticRules, defineDiagnosticRule, findClosestMatch, getRepositoryDerivedCompletions, levenshteinDistance, matchDerivedPrefix, noRepositoryInControllerRule, parseDerivedMethodName, requireGuardOnMutationsRule, resolveClassMacroMembers, resolvePresetDiagnosticRules, runAllBunestDiagnostics, runCustomDiagnosticRules, runDecoratorDiagnostics, scanEntitiesAndRepositories, scanSqlPlaceholders
+
+## @bunest/core
+
+Bun-native core DI container, module graph, common decorators/exceptions/pipes, Bun.serve HTTP engine, ConfigModule, fetch HTTP client, native WebSocket gateways, and I18n for Bunest
+
+### `@bunest/core` (717)
+
+AbstractHttpAdapter, AbstractLoader, Accessors, addDuration, All, ALL_LOG_LEVELS, allSettledPartition, AmbiguousProviderException, and, AOP_POINTCUTS_TOKEN, AopModule, APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, ApplicationConfig, applyDecorators, applyIsOptionalDecorator, applyPatch, applySecurityHeaders, applyValidateIfDefinedDecorator, AspectPhase, AssertionError, assertNever, assignMetadata, asyncBranch, AUTO_MODULE_METADATA_KEY, AutoModule, average, BadGatewayException, BadRequestException, base64UrlDecode, base64UrlEncode, BaseExceptionFilter, basename, batchAsync, BatchLoader, BiMap, Bind, Body, BODY_SANITIZED_SYMBOL, branch, Builder, buildQueryString, buildRoutePath, BUNEST_APPLICATION_CONFIG_TOKEN, BUNEST_ERROR_CATALOG, BUNEST_ERROR_DOCS_BASE_URL, BUNEST_HTTP_ADAPTER_HOST_TOKEN, BunestApplication, BunestApplicationContext, BunestFactory, BunestMicroserviceApplication, BunHttpAdapter, BunStaticLoader, camelCase, capitalize, Catch, channel, chunk, CircularDependencyException, clamp, CLASS_SERIALIZER_OPTIONS, ClassMetadataStore, ClassSerializerInterceptor, classTransformerMappedTypeHook, clc, clearCustomMacros, clearGlobalPointcuts, clearMemoizeCache, CLS_ID, CLS_MODULE_OPTIONS, ClsInterceptor, ClsMiddleware, ClsModule, ClsService, coalesceAsync, collectAsync, collectClassAspectTokens, collectCustomMacroDelombokBlocks, collectCustomMacroTypegenMembers, collectPrototypeMethodNames, Column, compact, compareAsc, compareBy, compareDesc, compileCsrfProtection, compileSecurityHeaders, composeComparators, CompositionType, CompressionMiddleware, computeBackoffDelay, cond, CONDITION_METADATA_KEY, CONFIGURABLE_MODULE_ID, ConfigurableModuleBuilder, ConflictException, ConsoleLogger, ContextIdFactory, ContextStorage, Controller, Cookies, CookieSigner, Copy, CoreBootstrapException, CoreMiddlewareConsumer, countBy, createCompressionMiddleware, createContextId, CreateDateColumn, createFakeClock, createMetadataKey, createMethodAspectDecorator, createParamDecorator, createReflectMetadataApi, createReplContext, createStaticAssetsMount, createToken, createTypedAspect, CUSTOM_MACROS_REGISTRY_SYMBOL, DANGEROUS_PROTOTYPE_KEYS, Data, debounce, DecoratorRegistry, deepClone, deepEqual, deepFreeze, deepMerge, DEFAULT_AUTO_MODULE_EXCLUDES, DEFAULT_EXPRESS_RENDER_PATH, DEFAULT_FASTIFY_RENDER_PATH, DEFAULT_MAX_ERROR_MESSAGES_LENGTH, DEFAULT_REDACT_KEYS, DEFAULT_RENDER_PATH, DEFAULT_ROOT_PATH, DefaultExceptionFilter, DefaultHttpRuntimeBridge, DefaultValuePipe, deferred, defineAspectPipeline, defineBunestConfig, defineClassMacro, definedOnly, defineMacroPreset, Delegate, Delete, deleteNestedValue, Dependencies, describeError, describeValue, DESIGN_METADATA_KEYS, detectMagicMimeType, DiagnosticChannel, DIAGNOSTICS_CHANNELS_SYMBOL, diagnosticsChannel, DIContainer, difference, diffMs, diffObjects, dirname, DiscoveryModule, DiscoveryService, DuplicateProviderException, DuplicateRouteException, endOfDay, ENHANCER_OVERRIDE_MARKER, ensureDir, ensureError, ensurePrefix, ensureSuffix, Entity, entriesOf, envBool, envDuration, envEnum, EnvError, envJson, envList, envNumber, envString, EqualsAndHashCode, err, escapeRegExp, evalTernary, evalTernaryAsync, evaluateDeferredProviderConditions, evaluateEagerProviderConditions, evaluateProviderConditions, existsSyncPath, expandAutoModules, expandSingleAutoModule, ExternalContextCreator, extname, extractCallerDir, extractSignedCookies, FieldDefaults, FieldNameConstants, FileTypeValidator, FileValidator, filterAsync, filterLogLevels, filterObject, findDangerousKeys, first, flatMapOption, flatMapResult, flatten, flattenObject, flattenRouteTree, flattenValidationErrors, flow, ForbiddenException, formatBunestErrorForAgent, formatDuration, formatNestTimestamp, formatStandardSchemaIssues, formatStandardSchemaPath, formatToken, formatValidationErrorResponse, forwardRef, fromArrayAsync, fromNullable, fromUnixSeconds, GatewayTimeoutException, Get, getAllEffectiveMethodAspects, getArch, getAutoModuleMetadata, getCachedInheritanceChain, getCompiledMacroPlan, getCpuCount, getCurrentRequestContext, getCustomMacro, getEffectiveMethodAspects, getEntityColumns, getEntityIndexes, getEntitySchema, getErrorCatalogEntry, getErrorDocsUrl, getGlobalMacroDefaults, getGlobalPointcuts, getGlobalPointcutsVersion, getHostname, getHttpReasonPhrase, getInjectableScope, getMatchingPointcutAspects, getMethodAspects, getNativeTransformerEngine, getNativeTransformerStorage, getNativeValidatorEngine, getNativeValidatorStorage, getNestedValue, getPlatform, getPrecompiledController, getProviderConditions, getProviderConditionTarget, getReflectMetadataStore, Getter, getValidationMetadatasForTarget, Global, GLOBAL_MACRO_DEFAULTS_SYMBOL, GoneException, GraphInspector, groupBy, hasDeferredConditions, hasEntitySchema, hasMatchingPointcuts, hasMethodAspects, hasNestedValue, hasOwn, hasSubscribers, Head, Header, Headers, hmacSha256, HostParam, HTTP_STATUS_REASON_PHRASES, HttpAdapterHost, HttpCode, HttpException, HttpExecutionContext, HttpResponseContext, HttpStatus, HttpVersionNotSupportedException, identity, ImATeapotException, include, includes, Index, indexBy, InheritMethodEnhancers, inheritPropertyInitializers, inheritTransformationMetadata, inheritValidationMetadata, InitializeOnPreviewAllowlist, Inject, Injectable, INQUIRER, inRange, installReflectMetadataShim, InternalServerErrorException, intersection, IntersectionType, IntrinsicException, invalidateControllerCache, invalidateMacroPlanCache, InvalidControllerException, InvalidExportException, InvalidModuleException, InvalidRouteException, invariant, invertObject, Ip, isAbsolute, isAllDefined, isAllNullish, isAnyNull, isAnyNullish, isAnyUndefined, isArray, isBetween, isBigInt, isBoolean, isBunestErrorCode, isColorAllowed, isContextId, isDate, isDefined, isDuration, isDynamicModule, isEmpty, isEmptyObject, isEnhancerOverrideEntry, isEqual, isErr, isError, isExpired, isFiniteNumber, isForwardReference, isFunction, isGt, isGte, isInjectableDurable, isInstanceof, isInstanceOf, isInteger, isIp, isIpv4, isIpv6, isLt, isLte, isMap, isMatching, isMethodAspectClass, isMethodAspectHandlerObject, isNone, isNonEmptyArray, isNonEmptyString, isNotEmpty, isNotNull, isNotUndefined, isNull, isNullish, isNumber, isObject, isOk, isOneOf, isPlainObject, isPrimitive, isPromiseLike, isProviderObject, isRegExp, isSafeUrl, isSameDay, isSet, isSome, isStandardSchema, isString, isSymbol, isTernary, isTernaryLeaf, isTernaryNode, isTypeof, isTypeOf, isUndefined, isValidDate, isValidUuid, join, joinRoutePaths, joinUrl, JsonSerializable, kebabCase, keysOf, labeledTernary, last, LazyModuleLoader, LifecycleManager, listCustomMacros, literal, Lock, Locked, LOG_LEVEL_COLORS, LOG_LEVELS, LogExecution, Logger, LruCache, lstatPath, mapAsync, mapLimit, mapOption, mapResult, mapResultErr, mapTernary, mapValues, maskSecret, match, MATCHER_SYMBOL, matchesPointcutClass, matchesPointcutMethod, matchResult, maxBy, MaxFileSizeValidator, memoize, Memoize, mergeAsyncIterables, METADATA_KEYS, MetadataRegistry, MetadataScanner, MethodNotAllowedException, MiddlewareBuilder, minBy, MisdirectedException, mixin, Mkcol, mkdirSyncPath, Module, ModuleNode, ModuleRef, ModuleScanner, ModulesContainer, Move, MULTI_PROVIDER_TOKENS, MultiMap, Mutex, NestApplication, NestApplicationContext, NestContainer, NestFactory, Next, none, NonExhaustiveError, NonFinal, NonNull, noop, NoopLoader, normalize, normalizeCookieSecrets, normalizeHeaders, normalizePath, normalizeProvider, not, NotAcceptableException, NotFoundException, NotImplementedException, ok, omit, OMITTED_ERRORS_MESSAGE, OmitType, once, openFileHandle, Optional, Options, or, P, Param, ParseArrayPipe, ParseBoolPipe, ParseDatePipe, parseDuration, ParseEnumPipe, ParseFilePipe, ParseFilePipeBuilder, ParseFloatPipe, ParseIntPipe, parseJsonOr, parseMaxAgeSeconds, parseProfilesList, parseQueryString, ParseUUIDPipe, PartialGraphHost, PartialType, partition, pascalCase, Patch, PayloadTooLargeException, pick, PickType, pipe, pollUntil, posixPath, Post, precompileController, PreconditionFailedException, PrimaryGeneratedColumn, PrimaryKey, PriorityQueue, Profile, Propfind, Proppatch, publish, Put, Query, QueryMethod, randomHex, randomInt, randomIntRange, randomToken, range, RawBody, readDirEntries, readDirNames, readDirSyncEntries, readDirSyncNames, readTextSync, realpathOf, realpathSyncOf, redactFields, Redirect, REFLECT_METADATA_STORE_SYMBOL, Reflector, registerClassTransformerMappedTypeHook, registerCompiledMacroPlan, registerCustomMacro, registerEntitySchemaResolver, registerGlobalPointcuts, RegisterIf, RegisterIfEnv, RegisterIfMissing, registerMacroFields, registerMappedTypeMetadataHook, relative, removeEmptyDir, removePath, renamePath, Render, repl, Req, Request, REQUEST, REQUEST_CONTEXT, RequestContainer, RequestContext, requestContextStorage, RequestMapping, RequestMethod, RequestTimeoutException, Res, resetGlobalMacroDefaults, resolve, resolveActiveProfiles, resolveAspectOrder, resolveBackoff, resolveGlobalToStringDefaults, resolveMaxErrorMessagesLength, resolveRouterModulePrefixes, resolveTransformerPackageFor, resolveValidatorPackageFor, Response, retry, reverseComparator, RingBuffer, roundTo, ROUTER_MODULE_ROUTES, RouterModule, safeDivide, safeJsonParse, safeJsonStringify, SchemaValidationPipe, Scope, ScopeLeakException, Search, Secret, Semaphore, sep, SerializedGraph, SerializeOptions, SERVE_STATIC_MODULE_OPTIONS, ServeStaticModule, serveStaticProviders, ServiceUnavailableException, Session, setGlobalMacroDefaults, SetMetadata, setNestedValue, Setter, sha256, ShutdownSignal, signCookieValue, SIGNED_COOKIE_PREFIX, SignedCookies, Singleflight, Singular, singularizeFieldName, sleep, slugify, snakeCase, some, sortBy, splitOnce, Sse, SSE_ABORT_CONTROLLER, SseSignal, stableSortMethodAspects, stableStringify, STANDARD_SCHEMA_SERIALIZER_METADATA, StandardException, StandardSchemaSerializerInterceptor, StandardSchemaValidationPipe, startOfDay, statFs, statPath, statSyncPath, StreamableFile, strictAssert, stripDangerousKeys, stripProtoKeys, subDuration, subscribe, sum, sumBy, SuperBuilder, Synchronized, systemClock, takeAsync, tap, ternary, Ternary, TERNARY_INSTANCE_SYMBOL, TERNARY_LEAF_SYMBOL, TERNARY_NODE_SYMBOL, TERNARY_RULE_SYMBOL, ternaryFor, ternaryRule, TernaryRule, throttle, TimeoutError, timingSafeEqualBytes, timingSafeEqualStr, toArray, toBunestErrorReport, toInt, toNumber, TooManyRequestsException, ToString, toUnixSeconds, traceTernary, trimPrefix, trimSuffix, truncate, truncateUtf8, tryCatch, tryCatchAsync, tryServeStaticAsset, UnauthorizedException, uncapitalize, unflattenObject, unique, Unique, uniqueBy, UnknownDependencyException, Unlock, UnprocessableEntityException, unregisterCustomMacro, unregisterEntitySchemaResolver, unregisterGlobalPointcut, unsignCookieValue, unsubscribe, UnsupportedMediaTypeException, unwrapOptionOr, unwrapResult, unwrapResultOr, UpdateDateColumn, UploadedFile, UploadedFiles, UseFilters, UseGuards, UseInterceptors, UseMiddleware, UsePipes, UseStandardSchema, UtilityClass, uuidv4, uuidv7, validateEntity, VALIDATION_PIPE_OPTIONS, ValidationPipe, Value, valuesOf, Version, VERSION_NEUTRAL, VersioningType, watchPath, weaveInstanceMethodAspects, weaveMethodExecutor, weaveProxyMethodAspects, win32Path, With, WithBy, WithCls, WithClsAspect, WithLogger, withTimeout, wrapMethodDescriptor, writeExclusiveFile, writeTextSync, zip
+
+### `@bunest/core/common` (565)
+
+Accessors, addDuration, All, ALL_LOG_LEVELS, allSettledPartition, and, APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, applyDecorators, applyIsOptionalDecorator, applyPatch, applyValidateIfDefinedDecorator, AssertionError, assertNever, assignMetadata, asyncBranch, AutoModule, average, BadGatewayException, BadRequestException, base64UrlDecode, base64UrlEncode, basename, batchAsync, BatchLoader, BiMap, Bind, Body, BODY_SANITIZED_SYMBOL, branch, Builder, buildQueryString, buildRoutePath, camelCase, capitalize, Catch, channel, chunk, clamp, CLASS_SERIALIZER_OPTIONS, ClassMetadataStore, ClassSerializerInterceptor, classTransformerMappedTypeHook, clc, clearCustomMacros, clearMemoizeCache, coalesceAsync, collectAsync, collectCustomMacroDelombokBlocks, collectCustomMacroTypegenMembers, Column, compact, compareAsc, compareBy, compareDesc, composeComparators, CompositionType, computeBackoffDelay, cond, CONFIGURABLE_MODULE_ID, ConfigurableModuleBuilder, ConflictException, ConsoleLogger, ContextStorage, Controller, Cookies, Copy, countBy, CreateDateColumn, createFakeClock, createMetadataKey, createMethodAspectDecorator, createParamDecorator, createReflectMetadataApi, createToken, CUSTOM_MACROS_REGISTRY_SYMBOL, DANGEROUS_PROTOTYPE_KEYS, Data, debounce, DecoratorRegistry, deepClone, deepEqual, deepFreeze, deepMerge, DEFAULT_MAX_ERROR_MESSAGES_LENGTH, DEFAULT_REDACT_KEYS, DefaultValuePipe, deferred, defineBunestConfig, defineClassMacro, definedOnly, defineMacroPreset, Delegate, Delete, deleteNestedValue, Dependencies, describeError, describeValue, DESIGN_METADATA_KEYS, detectMagicMimeType, DiagnosticChannel, DIAGNOSTICS_CHANNELS_SYMBOL, diagnosticsChannel, difference, diffMs, diffObjects, dirname, endOfDay, ensureDir, ensureError, ensurePrefix, ensureSuffix, Entity, entriesOf, envBool, envDuration, envEnum, EnvError, envJson, envList, envNumber, envString, EqualsAndHashCode, err, escapeRegExp, evalTernary, evalTernaryAsync, existsSyncPath, extname, FieldDefaults, FieldNameConstants, FileTypeValidator, FileValidator, filterAsync, filterLogLevels, filterObject, findDangerousKeys, first, flatMapOption, flatMapResult, flatten, flattenObject, flattenValidationErrors, flow, ForbiddenException, formatDuration, formatNestTimestamp, formatStandardSchemaIssues, formatStandardSchemaPath, formatValidationErrorResponse, forwardRef, fromArrayAsync, fromNullable, fromUnixSeconds, GatewayTimeoutException, Get, getArch, getCachedInheritanceChain, getCompiledMacroPlan, getCpuCount, getCustomMacro, getEntityColumns, getEntityIndexes, getEntitySchema, getGlobalMacroDefaults, getHostname, getHttpReasonPhrase, getMethodAspects, getNativeTransformerEngine, getNativeTransformerStorage, getNativeValidatorEngine, getNativeValidatorStorage, getNestedValue, getPlatform, getPrecompiledController, getReflectMetadataStore, Getter, getValidationMetadatasForTarget, Global, GLOBAL_MACRO_DEFAULTS_SYMBOL, GoneException, groupBy, hasEntitySchema, hasMethodAspects, hasNestedValue, hasOwn, hasSubscribers, Head, Header, Headers, hmacSha256, HostParam, HTTP_STATUS_REASON_PHRASES, HttpCode, HttpException, HttpStatus, HttpVersionNotSupportedException, identity, ImATeapotException, include, includes, Index, indexBy, InheritMethodEnhancers, inheritPropertyInitializers, inheritTransformationMetadata, inheritValidationMetadata, Inject, Injectable, INQUIRER, inRange, installReflectMetadataShim, InternalServerErrorException, intersection, IntersectionType, IntrinsicException, invalidateControllerCache, invalidateMacroPlanCache, invariant, invertObject, Ip, isAbsolute, isAllDefined, isAllNullish, isAnyNull, isAnyNullish, isAnyUndefined, isArray, isBetween, isBigInt, isBoolean, isColorAllowed, isDate, isDefined, isDuration, isDynamicModule, isEmpty, isEmptyObject, isEqual, isErr, isError, isExpired, isFiniteNumber, isForwardReference, isFunction, isGt, isGte, isInstanceof, isInstanceOf, isInteger, isIp, isIpv4, isIpv6, isLt, isLte, isMap, isMatching, isNone, isNonEmptyArray, isNonEmptyString, isNotEmpty, isNotNull, isNotUndefined, isNull, isNullish, isNumber, isObject, isOk, isOneOf, isPlainObject, isPrimitive, isPromiseLike, isRegExp, isSafeUrl, isSameDay, isSet, isSome, isStandardSchema, isString, isSymbol, isTernary, isTernaryLeaf, isTernaryNode, isTypeof, isTypeOf, isUndefined, isValidDate, isValidUuid, join, joinUrl, JsonSerializable, kebabCase, keysOf, labeledTernary, last, listCustomMacros, literal, Lock, Locked, LOG_LEVEL_COLORS, LOG_LEVELS, LogExecution, Logger, LruCache, lstatPath, mapAsync, mapLimit, mapOption, mapResult, mapResultErr, mapTernary, mapValues, maskSecret, match, MATCHER_SYMBOL, matchResult, maxBy, MaxFileSizeValidator, memoize, Memoize, mergeAsyncIterables, METADATA_KEYS, MetadataRegistry, MethodNotAllowedException, minBy, MisdirectedException, mixin, Mkcol, mkdirSyncPath, Module, Move, MultiMap, Mutex, Next, none, NonExhaustiveError, NonFinal, NonNull, noop, normalize, normalizeHeaders, normalizePath, not, NotAcceptableException, NotFoundException, NotImplementedException, ok, omit, OMITTED_ERRORS_MESSAGE, OmitType, once, openFileHandle, Optional, Options, or, P, Param, ParseArrayPipe, ParseBoolPipe, ParseDatePipe, parseDuration, ParseEnumPipe, ParseFilePipe, ParseFilePipeBuilder, ParseFloatPipe, ParseIntPipe, parseJsonOr, parseQueryString, ParseUUIDPipe, PartialType, partition, pascalCase, Patch, PayloadTooLargeException, pick, PickType, pipe, pollUntil, posixPath, Post, precompileController, PreconditionFailedException, PrimaryGeneratedColumn, PrimaryKey, PriorityQueue, Propfind, Proppatch, publish, Put, Query, QueryMethod, randomHex, randomInt, randomIntRange, randomToken, range, RawBody, readDirEntries, readDirNames, readDirSyncEntries, readDirSyncNames, readTextSync, realpathOf, realpathSyncOf, redactFields, Redirect, REFLECT_METADATA_STORE_SYMBOL, Reflector, registerClassTransformerMappedTypeHook, registerCompiledMacroPlan, registerCustomMacro, registerEntitySchemaResolver, registerMacroFields, registerMappedTypeMetadataHook, relative, removeEmptyDir, removePath, renamePath, Render, Req, Request, REQUEST, REQUEST_CONTEXT, RequestMapping, RequestMethod, RequestTimeoutException, Res, resetGlobalMacroDefaults, resolve, resolveBackoff, resolveGlobalToStringDefaults, resolveMaxErrorMessagesLength, resolveTransformerPackageFor, resolveValidatorPackageFor, Response, retry, reverseComparator, RingBuffer, roundTo, safeDivide, safeJsonParse, safeJsonStringify, SchemaValidationPipe, Scope, Search, Secret, Semaphore, sep, SerializeOptions, ServiceUnavailableException, Session, setGlobalMacroDefaults, SetMetadata, setNestedValue, Setter, sha256, ShutdownSignal, SignedCookies, Singleflight, Singular, singularizeFieldName, sleep, slugify, snakeCase, some, sortBy, splitOnce, Sse, SSE_ABORT_CONTROLLER, SseSignal, stableStringify, STANDARD_SCHEMA_SERIALIZER_METADATA, StandardException, StandardSchemaSerializerInterceptor, StandardSchemaValidationPipe, startOfDay, statFs, statPath, statSyncPath, StreamableFile, strictAssert, stripDangerousKeys, stripProtoKeys, subDuration, subscribe, sum, sumBy, SuperBuilder, Synchronized, systemClock, takeAsync, tap, ternary, Ternary, TERNARY_INSTANCE_SYMBOL, TERNARY_LEAF_SYMBOL, TERNARY_NODE_SYMBOL, TERNARY_RULE_SYMBOL, ternaryFor, ternaryRule, TernaryRule, throttle, TimeoutError, timingSafeEqualBytes, timingSafeEqualStr, toArray, toInt, toNumber, TooManyRequestsException, ToString, toUnixSeconds, traceTernary, trimPrefix, trimSuffix, truncate, truncateUtf8, tryCatch, tryCatchAsync, UnauthorizedException, uncapitalize, unflattenObject, unique, Unique, uniqueBy, Unlock, UnprocessableEntityException, unregisterCustomMacro, unregisterEntitySchemaResolver, unsubscribe, UnsupportedMediaTypeException, unwrapOptionOr, unwrapResult, unwrapResultOr, UpdateDateColumn, UploadedFile, UploadedFiles, UseFilters, UseGuards, UseInterceptors, UseMiddleware, UsePipes, UseStandardSchema, UtilityClass, uuidv4, uuidv7, validateEntity, VALIDATION_PIPE_OPTIONS, ValidationPipe, Value, valuesOf, Version, VERSION_NEUTRAL, VersioningType, watchPath, win32Path, With, WithBy, WithLogger, withTimeout, wrapMethodDescriptor, writeExclusiveFile, writeTextSync, zip
+
+### `@bunest/core/http` (84)
+
+AbstractHttpAdapter, AbstractLoader, applySecurityHeaders, assertBodySizeHeader, buildFilterSpec, BUNEST_APPLICATION_CONFIG_TOKEN, BUNEST_HTTP_ADAPTER_HOST_TOKEN, BunHttpAdapter, BunStaticLoader, canonicalizePath, compileCsrfProtection, compileParameters, compileRoutes, compileSecurityHeaders, CompressionMiddleware, computeAllowHeader, CookieSigner, createCompressionMiddleware, createPreflightResponse, createStaticAssetsMount, DEFAULT_EXPRESS_RENDER_PATH, DEFAULT_FASTIFY_RENDER_PATH, DEFAULT_RENDER_PATH, DEFAULT_ROOT_PATH, DefaultExceptionFilter, DefaultHttpRuntimeBridge, DuplicateRouteException, evaluateCors, executeCompiledRoute, executeExceptionFilters, executeFallbackException, executeFastSingletonRoute, extractClientIp, extractFilterCatchTypes, extractRequestCookies, extractRequestVersions, extractSignedCookies, FallbackRadixRouter, formatSseEvent, formatUriVersionSegment, formatVersionCollisionKey, formatVersionLabel, getCurrentRequestContext, hasStandardSchemaValidationPipe, HttpExecutionContext, HttpResponseContext, InvalidControllerException, InvalidRouteException, isCorsPreflightRequest, isDangerousKey, isNativeBunRoutePath, isRuntimeVersioning, matchesGlobalPrefixExclude, matchesMiddlewareForRoute, matchesPathPattern, matchesRouteInfo, mergeCorsHeaders, mergeHeadersOntoNativeResponse, NativePathMatcher, NoopLoader, normalizeCookieSecrets, normalizeCorsOptions, normalizePath, normalizeVersionValue, parseCookieHeader, parseMaxAgeSeconds, parseRequestBody, RequestContext, requestContextStorage, resolveRouteArguments, resolveRouteVersions, sanitizeObject, sanitizeRecord, scanControllers, selectVersionedCandidate, serializeCookie, serializeResponse, SERVE_STATIC_MODULE_OPTIONS, ServeStaticModule, serveStaticProviders, signCookieValue, SIGNED_COOKIE_PREFIX, tryServeStaticAsset, unsignCookieValue
+
+### `@bunest/core/config` (24)
+
+ConditionalModule, CONFIG_OPTIONS_TOKEN, CONFIG_STORE_TOKEN, CONFIG_VALUE_METADATA, ConfigModule, ConfigService, CONFIGURATION_NAMESPACE_PREFIX, ConfigValidationError, ConfigValue, createSecretRedactor, expandEnvEntries, getConfigToken, getDefaultParser, InjectConfig, isNamespacedConfigFactory, loadEnvironmentVariables, NAMESPACED_CONFIG_MARKER, parseEnvContent, parseEnvEntries, parseJsoncConfig, parseTomlConfig, parseYamlConfig, registerAs, validateConfiguration
+
+### `@bunest/core/client` (11)
+
+getHttpClientToken, HTTP_CLIENT_MODULE_OPTIONS, HttpClient, HttpClientError, HttpClientModule, HttpNetworkError, HttpParseError, HttpResponseError, HttpTimeoutError, InjectHttpClient, toHttpException
+
+### `@bunest/core/ws` (26)
+
+AbstractWsAdapter, Ack, BaseWsExceptionFilter, buildGatewayAllTopic, buildGatewayRoomTopic, BunWebSocketAdapter, BunWsClientImpl, BunWsServerImpl, ConnectedSocket, getGatewayMessageHandlers, getGatewayMethodParams, getGatewayServerProperties, MessageBody, parseWsFrame, serializeWsFrame, SubscribeMessage, WebSocketGateway, WebSocketModule, WebSocketServer, WS_HTTP_ADAPTER, WS_METADATA_KEYS, WS_MODULE_OPTIONS, WsAdapter, WsException, WsExecutionContext, WsGatewayExplorer
+
+### `@bunest/core/i18n` (22)
+
+AcceptLanguageLocaleResolver, CookieLocaleResolver, CurrentLocale, HeaderLocaleResolver, I18N_MODULE_OPTIONS, I18nContext, i18nIssueMessage, I18nLoader, I18nMessageFormatter, I18nMissingKeyError, I18nModule, I18nService, I18nStandardSchemaValidationPipe, i18nValidationMessage, I18nValidationPipe, InMemoryI18nLoader, JsonI18nLoader, LocaleResolver, QueryLocaleResolver, t, translateStandardSchemaIssues, translateValidationErrors
+
+## @bunest/elasticsearch
+
+NestJS v12-compatible Elasticsearch module and full native Bun fetch() REST client with zero external dependencies for Bunest
+
+### `@bunest/elasticsearch` (27)
+
+AsyncSearchApi, CatApi, ClusterApi, ELASTICSEARCH_MODULE_OPTIONS, ElasticsearchAbortError, ElasticsearchConnectionError, ElasticsearchConnectionPool, ElasticsearchDiagnostic, ElasticsearchError, ElasticsearchHelpers, ElasticsearchModule, ElasticsearchResponseError, ElasticsearchSerializer, ElasticsearchService, ElasticsearchTimeoutError, ElasticsearchTransport, EsqlApi, IlmApi, IndicesApi, IngestApi, NodesApi, parseCloudId, RestNamespaceApi, SecurityApi, SnapshotApi, SqlApi, TasksApi
+
+## @bunest/graphql
+
+Code-first & schema-first GraphQL module, Apollo Server, Federation v2 Subgraph & Gateway drivers, PubSub subscriptions, and GraphiQL explorer for Bunest
+
+### `@bunest/graphql` (253)
+
+__Directive, __DirectiveLocation, __EnumValue, __Field, __InputValue, __Schema, __Type, __TypeKind, AbstractGraphQLDriver, addFieldMetadata, addPath, Args, ARGS_TYPE_METADATA, ArgsType, astFromValue, BaseExplorerService, BREAK, buildASTSchema, buildSchema, BunestDataLoader, CLASS_TYPE_METADATA, coerceInputValue, Context, CONTEXT, createDepthLimitRule, createSourceEventStream, createUnionType, dedentBlockStringLines, DEFAULT_DEPRECATION_REASON, defaultFieldResolver, defaultTypeResolver, DEFINITIONS_FILE_HEADER, Directive, DirectiveLocation, doTypesOverlap, ExecutableDefinitionsRule, execute, extend, Extensions, Field, FIELD_MIDDLEWARE_METADATA, FIELD_RESOLVER_COMPOSITION_METADATA, FIELD_RESOLVER_MIDDLEWARE_METADATA, FIELD_TYPENAME, FieldsOnCorrectTypeRule, FileSystemHelper, Float, formatError, FragmentsOnCompositeTypesRule, getArgumentValues, getDirectiveValues, getEnterLeaveForKind, getFieldsAndDecoratorForType, getGraphQLDirectives, getGraphQLExtensions, getGraphQLFields, getInterfaceImplementors, getIntrospectionQuery, getLocation, getNamedType, getNullableType, getOperationAST, getRegisteredEnumType, getResolverFields, getResolverMethodParams, getResolverOperations, getUseFieldMiddleware, getVariableValues, GqlArgumentsHost, GqlExecutionContext, GqlSubscriptionService, graphql, GRAPHQL_METADATA_KEYS, GRAPHQL_MODULE_ID, GRAPHQL_MODULE_OPTIONS, GRAPHQL_SCHEMA_TOKEN, GRAPHQL_SDL_FILE_END, GRAPHQL_SDL_FILE_HEADER, GRAPHQL_TRANSPORT_WS_PROTOCOL, GRAPHQL_WS_CLOSE_CODES, GraphQLAstExplorer, GraphQLBoolean, GraphQLDefinitionsFactory, GraphQLDeprecatedDirective, GraphQLDirective, GraphQLEnumType, GraphQLError, GraphQLExecutionContextHost, GraphQLFactory, GraphQLFederationDefinitionsFactory, GraphQLFederationFactory, GraphQLFloat, GraphQLID, GraphQLIncludeDirective, GraphQLInputObjectType, GraphQLInt, GraphQLInterfaceType, GraphQLISODateTime, GraphQLList, GraphQLModule, GraphQLNonNull, GraphQLObjectType, GraphQLOneOfDirective, GraphQLScalarType, GraphQLSchema, GraphQLSchemaBuilderModule, GraphQLSchemaFactory, GraphQLSchemaHost, GraphQLService, GraphQLSkipDirective, GraphQLSpecifiedByDirective, GraphQLString, graphqlSync, GraphQLTimestamp, GraphQLTypesLoader, GraphQLUnionType, GraphQLWsHandler, hasOwnUseFieldMiddleware, HIDE_FIELD_METADATA, HideField, ID, Info, InputType, Int, InterfaceType, IntersectionType, introspectionTypes, isAbstractType, isASTNode, isCompositeType, isDirective, isEnumType, isEqualType, isGraphQLError, isInputObjectType, isInputType, isInterfaceType, isIntrospectionType, isLeafType, isListType, isNamedType, isNonNullType, isNullableType, isObjectType, isOutputType, isRequiredArgument, isRequiredInputField, isScalarType, isSchema, isSpecifiedDirective, isSpecifiedScalarType, isType, isTypeSubTypeOf, isUnionType, isUnionTypeRef, isWrappingType, Kind, KnownArgumentNamesRule, KnownDirectivesRule, KnownFragmentNamesRule, KnownTypeNamesRule, Lexer, lexicographicSortSchema, locatedError, LoneAnonymousOperationRule, Mutation, NoFragmentCyclesRule, NoSchemaIntrospectionCustomRule, NoUndefinedVariablesRule, NoUnusedFragmentsRule, NoUnusedVariablesRule, ObjectType, OmitType, OperationTypeNode, OverlappingFieldsCanBeMergedRule, PARAM_ARGS_METADATA, Parent, parse, parseConstValue, parseType, parseValue, PartialType, pathToArray, PickType, PossibleFragmentSpreadsRule, print, printBlockString, printIntrospectionSchema, printSchema, printString, printType, ProvidedRequiredArgumentsRule, PubSub, Query, QueryDocumentKeys, registerEnumType, renderGraphiqlHtml, ResolveField, ResolveProperty, Resolver, RESOLVER_DELEGATE_METADATA, RESOLVER_NAME_METADATA, RESOLVER_PROPERTY_METADATA, RESOLVER_REFERENCE_KEY, RESOLVER_REFERENCE_METADATA, RESOLVER_TYPE_METADATA, ResolverDecoratorHost, ResolveReference, Root, Scalar, SCALAR_NAME_METADATA, SCALAR_TYPE_METADATA, ScalarLeafsRule, SchemaMetaFieldDef, SingleFieldSubscriptionsRule, Source, specifiedDirectives, specifiedRules, specifiedScalarTypes, subscribe, Subscription, SUBSCRIPTION_OPTIONS_METADATA, SUBSCRIPTION_TYPE, syntaxError, Token, TokenKind, transformSchema, typeFromAST, TypeInfo, TypeKind, TypeMetadataStorage, TypeMetadataStorageHost, TypeMetaFieldDef, TypeNameMetaFieldDef, UnableToFindFieldsError, UniqueArgumentNamesRule, UniqueDirectivesPerLocationRule, UniqueFragmentNamesRule, UniqueInputFieldNamesRule, UniqueOperationNamesRule, UniqueVariableNamesRule, UseFieldMiddleware, validate, ValidationContext, valueFromAST, valueFromASTUntyped, ValuesOfCorrectTypeRule, VariablesAreInputTypesRule, VariablesInAllowedPositionRule, visit, visitInParallel, visitWithTypeInfo, withFilter
+
+### `@bunest/graphql/apollo` (28)
+
+ApolloBaseDriver, ApolloDriver, ApolloError, ApolloFederationDefinitionsFactory, ApolloFederationDriver, ApolloGateway, ApolloGatewayDriver, ApolloServerErrorCode, ApolloServerPluginDrainHttpServer, ApolloServerPluginLandingPageDisabled, ApolloServerPluginLandingPageLocalDefault, AuthenticationError, BunestApolloServer, createApolloSchema, createAsyncIterator, ForbiddenError, getApolloServer, GraphiQLHTMLFactory, GraphiQLPlaygroundPlugin, HeaderMap, IntrospectAndCompose, Plugin, PLUGIN_METADATA, PluginsExplorerService, RemoteGraphQLDataSource, unwrapResolverError, UserInputError, ValidationError
+
+## @bunest/jobs
+
+Background job queues (BullMQ parity + native Bun.RedisClient driver) and cron/interval/timeout task scheduler for Bunest
+
+### `@bunest/jobs` (72)
+
+BULL_CONFIG_DEFAULT_TOKEN, BULL_EXTRA_OPTIONS_TOKEN, BullModule, BULLMQ_DRIVER, BULLMQ_MODULE_OPTIONS, BullMQExplorer, BullMQModule, BullMQQueueDriver, BullRegistrar, calculateBackoffDelay, createBunRedisQueueClient, Cron, CRON_METADATA, CronExpression, CronExpressionError, CronJob, FlowProducer, getCronMetadata, getFlowProducerOptionsToken, getFlowProducerToken, getIntervalMetadata, getNextCronDate, getQueueOptionsToken, getQueueToken, getSharedConfigToken, getTimeoutMetadata, InjectFlowProducer, InjectQueue, Interval, INTERVAL_METADATA, JOB_REF, JobTimeoutError, LUA_ACK_JOB, LUA_DEQUEUE_JOB, LUA_ENQUEUE_JOB, LUA_NACK_OR_DLQ_JOB, LUA_RECLAIM_STALLED, LUA_RENEW_LEASE, MemoryQueueDriver, OnQueueEvent, OnWorkerEvent, parseCronExpression, Process, Processor, ProcessorDecoratorService, Queue, QUEUE_DRIVER, QUEUE_EVENT_METADATA, QUEUE_EVENTS_LISTENER_METADATA, QUEUE_MODULE_OPTIONS, QUEUE_PROCESS_METADATA, QUEUE_PROCESSOR_METADATA, QUEUE_REGISTRY, QUEUE_WORKER_EVENT_METADATA, QUEUE_WORKER_METADATA, QueueEvents, QueueEventsHost, QueueEventsListener, QueueExplorer, QueueModule, QueueRegistry, RedisQueueDriver, SCHEDULE_MODULE_OPTIONS, ScheduleExplorer, ScheduleModule, SchedulerExplorer, SchedulerRegistry, Timeout, TIMEOUT_METADATA, validateTimeZone, validateUtcOffset, WorkerHost
+
+### `@bunest/jobs/queues` (51)
+
+BULL_CONFIG_DEFAULT_TOKEN, BULL_EXTRA_OPTIONS_TOKEN, BullModule, BULLMQ_DRIVER, BULLMQ_MODULE_OPTIONS, BullMQExplorer, BullMQModule, BullMQQueueDriver, BullRegistrar, calculateBackoffDelay, createBunRedisQueueClient, FlowProducer, getFlowProducerOptionsToken, getFlowProducerToken, getQueueOptionsToken, getQueueToken, getSharedConfigToken, InjectFlowProducer, InjectQueue, JOB_REF, JobTimeoutError, LUA_ACK_JOB, LUA_DEQUEUE_JOB, LUA_ENQUEUE_JOB, LUA_NACK_OR_DLQ_JOB, LUA_RECLAIM_STALLED, LUA_RENEW_LEASE, MemoryQueueDriver, OnQueueEvent, OnWorkerEvent, Process, Processor, ProcessorDecoratorService, Queue, QUEUE_DRIVER, QUEUE_EVENT_METADATA, QUEUE_EVENTS_LISTENER_METADATA, QUEUE_MODULE_OPTIONS, QUEUE_PROCESS_METADATA, QUEUE_PROCESSOR_METADATA, QUEUE_REGISTRY, QUEUE_WORKER_EVENT_METADATA, QUEUE_WORKER_METADATA, QueueEvents, QueueEventsHost, QueueEventsListener, QueueExplorer, QueueModule, QueueRegistry, RedisQueueDriver, WorkerHost
+
+### `@bunest/jobs/scheduler` (21)
+
+Cron, CRON_METADATA, CronExpression, CronExpressionError, CronJob, getCronMetadata, getIntervalMetadata, getNextCronDate, getTimeoutMetadata, Interval, INTERVAL_METADATA, parseCronExpression, SCHEDULE_MODULE_OPTIONS, ScheduleExplorer, ScheduleModule, SchedulerExplorer, SchedulerRegistry, Timeout, TIMEOUT_METADATA, validateTimeZone, validateUtcOffset
+
+### `@bunest/jobs/redis` (8)
+
+createBunRedisQueueClient, LUA_ACK_JOB, LUA_DEQUEUE_JOB, LUA_ENQUEUE_JOB, LUA_NACK_OR_DLQ_JOB, LUA_RECLAIM_STALLED, LUA_RENEW_LEASE, RedisQueueDriver
+
+## @bunest/mail
+
+Transactional email for Bunest: typed mail classes, auto-escaped HTML templates, and SMTP, Resend, Postmark, SendGrid, and Amazon SES transports
+
+### `@bunest/mail` (27)
+
+FileMailTransport, FileTemplateEngine, html, InMemoryMailTransport, LogMailTransport, MAIL_MODULE_OPTIONS, MailConnectionError, Mailer, MailError, MailEvents, MailMessage, MailMessageError, MailModule, MailProviderError, MailRecipientsRejectedError, MailSmtpError, MailTemplateEngine, MailTemplateError, MailTimeoutError, MailTransport, PostmarkTransport, ResendTransport, SendGridTransport, SentMail, SesTransport, SmtpTransport, unsafeHtml
+
+### `@bunest/mail/smtp` (8)
+
+computeSignature, createDkimSigner, isLoopback, parseHeaderFields, relaxedBody, relaxedHeader, SmtpConnection, SmtpTransport
+
+### `@bunest/mail/templates` (5)
+
+compileTemplate, FileTemplateEngine, MailTemplateEngine, renderTemplate, TEMPLATE_NAME
+
+## @bunest/messaging
+
+EventEmitter, CQRS, Transactional Outbox/Inbox, and Outbound/Inbound Webhooks with PostgreSQL & MySQL stores for Bunest
+
+### `@bunest/messaging` (62)
+
+AggregateRoot, AggregateRootStorage, ASYNC_CONTEXT_ATTRIBUTE, AsyncContext, Command, COMMAND_HANDLER_METADATA, COMMAND_METADATA, CommandBus, CommandHandler, CommandHandlerNotFoundException, CQRS_MODULE_OPTIONS, CqrsExplorer, CqrsModule, DEFAULT_LISTENER_PRIORITY, DefaultCommandPubSub, defaultEventIdProvider, DefaultEventIdProvider, DefaultPubSub, DefaultQueryPubSub, DefaultUnhandledExceptionPubSub, DuplicateCommandHandlerException, DuplicateQueryHandlerException, EmitEvent, EmitEventAspect, EVENT_EMITTER_OPTIONS, EVENT_LISTENER_METADATA, EVENT_METADATA, EVENT_PARAMS_METADATA, EVENT_PAYLOAD, EventBus, EventEmitter2, EventEmitterExplorer, EventEmitterModule, EventEmitterReadinessWatcher, EventEmitterService, EventPayload, EventPublisher, EVENTS_HANDLER_METADATA, EventsHandler, getEventParamMetadata, getOnEventMetadata, InvalidCommandHandlerException, InvalidEventsHandlerException, InvalidQueryHandlerException, InvalidSagaException, matchEventName, ON_EVENT_METADATA, OnEvent, Publishable, Query, QUERY_HANDLER_METADATA, QUERY_METADATA, QueryBus, QueryHandler, QueryHandlerNotFoundException, RESULT_TYPE_SYMBOL, Saga, SAGA_METADATA, SubscribableStream, UnhandledExceptionBus, UnsupportedSagaScopeException, WithAggregateRoot
+
+### `@bunest/messaging/events` (18)
+
+DEFAULT_LISTENER_PRIORITY, EmitEvent, EmitEventAspect, EVENT_EMITTER_OPTIONS, EVENT_LISTENER_METADATA, EVENT_PARAMS_METADATA, EVENT_PAYLOAD, EventEmitter2, EventEmitterExplorer, EventEmitterModule, EventEmitterReadinessWatcher, EventEmitterService, EventPayload, getEventParamMetadata, getOnEventMetadata, matchEventName, ON_EVENT_METADATA, OnEvent
+
+### `@bunest/messaging/cqrs` (44)
+
+AggregateRoot, AggregateRootStorage, ASYNC_CONTEXT_ATTRIBUTE, AsyncContext, Command, COMMAND_HANDLER_METADATA, COMMAND_METADATA, CommandBus, CommandHandler, CommandHandlerNotFoundException, CQRS_MODULE_OPTIONS, CqrsExplorer, CqrsModule, DefaultCommandPubSub, defaultEventIdProvider, DefaultEventIdProvider, DefaultPubSub, DefaultQueryPubSub, DefaultUnhandledExceptionPubSub, DuplicateCommandHandlerException, DuplicateQueryHandlerException, EVENT_METADATA, EventBus, EventPublisher, EVENTS_HANDLER_METADATA, EventsHandler, InvalidCommandHandlerException, InvalidEventsHandlerException, InvalidQueryHandlerException, InvalidSagaException, Publishable, Query, QUERY_HANDLER_METADATA, QUERY_METADATA, QueryBus, QueryHandler, QueryHandlerNotFoundException, RESULT_TYPE_SYMBOL, Saga, SAGA_METADATA, SubscribableStream, UnhandledExceptionBus, UnsupportedSagaScopeException, WithAggregateRoot
+
+### `@bunest/messaging/outbox` (18)
+
+ClientProxyTransport, InMemoryOutboxStore, NonRetryableMessageError, OnOutboxMessage, Outbox, OUTBOX_MODULE_OPTIONS, OutboxDeadLetters, OutboxError, OutboxEvents, OutboxInbox, OutboxModule, OutboxNoHandlerError, OutboxPublishTimeoutError, OutboxRelay, OutboxStorage, OutboxTransactionRequiredError, OutboxTransport, toKafkaRecord
+
+### `@bunest/messaging/outbox/testing` (2)
+
+outboxInboxStoreContract, outboxStoreContract
+
+### `@bunest/messaging/outbox/postgres` (7)
+
+fromDrizzle, fromKysely, fromPg, fromPrisma, fromTypeOrm, OutboxSchemaError, PostgresOutboxStore
+
+### `@bunest/messaging/outbox/mysql` (7)
+
+fromDrizzle, fromKysely, fromMysql2, fromPrisma, fromTypeOrm, MySqlOutboxStore, OutboxSchemaError
+
+### `@bunest/messaging/webhooks` (28)
+
+HttpWebhookTransport, IncomingWebhook, InMemoryWebhookStore, InMemoryWebhookTransport, InvalidWebhookEndpointError, NonRetryableWebhookError, SentWebhook, VerifyWebhook, WebhookDeliveries, WebhookDeliveryNotFoundError, WebhookDeliveryTimeoutError, WebhookDestinationBlockedError, WebhookEndpointNotFoundError, WebhookEndpoints, WebhookPayload, WebhookResponseError, Webhooks, WEBHOOKS_MODULE_OPTIONS, WEBHOOKS_OUTBOX_TOPIC, WebhooksError, WebhooksEvents, WebhookSignatureScheme, WebhooksModule, WebhooksStorage, WebhookTransport, WebhookVerificationError, WebhookVerifier, WebhookWorker
+
+### `@bunest/messaging/webhooks/testing` (3)
+
+signWebhook, webhookDeliveryStoreContract, webhookEndpointStoreContract
+
+### `@bunest/messaging/webhooks/postgres` (7)
+
+fromDrizzle, fromKysely, fromPg, fromPrisma, fromTypeOrm, PostgresWebhookStore, WebhookSchemaError
+
+### `@bunest/messaging/webhooks/mysql` (7)
+
+fromDrizzle, fromKysely, fromMysql2, fromPrisma, fromTypeOrm, MySqlWebhookStore, WebhookSchemaError
+
+## @bunest/microservices
+
+Bun-native TCP, in-memory, and broker (Redis, NATS, RabbitMQ) microservice transports, RPC patterns, and client proxies for Bunest
+
+### `@bunest/microservices` (153)
+
+BaseRpcContext, BaseRpcExceptionFilter, Client, CLIENT_CONFIGURATION_METADATA, CLIENT_METADATA, ClientGrpcProxy, ClientKafka, ClientMqtt, ClientNats, ClientProxy, ClientProxyFactory, ClientRedis, ClientRMQ, ClientsModule, ClientTCP, CONTEXT, createClientProxy, createGrpcMethodMetadata, createTransportServer, Ctx, decodeGrpcFrames, defaultGrpcCodec, defaultInMemoryBroker, encodeFrame, encodeGrpcFrame, encodeGrpcTrailerFrame, EVENT_PATTERN_METADATA, EventPattern, formatGrpcTimeout, FrameDecoder, getGrpcPackageDefinition, GRPC_METHOD_METADATA, GrpcAbortedException, GrpcAlreadyExistsException, GrpcCancelledException, GrpcClientProxy, GrpcContext, GrpcDataLossException, GrpcDeadlineExceededException, GrpcException, GrpcExceptionFilter, GrpcFailedPreconditionException, GrpcFrameDecoder, GrpcInternalException, GrpcInvalidArgumentException, GrpcMetadata, GrpcMethod, GrpcMethodStreamingType, GrpcNotFoundException, GrpcOutOfRangeException, GrpcPermissionDeniedException, GrpcResourceExhaustedException, GrpcServer, GrpcService, GrpcStatus, GrpcStreamCall, GrpcStreamMethod, GrpcUnauthenticatedException, GrpcUnavailableException, GrpcUnimplementedException, GrpcUnknownException, hasPacketMetadata, IdentityDeserializer, IdentitySerializer, IncomingRequestDeserializer, IncomingResponseDeserializer, InMemoryBroker, InMemoryClientProxy, InMemoryServer, JsonGrpcCodec, JsonSocket, KAFKA_CORRELATION_ID_HEADER, KAFKA_REPLY_PARTITION_HEADER, KAFKA_REPLY_TOPIC_HEADER, KafkaClientProxy, KafkaContext, KafkaHeaders, KafkaLogger, KafkaParser, KafkaReplyPartitionAssigner, KafkaRequestDeserializer, KafkaRequestSerializer, KafkaResponseDeserializer, KafkaRetriableException, KafkaServer, KafkaStatus, matchMqttTopic, MESSAGE_PATTERN_METADATA, MessagePattern, MICROSERVICE_OPTIONS, MICROSERVICE_SERVER, MicroserviceHost, MicroserviceModule, MicroserviceTransportServer, MqttClientProxy, MqttContext, MqttRecord, MqttRecordBuilder, MqttServer, MqttStatus, NatsClientProxy, NatsContext, NatsRecord, NatsRecordBuilder, NatsRequestJSONDeserializer, NatsResponseJSONDeserializer, NatsServer, NatsStatus, NatsTransportAdapter, NatsTransportServer, NestMicroservice, normalizePattern, parseGrpcTimeout, parseGrpcTrailers, PATTERN_EXTRAS_METADATA, PATTERN_HANDLER_METADATA, PATTERN_METADATA, Payload, RabbitMqClientProxy, RabbitMqServer, RabbitMqTransportAdapter, RabbitMqTransportServer, RedisClientProxy, RedisContext, RedisRecord, RedisRecordBuilder, RedisServer, RedisStatus, RedisTransportAdapter, RedisTransportServer, RmqContext, RmqRecord, RmqRecordBuilder, RmqStatus, RPC_PARAM_METADATA, RpcException, RpcExecutionContext, RpcTimeoutException, Server, ServerGrpc, ServerKafka, ServerMqtt, ServerNats, ServerRedis, ServerRMQ, ServerTCP, TcpClientProxy, TcpContext, TcpServer, TcpStatus, toPacketMetadata, Transport, TRANSPORT_METADATA
+
+## @bunest/observability
+
+Distributed W3C tracing, OpenTelemetry OTLP export, Prometheus metrics, Terminus-style health checks, correlated logging, and Devtools graph introspection for Bunest
+
+### `@bunest/observability` (89)
+
+AttemptCache, CHECK_DISK_SPACE_LIB, ConsoleSpanExporter, Counted, CountedAspectHandler, Counter, createTracingMiddleware, CustomHealthIndicator, DEFAULT_HTTP_BUCKETS, defaultCheckDiskSpace, DEVTOOLS_OPTIONS, DevtoolsModule, DevtoolsService, DiskHealthIndicator, DurationUnit, EVENT_LOOP_HEALTH_MAX_DELAY, EventLoopHealthIndicator, extractTraceContext, FetchHealthIndicator, formatBaggage, formatTraceParent, formatTraceState, Gauge, generateSpanId, generateTraceId, GraphPublisher, GRPCHealthIndicator, HEALTH_CHECK_METADATA, HEALTH_MODULE_OPTIONS, HealthCheck, HealthCheckAttempt, HealthCheckError, HealthCheckException, HealthCheckService, HealthCheckStatus, HealthIndicator, HealthIndicatorAttempt, HealthIndicatorService, HealthIndicatorSession, HealthIndicatorStatus, HealthModule, Histogram, HttpHealthIndicator, HttpMetricsInterceptor, injectTraceContext, InMemorySpanExporter, MEMORY_HEALTH_HEAP_LIMIT, MEMORY_HEALTH_RSS_LIMIT, MemoryHealthIndicator, METRICS_MODULE_OPTIONS, MetricsModule, MetricsRegistry, MicroserviceHealthIndicator, NotServingError, OBSERVABILITY_LOGGER_OPTIONS, ObservabilityLogger, ObservabilityModule, OrmHealthIndicator, OtlpHttpSpanExporter, parseBaggage, parseTraceParent, parseTraceState, PrismaHealthIndicator, PROMETHEUS_CONTENT_TYPE, QueueHealthIndicator, ResponseStatusError, SizeUnit, Span, SpanAspectHandler, spanDataToOtlp, SqlHealthIndicator, TERMINUS_LOGGER, TERMINUS_MODULE_OPTIONS, TerminusModule, Timed, TimedAspectHandler, TimeoutError, toBytes, toMs, toOtlpAttributes, Trace, traceContextStorage, TraceContextStorage, Tracer, TRACER_OPTIONS, TraceSpan, TracingInterceptor, TracingMiddleware, TracingModule
+
+### `@bunest/observability/tracing` (24)
+
+ConsoleSpanExporter, createTracingMiddleware, extractTraceContext, formatBaggage, formatTraceParent, formatTraceState, generateSpanId, generateTraceId, injectTraceContext, InMemorySpanExporter, OtlpHttpSpanExporter, parseBaggage, parseTraceParent, parseTraceState, Span, spanDataToOtlp, toOtlpAttributes, traceContextStorage, TraceContextStorage, Tracer, TRACER_OPTIONS, TracingInterceptor, TracingMiddleware, TracingModule
+
+### `@bunest/observability/metrics` (9)
+
+Counter, DEFAULT_HTTP_BUCKETS, Gauge, Histogram, HttpMetricsInterceptor, METRICS_MODULE_OPTIONS, MetricsModule, MetricsRegistry, PROMETHEUS_CONTENT_TYPE
+
+### `@bunest/observability/health` (42)
+
+AttemptCache, CHECK_DISK_SPACE_LIB, CustomHealthIndicator, defaultCheckDiskSpace, DiskHealthIndicator, DurationUnit, EVENT_LOOP_HEALTH_MAX_DELAY, EventLoopHealthIndicator, FetchHealthIndicator, formatErrorMessage, GRPCHealthIndicator, HEALTH_CHECK_METADATA, HEALTH_MODULE_OPTIONS, HealthCheck, HealthCheckAttempt, HealthCheckError, HealthCheckException, HealthCheckService, HealthCheckStatus, HealthIndicator, HealthIndicatorService, HealthIndicatorSession, HealthIndicatorStatus, HealthModule, HttpHealthIndicator, MEMORY_HEALTH_HEAP_LIMIT, MEMORY_HEALTH_RSS_LIMIT, MemoryHealthIndicator, MicroserviceHealthIndicator, NotServingError, OrmHealthIndicator, PrismaHealthIndicator, QueueHealthIndicator, ResponseStatusError, SizeUnit, SqlHealthIndicator, TERMINUS_LOGGER, TERMINUS_MODULE_OPTIONS, TerminusModule, TimeoutError, toBytes, toMs
+
+### `@bunest/observability/devtools` (4)
+
+DEVTOOLS_OPTIONS, DevtoolsModule, DevtoolsService, GraphPublisher
+
+## @bunest/orm
+
+Circular-safe, zero-dependency Bun-native ORM, declarative compiled-once repositories, migrations, and SQL store kit for Bunest
+
+### `@bunest/orm` (195)
+
+AfterInsert, AfterLoad, AfterRemove, AfterUpdate, And, assertSafeSqlIdentifier, attachSafeToJson, BaseEntity, BeforeInsert, BeforeRemove, BeforeUpdate, BelongsTo, Between, buildBunSqlConfig, BunSqlOrmDriver, camelToSnake, CircularEmbeddedError, clearOrmFeatureRegistry, clearRegisteredQueryOperators, Column, compileMetadataGraph, compileOrmRepository, composeRepository, createCursorPageable, CreateDateColumn, createDriverFromOptions, createOrmCircularSafePlugin, createPageable, createSoftDeleteMethods, createSoftDeleteScope, CrudRepository, CURSOR_PAGEABLE_BRAND, D1OrmDriver, DataSource, DataSourceNotInitializedError, DeclarativeRepository, decodeBson, decodeOpMsg, DEFAULT_ORM_DATA_SOURCE, DEFAULT_ORM_MIGRATIONS_TABLE, defineEmbeddable, defineEntity, defineRepositoryFragment, DeleteDateColumn, DeleteQueryBuilder, Embeddable, Embedded, Embeds, encodeBson, encodeOpMsg, Entity, EntityManager, EntityMetadataNotFoundError, EntityNotFoundError, entityRef, Equal, escapeLikePattern, extractInversePropertyName, FindOperator, formatPlaceholder, formatTableRef, generateObjectId, generateSchemaPlan, getAmbientIgnoredScopes, getDialectProfile, getEntityColumns, getEntityIndexes, getEntitySchema, getInheritanceChain, getMethodIgnoreScope, getMethodProjection, getOrmDataSourceToken, getOrmEntityManagerToken, getOrmMigrationRunnerToken, getOrmRepositoryMetadata, getOrmRepositoryToken, getOrmTransactionalAspectToken, getRegisteredQueryOperator, getRepositoryFragments, getRepositoryScopes, getSoftDeleteConfig, getSupportedDialects, hasEntitySchema, HasMany, HasOne, IdentityMap, IgnoreScope, ILike, In, Index, inferTableName, InjectDataSource, InjectEntityManager, InjectOrmMigrations, InjectRepository, InsertQueryBuilder, isCursorPageable, isDeclarativeOrmRepository, isDocumentDriver, isEntityRef, isFindOperator, IsNull, isPageable, isScopeIgnored, JoinColumn, JoinTable, LessThan, LessThanOrEqual, LibSqlOrmDriver, Like, listRegisteredQueryOperators, makeConstraintName, ManyToMany, ManyToManyOf, ManyToOne, matchesMongoFilter, Modifying, MONGO_OP_MSG, MongoOrmDriver, MongoRepository, MoreThan, MoreThanOrEqual, Nested, normalizeDialect, Not, ObjectId, ObjectIdColumn, OneToMany, OneToOne, OptimisticLockError, Or, ORM_CUSTOM_QUERY_OPERATORS_SYMBOL, ORM_DATA_SOURCE_NAME, ORM_ENTITY_META, ORM_IGNORE_SCOPE_METADATA, ORM_MODIFYING_METADATA, ORM_MODULE_OPTIONS, ORM_PARAM_METADATA, ORM_PROJECTION_METADATA, ORM_QUERY_METADATA, ORM_REPOSITORY_FRAGMENTS_METADATA, ORM_REPOSITORY_METADATA, ORM_REPOSITORY_SCOPES_METADATA, ORM_SHADOW_FKS, ORM_SOFT_DELETE_CONFIG_METADATA, OrmCoreModule, OrmDriverRegistry, OrmError, OrmMetadataStorage, OrmMigrationRunner, OrmModule, OrmQuery, OrmRepository, OrmTransactionalAspect, PAGEABLE_BRAND, Param, pluralizeWord, PrimaryColumn, PrimaryGeneratedColumn, PrimaryKey, Projection, Query, QueryFailedError, quoteIdentifier, Raw, registerOrmCircularSafePlugin, registerQueryOperator, RelationMetadataError, ReplicatedOrmDriver, Repository, RepositoryScope, resolveConstructor, resolveEntityTargetClass, runWithIgnoredScopes, safeInstantiate, SchemaBuilder, SelectQueryBuilder, serializeEntity, SoftDelete, splitSqlStatements, SqliteOrmDriver, SqlParam, TenantScoped, toPlainObject, Transactional, transformCircularMetadataJs, transformCircularMetadataSource, Unique, unregisterQueryOperator, UpdateDateColumn, UpdateQueryBuilder, UseRepositoryFragments, VersionColumn, withCursorPagination, withSoftDelete
+
+### `@bunest/orm/plugin` (4)
+
+createOrmCircularSafePlugin, registerOrmCircularSafePlugin, transformCircularMetadataJs, transformCircularMetadataSource
+
+### `@bunest/orm/store` (7)
+
+createBunSqlExecutor, isNotATransactionError, runStoreCli, toBool, toInt, toJson, toText
+
+### `@bunest/orm/postgres` (17)
+
+advisoryLock, assertReadCommittedTransaction, columns, fromBunSql, fromDrizzle, fromKysely, fromPg, fromPrisma, fromTypeOrm, isNotATransactionError, quoteSchema, SqlParams, StoreSchema, toBool, toInt, toJson, toText
+
+### `@bunest/orm/mysql` (22)
+
+columns, ensureLockRows, fromBunSql, fromDrizzle, fromKysely, fromMysql2, fromPrisma, fromTypeOrm, isNotATransactionError, keyColumn, lockKeys, lockRowId, mysqlErrorCode, quoteIdentifier, quoteTable, retryOnDeadlock, SqlParams, StoreSchema, toBool, toInt, toJson, toText
+
+### `@bunest/orm/testing` (1)
+
+sqlExecutorContract
+
+## @bunest/resilience
+
+Resilience policies (retry, timeout, circuit breaker, bulkhead, fallback), leased distributed locks (@WithLock, leader election), and @Idempotent() deduplication for Bunest
+
+### `@bunest/resilience` (27)
+
+Bulkhead, BulkheadFullError, BulkheadPolicy, CircuitBreaker, CircuitBreakerPolicy, CircuitOpenError, Fallback, FallbackPolicy, isClientError, OutboundRateLimitError, OutboundRateLimitPolicy, Resilience, RESILIENCE_METHOD_ASPECT, RESILIENCE_MODULE_OPTIONS, ResilienceContext, ResilienceError, ResilienceEvents, ResilienceMethodAspectHandler, ResilienceModule, ResiliencePolicy, ResilienceService, ResilienceTimeoutError, Retry, RetryPolicy, Signal, Timeout, TimeoutPolicy
+
+### `@bunest/resilience/locks` (18)
+
+InMemoryLockStore, LeaderElection, Lock, LockLostError, LockNotAcquiredError, Locks, LOCKS_MODULE_OPTIONS, LocksContext, LocksError, LocksEvents, LocksModule, LocksStorage, LockStoreTimeoutError, ManualLockClock, OnOneInstance, WithLock, WithLockAspectHandler, WithoutOverlapping
+
+### `@bunest/resilience/locks/testing` (1)
+
+lockStoreContract
+
+### `@bunest/resilience/idempotency` (7)
+
+IDEMPOTENCY_MODULE_OPTIONS, IdempotencyEvents, IdempotencyModule, IdempotencyStorage, IdempotencyStoreTimeoutError, Idempotent, InMemoryIdempotencyStore
+
+### `@bunest/resilience/idempotency/testing` (1)
+
+idempotencyStoreContract
+
+## @bunest/security
+
+Unified security, authentication (JWT/JWKS, sessions, TOTP MFA, magic links, OIDC/OAuth2, API keys, Bun.password), policy authorization (@Policy/@Can), CSRF (Bun.CSRF), rate limiting, and security headers for Bunest
+
+### `@bunest/security` (114)
+
+AbstractStrategy, API_KEY_AUTH_STRATEGY_OPTIONS, ApiKeyAuthStrategy, Auth, AUTH_MODULE_OPTIONS, AuthGuard, AuthModule, AuthModuleOptions, AuthStrategyRegistry, base64UrlDecode, base64UrlDecodeUtf8, base64UrlEncode, BASIC_AUTH_STRATEGY_OPTIONS, BasicAuthStrategy, BunestPassportInstance, CheckPolicies, computePkceChallenge, createSecurityHeadersMiddleware, CSRF_OPTIONS, CsrfGuard, CurrentUser, days, DEFAULT_IPV6_SUBNET_PREFIX, DEFAULT_SWEEP_INTERVAL, defaultPassportInstance, extractBearerToken, extractCookieToken, generateNonce, generatePkcePair, generateState, getOptionsToken, getRequestUser, getStorageToken, hours, importPublicJwk, InjectThrottlerOptions, InjectThrottlerStorage, IS_PUBLIC_KEY, isValidPkceVerifier, JsonWebTokenError, JWKS_CLIENT_OPTIONS, JWKS_JWT_AUTH_STRATEGY_OPTIONS, JwksClient, JwksJwtAuthStrategy, JwksModule, JwksService, JWT_AUTH_GUARD_OPTIONS, JWT_AUTH_STRATEGY_OPTIONS, JWT_MODULE_OPTIONS, JwtAuthGuard, JwtAuthStrategy, JwtException, JwtExpiredException, JwtInvalidException, JwtModule, JwtNotBeforeException, JwtSecretRequestType, JwtService, MEMORY_THROTTLER_SWEEP_MS, MemoryThrottlerStorage, minutes, normalizeIp, NotBeforeError, OAUTH2_MODULE_OPTIONS, OAuth2Exception, OAuth2Module, OAuth2Providers, OAuth2Service, OIDC_MODULE_OPTIONS, OidcModule, OidcService, parseDurationToSeconds, PassportModule, PassportSerializer, PassportStrategy, PASSWORD_OPTIONS, PasswordService, pemToArrayBuffer, POLICIES_KEY, PoliciesGuard, Protected, Public, randomBytes, randomToken, Roles, ROLES_GUARD_OPTIONS, ROLES_KEY, RolesGuard, seconds, SECURITY_HEADERS_OPTIONS, SECURITY_MODULE_OPTIONS, SecurityHeadersMiddleware, SecurityModule, SESSION_COOKIE_OPTIONS, SessionCookieService, setRequestUser, SKIP_THROTTLE_METADATA, SkipThrottle, Throttle, THROTTLE_METADATA, THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerException, ThrottlerGuard, throttlerMessage, ThrottlerModule, ThrottlerStorage, ThrottlerStorageService, timingSafeEqualBytes, timingSafeEqualString, TokenExpiredError, verifyPkceChallenge, weeks, WrongSecretProviderError
+
+### `@bunest/security/auth` (46)
+
+ApiKeyProvider, Authenticate, AUTHENTICATION_MODULE_OPTIONS, AuthenticationContext, AuthenticationError, AuthenticationEvents, AuthenticationGuard, AuthenticationModule, AuthenticationProvider, AuthenticationRegistry, AuthenticationStorage, CurrentSession, CurrentUser, EmailVerificationHandler, EmailVerificationService, github, google, InMemoryEmailTokenStore, InMemoryMagicLinkStore, InMemoryMfaStore, InMemoryOidcStateStore, InMemoryRefreshTokenStore, InMemorySessionStore, JwksClient, JwtBearerProvider, JwtError, JwtSigner, JwtVerifier, MagicLinkError, MagicLinkHandler, MagicLinkService, MfaAlreadyEnrolledError, MfaService, microsoft, OidcAccountResolver, OidcService, PasswordHasher, PasswordResetHandler, PasswordResetService, Public, RefreshTokenError, SessionCookieProvider, SessionService, SignInService, TokenService, WsAuthenticator
+
+### `@bunest/security/authz` (9)
+
+AUTHORIZATION_MODULE_OPTIONS, AuthorizationError, AuthorizationEvents, AuthorizationGuard, AuthorizationModule, AuthorizationService, Can, defaultGetUser, Policy
+
+### `@bunest/security/jwt` (12)
+
+JsonWebTokenError, JWT_MODULE_OPTIONS, JwtException, JwtExpiredException, JwtInvalidException, JwtModule, JwtNotBeforeException, JwtSecretRequestType, JwtService, NotBeforeError, TokenExpiredError, WrongSecretProviderError
+
+### `@bunest/security/throttler` (26)
+
+days, DEFAULT_IPV6_SUBNET_PREFIX, DEFAULT_SWEEP_INTERVAL, getOptionsToken, getStorageToken, hours, InjectThrottlerOptions, InjectThrottlerStorage, MEMORY_THROTTLER_SWEEP_MS, MemoryThrottlerStorage, minutes, normalizeIp, seconds, SKIP_THROTTLE_METADATA, SkipThrottle, Throttle, THROTTLE_METADATA, THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerException, ThrottlerGuard, throttlerMessage, ThrottlerModule, ThrottlerStorage, ThrottlerStorageService, weeks
+
+### `@bunest/security/testing` (1)
+
+authenticationStoreContract
+
+## @bunest/storage
+
+File storage for Bunest: unified API for local disks, in-memory storage, and S3/R2/MinIO with native SigV4 fetch, streamed uploads, and signed URLs
+
+### `@bunest/storage` (25)
+
+assertValidKey, assertValidPrefix, BunS3Disk, detectContentType, getDiskToken, InjectDisk, InMemoryDisk, LocalDisk, receiveSignedUpload, S3Disk, serveFile, serveSignedUrl, Storage, STORAGE_MODULE_OPTIONS, StorageBodyLengthError, StorageDisk, StorageError, StorageFileNotFoundError, StorageInvalidKeyError, StorageKeyConflictError, StorageModule, StorageRangeNotSatisfiableError, StorageServiceError, StorageSignedUrlError, uploadToDisk
+
+### `@bunest/storage/s3` (2)
+
+BunS3Disk, S3Disk
+
+### `@bunest/storage/local` (1)
+
+LocalDisk
+
+### `@bunest/storage/memory` (1)
+
+InMemoryDisk
+
+## @bunest/swagger
+
+OpenAPI 3.1 metadata decorators, DocumentBuilder, schema introspection, and Swagger UI explorer for Bunest
+
+### `@bunest/swagger` (101)
+
+ApiAcceptedResponse, ApiAmbiguousResponse, ApiApiKey, ApiBadGatewayResponse, ApiBadRequestResponse, ApiBasicAuth, ApiBearerAuth, ApiBody, ApiCallbacks, ApiConflictResponse, ApiConsumes, ApiContinueResponse, ApiCookieAuth, ApiCreatedResponse, ApiDefaultGetter, ApiDefaultResponse, ApiEarlyhintsResponse, ApiExcludeController, ApiExcludeEndpoint, ApiExpectationFailedResponse, ApiExtension, ApiExtraModels, ApiFailedDependencyResponse, ApiForbiddenResponse, ApiFoundResponse, ApiGatewayTimeoutResponse, ApiGoneResponse, ApiHeader, ApiHeaders, ApiHideProperty, ApiHttpVersionNotSupportedResponse, ApiIAmATeapotResponse, ApiIncludeEndpoint, ApiInternalServerErrorResponse, ApiLengthRequiredResponse, ApiLink, ApiMethodNotAllowedResponse, ApiMisdirectedResponse, ApiMovedPermanentlyResponse, ApiNoContentResponse, ApiNonAuthoritativeInformationResponse, ApiNotAcceptableResponse, ApiNotFoundResponse, ApiNotImplementedResponse, ApiNotModifiedResponse, ApiOAuth2, ApiOkResponse, ApiOperation, ApiParam, ApiPartialContentResponse, ApiPayloadTooLargeResponse, ApiPaymentRequiredResponse, ApiPermanentRedirectResponse, ApiPreconditionFailedResponse, ApiPreconditionRequiredResponse, ApiProcessingResponse, ApiProduces, ApiProperty, ApiPropertyOptional, ApiProxyAuthenticationRequiredResponse, ApiQuery, ApiRequestedRangeNotSatisfiableResponse, ApiRequestTimeoutResponse, ApiResetContentResponse, ApiResponse, ApiResponseProperty, ApiSchema, ApiSecurity, ApiSeeOtherResponse, ApiServiceUnavailableResponse, ApiSwitchingProtocolsResponse, ApiTags, ApiTemporaryRedirectResponse, ApiTooManyRequestsResponse, ApiUnauthorizedResponse, ApiUnprocessableEntityResponse, ApiUnsupportedMediaTypeResponse, ApiUriTooLongResponse, ApiWebhook, CompositionType, convertPathToOpenApi, DECORATORS, DECORATORS_PREFIX, DeepPartialType, defaultStandardSchemaConverter, DocumentBuilder, generateSchema, getSchemaPath, IntersectionType, isStandardJsonSchema, normalizeEnumValues, OmitType, PartialType, PickType, refs, renderSwaggerHtml, SchemaExplorer, serializeSafeJsonForHtml, serializeToYaml, SWAGGER_METADATA_KEYS, SwaggerModule
+
+## @bunest/testing
+
+Testing module builder, DI/enhancer overrides, in-memory HTTP test client, and mock fixtures for Bunest
+
+### `@bunest/testing` (28)
+
+CapturingLogger, ContextIdFactory, CookieJar, createAutoMocker, createMockCallHandler, createMockExecutionContext, createMockFn, createMockLogger, createMockProvider, createMockReflector, createMockRequest, createMockResponseContext, createNodeHttpServer, ModuleMocker, parseSseJson, readSseEvents, request, runWithMockRequestContext, ScopedTestingModule, SupertestAgent, SupertestRequest, Test, TestAgent, TestClient, TestingLogger, TestingModule, TestingModuleBuilder, TestResponse
+
+## @bunest/validation
+
+Zero-dependency Bun-native DTO validation & transformation engine (compile-once validator, transformer, ValidationPipe, ClassSerializerInterceptor, Standard Schema)
+
+### `@bunest/validation` (34)
+
+applyIsOptionalDecorator, applyValidateIfDefinedDecorator, CLASS_SERIALIZER_OPTIONS, ClassSerializerInterceptor, classTransformerMappedTypeHook, CompositionType, DANGEROUS_PROTOTYPE_KEYS, DEFAULT_MAX_ERROR_MESSAGES_LENGTH, findDangerousKeys, flattenValidationErrors, formatStandardSchemaIssues, formatStandardSchemaPath, formatValidationErrorResponse, inheritPropertyInitializers, inheritTransformationMetadata, inheritValidationMetadata, IntersectionType, OMITTED_ERRORS_MESSAGE, OmitType, PartialType, PickType, registerClassTransformerMappedTypeHook, registerMappedTypeMetadataHook, resolveMaxErrorMessagesLength, SchemaValidationPipe, SerializeOptions, STANDARD_SCHEMA_SERIALIZER_METADATA, StandardSchemaSerializerInterceptor, StandardSchemaValidationPipe, stripDangerousKeys, UseStandardSchema, validateEntity, VALIDATION_PIPE_OPTIONS, ValidationPipe
+
+### `@bunest/validation/validator` (346)
+
+Allow, ARRAY_CONTAINS, ARRAY_MAX_SIZE, ARRAY_MIN_SIZE, ARRAY_NOT_CONTAINS, ARRAY_NOT_EMPTY, ARRAY_UNIQUE, arrayContains, ArrayContains, arrayMaxSize, ArrayMaxSize, arrayMinSize, ArrayMinSize, arrayNotContains, ArrayNotContains, arrayNotEmpty, ArrayNotEmpty, arrayUnique, ArrayUnique, buildMessage, BUNEST_VALIDATOR_STORAGE_SYMBOL, canValidateSynchronously, constraintToString, contains, Contains, CONTAINS, createConstraintMetadata, createValidationMetadata, equals, Equals, EQUALS, getCompiledValidationPlan, getFromContainer, getMetadataStorage, IS_ALPHA, IS_ALPHANUMERIC, IS_ARRAY, IS_ASCII, IS_BASE32, IS_BASE58, IS_BASE64, IS_BIC, IS_BOOLEAN, IS_BOOLEAN_STRING, IS_BTC_ADDRESS, IS_BYTE_LENGTH, IS_CREDIT_CARD, IS_CURRENCY, IS_DATA_URI, IS_DATE, IS_DATE_STRING, IS_DECIMAL, IS_DEFINED, IS_DIVISIBLE_BY, IS_EAN, IS_EMAIL, IS_EMPTY, IS_ENUM, IS_ETHEREUM_ADDRESS, IS_FIREBASE_PUSH_ID, IS_FQDN, IS_FULL_WIDTH, IS_HALF_WIDTH, IS_HASH, IS_HEX_COLOR, IS_HEXADECIMAL, IS_HSL, IS_IBAN, IS_IDENTITY_CARD, IS_IN, IS_INSTANCE, IS_INT, IS_IP, IS_ISBN, IS_ISIN, IS_ISO31661_ALPHA_2, IS_ISO31661_ALPHA_3, IS_ISO4217_CURRENCY_CODE, IS_ISO8601, IS_ISRC, IS_ISSN, IS_JSON, IS_JWT, IS_LATITUDE, IS_LATLONG, IS_LENGTH, IS_LOCALE, IS_LONGITUDE, IS_LOWERCASE, IS_MAC_ADDRESS, IS_MAGNET_URI, IS_MILITARY_TIME, IS_MIME_TYPE, IS_MOBILE_PHONE, IS_MONGO_ID, IS_MULTIBYTE, IS_NEGATIVE, IS_NOT_EMPTY, IS_NOT_EMPTY_OBJECT, IS_NOT_IN, IS_NUMBER, IS_NUMBER_STRING, IS_OBJECT, IS_OCTAL, IS_OPTIONAL, IS_PASSPORT_NUMBER, IS_PHONE_NUMBER, IS_PORT, IS_POSITIVE, IS_POSTAL_CODE, IS_RFC_3339, IS_RFC3339, IS_RGB_COLOR, IS_SEM_VER, IS_STRING, IS_STRONG_PASSWORD, IS_SURROGATE_PAIR, IS_TAX_ID, IS_TIMEZONE, IS_UPPERCASE, IS_URL, IS_UUID, IS_VARIABLE_WIDTH, isAlpha, IsAlpha, isAlphanumeric, IsAlphanumeric, isArray, IsArray, isAscii, IsAscii, isBase32, IsBase32, isBase58, IsBase58, isBase64, IsBase64, isBIC, IsBIC, isBoolean, IsBoolean, isBooleanString, IsBooleanString, isBtcAddress, IsBtcAddress, isByteLength, IsByteLength, isCreditCard, IsCreditCard, isCurrency, IsCurrency, isDataURI, IsDataURI, isDate, IsDate, isDateString, IsDateString, isDecimal, IsDecimal, isDefined, IsDefined, isDivisibleBy, IsDivisibleBy, isEAN, IsEAN, isEmail, IsEmail, isEmpty, IsEmpty, isEnum, IsEnum, isEthereumAddress, IsEthereumAddress, isFirebasePushId, IsFirebasePushId, isFQDN, IsFQDN, isFullWidth, IsFullWidth, isHalfWidth, IsHalfWidth, isHash, IsHash, isHexadecimal, IsHexadecimal, isHexColor, IsHexColor, isHSL, IsHSL, isIBAN, IsIBAN, isIdentityCard, IsIdentityCard, isIn, IsIn, isInstance, IsInstance, isInt, IsInt, isIP, IsIP, isISBN, IsISBN, isISIN, IsISIN, isISO31661Alpha2, IsISO31661Alpha2, isISO31661Alpha3, IsISO31661Alpha3, isISO4217CurrencyCode, IsISO4217CurrencyCode, isISO8601, IsISO8601, isISRC, IsISRC, isISSN, IsISSN, isJSON, IsJSON, isJWT, IsJWT, isLatitude, IsLatitude, isLatLong, IsLatLong, isLocale, IsLocale, isLongitude, IsLongitude, isLowercase, IsLowercase, isMACAddress, IsMACAddress, isMagnetURI, IsMagnetURI, isMilitaryTime, IsMilitaryTime, isMimeType, IsMimeType, isMobilePhone, IsMobilePhone, isMongoId, IsMongoId, isMultibyte, IsMultibyte, isNegative, IsNegative, isNotEmpty, IsNotEmpty, isNotEmptyObject, IsNotEmptyObject, isNotIn, IsNotIn, isNumber, IsNumber, isNumberString, IsNumberString, isObject, IsObject, isOctal, IsOctal, IsOptional, isPassportNumber, IsPassportNumber, isPhoneNumber, IsPhoneNumber, isPort, IsPort, isPositive, IsPositive, isPostalCode, IsPostalCode, isRFC3339, IsRFC3339, isRgbColor, IsRgbColor, isSemVer, IsSemVer, isString, IsString, isStrongPassword, IsStrongPassword, isSurrogatePair, IsSurrogatePair, isTaxId, IsTaxId, isTimeZone, IsTimeZone, isUppercase, IsUppercase, isURL, IsUrl, isUUID, IsUUID, isValidationOptions, isVariableWidth, IsVariableWidth, length, Length, matches, Matches, MATCHES, max, Max, MAX, MAX_DATE, MAX_LENGTH, maxDate, MaxDate, maxLength, MaxLength, MetadataStorage, min, Min, MIN, MIN_DATE, MIN_LENGTH, minDate, MinDate, minLength, MinLength, NOT_CONTAINS, NOT_EQUALS, notContains, NotContains, notEquals, NotEquals, registerDecorator, registerPhoneNumberValidator, registerSchema, replaceMessageSpecialTokens, useContainer, validate, Validate, ValidateBy, ValidateIf, validateMaybeSync, ValidateNested, validateOrReject, ValidatePromise, validateSync, ValidationError, ValidationExecutor, ValidationTypes, Validator, ValidatorConstraint
+
+### `@bunest/validation/transformer` (26)
+
+BUNEST_TRANSFORMER_STORAGE_SYMBOL, classToClassFromExist, classToPlain, classToPlainFromExist, ClassTransformer, DEFAULT_TRANSFORM_OPTIONS, defaultMetadataStorage, deserialize, deserializeArray, Exclude, Expose, getCompiledTransformPlan, getMetadataStorage, instanceToInstance, instanceToPlain, plainToClass, plainToClassFromExist, plainToInstance, serialize, Transform, TransformationType, TransformInstanceToInstance, TransformInstanceToPlain, TransformMetadataStorage, TransformPlainToInstance, Type
+
+### `@bunest/validation/standard-schema` (6)
+
+formatStandardSchemaIssues, formatStandardSchemaPath, STANDARD_SCHEMA_SERIALIZER_METADATA, StandardSchemaSerializerInterceptor, StandardSchemaValidationPipe, UseStandardSchema
+
+## @bunest/workflows
+
+Durable workflows for Bunest: long-running processes written as plain async code that survive restarts, with replay, signals, timers, sagas, schedules, CQRS, and SQL stores.
+
+### `@bunest/workflows` (26)
+
+AesGcmPayloadCodec, ChildWorkflowFailedError, InMemoryWorkflowStore, isWorkflowInterrupt, ManualWorkflowClock, NonRetryableStepError, StepFailedError, StepTimeoutError, Workflow, WorkflowClient, WorkflowDefinitionError, WorkflowError, WorkflowEvents, WorkflowFailedError, WorkflowIdConflictError, WorkflowInterrupt, WorkflowNonDeterminismError, WorkflowNotFoundError, WorkflowResultTimeoutError, WORKFLOWS_MODULE_OPTIONS, WorkflowSchedules, WorkflowSignal, WorkflowsModule, WorkflowStateError, WorkflowStorage, WorkflowWorker
+
+### `@bunest/workflows/testing` (2)
+
+scheduleStoreContract, workflowStoreContract
+
+### `@bunest/workflows/cqrs` (3)
+
+SignalOn, StartOn, WorkflowsCqrsModule
+
+### `@bunest/workflows/postgres` (7)
+
+fromDrizzle, fromKysely, fromPg, fromPrisma, fromTypeOrm, PostgresWorkflowStore, WorkflowSchemaError
+
+### `@bunest/workflows/mysql` (7)
+
+fromDrizzle, fromKysely, fromMysql2, fromPrisma, fromTypeOrm, MySqlWorkflowStore, WorkflowSchemaError
+
+### `@bunest/workflows/core` (23)
+
+AesGcmPayloadCodec, assertPriority, assertScheduleId, backoffDelay, InMemoryScheduleStore, isEncodedPayload, LeasedWorker, ManualClock, MAX_PRIORITY, nextOccurrences, nextRetry, occurrenceId, parseDuration, parseSchedule, PayloadCodecs, rateWindowRoom, resolveConcurrency, resolveRateLimit, resolveRetry, ResultWaiter, Scheduler, systemClock, takeRateWindow
+
+---
+
+<!-- source: AGENTS.md -->
+
+# AGENTS.md — Bunest framework repository
+
+Instructions for AI coding agents (Antigravity, Claude Code, Cursor, Codex, …) working **on the Bunest framework itself**.
+For apps built *with* Bunest, `bunest new` scaffolds a separate app-level `AGENTS.md`.
+
+## Repository map
+
+- `packages/*` — 19 publishable `@bunest/*` packages (source in `src/`, tests in `test/`). Public API = `package.json#exports`.
+- `tests/` — cross-package specs (`nestjs-conformance/`, security fuzz, concurrency/leak, API parity).
+- `examples/`, `apps/playground` — runnable reference apps. `apps/vscode-bunest` — VS Code extension.
+- `docs/` — guides and ADRs (`docs/adr/`). ADRs are binding contracts; read the relevant one before changing architecture.
+- `scripts/` — release gates (`verify-release.ts`), type audits, AI docs generator (`ai-docs.ts`).
+
+## Hard rules (enforced by `bun run verify:release`)
+
+1. **Zero external runtime deps** in every package (`ADR-017`). Use Bun APIs (`Bun.serve`, `Bun.SQL`, `Bun.RedisClient`, `Bun.password`, `Bun.CryptoHasher`, …).
+2. **No `node:*` imports** anywhere except the two quarantined adapters in `packages/core/src/common/runtime/`. No `setImmediate`.
+3. **No circular runtime imports**, and the cross-package dependency graph must stay a DAG.
+4. **Legacy decorators** (`experimentalDecorators` + `emitDecoratorMetadata`), `verbatimModuleSyntax: true`:
+   value-import DI classes/DTOs/entities, `import type` only for interfaces/type aliases.
+5. **No RxJS**: interceptors return `Promise<T>`.
+
+## Conventions
+
+- **NestJS conformance (`tests/nestjs-conformance/`)**: never add `.skip`, never weaken or delete an upstream
+  assertion. To un-skip a `// BUNEST_BUG:` test, fix `packages/*/src`, remove the `.skip` and the comment, then run
+  `bun run conformance:gate --update`. If a test truly conflicts with an ADR, stop and ask (do not adapt silently).
+
+- Bootstrap/routing errors must carry a stable `BUNEST_E*` code. Add new codes to
+  `packages/core/src/errors/error-catalog.ts` (with ordered `fixes`), then run `bun run ai:docs`.
+- Generated files — never edit by hand: `docs/errors.md`, `llms.txt`, `llms-full.txt` (`bun run ai:docs`).
+- New public exports go through the package `src/index.ts` (or subpath index) and need a test.
+- Keep error messages actionable: say what failed, where (module/class/param), and how to fix.
+
+## Verification loop (run before declaring a task done)
+
+```bash
+bun run typecheck                                  # bun check, must be 0 errors
+bun test <path-or-filter>                          # targeted tests first, then the full suite
+bun run ai:docs --check                            # generated AI docs are fresh
+bun run conformance:gate                           # conformance skips never increase, 0 fail
+bun run build && bun run verify:release            # before release-affecting changes
+```
+
+App-style one-shot check (compact output for agents):
+
+```bash
+bun packages/cli/src/cli.ts verify <test-filter> --reporter=agent
+```
+
+## Where to look
+
+| Task | Start here |
+| --- | --- |
+| DI / module graph | `packages/core/src/di/di-container.ts`, `packages/core/src/module/module-scanner.ts` |
+| HTTP pipeline / routing | `packages/core/src/http/` |
+| Validation | `packages/validation/src/` |
+| ORM / repositories | `packages/orm/src/declarative-repository.ts`, `packages/orm/src/driver/` |
+| CLI commands | `packages/cli/src/runner.ts`, `packages/cli/src/commands/` |
+| Static diagnostics (`BUNEST*`) | `packages/cli/src/analyzer/diagnostics.ts` |
+
+---
+
+<!-- source: docs/quickstart.md -->
+
+# Quickstart — Build a Validated REST CRUD API in < 15 Minutes
+
+This guide walks through creating, running, documenting, and testing a complete NestJS-style REST CRUD API with **Bunest** on **Bun >= 1.4.5**.
+
+---
+
+## Prerequisites
+
+- **Bun >= 1.4.5** (`bun --version`)
+- No Node.js, Express, or Fastify required.
+
+---
+
+## Step 1: Scaffold a New Project with the Bunest CLI
+
+Use the Bunest CLI (`@bunest/cli`) to scaffold a project with legacy decorator support preconfigured:
+
+```bash
+bunx @bunest/cli new users-api
+cd users-api
+```
+
+Or initialize manually with the required `tsconfig.json` settings (see [ADR-002](./adr/ADR-002.md)):
+
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noEmit": true,
+    "types": ["bun"]
+  }
+}
+```
+
+Install core dependencies:
+
+```bash
+bun add @bunest/core @bunest/validation @bunest/swagger
+bun add -d @bunest/testing @types/bun
+```
+
+> **Important (`verbatimModuleSyntax: true`):** Always **value-import** DI service classes and DTO classes (`import { CreateUserDto } from "./create-user.dto"`) so Bun emits `design:paramtypes` metadata, and always use **`import type`** for TypeScript interfaces and type aliases (`import type { User } from "./user.interface"`).
+
+---
+
+## Step 2: Generate a CRUD Resource (Optional)
+
+You can scaffold modules, controllers, services, DTOs, and specs with the CLI:
+
+```bash
+bunx @bunest/cli generate resource users
+# Shorthand:
+bunx @bunest/cli g res users
+```
+
+---
+
+## Step 3: Define Validated DTOs (`src/users/dto/create-user.dto.ts`)
+
+```ts
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from "@bunest/validation/validator";
+import { Type } from "@bunest/validation/transformer";
+import { ApiProperty, ApiPropertyOptional } from "@bunest/swagger";
+
+export class CreateUserDto {
+  @ApiProperty({ example: "ada@bunest.dev" })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: "Ada Lovelace", minLength: 2 })
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @ApiPropertyOptional({ example: 28, minimum: 13 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(13)
+  age?: number;
+}
+
+export class UpdateUserDto {
+  @ApiPropertyOptional({ example: "Ada Byron" })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 29, minimum: 13 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(13)
+  age?: number;
+}
+```
+
+---
+
+## Step 4: Create the Service (`src/users/users.service.ts`)
+
+```ts
+import { Injectable, NotFoundException } from "@bunest/core";
+import type { CreateUserDto, UpdateUserDto } from "./dto/create-user.dto";
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  age?: number;
+}
+
+@Injectable()
+export class UsersService {
+  private readonly store = new Map<string, UserRecord>();
+  private nextId = 1;
+
+  findAll(): UserRecord[] {
+    return [...this.store.values()];
+  }
+
+  findOne(id: string): UserRecord {
+    const user = this.store.get(id);
+    if (!user) {
+      throw new NotFoundException(`User "${id}" not found`);
+    }
+    return user;
+  }
+
+  create(dto: CreateUserDto): UserRecord {
+    const user: UserRecord = {
+      id: `u_${this.nextId++}`,
+      email: dto.email,
+      name: dto.name,
+      age: dto.age,
+    };
+    this.store.set(user.id, user);
+    return user;
+  }
+
+  update(id: string, dto: UpdateUserDto): UserRecord {
+    const existing = this.findOne(id);
+    const updated: UserRecord = {
+      ...existing,
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.age !== undefined ? { age: dto.age } : {}),
+    };
+    this.store.set(id, updated);
+    return updated;
+  }
+
+  remove(id: string): void {
+    this.findOne(id);
+    this.store.delete(id);
+  }
+}
+```
+
+---
+
+## Step 5: Create the Controller (`src/users/users.controller.ts`)
+
+Notice how `UsersService`, `CreateUserDto`, and `UpdateUserDto` are **value-imported** (never `import type`) so constructor DI and `ValidationPipe` receive their runtime class constructors:
+
+```ts
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from "@bunest/core";
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@bunest/swagger";
+import { CreateUserDto, UpdateUserDto } from "./dto/create-user.dto";
+import { UsersService } from "./users.service";
+
+@ApiTags("users")
+@Controller("/users")
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Get()
+  @ApiOperation({ summary: "List all users" })
+  findAll() {
+    return this.users.findAll();
+  }
+
+  @Get(":id")
+  @ApiOperation({ summary: "Get a user by ID" })
+  @ApiOkResponse({ description: "User found" })
+  findOne(@Param("id") id: string) {
+    return this.users.findOne(id);
+  }
+
+  @Post()
+  @ApiOperation({ summary: "Create a user" })
+  @ApiCreatedResponse({ description: "User created" })
+  create(@Body() dto: CreateUserDto) {
+    // POST defaults to HTTP 201 Created (ADR-010)
+    return this.users.create(dto);
+  }
+
+  @Patch(":id")
+  @ApiOperation({ summary: "Update a user" })
+  update(@Param("id") id: string, @Body() dto: UpdateUserDto) {
+    return this.users.update(id, dto);
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Delete a user" })
+  remove(@Param("id") id: string) {
+    this.users.remove(id);
+  }
+}
+```
+
+---
+
+## Step 6: Wire the Module & Entrypoint
+
+`src/app.module.ts`:
+
+```ts
+import { Module } from "@bunest/core";
+import { UsersController } from "./users/users.controller";
+import { UsersService } from "./users/users.service";
+
+@Module({
+  controllers: [UsersController],
+  providers: [UsersService],
+})
+export class AppModule {}
+```
+
+`src/main.ts` — `@bunest/core` includes a built-in zero-dependency Reflect Metadata shim ([ADR-017](./adr/ADR-017.md)), so no `import "reflect-metadata"` boilerplate is required:
+
+```ts
+import { BunestFactory, ValidationPipe } from "@bunest/core";
+import { DocumentBuilder, SwaggerModule } from "@bunest/swagger";
+import { AppModule } from "./app.module";
+
+const app = await BunestFactory.create(AppModule);
+
+// Secure defaults: whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true, transform: true
+app.useGlobalPipes(new ValidationPipe());
+
+// OpenAPI 3.1 + Interactive Swagger UI
+const swaggerConfig = new DocumentBuilder()
+  .setTitle("Users API")
+  .setDescription("Validated REST CRUD powered by Bunest")
+  .setVersion("1.0.0")
+  .build();
+const document = SwaggerModule.createDocument(app, swaggerConfig);
+SwaggerModule.setup("docs", app, document);
+
+app.enableShutdownHooks();
+const port = Number(Bun.env.PORT ?? 3000);
+await app.listen(port);
+console.log(`Listening on ${app.getUrl()} (Swagger UI: ${app.getUrl()}/docs)`);
+```
+
+Run in watch mode:
+
+```bash
+bun --watch src/main.ts
+# Or with CLI:
+bunx @bunest/cli dev
+```
+
+Try it with `curl`:
+
+```bash
+# Valid POST -> 201 Created
+curl -i -X POST http://localhost:3000/users \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ada@bunest.dev","name":"Ada"}'
+
+# Invalid POST (extra field + bad email) -> 400 Bad Request with normalized details[]
+curl -i -X POST http://localhost:3000/users \
+  -H "Content-Type: application/json" \
+  -d '{"email":"not-an-email","name":"A","extra":true}'
+
+# OpenAPI 3.1 JSON spec
+curl http://localhost:3000/docs-json
+```
+
+---
+
+## Step 7: Write an In-Memory E2E Test (`test/users.e2e.spec.ts`)
+
+`@bunest/testing` runs directly against `app.fetch()` with zero open ports—or against live `app.listen(0)` when needed:
+
+```ts
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { ValidationPipe, type BunestApplication } from "@bunest/core";
+import { Test, request } from "@bunest/testing";
+import { AppModule } from "../src/app.module";
+
+describe("Users CRUD E2E", () => {
+  let app: BunestApplication;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createBunestApplication();
+    app.useGlobalPipes(new ValidationPipe());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("creates, fetches, updates, and deletes a user", async () => {
+    const created = await request(app)
+      .post("/users")
+      .send({ email: "ada@bunest.dev", name: "Ada", age: 28 })
+      .expect(201);
+
+    expect(created.body.id).toBe("u_1");
+
+    await request(app).get("/users/u_1").expect(200);
+
+    await request(app)
+      .patch("/users/u_1")
+      .send({ name: "Ada Lovelace" })
+      .expect(200);
+
+    await request(app).delete("/users/u_1").expect(204);
+    await request(app).get("/users/u_1").expect(404);
+  });
+
+  it("rejects invalid DTOs with normalized HTTP 400 details", async () => {
+    const res = await request(app)
+      .post("/users")
+      .send({ email: "bad", name: "A", unexpected: 123 })
+      .expect(400);
+
+    expect(res.body.statusCode).toBe(400);
+    expect(res.body.message).toBe("Validation failed");
+    expect(Array.isArray(res.body.details)).toBe(true);
+  });
+});
+```
+
+Run tests and typecheck:
+
+```bash
+bun test
+bun check
+```
+
+---
+
+## Next Steps
+
+- [Architecture Guide](./architecture.md) — Understand the compile-at-bootstrap pipeline, hybrid router, and DI graph.
+- [Testing Guide](./testing.md) — Provider/enhancer overrides, `ModuleMocker`, SSE helpers, and `CapturingLogger`.
+- [Security Guide](./security.md) — JWT auth, argon2id passwords, rate limiting, CORS, and storage hardening.
+- [NestJS Migration Guide](./nestjs-migration.md) — Side-by-side comparison and full feature parity matrix.
+- [Runnable Examples](../examples/) — `hello-world`, `rest-crud`, `auth-jwt-sqlite`, `websocket-chat`, and `distributed-worker`.
+
+---
+
+<!-- source: docs/errors.md -->
+
+# Bunest Error Catalog
+
+Every bootstrap and routing error thrown by `@bunest/core` carries a stable `code` (`err.code`).
+Use `toBunestErrorReport(err)` for a JSON report or `formatBunestErrorForAgent(err)` for a compact
+text rendering. Fixes are ordered: try the first one first.
+
+| Code | Exception | Title |
+| --- | --- | --- |
+| [`BUNEST_E001`](#bunest_e001) | `UnknownDependencyException` | Unknown dependency |
+| [`BUNEST_E002`](#bunest_e002) | `CircularDependencyException` | Circular dependency |
+| [`BUNEST_E003`](#bunest_e003) | `ScopeLeakException` | Scope leak |
+| [`BUNEST_E004`](#bunest_e004) | `AmbiguousProviderException` | Ambiguous provider |
+| [`BUNEST_E005`](#bunest_e005) | `InvalidModuleException` | Invalid module |
+| [`BUNEST_E006`](#bunest_e006) | `DuplicateProviderException` | Duplicate provider |
+| [`BUNEST_E007`](#bunest_e007) | `InvalidExportException` | Invalid export |
+| [`BUNEST_E101`](#bunest_e101) | `DuplicateRouteException` | Duplicate route |
+| [`BUNEST_E102`](#bunest_e102) | `InvalidControllerException` | Invalid controller |
+| [`BUNEST_E103`](#bunest_e103) | `InvalidRouteException` | Invalid route |
+
+## BUNEST_E001
+
+**`UnknownDependencyException` — Unknown dependency**
+
+The DI container cannot resolve a constructor parameter or property of a provider/controller in the given module.
+
+Fixes (in order):
+
+1. Add the missing class to the `providers` array of the module that declares the requester.
+2. If the provider lives in another module, add it to that module's `exports` and add that module to `imports`.
+3. If the parameter type is an interface, union, or generic (erased at runtime), inject with `@Inject(TOKEN)` and register `{ provide: TOKEN, useClass | useValue | useFactory }`.
+4. Value-import the dependency class (never `import type`) so `design:paramtypes` keeps the runtime reference.
+5. If the dependency is genuinely optional, decorate the parameter with `@Optional()`.
+
+```ts
+@Module({
+  imports: [UsersModule],          // UsersModule must export UsersService
+  providers: [OrdersService],
+})
+export class OrdersModule {}
+```
+
+## BUNEST_E002
+
+**`CircularDependencyException` — Circular dependency**
+
+Two or more providers (or modules) depend on each other, so neither can be constructed first.
+
+Fixes (in order):
+
+1. Extract the shared logic into a third provider that both depend on (preferred).
+2. For providers: use `@Inject(forwardRef(() => OtherService))` on one side.
+3. For modules: use `forwardRef(() => OtherModule)` in one module's `imports`.
+
+```ts
+constructor(
+  @Inject(forwardRef(() => UsersService))
+  private readonly users: UsersService,
+) {}
+```
+
+## BUNEST_E003
+
+**`ScopeLeakException` — Scope leak**
+
+A longer-lived provider (e.g. SINGLETON) depends on a REQUEST-scoped provider, which would leak request state across requests.
+
+Fixes (in order):
+
+1. Mark every provider in the chain with `{ scope: Scope.REQUEST }`.
+2. Read request data through the ambient `RequestContext`/`ClsService` inside methods instead of injecting a request-scoped provider.
+
+```ts
+@Injectable({ scope: Scope.REQUEST })
+export class ReportService {}
+```
+
+## BUNEST_E004
+
+**`AmbiguousProviderException` — Ambiguous provider**
+
+The same injection token is exported by more than one imported (or global) module, so resolution is ambiguous.
+
+Fixes (in order):
+
+1. Use distinct injection tokens (e.g. `Symbol("PRIMARY_DB")`, `Symbol("REPORTING_DB")`).
+2. Override the token locally in the consuming module's `providers`.
+3. Remove the duplicate export from one of the modules.
+
+## BUNEST_E005
+
+**`InvalidModuleException` — Invalid module**
+
+A value listed in `imports` (or the root module) is not a class decorated with `@Module()` nor a valid dynamic module.
+
+Fixes (in order):
+
+1. Decorate the class with `@Module({...})`.
+2. For dynamic modules return `{ module: ThisModule, providers, exports }` from `forRoot()`/`register()`.
+3. Check for `undefined` entries caused by circular file imports; use `forwardRef(() => Module)`.
+
+## BUNEST_E006
+
+**`DuplicateProviderException` — Duplicate provider**
+
+The same provider token is declared more than once in a single module.
+
+Fixes (in order):
+
+1. Remove the duplicated entry from the module's `providers` array.
+2. If two implementations are intended, give them distinct tokens.
+
+## BUNEST_E007
+
+**`InvalidExportException` — Invalid export**
+
+A module exports a token that it neither provides nor imports from another module.
+
+Fixes (in order):
+
+1. Add the token to the module's `providers` before exporting it.
+2. Or import the module that provides it and re-export that module.
+
+## BUNEST_E101
+
+**`DuplicateRouteException` — Duplicate route**
+
+Two controller handlers resolve to the same HTTP method + canonical path (+ host/version).
+
+Fixes (in order):
+
+1. Change the path of one handler or its controller prefix.
+2. Use `@Version()` / `@Controller({ version })` or `host` to disambiguate intentionally.
+3. If shadowing is intended, configure `routeConflictPolicy` on the application.
+
+## BUNEST_E102
+
+**`InvalidControllerException` — Invalid controller**
+
+A class registered in a module's `controllers` array is missing `@Controller()`.
+
+Fixes (in order):
+
+1. Decorate the class with `@Controller("prefix")`.
+2. If it is a service, move it from `controllers` to `providers`.
+
+## BUNEST_E103
+
+**`InvalidRouteException` — Invalid route**
+
+Route metadata or parameter bindings are invalid (e.g. malformed path, conflicting parameter decorators).
+
+Fixes (in order):
+
+1. Read the message for the offending handler and fix its path or parameter decorators.
+2. Ensure each handler parameter has exactly one binding decorator (`@Body`, `@Param`, `@Query`, ...).

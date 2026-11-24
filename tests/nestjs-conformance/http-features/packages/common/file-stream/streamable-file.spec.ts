@@ -238,8 +238,7 @@ describeConformance(
           expect(res.end.callCount).toBe(1);
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never calls res.end() when headersSent is true.
-        it.skip("should call res.end() when headers are already sent and the response has no destroy()", () => {
+        it("should call res.end() when headers are already sent and the response has no destroy()", () => {
           const stream = new ReadableStream<Uint8Array>();
           const streamableFile = new StreamableFile(stream).setErrorLogger(
             createSpy(),
@@ -315,8 +314,7 @@ describeConformance(
       });
 
       describe("default error logger behavior", () => {
-        // BUNEST_BUG: StreamableFile default errorLogger is a no-op stub with no internal Logger instance (packages/core/src/common/http/streamable-file.ts:36).
-        it.skip("should call logger.error with the error", () => {
+        it("should call logger.error with the error", () => {
           const stream = new ReadableStream<Uint8Array>();
           const streamableFile = new StreamableFile(stream);
           const internalLogger = (

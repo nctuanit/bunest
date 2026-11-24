@@ -31,8 +31,7 @@ describeConformance(
           expect(instance.getError()).toEqual(error);
         });
 
-        // BUNEST_BUG: WsException in packages/core/src/ws/exceptions/ws.exception.ts hardcodes "WebSocket exception" when object error lacks `message` instead of splitting constructor.name into words ("Ws Exception") like upstream NestJS WsException (and Bunest's own HttpException.initMessage()).
-        it.skip("should fallback error message to class name", () => {
+        it("should fallback error message to class name", () => {
           expect(instance.message).toEqual("Ws Exception");
         });
       });

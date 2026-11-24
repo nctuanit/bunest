@@ -51,8 +51,7 @@ describeConformance(
       });
 
       describe("when default value is provided", () => {
-        // BUNEST_BUG: ParseDatePipeOptions does not support `default?: () => Date`; returns undefined instead of invoking default() (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return the default value if the value is undefined/null", () => {
+        it("should return the default value if the value is undefined/null", () => {
           const defaultValue = new Date();
           const defaultTarget = new ParseDatePipe({
             optional: true,
@@ -62,8 +61,7 @@ describeConformance(
           expect(value).toBe(defaultValue);
         });
 
-        // BUNEST_BUG: ParseDatePipeOptions does not support `default?: () => Date`; throws HttpException instead of returning defaultValue when optional is omitted (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should return the default value without requiring "optional"', () => {
+        it('should return the default value without requiring "optional"', () => {
           const defaultValue = new Date();
           const defaultTarget = new ParseDatePipe({
             default: () => defaultValue,

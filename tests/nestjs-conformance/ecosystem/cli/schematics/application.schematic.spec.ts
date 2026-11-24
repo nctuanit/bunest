@@ -31,6 +31,7 @@ function makeTempDir(prefix: string): string {
 const EXPECTED_APP_FILES = (prefix: string): string[] =>
   [
     `${prefix}.gitignore`,
+    `${prefix}AGENTS.md`,
     `${prefix}README.md`,
     `${prefix}package.json`,
     `${prefix}tsconfig.json`,

@@ -79,8 +79,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() traverses arrays via `node.map(...)` instead of `Object.keys(array)`, reading `map`/`length`/`constructor` rather than only present indices (packages/core/src/common/logger/console-logger.ts:339-341)
-      it.skip("should only read the present items of a sparse array", () => {
+      it("should only read the present items of a sparse array", () => {
         const items: unknown[] = [];
         items[999] = { password: "a" };
         const reads: PropertyKey[] = [];
@@ -101,8 +100,7 @@ describeConformance(
         expect(redacted.items[999]).toEqual({ password: "[REDACTED]" });
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() traverses arrays using `node.map(...)` instead of `Object.keys(array)`, which loops 4,294,967,295 times and hangs/OOMs on a max-index sparse array (packages/core/src/common/logger/console-logger.ts)
-      it.skip("should redact a sparse array with the largest index", () => {
+      it("should redact a sparse array with the largest index", () => {
         const items: unknown[] = [];
         items[2 ** 32 - 2] = { password: "a" };
 
@@ -163,8 +161,7 @@ describeConformance(
     });
 
     describe("errors", () => {
-      // BUNEST_BUG: ConsoleLogger.redact() copies objects with `Object.entries(node)` into plain `{}`, losing Error prototype, `message`, and `stack` (packages/core/src/common/logger/console-logger.ts:342-349)
-      it.skip("should redact own properties and keep the error intact", () => {
+      it("should redact own properties and keep the error intact", () => {
         const error = Object.assign(new Error("Request failed"), {
           code: "E_HTTP",
           config: { headers: { authorization: "Bearer x" } },
@@ -182,8 +179,7 @@ describeConformance(
         expect(error.config.headers.authorization).toBe("Bearer x");
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() ignores non-enumerable Error `cause` and `AggregateError#errors` and strips the AggregateError prototype (packages/core/src/common/logger/console-logger.ts:342-349)
-      it.skip('should redact "cause" and "AggregateError#errors"', () => {
+      it('should redact "cause" and "AggregateError#errors"', () => {
         const cause = Object.assign(new Error("cause"), { token: "a" });
         const inner = Object.assign(new Error("inner"), { token: "b" });
         const error = new AggregateError([inner], "outer", { cause });
@@ -202,8 +198,7 @@ describeConformance(
     });
 
     describe("maps and sets", () => {
-      // BUNEST_BUG: ConsoleLogger.redact() does not handle Map instances and runs `Object.entries(map)` returning empty `{}` (packages/core/src/common/logger/console-logger.ts:333-353)
-      it.skip("should redact map entries with a matching string key", () => {
+      it("should redact map entries with a matching string key", () => {
         const map = new Map<unknown, unknown>([
           ["password", "a"],
           ["user", { password: "b" }],
@@ -223,8 +218,7 @@ describeConformance(
         expect(map.get("password")).toBe("a");
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() does not handle Set instances and runs `Object.entries(set)` returning empty `{}` (packages/core/src/common/logger/console-logger.ts:333-353)
-      it.skip("should redact objects in sets", () => {
+      it("should redact objects in sets", () => {
         const redacted = redact(
           ["password"],
           new Set([{ password: "a" }, "x"]),
@@ -233,8 +227,7 @@ describeConformance(
         expect([...redacted]).toEqual([{ password: "[REDACTED]" }, "x"]);
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() does not handle Map instances or object keys in Maps (packages/core/src/common/logger/console-logger.ts:333-353)
-      it.skip("should redact objects used as map keys", () => {
+      it("should redact objects used as map keys", () => {
         const key = { id: 1, password: "a" };
         const map = new Map<unknown, unknown>([
           [key, { token: "b" }],
@@ -255,8 +248,7 @@ describeConformance(
     });
 
     describe("class instances", () => {
-      // BUNEST_BUG: ConsoleLogger.redact() always creates a plain `{}` copy, losing the class prototype and methods (packages/core/src/common/logger/console-logger.ts:342-349)
-      it.skip("should keep the prototype of a copied instance", () => {
+      it("should keep the prototype of a copied instance", () => {
         class User {
           constructor(
             public name: string,
@@ -276,8 +268,7 @@ describeConformance(
         expect(redacted.user.greet()).toBe("Hi John");
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() does not skip Buffer / TypedArray (`ArrayBuffer.isView`) and traverses byte indices into plain objects (packages/core/src/common/logger/console-logger.ts:336)
-      it.skip("should not traverse dates, buffers and typed arrays", () => {
+      it("should not traverse dates, buffers and typed arrays", () => {
         const date = new Date();
         const buffer = Buffer.from("password");
         const value = { date, buffer, bytes: new Uint8Array(3) };
@@ -323,8 +314,7 @@ describeConformance(
     });
 
     describe("shared objects", () => {
-      // BUNEST_BUG: ConsoleLogger.redact() does not memoize already-redacted shared objects, copying them once per reference instead of reusing the copy (packages/core/src/common/logger/console-logger.ts:313-356)
-      it.skip("should copy an object that is referenced several times once", () => {
+      it("should copy an object that is referenced several times once", () => {
         const shared = { password: "a" };
 
         const redacted = redact(["password"], { a: shared, b: [shared] }) as {
@@ -350,8 +340,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() does not memoize visited shared objects per context path, re-traversing shared DAGs exponentially (packages/core/src/common/logger/console-logger.ts:313-356)
-      it.skip("should not traverse a shared object once per reference", () => {
+      it("should not traverse a shared object once per reference", () => {
         const target = [{ password: "a" }, ...new Array(1_000).fill(0)];
         const errors = target.map(() => ({ target }));
         let layers: object = { password: "a" };
@@ -368,8 +357,7 @@ describeConformance(
         expect(redacted.layers.a).toBe(redacted.layers.b);
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() does not memoize visited objects by dotted-path context (packages/core/src/common/logger/console-logger.ts:313-356)
-      it.skip("should traverse a shared object once for the keys no dotted path goes through", () => {
+      it("should traverse a shared object once for the keys no dotted path goes through", () => {
         const shared = { password: "a" };
         const longKey = "k".repeat(20_000);
 
@@ -417,15 +405,13 @@ describeConformance(
         expect(value.user.password).toBe("a");
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() eagerly clones every object even when no keys match instead of copy-on-write returning input identity (packages/core/src/common/logger/console-logger.ts:342-349)
-      it.skip("should return the input itself when nothing matches", () => {
+      it("should return the input itself when nothing matches", () => {
         const value = { user: { name: "John" }, items: [{ id: 1 }] };
 
         expect(redact(["password"], value)).toBe(value);
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() eagerly clones untouched sibling branches instead of copy-on-write (packages/core/src/common/logger/console-logger.ts:342-349)
-      it.skip("should only copy the objects on the way to a redacted property", () => {
+      it("should only copy the objects on the way to a redacted property", () => {
         const value = {
           untouched: { deep: { id: 1 } },
           items: [{ id: 1 }, { password: "a" }],
@@ -439,8 +425,7 @@ describeConformance(
         expect(redacted.items[0]).toBe(value.items[0]);
       });
 
-      // BUNEST_BUG: ConsoleLogger.redact() assigns `out["__proto__"] = ...` instead of `Object.defineProperty`, mutating the object's prototype instead of copying an own `"__proto__"` key (packages/core/src/common/logger/console-logger.ts:345)
-      it.skip('should copy an own "__proto__" key as a property', () => {
+      it('should copy an own "__proto__" key as a property', () => {
         const value = JSON.parse('{"__proto__": {"password": "a"}, "id": 1}');
 
         const redacted = redact(["password"], value) as Record<string, unknown>;
@@ -457,8 +442,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: ConsoleLogger.redact() does not wrap traversal in try/catch to return the censor when a property getter throws (packages/core/src/common/logger/console-logger.ts:333-355)
-    it.skip("should replace a value it cannot traverse with the censor", () => {
+    it("should replace a value it cannot traverse with the censor", () => {
       const value = {
         get broken() {
           throw new Error("getter");
@@ -468,8 +452,7 @@ describeConformance(
       expect(redact(["password"], value)).toBe("[REDACTED]");
     });
 
-    // BUNEST_BUG: ConsoleLogger.redact() eagerly clones the entire object graph instead of returning input identity when nothing matches (packages/core/src/common/logger/console-logger.ts:342-349)
-    it.skip("should traverse a large object quickly", () => {
+    it("should traverse a large object quickly", () => {
       const value = {
         items: Array.from({ length: 10_000 }, (_, id) => ({
           id,

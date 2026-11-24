@@ -137,8 +137,7 @@ describeConformance(
         await mod.close();
       });
 
-      // BUNEST_BUG: TestingModule.createNestApplication() does not apply `forceConsole: true` to static Logger / ConsoleLogger output (packages/testing/src/testing-module.ts)
-      it.skip("should log through console when forceConsole is true", async () => {
+      it("should log through console when forceConsole is true", async () => {
         @ModuleDecorator({})
         class TestAppModule {}
 

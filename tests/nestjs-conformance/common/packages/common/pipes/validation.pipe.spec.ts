@@ -92,8 +92,7 @@ describeConformance(
       "Upstream NestJS default tests use nestCompatibleValidationPipe() alongside explicit ADR-009 bunestStrictValidationPipe() & expectValidationErrorEnvelope() tests and ADR-004 explicit-coercion assertions.",
   },
   () => {
-    // BUNEST_BUG: ValidationPipe in `errorFormat: "list"` mode pushes raw child constraint messages ("name must be a string") without prepending parent path ("children.0.name must be a string") (packages/validation/src/validation.pipe.ts)
-    it.skip("should retain array constraints alongside nested property errors", async () => {
+    it("should retain array constraints alongside nested property errors", async () => {
       class Child {
         @IsString()
         name!: string;
@@ -123,8 +122,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: ValidationPipe does not expose public `createExceptionFactory()` method (only private `createDefaultExceptionFactory`) (packages/validation/src/validation.pipe.ts)
-    it.skip("should include intermediate constraints only once with their parent path", () => {
+    it("should include intermediate constraints only once with their parent path", () => {
       const pipe = nestCompatibleValidationPipe() as any;
       const exception = pipe.createExceptionFactory()([
         {
@@ -184,8 +182,7 @@ describeConformance(
         "parent.child.age": ["age must be an integer"],
       };
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `mapChildrenToValidationErrors()` methods (packages/validation/src/validation.pipe.ts)
-      it.skip("should add them to a single list rather than copy them for each level", () => {
+      it("should add them to a single list rather than copy them for each level", () => {
         const pipe = nestCompatibleValidationPipe() as any;
         const map = spyOn(pipe, "mapChildrenToValidationErrors");
 
@@ -197,8 +194,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `groupValidationErrors()` methods (packages/validation/src/validation.pipe.ts)
-      it.skip("should add them to a single result rather than copy them for each level", () => {
+      it("should add them to a single result rather than copy them for each level", () => {
         const pipe = nestCompatibleValidationPipe({
           errorFormat: "grouped",
         }) as any;
@@ -257,16 +253,14 @@ describeConformance(
         },
       ];
 
-      // BUNEST_BUG: ValidationPipe does not guard `maxErrorMessagesLength: NaN` back to default 1_000_000 (stores NaN verbatim) (packages/validation/src/validation.pipe.ts)
-      it.skip("should use the default limit for a value that is not a number", () => {
+      it("should use the default limit for a value that is not a number", () => {
         const pipe = nestCompatibleValidationPipe({
           maxErrorMessagesLength: Number.NaN,
         }) as any;
         expect(pipe.maxErrorMessagesLength).toBe(1_000_000);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and emits `"Validation error messages exceeded maxErrorMessagesLength and were truncated"` instead of NestJS `"Further validation errors were omitted"` (packages/validation/src/validation.pipe.ts)
-      it.skip("should leave out the messages past the limit and say so", () => {
+      it("should leave out the messages past the limit and say so", () => {
         const pipe = nestCompatibleValidationPipe({
           maxErrorMessagesLength: 30,
         }) as any;
@@ -275,8 +269,7 @@ describeConformance(
         ).toEqual(["a must be a string", "b.c must be a string", omitted]);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and emits different truncation message string (packages/validation/src/validation.pipe.ts)
-      it.skip('should leave out the messages past the limit in "grouped" format', () => {
+      it('should leave out the messages past the limit in "grouped" format', () => {
         const pipe = nestCompatibleValidationPipe({
           errorFormat: "grouped",
           maxErrorMessagesLength: 30,
@@ -290,8 +283,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and flattens ALL errors eagerly before applying maxErrorMessagesLength budget (packages/validation/src/validation.pipe.ts)
-      it.skip("should not read the errors past the limit", () => {
+      it("should not read the errors past the limit", () => {
         const reads: string[] = [];
         const children = new Proxy(
           Array.from({ length: 1000 }, (_, i) => ({
@@ -318,8 +310,7 @@ describeConformance(
         expect(reads.length).toBeLessThan(10);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and omits parent path prefix in `"list"` mode (packages/validation/src/validation.pipe.ts)
-      it.skip("should keep every message when the limit is lifted", () => {
+      it("should keep every message when the limit is lifted", () => {
         const pipe = nestCompatibleValidationPipe({
           maxErrorMessagesLength: Infinity,
         }) as any;
@@ -332,8 +323,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and emits different omission marker string (packages/validation/src/validation.pipe.ts)
-      it.skip("should limit the messages to about a million characters by default", () => {
+      it("should limit the messages to about a million characters by default", () => {
         let error: any = {
           property: "x",
           children: Array.from({ length: 1200 }, () => ({
@@ -497,8 +487,7 @@ describeConformance(
           test!: TestModel2;
         }
 
-        // BUNEST_BUG: ValidationPipe `errorFormat: "list"` omits parent path prefix ("test.") on nested messages; expected ["prop must be a string", "test.prop1 must be a string", "test.prop2 must be a boolean value"], actual ["prop must be a string", "prop1 must be a string", "prop2 must be a boolean value"] (packages/validation/src/validation.pipe.ts)
-        it.skip("should flatten nested errors", async () => {
+        it("should flatten nested errors", async () => {
           let threw = false;
           try {
             const model = new TestModelWithNested();
@@ -528,8 +517,7 @@ describeConformance(
           public test!: TestModel2[];
         }
 
-        // BUNEST_BUG: ValidationPipe `errorFormat: "list"` omits parent path prefix ("test.0.") on nested array messages; actual ["prop must be a string", "prop1 must be a string", "prop2 must be a boolean value"] (packages/validation/src/validation.pipe.ts)
-        it.skip("should provide complete path for nested errors", async () => {
+        it("should provide complete path for nested errors", async () => {
           let threw = false;
           try {
             const model = new TestModelForNestedArrayValidation();
@@ -574,8 +562,7 @@ describeConformance(
             expect(threw).toBe(true);
           });
 
-          // BUNEST_BUG: ValidationPipe `errorFormat: "grouped"` (NestJS v12 compat format) emits bracket array keys ("test[0].prop1") from ADR-009 flattenValidationErrors instead of NestJS dot keys ("test.0.prop1") (packages/validation/src/validation.pipe.ts)
-          it.skip("should return grouped errors for nested arrays", async () => {
+          it("should return grouped errors for nested arrays", async () => {
             let threw = false;
             try {
               const model = new TestModelForNestedArrayValidation();
@@ -1368,8 +1355,7 @@ describeConformance(
       const itemsMessage =
         "each value in nested property items must be either object or array";
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard for @ValidateNested() fields; emits class-validator `"an unknown value was passed to the validate function"` instead of `"nested property nested must be either object or array"` (packages/validation/src/validation.pipe.ts)
-      it.skip("should throw an error instead of skipping the rules of the nested class", async () => {
+      it("should throw an error instead of skipping the rules of the nested class", async () => {
         for (const options of [
           {},
           { transform: true },
@@ -1407,8 +1393,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard; passes raw class-validator `unknownValue` errors with `property: undefined` instead of `nestedValidation` errors at exact paths (packages/validation/src/validation.pipe.ts)
-      it.skip("should pass the path of the value to the exception factory", async () => {
+      it("should pass the path of the value to the exception factory", async () => {
         target = nestCompatibleValidationPipe({
           exceptionFactory: (errors) => errors,
         });
@@ -1441,8 +1426,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard; custom @ValidateNested message "$property must be an address" is lost and replaced by `"an unknown value was passed to the validate function"` (packages/validation/src/validation.pipe.ts)
-      it.skip("should keep a custom message of the nested validation", async () => {
+      it("should keep a custom message of the nested validation", async () => {
         class WithMessage {
           @ValidateNested({ message: "$property must be an address" })
           @Type(() => Nested)
@@ -1520,8 +1504,7 @@ describeConformance(
         expect(Object.hasOwn(value, "constructor")).toBe(false);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 cycle-safe nested-binary guard for mutually circular @Transform objects (causes stack overflow / missing response.message) (packages/validation/src/validation.pipe.ts)
-      it.skip("should report a binary sibling inside mutually circular objects produced by @Transform", async () => {
+      it("should report a binary sibling inside mutually circular objects produced by @Transform", async () => {
         const inner = new WithNested();
         const outer = new WithNested();
         outer.nested = inner as unknown as Nested;
@@ -1607,8 +1590,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard; emits `"an unknown value was passed to the validate function"` instead of `nestedMessage` for `active.nested` (packages/validation/src/validation.pipe.ts)
-      it.skip("should still reject a binary value in a shared object when an earlier property is excluded by @ValidateIf", async () => {
+      it("should still reject a binary value in a shared object when an earlier property is excluded by @ValidateIf", async () => {
         const shared = new WithNested();
         shared.nested = Buffer.alloc(0) as unknown as Nested;
 
@@ -1780,8 +1762,7 @@ describeConformance(
 
     describe('option: "errorHttpStatusCode"', () => {
       describe("when validation fails", () => {
-        // BUNEST_BUG: ValidationPipe `errorFormat: "list"` (and `"grouped"`) hardcodes `new HttpException({ statusCode, error: "Bad Request", message })` instead of creating the status-specific exception class (`UnprocessableEntityException`) with proper reason phrase (packages/validation/src/validation.pipe.ts)
-        it.skip("should throw UnprocessableEntityException in list errorFormat", async () => {
+        it("should throw UnprocessableEntityException in list errorFormat", async () => {
           target = nestCompatibleValidationPipe({
             errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
           });

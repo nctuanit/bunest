@@ -146,6 +146,19 @@ export class TcpServer extends MicroserviceTransportServer {
   async close(): Promise<void> {
     this.listening = false;
     this.emitStatus(TcpStatus.DISCONNECTED);
+
+    // Stop accepting first so connection attempts during shutdown are refused
+    // (ECONNREFUSED) instead of being accepted and immediately reset.
+    const listener = this.listener;
+    this.listener = undefined;
+    if (listener) {
+      try {
+        listener.stop(false);
+      } catch {
+        // Ignore if already stopped
+      }
+    }
+
     for (const socket of [...this.clients]) {
       try {
         socket.end();
@@ -155,13 +168,12 @@ export class TcpServer extends MicroserviceTransportServer {
     }
     this.clients.clear();
 
-    if (this.listener) {
+    if (listener) {
       try {
-        this.listener.stop(true);
+        listener.stop(true);
       } catch {
         // Ignore if already stopped
       }
-      this.listener = undefined;
     }
   }
 

@@ -2,6 +2,9 @@ import type { CliFlagValue, ParsedCliArgs } from "./types";
 
 const BOOLEAN_FLAGS = new Set([
   "help",
+  "skip-typecheck",
+  "skip-check",
+  "skip-tests",
   "version",
   "skip-install",
   "skip-git",
@@ -34,6 +37,8 @@ const BOOLEAN_FLAGS = new Set([
 
 const VALUE_FLAGS = new Set([
   "dir",
+  "reporter",
+  "max-issues",
   "entry",
   "entryFile",
   "sourceRoot",

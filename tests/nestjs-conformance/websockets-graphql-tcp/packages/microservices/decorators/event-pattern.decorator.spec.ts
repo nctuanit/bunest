@@ -174,8 +174,7 @@ describeConformance(
     });
 
     describe("NestJS decorator overloads & extras (unimplemented parity)", () => {
-      // BUNEST_BUG: @EventPattern() in packages/microservices/src/decorators.ts only accepts a single `pattern: PatternInput` parameter; array patterns (`[p1, p2]`) are serialized as JSON array strings instead of registering multiple patterns.
-      it.skip("should enhance method with array of patterns passed to @EventPattern([p1, p2])", () => {
+      it("should enhance method with array of patterns passed to @EventPattern([p1, p2])", () => {
         const dynamicEventPattern = EventPattern as (
           ...args: unknown[]
         ) => MethodDecorator;
@@ -193,8 +192,7 @@ describeConformance(
         expect(metadata?.[1]?.pattern).toEqual(patternThird);
       });
 
-      // BUNEST_BUG: @EventPattern() in packages/microservices/src/decorators.ts does not support `transport` or `extras` overloads (`EventPattern(pattern, transport?, extras?)`), nor `TRANSPORT_METADATA` / `PATTERN_EXTRAS_METADATA` tokens in packages/microservices/src/tokens.ts.
-      it.skip("should enhance method with transport and extras metadata overloads", () => {
+      it("should enhance method with transport and extras metadata overloads", () => {
         const dynamicEventPattern = EventPattern as (
           ...args: unknown[]
         ) => MethodDecorator;

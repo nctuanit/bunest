@@ -405,8 +405,7 @@ describeConformance(
           expect(res.headers["x-injected"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: serializeCookie only checks CR/LF on path/domain and does not reject ";" (enabling Set-Cookie attribute injection) (packages/core/src/http/security/cookie.ts:227-239).
-        it.skip.each([
+        it.each([
           [
             'a path with ";"',
             { name: "a", value: "v", path: "/; Domain=evil" },

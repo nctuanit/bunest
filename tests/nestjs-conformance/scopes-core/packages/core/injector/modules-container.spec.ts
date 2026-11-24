@@ -55,16 +55,14 @@ describeConformance(
     });
 
     describe("getRpcTargetRegistry / addRpcTarget", () => {
-      // BUNEST_BUG: ModulesContainer does not implement addRpcTarget()/getRpcTargetRegistry() (packages/core/src/di/modules-container.ts).
-      it.skip("should expose addRpcTarget and getRpcTargetRegistry for dynamically registered RPC targets", () => {
+      it("should expose addRpcTarget and getRpcTargetRegistry for dynamically registered RPC targets", () => {
         const target = { pattern: "test" };
         (container as any).addRpcTarget(target);
         const registry = (container as any).getRpcTargetRegistry();
         expect(registry).toBeDefined();
       });
 
-      // BUNEST_BUG: ModulesContainer does not implement addRpcTarget()/getRpcTargetRegistry() (packages/core/src/di/modules-container.ts).
-      it.skip("should preserve previously added RPC targets for later consumers", () => {
+      it("should preserve previously added RPC targets for later consumers", () => {
         (container as any).addRpcTarget("first");
         (container as any).addRpcTarget("second");
         const registry = (container as any).getRpcTargetRegistry();

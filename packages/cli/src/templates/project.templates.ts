@@ -30,6 +30,7 @@ export function buildProjectTemplateFiles(
       start: "bun dist/main.js",
       test: "bun test",
       typecheck: "bun check",
+      verify: "bunest verify --reporter=agent",
     },
     dependencies: {
       "@bunest/core": "^0.1.0",
@@ -159,6 +160,42 @@ describe("AppModule", () => {
 });
 `;
 
+  const agentsMd = `# AGENTS.md — ${projectName}
+
+Instructions for AI coding agents working in this Bunest app (Bun-native, NestJS-style).
+
+## Verify after every change
+
+\`\`\`bash
+bun run verify          # = bunest verify --reporter=agent (typecheck + bunest check + tests)
+\`\`\`
+
+Fix the first failing step, re-run, repeat until \`VERIFY PASS\`. Auto-fixable diagnostics: \`bunest check --fix\`.
+
+## Rules
+
+- Runtime is **Bun >= 1.4.5** only. Never import \`node:*\`, Express, Fastify, RxJS or \`reflect-metadata\`.
+- Import framework APIs from \`@bunest/*\` only: \`BunestFactory\`, \`Module\`, \`Controller\`, \`Injectable\`, … from \`@bunest/core\`;
+  DTO validators from \`@bunest/validation/validator\` (not \`class-validator\`).
+- **Value-import** services, controllers, DTOs and entities (never \`import type\`) — DI reads runtime metadata.
+  Use \`import type\` only for interfaces and type aliases.
+- Interfaces/unions/generics are erased at runtime: inject them with \`@Inject(TOKEN)\`.
+- Interceptors return \`Promise<T>\` (\`await next.handle()\`), not Observables.
+- Prefer the generators over hand-writing boilerplate:
+  \`bunest g resource <name>\`, \`bunest g service <name>\`, \`bunest g controller <name>\` (add \`--dry-run\` to preview).
+
+## Layout
+
+- \`src/main.ts\` bootstrap · \`src/app.module.ts\` root module · one folder per feature (\`<feature>.module.ts\`,
+  \`<feature>.controller.ts\`, \`<feature>.service.ts\`, \`dto/\`).
+- Tests live in \`test/\` and use \`Test.createTestingModule(...)\` + \`moduleRef.createTestClient(app)\` from \`@bunest/testing\`.
+
+## Errors
+
+Bootstrap errors carry a stable code (\`err.code\`, e.g. \`BUNEST_E001\` unknown dependency, \`BUNEST_E002\` circular dependency).
+\`toBunestErrorReport(err)\` from \`@bunest/core\` returns the ordered fixes and docs link.
+`;
+
   const gitignore = `node_modules/
 dist/
 .bunest/
@@ -225,6 +262,10 @@ bun run build
     {
       relativePath: "README.md",
       content: readmeMd,
+    },
+    {
+      relativePath: "AGENTS.md",
+      content: agentsMd,
     },
   ];
 }

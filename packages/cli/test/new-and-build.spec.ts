@@ -66,7 +66,7 @@ describe("bunest new, bunest build, and bunest dev", () => {
     expect(out.projectName).toBe("demo-api");
     expect(out.installed).toBe(false);
     expect(out.dryRun).toBe(false);
-    expect(out.files).toHaveLength(9);
+    expect(out.files).toHaveLength(10);
 
     const projectDir = join(workdir, "demo-api");
     for (const rel of [

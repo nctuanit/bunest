@@ -118,8 +118,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: serializeCookie only rejects CR/LF in path and allows ";", non-ASCII, and NUL characters (enabling Set-Cookie attribute injection) (packages/core/src/http/security/cookie.ts:234-239).
-    it.skip.each(["/a;b", "/\u00e9", "/\u0000"])(
+    it.each(["/a;b", "/\u00e9", "/\u0000"])(
       "should reject the invalid path %j",
       (path) => {
         expect(() => serializeCookie("a", "b", { path })).toThrow(TypeError);

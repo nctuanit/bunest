@@ -617,7 +617,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
           })
           .catch((err) => {
             this.publishUnhandledException(err, event);
-            if (this.options?.rethrowUnhandled !== false) {
+            if (this.options?.rethrowUnhandled === true) {
               errors.push(err);
             }
           }),
@@ -630,7 +630,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
           .then(() => subscriber(event))
           .catch((err) => {
             this.publishUnhandledException(err, event);
-            if (this.options?.rethrowUnhandled !== false) {
+            if (this.options?.rethrowUnhandled === true) {
               errors.push(err);
             }
           }),

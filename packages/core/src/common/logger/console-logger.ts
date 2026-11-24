@@ -1,3 +1,4 @@
+import { createRedactor, type Redactor } from "./redactor";
 import {
   LOG_LEVEL_COLORS,
   clc,
@@ -326,6 +327,7 @@ export class ConsoleLogger implements LoggerService {
 
   private readonly redactPaths?: readonly string[][];
   private readonly redactCensor: string = "[REDACTED]";
+  private redactor?: Redactor;
   private resolvedDefaultLevels?: LogLevel[];
 
   constructor();
@@ -547,45 +549,11 @@ export class ConsoleLogger implements LoggerService {
     if (!this.redactPaths || this.redactPaths.length === 0) {
       return value;
     }
-    const seen = new WeakSet<object>();
-    const matchesPath = (trail: readonly string[]): boolean => {
-      for (const pattern of this.redactPaths!) {
-        if (pattern.length > trail.length) continue;
-        let matched = true;
-        for (let i = 0; i < pattern.length; i++) {
-          if (trail[trail.length - pattern.length + i] !== pattern[i]) {
-            matched = false;
-            break;
-          }
-        }
-        if (matched) return true;
-      }
-      return false;
-    };
-
-    const walk = (node: unknown, trail: string[]): unknown => {
-      if (node === null || typeof node !== "object") return node;
-      if (seen.has(node)) return "[Circular]";
-      if (node instanceof Date || node instanceof RegExp) return node;
-      seen.add(node);
-      try {
-        if (Array.isArray(node)) {
-          return node.map((item) => walk(item, trail));
-        }
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(node)) {
-          const nextTrail = [...trail, k.toLowerCase()];
-          out[k] = matchesPath(nextTrail)
-            ? this.redactCensor
-            : walk(v, nextTrail);
-        }
-        return out;
-      } finally {
-        seen.delete(node);
-      }
-    };
-
-    return walk(value, []);
+    this.redactor ??= createRedactor(
+      this.redactPaths.map((segs) => segs.join(".")),
+      this.redactCensor,
+    );
+    return this.redactor(value);
   }
 
   protected serializeError(

@@ -79,8 +79,7 @@ describeConformance(
         expect(appConfig.getGlobalPipes()).toContain(pipe as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestPipe()/getGlobalRequestPipes() (packages/core/src/application/application-config.ts).
-      it.skip("should add global request pipe", () => {
+      it("should add global request pipe", () => {
         const pipe = "testOne";
         (appConfig as any).addGlobalRequestPipe(pipe);
 
@@ -103,8 +102,7 @@ describeConformance(
         expect(appConfig.getGlobalFilters()).toContain(filter as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestFilter()/getGlobalRequestFilters() (packages/core/src/application/application-config.ts).
-      it.skip("should add request filter", () => {
+      it("should add request filter", () => {
         const filter = "testOne";
         (appConfig as any).addGlobalRequestFilter(filter);
 
@@ -130,8 +128,7 @@ describeConformance(
         expect(appConfig.getGlobalGuards()).toContain(guard as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestGuard()/getGlobalRequestGuards() (packages/core/src/application/application-config.ts).
-      it.skip("should add request guard", () => {
+      it("should add request guard", () => {
         const guard = "testOne";
         (appConfig as any).addGlobalRequestGuard(guard);
 
@@ -214,16 +211,14 @@ describeConformance(
     });
 
     describe("PreRequestHooks", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement registerPreRequestHook()/getGlobalPreRequestHooks() (packages/core/src/application/application-config.ts).
-      it.skip("should set global preRequest hooks", () => {
+      it("should set global preRequest hooks", () => {
         const hooks = [() => {}, () => {}];
         (appConfig as any).registerPreRequestHook(...hooks);
 
         expect((appConfig as any).getGlobalPreRequestHooks()).toEqual(hooks);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement registerPreRequestHook()/getGlobalPreRequestHooks() (packages/core/src/application/application-config.ts).
-      it.skip("should accumulate multiple registerPreRequestHook calls", () => {
+      it("should accumulate multiple registerPreRequestHook calls", () => {
         const hook1 = () => {};
         const hook2 = () => {};
         (appConfig as any).registerPreRequestHook(hook1);
@@ -254,8 +249,7 @@ describeConformance(
         expect(appConfig.getGlobalInterceptors()).toContain(interceptor as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestInterceptor()/getGlobalRequestInterceptors() (packages/core/src/application/application-config.ts).
-      it.skip("should add request interceptor", () => {
+      it("should add request interceptor", () => {
         const interceptor = "testOne";
         (appConfig as any).addGlobalRequestInterceptor(interceptor);
 
@@ -352,21 +346,18 @@ describeConformance(
     });
 
     describe("Route conflict policy", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should default to undefined", () => {
+      it("should default to undefined", () => {
         expect((appConfig as any).getRouteConflictPolicy()).toEqual(undefined);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should store the provided policy", () => {
+      it("should store the provided policy", () => {
         const policy = { duplicate: "error", shadow: "warn" } as const;
         (appConfig as any).setRouteConflictPolicy(policy);
 
         expect((appConfig as any).getRouteConflictPolicy()).toEqual(policy);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should reset to undefined when explicitly cleared", () => {
+      it("should reset to undefined when explicitly cleared", () => {
         (appConfig as any).setRouteConflictPolicy({ duplicate: "warn" });
         (appConfig as any).setRouteConflictPolicy(undefined);
 
@@ -375,15 +366,13 @@ describeConformance(
     });
 
     describe("Route resolution strategy", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should default to undefined", () => {
+      it("should default to undefined", () => {
         expect((appConfig as any).getRouteResolutionStrategy()).toEqual(
           undefined,
         );
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should store the provided strategy", () => {
+      it("should store the provided strategy", () => {
         (appConfig as any).setRouteResolutionStrategy("specificity");
 
         expect((appConfig as any).getRouteResolutionStrategy()).toEqual(
@@ -391,8 +380,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should reset to undefined when explicitly cleared", () => {
+      it("should reset to undefined when explicitly cleared", () => {
         (appConfig as any).setRouteResolutionStrategy("specificity");
         (appConfig as any).setRouteResolutionStrategy(undefined);
 

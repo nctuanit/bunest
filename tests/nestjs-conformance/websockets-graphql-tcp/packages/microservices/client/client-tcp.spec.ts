@@ -592,8 +592,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: TcpClientProxy in packages/microservices/src/transports/tcp.transport.ts never calls `this.emitStatus("connected")` on socket open or `this.emitStatus("disconnected")` on close/handleDisconnect, so `client.status` stays "disconnected" and `client.onStatus(...)` listeners never fire.
-      it.skip("should emit connected and disconnected status transitions over the socket lifecycle", async () => {
+      it("should emit connected and disconnected status transitions over the socket lifecycle", async () => {
         const server = await startEchoServer();
         const client = new TcpClientProxy({
           host: "127.0.0.1",

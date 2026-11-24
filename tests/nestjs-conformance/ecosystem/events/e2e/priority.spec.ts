@@ -178,8 +178,7 @@ describeConformance(
       expect(listener.calls).toEqual(["high", "normal:payload", "negative"]);
     });
 
-    // BUNEST_BUG: Expected equal-priority @OnEvent listeners to preserve declaration/discovery order ["first", "second"], but packages/messaging/src/events/decorators/on-event.decorator.ts calls MetadataRegistry.prependOwnArray(), reversing class method order to ["second", "first"].
-    it.skip("keeps discovery order when priorities are equal", async () => {
+    it("keeps discovery order when priorities are equal", async () => {
       const { emitter, listener } = await init();
 
       emitter.emit("ties");
@@ -199,8 +198,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: Expected equal-priority prepended listeners to preserve reverse discovery order ["prepend-second", "prepend-first"], but MetadataRegistry.prependOwnArray() in packages/messaging/src/events/decorators/on-event.decorator.ts reverses discovery order first, causing ["prepend-first", "prepend-second"].
-    it.skip("keeps the existing reverse discovery order for prepended listeners with the same priority", async () => {
+    it("keeps the existing reverse discovery order for prepended listeners with the same priority", async () => {
       const { emitter, listener } = await init();
 
       emitter.emit("prepend.ties");
@@ -208,8 +206,7 @@ describeConformance(
       expect(listener.calls).toEqual(["prepend-second", "prepend-first"]);
     });
 
-    // BUNEST_BUG: Expected equal-priority Infinity and default/NaN/non-number listeners to keep declaration order ["infinity-first", "infinity-second", "default", "nan", "string", "-infinity"], but MetadataRegistry.prependOwnArray() in packages/messaging/src/events/decorators/on-event.decorator.ts reverses same-priority ties.
-    it.skip("accepts infinite priorities and falls back to the default for NaN and non-numbers", async () => {
+    it("accepts infinite priorities and falls back to the default for NaN and non-numbers", async () => {
       const { emitter, listener } = await init();
 
       emitter.emit("infinite");

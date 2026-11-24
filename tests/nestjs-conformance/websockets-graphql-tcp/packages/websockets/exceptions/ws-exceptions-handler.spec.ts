@@ -222,8 +222,7 @@ describeConformance(
           expect(loggerErrorSpy.notCalled).toBe(true);
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter.catch() in packages/core/src/ws/filters/base-ws-exception.filter.ts spreads `...errPayload` when `WsException` wraps an `Error` instance (which is typeof "object"), leaking own enumerable sensitive properties (e.g. `config.headers.Authorization`) instead of logging the error and emitting generic `{ status: "error", message: "Internal server error" }`.
-        it.skip("should emit the unknown error payload and log the error when WsException holds an Error instance", () => {
+        it("should emit the unknown error payload and log the error when WsException holds an Error instance", () => {
           const error = Object.assign(new Error("Request failed"), {
             config: { headers: { Authorization: "Bearer secret" } },
           });
@@ -319,8 +318,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not treat Error instances wrapped inside WsException as unknown errors on native send path (leaks enumerable properties).
-        it.skip('should send the unknown error payload via "send" for WsException with error', () => {
+        it('should send the unknown error payload via "send" for WsException with error', () => {
           const error = Object.assign(new Error("Request failed"), {
             config: { headers: { Authorization: "Bearer secret" } },
           });
@@ -341,8 +339,7 @@ describeConformance(
       });
 
       describe("NestJS v12 cause / includeCause / causeFactory / binary & circular sanitization", () => {
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not implement NestJS v12 WsExceptionsHandlerOptions (`includeCause`, `causeFactory`), `cause: { pattern, data }` emission, binary-data stripping (`Buffer`, `ArrayBuffer`, typed arrays, `DataView`, `Blob`, 100k-deep objects), or circular-JSON retry without cause.
-        it.skip("should include cause { pattern, data } by default and support includeCause: false & custom causeFactory without mutating caller options", () => {
+        it("should include cause { pattern, data } by default and support includeCause: false & custom causeFactory without mutating caller options", () => {
           const options = Object.freeze({ includeCause: true });
           const filterWithOpts = new (
             BaseWsExceptionFilter as unknown as new (

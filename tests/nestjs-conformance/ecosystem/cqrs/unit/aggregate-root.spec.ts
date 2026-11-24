@@ -376,8 +376,7 @@ describeConformance(
     }
 
     describe("typings", () => {
-      // BUNEST_BUG: Expected AggregateRoot.publishAll() return type to allow void-returning subclass overrides (Promise<void> | any), matching IAggregateRoot.publishAll(): any, but packages/messaging/src/cqrs/aggregate-root.ts declares async publishAll(...): Promise<void> (TS2416).
-      it.skip("accept subclasses and implementations whose publish methods and commit() return void", () => {
+      it("accept subclasses and implementations whose publish methods and commit() return void", () => {
         class LegacyOrder extends Order {
           override publish<T extends IEvent>(event: T): void {
             super.publish(event);

@@ -928,8 +928,7 @@ describeConformance(
         expect(called).toEqual(["/HookSvc/Ping"]);
       });
 
-      // BUNEST_BUG: GrpcServer.close() has no gracefulShutdown / gracePeriod support and always calls server.stop(true) immediately (packages/microservices/src/transports/grpc.transport.ts:803-813).
-      it.skip("should honor gracefulShutdown and bounded gracePeriod before force-closing active calls", async () => {
+      it("should honor gracefulShutdown and bounded gracePeriod before force-closing active calls", async () => {
         const server = new GrpcServer({
           host: "127.0.0.1",
           port: 0,

@@ -23,6 +23,8 @@
     "type:coverage": "bun run scripts/type-tools/check-type-coverage.ts",
     "type:gen": "bun run scripts/type-tools/generate-global-types.ts",
     "verify:release": "bun run scripts/verify-release.ts",
+    "ai:docs": "bun run scripts/ai-docs.ts",
+    "conformance:gate": "bun run scripts/conformance-gate.ts",
     "docs:dev": "bun run --cwd apps/docs dev",
     "docs:build": "bun run --cwd apps/docs build",
     "docs:preview": "bun run --cwd apps/docs preview"

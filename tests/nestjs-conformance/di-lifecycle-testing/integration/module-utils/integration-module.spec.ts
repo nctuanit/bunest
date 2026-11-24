@@ -121,8 +121,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: ConfigurableModuleBuilder.registerAsync() lacks `provideInjectionTokensFrom` AND defaults ExtraModuleDefinitionOptions to `Record<string, never>`, causing TS2345 when setExtras() is omitted (packages/core/src/module/configurable-module.builder.ts:48)
-    it.skip('should resolve an alias supplied through "provideInjectionTokensFrom"', async () => {
+    it('should resolve an alias supplied through "provideInjectionTokensFrom"', async () => {
       const {
         ConfigurableModuleClass: FeatureBase,
         MODULE_OPTIONS_TOKEN: FEATURE_TOKEN,

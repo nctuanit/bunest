@@ -311,8 +311,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseArrayPipe ignores DTO class `items` instead of validating with ValidationPipe (returns raw nested array instead of throwing BadRequestException) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should not parse a JSON string nested in the array when items is a class", async () => {
+        it("should not parse a JSON string nested in the array when items is a class", async () => {
           class ArrItemWithProp {
             @IsNumber()
             number!: number;
@@ -367,8 +366,7 @@ describeConformance(
           ).toEqual([true, false]);
         });
 
-        // BUNEST_BUG: ParseArrayPipe lacks internal `validationPipe` for DTO class `items` validation (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should stop validating at the first invalid item", async () => {
+        it("should stop validating at the first invalid item", async () => {
           class ArrItemWithProp {
             @IsDefined()
             number!: number;
@@ -386,8 +384,7 @@ describeConformance(
           expect(transformSpy).toHaveBeenCalledTimes(2);
         });
 
-        // BUNEST_BUG: ParseArrayPipe lacks internal `validationPipe` for DTO class `items` validation (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should validate one item after the other", async () => {
+        it("should validate one item after the other", async () => {
           class ArrItemLocal {}
           target = new ParseArrayPipe({
             items: ArrItemLocal,
@@ -564,8 +561,7 @@ describeConformance(
             ).rejects.toBe(error);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation so async @Validate constraint is never invoked (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should rethrow the rejection of an async constraint", async () => {
+          it("should rethrow the rejection of an async constraint", async () => {
             const error = new Error("lookup failed");
             @ValidatorConstraint({ name: "isKnown", async: true })
             class IsKnown implements ValidatorConstraintInterface {

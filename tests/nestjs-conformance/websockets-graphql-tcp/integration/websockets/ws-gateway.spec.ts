@@ -373,8 +373,7 @@ describeConformance(
       "WsExecutionContext.switchToWs().getPattern()",
     );
 
-    // BUNEST_BUG: BunWebSocketAdapter does not implement setMessageParser() and hardcodes parseWsFrame() for `{ event, data?, id? }` JSON frames (packages/core/src/ws/adapter/bun-ws.adapter.ts#L755).
-    it.skip("should set messageParser by using setMessageParser method", async () => {
+    it("should set messageParser by using setMessageParser method", async () => {
       const testingModule = await Test.createTestingModule({
         providers: [ApplicationGateway],
       }).compile({ logger: false });
@@ -405,8 +404,7 @@ describeConformance(
       expect(reply.data?.test).toEqual("test");
     });
 
-    // BUNEST_BUG: WebSocketModuleOptions / BunWebSocketAdapter constructor does not accept a custom `messageParser` option and hardcodes parseWsFrame() (packages/core/src/ws/interfaces/ws.interface.ts#L174, packages/core/src/ws/adapter/bun-ws.adapter.ts#L755).
-    it.skip("should set messageParser by using constructor options", async () => {
+    it("should set messageParser by using constructor options", async () => {
       const testingModule = await Test.createTestingModule({
         providers: [ApplicationGateway],
       }).compile({ logger: false });

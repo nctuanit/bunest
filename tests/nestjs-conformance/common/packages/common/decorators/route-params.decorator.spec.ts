@@ -298,8 +298,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: parsePropertyAndPipes() in packages/core/src/common/decorators/params.decorators.ts:100-106 does not read `pipes` from KeyedParamSchemaOptions (`{ schema, pipes: [ParseIntPipe] }`).
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         class Test {
           public test(
             @Body({ schema: mockSchema, pipes: [ParseIntPipe] } as any)
@@ -354,8 +353,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: parsePropertyAndPipes() in packages/core/src/common/decorators/params.decorators.ts:100-106 does not read `pipes` from KeyedParamSchemaOptions (`{ schema, pipes: [ParseIntPipe] }`).
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         class Test {
           public test(
             @Query({ schema: mockSchema, pipes: [ParseIntPipe] } as any)
@@ -410,8 +408,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: parsePropertyAndPipes() in packages/core/src/common/decorators/params.decorators.ts:100-106 does not read `pipes` from KeyedParamSchemaOptions (`{ schema, pipes: [ParseIntPipe] }`).
-      it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
+      it("should enhance param with pipes when options with pipes passed as the only argument", () => {
         class Test {
           public test(
             @Param({ schema: mockSchema, pipes: [ParseIntPipe] } as any)

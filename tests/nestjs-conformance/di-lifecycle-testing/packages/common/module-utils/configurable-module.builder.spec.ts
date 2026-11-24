@@ -164,8 +164,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConfigurableModuleBuilder does not yet support `provideInjectionTokensFrom` or throwing getters on `OPTIONS_TYPE`/`ASYNC_OPTIONS_TYPE` or string `RANDOM_TEST_MODULE_OPTIONS` token (packages/core/src/module/configurable-module.builder.ts)
-      it.skip("should resolve provideInjectionTokensFrom and guard OPTIONS_TYPE/ASYNC_OPTIONS_TYPE runtime access", () => {
+      it("should resolve provideInjectionTokensFrom and guard OPTIONS_TYPE/ASYNC_OPTIONS_TYPE runtime access", () => {
         const { OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } =
           new ConfigurableModuleBuilder<Record<string, unknown>>({
             moduleName: "RandomTest",

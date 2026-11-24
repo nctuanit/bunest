@@ -70,8 +70,7 @@ describeConformance(
         expect(interceptor).toBeInstanceOf(ClassSerializerInterceptor);
       });
 
-      // BUNEST_BUG: ClassSerializerInterceptor hardcodes `import { instanceToPlain, plainToInstance } from "class-transformer"` and ignores `options.transformerPackage` (packages/validation/src/serializer.interceptor.ts)
-      it.skip("should use provided transformer package from options", () => {
+      it("should use provided transformer package from options", () => {
         const customTransformer = {
           classToPlain: createStub().returns({ custom: true }),
           plainToInstance: createStub(),

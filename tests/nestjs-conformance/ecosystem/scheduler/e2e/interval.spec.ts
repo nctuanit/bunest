@@ -59,8 +59,7 @@ describeConformance(
       expect(registry.getInterval("test")).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getInterval<T = any>(name: string): T to accept a generic type parameter, but packages/jobs/src/scheduler/scheduler.registry.ts declares getInterval(name: string) with 0 type parameters.
-    it.skip(`should support generic type parameter for getInterval`, async () => {
+    it(`should support generic type parameter for getInterval`, async () => {
       await app!.init();
       const registry = app!.get(SchedulerRegistry);
       // @ts-expect-error BUNEST_BUG: SchedulerRegistry.getInterval() does not accept a generic type parameter

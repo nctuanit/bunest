@@ -147,8 +147,7 @@ describeConformance(
       await ctx.close();
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
-    it.skip("should pass schema to pipe via @Body(options)", async () => {
+    it("should pass schema to pipe via @Body(options)", async () => {
       await ctx
         .request()
         .post("/schema-test/body")
@@ -160,8 +159,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.type).toBe("body");
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
-    it.skip("should pass schema to pipe via @Query(options)", async () => {
+    it("should pass schema to pipe via @Query(options)", async () => {
       await ctx.request().get("/schema-test/query?user=john").expect(200);
 
       expect(SchemaCaptorPipe.lastMetadata).toBeDefined();
@@ -169,8 +167,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.type).toBe("query");
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
-    it.skip("should pass schema to pipe via @Param(property, options)", async () => {
+    it("should pass schema to pipe via @Param(property, options)", async () => {
       await ctx
         .request()
         .get("/schema-test/param/42")
@@ -218,8 +215,7 @@ describeConformance(
       "zero-socket request(app)",
     );
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
-    it.skip("should pass schema to pipe via @Body(property, options)", async () => {
+    it("should pass schema to pipe via @Body(property, options)", async () => {
       await ctx
         .request()
         .post("/schema-test/body-property")

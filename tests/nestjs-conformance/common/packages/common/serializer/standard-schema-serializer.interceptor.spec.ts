@@ -234,8 +234,7 @@ describeConformance(
       });
 
       describe("when response is an array", () => {
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor passes the entire array directly to `schema["~standard"].validate(response)` instead of mapping validation over each element when `Array.isArray(response)` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-        it.skip("should serialize each item through the schema", async () => {
+        it("should serialize each item through the schema", async () => {
           const schema = createSchema((value) => ({
             value: { ...(value as Record<string, unknown>), serialized: true },
           }));
@@ -258,8 +257,7 @@ describeConformance(
       });
 
       describe("when response is not an object", () => {
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor's `isNativeResponsePassthrough()` returns `false` for primitives/null/undefined instead of passing non-objects through unchanged, causing primitive responses to fail schema validation (packages/validation/src/standard-schema-serializer.interceptor.ts:106-109)
-        it.skip("should return primitive values unchanged", async () => {
+        it("should return primitive values unchanged", async () => {
           const schema = createSchema(() => ({
             issues: [{ message: "should not be called" }],
           }));
@@ -625,8 +623,7 @@ describeConformance(
     });
 
     describe("transformToPlain", () => {
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor does not expose NestJS public `transformToPlain()` or `serialize()` methods (packages/validation/src/standard-schema-serializer.interceptor.ts)
-      it.skip("should return falsy values as-is", async () => {
+      it("should return falsy values as-is", async () => {
         interceptor = new StandardSchemaSerializerInterceptor(
           mockReflector as unknown as Reflector,
         );
@@ -649,8 +646,7 @@ describeConformance(
     });
 
     describe("validateOptions", () => {
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` in constructor options and calls `validate(response)` with 1 argument instead of forwarding `validateOptions` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-      it.skip("should forward default validateOptions to the schema", async () => {
+      it("should forward default validateOptions to the schema", async () => {
         const validateSpy = createSpy(
           (_value: unknown, _options?: unknown) => ({
             value: { ok: true },
@@ -741,8 +737,7 @@ describeConformance(
         expect(validateSpy).toHaveBeenCalledWith(response, contextOpts);
       });
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor calls `schema["~standard"].validate(response)` with 1 argument instead of `(response, validateOptions)` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-      it.skip("should pass undefined when no validateOptions are set", async () => {
+      it("should pass undefined when no validateOptions are set", async () => {
         const validateSpy = createSpy(
           (_value: unknown, _options?: unknown) => ({
             value: { ok: true },

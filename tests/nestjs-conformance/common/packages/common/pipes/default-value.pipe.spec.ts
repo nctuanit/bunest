@@ -25,16 +25,14 @@ describeConformance(
       });
 
       describe("when the default value is an array or a plain object", () => {
-        // BUNEST_BUG: DefaultValuePipe returns the shared defaultValue reference without cloning arrays/plain objects; expected [] on second call, actual ["first"] (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return a new copy of it on every call", () => {
+        it("should return a new copy of it on every call", () => {
           const arrayTarget = new DefaultValuePipe<string[], string[]>([]);
           arrayTarget.transform(undefined).push("first");
 
           expect(arrayTarget.transform(undefined)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe does not deep-clone nested arrays and plain objects; mutating returned object mutates stored default (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should copy the arrays and plain objects nested in it", () => {
+        it("should copy the arrays and plain objects nested in it", () => {
           const defaults = {
             sort: { order: "asc" },
             tags: ["a"],
@@ -91,8 +89,7 @@ describeConformance(
           expect(Object.keys(result.slots)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same null-prototype object reference instead of cloning it (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should keep symbol keys and a null prototype", () => {
+        it("should keep symbol keys and a null prototype", () => {
           const ne = Symbol("ne");
           const where = Object.assign(Object.create(null), {
             status: { [ne]: "deleted" },
@@ -150,8 +147,7 @@ describeConformance(
           expect(shared.tags).toEqual(["a"]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same circular object reference instead of deep-cloning with cycle preservation (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should preserve circular references", () => {
+        it("should preserve circular references", () => {
           const circular: Record<string, unknown> = {};
           circular.self = circular;
           const result = new DefaultValuePipe<

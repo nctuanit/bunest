@@ -642,8 +642,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ static `errorMessage` string option (packages/core/src/common/pipes/file-validators.ts)
-      it.skip("should return a static custom error message when the file type does not match", async () => {
+      it("should return a static custom error message when the file type does not match", async () => {
         const expectedFileType = "image/png";
         const actualFileType = "text/csv";
 
@@ -660,8 +659,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ dynamic `errorMessage(ctx)` callback option (packages/core/src/common/pipes/file-validators.ts)
-      it.skip("should return a dynamic custom error message based on context when the file type does not match", async () => {
+      it("should return a dynamic custom error message based on context when the file type does not match", async () => {
         const expectedFileType = "image/png";
         const actualFileType = "text/csv";
 
@@ -684,8 +682,7 @@ describeConformance(
     });
 
     describe("overrideMimeType", () => {
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ `overrideMimeType` option; `requestFile.mimetype` remains "image/jpeg" instead of being updated to "image/png" (packages/core/src/common/pipes/file-validators.ts)
-      it.skip("should override mimetype when overrideMimeType is enabled", async () => {
+      it("should override mimetype when overrideMimeType is enabled", async () => {
         const fileTypeValidator = new FileTypeValidator({
           fileType: /^image\/png$/,
           overrideMimeType: true,

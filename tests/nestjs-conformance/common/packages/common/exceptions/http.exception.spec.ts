@@ -196,8 +196,7 @@ describeConformance(
 
     describe("createBody", () => {
       describe("when object has been passed", () => {
-        // BUNEST_BUG: HttpException.createBody(object) in packages/core/src/common/exceptions/http.exception.ts requires (description, statusCode) and injects `{ statusCode, error, message }` instead of returning plain object verbatim.
-        it.skip("should return expected object", () => {
+        it("should return expected object", () => {
           const object = {
             message: "test",
           };
