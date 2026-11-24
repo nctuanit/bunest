@@ -1,4 +1,9 @@
-import { MetadataRegistry, type PipeLike } from "@bunest/core";
+import {
+  MetadataRegistry,
+  type ParameterDecoratorOptions,
+  type PipeLike,
+  type StandardSchemaV1,
+} from "@bunest/core";
 import {
   normalizePattern,
   type ClientOptions,
@@ -248,12 +253,29 @@ function recordRpcParam(
   MetadataRegistry.define(RPC_PARAM_METADATA, next, target, propertyKey);
 }
 
+function isParameterDecoratorOptions(
+  value: unknown,
+): value is ParameterDecoratorOptions {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+  if (typeof (value as { transform?: unknown }).transform === "function") {
+    return false;
+  }
+  return "schema" in value || "pipes" in value || "property" in value;
+}
+
 /**
- * Extracts the incoming RPC payload (or a named property of it), optionally running pipes.
+ * Extracts the incoming RPC payload (or a named property of it), optionally running pipes or schema validation.
  */
 export function Payload(
-  propertyOrPipe?: string | PipeLike,
-  ...pipes: PipeLike[]
+  propertyOrPipeOrOptions?: string | PipeLike | ParameterDecoratorOptions,
+  ...pipesOrOptions: (PipeLike | ParameterDecoratorOptions)[]
 ): ParameterDecorator {
   return (
     target: object,
@@ -263,20 +285,48 @@ export function Payload(
     if (propertyKey === undefined) {
       throw new Error("@Payload() can only be used on method parameters.");
     }
-    const property =
-      typeof propertyOrPipe === "string" ? propertyOrPipe : undefined;
-    const resolvedPipes =
-      typeof propertyOrPipe === "string"
-        ? pipes
-        : propertyOrPipe !== undefined
-          ? [propertyOrPipe, ...pipes]
-          : pipes;
+
+    let property: string | undefined;
+    let schema: StandardSchemaV1 | undefined;
+    let resolvedPipes: PipeLike[] = [];
+
+    if (typeof propertyOrPipeOrOptions === "string") {
+      property = propertyOrPipeOrOptions;
+      if (
+        pipesOrOptions.length > 0 &&
+        isParameterDecoratorOptions(pipesOrOptions[0])
+      ) {
+        const opts = pipesOrOptions[0];
+        schema = opts.schema;
+        resolvedPipes = [
+          ...(opts.pipes ?? []),
+          ...(pipesOrOptions.slice(1) as PipeLike[]),
+        ];
+      } else {
+        resolvedPipes = pipesOrOptions as PipeLike[];
+      }
+    } else if (isParameterDecoratorOptions(propertyOrPipeOrOptions)) {
+      property = propertyOrPipeOrOptions.property;
+      schema = propertyOrPipeOrOptions.schema;
+      resolvedPipes = [
+        ...(propertyOrPipeOrOptions.pipes ?? []),
+        ...(pipesOrOptions as PipeLike[]),
+      ];
+    } else if (propertyOrPipeOrOptions !== undefined) {
+      resolvedPipes = [
+        propertyOrPipeOrOptions,
+        ...(pipesOrOptions as PipeLike[]),
+      ];
+    } else {
+      resolvedPipes = pipesOrOptions as PipeLike[];
+    }
 
     recordRpcParam(target, propertyKey, {
       index: parameterIndex,
       kind: "payload",
       property,
       pipes: resolvedPipes,
+      ...(schema !== undefined ? { schema } : {}),
     });
   };
 }

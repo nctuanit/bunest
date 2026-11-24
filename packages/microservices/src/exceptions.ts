@@ -44,8 +44,10 @@ export class RpcException extends Error {
       typeof this.errorPayload.message === "string"
     ) {
       this.message = this.errorPayload.message;
-    } else {
-      this.message = JSON.stringify(this.errorPayload);
+    } else if (this.constructor) {
+      this.message =
+        this.constructor.name.match(/[A-Z][a-z]+|[0-9]+/g)?.join(" ") ??
+        "Error";
     }
   }
 
@@ -129,6 +131,8 @@ export class GrpcException extends RpcException {
   public readonly details: string;
   public readonly metadata?: GrpcMetadata;
 
+  private readonly includeLegacyStatus: boolean;
+
   constructor(code: GrpcStatus, message: string, metadata?: GrpcMetadata);
   constructor(message: string, code?: GrpcStatus, metadata?: GrpcMetadata);
   constructor(
@@ -136,12 +140,12 @@ export class GrpcException extends RpcException {
     messageOrCode?: string | GrpcStatus,
     metadata?: GrpcMetadata,
   ) {
-    const code: GrpcStatus =
-      typeof codeOrMessage === "number"
-        ? codeOrMessage
-        : typeof messageOrCode === "number"
-          ? messageOrCode
-          : GrpcStatus.UNKNOWN;
+    const isCodeFirst = typeof codeOrMessage === "number";
+    const code: GrpcStatus = isCodeFirst
+      ? codeOrMessage
+      : typeof messageOrCode === "number"
+        ? messageOrCode
+        : GrpcStatus.UNKNOWN;
     const message: string =
       typeof codeOrMessage === "string"
         ? codeOrMessage
@@ -149,11 +153,19 @@ export class GrpcException extends RpcException {
           ? messageOrCode
           : "";
 
-    super({
-      code,
-      status: code,
-      message,
-    });
+    super(
+      isCodeFirst
+        ? {
+            code,
+            status: code,
+            message,
+          }
+        : {
+            code,
+            message,
+          },
+    );
+    this.includeLegacyStatus = isCodeFirst;
     this.name = new.target.name || "GrpcException";
     this.code = code;
     this.details = message;
@@ -164,10 +176,16 @@ export class GrpcException extends RpcException {
     return this.code;
   }
 
-  override getError(): GrpcExceptionBody & { readonly status: GrpcStatus } {
+  override getError(): GrpcExceptionBody & { readonly status?: GrpcStatus } {
+    if (this.includeLegacyStatus) {
+      return {
+        code: this.code,
+        status: this.code,
+        message: this.message,
+      };
+    }
     return {
       code: this.code,
-      status: this.code,
       message: this.message,
     };
   }

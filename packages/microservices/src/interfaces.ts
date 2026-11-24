@@ -1,4 +1,9 @@
-import type { InjectionToken, PipeLike, Type } from "@bunest/core";
+import type {
+  InjectionToken,
+  PipeLike,
+  StandardSchemaV1,
+  Type,
+} from "@bunest/core";
 import type { SerializedRpcError } from "./exceptions";
 import type { KafkaParserConfig } from "./helpers";
 import type { Deserializer, Serializer } from "./packets";
@@ -209,6 +214,7 @@ export interface RpcParamMetadata {
   readonly kind: RpcParamKind;
   readonly property?: string;
   readonly pipes?: readonly PipeLike[];
+  readonly schema?: StandardSchemaV1;
 }
 
 export type TransportId = Transport | symbol;
