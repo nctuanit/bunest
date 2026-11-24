@@ -476,8 +476,7 @@ describeConformance(
         expect(reply.error?.message).toContain("only.event");
       });
 
-      // BUNEST_BUG: NatsTransportServer.onMessage() checks `typeof msg.respond === "function"` without verifying `msg.reply` is defined, so real NATS Msg instances with a `.respond()` method but `reply: undefined` still get `msg.respond()` called (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("does not call msg.respond() when msg.reply is undefined", async () => {
+      it("does not call msg.respond() when msg.reply is undefined", async () => {
         const broker = createMockNatsBroker();
         const server = track(
           new NatsTransportServer({ client: broker.client }),
@@ -501,8 +500,7 @@ describeConformance(
         expectNotCalled(respondSpy);
       });
 
-      // BUNEST_BUG: NatsTransportServer.onMessage() does not unwrap NatsRecord returned from a message handler; it serializes the raw { data, headers } wrapper inside response and does not forward headers to msg.respond() (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps NatsRecord returned by a message handler into response data and headers", async () => {
+      it("unwraps NatsRecord returned by a message handler into response data and headers", async () => {
         const broker = createMockNatsBroker();
         const server = track(
           new NatsTransportServer({ client: broker.client }),
@@ -534,8 +532,7 @@ describeConformance(
         expect(respondSpy.firstCall?.args[1]).toEqual({ headers });
       });
 
-      // BUNEST_BUG: NatsTransportServer lacks NATS wildcard subject matching/precedence; when both wildcard ("orders.*") and exact ("orders.get") handlers receive a matching request, both execute and send duplicate replies (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("prefers exact message handler over wildcard subscription without duplicate replies", async () => {
+      it("prefers exact message handler over wildcard subscription without duplicate replies", async () => {
         const broker = createMockNatsBroker();
         const server = track(
           new NatsTransportServer({ client: broker.client }),

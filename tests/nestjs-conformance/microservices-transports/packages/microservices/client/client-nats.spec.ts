@@ -238,8 +238,7 @@ describeConformance(
         expectCalledOnce(closeSpy);
       });
 
-      // BUNEST_BUG: NatsClientProxy.connect() and NatsClientProxy.close() are empty no-ops and never call emitStatus("connected") / emitStatus("disconnected"), so client.status stays "disconnected" and onStatus() listeners never fire (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("transitions client status and notifies onStatus listeners on connect() and close()", async () => {
+      it("transitions client status and notifies onStatus listeners on connect() and close()", async () => {
         const mock = createMockNatsClient();
         const client = track(new NatsClientProxy({ client: mock.client }));
         const statuses: ClientStatus[] = [];
@@ -255,8 +254,7 @@ describeConformance(
         unsubscribe();
       });
 
-      // BUNEST_BUG: NatsClientProxy.close() is an empty no-op and does not track, cancel/reject pending fallback _INBOX.* requests, clear their timers, or unsubscribe their inbox subscriptions (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("rejects pending fallback inbox requests and unsubscribes their inboxes on close()", async () => {
+      it("rejects pending fallback inbox requests and unsubscribes their inboxes on close()", async () => {
         const mock = createMockNatsClient({ withNativeRequest: false });
         const client = track(
           new NatsClientProxy({ client: mock.client, defaultTimeoutMs: 5000 }),
@@ -717,8 +715,7 @@ describeConformance(
         expect(mock.subscriptions[1]?.unsubscribed).toBe(true);
       });
 
-      // BUNEST_BUG: NatsClientProxy fallback inbox subscription does not check response.id === req.id, so a response envelope with a mismatched correlation id erroneously resolves the request instead of being ignored (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("ignores response envelopes whose id does not match the request id", async () => {
+      it("ignores response envelopes whose id does not match the request id", async () => {
         let capturedReply = "";
         let capturedId = "";
         const mock = createMockNatsClient({
@@ -944,8 +941,7 @@ describeConformance(
         expect(record.headers).toEqual({ "x-version": "1.0.0" });
       });
 
-      // BUNEST_BUG: NatsClientProxy.sendOnce() does not unwrap NatsRecord instances; it serializes the raw { data, headers } record wrapper into envelope.data and does not pass record.headers in publish/request options (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps NatsRecord data and forwards headers on send()", async () => {
+      it("unwraps NatsRecord data and forwards headers on send()", async () => {
         const mock = createMockNatsClient({
           publishImpl: (_subject, data, options) => {
             const req = JSON.parse(String(data)) as RpcRequestEnvelope;
@@ -980,8 +976,7 @@ describeConformance(
         ).toEqual({ "x-trace": "t-1" });
       });
 
-      // BUNEST_BUG: NatsClientProxy.dispatchEvent() does not unwrap NatsRecord instances; it serializes the raw { data, headers } record wrapper into envelope.data and does not pass record.headers in publish options (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps NatsRecord data and forwards headers on emit()", async () => {
+      it("unwraps NatsRecord data and forwards headers on emit()", async () => {
         const mock = createMockNatsClient();
         const client = track(new NatsClientProxy({ client: mock.client }));
         const record = new NatsRecord("event-data", { "x-version": "2.0.0" });

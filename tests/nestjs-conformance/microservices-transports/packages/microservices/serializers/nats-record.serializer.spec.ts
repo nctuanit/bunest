@@ -113,8 +113,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: @bunest/microservices exports NatsRecord and NatsRecordBuilder (packages/microservices/src/records.ts), but does NOT export NatsRecordSerializer and NatsClientProxy/NatsTransportClientLike do not unwrap NatsRecord headers on outgoing packets or replies (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should export NatsRecordSerializer and unwrap NatsRecord packets and replies with headers", async () => {
+      it("should export NatsRecordSerializer and unwrap NatsRecord packets and replies with headers", async () => {
         const mod =
           (await import("../../../../../../packages/microservices/src")) as Record<
             string,
@@ -171,8 +170,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: NatsClientProxy.emit() does not unwrap NatsRecord instances or forward NatsRecord.headers to NatsTransportClientLike.publish() (packages/microservices/src/transports/broker.transports.ts:440-451).
-      it.skip("should unwrap NatsRecord data and forward headers in NatsClientProxy.emit()", async () => {
+      it("should unwrap NatsRecord data and forward headers in NatsClientProxy.emit()", async () => {
         const published: Array<{
           subject: string;
           data: string | Uint8Array;

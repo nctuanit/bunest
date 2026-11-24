@@ -394,8 +394,7 @@ describeConformance(
         expect(noTagHarness.cancel.notCalled).toBe(true);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.ensureReplyConsumer() sets `this.replyInitialized = true` BEFORE awaiting `assertQueue()`/`consume()`, so a failed connection attempt poisons the flag and subsequent connect()/send() calls silently skip queue assertion and reply consumption instead of retrying (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should retry setup on next connect() instead of caching a failed assertQueue attempt", async () => {
+      it("should retry setup on next connect() instead of caching a failed assertQueue attempt", async () => {
         const brokerErr = new Error("broker unavailable");
         harness.assertQueue.onFirstCall().rejects(brokerErr);
         harness.assertQueue.callThrough();
@@ -407,8 +406,7 @@ describeConformance(
         expect(harness.consume.calledOnce).toBe(true);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.ensureReplyConsumer() sets `this.replyInitialized = true` BEFORE awaiting `channel.consume()`, so a setup error in consume() poisons future connect() calls instead of retrying (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should retry setup on next connect() instead of caching a failed consume attempt", async () => {
+      it("should retry setup on next connect() instead of caching a failed consume attempt", async () => {
         const setupErr = new Error("PRECONDITION_FAILED");
         harness.consume.onFirstCall().rejects(setupErr);
         harness.consume.callThrough();
@@ -419,8 +417,7 @@ describeConformance(
         expect(harness.consume.callCount).toBe(2);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.ensureReplyConsumer() lacks single-flight Promise protection: setting `this.replyInitialized = true` before awaiting `assertQueue`/`consume` causes a concurrent connect()/send() to resolve immediately and call `sendToQueue` before the reply consumer is registered (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should wait for in-flight setup on concurrent connect() / send() calls (single-flight)", async () => {
+      it("should wait for in-flight setup on concurrent connect() / send() calls (single-flight)", async () => {
         let releaseAssert!: () => void;
         harness.assertQueue.onFirstCall().callsFake(
           (queue) =>
@@ -445,8 +442,7 @@ describeConformance(
         expect(harness.consume.calledOnce).toBe(true);
       });
 
-      // BUNEST_BUG: Calling close() while connect() is awaiting assertQueue() does not abort or cancel the in-flight consumer setup in RabbitMqClientProxy.ensureReplyConsumer(), leaving an uncancelled consumer registered on a closed client (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should stop setup and avoid leaving an active consumer when close() runs while connecting", async () => {
+      it("should stop setup and avoid leaving an active consumer when close() runs while connecting", async () => {
         let releaseAssert!: () => void;
         harness.assertQueue.onFirstCall().callsFake(
           (queue) =>
@@ -463,8 +459,7 @@ describeConformance(
         expect(harness.consumers.get("jobs.rpc.reply") ?? []).toHaveLength(0);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.connect() never calls `this.emitStatus("connected")` inherited from ClientProxy, leaving `client.status` permanently `"disconnected"` and never notifying `onStatus()` listeners (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should emit 'connected' status on connect() and notify onStatus listeners", async () => {
+      it("should emit 'connected' status on connect() and notify onStatus listeners", async () => {
         const statuses: string[] = [];
         const off = client.onStatus((s) => statuses.push(s));
 
@@ -739,8 +734,7 @@ describeConformance(
         expect(await pending).toBe("final-ok");
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy's reply consumer callback directly accesses `msg.content` without checking for `null` (which AMQP brokers deliver when cancelling a consumer), throwing an unhandled TypeError (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should not throw when the broker cancels the reply consumer with a null message", async () => {
+      it("should not throw when the broker cancels the reply consumer with a null message", async () => {
         await client.connect();
         const consumer = harness.getLastConsumer("jobs.rpc.reply");
         expect(consumer).toBeDefined();
@@ -851,8 +845,7 @@ describeConformance(
         expect(pendingMap.size).toBe(0);
       });
 
-      // BUNEST_BUG: In RabbitMqClientProxy.sendOnce(), `this.channel.sendToQueue(...)` is evaluated as an argument to `Promise.resolve(...)` AFTER inserting into `this.pending`, so a synchronous throw bypasses `.catch(...)` and leaks both the timeout timer and the `pending` Map entry (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should not leave a pending entry behind when sendToQueue throws synchronously", async () => {
+      it("should not leave a pending entry behind when sendToQueue throws synchronously", async () => {
         harness.sendToQueue.throws(new Error("Publish error"));
 
         await expect(client.send("sync.fail", { x: 1 })).rejects.toThrow(
@@ -984,8 +977,7 @@ describeConformance(
         expect(rpcErrAttempts).toBe(1);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.sendOnce() does not detect or unwrap RmqRecord / RmqRecordBuilder instances, serializing the RmqRecord wrapper into `envelope.data` instead of unwrapping `record.data` and forwarding `record.options` (headers, persistent, priority, etc.) to `channel.sendToQueue` options (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
-      it.skip("should unwrap RmqRecord data and forward RmqRecordOptions to sendToQueue on send()", async () => {
+      it("should unwrap RmqRecord data and forward RmqRecordOptions to sendToQueue on send()", async () => {
         const record = new RmqRecordBuilder({ hello: "world" })
           .setOptions({
             persistent: true,
@@ -1065,8 +1057,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.dispatchEvent() does not detect or unwrap RmqRecord / RmqRecordBuilder instances and passes no options argument to `channel.sendToQueue`, dropping RmqRecordOptions (headers, persistent, priority, etc.) on emit() (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
-      it.skip("should unwrap RmqRecord data and forward RmqRecordOptions to sendToQueue on emit()", async () => {
+      it("should unwrap RmqRecord data and forward RmqRecordOptions to sendToQueue on emit()", async () => {
         const record = new RmqRecord(
           { event: "paid" },
           {
@@ -1189,8 +1180,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.close() assigns `this.replyConsumerTag = undefined` and `this.replyInitialized = false` AFTER `await this.channel.cancel(...)` with no `try/finally`, so a rejecting `cancel()` leaves the client stuck with stale consumer state and unable to reconnect (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should still reset replyInitialized and replyConsumerTag when channel.cancel() rejects", async () => {
+      it("should still reset replyInitialized and replyConsumerTag when channel.cancel() rejects", async () => {
         await client.connect();
         harness.cancel.onFirstCall().rejects(new Error("Cancel failed"));
 
@@ -1201,8 +1191,7 @@ describeConformance(
         expect(harness.consume.callCount).toBe(2);
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.close() never calls `this.emitStatus("disconnected")`, so status listeners are never notified of disconnection (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should emit 'disconnected' status on close()", async () => {
+      it("should emit 'disconnected' status on close()", async () => {
         const statuses: string[] = [];
         const off = client.onStatus((s) => statuses.push(s));
 
@@ -1307,8 +1296,7 @@ describeConformance(
         expect(client.unwrap()).toBeDefined();
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy inherits base `ClientProxy.unwrap()` which returns `this` instead of overriding it to return the underlying injected `RabbitMqChannelLike` (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should return the underlying RabbitMqChannelLike from unwrap()", () => {
+      it("should return the underlying RabbitMqChannelLike from unwrap()", () => {
         expect(client.unwrap<RabbitMqChannelLike>()).toBe(harness.channel);
       });
 

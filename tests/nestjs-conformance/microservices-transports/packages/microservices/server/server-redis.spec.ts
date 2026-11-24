@@ -276,8 +276,7 @@ describeConformance(
         expect(server.isListening).toBe(false);
       });
 
-      // BUNEST_BUG: RedisTransportServer.listen() pushes channel onto subscribedChannels BEFORE awaiting subClient.subscribe(); if subscribe() rejects and listen() is retried, subscribedChannels contains duplicate entries and close() calls unsubscribe() twice (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("does not record failed channels in subscribedChannels when subscribe() rejects", async () => {
+      it("does not record failed channels in subscribedChannels when subscribe() rejects", async () => {
         let shouldFail = true;
         const transport = createMockRedisTransport({
           subscribeImpl: async () => {
@@ -476,8 +475,7 @@ describeConformance(
         expect(reply.error?.message).toContain("event.only");
       });
 
-      // BUNEST_BUG: RedisTransportServer.onMessage() does not unwrap RedisRecord returned by a message handler; it serializes the raw { data, options } wrapper inside envelope.response (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps RedisRecord returned by a message handler into response data", async () => {
+      it("unwraps RedisRecord returned by a message handler into response data", async () => {
         const transport = createMockRedisTransport();
         const server = track(
           new RedisTransportServer({ pubClient: transport.makeClient() }),

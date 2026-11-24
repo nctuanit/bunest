@@ -298,7 +298,10 @@ export interface NatsMessageLike {
   readonly data: string | Uint8Array;
   readonly reply?: string;
   readonly headers?: unknown;
-  respond?(data: string | Uint8Array): Promise<void> | void;
+  respond?(
+    data: string | Uint8Array,
+    options?: { headers?: unknown },
+  ): Promise<void> | void;
 }
 
 export interface NatsSubscriptionLike {
@@ -309,7 +312,7 @@ export interface NatsTransportClientLike {
   publish(
     subject: string,
     data: string | Uint8Array,
-    options?: { reply?: string },
+    options?: { reply?: string; headers?: unknown },
   ): Promise<void> | void;
   subscribe(
     subject: string,
@@ -318,7 +321,7 @@ export interface NatsTransportClientLike {
   request?(
     subject: string,
     data: string | Uint8Array,
-    options?: { timeout?: number },
+    options?: { timeout?: number; headers?: unknown },
   ): Promise<NatsMessageLike>;
   drain?(): Promise<void>;
   close?(): Promise<void> | void;
@@ -365,6 +368,7 @@ export interface RabbitMqChannelLike {
       replyTo?: string;
       persistent?: boolean;
       headers?: Record<string, unknown>;
+      [key: string]: unknown;
     },
   ): Promise<boolean | void> | boolean | void;
   ack?(msg: RabbitMqMessageLike): void;
