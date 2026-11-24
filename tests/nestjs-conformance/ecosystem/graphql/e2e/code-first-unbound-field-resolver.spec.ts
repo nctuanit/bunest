@@ -97,8 +97,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected `data: null` and GraphQL error `'No resolver is bound for field "Profile.secret".'`; actual returns `{ profile: { id: "1", secret: "******" } }` because GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1232-1580) ignores options.transformResolvers in code-first mode and does not guard unbound @ResolveField()-declared fields against parent fallback.
-    it.skip("should refuse to resolve the field instead of reading the parent property", async () => {
+    it("should refuse to resolve the field instead of reading the parent property", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({ query: "{ profile { id secret } }" })

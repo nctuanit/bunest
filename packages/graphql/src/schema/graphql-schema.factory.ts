@@ -11,6 +11,7 @@ import {
   type GuardLike,
   Injectable,
   type InterceptorLike,
+  Logger,
   METADATA_KEYS,
   MetadataRegistry,
   Optional,
@@ -44,15 +45,30 @@ import {
   GraphQLSchema,
   GraphQLString,
   GraphQLUnionType,
+  isEnumType,
+  isInputObjectType,
   isInputType,
+  isInterfaceType,
+  isIntrospectionType,
+  isListType,
+  isNonNullType,
   isObjectType,
   isOutputType,
+  isScalarType,
+  isSpecifiedScalarType,
+  isUnionType,
   Kind,
   lexicographicSortSchema,
   parse,
   printSchema,
+  printSubgraphSchema,
 } from "../engine";
-import { GRAPHQL_METADATA_KEYS, GRAPHQL_SDL_FILE_END } from "../constants";
+import {
+  GRAPHQL_METADATA_KEYS,
+  GRAPHQL_SDL_FILE_END,
+  GRAPHQL_SDL_FILE_HEADER,
+} from "../constants";
+import { FileSystemHelper } from "./file-system.helper";
 import { GraphQLExecutionContextHost } from "../context/gql-execution-context";
 import {
   getResolverFields,
@@ -531,6 +547,303 @@ function assertNullDefaultAllowed(
   }
 }
 
+function collectOrderedInterfaces(
+  type: GraphQLObjectType | GraphQLInterfaceType,
+): GraphQLInterfaceType[] {
+  const visited = new Set<GraphQLInterfaceType>();
+  const ordered: GraphQLInterfaceType[] = [];
+  const visit = (iface: GraphQLInterfaceType) => {
+    if (visited.has(iface)) return;
+    visited.add(iface);
+    for (const parent of iface.getInterfaces()) {
+      visit(parent);
+    }
+    ordered.push(iface);
+  };
+  for (const iface of type.getInterfaces()) {
+    visit(iface);
+  }
+  return ordered;
+}
+
+function mergeTwoSchemas(
+  baseSchema: GraphQLSchema,
+  overlaySchema: GraphQLSchema,
+  scalarOverrides: ReadonlyMap<string, GraphQLScalarType>,
+): GraphQLSchema {
+  const baseMap = baseSchema.getTypeMap();
+  const overlayMap = overlaySchema.getTypeMap();
+  const resolved = new Map<string, GraphQLNamedType>();
+
+  const remapType = <T>(t: T): T => {
+    if (isNonNullType(t)) {
+      return new GraphQLNonNull(remapType(t.ofType) as any) as unknown as T;
+    }
+    if (isListType(t)) {
+      return new GraphQLList(remapType(t.ofType) as any) as unknown as T;
+    }
+    if (t && typeof t === "object" && "name" in t) {
+      const named = resolved.get((t as unknown as GraphQLNamedType).name);
+      if (named) return named as unknown as T;
+    }
+    return t;
+  };
+
+  const allNames = new Set<string>();
+  for (const [name, t] of Object.entries(baseMap)) {
+    if (!isIntrospectionType(t) && !isSpecifiedScalarType(t)) {
+      allNames.add(name);
+    }
+  }
+  for (const [name, t] of Object.entries(overlayMap)) {
+    if (!isIntrospectionType(t) && !isSpecifiedScalarType(t)) {
+      allNames.add(name);
+    }
+  }
+  for (const name of scalarOverrides.keys()) {
+    allNames.add(name);
+  }
+
+  // Pass 1: Scalars and Enums
+  for (const name of allNames) {
+    const override = scalarOverrides.get(name);
+    if (override) {
+      resolved.set(name, override);
+      continue;
+    }
+    const baseT = baseMap[name];
+    const overT = overlayMap[name];
+    if (isScalarType(baseT)) {
+      resolved.set(name, baseT);
+    } else if (isScalarType(overT)) {
+      resolved.set(name, overT);
+    } else if (isEnumType(baseT)) {
+      resolved.set(name, baseT);
+    } else if (isEnumType(overT)) {
+      resolved.set(name, overT);
+    }
+  }
+
+  const convertArgs = (
+    args: readonly {
+      name: string;
+      description?: string | null;
+      type: GraphQLInputType;
+      defaultValue?: unknown;
+      deprecationReason?: string | null;
+      extensions?: Readonly<Record<string, unknown>>;
+    }[],
+  ): Record<string, GraphQLArgumentConfig> => {
+    const out: Record<string, GraphQLArgumentConfig> = {};
+    for (const arg of args) {
+      out[arg.name] = {
+        type: remapType(arg.type),
+        description: arg.description ?? undefined,
+        defaultValue: arg.defaultValue,
+        deprecationReason: arg.deprecationReason ?? undefined,
+        ...(arg.extensions ? { extensions: { ...arg.extensions } } : {}),
+      };
+    }
+    return out;
+  };
+
+  const convertObjectFields = (
+    baseObj?: GraphQLObjectType,
+    overObj?: GraphQLObjectType,
+  ): GraphQLFieldConfigMap<any, any> => {
+    const out: GraphQLFieldConfigMap<any, any> = {};
+    const sources = [baseObj, overObj].filter(
+      (s): s is GraphQLObjectType => s !== undefined,
+    );
+    const hasNonEmpty = sources.some((s) =>
+      Object.keys(s.getFields()).some((k) => k !== "_empty"),
+    );
+    for (const src of sources) {
+      for (const [fname, field] of Object.entries(src.getFields())) {
+        if (fname === "_empty" && hasNonEmpty) continue;
+        out[fname] = {
+          type: remapType(field.type),
+          description: field.description,
+          deprecationReason: field.deprecationReason,
+          args: convertArgs(field.args),
+          resolve: field.resolve,
+          subscribe: field.subscribe,
+          ...(field.extensions ? { extensions: field.extensions } : {}),
+          ...(field.astNode ? { astNode: field.astNode } : {}),
+        };
+      }
+    }
+    return out;
+  };
+
+  // Pass 2: Interfaces, Objects, Unions, InputObjects
+  for (const name of allNames) {
+    if (resolved.has(name)) continue;
+    const baseT = baseMap[name];
+    const overT = overlayMap[name];
+
+    if (isInterfaceType(baseT) || isInterfaceType(overT)) {
+      const bIface = isInterfaceType(baseT) ? baseT : undefined;
+      const oIface = isInterfaceType(overT) ? overT : undefined;
+      const primary = oIface ?? bIface!;
+      resolved.set(
+        name,
+        new GraphQLInterfaceType({
+          name,
+          description: primary.description ?? bIface?.description,
+          resolveType: oIface?.resolveType ?? bIface?.resolveType,
+          ...(primary.extensions ? { extensions: primary.extensions } : {}),
+          ...(primary.astNode ? { astNode: primary.astNode } : {}),
+          interfaces: () => {
+            const set = new Set<GraphQLInterfaceType>();
+            for (const src of [bIface, oIface]) {
+              if (!src) continue;
+              for (const iface of src.getInterfaces()) {
+                const mapped = remapType(iface);
+                if (isInterfaceType(mapped)) set.add(mapped);
+              }
+            }
+            return [...set];
+          },
+          fields: () => {
+            const out: GraphQLFieldConfigMap<any, any> = {};
+            for (const src of [bIface, oIface]) {
+              if (!src) continue;
+              for (const [fname, field] of Object.entries(src.getFields())) {
+                out[fname] = {
+                  type: remapType(field.type),
+                  description: field.description,
+                  deprecationReason: field.deprecationReason,
+                  args: convertArgs(field.args),
+                  resolve: field.resolve,
+                  ...(field.extensions ? { extensions: field.extensions } : {}),
+                  ...(field.astNode ? { astNode: field.astNode } : {}),
+                };
+              }
+            }
+            return out;
+          },
+        }),
+      );
+      continue;
+    }
+
+    if (isObjectType(baseT) || isObjectType(overT)) {
+      const bObj = isObjectType(baseT) ? baseT : undefined;
+      const oObj = isObjectType(overT) ? overT : undefined;
+      const primary = oObj ?? bObj!;
+      resolved.set(
+        name,
+        new GraphQLObjectType({
+          name,
+          description: primary.description ?? bObj?.description,
+          isTypeOf: oObj?.isTypeOf ?? bObj?.isTypeOf,
+          ...(primary.extensions ? { extensions: primary.extensions } : {}),
+          ...(primary.astNode ? { astNode: primary.astNode } : {}),
+          interfaces: () => {
+            const set = new Set<GraphQLInterfaceType>();
+            for (const src of [bObj, oObj]) {
+              if (!src) continue;
+              for (const iface of src.getInterfaces()) {
+                const mapped = remapType(iface);
+                if (isInterfaceType(mapped)) set.add(mapped);
+              }
+            }
+            return [...set];
+          },
+          fields: () => convertObjectFields(bObj, oObj),
+        }),
+      );
+      continue;
+    }
+
+    if (isUnionType(baseT) || isUnionType(overT)) {
+      const bUnion = isUnionType(baseT) ? baseT : undefined;
+      const oUnion = isUnionType(overT) ? overT : undefined;
+      const primary = oUnion ?? bUnion!;
+      resolved.set(
+        name,
+        new GraphQLUnionType({
+          name,
+          description: primary.description ?? bUnion?.description,
+          resolveType: oUnion?.resolveType ?? bUnion?.resolveType,
+          ...(primary.extensions ? { extensions: primary.extensions } : {}),
+          ...(primary.astNode ? { astNode: primary.astNode } : {}),
+          types: () => {
+            const set = new Set<GraphQLObjectType>();
+            for (const src of [bUnion, oUnion]) {
+              if (!src) continue;
+              for (const member of src.getTypes()) {
+                const mapped = remapType(member);
+                if (isObjectType(mapped)) set.add(mapped);
+              }
+            }
+            return [...set];
+          },
+        }),
+      );
+      continue;
+    }
+
+    if (isInputObjectType(baseT) || isInputObjectType(overT)) {
+      const bInput = isInputObjectType(baseT) ? baseT : undefined;
+      const oInput = isInputObjectType(overT) ? overT : undefined;
+      const primary = oInput ?? bInput!;
+      resolved.set(
+        name,
+        new GraphQLInputObjectType({
+          name,
+          description: primary.description ?? bInput?.description,
+          isOneOf: oInput?.isOneOf ?? bInput?.isOneOf,
+          ...(primary.extensions ? { extensions: primary.extensions } : {}),
+          ...(primary.astNode ? { astNode: primary.astNode } : {}),
+          fields: () => {
+            const out: GraphQLInputFieldConfigMap = {};
+            for (const src of [bInput, oInput]) {
+              if (!src) continue;
+              for (const [fname, field] of Object.entries(src.getFields())) {
+                out[fname] = {
+                  type: remapType(field.type),
+                  description: field.description,
+                  defaultValue: field.defaultValue,
+                  deprecationReason: field.deprecationReason,
+                  ...(field.extensions ? { extensions: field.extensions } : {}),
+                };
+              }
+            }
+            return out;
+          },
+        }),
+      );
+    }
+  }
+
+  const queryName =
+    overlaySchema.getQueryType()?.name ?? baseSchema.getQueryType()?.name;
+  const mutationName =
+    overlaySchema.getMutationType()?.name ?? baseSchema.getMutationType()?.name;
+  const subscriptionName =
+    overlaySchema.getSubscriptionType()?.name ??
+    baseSchema.getSubscriptionType()?.name;
+
+  const query = queryName
+    ? (resolved.get(queryName) as GraphQLObjectType | undefined)
+    : undefined;
+  const mutation = mutationName
+    ? (resolved.get(mutationName) as GraphQLObjectType | undefined)
+    : undefined;
+  const subscription = subscriptionName
+    ? (resolved.get(subscriptionName) as GraphQLObjectType | undefined)
+    : undefined;
+
+  return new GraphQLSchema({
+    query,
+    mutation,
+    subscription,
+    types: [...resolved.values()],
+  });
+}
+
 export interface GqlGlobalEnhancers {
   readonly pipes?: readonly (PipeLike | ScopedGqlEnhancer<PipeTransform>)[];
   readonly guards?: readonly (GuardLike | ScopedGqlEnhancer<CanActivate>)[];
@@ -559,12 +872,14 @@ export interface GqlGlobalEnhancers {
  */
 @Injectable()
 export class GraphQLSchemaFactory {
+  private readonly logger = new Logger("GraphQLSchemaFactory");
   private readonly objectTypes = new Map<Function, GraphQLObjectType>();
   private readonly interfaceTypes = new Map<Function, GraphQLInterfaceType>();
   private readonly unionTypes = new Map<UnionTypeRef<any>, GraphQLUnionType>();
   private readonly inputTypes = new Map<Function, GraphQLInputObjectType>();
   private readonly customScalarsByType = new Map<unknown, GraphQLScalarType>();
   private readonly discoveredConcreteTypes = new Set<GraphQLNamedType>();
+  private readonly resolveFieldOnlyKeys = new Set<string>();
   private readonly resolveFieldRegistry = new Map<
     string,
     Array<{
@@ -600,6 +915,8 @@ export class GraphQLSchemaFactory {
     private readonly defaultGlobalFilters: readonly ExceptionFilterLike[] = [],
     @Optional()
     private readonly defaultGlobalEnhancers: GqlGlobalEnhancers = {},
+    @Optional()
+    private readonly fileSystemHelper: FileSystemHelper = new FileSystemHelper(),
   ) {}
 
   async create(
@@ -613,6 +930,7 @@ export class GraphQLSchemaFactory {
     this.inputTypes.clear();
     this.customScalarsByType.clear();
     this.discoveredConcreteTypes.clear();
+    this.resolveFieldOnlyKeys.clear();
     this.resolveFieldRegistry.clear();
 
     this.activeGlobalFilters = [
@@ -638,9 +956,52 @@ export class GraphQLSchemaFactory {
     }
 
     if (options.schema) {
-      return options.transformSchema
-        ? await options.transformSchema(options.schema)
-        : options.schema;
+      const hasSchemaFirst = Boolean(
+        options.typeDefs || (options.typePaths && options.typePaths.length > 0),
+      );
+      const hasCodeFirst =
+        !hasSchemaFirst &&
+        (resolverInstances.length > 0 || Boolean(options.autoSchemaFile));
+
+      if (!hasSchemaFirst && !hasCodeFirst) {
+        return options.transformSchema
+          ? await options.transformSchema(options.schema)
+          : options.schema;
+      }
+
+      const scalarOverrides = this.collectCustomScalarMap(resolverInstances);
+      const subOptions: GraphQLModuleOptions = {
+        ...options,
+        schema: undefined,
+        transformSchema: undefined,
+        autoSchemaFile: undefined,
+        sortSchema: undefined,
+      };
+      const overlaySchema = hasSchemaFirst
+        ? await this.buildSchemaFirst(resolverInstances, subOptions)
+        : await this.buildCodeFirst(resolverInstances, subOptions);
+
+      let merged = mergeTwoSchemas(
+        options.schema,
+        overlaySchema,
+        scalarOverrides,
+      );
+          if (options.sortSchema) {
+        merged = lexicographicSortSchema(merged);
+      }
+      if (options.transformSchema) {
+        merged = await options.transformSchema(merged);
+      }
+      const autoSchemaPath = resolveAutoSchemaFilePath(options.autoSchemaFile);
+      if (autoSchemaPath) {
+        const printed =
+          printSchema(merged) +
+          (this.activeBuildSchemaOptions.addNewlineAtEnd
+            ? GRAPHQL_SDL_FILE_END
+            : "");
+        await Bun.write(autoSchemaPath, printed);
+      }
+      return merged;
     }
 
     if (
@@ -651,6 +1012,38 @@ export class GraphQLSchemaFactory {
     }
 
     return this.buildCodeFirst(resolverInstances, options);
+  }
+
+  private collectCustomScalarMap(
+    resolverInstances: readonly object[],
+  ): Map<string, GraphQLScalarType> {
+    const map = new Map<string, GraphQLScalarType>();
+    for (const instance of resolverInstances) {
+      const ctor = instance.constructor as Type<unknown>;
+      const scalarMeta = MetadataRegistry.get<ScalarMetadata>(
+        GRAPHQL_METADATA_KEYS.SCALAR,
+        ctor,
+      );
+      if (!scalarMeta) continue;
+      const impl = instance as CustomScalar;
+      const scalar = new GraphQLScalarType({
+        name: scalarMeta.name,
+        description: impl.description,
+        ...(impl.specifiedByURL !== undefined
+          ? { specifiedByURL: impl.specifiedByURL }
+          : {}),
+        ...(impl.extensions !== undefined
+          ? { extensions: impl.extensions }
+          : {}),
+        parseValue: (v) => impl.parseValue(v),
+        serialize: (v) => impl.serialize(v),
+        ...(typeof impl.parseLiteral === "function"
+          ? { parseLiteral: (ast, vars) => impl.parseLiteral!(ast, vars) }
+          : {}),
+      });
+      map.set(scalarMeta.name, scalar);
+    }
+    return map;
   }
 
   private async compileEnhancer<T>(
@@ -1378,10 +1771,20 @@ export class GraphQLSchemaFactory {
           }
         : undefined;
 
+    const ifaceDirectiveNodes = parseDirectiveNodes(ifaceDirectives);
     const ifaceType = new GraphQLInterfaceType({
       name: typeName,
       description: meta?.description,
       ...(mergedIfaceExtensions ? { extensions: mergedIfaceExtensions } : {}),
+      ...(ifaceDirectiveNodes.length > 0
+        ? {
+            astNode: {
+              kind: Kind.INTERFACE_TYPE_DEFINITION,
+              name: { kind: Kind.NAME, value: typeName },
+              directives: ifaceDirectiveNodes,
+            },
+          }
+        : {}),
       interfaces: () =>
         allParentInterfaces.map((parentIface) =>
           this.getOrCreateInterfaceType(parentIface, typeName),
@@ -1420,11 +1823,28 @@ export class GraphQLSchemaFactory {
                     ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
                   }
                 : undefined;
+            const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
             fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
               description: fieldMeta.description,
               deprecationReason: fieldMeta.deprecationReason,
               ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+              ...(fieldDirectiveNodes.length > 0
+                ? {
+                    astNode: {
+                      kind: Kind.FIELD_DEFINITION,
+                      name: {
+                        kind: Kind.NAME,
+                        value: fieldMeta.name ?? fieldMeta.propertyKey,
+                      },
+                      type: {
+                        kind: Kind.NAMED_TYPE,
+                        name: { kind: Kind.NAME, value: "String" },
+                      },
+                      directives: fieldDirectiveNodes,
+                    },
+                  }
+                : {}),
             };
           }
         }
@@ -1442,11 +1862,28 @@ export class GraphQLSchemaFactory {
                   ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
                 }
               : undefined;
+          const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
           fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
             type: this.resolveOutputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
             deprecationReason: fieldMeta.deprecationReason,
             ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+            ...(fieldDirectiveNodes.length > 0
+              ? {
+                  astNode: {
+                    kind: Kind.FIELD_DEFINITION,
+                    name: {
+                      kind: Kind.NAME,
+                      value: fieldMeta.name ?? fieldMeta.propertyKey,
+                    },
+                    type: {
+                      kind: Kind.NAMED_TYPE,
+                      name: { kind: Kind.NAME, value: "String" },
+                    },
+                    directives: fieldDirectiveNodes,
+                  },
+                }
+              : {}),
           };
         }
 
@@ -1473,6 +1910,15 @@ export class GraphQLSchemaFactory {
             );
           } else if (existingField?.type) {
             fieldType = existingField.type;
+            if (rfMeta.nullable === true) {
+              if (fieldType instanceof GraphQLNonNull) {
+                fieldType = fieldType.ofType;
+              }
+            } else if (rfMeta.nullable === false) {
+              if (!(fieldType instanceof GraphQLNonNull)) {
+                fieldType = new GraphQLNonNull(fieldType);
+              }
+            }
           } else {
             const designReturn = MetadataRegistry.getReturnType(
               compiled.resolverClass.prototype,
@@ -1704,11 +2150,25 @@ export class GraphQLSchemaFactory {
                 ? (parent: Record<string, unknown>) =>
                     parent?.[fieldMeta.propertyKey]
                 : defaultFieldResolver;
+            const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
             fields[fieldName] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
               description: fieldMeta.description,
               deprecationReason: fieldMeta.deprecationReason,
               ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+              ...(fieldDirectiveNodes.length > 0
+                ? {
+                    astNode: {
+                      kind: Kind.FIELD_DEFINITION,
+                      name: { kind: Kind.NAME, value: fieldName },
+                      type: {
+                        kind: Kind.NAMED_TYPE,
+                        name: { kind: Kind.NAME, value: "String" },
+                      },
+                      directives: fieldDirectiveNodes,
+                    },
+                  }
+                : {}),
               resolve:
                 fieldMw.length > 0
                   ? applyFieldMiddleware(fieldMw, baseResolve)
@@ -1716,6 +2176,22 @@ export class GraphQLSchemaFactory {
                     ? baseResolve
                     : undefined,
             };
+          }
+          // Reserve key order for interface @ResolveField()s right after interface @Field()s
+          const ifaceMetaForOrder = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+            GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+            iface,
+          );
+          const ifaceRfsForOrder =
+            this.resolveFieldRegistry.get(ifaceMetaForOrder?.name ?? iface.name) ??
+            [];
+          for (const { meta: rfMeta } of ifaceRfsForOrder) {
+            if (!(rfMeta.name in fields)) {
+              fields[rfMeta.name] = undefined as unknown as GraphQLFieldConfig<
+                any,
+                any
+              >;
+            }
           }
         }
 
@@ -1848,6 +2324,9 @@ export class GraphQLSchemaFactory {
 
         for (const { meta: rfMeta, compiled } of fieldResolvers) {
           const existingField = fields[rfMeta.name];
+          if (!existingField) {
+            this.resolveFieldOnlyKeys.add(`${typeName}.${rfMeta.name}`);
+          }
           let fieldType: GraphQLOutputType;
           if (rfMeta.returnTypeFn) {
             fieldType = this.resolveOutputType(
@@ -1856,6 +2335,15 @@ export class GraphQLSchemaFactory {
             );
           } else if (existingField?.type) {
             fieldType = existingField.type;
+            if (rfMeta.nullable === true) {
+              if (fieldType instanceof GraphQLNonNull) {
+                fieldType = fieldType.ofType;
+              }
+            } else if (rfMeta.nullable === false) {
+              if (!(fieldType instanceof GraphQLNonNull)) {
+                fieldType = new GraphQLNonNull(fieldType);
+              }
+            }
           } else {
             const designReturn = MetadataRegistry.getReturnType(
               compiled.resolverClass.prototype,
@@ -1881,22 +2369,47 @@ export class GraphQLSchemaFactory {
             new Set([...globalMiddleware, ...modelMw, ...handlerMw]),
           );
           const baseResolve = this.createResolverFn(compiled);
-          const rfExt = getGraphQLExtensions(
+          const rfExtFromClass = getGraphQLExtensions(
             compiled.resolverClass,
             String(rfMeta.handlerKey),
           );
+          const rfExtFromMethod = getGraphQLExtensions(compiled.handlerFn);
+          const rfExt =
+            rfExtFromClass || rfExtFromMethod
+              ? { ...(rfExtFromClass ?? {}), ...(rfExtFromMethod ?? {}) }
+              : undefined;
+          const rfDirs = [
+            ...getGraphQLDirectives(
+              compiled.resolverClass,
+              String(rfMeta.handlerKey),
+            ),
+            ...getGraphQLDirectives(compiled.handlerFn),
+          ];
+          const existingDirs = Array.isArray(existingField?.extensions?.directives)
+            ? (existingField.extensions.directives as string[])
+            : [];
+          const combinedDirs = [...existingDirs, ...rfDirs];
           const mergedRfExt =
             existingField?.extensions ||
             rfExt ||
+            combinedDirs.length > 0 ||
             rfMeta.complexity !== undefined
               ? {
                   ...(existingField?.extensions ?? {}),
                   ...(rfExt ?? {}),
+                  ...(combinedDirs.length > 0
+                    ? { directives: combinedDirs }
+                    : {}),
                   ...(rfMeta.complexity !== undefined
                     ? { complexity: rfMeta.complexity }
                     : {}),
                 }
               : undefined;
+
+          const combinedDirectiveNodes = [
+            ...(existingField?.astNode?.directives ?? []),
+            ...parseDirectiveNodes(rfDirs),
+          ];
 
           fields[rfMeta.name] = {
             type: fieldType,
@@ -1905,6 +2418,19 @@ export class GraphQLSchemaFactory {
               rfMeta.deprecationReason ?? existingField?.deprecationReason,
             args: argsConfig,
             ...(mergedRfExt ? { extensions: mergedRfExt } : {}),
+            ...(combinedDirectiveNodes.length > 0
+              ? {
+                  astNode: {
+                    kind: Kind.FIELD_DEFINITION,
+                    name: { kind: Kind.NAME, value: rfMeta.name },
+                    type: {
+                      kind: Kind.NAMED_TYPE,
+                      name: { kind: Kind.NAME, value: "String" },
+                    },
+                    directives: combinedDirectiveNodes,
+                  },
+                }
+              : {}),
             resolve:
               rfMw.length > 0
                 ? applyFieldMiddleware(rfMw, baseResolve)
@@ -2336,11 +2862,50 @@ export class GraphQLSchemaFactory {
       ...this.discoveredConcreteTypes,
       ...customScalars,
     ];
+    const includeModules =
+      options.include && options.include.length > 0
+        ? (options.include as Function[])
+        : undefined;
+    const isOrphanIncluded = (orphan: Function | object): boolean => {
+      if (!includeModules) return true;
+      if (typeof orphan === "function") {
+        const objMeta = TypeMetadataStorage.getObjectTypeMetadataByTarget(orphan);
+        if (objMeta?.registerIn) {
+          return TypeMetadataStorage.getObjectTypesMetadataByModules(
+            includeModules,
+          ).some((m) => m.target === orphan);
+        }
+        const inputMeta = TypeMetadataStorage.getInputTypeMetadataByTarget(orphan);
+        if (inputMeta?.registerIn) {
+          return TypeMetadataStorage.getInputTypesMetadataByModules(
+            includeModules,
+          ).some((m) => m.target === orphan);
+        }
+        const ifaceMeta = TypeMetadataStorage.getInterfaceMetadataByTarget(orphan);
+        if (ifaceMeta?.registerIn) {
+          return TypeMetadataStorage.getInterfacesMetadataByModules(
+            includeModules,
+          ).some((m) => m.target === orphan);
+        }
+      } else if (orphan && typeof orphan === "object") {
+        const enumMeta = TypeMetadataStorage.getEnumsMetadata().find(
+          (e) => e.ref === orphan,
+        );
+        if (enumMeta?.registerIn) {
+          return TypeMetadataStorage.getEnumsMetadataByModules(
+            includeModules,
+          ).some((e) => e.ref === orphan);
+        }
+      }
+      return true;
+    };
+
     const allOrphaned = [
       ...(options.orphanedTypes ?? []),
       ...(this.activeBuildSchemaOptions.orphanedTypes ?? []),
     ];
     for (const orphan of allOrphaned) {
+      if (!isOrphanIncluded(orphan)) continue;
       if (typeof orphan === "function") {
         if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, orphan)) {
           extraTypes.push(this.getOrCreateInputType(orphan));
@@ -2481,22 +3046,139 @@ export class GraphQLSchemaFactory {
         : {}),
     });
 
-    if (options.sortSchema) {
+    if (options.resolvers || options.transformResolvers) {
+      if (options.transformResolvers) {
+        // Extract discovered resolvers from schema object types
+        const discovered: SchemaFirstResolversMap = {};
+        const discoveredFields: Array<{
+          typeName: string;
+          fieldName: string;
+          field: { resolve?: GraphQLFieldResolver<any, any>; subscribe?: GraphQLFieldResolver<any, any> };
+        }> = [];
+        for (const gqlType of Object.values(schema.getTypeMap())) {
+          if (!isObjectType(gqlType) || isIntrospectionType(gqlType)) continue;
+          const typeMap: Record<string, any> = {};
+          for (const [fname, field] of Object.entries(gqlType.getFields())) {
+            if (field.resolve || field.subscribe) {
+              typeMap[fname] = field.subscribe
+                ? { resolve: field.resolve, subscribe: field.subscribe }
+                : field.resolve;
+              discoveredFields.push({
+                typeName: gqlType.name,
+                fieldName: fname,
+                field,
+              });
+            }
+          }
+          if (Object.keys(typeMap).length > 0) {
+            discovered[gqlType.name] = typeMap;
+          }
+        }
+
+        const inputResolvers: SchemaFirstResolversMap | SchemaFirstResolversMap[] =
+          options.resolvers
+            ? [
+                discovered,
+                ...(Array.isArray(options.resolvers)
+                  ? options.resolvers
+                  : [options.resolvers]),
+              ]
+            : discovered;
+        const effectiveResolvers =
+          await options.transformResolvers(inputResolvers);
+
+        // Clear previously bound resolvers before re-applying transformed map(s)
+        for (const entry of discoveredFields) {
+          entry.field.resolve = undefined;
+          entry.field.subscribe = undefined;
+        }
+
+        const resolverMaps = Array.isArray(effectiveResolvers)
+          ? effectiveResolvers
+          : [effectiveResolvers];
+        for (const map of resolverMaps) {
+          this.applyResolversMap(schema, map);
+        }
+      } else if (options.resolvers) {
+        const resolverMaps = Array.isArray(options.resolvers)
+          ? options.resolvers
+          : [options.resolvers];
+        for (const map of resolverMaps) {
+          this.applyResolversMap(schema, map);
+        }
+      }
+    }
+
+    // Guard @ResolveField()-only fields that ended up without a bound resolver
+    if (this.resolveFieldOnlyKeys.size > 0) {
+      const unboundFields: string[] = [];
+      for (const key of this.resolveFieldOnlyKeys) {
+        const dotIdx = key.indexOf(".");
+        const tName = key.slice(0, dotIdx);
+        const fName = key.slice(dotIdx + 1);
+        const gqlType = schema.getType(tName);
+        if (!isObjectType(gqlType)) continue;
+        const field = gqlType.getFields()[fName];
+        if (field && !field.resolve) {
+          unboundFields.push(key);
+          field.resolve = () => {
+            throw new Error(`No resolver is bound for field "${key}".`);
+          };
+        }
+      }
+      if (unboundFields.length > 0) {
+        this.logger.warn(
+          `No resolver is bound for these fields, which are declared only by a field resolver (@ResolveField()): ${unboundFields.map((f) => `"${f}"`).join(", ")}.`,
+        );
+      }
+    }
+
+        if (options.sortSchema) {
       schema = lexicographicSortSchema(schema);
     }
 
+    const isFed2 =
+      federationEnabled &&
+      !(
+        (typeof options.autoSchemaFile === "object" &&
+          options.autoSchemaFile !== null &&
+          options.autoSchemaFile.federation === 1) ||
+        (typeof options.federation === "object" &&
+          options.federation !== null &&
+          options.federation.version === 1)
+      );
+
     if (federationEnabled) {
-      federationSdl = printSchema(schema);
+      federationSdl = printSubgraphSchema(schema, {
+        includeFederationDirectives: true,
+      });
     }
+
+    const formatAutoSchema = (s: GraphQLSchema): string => {
+      if (federationEnabled) {
+        return (
+          GRAPHQL_SDL_FILE_HEADER +
+          printSubgraphSchema(s, { emitFederationLink: isFed2 }) +
+          (this.activeBuildSchemaOptions.addNewlineAtEnd
+            ? GRAPHQL_SDL_FILE_END
+            : "")
+        );
+      }
+      return (
+        GRAPHQL_SDL_FILE_HEADER +
+        printSchema(s) +
+        (this.activeBuildSchemaOptions.addNewlineAtEnd
+          ? GRAPHQL_SDL_FILE_END
+          : "")
+      );
+    };
 
     const autoSchemaPath = resolveAutoSchemaFilePath(options.autoSchemaFile);
     if (autoSchemaPath && !options.transformAutoSchemaFile) {
-      const printed =
-        printSchema(schema) +
-        (this.activeBuildSchemaOptions.addNewlineAtEnd
-          ? GRAPHQL_SDL_FILE_END
-          : "");
-      await Bun.write(autoSchemaPath, printed);
+      await this.fileSystemHelper.writeFile(
+        autoSchemaPath,
+        formatAutoSchema(schema),
+      );
     }
 
     if (options.transformSchema) {
@@ -2504,12 +3186,10 @@ export class GraphQLSchemaFactory {
     }
 
     if (autoSchemaPath && options.transformAutoSchemaFile) {
-      const printed =
-        printSchema(schema) +
-        (this.activeBuildSchemaOptions.addNewlineAtEnd
-          ? GRAPHQL_SDL_FILE_END
-          : "");
-      await Bun.write(autoSchemaPath, printed);
+      await this.fileSystemHelper.writeFile(
+        autoSchemaPath,
+        formatAutoSchema(schema),
+      );
     }
 
     // Keep helper references reachable (avoid unused import warnings)
@@ -2533,13 +3213,86 @@ export class GraphQLSchemaFactory {
       options.typePaths && options.typePaths.length > 0
         ? await this.typesLoader.mergeTypesByPaths(options.typePaths)
         : "";
-    const sdl = [loadedSdl, inlineSdl]
+    const rawSdl = [loadedSdl, inlineSdl]
       .filter((s) => s.trim().length > 0)
       .join("\n");
 
+    const federationEnabled = Boolean(options.federation);
+    let sdl = rawSdl;
+    if (federationEnabled) {
+      const fedPrelude: string[] = [];
+      const fedDirectives: Array<[string, string]> = [
+        ["key", "directive @key(fields: String!, resolvable: Boolean = true) repeatable on OBJECT | INTERFACE"],
+        ["requires", "directive @requires(fields: String!) on FIELD_DEFINITION"],
+        ["provides", "directive @provides(fields: String!) on FIELD_DEFINITION"],
+        ["external", "directive @external on OBJECT | FIELD_DEFINITION"],
+        ["extends", "directive @extends on OBJECT | INTERFACE"],
+        ["shareable", "directive @shareable on FIELD_DEFINITION | OBJECT"],
+        ["inaccessible", "directive @inaccessible on FIELD_DEFINITION | OBJECT | INTERFACE | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION"],
+        ["override", "directive @override(from: String!) on FIELD_DEFINITION"],
+        ["tag", "directive @tag(name: String!) repeatable on FIELD_DEFINITION | INTERFACE | OBJECT | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION"],
+        ["link", "directive @link(url: String, as: String, for: String, import: [String]) repeatable on SCHEMA"],
+      ];
+      for (const [dirName, decl] of fedDirectives) {
+        if (!new RegExp(`directive\\s+@${dirName}\\b`).test(sdl)) {
+          fedPrelude.push(decl);
+        }
+      }
+      // If SDL has `extend type Query` without a base `type Query`, promote the first `extend type Query` to `type Query`
+      if (/\bextend\s+type\s+Query\b/.test(sdl) && !/(?<!extend\s+)type\s+Query\b/.test(sdl)) {
+        sdl = sdl.replace(/\bextend\s+type\s+Query\b/, "type Query");
+      }
+      if (fedPrelude.length > 0) {
+        sdl = `${fedPrelude.join("\n")}\n${sdl}`;
+      }
+    }
+
     let schema = buildASTSchema(parse(sdl));
 
+    // 0. Bind @Scalar() providers onto schema-first scalar types and parse arg defaults once
+    const customScalars = this.collectCustomScalarMap(resolverInstances);
+    if (customScalars.size > 0) {
+      for (const [scalarName, customScalar] of customScalars.entries()) {
+        const existing = schema.getType(scalarName);
+        if (isScalarType(existing)) {
+          (existing as any).serialize = customScalar.serialize;
+          (existing as any).parseValue = customScalar.parseValue;
+          (existing as any).parseLiteral = customScalar.parseLiteral;
+          if (customScalar.description !== undefined) {
+            (existing as any).description = customScalar.description;
+          }
+        }
+      }
+      // Re-parse defaultValue of arguments whose leaf type is one of the custom scalars (once!)
+      const unwrapLeaf = (t: GraphQLInputType): GraphQLNamedType => {
+        if (isNonNullType(t) || isListType(t)) {
+          return unwrapLeaf(t.ofType as GraphQLInputType);
+        }
+        return t as GraphQLNamedType;
+      };
+      for (const gqlType of Object.values(schema.getTypeMap())) {
+        if (isIntrospectionType(gqlType)) continue;
+        if (isObjectType(gqlType) || isInterfaceType(gqlType)) {
+          for (const field of Object.values(gqlType.getFields())) {
+            for (const arg of field.args) {
+              if (arg.defaultValue === undefined || arg.defaultValue === null) {
+                continue;
+              }
+              const leaf = unwrapLeaf(arg.type);
+              const customScalar = customScalars.get(leaf.name);
+              if (customScalar) {
+                (arg as any).defaultValue = customScalar.parseValue(
+                  arg.defaultValue,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
     // 1. Attach plain schema-first resolver map(s) (with optional transformResolvers)
+    const interfaceResolverMaps: SchemaFirstResolversMap[] = [];
     if (options.resolvers) {
       const effectiveResolvers = options.transformResolvers
         ? await options.transformResolvers(options.resolvers)
@@ -2549,6 +3302,38 @@ export class GraphQLSchemaFactory {
         : [effectiveResolvers];
       for (const map of resolverMaps) {
         this.applyResolversMap(schema, map);
+        interfaceResolverMaps.push(map);
+      }
+    }
+
+    // 1b. Apply inheritResolversFromInterfaces when enabled
+    if (options.inheritResolversFromInterfaces && interfaceResolverMaps.length > 0) {
+      for (const gqlType of Object.values(schema.getTypeMap())) {
+        if (!isObjectType(gqlType) || isIntrospectionType(gqlType)) continue;
+        const orderedIfaces = collectOrderedInterfaces(gqlType);
+        if (orderedIfaces.length === 0) continue;
+        const objFields = gqlType.getFields();
+        for (const [fieldName, field] of Object.entries(objFields)) {
+          if (field.resolve) continue;
+          // Apply least-specific -> most-specific (preserving listed order for unrelated)
+          for (const iface of orderedIfaces) {
+            for (const map of interfaceResolverMaps) {
+              const ifaceMap = map[iface.name];
+              if (!ifaceMap) continue;
+              const resolverDef = ifaceMap[fieldName];
+              if (typeof resolverDef === "function") {
+                field.resolve = resolverDef;
+              } else if (resolverDef && typeof resolverDef === "object") {
+                if (typeof resolverDef.subscribe === "function") {
+                  field.subscribe = resolverDef.subscribe;
+                }
+                if (typeof resolverDef.resolve === "function") {
+                  field.resolve = resolverDef.resolve;
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -2638,6 +3423,168 @@ export class GraphQLSchemaFactory {
                   : baseResolve;
             }
           }
+        }
+      }
+    }
+
+    if (federationEnabled) {
+      const referenceResolvers = new Map<
+        string,
+        (
+          reference: Record<string, unknown>,
+          context: any,
+          info: GraphQLResolveInfo,
+        ) => unknown
+      >();
+      for (const instance of resolverInstances) {
+        const ctor = instance.constructor as Type<unknown>;
+        const refKey = MetadataRegistry.get<string | symbol>(
+          GRAPHQL_METADATA_KEYS.RESOLVE_REFERENCE,
+          ctor,
+        );
+        const resMeta = MetadataRegistry.get<ResolverMetadata>(
+          GRAPHQL_METADATA_KEYS.RESOLVER,
+          ctor,
+        );
+        if (refKey !== undefined && resMeta) {
+          const typeName = this.resolveTargetTypeName(resMeta);
+          const fn = (instance as Record<string | symbol, unknown>)[refKey];
+          if (typeName && typeof fn === "function") {
+            const boundFn = (
+              reference: Record<string, unknown>,
+              context: any,
+              info: GraphQLResolveInfo,
+            ) => (fn as Function).call(instance, reference, context, info);
+            referenceResolvers.set(typeName, boundFn);
+            const targetType = schema.getType(typeName);
+            if (isObjectType(targetType)) {
+              const existingExt =
+                (targetType.extensions as Record<string, any>) ?? {};
+              (targetType as any).extensions = {
+                ...existingExt,
+                apollo: {
+                  ...(existingExt.apollo ?? {}),
+                  subgraph: {
+                    ...(existingExt.apollo?.subgraph ?? {}),
+                    resolveReference: boundFn,
+                  },
+                },
+              };
+            }
+          }
+        }
+      }
+
+      // Also collect __resolveReference from options.resolvers maps
+      for (const map of interfaceResolverMaps) {
+        for (const [tName, fieldMap] of Object.entries(map)) {
+          const refFn = (fieldMap as Record<string, unknown>).__resolveReference;
+          if (typeof refFn === "function" && !referenceResolvers.has(tName)) {
+            referenceResolvers.set(
+              tName,
+              refFn as (
+                reference: Record<string, unknown>,
+                context: any,
+                info: GraphQLResolveInfo,
+              ) => unknown,
+            );
+          }
+        }
+      }
+
+      const entityTypes: GraphQLObjectType[] = [];
+      for (const gqlType of Object.values(schema.getTypeMap())) {
+        if (!isObjectType(gqlType) || isIntrospectionType(gqlType)) continue;
+        const hasKeyDirective = gqlType.astNode?.directives?.some(
+          (d) => d.name.value === "key",
+        );
+        if (referenceResolvers.has(gqlType.name) || hasKeyDirective) {
+          entityTypes.push(gqlType);
+        }
+      }
+
+      const fedSdl = printSubgraphSchema(schema, {
+        includeFederationDirectives: true,
+      });
+      const queryType = schema.getQueryType();
+      if (queryType) {
+        const qFields = queryType.getFields();
+        const AnyScalar = new GraphQLScalarType({
+          name: "_Any",
+          serialize: (v) => v,
+          parseValue: (v) => v,
+        });
+        const ServiceType = new GraphQLObjectType({
+          name: "_Service",
+          fields: { sdl: { type: GraphQLString } },
+        });
+        if (!qFields._service) {
+          (qFields as Record<string, any>)._service = {
+            name: "_service",
+            args: [],
+            type: new GraphQLNonNull(ServiceType),
+            resolve: () => ({ sdl: fedSdl }),
+          };
+        }
+        if (entityTypes.length > 0 && !qFields._entities) {
+          const EntityUnion = new GraphQLUnionType({
+            name: "_Entity",
+            types: entityTypes,
+            resolveType: (val: unknown) =>
+              (val as { __typename?: string } | null | undefined)?.__typename,
+          });
+          (qFields as Record<string, any>)._entities = {
+            name: "_entities",
+            args: [
+              {
+                name: "representations",
+                type: new GraphQLNonNull(
+                  new GraphQLList(new GraphQLNonNull(AnyScalar)),
+                ),
+              },
+            ],
+            type: new GraphQLNonNull(new GraphQLList(EntityUnion)),
+            resolve: async (
+              _parent: unknown,
+              args: { representations?: unknown[] } | undefined,
+              context: any,
+              info: GraphQLResolveInfo,
+            ) => {
+              const reps = Array.isArray(args?.representations)
+                ? args.representations
+                : [];
+              const results = [];
+              for (const rep of reps) {
+                const typename = (
+                  rep as { __typename?: unknown } | null | undefined
+                )?.__typename;
+                const resolver =
+                  typeof typename === "string"
+                    ? referenceResolvers.get(typename)
+                    : undefined;
+                if (!resolver) {
+                  results.push(null);
+                } else {
+                  const resolved = await resolver(
+                    rep as Record<string, unknown>,
+                    context,
+                    info,
+                  );
+                  results.push(
+                    resolved && typeof resolved === "object"
+                      ? { __typename: typename, ...(resolved as object) }
+                      : resolved,
+                  );
+                }
+              }
+              return results;
+            },
+          };
+          // Register _Any, _Service, _Entity in schema typeMap so validation resolves `_Any`
+          const tMap = schema.getTypeMap() as Record<string, GraphQLNamedType>;
+          tMap._Any = AnyScalar;
+          tMap._Service = ServiceType;
+          tMap._Entity = EntityUnion;
         }
       }
     }

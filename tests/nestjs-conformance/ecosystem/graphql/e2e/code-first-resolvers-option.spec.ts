@@ -120,8 +120,7 @@ describeConformance(
           await app.close();
         });
 
-        // BUNEST_BUG: Expected `{ member: { displayName: "ALICE" } }` from options.resolvers.Member.displayName; actual returns GraphQL error `Cannot return null for non-nullable field Member.displayName.` because GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1232-1580) never applies options.resolvers or options.transformResolvers in code-first mode.
-        it.skip("should apply the resolvers of the option", async () => {
+        it("should apply the resolvers of the option", async () => {
           const res = await request(app)
             .post("/graphql")
             .send({ query: "{ member { displayName } }" })

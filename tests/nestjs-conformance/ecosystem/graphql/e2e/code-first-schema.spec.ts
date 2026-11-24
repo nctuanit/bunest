@@ -810,8 +810,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally getGraphQLFields (type.decorators.ts:734-761) inherits @Field() from undecorated superclass NodeIngredient.
-      it.skip('should define "Ingredient" type', () => {
+      it('should define "Ingredient" type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "Ingredient",
         );
@@ -861,8 +860,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally GraphQLSchemaFactory does not read static [_GRAPHQL_METADATA_FACTORY]() or bind IRecipesResolver interface fields onto Recipe.
-      it.skip('should define "Recipe" type', () => {
+      it('should define "Recipe" type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "Recipe",
         );

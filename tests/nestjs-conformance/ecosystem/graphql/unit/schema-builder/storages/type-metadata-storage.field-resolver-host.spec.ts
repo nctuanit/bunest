@@ -210,8 +210,7 @@ describeConformance(
       expect(currency?.type.toString()).toBe("String!");
     });
 
-    // BUNEST_BUG: Expected Order.internalNote to be undefined when OrderResolver overrides internalNote() without @ResolveField(), got non-null String! field; packages/graphql/src/decorators/resolver.decorators.ts (getResolverFields:466-484) blindly inherits parent @ResolveField() metadata without dropping methods overridden undecorated on a derived prototype.
-    it.skip("should drop a field resolver overridden without the decorator", () => {
+    it("should drop a field resolver overridden without the decorator", () => {
       expect(getFields("Order").internalNote).toBeUndefined();
     });
 

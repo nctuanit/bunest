@@ -73,6 +73,7 @@ interface GraphQLWsSocketData {
   readonly extra: Record<string, unknown>;
   initTimer?: ReturnType<typeof setTimeout>;
   readonly subscriptions: Map<string, ActiveWsSubscription>;
+  customServerClient?: unknown;
 }
 
 function isAsyncIterable(
@@ -123,7 +124,11 @@ export class GraphQLWsHandler {
   }
 
   getPath(): string {
-    return normalizePath(this.options.path ?? this.executor.getPath());
+    return normalizePath(
+      this.options.path ??
+        this.options.server?.options?.path ??
+        this.executor.getPath(),
+    );
   }
 
   /**
@@ -181,6 +186,31 @@ export class GraphQLWsHandler {
         // Ignore already-closed sockets
       }
     }
+    const customServer = this.options.server as
+      | (typeof this.options.server & {
+          clients?: Set<unknown>;
+          listeners?: Map<string, Set<unknown>>;
+          removeAllListeners?: (event?: string) => void;
+          close?: () => void;
+        })
+      | undefined;
+    if (customServer) {
+      if (customServer.clients instanceof Set) {
+        customServer.clients.clear();
+      }
+      if (typeof customServer.removeAllListeners === "function") {
+        customServer.removeAllListeners("connection");
+      } else if (customServer.listeners instanceof Map) {
+        customServer.listeners.clear();
+      }
+      if (typeof customServer.close === "function") {
+        try {
+          customServer.close();
+        } catch {
+          // Ignore custom server close errors
+        }
+      }
+    }
   }
 
   private handleUpgrade(
@@ -228,6 +258,18 @@ export class GraphQLWsHandler {
   private handleOpen(ws: BunServerWsLike<GraphQLWsSocketData>): void {
     this.sockets.add(ws);
     const data = ws.data;
+    if (this.options.server) {
+      const customServer = this.options.server;
+      customServer.handleUpgrade(
+        data.request,
+        ws,
+        new Uint8Array(0),
+        (client, req) => {
+          data.customServerClient = client;
+          customServer.emit("connection", client, req);
+        },
+      );
+    }
     data.initTimer = setTimeout(() => {
       if (!data.closed && !data.initialized && !data.initializing) {
         data.closed = true;

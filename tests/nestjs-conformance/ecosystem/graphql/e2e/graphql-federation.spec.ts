@@ -339,8 +339,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation`, rejects Federation SDL (`@key`, `extend type Query`), and does not synthesize `_service`/`_entities` or bind `@ResolveReference()` in schema-first mode.
-      it.skip("should resolve references", async () => {
+      it("should resolve references", async () => {
         await request(app)
           .post("/graphql")
           .send({

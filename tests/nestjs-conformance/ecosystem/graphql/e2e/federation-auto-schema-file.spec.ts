@@ -254,14 +254,12 @@ describeConformance(
       await removePath(schemaPath, { force: true });
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) writes autoSchemaFile directly via `node:fs` `writeFileSync` instead of injecting/calling DI `FileSystemHelper.writeFile()`, so writeFileMock receives 0 calls instead of 1.
-    it.skip("should write the federated SDL file once with the configured filename", () => {
+    it("should write the federated SDL file once with the configured filename", () => {
       expect(writeFileMock).toHaveBeenCalledTimes(1);
       expect(writeFileMock.mock.calls[0]?.[0]).toBe(schemaPath);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) bypasses DI `FileSystemHelper.writeFile()` and emits raw `printSchema(schema)`, stripping @Directive() federation directives (@key, @extends, @external) from generated SDL.
-    it.skip("should preserve federation directives (@key, @external, @extends) in the generated SDL", () => {
+    it("should preserve federation directives (@key, @external, @extends) in the generated SDL", () => {
       const fileContent = writeFileMock.mock.calls[0]?.[1] ?? "";
 
       // Object types decorated with @Directive('@key(...)') must keep the directive

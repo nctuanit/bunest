@@ -52,8 +52,7 @@ describeConformance(
       expect(generated).toContain("ok");
     });
 
-    // BUNEST_BUG: GraphQLDefinitionsFactory.generate({ watch: true }) in packages/graphql/src/schema/graphql-definitions.factory.ts destructures `typePaths`, `path`, `outputAs`, `debug`, `typeDefs` and completely ignores `watch: true` (does not watch resolved glob files or regenerate on file modification).
-    it.skip("watches files resolved from type path glob patterns", async () => {
+    it("watches files resolved from type path glob patterns", async () => {
       const schemaPath = join(directory, "schema.graphql");
       const outputPath = join(directory, "graphql.ts");
       await Bun.write(schemaPath, "type Query { ok: Boolean }");

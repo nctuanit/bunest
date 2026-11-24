@@ -148,8 +148,7 @@ describeConformance(
         expect(displayName).toHaveBeenCalled();
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst in packages/graphql/src/schema/graphql-schema.factory.ts calls buildASTSchema without federation directive definitions (throws 'Unknown directive "@key"') and does not bind @ResolveReference() or @Scalar() providers in schema-first mode.
-      it.skip("should attach reference resolvers and custom scalars", async () => {
+      it("should attach reference resolvers and custom scalars", async () => {
         const resolveReference = mock((_ref?: unknown) => ({ id: "1" }));
 
         @Scalar("Percent")
@@ -195,8 +194,7 @@ describeConformance(
         expect(percentType.parseValue(20)).toBe(0.2);
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst in packages/graphql/src/schema/graphql-schema.factory.ts does not bind custom @Scalar() providers onto schema-first scalar types, so default values remain unparsed (expected 0.2, received 20).
-      it.skip("should parse default values with the custom scalars only once", async () => {
+      it("should parse default values with the custom scalars only once", async () => {
         @Scalar("Percent")
         class PercentScalar implements CustomScalar<number, number> {
           serialize(value: number): number {
@@ -226,8 +224,7 @@ describeConformance(
       });
 
       describe('with "inheritResolversFromInterfaces"', () => {
-        // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst in packages/graphql/src/schema/graphql-schema.factory.ts ignores options.inheritResolversFromInterfaces and never inherits interface field resolvers onto implementing object types (expected "PrivateNode", received undefined).
-        it.skip.each(["Node & PrivateNode", "PrivateNode & Node"])(
+        it.each(["Node & PrivateNode", "PrivateNode & Node"])(
           "should inherit the resolver of the most specific interface (implements %s)",
           async (interfaces) => {
             const schema = await graphqlFederationFactory.generateSchema({
@@ -286,8 +283,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: GraphQLFederationFactory.generateSchema in packages/graphql/src/schema/graphql.factory.ts never checks options.directiveResolvers or logs a warning that it is ignored.
-      it.skip('should warn that the "directiveResolvers" option is ignored', async () => {
+      it('should warn that the "directiveResolvers" option is ignored', async () => {
         const warn = spyOn(Logger.prototype, "warn").mockImplementation(
           () => undefined,
         );

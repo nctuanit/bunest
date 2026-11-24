@@ -21,7 +21,7 @@ export class GraphQLTypesLoader {
     return contents.join("\n");
   }
 
-  private async getTypesFromPaths(patterns: string[]): Promise<string[]> {
+  async getTypesFromPaths(patterns: string[]): Promise<string[]> {
     const matched = new Set<string>();
 
     for (const rawPattern of patterns) {

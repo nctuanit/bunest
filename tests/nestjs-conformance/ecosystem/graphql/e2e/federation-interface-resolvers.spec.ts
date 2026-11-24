@@ -248,18 +248,15 @@ describeConformance(
           ]);
         }
 
-        // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts) has three issues here: (1) getOrCreateObjectType does not merge inherited/transitive `implements` interfaces (`Contract extends Document` implementing `PrivateNode` without `Node`), causing `assertValidSchema` HTTP 500; (2) interface @ResolveField() + @UseGuards() are not bound onto implementing @ObjectType()s; (3) `options.schema` short-circuits instead of merging with code-first `autoSchemaFile`.
-        it.skip("should apply the guards of an interface field resolver to the implementing types", () =>
+        it("should apply the guards of an interface field resolver to the implementing types", () =>
           expectForbidden("{ accounts { id balance } }"));
 
         for (const query of ["payslip", "invoice", "contract"] as const) {
-          // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts) does not bind interface @ResolveField()s by specificity onto implementing @ObjectType()s (and throws HTTP 500 on transitive interface `Contract` / ignores code-first types when `options.schema` is passed).
-          it.skip(`should bind the field resolver of the most specific interface, whatever the order of the interfaces (${query})`, () =>
+          it(`should bind the field resolver of the most specific interface, whatever the order of the interfaces (${query})`, () =>
             expectForbidden(`{ ${query} { owner } }`));
         }
 
-        // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts) throws HTTP 500 due to missing transitive `Node` interface on `Contract extends Document` (variants 1-2) and discards code-first queries when `options.schema` is provided (variant 3).
-        it.skip("should keep the generated resolvers of the fields that have no field resolver", async () => {
+        it("should keep the generated resolvers of the fields that have no field resolver", async () => {
           const res = await request(app)
             .post("/graphql")
             .send({ query: "{ payslip { id } accounts { id label } }" })
@@ -271,8 +268,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts) does not bind interface @ResolveField()s (or resolve last-listed unrelated interface precedence) onto implementing @ObjectType() `Note` (and hits HTTP 500 / schema short-circuit).
-        it.skip("should keep the last listed interface when the interfaces are unrelated", async () => {
+        it("should keep the last listed interface when the interfaces are unrelated", async () => {
           // "Tagged" and "PrivateNode" both implement "Node", and neither
           // implements the other: the last listed one wins.
           await expectForbidden("{ note { owner } }");

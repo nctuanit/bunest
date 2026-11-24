@@ -171,8 +171,7 @@ describeConformance(
           },
         };
 
-        // BUNEST_BUG: GraphQLSchemaFactory.create in packages/graphql/src/schema/graphql-schema.factory.ts short-circuits on `if (options.schema) return options.schema` and ignores options.typeDefs instead of merging schema and typeDefs (querying "fee" fails with 'Cannot query field "fee" on type "Query".').
-        it.skip('should keep the scalars and enums of the "schema" option', async () => {
+        it('should keep the scalars and enums of the "schema" option', async () => {
           const schema = await graphqlFactory.generateSchema({
             typeDefs,
             resolvers: queryResolvers,
@@ -203,8 +202,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: GraphQLSchemaFactory.create in packages/graphql/src/schema/graphql-schema.factory.ts returns options.schema untouched without applying @Scalar() overrides or merging typeDefs (expected "USD 100000", received "EUR 100000").
-        it.skip("should let a scalar registered on the Nest side override them", async () => {
+        it("should let a scalar registered on the Nest side override them", async () => {
           @Scalar("Amount")
           class UsdAmountScalar implements CustomScalar<string, unknown> {
             serialize(value: unknown): string {
@@ -230,8 +228,7 @@ describeConformance(
       });
 
       describe('with "inheritResolversFromInterfaces"', () => {
-        // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst in packages/graphql/src/schema/graphql-schema.factory.ts ignores options.inheritResolversFromInterfaces (expected "PrivateNode", received undefined).
-        it.skip.each(["Node & PrivateNode", "PrivateNode & Node"])(
+        it.each(["Node & PrivateNode", "PrivateNode & Node"])(
           "should inherit the resolver of the most specific interface (implements %s)",
           async (interfaces) => {
             const schema = await graphqlFactory.generateSchema({
@@ -262,8 +259,7 @@ describeConformance(
           },
         );
 
-        // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst in packages/graphql/src/schema/graphql-schema.factory.ts ignores options.inheritResolversFromInterfaces (expected "Restricted", received undefined).
-        it.skip("should keep the listed order for unrelated interfaces", async () => {
+        it("should keep the listed order for unrelated interfaces", async () => {
           const schema = await graphqlFactory.generateSchema({
             inheritResolversFromInterfaces: true,
             resolvers: {
@@ -321,8 +317,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: GraphQLFactory.generateSchema in packages/graphql/src/schema/graphql.factory.ts never checks options.directiveResolvers or logs a warning that it is ignored.
-      it.skip('should warn that the "directiveResolvers" option is ignored', async () => {
+      it('should warn that the "directiveResolvers" option is ignored', async () => {
         const warn = spyOn(Logger.prototype, "warn").mockImplementation(
           () => undefined,
         );

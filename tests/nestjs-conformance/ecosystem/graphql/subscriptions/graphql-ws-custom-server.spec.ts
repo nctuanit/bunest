@@ -226,8 +226,7 @@ describeConformance(
           closing = undefined;
         });
 
-        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` (`GraphQLWsServer` option in graphql.interface.ts:486) and never delegates upgrades or emits `"connection"` on a custom WS server (packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-        it.skip("routes connections on its own path to the custom server", async () => {
+        it("routes connections on its own path to the custom server", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
 
@@ -250,8 +249,7 @@ describeConformance(
           expect(await withTimeout(client.closed)).toBe(1009);
         });
 
-        // BUNEST_BUG: GraphQLWsHandler neither attaches/disposes custom `options.server` listeners nor closes WS sockets with 1001 before BunHttpAdapter stops the server (received 1006 abnormal closure; packages/graphql/src/subscriptions/graphql-ws.handler.ts & packages/core/src/application/bunest-application.ts).
-        it.skip("closes the custom server when the application closes", async () => {
+        it("closes the custom server when the application closes", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
           await client.acked;
@@ -266,8 +264,7 @@ describeConformance(
     );
 
     describe("graphql-ws custom server validation", () => {
-      // BUNEST_BUG: GraphQLService / GraphQLWsHandler does not validate that a custom `subscriptions["graphql-ws"].server` has `options.noServer === true` at init (packages/graphql/src/driver/graphql-http.handler.ts & packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-      it.skip('rejects a server that was not created with "noServer: true"', async () => {
+      it('rejects a server that was not created with "noServer: true"', async () => {
         const server = createMockWsServer({ noServer: false });
         const moduleRef = await Test.createTestingModule({
           imports: [
