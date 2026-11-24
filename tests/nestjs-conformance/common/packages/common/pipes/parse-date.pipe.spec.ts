@@ -71,8 +71,7 @@ describeConformance(
           expect(defaultTarget.transform(null)).toBe(defaultValue);
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (and ParseDatePipeOptions lacks `default`) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw for an empty string even when a default value is provided", () => {
+        it("should throw for an empty string even when a default value is provided", () => {
           const defaultValue = new Date();
           const defaultTarget = new ParseDatePipe({
             default: () => defaultValue,
@@ -83,8 +82,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (and ParseDatePipeOptions lacks `default`) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should throw for an empty string when both "optional" and a default value are provided', () => {
+        it('should throw for an empty string when both "optional" and a default value are provided', () => {
           const defaultValue = new Date();
           const defaultTarget = new ParseDatePipe({
             optional: true,
@@ -96,8 +94,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (and ParseDatePipeOptions lacks `default`) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should not fall back to the default value for an invalid value", () => {
+        it("should not fall back to the default value for an invalid value", () => {
           const defaultValue = new Date();
           const defaultTarget = new ParseDatePipe({
             default: () => defaultValue,
@@ -110,13 +107,11 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error", () => {
+        it("should throw an error", () => {
           expect(() => target.transform("123abc")).toThrow(BadRequestException);
         });
 
-        // BUNEST_BUG: ParseDatePipe does not reject calendar rollover dates (e.g. "2024-02-30" silently rolls over to 2024-03-01 via `new Date()`), and throws base HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw for a day past the end of its month", () => {
+        it("should throw for a day past the end of its month", () => {
           for (const value of [
             "2024-02-30",
             "2023-02-29",
@@ -144,13 +139,11 @@ describeConformance(
       });
 
       describe("when empty value", () => {
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error", () => {
+        it("should throw an error", () => {
           expect(() => target.transform("")).toThrow(BadRequestException);
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should throw an error even when "optional" is true', () => {
+        it('should throw an error even when "optional" is true', () => {
           const optionalTarget = new ParseDatePipe({ optional: true });
           expect(() => optionalTarget.transform("")).toThrow(
             BadRequestException,
@@ -160,8 +153,7 @@ describeConformance(
     });
 
     describe("dependency injection", () => {
-      // BUNEST_BUG: ParseDatePipe constructor parameter 0 is missing @Optional() / METADATA_KEYS.OPTIONAL_DEPS metadata (expected [0], actual undefined) (packages/core/src/common/pipes/built-in.pipes.ts)
-      it.skip("should mark the options argument as optional", () => {
+      it("should mark the options argument as optional", () => {
         // Without this metadata the injector cannot instantiate the pipe when it
         // is passed by class, e.g. `@Query('date', ParseDatePipe)`.
         const metadata = MetadataRegistry.getOwn(
@@ -171,8 +163,7 @@ describeConformance(
         expect(metadata).toEqual([0]);
       });
 
-      // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-      it.skip("should fall back to the default options when none are injected", () => {
+      it("should fall back to the default options when none are injected", () => {
         const injectedTarget = new ParseDatePipe(undefined);
         expect(() => injectedTarget.transform("")).toThrow(BadRequestException);
       });

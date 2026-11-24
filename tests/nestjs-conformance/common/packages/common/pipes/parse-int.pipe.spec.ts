@@ -52,15 +52,13 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseIntPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error", async () => {
+        it("should throw an error", async () => {
           return expect(
             target.transform("123abc", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseIntPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error when number has wrong number encoding", async () => {
+        it("should throw an error when number has wrong number encoding", async () => {
           return expect(
             target.transform("0xFF", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);

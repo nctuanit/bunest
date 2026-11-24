@@ -51,8 +51,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of a cloned sparse array (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should preserve the length of an array containing only empty slots", () => {
+        it("should preserve the length of an array containing only empty slots", () => {
           const slots = new Array<string>(7);
           const result = new DefaultValuePipe<string[], string[]>(
             slots,
@@ -63,8 +62,7 @@ describeConformance(
           expect(Object.keys(result)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of cloning while preserving trailing empty slots (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should preserve trailing empty slots when copying an array", () => {
+        it("should preserve trailing empty slots when copying an array", () => {
           const slots = new Array<string>(7);
           slots[1] = "open";
           const result = new DefaultValuePipe<string[], string[]>(
@@ -77,8 +75,7 @@ describeConformance(
           expect(result[1]).toBe("open");
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same nested sparse array reference instead of cloning it (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should preserve the length of a nested sparse array", () => {
+        it("should preserve the length of a nested sparse array", () => {
           const defaults = { slots: new Array<string>(7) };
           const result = new DefaultValuePipe<typeof defaults, typeof defaults>(
             defaults,
@@ -103,8 +100,7 @@ describeConformance(
           expect(result.status[ne]).toBe("deleted");
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the same object reference without cloning own __proto__ property (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should copy an own __proto__ field without changing the prototype", () => {
+        it("should copy an own __proto__ field without changing the prototype", () => {
           const value = JSON.parse(
             '{"__proto__":{"tags":["a"]},"enabled":true}',
           );
@@ -122,8 +118,7 @@ describeConformance(
           expect(value.__proto__.tags).toEqual(["a"]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the same object/array references without cloning own __proto__ fields or preserving shared-object identity in the copy (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should copy own __proto__ fields on arrays and nested defaults", () => {
+        it("should copy own __proto__ fields on arrays and nested defaults", () => {
           const key = Symbol("shared");
           const shared = { tags: ["a"] };
           const array = new Array(3);
