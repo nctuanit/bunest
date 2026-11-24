@@ -395,38 +395,55 @@ export class TransformMetadataStorage {
         }
       }
 
+      // Defer transforms to a derived-to-base pass below so that LIFO execution
+      // in collectTransformsForProperty() runs base-class transforms before derived-class transforms.
+    }
+
+    // Collect @Transform metadata per property in derived-to-base order so
+    // collectTransformsForProperty()'s reverse iteration executes base -> derived.
+    const collectedTransforms = new Map<string, TransformMetadata[]>();
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const ctor = chain[i]!;
       const transformMap = this._transformMetadatas.get(ctor);
-      if (transformMap) {
-        for (const [prop, list] of transformMap.entries()) {
-          if (!filter(prop)) continue;
-          discovered.add(prop);
-          if (!stackTransforms) {
-            let targetMap = this._transformMetadatas.get(target);
-            if (!targetMap) {
-              targetMap = new Map();
-              this._transformMetadatas.set(target, targetMap);
-            }
-            targetMap.set(
-              prop,
-              list.map((meta) => ({
-                ...meta,
-                target,
-                options: meta.options ? { ...meta.options } : {},
-              })),
-            );
-            this.bumpEpoch();
+      if (!transformMap) continue;
+      for (const [prop, list] of transformMap.entries()) {
+        if (!filter(prop)) continue;
+        discovered.add(prop);
+        let bucket = collectedTransforms.get(prop);
+        if (!bucket) {
+          bucket = [];
+          collectedTransforms.set(prop, bucket);
+        }
+        for (let j = 0; j < list.length; j++) {
+          const meta = list[j]!;
+          bucket.push({
+            ...meta,
+            target,
+            options: meta.options ? { ...meta.options } : {},
+          });
+        }
+      }
+    }
+
+    if (collectedTransforms.size > 0) {
+      let targetMap = this._transformMetadatas.get(target);
+      if (!targetMap) {
+        targetMap = new Map();
+        this._transformMetadatas.set(target, targetMap);
+      }
+      for (const [prop, entries] of collectedTransforms.entries()) {
+        if (!stackTransforms) {
+          targetMap.set(prop, entries);
+        } else {
+          const existing = targetMap.get(prop);
+          if (existing) {
+            targetMap.set(prop, [...entries, ...existing]);
           } else {
-            for (let j = 0; j < list.length; j++) {
-              const meta = list[j]!;
-              this.addTransformMetadata({
-                ...meta,
-                target,
-                options: meta.options ? { ...meta.options } : {},
-              });
-            }
+            targetMap.set(prop, entries);
           }
         }
       }
+      this.bumpEpoch();
     }
 
     return [...discovered];

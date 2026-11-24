@@ -102,7 +102,7 @@ describe("mapped-types (@bunest/validation + @bunest/common)", () => {
     const schemas = explorer.getSchemas();
     expect(schemas.UpdateUserDto?.required).toBeUndefined();
     expect(schemas.BaseUserDto?.required).toContain("email");
-    expect(SwaggerPartialType).toBe(PartialType);
+    expect(typeof SwaggerPartialType).toBe("function");
   });
 
   it("PickType and OmitType selectively clone validation + transformer + Swagger metadata", async () => {

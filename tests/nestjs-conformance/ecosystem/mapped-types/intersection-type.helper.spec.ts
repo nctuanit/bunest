@@ -110,8 +110,7 @@ describeConformance(
     });
 
     describe("Transformer metadata", () => {
-      // BUNEST_BUG: inheritDtoMetadata() (packages/core/src/common/mapped-types/mapped-types.utils.ts:609) hardcodes stackDecorators=true even for operation="intersection", causing ClassA and ClassB @Transform decorators on repeatedProperty to stack ("repeatedPropertyTestValue_transformed_transformed") instead of overriding ("repeatedPropertyTestValue_transformed").
-      it.skip("should inherit transformer metadata", () => {
+      it("should inherit transformer metadata", () => {
         const password = "1234567891011";
         const lastName = "lastNameTest";
         const repeatedProperty = "repeatedPropertyTestValue";

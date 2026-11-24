@@ -450,8 +450,7 @@ describeConformance(
         expect(await validate(dto)).toHaveLength(0);
       });
 
-      // BUNEST_BUG: PartialType/DeepPartialType (packages/core/src/common/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
-      it.skip.each([{}, { skipNullProperties: false }])(
+      it.each([{}, { skipNullProperties: false }])(
         "should not whitelist documented properties that have no validation decorator (%j)",
         async (options) => {
           class LocalUserDto {

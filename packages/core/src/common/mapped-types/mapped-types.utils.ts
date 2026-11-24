@@ -771,7 +771,12 @@ export function inheritDtoMetadata(
         }
       }
     }
-    inheritTransformationMetadata(source, target, filter, true);
+    inheritTransformationMetadata(
+      source,
+      target,
+      filter,
+      options.operation !== "intersection",
+    );
   }
 
   // 2. Copy Swagger @ApiProperty metadata (Symbol.for("bunest:swagger:api_properties"))
@@ -832,10 +837,12 @@ export function inheritDtoMetadata(
     );
   }
 
-  // 5. For PartialType: mark every inherited property optional in class-validator
-  if (options.makeOptional) {
+  // 5. For PartialType: mark every inherited validated property optional in class-validator
+  //    (do NOT attach @IsOptional/@ValidateIf to @ApiProperty-only properties without validation metadata,
+  //    otherwise class-validator's whitelist/forbidNonWhitelisted would erroneously whitelist them)
+  if (options.makeOptional && inheritedValidationKeys) {
     const skipNull = options.skipNullProperties ?? true;
-    for (const propKey of discoveredProps) {
+    for (const propKey of inheritedValidationKeys) {
       if (skipNull) {
         if (!existingOptionalProps.has(propKey)) {
           applyIsOptionalDecorator(target, propKey);
