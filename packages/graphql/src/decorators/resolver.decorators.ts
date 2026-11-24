@@ -551,27 +551,38 @@ export function getResolverMethodParams(
   resolverClass: Function,
   handlerKey: string | symbol,
 ): GqlParamMetadata[] {
+  const protos: object[] = [];
   let proto: object | null = (resolverClass.prototype as object | null) ?? null;
-  let definingProto: object | null = null;
-
   while (proto && proto !== Object.prototype) {
-    if (Object.prototype.hasOwnProperty.call(proto, handlerKey)) {
-      definingProto = proto;
-      break;
-    }
+    protos.push(proto);
     proto = Object.getPrototypeOf(proto) as object | null;
+  }
+
+  // Merge from base class -> derived class so subclass parameter decorators override parent
+  const byIndex = new Map<number, GqlParamMetadata>();
+  let definingProto: object | null = null;
+  for (let i = protos.length - 1; i >= 0; i--) {
+    const p = protos[i]!;
+    if (Object.prototype.hasOwnProperty.call(p, handlerKey)) {
+      definingProto = p;
+    }
+    const ownParams = MetadataRegistry.getOwn<readonly GqlParamMetadata[]>(
+      GRAPHQL_METADATA_KEYS.PARAMS,
+      p,
+      handlerKey,
+    );
+    if (ownParams) {
+      for (const param of ownParams) {
+        byIndex.set(param.index, param);
+      }
+    }
   }
 
   if (!definingProto) {
     return [];
   }
 
-  const rawParams =
-    MetadataRegistry.getOwn<readonly GqlParamMetadata[]>(
-      GRAPHQL_METADATA_KEYS.PARAMS,
-      definingProto,
-      handlerKey,
-    ) ?? [];
+  const rawParams = [...byIndex.values()];
 
   const paramTypes = MetadataRegistry.getOwn<Function[]>(
     DESIGN_METADATA_KEYS.PARAMTYPES,

@@ -78,6 +78,12 @@ export function registerEnumType<T extends Record<string, string | number>>(
   enumRef: T,
   options: EnumTypeOptions,
 ): GraphQLEnumType {
+  if (!options || typeof options !== "object") {
+    throw new Error('registerEnumType requires an "options" object.');
+  }
+  if (typeof options.name !== "string" || options.name.trim().length === 0) {
+    throw new Error('registerEnumType requires a non-empty "name" option.');
+  }
   const existing = enumRegistry.get(enumRef);
   if (existing) {
     return existing.enumType;
@@ -183,6 +189,15 @@ export function InterfaceType(
 export function createUnionType<T extends readonly Type<unknown>[]>(
   options: CreateUnionTypeOptions<T>,
 ): UnionTypeRef<T> {
+  if (!options || typeof options !== "object") {
+    throw new Error('createUnionType requires an "options" object.');
+  }
+  if (typeof options.name !== "string" || options.name.trim().length === 0) {
+    throw new Error('createUnionType requires a non-empty "name" option.');
+  }
+  if (typeof options.types !== "function") {
+    throw new Error('createUnionType requires "options.types" to be a function.');
+  }
   const ref = Object.freeze({
     __bunestGraphQLUnion: true as const,
     name: options.name,

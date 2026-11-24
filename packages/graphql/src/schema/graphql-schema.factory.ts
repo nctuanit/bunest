@@ -950,7 +950,8 @@ export class GraphQLSchemaFactory {
             if (step.done) {
               return { value: undefined, done: true };
             }
-            const ok = await filterFn(
+            const ok = await filterFn.call(
+              compiled.instance,
               step.value,
               remapSubscriptionArgs(args, compiled.params),
               contextValue,
@@ -988,7 +989,8 @@ export class GraphQLSchemaFactory {
           contextValue: Record<string, unknown>,
           info: GraphQLResolveInfo,
         ) =>
-          op.resolve!(
+          op.resolve!.call(
+            compiled.instance,
             payload,
             remapSubscriptionArgs(args, compiled.params),
             contextValue,

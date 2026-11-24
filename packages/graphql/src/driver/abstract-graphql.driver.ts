@@ -1,4 +1,4 @@
-import { Optional } from "@bunest/core";
+import { Injectable, Optional } from "@bunest/core";
 import { ApplicationConfig, HttpAdapterHost } from "@bunest/core";
 import { normalizePath } from "@bunest/core/http";
 import type { GraphQLSchema } from "../engine";
@@ -13,6 +13,7 @@ import { ResolverDecoratorHost } from "../services/resolver-decorator-host";
 /**
  * Abstract base GraphQL driver mirroring `@nestjs/graphql` `AbstractGraphQLDriver`.
  */
+@Injectable()
 export abstract class AbstractGraphQLDriver<
   TOptions extends GqlModuleOptions = GqlModuleOptions,
 > implements GraphQLDriver<TOptions> {
@@ -35,10 +36,38 @@ export abstract class AbstractGraphQLDriver<
       stopOnApplicationShutdown: false,
     },
   ): Promise<TOptions> {
-    return {
+    const merged = {
       ...defaults,
       ...options,
     } as TOptions;
+
+    if (merged.useGlobalPrefix && this.applicationConfig) {
+      merged.path = this.getNormalizedPath(merged);
+      if (merged.subscriptions && typeof merged.subscriptions === "object") {
+        const subs = { ...(merged.subscriptions as Record<string, unknown>) };
+        for (const key of ["graphql-ws", "subscriptions-transport-ws"]) {
+          const subCfg = subs[key];
+          if (subCfg && typeof subCfg === "object") {
+            const subObj = subCfg as { path?: string };
+            const rawSubPath =
+              typeof subObj.path === "string" && subObj.path.length > 0
+                ? normalizePath(subObj.path)
+                : normalizePath(
+                    typeof options.path === "string" && options.path.length > 0
+                      ? options.path
+                      : "/graphql",
+                  );
+            subs[key] = {
+              ...subObj,
+              path: this.applyGlobalPrefix(rawSubPath, merged),
+            };
+          }
+        }
+        (merged as Record<string, unknown>).subscriptions = subs;
+      }
+    }
+
+    return merged;
   }
 
   generateSchema(options: TOptions): Promise<GraphQLSchema> | null {
