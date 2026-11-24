@@ -68,15 +68,13 @@ describeConformance(
       }
     };
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits `query` operations regardless of config.openapi version instead of omitting them for OAS < 3.2
-    it.skip("omits the query operation for OAS < 3.2", async () => {
+    it("omits the query operation for OAS < 3.2", async () => {
       const document = await createDocument("3.0.0");
 
       expect(document.paths["/foos/filtered"]).toBeUndefined();
     });
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits `query` operations for OAS 3.1 instead of omitting them for OAS < 3.2
-    it.skip("omits the query operation for OAS 3.1", async () => {
+    it("omits the query operation for OAS 3.1", async () => {
       const document = await createDocument("3.1.0");
 
       expect(document.paths["/foos/filtered"]).toBeUndefined();
@@ -89,8 +87,7 @@ describeConformance(
       expect(document.paths["/foos"]?.query).toBeUndefined();
     });
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits `query` webhooks for OAS 3.1 instead of omitting them for OAS < 3.2
-    it.skip("omits query webhooks for OAS 3.1", async () => {
+    it("omits query webhooks for OAS 3.1", async () => {
       const document = await createDocument("3.1.0");
 
       expect(document.webhooks?.searchEvent).toBeUndefined();

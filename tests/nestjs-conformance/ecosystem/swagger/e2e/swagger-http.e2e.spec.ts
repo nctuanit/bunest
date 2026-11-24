@@ -68,8 +68,7 @@ describeConformance(
       expect(api.info.version).toEqual("1.0");
     });
 
-    // BUNEST_BUG: convertPathToOpenApi (packages/swagger/src/swagger-module.ts:121-160) does not unescape `\:` literal colons in route paths ("/express\\:colon\\:another/{prop}" vs "/express:colon:another/{prop}")
-    it.skip("should fix colons in url", () => {
+    it("should fix colons in url", () => {
       const document = SwaggerModule.createDocument(app, builder.build());
       expect(document.paths["/express:colon:another/{prop}"]).toBeDefined();
     });
@@ -218,8 +217,7 @@ describeConformance(
         expect(response.status).toEqual(200);
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) only registers exact GET docsPath ("/apidoc") and returns 404 for trailing slash ("/apidoc/")
-      it.skip('should serve Swagger UI at "/apidoc/"', async () => {
+      it('should serve Swagger UI at "/apidoc/"', async () => {
         const response = await request(app).get(`${SWAGGER_RELATIVE_URL}/`);
         expect(response.status).toEqual(200);
       });
@@ -303,8 +301,7 @@ describeConformance(
         expect(response.status).toEqual(200);
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) only registers exact GET docsPath ("/apidoc") and returns 404 for trailing slash ("/apidoc/")
-      it.skip('should serve Swagger UI at "/apidoc/"', async () => {
+      it('should serve Swagger UI at "/apidoc/"', async () => {
         const response = await request(app).get(`${SWAGGER_RELATIVE_URL}/`);
         expect(response.status).toEqual(200);
       });
@@ -340,8 +337,7 @@ describeConformance(
         expect(response.status).toEqual(200);
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) only registers exact GET docsPath ("/apidoc") and returns 404 for trailing slash ("/apidoc/")
-      it.skip('should serve Swagger UI at "/apidoc/"', async () => {
+      it('should serve Swagger UI at "/apidoc/"', async () => {
         const response = await request(app).get(`${SWAGGER_RELATIVE_URL}/`);
         expect(response.status).toEqual(200);
       });
@@ -376,8 +372,7 @@ describeConformance(
         expect(response.status).toEqual(200);
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) only registers exact GET docsPath ("/apidoc") and returns 404 for trailing slash ("/apidoc/")
-      it.skip('should serve Swagger UI at "/apidoc/"', async () => {
+      it('should serve Swagger UI at "/apidoc/"', async () => {
         const response = await request(app).get(`${SWAGGER_RELATIVE_URL}/`);
         expect(response.status).toEqual(200);
       });
@@ -594,23 +589,20 @@ describeConformance(
         expect(response.text).toContain("OpenAPI JSON (/apidoc-json)");
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) only registers exact GET docsPath ("/apidoc") and returns 404 for trailing slash ("/apidoc/")
-      it.skip("should serve HTML when accessed with trailing slash", async () => {
+      it("should serve HTML when accessed with trailing slash", async () => {
         const response = await request(app).get(`${SWAGGER_RELATIVE_URL}/`);
         expect(response.status).toEqual(200);
         expect(response.headers["content-type"]).toContain("text/html");
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) does not register GET "<docsPath>/index.html" (returns 404)
-      it.skip("should serve HTML when accessed through index.html", async () => {
+      it("should serve HTML when accessed through index.html", async () => {
         const response = await request(app).get(
           `${SWAGGER_RELATIVE_URL}/index.html`,
         );
         expect(response.status).toEqual(200);
       });
 
-      // BUNEST_BUG: SwaggerModule.setup (packages/swagger/src/swagger-module.ts:1339-1345) does not serve "<docsPath>/" with query string (returns 404)
-      it.skip("should serve HTML when accessed with trailing slash and query string", async () => {
+      it("should serve HTML when accessed with trailing slash and query string", async () => {
         const response = await request(app).get(
           `${SWAGGER_RELATIVE_URL}/?urls.primaryName=v2`,
         );

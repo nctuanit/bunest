@@ -82,8 +82,7 @@ describeConformance(
       }
     };
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits non-standard HTTP methods (SEARCH, PROPFIND) directly on paths for OAS 3.0/3.1 instead of omitting them
-    it.skip.each(["3.0.0", "3.1.0"])(
+    it.each(["3.0.0", "3.1.0"])(
       "omits non-standard operations for OAS %s",
       async (openApiVersion) => {
         const document = await createDocument(openApiVersion);
@@ -97,15 +96,13 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits non-standard HTTP methods on webhooks for OAS 3.1 instead of omitting them
-    it.skip("omits non-standard webhooks for OAS 3.1", async () => {
+    it("omits non-standard webhooks for OAS 3.1", async () => {
       const document = await createDocument("3.1.0");
 
       expect(document.webhooks?.searchEvent).toBeUndefined();
     });
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) emits invalid non-standard method keys (search/propfind) into OAS 3.0.0 and 3.1.0 PathItem objects
-    it.skip.each(["3.0.0", "3.1.0"])(
+    it.each(["3.0.0", "3.1.0"])(
       "produces a valid document for OAS %s",
       async (openApiVersion) => {
         const document = await createDocument(openApiVersion);
@@ -116,8 +113,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:941-954) does not move non-standard HTTP methods (SEARCH, PROPFIND) into OpenAPI 3.2 `additionalOperations`
-    it.skip("moves non-standard operations to additionalOperations for OAS >= 3.2", async () => {
+    it("moves non-standard operations to additionalOperations for OAS >= 3.2", async () => {
       const document = await createDocument("3.2.0");
 
       expect(document.paths["/items"]).not.toHaveProperty("search");

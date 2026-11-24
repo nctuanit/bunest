@@ -254,8 +254,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: resolveRoutesForDocument (packages/swagger/src/swagger-module.ts:215) defaults deepScanRoutes to true (`!== false`) instead of NestJS default false, causing shallow scans to include imported module routes
-    it.skip("preserves shallow scans", () => {
+    it("preserves shallow scans", () => {
       const document = SwaggerModule.createDocument(
         app,
         new DocumentBuilder().build(),
@@ -282,8 +281,7 @@ describeConformance(
       expect(Object.keys(document.paths)).toEqual(["/explicit-static-global"]);
     });
 
-    // BUNEST_BUG: resolveRoutesForDocument (packages/swagger/src/swagger-module.ts:225-248) only walks resolved mod.imports and does not fall back to including global modules when an async dynamic module import cannot be identified synchronously
-    it.skip("preserves existing behavior when an async import cannot be identified synchronously", () => {
+    it("preserves existing behavior when an async import cannot be identified synchronously", () => {
       const document = SwaggerModule.createDocument(
         app,
         new DocumentBuilder().build(),

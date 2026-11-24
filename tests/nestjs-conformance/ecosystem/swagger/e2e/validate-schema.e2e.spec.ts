@@ -277,8 +277,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: convertPathToOpenApi (packages/swagger/src/swagger-module.ts:121-160) does not unescape `\:` literal colons in route paths ("/api/v1/express\\:colon\\:another/{prop}" vs "/api/v1/express:colon:another/{prop}")
-    it.skip("should fix colons in url", () => {
+    it("should fix colons in url", () => {
       const document = SwaggerModule.createDocument(app, options);
       expect(
         document.paths["/api/v1/express:colon:another/{prop}"],
