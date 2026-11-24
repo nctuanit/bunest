@@ -36,6 +36,7 @@ import { UnableToFindFieldsError } from "../schema/unable-to-find-fields.error";
 
 const enumRegistry = new Map<object, { readonly enumType: GraphQLEnumType }>();
 const objectTypesWithImplements = new Set<Function>();
+const allRegisteredObjectTypes = new Set<Function>();
 
 export function resolveImplementedInterfaces(
   input: InterfaceImplementsInput | undefined,
@@ -52,19 +53,48 @@ export function resolveImplementedInterfaces(
   return typeof raw === "function" ? [raw] : [];
 }
 
+function interfaceImplementsTarget(
+  candidate: Function,
+  targetIface: Function,
+  visited = new Set<Function>(),
+): boolean {
+  if (candidate === targetIface) return true;
+  if (visited.has(candidate)) return false;
+  visited.add(candidate);
+  const ifaceMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+    GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+    candidate,
+  );
+  if (!ifaceMeta?.implements) return false;
+  for (const parentIface of resolveImplementedInterfaces(ifaceMeta.implements)) {
+    if (interfaceImplementsTarget(parentIface, targetIface, visited)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Returns all `@ObjectType()` classes declared with `implements` referencing `iface`.
+ * Returns all `@ObjectType()` classes declared with (or inheriting) `implements` referencing `iface`.
  */
 export function getInterfaceImplementors(iface: Function): Function[] {
   const matched: Function[] = [];
-  for (const cls of objectTypesWithImplements) {
-    const meta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
-      GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
-      cls,
-    );
-    if (!meta?.implements) continue;
-    const ifaces = resolveImplementedInterfaces(meta.implements);
-    if (ifaces.includes(iface)) {
+  for (const cls of allRegisteredObjectTypes) {
+    const chain = MetadataRegistry.getPrototypeChain(cls);
+    let implementsIface = false;
+    for (const ancestor of chain) {
+      const meta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
+        GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
+        ancestor,
+      );
+      if (!meta?.implements) continue;
+      const ifaces = resolveImplementedInterfaces(meta.implements);
+      if (ifaces.some((i) => interfaceImplementsTarget(i, iface))) {
+        implementsIface = true;
+        break;
+      }
+    }
+    if (implementsIface) {
       matched.push(cls);
     }
   }
@@ -98,10 +128,15 @@ export function registerEnumType<T extends Record<string, string | number>>(
     }
   > = {};
   for (const [key, val] of Object.entries(enumRef)) {
-    // Skip TypeScript numeric enum reverse mappings
+    // Skip non-primitive exports (e.g., merged TypeScript namespace functions/arrays/objects)
+    if (typeof val !== "string" && typeof val !== "number") {
+      continue;
+    }
+    // Skip TypeScript numeric enum reverse mappings (including NaN / Infinity)
     if (
+      typeof val === "string" &&
       typeof enumRef[val as keyof T] === "number" &&
-      !Number.isNaN(Number(key))
+      String(enumRef[val as keyof T]) === key
     ) {
       continue;
     }
@@ -254,6 +289,9 @@ export function ObjectType(
       registerIn: opts.registerIn,
     };
     MetadataRegistry.define(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, meta, target);
+    if (!opts.isAbstract) {
+      allRegisteredObjectTypes.add(target);
+    }
     if (opts.implements !== undefined) {
       objectTypesWithImplements.add(target);
     }

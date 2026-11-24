@@ -473,8 +473,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Schema bootstrap crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`; additionally Category field defaultValues are not applied (:1058-1099).
-    it.skip("should return the categories result", async () => {
+    it("should return the categories result", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({

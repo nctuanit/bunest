@@ -90,6 +90,7 @@ import type {
 } from "../interfaces/graphql.interface";
 import { GraphQLISODateTime, GraphQLTimestamp } from "../scalars";
 import { GraphQLTypesLoader } from "./graphql-types.loader";
+import { TypeMetadataStorage } from "./type-metadata.storage";
 
 export type GqlEnhancerResolverFn = <T = unknown>(
   enhancer: Type<T> | T,
@@ -395,6 +396,16 @@ function remapInputValue(
         fieldRawType,
         keepOriginalKeys,
       );
+    } else if (!(field.propertyKey in result)) {
+      const fieldRawType = field.typeFn ? field.typeFn() : field.designType;
+      const rawDefault =
+        field.defaultValue !== undefined
+          ? field.defaultValue
+          : getInstanceDefaultValue(rawType, field.propertyKey);
+      const effectiveDefault = normalizeDefaultValue(rawDefault, fieldRawType);
+      if (effectiveDefault !== undefined) {
+        result[field.propertyKey] = cloneDefaultValue(effectiveDefault);
+      }
     }
   }
 
@@ -422,6 +433,96 @@ function remapSubscriptionArgs(
     }
   }
   return mapped;
+}
+
+function cloneDefaultValue<T>(value: T): T {
+  if (value === null || value === undefined || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneDefaultValue(item)) as unknown as T;
+  }
+  if (Object.getPrototypeOf(value) === Object.prototype) {
+    const cloned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      cloned[k] = cloneDefaultValue(v);
+    }
+    return cloned as T;
+  }
+  return value;
+}
+
+const instanceDefaultCache = new WeakMap<Function, Record<string, unknown> | null>();
+
+function getInstanceDefaultValue(
+  cls: Function,
+  propertyKey: string,
+): unknown {
+  let inst = instanceDefaultCache.get(cls);
+  if (inst === undefined) {
+    try {
+      inst = new (cls as new () => Record<string, unknown>)();
+    } catch {
+      inst = null;
+    }
+    instanceDefaultCache.set(cls, inst);
+  }
+  if (!inst || typeof inst !== "object") {
+    return undefined;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(inst, propertyKey) &&
+    Object.prototype.hasOwnProperty.call(Object.prototype, propertyKey)
+  ) {
+    return undefined;
+  }
+  if (!(propertyKey in inst)) {
+    return undefined;
+  }
+  const val = inst[propertyKey];
+  return typeof val === "function" ? undefined : val;
+}
+
+function normalizeDefaultValue(
+  defaultValue: unknown,
+  rawType: unknown,
+): unknown {
+  if (defaultValue === undefined || defaultValue === null) {
+    return defaultValue;
+  }
+  if (Array.isArray(rawType)) {
+    if (Array.isArray(defaultValue)) {
+      return defaultValue.map((item) =>
+        normalizeDefaultValue(item, rawType[0]),
+      );
+    }
+    return defaultValue;
+  }
+  const enumType = getRegisteredEnumType(rawType);
+  if (enumType && typeof defaultValue === "string") {
+    const matchesValue = enumType
+      .getValues()
+      .some((v) => Object.is(v.value, defaultValue));
+    if (!matchesValue) {
+      const byName = enumType.getValue(defaultValue);
+      if (byName) {
+        return byName.value;
+      }
+    }
+  }
+  return defaultValue;
+}
+
+function assertNullDefaultAllowed(
+  name: string,
+  defaultValue: unknown,
+  nullable: NullableListOption | undefined,
+): void {
+  if (defaultValue === null && nullable !== true && nullable !== "itemsAndList") {
+    throw new Error(
+      `Cannot set defaultValue to null for non-nullable field or argument "${name}".`,
+    );
+  }
 }
 
 export interface GqlGlobalEnhancers {
@@ -483,6 +584,7 @@ export class GraphQLSchemaFactory {
   )[] = [];
   private activeBuildSchemaOptions: BuildSchemaOptions = {};
   private activeFieldResolverEnhancers?: readonly Enhancer[];
+  private activeQueryType?: GraphQLObjectType;
   private readonly typesLoader = new GraphQLTypesLoader();
 
   constructor(
@@ -821,8 +923,11 @@ export class GraphQLSchemaFactory {
               const rawArgType = param.typeFn ? param.typeFn() : param.metatype;
               let value =
                 param.key !== undefined
-                  ? remapInputValue(argsObj[param.key], rawArgType)
-                  : remapInputValue({ ...argsObj }, rawArgType);
+                  ? remapInputValue(
+                      cloneDefaultValue(argsObj[param.key]),
+                      rawArgType,
+                    )
+                  : remapInputValue(cloneDefaultValue({ ...argsObj }), rawArgType);
 
               const argMeta: ArgumentMetadata = {
                 type: "body",
@@ -1079,6 +1184,31 @@ export class GraphQLSchemaFactory {
         : GraphQLISODateTime;
     }
 
+    if (typeof base === "string") {
+      if (base === "Query" && this.activeQueryType) {
+        return this.activeQueryType;
+      }
+      const objMeta = TypeMetadataStorage.getObjectTypesMetadata().find(
+        (m) => m.name === base,
+      );
+      if (objMeta) {
+        return this.getOrCreateObjectType(objMeta.target);
+      }
+      const ifaceMeta = TypeMetadataStorage.getInterfacesMetadata().find(
+        (m) => m.name === base,
+      );
+      if (ifaceMeta) {
+        return this.getOrCreateInterfaceType(ifaceMeta.target);
+      }
+      const enumMeta = TypeMetadataStorage.getEnumsMetadata().find(
+        (m) => m.name === base,
+      );
+      if (enumMeta) {
+        const regEnum = getRegisteredEnumType(enumMeta.ref);
+        if (regEnum) return regEnum;
+      }
+    }
+
     if (typeof base === "function") {
       if (
         MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, base) &&
@@ -1117,10 +1247,17 @@ export class GraphQLSchemaFactory {
       if (typeof typename === "string" && typename.length > 0) {
         return typename;
       }
-      for (const candidate of candidates) {
-        if (value instanceof candidate) {
-          return this.resolveTypeNameFromResult(candidate);
+      const matching = candidates.filter((c) => value instanceof c);
+      if (matching.length > 0) {
+        // Pick the most derived class among matching candidates
+        let mostDerived = matching[0]!;
+        for (let i = 1; i < matching.length; i++) {
+          const cand = matching[i]!;
+          if (cand.prototype instanceof mostDerived) {
+            mostDerived = cand;
+          }
         }
+        return this.resolveTypeNameFromResult(mostDerived);
       }
       const ctor = (value as { constructor?: Function }).constructor;
       if (ctor && ctor !== Object) {
@@ -1185,7 +1322,10 @@ export class GraphQLSchemaFactory {
     return ordered;
   }
 
-  private getOrCreateInterfaceType(cls: Function): GraphQLInterfaceType {
+  private getOrCreateInterfaceType(
+    cls: Function,
+    referencedBy?: string,
+  ): GraphQLInterfaceType {
     const existing = this.interfaceTypes.get(cls);
     if (existing) {
       return existing;
@@ -1195,10 +1335,26 @@ export class GraphQLSchemaFactory {
       GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
       cls,
     );
-    const typeName = meta?.name ?? cls.name;
+    if (!meta) {
+      if (referencedBy) {
+        throw new Error(
+          `"${referencedBy}" lists "${cls.name}" in its "implements" option, but "${cls.name}" is not registered as an @InterfaceType().`,
+        );
+      }
+      throw new Error(
+        `Cannot resolve interface "${cls.name}": class is not decorated with @InterfaceType().`,
+      );
+    }
+    const typeName = meta.name ?? cls.name;
 
-    // Ensure concrete implementing @ObjectType classes are included in schema `types`
-    const implementors = getInterfaceImplementors(cls);
+    // Ensure concrete implementing @ObjectType classes that explicitly list `implements` are included
+    const explicitImplementors = getInterfaceImplementors(cls).filter((impl) => {
+      const implMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
+        GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
+        impl,
+      );
+      return implMeta?.implements !== undefined;
+    });
     const allParentInterfaces = this.collectAllImplementedInterfaces(
       cls,
       meta?.implements,
@@ -1222,7 +1378,7 @@ export class GraphQLSchemaFactory {
       ...(mergedIfaceExtensions ? { extensions: mergedIfaceExtensions } : {}),
       interfaces: () =>
         allParentInterfaces.map((parentIface) =>
-          this.getOrCreateInterfaceType(parentIface),
+          this.getOrCreateInterfaceType(parentIface, typeName),
         ),
       resolveType: async (value, context, info) => {
         if (meta?.resolveType) {
@@ -1230,10 +1386,10 @@ export class GraphQLSchemaFactory {
           const name = this.resolveTypeNameFromResult(custom);
           if (name) return name;
         }
-        return this.resolveDefaultConcreteTypeName(
-          value,
-          getInterfaceImplementors(cls),
+        const schemaImplementors = getInterfaceImplementors(cls).filter((c) =>
+          this.objectTypes.has(c),
         );
+        return this.resolveDefaultConcreteTypeName(value, schemaImplementors);
       },
       fields: () => {
         const fields: GraphQLFieldConfigMap<any, any> = {};
@@ -1343,7 +1499,7 @@ export class GraphQLSchemaFactory {
     });
 
     this.interfaceTypes.set(cls, ifaceType);
-    for (const impl of implementors) {
+    for (const impl of explicitImplementors) {
       this.discoveredConcreteTypes.add(this.getOrCreateObjectType(impl));
     }
     return ifaceType;
@@ -1359,9 +1515,14 @@ export class GraphQLSchemaFactory {
       name: ref.name,
       description: ref.description,
       types: () =>
-        (ref.types() as readonly Function[]).map((t) =>
-          this.getOrCreateObjectType(t),
-        ),
+        (ref.types() as readonly Function[]).map((t) => {
+          if (!MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, t)) {
+            throw new Error(
+              `Cannot build the "${ref.name}" union: its member "${t.name}" is not registered as a @ObjectType().`,
+            );
+          }
+          return this.getOrCreateObjectType(t);
+        }),
       resolveType: async (value, context, info) => {
         if (ref.resolveType) {
           const custom = await ref.resolveType(value, context, info);
@@ -1476,7 +1637,9 @@ export class GraphQLSchemaFactory {
       description: resolvedDescription,
       ...(mergedObjExtensions ? { extensions: mergedObjExtensions } : {}),
       interfaces: () =>
-        allInterfaces.map((iface) => this.getOrCreateInterfaceType(iface)),
+        allInterfaces.map((iface) =>
+          this.getOrCreateInterfaceType(iface, typeName),
+        ),
       fields: () => {
         const fields: GraphQLFieldConfigMap<any, any> = {};
         const modelFieldMiddlewares = new Map<string, FieldMiddleware[]>();
@@ -1560,21 +1723,53 @@ export class GraphQLSchemaFactory {
             ...globalMiddleware,
             ...ownFieldMw,
           ];
-          const baseResolve: GraphQLFieldResolver<any, any> =
-            fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
-              ? (parent: Record<string, unknown>) =>
-                  parent?.[fieldMeta.propertyKey]
-              : defaultFieldResolver;
+          const resolvedFieldType = this.resolveOutputType(
+            rawType,
+            fieldMeta.nullable,
+          );
+          const rawDefault =
+            fieldMeta.defaultValue !== undefined
+              ? fieldMeta.defaultValue
+              : getInstanceDefaultValue(cls, fieldMeta.propertyKey);
+          const effectiveDefault = normalizeDefaultValue(rawDefault, rawType);
+          const isRootQueryRef =
+            this.activeQueryType !== undefined &&
+            (resolvedFieldType === this.activeQueryType ||
+              (resolvedFieldType instanceof GraphQLNonNull &&
+                resolvedFieldType.ofType === this.activeQueryType));
+          const needsCustomResolve =
+            (fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey) ||
+            effectiveDefault !== undefined ||
+            isRootQueryRef;
+          const baseResolve: GraphQLFieldResolver<any, any> = (
+            parent: Record<string, unknown>,
+            args,
+            context,
+            info,
+          ) => {
+            const val =
+              fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
+                ? parent?.[fieldMeta.propertyKey]
+                : defaultFieldResolver(parent, args, context, info);
+            if (val !== undefined) return val;
+            if (effectiveDefault !== undefined) {
+              return cloneDefaultValue(effectiveDefault);
+            }
+            if (isRootQueryRef) {
+              return {};
+            }
+            return undefined;
+          };
 
           fields[fieldName] = {
-            type: this.resolveOutputType(rawType, fieldMeta.nullable),
+            type: resolvedFieldType,
             description: fieldMeta.description,
             deprecationReason: fieldMeta.deprecationReason,
             ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
             resolve:
               fieldMw.length > 0
                 ? applyFieldMiddleware(fieldMw, baseResolve)
-                : fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
+                : needsCustomResolve
                   ? baseResolve
                   : undefined,
           };
@@ -1746,14 +1941,29 @@ export class GraphQLSchemaFactory {
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
           const fieldExt = getGraphQLExtensions(cls, fieldMeta.propertyKey);
+          const fieldName = fieldMeta.name ?? fieldMeta.propertyKey;
+          const isExplicitDefault = fieldMeta.defaultValue !== undefined;
+          const rawDefault = isExplicitDefault
+            ? fieldMeta.defaultValue
+            : getInstanceDefaultValue(cls, fieldMeta.propertyKey);
+          let defaultValue = normalizeDefaultValue(rawDefault, rawType);
+          if (isExplicitDefault) {
+            assertNullDefaultAllowed(fieldName, defaultValue, fieldMeta.nullable);
+          } else if (
+            defaultValue === null &&
+            fieldMeta.nullable !== true &&
+            fieldMeta.nullable !== "itemsAndList"
+          ) {
+            defaultValue = undefined;
+          }
           const config: GraphQLInputFieldConfig = {
             type: this.resolveInputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
-            defaultValue: fieldMeta.defaultValue,
+            defaultValue,
             deprecationReason: fieldMeta.deprecationReason,
             ...(fieldExt ? { extensions: fieldExt } : {}),
           };
-          fields[fieldMeta.name ?? fieldMeta.propertyKey] = config;
+          fields[fieldName] = config;
         }
         return fields;
       },
@@ -1789,10 +1999,25 @@ export class GraphQLSchemaFactory {
             param.metatype,
             fieldMeta.propertyKey,
           );
-          argsConfig[fieldMeta.name ?? fieldMeta.propertyKey] = {
+          const argName = fieldMeta.name ?? fieldMeta.propertyKey;
+          const isExplicitDefault = fieldMeta.defaultValue !== undefined;
+          const rawDefault = isExplicitDefault
+            ? fieldMeta.defaultValue
+            : getInstanceDefaultValue(param.metatype, fieldMeta.propertyKey);
+          let defaultValue = normalizeDefaultValue(rawDefault, rawType);
+          if (isExplicitDefault) {
+            assertNullDefaultAllowed(argName, defaultValue, fieldMeta.nullable);
+          } else if (
+            defaultValue === null &&
+            fieldMeta.nullable !== true &&
+            fieldMeta.nullable !== "itemsAndList"
+          ) {
+            defaultValue = undefined;
+          }
+          argsConfig[argName] = {
             type: this.resolveInputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
-            defaultValue: fieldMeta.defaultValue,
+            defaultValue,
             ...(fieldMeta.deprecationReason !== undefined
               ? { deprecationReason: fieldMeta.deprecationReason }
               : {}),
@@ -1806,10 +2031,12 @@ export class GraphQLSchemaFactory {
         const rawType = param.typeFn
           ? param.typeFn()
           : (param.metatype as ReturnTypeFuncValue | undefined);
+        const defaultValue = normalizeDefaultValue(param.defaultValue, rawType);
+        assertNullDefaultAllowed(param.key, defaultValue, param.nullable);
         argsConfig[param.key] = {
           type: this.resolveInputType(rawType, param.nullable),
           description: param.description,
-          defaultValue: param.defaultValue,
+          defaultValue,
           ...(param.deprecationReason !== undefined
             ? { deprecationReason: param.deprecationReason }
             : {}),
@@ -1827,6 +2054,12 @@ export class GraphQLSchemaFactory {
     const queryFields: GraphQLFieldConfigMap<any, any> = {};
     const mutationFields: GraphQLFieldConfigMap<any, any> = {};
     const subscriptionFields: GraphQLFieldConfigMap<any, any> = {};
+
+    const queryType = new GraphQLObjectType({
+      name: "Query",
+      fields: () => queryFields,
+    });
+    this.activeQueryType = queryType;
 
     // Pre-pass: register custom @Scalar() providers before resolving any field types
     const customScalars: GraphQLScalarType[] = [];
@@ -2130,11 +2363,6 @@ export class GraphQLSchemaFactory {
         resolve: () => true,
       };
     }
-
-    const queryType = new GraphQLObjectType({
-      name: "Query",
-      fields: () => queryFields,
-    });
 
     const mutationType =
       Object.keys(mutationFields).length > 0

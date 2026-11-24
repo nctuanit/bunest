@@ -1467,8 +1467,7 @@ describeConformance(
             },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally buildArgsConfig (:1201-1210) does not infer @ArgsType() property initializer defaults (`skip = 0`, `take = 25`).
-        it.skip("should take 2 input arguments", () => {
+        it("should take 2 input arguments", () => {
           expect(recipesQuery.args.length).toEqual(2);
           expect(recipesQuery.args).toEqual(
             expect.arrayContaining([
