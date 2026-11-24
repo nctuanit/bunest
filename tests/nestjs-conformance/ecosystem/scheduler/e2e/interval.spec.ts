@@ -306,8 +306,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/core/src/common/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/jobs/src/scheduler/scheduler.explorer.ts uses context "SchedulerExplorer".
-    it.skip(`should log a warning when trying to register an interval in a request scoped provider`, async () => {
+    it(`should log a warning when trying to register an interval in a request scoped provider`, async () => {
       const logger = {
         log: mock(() => {}),
         error: mock(() => {}),

@@ -681,10 +681,9 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         break;
       }
 
+      const propLen = typeof error.property === "string" ? error.property.length : 0;
       const propPathLen =
-        parentPathLength > 0
-          ? parentPathLength + 1 + error.property.length
-          : error.property.length;
+        parentPathLength > 0 ? parentPathLength + 1 + propLen : propLen;
 
       let keptConstraints: Record<string, string> | undefined;
       if (error.constraints) {

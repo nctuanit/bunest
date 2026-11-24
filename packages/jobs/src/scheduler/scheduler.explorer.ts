@@ -38,7 +38,7 @@ export class SchedulerExplorer
     string,
     ReturnType<typeof setTimeout>
   >();
-  private readonly logger = new Logger("SchedulerExplorer");
+  private readonly logger = new Logger("Scheduler");
 
   constructor(
     private readonly registry: SchedulerRegistry,
