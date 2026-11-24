@@ -138,11 +138,13 @@ export abstract class ClientProxy<
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes>;
 
   protected abstract dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void>;
 
   /**
@@ -167,9 +169,13 @@ export abstract class ClientProxy<
     options?: SendOptions,
   ): Promise<TRes> {
     const key = normalizePattern(pattern);
+    let packetMetadata: Record<string, unknown> | undefined;
     if (this.onDispatchHook) {
       const packet: ReadPacket<TReq> = { pattern: key, data };
       this.onDispatchHook(packet);
+      if (packet.metadata && typeof packet.metadata === "object") {
+        packetMetadata = packet.metadata as Record<string, unknown>;
+      }
     }
     if (this.preRequestHook) {
       await this.preRequestHook({
@@ -189,7 +195,13 @@ export abstract class ClientProxy<
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         return await this.runWithTimeout(key, timeoutMs, (signal) =>
-          this.sendOnce<TRes, TReq>(key, data, timeoutMs, signal),
+          this.sendOnce<TRes, TReq>(
+            key,
+            data,
+            timeoutMs,
+            signal,
+            packetMetadata,
+          ),
         );
       } catch (err) {
         lastError = err;
@@ -224,9 +236,13 @@ export abstract class ClientProxy<
   ): Promise<void>;
   async emit<TReq = any>(pattern: PatternInput, data: TReq): Promise<void> {
     const key = normalizePattern(pattern);
+    let packetMetadata: Record<string, unknown> | undefined;
     if (this.onDispatchHook) {
       const packet: ReadPacket<TReq> = { pattern: key, data };
       this.onDispatchHook(packet);
+      if (packet.metadata && typeof packet.metadata === "object") {
+        packetMetadata = packet.metadata as Record<string, unknown>;
+      }
     }
     if (this.preRequestHook) {
       await this.preRequestHook({
@@ -235,7 +251,7 @@ export abstract class ClientProxy<
         transport: this.transport,
       });
     }
-    await this.dispatchEvent(key, data);
+    await this.dispatchEvent(key, data, packetMetadata);
   }
 
   async onModuleDestroy(): Promise<void> {

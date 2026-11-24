@@ -91,8 +91,7 @@ describeConformance(
       tcpServer = undefined;
     });
 
-    // BUNEST_BUG: ClientProxy lacks setOnDispatchHook(packet => { packet.metadata = ... }) and RpcRequestEnvelope/TcpClientProxy/TcpServer do not serialize or propagate custom packet metadata across the TCP wire (packages/microservices/src/client-proxy.ts, packages/microservices/src/interfaces.ts, packages/microservices/src/transports/tcp.transport.ts)
-    it.skip("delivers what the dispatch hook attached to a request, beside the payload", async () => {
+    it("delivers what the dispatch hook attached to a request, beside the payload", async () => {
       const dispatchCapable = client as unknown as {
         setOnDispatchHook: (
           fn: (packet: {
@@ -114,8 +113,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: ClientProxy lacks setOnDispatchHook and RpcEventEnvelope/TcpClientProxy/TcpServer do not serialize or propagate custom packet metadata on TCP events (packages/microservices/src/client-proxy.ts, packages/microservices/src/interfaces.ts, packages/microservices/src/transports/tcp.transport.ts)
-    it.skip("delivers it with an event as well", async () => {
+    it("delivers it with an event as well", async () => {
       const received = new Promise<void>((resolve) => {
         MetadataController.eventReceived = resolve;
       });

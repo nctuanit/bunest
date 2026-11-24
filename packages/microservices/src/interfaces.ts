@@ -141,6 +141,7 @@ export interface RpcRequestEnvelope {
   readonly pattern: string;
   readonly data: unknown;
   readonly replyTo?: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export interface RpcResponseEnvelope {
@@ -155,6 +156,7 @@ export interface RpcEventEnvelope {
   readonly type: "event";
   readonly pattern: string;
   readonly data: unknown;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export type RpcEnvelope =

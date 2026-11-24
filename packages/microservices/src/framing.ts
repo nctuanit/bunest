@@ -70,6 +70,10 @@ export class FrameDecoder {
     return messages;
   }
 
+  get hasPendingBytes(): boolean {
+    return this.buffer.byteLength > 0;
+  }
+
   reset(): void {
     this.buffer = Buffer.alloc(0);
   }
