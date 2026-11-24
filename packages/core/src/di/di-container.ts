@@ -3562,10 +3562,21 @@ export class DIContainer
     ) {
       return { found: true, value: this.httpAdapterHost };
     }
-    if (
-      Object.is(token, ApplicationConfig) ||
-      token === BUNEST_APPLICATION_CONFIG_TOKEN
-    ) {
+    if (Object.is(token, ApplicationConfig)) {
+      if (
+        this.providerOverrides.has(token) ||
+        ModuleScanner.resolveProviderLocation(
+          mod,
+          token,
+          this.graph.globalModules,
+        ) ||
+        this.graph.root.providers.has(token)
+      ) {
+        return { found: false };
+      }
+      return { found: true, value: this._applicationConfig };
+    }
+    if (token === BUNEST_APPLICATION_CONFIG_TOKEN) {
       return { found: true, value: this._applicationConfig };
     }
     if (Object.is(token, ModulesContainer)) {

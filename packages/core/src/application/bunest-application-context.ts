@@ -157,6 +157,8 @@ export class BunestApplicationContext {
   protected readonly strictDefault: boolean;
   protected contextModule?: ModuleNode;
   protected readonly appOptions: BunestApplicationContextOptions;
+  private didOverrideGlobalLogger = false;
+  private previousGlobalLogger?: LoggerService;
 
   constructor(
     protected readonly container: DIContainer,
@@ -188,6 +190,10 @@ export class BunestApplicationContext {
     });
 
     if ((options as { forceConsole?: boolean }).forceConsole === true) {
+      if (!this.didOverrideGlobalLogger) {
+        this.didOverrideGlobalLogger = true;
+        this.previousGlobalLogger = Logger.staticInstanceRef;
+      }
       Logger.overrideLogger(new ConsoleLogger({ forceConsole: true }));
     }
 
@@ -199,6 +205,10 @@ export class BunestApplicationContext {
     this.logger = this.loggerAdapter;
 
     if (options.bufferLogs === true) {
+      if (!this.didOverrideGlobalLogger) {
+        this.didOverrideGlobalLogger = true;
+        this.previousGlobalLogger = Logger.staticInstanceRef;
+      }
       Logger.overrideLogger(this.loggerAdapter);
       Logger.attachBuffer();
     }
@@ -440,19 +450,32 @@ export class BunestApplicationContext {
     }
     this.isClosed = true;
     await this.prepareClose();
+    const restoreGlobalLogger = () => {
+      if (this.didOverrideGlobalLogger) {
+        this.didOverrideGlobalLogger = false;
+        Logger.detachBuffer();
+        Logger.overrideLogger(this.previousGlobalLogger ?? true);
+        this.previousGlobalLogger = undefined;
+      }
+    };
     if (this.lifecycle.getIsClosed()) {
       try {
         await this.dispose();
       } finally {
         await this.container.destroyContextContainers();
+        restoreGlobalLogger();
       }
       return;
     }
     const groups = this.container.getSingletonInstancesByModule();
-    await this.lifecycle.callShutdown(groups, signal, async () => {
-      await this.dispose();
-      await this.container.destroyContextContainers();
-    });
+    try {
+      await this.lifecycle.callShutdown(groups, signal, async () => {
+        await this.dispose();
+        await this.container.destroyContextContainers();
+      });
+    } finally {
+      restoreGlobalLogger();
+    }
   }
 
   protected async stopTransport(): Promise<void> {

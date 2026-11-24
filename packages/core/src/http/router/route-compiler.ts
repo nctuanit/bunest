@@ -705,18 +705,23 @@ export async function compileRoutes(
     ];
 
     // Strict ADR-008 §3 enhancer precedence
+    const skipHttpGlobalEnhancers =
+      MetadataRegistry.get<boolean>(
+        Symbol.for("bunest:skip_http_global_enhancers"),
+        route.controller,
+      ) === true;
     const guardSpecs: GuardLike[] = [
-      ...globalGuards,
+      ...(skipHttpGlobalEnhancers ? [] : globalGuards),
       ...route.controllerGuards,
       ...route.methodGuards,
     ];
     const interceptorSpecs: InterceptorLike[] = [
-      ...globalInterceptors,
+      ...(skipHttpGlobalEnhancers ? [] : globalInterceptors),
       ...route.controllerInterceptors,
       ...route.methodInterceptors,
     ];
     const sharedPipeSpecs: PipeLike[] = [
-      ...globalPipes,
+      ...(skipHttpGlobalEnhancers ? [] : globalPipes),
       ...route.controllerPipes,
       ...route.methodPipes,
     ];

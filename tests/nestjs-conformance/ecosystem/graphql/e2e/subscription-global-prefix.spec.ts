@@ -47,8 +47,7 @@ describeConformance(
       return { driver, close: () => moduleRef.close() };
     }
 
-    // BUNEST_BUG: AbstractGraphQLDriver.mergeDefaultOptions() does not apply ApplicationConfig global prefix to `path` when `useGlobalPrefix: true` (returns "/graphql" instead of "/api/graphql"; packages/graphql/src/driver/abstract-graphql.driver.ts:30-42).
-    it.skip("prefixes the http endpoint when useGlobalPrefix is true", async () => {
+    it("prefixes the http endpoint when useGlobalPrefix is true", async () => {
       const { driver, close } = await createDriver("api");
       try {
         const merged = await driver.mergeDefaultOptions({
@@ -61,8 +60,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: AbstractGraphQLDriver.mergeDefaultOptions() does not apply ApplicationConfig global prefix to `subscriptions["graphql-ws"].path` when `useGlobalPrefix: true` (returns "/graphql" instead of "/api/graphql"; packages/graphql/src/driver/abstract-graphql.driver.ts:30-42).
-    it.skip("prefixes a custom subscription path when useGlobalPrefix is true", async () => {
+    it("prefixes a custom subscription path when useGlobalPrefix is true", async () => {
       const { driver, close } = await createDriver("api");
       try {
         const merged = await driver.mergeDefaultOptions({
@@ -84,8 +82,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: AbstractGraphQLDriver.mergeDefaultOptions() does not apply ApplicationConfig global prefix to non-default `subscriptions["graphql-ws"].path` (returns "/subscriptions" instead of "/api/subscriptions"; packages/graphql/src/driver/abstract-graphql.driver.ts:30-42).
-    it.skip("prefixes a non-default subscription path when useGlobalPrefix is true", async () => {
+    it("prefixes a non-default subscription path when useGlobalPrefix is true", async () => {
       const { driver, close } = await createDriver("api");
       try {
         const merged = await driver.mergeDefaultOptions({
@@ -149,8 +146,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: AbstractGraphQLDriver.mergeDefaultOptions() never applies global prefix to `subscriptions["graphql-ws"].path` at all (returns "/graphql" instead of "/api/graphql"; packages/graphql/src/driver/abstract-graphql.driver.ts:30-42).
-    it.skip("does not compound the prefix when the same options object is merged twice", async () => {
+    it("does not compound the prefix when the same options object is merged twice", async () => {
       const { driver, close } = await createDriver("api");
       try {
         const options: GqlModuleOptions = {

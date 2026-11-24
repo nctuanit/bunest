@@ -3,6 +3,7 @@ import {
   type DynamicModule,
   Get,
   Inject,
+  MetadataRegistry,
   Module,
   type OnApplicationShutdown,
   type OnModuleDestroy,
@@ -63,6 +64,11 @@ function createGraphQLController(routePath: string): Type<unknown> {
     }
   }
 
+  MetadataRegistry.define(
+    Symbol.for("bunest:skip_http_global_enhancers"),
+    true,
+    GraphQLController,
+  );
   return GraphQLController;
 }
 

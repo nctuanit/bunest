@@ -28,6 +28,7 @@ import {
   type PipeLike,
   type PipeTransform,
   type ResponseContext,
+  Scope,
   type Type,
 } from "@bunest/core";
 import { DiscoveryService, MetadataScanner, ModuleRef } from "@bunest/core";
@@ -321,6 +322,64 @@ export class GraphQLService
           });
         }
         providerKindMap.set(mod.id, modMap);
+
+        // Collect request/transient-scoped APP_* multi-providers from mod.multiProviders
+        const multiPairs: ReadonlyArray<
+          [
+            symbol,
+            string,
+            Array<unknown>,
+          ]
+        > = [
+          [APP_GUARD, "APP_GUARD", globalGuards as unknown[]],
+          [APP_INTERCEPTOR, "APP_INTERCEPTOR", globalInterceptors as unknown[]],
+          [APP_PIPE, "APP_PIPE", globalPipes as unknown[]],
+          [APP_FILTER, "APP_FILTER", globalFilters as unknown[]],
+        ];
+        for (const [multiToken, fallbackName, targetList] of multiPairs) {
+          const entries = mod.multiProviders?.get(multiToken);
+          if (!entries) continue;
+          for (const entry of entries) {
+            const cls = entry.useClass;
+            const clsScope =
+              typeof cls === "function"
+                ? MetadataRegistry.get<{ scope?: Scope }>(
+                    METADATA_KEYS.INJECTABLE,
+                    cls,
+                  )?.scope
+                : undefined;
+            const effectiveScope = entry.scope ?? clsScope;
+            if (
+              effectiveScope === Scope.REQUEST ||
+              effectiveScope === Scope.TRANSIENT
+            ) {
+              const resolveToken =
+                typeof cls === "function" ? (cls as Type<unknown>) : undefined;
+              scopedGlobalEnhancerNames.push(
+                resolveToken?.name ?? fallbackName,
+              );
+              if (resolveToken) {
+                scopedEnhancerClasses.add(resolveToken);
+                targetList.push(
+                  createScopedEnhancer(async (ctxId) => {
+                    if (this.moduleRef) {
+                      try {
+                        return await this.moduleRef.resolve(
+                          resolveToken,
+                          ctxId,
+                          { strict: false },
+                        );
+                      } catch {
+                        return await this.moduleRef.create(resolveToken);
+                      }
+                    }
+                    return new resolveToken();
+                  }, resolveToken),
+                );
+              }
+            }
+          }
+        }
       }
 
       const wrappers = [

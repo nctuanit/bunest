@@ -192,8 +192,7 @@ describeConformance(
         useClass: RequestScopedDenyGuard,
       };
 
-      // BUNEST_BUG: GraphQLService.buildSchema() only discovers APP_FILTER multi-providers and ignores APP_GUARD (including request-scoped global guards), so RequestScopedDenyGuard never runs for GraphQL resolvers (packages/graphql/src/driver/graphql-http.handler.ts:258-290).
-      it.skip.each([
+      it.each([
         ["as a class", CatsResolver],
         ['with "useClass" under another token', "CATS_RESOLVER"],
       ] as const)(
