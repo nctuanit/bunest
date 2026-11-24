@@ -287,8 +287,7 @@ describeConformance(
         await testingModule.close();
       });
 
-      // BUNEST_BUG: TestingModuleBuilder.overrideModule() is not applied by LazyModuleLoader.load() (expected "override lazy", received "overwritten lazy"; packages/core/src/module/lazy-module-loader.ts)
-      it.skip("should override lazy loaded modules using testing module builder", async () => {
+      it("should override lazy loaded modules using testing module builder", async () => {
         const result = await testingModule.get<AppService>(AppService).value();
         expect(result).toBe("override lazy");
       });

@@ -252,11 +252,19 @@ export class BunestApplicationContext {
       strict: options?.strict ?? this.strictDefault,
       each: options?.each,
     };
-    return this.container.getSync<TResult>(
-      token as InjectionToken<TResult>,
-      this.scopeModuleId,
-      resolvedOptions,
-    );
+    try {
+      return this.container.getSync<TResult>(
+        token as InjectionToken<TResult>,
+        this.scopeModuleId,
+        resolvedOptions,
+      );
+    } catch (err) {
+      if (this.options.abortOnError === true) {
+        process.exit(1);
+        return undefined as unknown as TResult;
+      }
+      throw err;
+    }
   }
 
   resolve<K extends keyof BunestTokenRegistry>(
@@ -319,10 +327,16 @@ export class BunestApplicationContext {
    */
   select<T>(
     moduleType: Type<T> | DynamicModule,
-    _options?: { abortOnError?: boolean },
+    selectOptions?: { abortOnError?: boolean },
   ): BunestApplicationContext {
+    const effectiveAbortOnError =
+      selectOptions?.abortOnError ?? this.options.abortOnError;
     const targetNode = this.findModuleNode(moduleType);
     if (!targetNode) {
+      if (effectiveAbortOnError === true) {
+        process.exit(1);
+        return this;
+      }
       const label = isDynamicModule(moduleType)
         ? moduleType.module.name || "<DynamicModule>"
         : moduleType.name || "<anonymous>";
@@ -335,6 +349,9 @@ export class BunestApplicationContext {
       this.container,
       {
         ...this.options,
+        ...(selectOptions?.abortOnError !== undefined
+          ? { abortOnError: selectOptions.abortOnError }
+          : {}),
         shutdownHooks: false,
         lifecycleManager: this.lifecycle,
       },

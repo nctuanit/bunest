@@ -3631,11 +3631,18 @@ export class DIContainer
 
     // Check controller singletons and module class instances first
     if (typeof token === "function") {
-      const ctrl = this.controllerSingletons.get(token as Type<unknown>);
-      if (ctrl) {
-        const owner = this.controllerOwner.get(token as Type<unknown>);
-        if (!strict || owner === mod) {
+      const ctrlOwner = this.controllerOwner.get(token as Type<unknown>);
+      if (ctrlOwner && (!strict || ctrlOwner === mod)) {
+        const ctrl = this.controllerSingletons.get(token as Type<unknown>);
+        if (ctrl) {
           return ctrl as unknown as T;
+        }
+        const ctrlScope = getControllerScope(token as Type<unknown>);
+        if (ctrlScope !== Scope.SINGLETON) {
+          throw new ScopeLeakException([
+            { name: "ModuleRef.get", scope: Scope.SINGLETON },
+            { name: token.name || "<Controller>", scope: ctrlScope },
+          ]);
         }
       }
       if (mod.metatype === token && mod.instance !== undefined) {
@@ -5032,7 +5039,7 @@ export class DIContainer
       return builtIn.value;
     }
     if (isBuiltInRequestToken(dep.token)) {
-      if (requestContainer?.hasRequestValue(dep.token)) {
+      if (requestContainer) {
         return requestContainer.getRequestValue(dep.token);
       }
       if (dep.optional) {
@@ -5081,13 +5088,28 @@ export class DIContainer
       );
     }
 
-    return this.resolveNormalizedProvider(
-      loc.owner,
-      loc.provider,
-      requestContainer,
-      activeInstantiations,
-      inquirer,
-    );
+    try {
+      return await this.resolveNormalizedProvider(
+        loc.owner,
+        loc.provider,
+        requestContainer,
+        activeInstantiations,
+        inquirer,
+      );
+    } catch (err) {
+      if (dep.optional && !requestContainer) {
+        const depScope = this.getEffectiveProviderScope(
+          loc.owner,
+          loc.provider,
+          new Set(),
+          allowRootFallback,
+        );
+        if (depScope === Scope.TRANSIENT) {
+          return undefined;
+        }
+      }
+      throw err;
+    }
   }
 
   private getOrCreateDeferredProxy(

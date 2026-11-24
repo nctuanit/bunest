@@ -29,8 +29,7 @@ describeConformance(
     });
 
     describe("toJSON", () => {
-      // BUNEST_BUG: PartialGraphHost initializes static partialGraph to an empty SerializedGraph rather than undefined (packages/core/src/inspector/partial-graph.host.ts:8)
-      it.skip("should return undefined when no graph is registered", () => {
+      it("should return undefined when no graph is registered", () => {
         (
           PartialGraphHost as unknown as { partialGraph: unknown }
         ).partialGraph = undefined;
@@ -50,8 +49,7 @@ describeConformance(
     });
 
     describe("toString", () => {
-      // BUNEST_BUG: PartialGraphHost initializes static partialGraph to an empty SerializedGraph rather than undefined (packages/core/src/inspector/partial-graph.host.ts:8)
-      it.skip("should return undefined when no graph is registered", () => {
+      it("should return undefined when no graph is registered", () => {
         (
           PartialGraphHost as unknown as { partialGraph: unknown }
         ).partialGraph = undefined;
