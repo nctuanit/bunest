@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   MetadataRegistry,
   Optional,
   Scope,
@@ -60,6 +61,7 @@ type StoredEventHandler<EventBase extends IEvent> =
 
 interface SagaEntry<EventBase extends IEvent> {
   readonly fn: ISaga<EventBase>;
+  readonly name?: string;
   disabled: boolean;
   pausedUntil: number;
   backoffMs: number;
@@ -143,6 +145,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
   private readonly sagas = new Set<SagaEntry<EventBase>>();
   private readonly sagaErrorHandlers = new Set<SagaErrorHandler>();
   private readonly inFlightSagas = new Set<Promise<void>>();
+  private readonly logger = new Logger("EventBus");
   private readonly defaultPublisher: DefaultPubSub<EventBase>;
   private _publisher!: IEventPublisher<EventBase>;
   private readonly bridgeListener: (event: EventBase) => Promise<void>;
@@ -355,12 +358,14 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
   registerSaga<TEvent extends EventBase = EventBase>(
     saga: ISaga<TEvent>,
+    name?: string,
   ): () => void {
     if (typeof saga !== "function") {
       throw new InvalidSagaException();
     }
     const entry: SagaEntry<EventBase> = {
       fn: saga as ISaga<EventBase>,
+      name: name ?? (saga.name || undefined),
       disabled: false,
       pausedUntil: 0,
       backoffMs: 100,
@@ -413,11 +418,13 @@ export class EventBus<EventBase extends IEvent = IEvent>
         if (typeof fn !== "function") {
           throw new InvalidSagaException();
         }
-        this.registerSaga((event: EventBase) =>
-          (fn as (e: EventBase) => Promise<SagaOutput> | SagaOutput).call(
-            instance,
-            event,
-          ),
+        this.registerSaga(
+          (event: EventBase) =>
+            (fn as (e: EventBase) => Promise<SagaOutput> | SagaOutput).call(
+              instance,
+              event,
+            ),
+          String(meta.methodName),
         );
       }
     }
@@ -521,6 +528,18 @@ export class EventBus<EventBase extends IEvent = IEvent>
       );
     }
 
+    if (this._publisher !== this.defaultPublisher) {
+      return events.map((event) =>
+        dispatcherContext !== undefined && asyncContext !== undefined
+          ? this.publish(event, dispatcherContext, asyncContext)
+          : asyncContext !== undefined
+            ? this.publish(event, asyncContext)
+            : dispatcherContext !== undefined
+              ? this.publish(event, dispatcherContext)
+              : this.publish(event),
+      );
+    }
+
     return (async () => {
       for (const event of events) {
         if (dispatcherContext !== undefined && asyncContext !== undefined) {
@@ -609,11 +628,28 @@ export class EventBus<EventBase extends IEvent = IEvent>
               if (!ref) {
                 throw new InvalidEventsHandlerException();
               }
+              ref.registerRequestByContextId(ctx, ctx.id);
               handler = (await ref.resolve(entry.wrapper.token, ctx.id, {
                 strict: false,
               })) as IEventHandler<EventBase>;
             }
-            await handler.handle(event);
+            try {
+              await handler.handle(event);
+            } catch (err) {
+              const handlerName =
+                (handler as { constructor?: { name?: string } })?.constructor
+                  ?.name ?? "EventHandler";
+              if (this.options?.rethrowUnhandled === true) {
+                this.publishUnhandledException(err, event);
+                errors.push(err);
+              } else {
+                this.logger.error(
+                  `"${handlerName}" has thrown an unhandled exception.`,
+                  err,
+                );
+                this.publishUnhandledException(err, event);
+              }
+            }
           })
           .catch((err) => {
             this.publishUnhandledException(err, event);
@@ -727,15 +763,21 @@ export class EventBus<EventBase extends IEvent = IEvent>
     event: EventBase,
     rethrowBucket: unknown[],
   ): void {
-    this.publishUnhandledException(error, event);
-    this.reportSagaError(error, event);
-
     if (this.options?.rethrowUnhandled === true) {
+      entry.disabled = true;
       rethrowBucket.push(error);
       return;
     }
 
-    const strategy = this.options?.sagaErrorStrategy;
+    this.logger.error(
+      `Saga "${entry.name ?? "anonymous"}" has thrown an unhandled exception.`,
+      error,
+    );
+    const cause = (entry.name ?? event) as IEvent | ICommand;
+    this.publishUnhandledException(error, cause);
+    this.reportSagaError(error, event);
+
+    const strategy = this.options?.sagaErrorStrategy ?? "complete";
     if (strategy === "complete") {
       entry.disabled = true;
     } else if (strategy === "resubscribe") {

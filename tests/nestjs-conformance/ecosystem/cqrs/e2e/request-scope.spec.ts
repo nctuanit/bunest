@@ -150,8 +150,7 @@ describeConformance(
       const dragonId = "dragonId";
       const command = new ScopedKillDragonCommand(heroId, dragonId);
 
-      // BUNEST_BUG: Expected CommandBus.execute(cmd) without explicit asyncContext to create an AsyncContext and register it as REQUEST via registerRequestByContextId(ctx, ctx.id), but packages/messaging/src/cqrs/command-bus.ts omits registerRequestByContextId(), causing DI resolution failure for @Inject(REQUEST).
-      it.skip("should generate a unique async context", async () => {
+      it("should generate a unique async context", async () => {
         const commandBus = moduleRef.get(CommandBus);
         const result = await commandBus.execute(command);
         expect(result).toEqual({ heroId, dragonId });
@@ -159,8 +158,7 @@ describeConformance(
     });
 
     describe('when "ScopedHeroFoundItemEvent" event is published with an async context', () => {
-      // BUNEST_BUG: Expected EventBus.publish(event, asyncContext) to register asyncContext as REQUEST via registerRequestByContextId(ctx, ctx.id) before resolving Scope.REQUEST event handlers, but packages/messaging/src/cqrs/event-bus.ts omits registerRequestByContextId().
-      it.skip("should inject that async context as REQUEST into the event handler", async () => {
+      it("should inject that async context as REQUEST into the event handler", async () => {
         const asyncContext = new AsyncContext();
         const eventBus = moduleRef.get(EventBus);
 
@@ -179,8 +177,7 @@ describeConformance(
     });
 
     describe('when "ScopedGetHeroesQuery" query is executed', () => {
-      // BUNEST_BUG: Expected QueryBus.execute(query, asyncContext) to register asyncContext as REQUEST via registerRequestByContextId(ctx, ctx.id) before resolving Scope.REQUEST query handlers, but packages/messaging/src/cqrs/query-bus.ts omits registerRequestByContextId().
-      it.skip("should return all heroes", async () => {
+      it("should return all heroes", async () => {
         const asyncContext = new AsyncContext();
         const queryBus = moduleRef.get(QueryBus);
         const heroes = await queryBus.execute(
@@ -192,8 +189,7 @@ describeConformance(
     });
 
     describe('when "ScopedGetHeroesQuery" query is executed and no async context is provided', () => {
-      // BUNEST_BUG: Expected QueryBus.execute(query) without explicit asyncContext to create and register a unique AsyncContext via registerRequestByContextId(ctx, ctx.id), but packages/messaging/src/cqrs/query-bus.ts omits registerRequestByContextId().
-      it.skip("should return all heroes", async () => {
+      it("should return all heroes", async () => {
         const queryBus = moduleRef.get(QueryBus);
         const heroes = await queryBus.execute(new ScopedGetHeroesQuery());
         expect(heroes).toEqual([expect.objectContaining({ id: HERO_ID })]);

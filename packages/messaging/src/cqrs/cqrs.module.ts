@@ -86,15 +86,26 @@ function getAllLoadedWrappers(
     return [];
   }
   const seen = new Set<InstanceWrapper>();
+  const seenInstances = new Set<object>();
   const wrappers: InstanceWrapper[] = [];
   for (const wrapper of [
     ...discovery.getProviders(),
     ...discovery.getControllers(),
   ]) {
-    if (!seen.has(wrapper)) {
-      seen.add(wrapper);
-      wrappers.push(wrapper);
+    if (wrapper.isAlias) {
+      continue;
     }
+    if (seen.has(wrapper)) {
+      continue;
+    }
+    if (wrapper.instance && typeof wrapper.instance === "object") {
+      if (seenInstances.has(wrapper.instance)) {
+        continue;
+      }
+      seenInstances.add(wrapper.instance);
+    }
+    seen.add(wrapper);
+    wrappers.push(wrapper);
   }
   return wrappers;
 }

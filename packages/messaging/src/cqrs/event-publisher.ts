@@ -22,18 +22,14 @@ export class EventPublisher<EventBase extends IEvent = IEvent> {
       dispatcherContext?: unknown,
     ) => {
       const ctx = dispatcherContext === undefined ? object : dispatcherContext;
-      return asyncContext !== undefined
-        ? eventBus.publish(event, ctx, asyncContext)
-        : eventBus.publish(event, ctx);
+      return eventBus.publish(event, ctx, asyncContext as AsyncContext);
     };
     object.publishAll = <TEvent extends EventBase>(
       events: readonly TEvent[],
       dispatcherContext?: unknown,
     ) => {
       const ctx = dispatcherContext === undefined ? object : dispatcherContext;
-      return asyncContext !== undefined
-        ? eventBus.publishAll(events, ctx, asyncContext)
-        : eventBus.publishAll(events, ctx);
+      return eventBus.publishAll(events, ctx, asyncContext as AsyncContext);
     };
     return object;
   }
@@ -49,9 +45,7 @@ export class EventPublisher<EventBase extends IEvent = IEvent> {
         dispatcherContext?: unknown,
       ): Promise<void> {
         const ctx = dispatcherContext === undefined ? this : dispatcherContext;
-        return asyncContext !== undefined
-          ? eventBus.publish(event, ctx, asyncContext)
-          : eventBus.publish(event, ctx);
+        return eventBus.publish(event, ctx, asyncContext as AsyncContext);
       }
 
       override publishAll<TEvent extends EventBase>(
@@ -59,9 +53,7 @@ export class EventPublisher<EventBase extends IEvent = IEvent> {
         dispatcherContext?: unknown,
       ): Promise<void> {
         const ctx = dispatcherContext === undefined ? this : dispatcherContext;
-        return asyncContext !== undefined
-          ? eventBus.publishAll(events, ctx, asyncContext)
-          : eventBus.publishAll(events, ctx);
+        return eventBus.publishAll(events, ctx, asyncContext as AsyncContext);
       }
     };
   }

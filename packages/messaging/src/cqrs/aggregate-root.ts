@@ -67,13 +67,15 @@ export abstract class AggregateRoot<
    * Publishes all uncommitted events in order and clears the internal buffer.
    */
   commit(dispatcherContext?: unknown): Promise<void> | any {
-    if (this.internalEvents.length === 0) {
-      return Promise.resolve();
+    if (dispatcherContext === undefined) {
+      const result = this.publishAll(this.internalEvents);
+      this.internalEvents.length = 0;
+      return result;
     }
-    const events = this.internalEvents.splice(0, this.internalEvents.length);
-    return dispatcherContext === undefined
-      ? this.publishAll(events)
-      : this.publishAll(events, dispatcherContext);
+    const events = [...this.internalEvents];
+    const result = this.publishAll(events, dispatcherContext);
+    this.internalEvents.length = 0;
+    return result;
   }
 
   /**
@@ -84,10 +86,10 @@ export abstract class AggregateRoot<
   }
 
   /**
-   * Returns a snapshot of currently buffered uncommitted events.
+   * Returns the internal array of currently buffered uncommitted events.
    */
   getUncommittedEvents(): EventBase[] {
-    return [...this.internalEvents];
+    return this.internalEvents;
   }
 
   /**
