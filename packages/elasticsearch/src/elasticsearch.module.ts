@@ -3,7 +3,7 @@ import {
   type DynamicModule,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ELASTICSEARCH_MODULE_OPTIONS } from "./elasticsearch.constants";
 import { ElasticsearchService } from "./elasticsearch.service";
 import type {

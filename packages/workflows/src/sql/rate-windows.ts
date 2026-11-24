@@ -104,10 +104,7 @@ export class RateWindowClaim {
     return { granted, changed: [...changed.values()] };
   }
 
-  private windowsOf({
-    workflow,
-    rateLimitKey,
-  }: PickedInstance): Array<{
+  private windowsOf({ workflow, rateLimitKey }: PickedInstance): Array<{
     workflow: string;
     key: string;
     max: number;

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect } from "bun:test";
-import { Injectable, Module, Scope } from "../../../../../packages/common/src";
+import { Injectable, Module, Scope } from "../../../../../packages/core/src/common";
 import { ContextIdFactory } from "../../../../../packages/core/src";
 import {
   Test,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   All,
@@ -23,7 +22,7 @@ import {
   Redirect,
   Res,
   type ResponseContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test, TestClient, request } from "../../src";
 
 @Controller("/routing")
@@ -331,7 +330,9 @@ describe("E2E: Hello World, Routing, Redirect Parity, Global Prefix, CORS, app.i
       // 6. Binary & streaming also match over live TCP
       const liveBin = await liveClient.get("/routing/binary");
       liveBin.expectStatus(200);
-      expect(Array.from(await liveBin.bytes())).toEqual([0xde, 0xad, 0xbe, 0xef]);
+      expect(Array.from(await liveBin.bytes())).toEqual([
+        0xde, 0xad, 0xbe, 0xef,
+      ]);
 
       const liveStream = await liveClient.get("/routing/stream");
       liveStream.expectStatus(200);

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { Scope } from "../../../../../packages/common/src";
+import { Scope } from "../../../../../packages/core/src/common";
 import {
   ModuleRef,
   type InstanceWrapper,
@@ -11,7 +10,7 @@ import {
   Query,
   QueryBus,
   type ICommandHandler,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 import {
   Test,
   describeConformance,

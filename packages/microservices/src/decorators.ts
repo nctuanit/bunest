@@ -1,4 +1,4 @@
-import { MetadataRegistry, type PipeLike } from "@bunest/common";
+import { MetadataRegistry, type PipeLike } from "@bunest/core";
 import {
   normalizePattern,
   type ClientOptions,
@@ -19,22 +19,22 @@ import {
 } from "./tokens";
 
 export type EventDataMethodDecorator<
-  TEventTypes extends Record<string, any>,
+  TEventTypes extends Record<string, unknown>,
   TKey extends keyof TEventTypes,
 > = (
   target: object,
   propertyKey: string | symbol,
   descriptor: TypedPropertyDescriptor<
-    (data: TEventTypes[TKey], ...args: unknown[]) => any
+    (data: TEventTypes[TKey], ...args: unknown[]) => unknown
   >,
 ) => void;
 
 function parsePatternArgs(
-  transportOrExtras?: Transport | symbol | Record<string, any>,
-  maybeExtras?: Record<string, any>,
+  transportOrExtras?: Transport | symbol | Record<string, unknown>,
+  maybeExtras?: Record<string, unknown>,
 ): {
   transport?: Transport | symbol;
-  extras?: Record<string, any>;
+  extras?: Record<string, unknown>;
 } {
   if (
     transportOrExtras !== undefined &&
@@ -55,10 +55,13 @@ function parsePatternArgs(
  */
 export function MessagePattern(
   pattern: PatternInput | readonly PatternInput[],
-  transportOrExtras?: Transport | symbol | Record<string, any>,
-  maybeExtras?: Record<string, any>,
+  transportOrExtras?: Transport | symbol | Record<string, unknown>,
+  maybeExtras?: Record<string, unknown>,
 ): MethodDecorator {
-  const { transport, extras } = parsePatternArgs(transportOrExtras, maybeExtras);
+  const { transport, extras } = parsePatternArgs(
+    transportOrExtras,
+    maybeExtras,
+  );
   const patterns: readonly PatternInput[] = Array.isArray(pattern)
     ? (pattern as readonly PatternInput[])
     : [pattern as PatternInput];
@@ -84,20 +87,28 @@ export function MessagePattern(
     );
 
     if (descriptor?.value) {
-      const existingPatterns: unknown[] =
-        Reflect.getMetadata(PATTERN_METADATA, descriptor.value) ?? [];
-      Reflect.defineMetadata(
+      const existingPatterns =
+        MetadataRegistry.get<unknown[]>(PATTERN_METADATA, descriptor.value) ??
+        [];
+      MetadataRegistry.define(
         PATTERN_METADATA,
         [...existingPatterns, ...patterns],
         descriptor.value,
       );
       if (transport !== undefined) {
-        Reflect.defineMetadata(TRANSPORT_METADATA, transport, descriptor.value);
+        MetadataRegistry.define(
+          TRANSPORT_METADATA,
+          transport,
+          descriptor.value,
+        );
       }
       if (extras !== undefined) {
         const prevExtras =
-          Reflect.getMetadata(PATTERN_EXTRAS_METADATA, descriptor.value) ?? {};
-        Reflect.defineMetadata(
+          MetadataRegistry.get<Record<string, unknown>>(
+            PATTERN_EXTRAS_METADATA,
+            descriptor.value,
+          ) ?? {};
+        MetadataRegistry.define(
           PATTERN_EXTRAS_METADATA,
           { ...prevExtras, ...extras },
           descriptor.value,
@@ -113,31 +124,34 @@ export function MessagePattern(
  */
 export function EventPattern(
   pattern: PatternInput | readonly PatternInput[],
-  transportOrExtras?: Transport | symbol | Record<string, any>,
-  maybeExtras?: Record<string, any>,
+  transportOrExtras?: Transport | symbol | Record<string, unknown>,
+  maybeExtras?: Record<string, unknown>,
 ): MethodDecorator;
-export function EventPattern<TEventTypes extends Record<string, any>>(
+export function EventPattern<TEventTypes extends Record<string, unknown>>(
   topic: keyof TEventTypes,
 ): EventDataMethodDecorator<TEventTypes, typeof topic>;
-export function EventPattern<TEventTypes extends Record<string, any>>(
+export function EventPattern<TEventTypes extends Record<string, unknown>>(
   topic: keyof TEventTypes,
   transport: Transport | symbol,
 ): EventDataMethodDecorator<TEventTypes, typeof topic>;
-export function EventPattern<TEventTypes extends Record<string, any>>(
+export function EventPattern<TEventTypes extends Record<string, unknown>>(
   topic: keyof TEventTypes,
-  extras: Record<string, any>,
+  extras: Record<string, unknown>,
 ): EventDataMethodDecorator<TEventTypes, typeof topic>;
-export function EventPattern<TEventTypes extends Record<string, any>>(
+export function EventPattern<TEventTypes extends Record<string, unknown>>(
   topic: keyof TEventTypes,
   transport: Transport | symbol,
-  extras: Record<string, any>,
+  extras: Record<string, unknown>,
 ): EventDataMethodDecorator<TEventTypes, typeof topic>;
 export function EventPattern(
-  pattern: any,
-  transportOrExtras?: any,
-  maybeExtras?: any,
-): any {
-  const { transport, extras } = parsePatternArgs(transportOrExtras, maybeExtras);
+  pattern: PatternInput | readonly PatternInput[] | PropertyKey,
+  transportOrExtras?: Transport | symbol | Record<string, unknown>,
+  maybeExtras?: Record<string, unknown>,
+): MethodDecorator {
+  const { transport, extras } = parsePatternArgs(
+    transportOrExtras,
+    maybeExtras,
+  );
   const patterns: readonly PatternInput[] = Array.isArray(pattern)
     ? (pattern as readonly PatternInput[])
     : [pattern as PatternInput];
@@ -163,20 +177,28 @@ export function EventPattern(
     );
 
     if (descriptor?.value) {
-      const existingPatterns: unknown[] =
-        Reflect.getMetadata(PATTERN_METADATA, descriptor.value) ?? [];
-      Reflect.defineMetadata(
+      const existingPatterns =
+        MetadataRegistry.get<unknown[]>(PATTERN_METADATA, descriptor.value) ??
+        [];
+      MetadataRegistry.define(
         PATTERN_METADATA,
         [...existingPatterns, ...patterns],
         descriptor.value,
       );
       if (transport !== undefined) {
-        Reflect.defineMetadata(TRANSPORT_METADATA, transport, descriptor.value);
+        MetadataRegistry.define(
+          TRANSPORT_METADATA,
+          transport,
+          descriptor.value,
+        );
       }
       if (extras !== undefined) {
         const prevExtras =
-          Reflect.getMetadata(PATTERN_EXTRAS_METADATA, descriptor.value) ?? {};
-        Reflect.defineMetadata(
+          MetadataRegistry.get<Record<string, unknown>>(
+            PATTERN_EXTRAS_METADATA,
+            descriptor.value,
+          ) ?? {};
+        MetadataRegistry.define(
           PATTERN_EXTRAS_METADATA,
           { ...prevExtras, ...extras },
           descriptor.value,
@@ -193,8 +215,8 @@ export function EventPattern(
 export function Client(metadata?: ClientOptions): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) => {
     Reflect.set(target, propertyKey, null);
-    Reflect.defineMetadata(CLIENT_METADATA, true, target, propertyKey);
-    Reflect.defineMetadata(
+    MetadataRegistry.define(CLIENT_METADATA, true, target, propertyKey);
+    MetadataRegistry.define(
       CLIENT_CONFIGURATION_METADATA,
       metadata,
       target,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   TraceContextStorage,
@@ -96,7 +95,10 @@ describeConformance(
         ["null header", null],
         ["empty string", ""],
         ["whitespace only", "   "],
-        ["a repeated header, as folded by proxies", `${TRACEPARENT}, ${TRACEPARENT}`],
+        [
+          "a repeated header, as folded by proxies",
+          `${TRACEPARENT}, ${TRACEPARENT}`,
+        ],
         ["an array at runtime", [TRACEPARENT] as unknown as string],
         ["the reserved version ff", `ff-${TRACE_ID}-${PARENT_ID}-01`],
         ["extra fields on version 00", `${TRACEPARENT}-extra`],
@@ -231,9 +233,11 @@ describeConformance(
         });
 
         expect(
-          formatTraceParent({ traceId: TRACE_ID, spanId, sampled: false }).endsWith(
-            "-00",
-          ),
+          formatTraceParent({
+            traceId: TRACE_ID,
+            spanId,
+            sampled: false,
+          }).endsWith("-00"),
         ).toBe(true);
 
         expect(
@@ -306,7 +310,9 @@ describeConformance(
 
       it("supports isolated TraceContextStorage withBaggage propagation", () => {
         const storage = new TraceContextStorage();
-        expect(storage.withBaggage({ k: "v" }, () => storage.getStore())).toBeUndefined();
+        expect(
+          storage.withBaggage({ k: "v" }, () => storage.getStore()),
+        ).toBeUndefined();
 
         storage.run(sampleCtx, () => {
           expect(storage.getTraceId()).toBe(TRACE_ID);

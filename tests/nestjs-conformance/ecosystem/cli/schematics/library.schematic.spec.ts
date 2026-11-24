@@ -1,14 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -16,6 +14,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Library Schematic Factory",
@@ -30,11 +37,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-lib-"));
+      tempDir = makeTempDir("bunest-cli-conf-lib-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -76,10 +83,7 @@ describeConformance(
         );
 
         const tsconfigLib = JSON.parse(
-          readFileSync(
-            join(tempDir, "libs/project/tsconfig.lib.json"),
-            "utf8",
-          ),
+          readTextSync(join(tempDir, "libs/project/tsconfig.lib.json")),
         ) as {
           extends: string;
           compilerOptions: { declaration: boolean; outDir: string };
@@ -118,19 +122,13 @@ describeConformance(
         );
 
         expect(
-          readFileSync(
-            join(tempDir, "libs/awesome-project/src/awesome-project.module.ts"),
-            "utf8",
-          ),
+          readTextSync(join(tempDir, "libs/awesome-project/src/awesome-project.module.ts")),
         ).toContain("export class AwesomeProjectModule {}");
         expect(
-          readFileSync(
-            join(
+          readTextSync(join(
               tempDir,
               "libs/awesome-project/src/awesome-project.service.ts",
-            ),
-            "utf8",
-          ),
+            )),
         ).toContain("export class AwesomeProjectService");
       },
       "Normalizes camelCase library name to kebab-case paths and PascalCase symbols",
@@ -193,10 +191,10 @@ describeConformance(
         ].sort(),
       );
       expect(
-        existsSync(join(tempDir, "libs/project/src/project.service.spec.ts")),
+        existsSyncPath(join(tempDir, "libs/project/src/project.service.spec.ts")),
       ).toBe(false);
       expect(
-        existsSync(join(tempDir, "libs/project/src/project.service.test.ts")),
+        existsSyncPath(join(tempDir, "libs/project/src/project.service.test.ts")),
       ).toBe(true);
     });
 
@@ -210,7 +208,7 @@ describeConformance(
       });
 
       const tsconfigLib = JSON.parse(
-        readFileSync(join(tempDir, "libs/project/tsconfig.lib.json"), "utf8"),
+        readTextSync(join(tempDir, "libs/project/tsconfig.lib.json")),
       ) as { exclude: string[] };
       expect(tsconfigLib.exclude).toContain("**/*test.ts");
     });
@@ -243,10 +241,7 @@ describeConformance(
           type: "module",
           scripts: { test: "bun test", typecheck: "bun check" },
         };
-        writeFileSync(
-          join(tempDir, "package.json"),
-          JSON.stringify(initialPkg, null, 2),
-        );
+        writeTextSync(join(tempDir, "package.json"), JSON.stringify(initialPkg, null, 2));
 
         await generateSchematic({
           schematic: "library",
@@ -255,7 +250,7 @@ describeConformance(
         });
 
         const pkgAfter = JSON.parse(
-          readFileSync(join(tempDir, "package.json"), "utf8"),
+          readTextSync(join(tempDir, "package.json")),
         ) as Record<string, unknown>;
         expect(pkgAfter.devDependencies).toBeUndefined();
         expect(pkgAfter.jest).toBeUndefined();
@@ -272,22 +267,19 @@ describeConformance(
         cwd: tempDir,
       });
 
-      expect(existsSync(join(tempDir, "bunest.json"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "bunest.json"))).toBe(true);
       const config = JSON.parse(
-        readFileSync(join(tempDir, "bunest.json"), "utf8"),
+        readTextSync(join(tempDir, "bunest.json")),
       ) as { projects?: Record<string, { root?: string }> };
       expect(config.projects?.project?.root).toBe("libs/project");
     });
 
     // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not update an existing .bunestrc.json / bunest.json in place while preserving existing sourceRoot and compilerOptions.
     it.skip("should update existing .bunestrc.json when it is the config file in use", async () => {
-      writeFileSync(
-        join(tempDir, ".bunestrc.json"),
-        JSON.stringify({
+      writeTextSync(join(tempDir, ".bunestrc.json"), JSON.stringify({
           sourceRoot: "source",
           compilerOptions: { deleteOutDir: true },
-        }),
-      );
+        }));
 
       await generateSchematic({
         schematic: "library",
@@ -295,9 +287,9 @@ describeConformance(
         cwd: tempDir,
       });
 
-      expect(existsSync(join(tempDir, "bunest.json"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "bunest.json"))).toBe(false);
       const config = JSON.parse(
-        readFileSync(join(tempDir, ".bunestrc.json"), "utf8"),
+        readTextSync(join(tempDir, ".bunestrc.json")),
       ) as {
         sourceRoot: string;
         compilerOptions: { deleteOutDir: boolean };
@@ -310,10 +302,7 @@ describeConformance(
 
     // BUNEST_BUG: GenerateSchematicOptions and generateSchematic("library") in packages/cli/src/commands/generate.ts lack a "prefix" option and do not add compilerOptions.paths["<prefix>/<name>"] and "<prefix>/<name>/*" to tsconfig.json.
     it.skip("should add paths to tsconfig.json with custom prefix", async () => {
-      writeFileSync(
-        join(tempDir, "tsconfig.json"),
-        JSON.stringify({ compilerOptions: { target: "ESNext" } }),
-      );
+      writeTextSync(join(tempDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ESNext" } }));
 
       await generateSchematic({
         schematic: "library",
@@ -323,7 +312,7 @@ describeConformance(
       });
 
       const tsconfig = JSON.parse(
-        readFileSync(join(tempDir, "tsconfig.json"), "utf8"),
+        readTextSync(join(tempDir, "tsconfig.json")),
       ) as {
         compilerOptions: {
           target: string;
@@ -341,10 +330,7 @@ describeConformance(
 
     // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not add default "@app/<name>" and "@app/<name>/*" path aliases to tsconfig.json when no prefix is given.
     it.skip("should default the prefix to @app in tsconfig.json when none is given", async () => {
-      writeFileSync(
-        join(tempDir, "tsconfig.json"),
-        JSON.stringify({ compilerOptions: {} }),
-      );
+      writeTextSync(join(tempDir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
 
       await generateSchematic({
         schematic: "library",
@@ -353,7 +339,7 @@ describeConformance(
       });
 
       const tsconfig = JSON.parse(
-        readFileSync(join(tempDir, "tsconfig.json"), "utf8"),
+        readTextSync(join(tempDir, "tsconfig.json")),
       ) as { compilerOptions: { paths?: Record<string, string[]> } };
       expect(tsconfig.compilerOptions.paths?.["@app/project"]).toEqual([
         "./libs/project/src",
@@ -379,14 +365,8 @@ describeConformance(
 
     // BUNEST_BUG: generateSchematic("library") in packages/cli/src/commands/generate.ts does not update or sort library keys in tsconfig.json / bunest.json or preserve JSONC comments.
     it.skip("should preserve comments and sort library names in bunest.json and tsconfig.json", async () => {
-      writeFileSync(
-        join(tempDir, "bunest.json"),
-        `{\n  // monorepo projects\n  "projects": {\n    "z-lib": {}\n  }\n}`,
-      );
-      writeFileSync(
-        join(tempDir, "tsconfig.json"),
-        `{\n  // project-wide compiler options\n  "compilerOptions": {\n    "strict": true,\n    "paths": {\n      "z-lib": ["./libs/z-lib/src"]\n    }\n  }\n}`,
-      );
+      writeTextSync(join(tempDir, "bunest.json"), `{\n  // monorepo projects\n  "projects": {\n    "z-lib": {}\n  }\n}`);
+      writeTextSync(join(tempDir, "tsconfig.json"), `{\n  // project-wide compiler options\n  "compilerOptions": {\n    "strict": true,\n    "paths": {\n      "z-lib": ["./libs/z-lib/src"]\n    }\n  }\n}`);
 
       await generateSchematic({
         schematic: "library",
@@ -394,12 +374,9 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const tsconfigContent = readFileSync(
-        join(tempDir, "tsconfig.json"),
-        "utf8",
-      );
+      const tsconfigContent = readTextSync(join(tempDir, "tsconfig.json"));
       expect(tsconfigContent).toContain("// project-wide compiler options");
-      const configContent = readFileSync(join(tempDir, "bunest.json"), "utf8");
+      const configContent = readTextSync(join(tempDir, "bunest.json"));
       expect(configContent).toContain("// monorepo projects");
     });
 
@@ -407,10 +384,7 @@ describeConformance(
       ["ADR-001", "ADR-002"],
       "should generate ESM library files with extensionless imports for Bun bundler resolution",
       async () => {
-        writeFileSync(
-          join(tempDir, "package.json"),
-          JSON.stringify({ name: "test", type: "module" }),
-        );
+        writeTextSync(join(tempDir, "package.json"), JSON.stringify({ name: "test", type: "module" }));
 
         await generateSchematic({
           schematic: "library",
@@ -418,11 +392,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "libs/project/src/project.service.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "libs/project/src/project.service.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );
@@ -433,10 +404,7 @@ describeConformance(
           'import { ProjectService } from "./project.service";',
         );
 
-        const moduleContent = readFileSync(
-          join(tempDir, "libs/project/src/project.module.ts"),
-          "utf8",
-        );
+        const moduleContent = readTextSync(join(tempDir, "libs/project/src/project.module.ts"));
         expect(moduleContent).toContain(
           'import { Module } from "@bunest/core";',
         );
@@ -444,10 +412,7 @@ describeConformance(
           'import { ProjectService } from "./project.service";',
         );
 
-        const indexContent = readFileSync(
-          join(tempDir, "libs/project/src/index.ts"),
-          "utf8",
-        );
+        const indexContent = readTextSync(join(tempDir, "libs/project/src/index.ts"));
         expect(indexContent).toContain(
           'export { ProjectModule } from "./project.module";',
         );

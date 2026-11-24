@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Body,
@@ -48,9 +47,9 @@ describe("Distributed Tracing, W3C Trace Context & Correlated Logging", () => {
     });
 
     // Future version 01 with extra fields is accepted per W3C spec
-    expect(
-      parseTraceParent(`01-${traceId}-${spanId}-00-extra`)?.sampled,
-    ).toBe(false);
+    expect(parseTraceParent(`01-${traceId}-${spanId}-00-extra`)?.sampled).toBe(
+      false,
+    );
 
     // Invalid traceparents MUST return null
     for (const bad of [

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Injectable,
   Module,
   type OnApplicationBootstrap,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,
@@ -81,8 +80,7 @@ describeConformance(
   () => {
     describe("of a microservice", () => {
       let microservice:
-        | BunestMicroserviceApplication<MicroserviceHost>
-        | undefined;
+        BunestMicroserviceApplication<MicroserviceHost> | undefined;
 
       afterEach(async () => {
         await microservice?.close();
@@ -156,7 +154,7 @@ describeConformance(
         moduleRef = undefined;
       });
 
-      // BUNEST_BUG: NestHybridApplicationOptions does not support `deferInitialization: true`, and BunestApplication.startAllMicroservices() unconditionally invokes `this.init()` before `app.init()` is called (packages/common/src/interfaces/nest-compat.interface.ts, packages/core/src/application/bunest-application.ts)
+      // BUNEST_BUG: NestHybridApplicationOptions does not support `deferInitialization: true`, and BunestApplication.startAllMicroservices() unconditionally invokes `this.init()` before `app.init()` is called (packages/core/src/common/interfaces/nest-compat.interface.ts, packages/core/src/application/bunest-application.ts)
       it.skip("should be called once, by the application, when the microservice starts first", async () => {
         await app!.startAllMicroservices();
         expect(app!.get(HooksTracker)).toMatchObject({

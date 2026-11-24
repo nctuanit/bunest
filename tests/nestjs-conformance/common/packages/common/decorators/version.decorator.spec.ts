@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   Version,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -35,7 +34,7 @@ describeConformance(
       expect(metadata).toEqual(version);
     });
 
-    // BUNEST_BUG: Version(versions) in packages/common/src/decorators/version.decorator.ts:12 clones `[...version]` without deduplicating duplicate entries (`['1','2','2','1','2','1']` stays un-deduplicated instead of `['1','2']`).
+    // BUNEST_BUG: Version(versions) in packages/core/src/common/decorators/version.decorator.ts:12 clones `[...version]` without deduplicating duplicate entries (`['1','2','2','1','2','1']` stays un-deduplicated instead of `['1','2']`).
     it.skip("should enhance method with expected version array", () => {
       const metadata = MetadataRegistry.get(
         METADATA_KEYS.VERSION,

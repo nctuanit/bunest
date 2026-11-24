@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function expectedServiceSource(pascal: string, kebab: string): string {
   return `import { Injectable } from "@bunest/core";
@@ -43,16 +55,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -85,7 +97,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.service.spec.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "src/foo.service.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "src/foo.service.ts"))).toEqual(
           expectedServiceSource("Foo", "foo"),
         );
       },
@@ -115,7 +127,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar/foo.service.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar/foo.service.ts")),
         ).toEqual(expectedServiceSource("Foo", "foo"));
       },
       "places flat service under nested subDir",
@@ -139,7 +151,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.service.spec.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "bar/foo.service.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "bar/foo.service.ts"))).toEqual(
           expectedServiceSource("Foo", "foo"),
         );
       },
@@ -168,7 +180,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/foo-bar.service.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo-bar.service.ts")),
         ).toEqual(expectedServiceSource("FooBar", "foo-bar"));
       },
       "normalizes camelCase name to kebab-case file and PascalCase class",
@@ -197,7 +209,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar-baz/foo.service.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar-baz/foo.service.ts")),
         ).toEqual(expectedServiceSource("Foo", "foo"));
       },
       "normalizes camelCase directory segment to kebab-case",
@@ -226,9 +238,9 @@ describeConformance(
           parseSchematicName("foo"),
           { flat: true, spec: true },
         );
-        expect(
-          planned.every((file) => file.relativePath.endsWith(".ts")),
-        ).toBe(true);
+        expect(planned.every((file) => file.relativePath.endsWith(".ts"))).toBe(
+          true,
+        );
         expect(findFile(planned, "foo.service.js")).toBeUndefined();
         expect(findFile(planned, "foo.service.spec.js")).toBeUndefined();
         expect(findFile(planned, "foo.service.ts")?.content).toEqual(
@@ -254,7 +266,7 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
       expect(appModule).toContain(
         'import { FooService } from "./foo.service";',
       );
@@ -283,10 +295,7 @@ describeConformance(
         cwd,
       });
 
-      const fooModule = readFileSync(
-        join(cwd, "src/foo/foo.module.ts"),
-        "utf8",
-      );
+      const fooModule = readTextSync(join(cwd, "src/foo/foo.module.ts"));
       expect(fooModule).toContain(
         'import { FooService } from "./foo.service";',
       );
@@ -303,13 +312,10 @@ describeConformance(
         cwd,
       });
       const usersDir = join(cwd, "src/users");
-      mkdirSync(usersDir, { recursive: true });
+      mkdirSyncPath(usersDir, { recursive: true });
       const adminModule = `import { Module } from "@bunest/core";\n\n@Module({})\nexport class AdminModule {}\n`;
-      writeFileSync(join(usersDir, "admin.module.ts"), adminModule);
-      writeFileSync(
-        join(usersDir, "users.module.ts"),
-        `import { Module } from "@bunest/core";\n\n@Module({})\nexport class UsersModule {}\n`,
-      );
+      writeTextSync(join(usersDir, "admin.module.ts"), adminModule);
+      writeTextSync(join(usersDir, "users.module.ts"), `import { Module } from "@bunest/core";\n\n@Module({})\nexport class UsersModule {}\n`);
 
       await generateSchematic({
         schematic: "service",
@@ -317,13 +323,10 @@ describeConformance(
         cwd,
       });
 
-      expect(readFileSync(join(usersDir, "admin.module.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(usersDir, "admin.module.ts"))).toEqual(
         adminModule,
       );
-      const usersModule = readFileSync(
-        join(usersDir, "users.module.ts"),
-        "utf8",
-      );
+      const usersModule = readTextSync(join(usersDir, "users.module.ts"));
       expect(usersModule).toContain(
         'import { UsersService } from "./users.service";',
       );
@@ -380,7 +383,7 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
       expect(appModule).toContain(
         'import { FooService } from "./foo.service";',
       );
@@ -407,10 +410,9 @@ describeConformance(
         });
 
         expect(
-          readFileSync(join(cwd, "src/foo.service.spec.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo.service.spec.ts")),
         ).toEqual(
-          `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { FooService } from "./foo.service";
 

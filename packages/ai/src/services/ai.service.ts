@@ -1,49 +1,47 @@
-import { channel } from 'node:diagnostics_channel';
-import { Inject, Injectable, Logger } from '@bunest/common';
-import { ModuleRef } from '@bunest/core';
-import { ResilienceService, type ResiliencePolicy } from '@bunest/resilience';
+import { channel, Inject, Injectable, Logger, ModuleRef } from "@bunest/core";
+import { ResilienceService, type ResiliencePolicy } from "@bunest/resilience";
 import type {
   AiCallOptions,
   AiObjectCallOptions,
-} from '../interfaces/ai-call-options.interface';
+} from "../interfaces/ai-call-options.interface";
 import type {
   AiEmbedManyOptions,
   AiEmbedManyResult,
   AiEmbedOptions,
   AiEmbedResult,
   AiEmbeddingUsageEvent,
-} from '../interfaces/ai-embedding.interface';
-import type { AiModuleOptions } from '../interfaces/ai-module-options.interface';
+} from "../interfaces/ai-embedding.interface";
+import type { AiModuleOptions } from "../interfaces/ai-module-options.interface";
 import type {
   AiObjectResult,
   AiTextResult,
-} from '../interfaces/ai-result.interface';
+} from "../interfaces/ai-result.interface";
 import type {
   AiSchema,
   InferSchemaOutput,
-} from '../interfaces/ai-schema.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import type { AiUsageEvent } from '../interfaces/ai-usage.interface';
-import { AI_MODULE_OPTIONS } from '../ai.constants';
-import { AiConfigurationError, AiOutputError } from '../errors/ai.errors';
-import { AiEmbeddingModels } from '../models/ai-embedding-models.service';
-import { AiModels } from '../models/ai-models.service';
-import { runLoop, usageEvent } from '../runtime/agent-loop';
-import { createCallPlan, type CallPlan } from '../runtime/call-plan';
+} from "../interfaces/ai-schema.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
+import type { AiUsageEvent } from "../interfaces/ai-usage.interface";
+import { AI_MODULE_OPTIONS } from "../ai.constants";
+import { AiConfigurationError, AiOutputError } from "../errors/ai.errors";
+import { AiEmbeddingModels } from "../models/ai-embedding-models.service";
+import { AiModels } from "../models/ai-models.service";
+import { runLoop, usageEvent } from "../runtime/agent-loop";
+import { createCallPlan, type CallPlan } from "../runtime/call-plan";
 import {
   createEmbeddingPlan,
   runEmbedding,
   type EmbeddingPlan,
-} from '../runtime/embedding-call';
-import { runStep } from '../runtime/model-policy';
-import { generateStep, type StepOutcome } from '../runtime/steps';
-import { AiTextStream } from '../runtime/text-stream';
-import { AiTools } from '../tools/ai-tools.service';
-import { toModelSchema } from '../utils/schema.util';
+} from "../runtime/embedding-call";
+import { runStep } from "../runtime/model-policy";
+import { generateStep, type StepOutcome } from "../runtime/steps";
+import { AiTextStream } from "../runtime/text-stream";
+import { AiTools } from "../tools/ai-tools.service";
+import { toModelSchema } from "../utils/schema.util";
 
 const NEVER_ABORTED = new AbortController().signal;
-const usageChannel = channel('bunest:ai:usage');
-const embeddingUsageChannel = channel('bunest:ai:embedding-usage');
+const usageChannel = channel("bunest:ai:usage");
+const embeddingUsageChannel = channel("bunest:ai:embedding-usage");
 
 /**
  * Model calls: text, structured output, streams, and embeddings, with the application's agent functions as tools,
@@ -51,7 +49,7 @@ const embeddingUsageChannel = channel('bunest:ai:embedding-usage');
  */
 @Injectable()
 export class AiService {
-  private readonly logger = new Logger('AiModule');
+  private readonly logger = new Logger("AiModule");
 
   constructor(
     private readonly models: AiModels,
@@ -72,7 +70,7 @@ export class AiService {
     const { result, event, attempts, cost } = await runEmbedding(plan, {
       value: options.value,
     });
-    this.report(plan, event, 'onEmbeddingUsage');
+    this.report(plan, event, "onEmbeddingUsage");
     return {
       value: result.value,
       embedding: result.embedding,
@@ -99,7 +97,7 @@ export class AiService {
     const { result, event, attempts, cost } = await runEmbedding(plan, {
       values: options.values,
     });
-    this.report(plan, event, 'onEmbeddingUsage');
+    this.report(plan, event, "onEmbeddingUsage");
     return {
       values: result.values,
       embeddings: result.embeddings,
@@ -130,7 +128,7 @@ export class AiService {
   ): Promise<AiObjectResult<InferSchemaOutput<S>>> {
     const schema = toModelSchema<InferSchemaOutput<S>>(
       options?.schema,
-      'generateObject() `schema`',
+      "generateObject() `schema`",
     );
     const plan = this.plan(options, options.abortSignal ?? NEVER_ABORTED);
     const { result, output } = await runLoop(
@@ -169,7 +167,7 @@ export class AiService {
         { stream: true, emit },
         (event) => this.report(plan, event),
       );
-      emit(finish ?? { type: 'finish', finishReason: result.finishReason });
+      emit(finish ?? { type: "finish", finishReason: result.finishReason });
       return result;
     });
   }
@@ -231,11 +229,11 @@ export class AiService {
   }
 
   private report(
-    plan: Pick<CallPlan, 'listeners'> | Pick<EmbeddingPlan, 'listeners'>,
+    plan: Pick<CallPlan, "listeners"> | Pick<EmbeddingPlan, "listeners">,
     event: AiUsageEvent | AiEmbeddingUsageEvent,
-    hook: 'onUsage' | 'onEmbeddingUsage' = 'onUsage',
+    hook: "onUsage" | "onEmbeddingUsage" = "onUsage",
   ): void {
-    const ch = hook === 'onUsage' ? usageChannel : embeddingUsageChannel;
+    const ch = hook === "onUsage" ? usageChannel : embeddingUsageChannel;
     if (ch.hasSubscribers) {
       ch.publish(event);
     }

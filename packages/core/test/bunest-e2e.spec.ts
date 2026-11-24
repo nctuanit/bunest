@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Exclude, Type } from "class-transformer";
-import { IsEmail, IsInt, IsString, Min, MinLength } from "class-validator";
+import { Exclude, Type } from "@bunest/validation/transformer";
+import { IsEmail, IsInt, IsString, Min, MinLength } from "@bunest/validation/validator";
 import {
   APP_GUARD,
   APP_INTERCEPTOR,
@@ -265,7 +264,9 @@ describe("BunestFactory & BunestApplication End-to-End", () => {
       constructor(@Inject(API_KEY) private readonly key: string) {}
 
       use(req: Request, res: ResponseContext, next: NextFunction) {
-        mwTrail.push(`${req.method}:${new URL(req.url).pathname}:${this.key.length}`);
+        mwTrail.push(
+          `${req.method}:${new URL(req.url).pathname}:${this.key.length}`,
+        );
         res.header("x-audited", "true");
         return next();
       }

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, it } from "bun:test";
 import {
   Controller,
@@ -8,7 +7,7 @@ import {
   VersioningType,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 

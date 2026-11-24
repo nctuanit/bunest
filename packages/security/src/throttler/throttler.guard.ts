@@ -6,8 +6,8 @@ import {
   type CanActivate,
   type ExecutionContext,
   type OnModuleInit,
-} from "@bunest/common";
-import { getCurrentRequestContext } from "@bunest/http";
+} from "@bunest/core";
+import { getCurrentRequestContext } from "@bunest/core/http";
 import { MemoryThrottlerStorage } from "./memory-throttler.storage";
 import {
   InjectThrottlerOptions,
@@ -31,9 +31,7 @@ import {
 } from "./throttler.interface";
 import { DEFAULT_IPV6_SUBNET_PREFIX, normalizeIp } from "./throttler.utils";
 
-function isDirectThrottleConfig(
-  cfg: ThrottleDecoratorConfig,
-): cfg is {
+function isDirectThrottleConfig(cfg: ThrottleDecoratorConfig): cfg is {
   ttl: Resolvable<number>;
   limit: Resolvable<number>;
   blockDuration?: Resolvable<number>;
@@ -47,22 +45,29 @@ function isDirectThrottleConfig(
   );
 }
 
-function readHeader(req: Record<string, any> | undefined, name: string): string | undefined {
+function readHeader(
+  req: Record<string, unknown> | undefined,
+  name: string,
+): string | undefined {
   if (!req || typeof req !== "object") {
     return undefined;
   }
   const headers = req.headers;
-  if (!headers) {
+  if (!headers || typeof headers !== "object") {
     return undefined;
   }
-  if (typeof headers.get === "function") {
-    return headers.get(name) ?? undefined;
+  if (
+    "get" in headers &&
+    typeof (headers as { get?: unknown }).get === "function"
+  ) {
+    return (
+      (headers as { get: (n: string) => string | null }).get(name) ?? undefined
+    );
   }
-  if (typeof headers === "object") {
-    const val = headers[name] ?? headers[name.toLowerCase()];
-    if (typeof val === "string") return val;
-    if (Array.isArray(val) && typeof val[0] === "string") return val[0];
-  }
+  const map = headers as Record<string, unknown>;
+  const val = map[name] ?? map[name.toLowerCase()];
+  if (typeof val === "string") return val;
+  if (Array.isArray(val) && typeof val[0] === "string") return val[0];
   return undefined;
 }
 
@@ -362,11 +367,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
         );
         this.setResponseHeader(res, "Retry-After", retryAfterSec);
         if (suffix) {
-          this.setResponseHeader(
-            res,
-            `Retry-After${suffix}`,
-            retryAfterSec,
-          );
+          this.setResponseHeader(res, `Retry-After${suffix}`, retryAfterSec);
         }
       }
 
@@ -406,10 +407,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
       }
 
       if (headerState) {
-        if (
-          !headerState.primary ||
-          remaining < headerState.primary.remaining
-        ) {
+        if (!headerState.primary || remaining < headerState.primary.remaining) {
           headerState.primary = {
             limit,
             remaining,
@@ -434,7 +432,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
     return true;
   }
 
-  protected async getTracker(req: Record<string, any>): Promise<string> {
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
     if (
       req &&
       typeof req.ip === "string" &&
@@ -466,7 +464,7 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
   }
 
   protected setResponseHeader(
-    res: Record<string, any>,
+    res: Record<string, unknown>,
     name: string,
     value: string | number,
   ): void {
@@ -474,22 +472,29 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
       return;
     }
     if (typeof res.header === "function") {
-      res.header(name, String(value));
+      (res.header as (n: string, v: string) => void)(name, String(value));
     } else if (typeof res.setHeader === "function") {
-      res.setHeader(name, value);
-    } else if (res.headers && typeof res.headers.set === "function") {
-      res.headers.set(name, String(value));
+      (res.setHeader as (n: string, v: string | number) => void)(name, value);
+    } else if (
+      res.headers &&
+      typeof res.headers === "object" &&
+      typeof (res.headers as { set?: unknown }).set === "function"
+    ) {
+      (res.headers as { set: (n: string, v: string) => void }).set(
+        name,
+        String(value),
+      );
     }
   }
 
   protected getRequestResponse(context: ExecutionContext): {
-    req: Record<string, any>;
-    res: Record<string, any>;
+    req: Record<string, unknown>;
+    res: Record<string, unknown>;
   } {
     const http = context.switchToHttp();
     return {
-      req: http.getRequest<Record<string, any>>(),
-      res: http.getResponse<Record<string, any>>(),
+      req: http.getRequest<Record<string, unknown>>(),
+      res: http.getResponse<Record<string, unknown>>(),
     };
   }
 

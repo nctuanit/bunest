@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -26,7 +25,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Ctx,
   GRPC_METHOD_METADATA,
@@ -50,11 +49,7 @@ import {
   type GrpcCodec,
   type GrpcMethodMetadata,
 } from "../../../../../../packages/microservices/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { Test, describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "ServerGrpc (GrpcServer)",
@@ -240,9 +235,9 @@ describeConformance(
         expect(getRes.headers.get("grpc-status")).toBe(
           String(GrpcStatus.UNIMPLEMENTED),
         );
-        expect(decodeURIComponent(getRes.headers.get("grpc-message")!)).toContain(
-          "POST",
-        );
+        expect(
+          decodeURIComponent(getRes.headers.get("grpc-message")!),
+        ).toContain("POST");
       });
     });
 
@@ -520,7 +515,9 @@ describeConformance(
           caught = err;
         }
         expect(caught).toBeInstanceOf(GrpcException);
-        expect((caught as GrpcException).code).toBe(GrpcStatus.INVALID_ARGUMENT);
+        expect((caught as GrpcException).code).toBe(
+          GrpcStatus.INVALID_ARGUMENT,
+        );
         expect((caught as GrpcException).message).toBe(
           `Unexpected token '\ufffd', "😀" is not valid JSON`,
         );
@@ -554,7 +551,11 @@ describeConformance(
           }));
 
           const ordered: Array<{ n: number }> = [];
-          for await (const x of client.stream<{ n: number }>("Order", "Seq", {})) {
+          for await (const x of client.stream<{ n: number }>(
+            "Order",
+            "Seq",
+            {},
+          )) {
             ordered.push(x);
           }
           expect(ordered).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
@@ -588,11 +589,15 @@ describeConformance(
           const { server, client } = await createPair();
           let cleanupRan = false;
 
-          server.addGrpcStreamHandler("Stream", "PartialErr", async function* () {
-            yield { n: 1 };
-            yield { n: 2 };
-            throw new GrpcException(GrpcStatus.NOT_FOUND, "Not found");
-          });
+          server.addGrpcStreamHandler(
+            "Stream",
+            "PartialErr",
+            async function* () {
+              yield { n: 1 };
+              yield { n: 2 };
+              throw new GrpcException(GrpcStatus.NOT_FOUND, "Not found");
+            },
+          );
 
           server.addGrpcStreamHandler(
             "Stream",
@@ -704,11 +709,15 @@ describeConformance(
 
       it("should encode response metadata in stream headers and trailing frame", async () => {
         const { server } = await createPair();
-        server.addGrpcStreamHandler("MetaStream", "Run", async function* (_d, ctx) {
-          const gCtx = ctx as GrpcContext;
-          gCtx.setResponseMetadata("x-stream-meta", "yes");
-          yield { step: 1 };
-        });
+        server.addGrpcStreamHandler(
+          "MetaStream",
+          "Run",
+          async function* (_d, ctx) {
+            const gCtx = ctx as GrpcContext;
+            gCtx.setResponseMetadata("x-stream-meta", "yes");
+            yield { step: 1 };
+          },
+        );
 
         const res = await fetch(`${server.url}/MetaStream/Run`, {
           method: "POST",
@@ -796,7 +805,9 @@ describeConformance(
           @Injectable()
           class TrimPipe implements PipeTransform {
             transform(value: unknown): unknown {
-              return typeof value === "string" ? value.trim().toUpperCase() : value;
+              return typeof value === "string"
+                ? value.trim().toUpperCase()
+                : value;
             }
           }
 
@@ -836,9 +847,7 @@ describeConformance(
 
             @GrpcMethod("PipeSvc")
             maybeFail(@Payload() data: { recover: boolean }) {
-              throw new RpcException(
-                data.recover ? "recoverable" : "fatal",
-              );
+              throw new RpcException(data.recover ? "recoverable" : "fatal");
             }
           }
 

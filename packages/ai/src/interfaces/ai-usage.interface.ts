@@ -1,4 +1,4 @@
-import type { AiModelInfo } from './ai-types.interface';
+import type { AiModelInfo } from "./ai-types.interface";
 
 /** Tokens a model call used. A count the provider did not report is 0. */
 export interface AiUsage {

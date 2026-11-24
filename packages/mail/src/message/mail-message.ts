@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type {
   MailAddress,
   MailAttachment,

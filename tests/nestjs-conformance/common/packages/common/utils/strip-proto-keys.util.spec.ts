@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { stripProtoKeys } from "../../../../../../packages/common/src";
+import { stripProtoKeys } from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -74,9 +73,9 @@ describeConformance(
       it("should strip __proto__ from objects", () => {
         const value = JSON.parse('{"__proto__": {"malicious": "code"}}');
         stripProtoKeys(value);
-        expect(
-          Object.prototype.hasOwnProperty.call(value, "__proto__"),
-        ).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(value, "__proto__")).toBe(
+          false,
+        );
       });
 
       it("should strip prototype from objects", () => {
@@ -131,7 +130,7 @@ describeConformance(
         expect(() => stripProtoKeys(value)).not.toThrow();
       });
 
-      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, reading every hole index `0..999` and `length` on sparse arrays (packages/common/src/utils/common.utils.ts:108-112)
+      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, reading every hole index `0..999` and `length` on sparse arrays (packages/core/src/common/utils/common.utils.ts:108-112)
       it.skip("should only read the items of a sparse array, not every index", () => {
         const items: unknown[] = [];
         items[999] = { constructor: "malicious" };
@@ -151,7 +150,7 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, which iterates 4,294,967,295 times and hangs on a max-index sparse array (packages/common/src/utils/common.utils.ts)
+      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, which iterates 4,294,967,295 times and hangs on a max-index sparse array (packages/core/src/common/utils/common.utils.ts)
       it.skip("should strip the items of a sparse array with the largest index", () => {
         const items: unknown[] = [];
         items[2 ** 32 - 2] = { constructor: "malicious" };
@@ -172,9 +171,9 @@ describeConformance(
         value.self = value;
 
         expect(() => stripProtoKeys(value)).not.toThrow();
-        expect(
-          Object.prototype.hasOwnProperty.call(value, "constructor"),
-        ).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(value, "constructor")).toBe(
+          false,
+        );
         expect(value.self).toBe(value);
       });
 
@@ -187,9 +186,9 @@ describeConformance(
         profile.owner = user;
 
         expect(() => stripProtoKeys(user)).not.toThrow();
-        expect(
-          Object.prototype.hasOwnProperty.call(user, "constructor"),
-        ).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(user, "constructor")).toBe(
+          false,
+        );
         expect(
           Object.prototype.hasOwnProperty.call(profile, "constructor"),
         ).toBe(false);
@@ -200,9 +199,9 @@ describeConformance(
         value.items = [value, { constructor: "alsoMalicious" }];
 
         expect(() => stripProtoKeys(value)).not.toThrow();
-        expect(
-          Object.prototype.hasOwnProperty.call(value, "constructor"),
-        ).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(value, "constructor")).toBe(
+          false,
+        );
         expect(
           Object.prototype.hasOwnProperty.call(value.items[1], "constructor"),
         ).toBe(false);

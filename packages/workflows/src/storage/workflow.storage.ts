@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from "@bunest/common";
+import { Inject, Injectable, Logger, Optional } from "@bunest/core";
 import { PayloadCodecs } from "../core/codecs/payload-codecs";
 import type {
   WorkflowPayloadCodec,

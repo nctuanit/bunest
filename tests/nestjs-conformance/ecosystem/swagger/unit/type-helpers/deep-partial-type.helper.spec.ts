@@ -1,7 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { IsString, validate } from "class-validator";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import {
+  IsString,
+  validate,
+} from "../../../../../../packages/validation/src/validator";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   ApiProperty,
   DeepPartialType,
@@ -98,7 +100,9 @@ describeConformance(
         expect(fields).toContain("age");
         expect(fields).toContain("profile");
 
-        expect(getPropertyMetadata(UpdateUserDto, "name")?.required).toBe(false);
+        expect(getPropertyMetadata(UpdateUserDto, "name")?.required).toBe(
+          false,
+        );
         expect(getPropertyMetadata(UpdateUserDto, "age")?.required).toBe(false);
         expect(getPropertyMetadata(UpdateUserDto, "profile")?.required).toBe(
           false,
@@ -290,7 +294,9 @@ describeConformance(
 
       // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata for array properties
       it.skip("should preserve array-ness for a plugin-declared nested DTO array", () => {
-        class UpdatePluginArticleDto extends DeepPartialType(PluginArticleDto) {}
+        class UpdatePluginArticleDto extends DeepPartialType(
+          PluginArticleDto,
+        ) {}
         const meta = getPropertyMetadata(UpdatePluginArticleDto, "tags");
 
         expect(meta?.isArray).toBe(true);
@@ -394,9 +400,9 @@ describeConformance(
 
       // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts:144-149) does not cache generated classes across calls per skipNullProperties setting
       it.skip("should cache each `skipNullProperties` setting separately", () => {
-        expect(DeepPartialType(UserDto, { skipNullProperties: false })).not.toBe(
-          DeepPartialType(UserDto),
-        );
+        expect(
+          DeepPartialType(UserDto, { skipNullProperties: false }),
+        ).not.toBe(DeepPartialType(UserDto));
         expect(DeepPartialType(UserDto, { skipNullProperties: false })).toBe(
           DeepPartialType(UserDto, { skipNullProperties: false }),
         );
@@ -452,7 +458,7 @@ describeConformance(
         expect(await validate(dto)).toHaveLength(0);
       });
 
-      // BUNEST_BUG: PartialType/DeepPartialType (packages/common/src/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
+      // BUNEST_BUG: PartialType/DeepPartialType (packages/core/src/common/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
       it.skip.each([{}, { skipNullProperties: false }])(
         "should not whitelist documented properties that have no validation decorator (%j)",
         async (options) => {

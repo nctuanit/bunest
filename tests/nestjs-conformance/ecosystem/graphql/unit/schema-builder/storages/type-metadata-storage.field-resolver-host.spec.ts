@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import type {
   GraphQLObjectType,
   GraphQLSchema,
-} from "../../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../../packages/graphql/src";
 import {
   Args,
   Field,
@@ -180,17 +179,19 @@ describeConformance(
         imports: [GraphQLSchemaBuilderModule],
       }).compile({ logger: false });
 
-      schema = await moduleRef.get(GraphQLSchemaFactory).create(
-        [
-          new ArticleResolver(),
-          new NoteResolver(),
-          new OrderResolver(),
-          new ProductsResolver(),
-          new UsersResolver(),
-          new AdminUsersResolver(),
-        ],
-        { buildSchemaOptions: { skipCheck: true } },
-      );
+      schema = await moduleRef
+        .get(GraphQLSchemaFactory)
+        .create(
+          [
+            new ArticleResolver(),
+            new NoteResolver(),
+            new OrderResolver(),
+            new ProductsResolver(),
+            new UsersResolver(),
+            new AdminUsersResolver(),
+          ],
+          { buildSchemaOptions: { skipCheck: true } },
+        );
     });
 
     it("should add an inherited handler to the type of the resolver that serves it", () => {

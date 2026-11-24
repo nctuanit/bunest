@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  resolve,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   buildProjectTemplateFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   type Configuration,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Project Utilities & Generate Option Precedence",
@@ -24,19 +36,15 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-projutils-"));
+      tmpDir = makeTempDir("bunest-cli-conf-projutils-");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     const writeBunestConfig = (config: Configuration) => {
-      writeFileSync(
-        join(tmpDir, "bunest.json"),
-        JSON.stringify(config, null, 2),
-        "utf8",
-      );
+      writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify(config, null, 2));
     };
 
     describe("workspace-root vs project-scoped schematics", () => {
@@ -320,7 +328,9 @@ describeConformance(
           cwd: tmpDir,
           dryRun: true,
         });
-        expect(res.files[1]?.relativePath).toBe("billing/billing.service.test.ts");
+        expect(res.files[1]?.relativePath).toBe(
+          "billing/billing.service.test.ts",
+        );
       });
 
       it("uses configuration specFileSuffix when CLI omits it and defaults to 'spec'", async () => {
@@ -337,9 +347,7 @@ describeConformance(
           "billing/billing.service.integration.ts",
         );
 
-        const defaultDir = mkdtempSync(
-          join(tmpdir(), "bunest-cli-conf-defsuf-"),
-        );
+        const defaultDir = makeTempDir("bunest-cli-conf-defsuf-");
         try {
           const fromDef = await generateSchematic({
             schematic: "service",
@@ -351,7 +359,7 @@ describeConformance(
             "billing/billing.service.spec.ts",
           );
         } finally {
-          rmSync(defaultDir, { recursive: true, force: true });
+          await removePath(defaultDir, { recursive: true, force: true });
         }
       });
 
@@ -401,7 +409,7 @@ describeConformance(
           ).toBe(true);
 
           // Malformed package.json -> generateSchematic still does not break
-          writeFileSync(join(tmpDir, "package.json"), "not json", "utf8");
+          writeTextSync(join(tmpDir, "package.json"), "not json");
           const badPkgRes = await generateSchematic({
             schematic: "service",
             name: "health",

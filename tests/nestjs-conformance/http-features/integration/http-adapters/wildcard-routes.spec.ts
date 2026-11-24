@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   type MiddlewareConsumer,
   type NextFunction,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   RouterModule,
   type BunestApplication,
@@ -213,7 +212,7 @@ describeConformance(
         expect(res.headers["x-middleware"]).toBe("ran");
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 named wildcard syntax "{*path}" (packages/http/src/router/fallback-radix-router.ts:147-207).
+      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 named wildcard syntax "{*path}" (packages/core/src/http/router/fallback-radix-router.ts:147-207).
       it.skip("should match a '{*path}' named wildcard route", async () => {
         const bare = await request(app).get("/named");
         const root = await request(app).get("/named/");
@@ -255,13 +254,13 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 optional trailing slash group syntax "docs{/}" (packages/http/src/router/fallback-radix-router.ts:147-207).
+      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 optional trailing slash group syntax "docs{/}" (packages/core/src/http/router/fallback-radix-router.ts:147-207).
       it.skip("should match an optional trailing slash group with and without the slash", async () => {
         expect((await request(app).get("/docs")).text).toBe("docs");
         expect((await request(app).get("/docs/")).text).toBe("docs");
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 optional extension group syntax "files{.json}" (packages/http/src/router/fallback-radix-router.ts:147-207).
+      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support path-to-regexp v8 optional extension group syntax "files{.json}" (packages/core/src/http/router/fallback-radix-router.ts:147-207).
       it.skip("should match an optional extension group with and without the extension only", async () => {
         expect((await request(app).get("/files")).text).toBe("files");
         expect((await request(app).get("/files.json")).text).toBe("files");
@@ -280,12 +279,12 @@ describeConformance(
         "Bunest FallbackRadixRouter supports optional :id? segment in middle of path",
       );
 
-      // BUNEST_BUG: FallbackRadixRouter matches an empty path segment "" for optional :id? in "/users//posts" (returning 200 { id: "" }) instead of 404 (packages/http/src/router/fallback-radix-router.ts:696-712).
+      // BUNEST_BUG: FallbackRadixRouter matches an empty path segment "" for optional :id? in "/users//posts" (returning 200 { id: "" }) instead of 404 (packages/core/src/http/router/fallback-radix-router.ts:696-712).
       it.skip("should not match double slashes for middle optional parameter (/users//posts)", async () => {
         expect((await request(app).get("/users//posts")).status).toBe(404);
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support named splat wildcard syntax "*splat" (packages/http/src/router/fallback-radix-router.ts:147-207).
+      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support named splat wildcard syntax "*splat" (packages/core/src/http/router/fallback-radix-router.ts:147-207).
       it.skip("should split a named wildcard '*splat' before decoding it, keeping an encoded '/' in its segment", async () => {
         expect((await request(app).get("/wild/a%2Fb/c")).body).toEqual([
           "a/b",
@@ -330,7 +329,9 @@ describeConformance(
         async () => {
           const root = await request(app).get("/");
           const withLocale = await request(app).get("/en");
-          const doubleSlash = await app.fetch(new Request("http://localhost//"));
+          const doubleSlash = await app.fetch(
+            new Request("http://localhost//"),
+          );
 
           expect(root.body).toEqual({ locale: null });
           expect(root.headers["x-middleware"]).toBe("ran");

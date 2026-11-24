@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, beforeEach, expect, it } from "bun:test";
 import {
   Body,
@@ -14,7 +13,7 @@ import {
   type ExecutionContext,
   type PipeTransform,
   type StandardSchemaV1,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   createTestApp,
   describeConformance,
@@ -148,7 +147,7 @@ describeConformance(
       await ctx.close();
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/common/src/interfaces/http.interface.ts, packages/http/src/pipeline/param-extractor.ts)
+    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
     it.skip("should pass schema to pipe via @Body(options)", async () => {
       await ctx
         .request()
@@ -161,7 +160,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.type).toBe("body");
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/common/src/interfaces/http.interface.ts, packages/http/src/pipeline/param-extractor.ts)
+    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
     it.skip("should pass schema to pipe via @Query(options)", async () => {
       await ctx.request().get("/schema-test/query?user=john").expect(200);
 
@@ -170,7 +169,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.type).toBe("query");
     });
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/common/src/interfaces/http.interface.ts, packages/http/src/pipeline/param-extractor.ts)
+    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
     it.skip("should pass schema to pipe via @Param(property, options)", async () => {
       await ctx
         .request()
@@ -184,7 +183,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.data).toBe("id");
     });
 
-    // BUNEST_BUG: createParamDecorator() does not parse `{ schema, pipes }` options objects (packages/common/src/decorators/params.decorators.ts:296-331), and compileParameters() does not propagate `schema` onto ArgumentMetadata (packages/http/src/pipeline/param-extractor.ts)
+    // BUNEST_BUG: createParamDecorator() does not parse `{ schema, pipes }` options objects (packages/core/src/common/decorators/params.decorators.ts:296-331), and compileParameters() does not propagate `schema` onto ArgumentMetadata (packages/core/src/http/pipeline/param-extractor.ts)
     it.skip("should pass schema to pipe via createParamDecorator(options)", async () => {
       await ctx.request().get("/schema-test/custom?key=val").expect(200);
 
@@ -219,7 +218,7 @@ describeConformance(
       "zero-socket request(app)",
     );
 
-    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/common/src/interfaces/http.interface.ts, packages/http/src/pipeline/param-extractor.ts)
+    // BUNEST_BUG: ArgumentMetadata lacks `schema` and compileParameters() does not propagate `param.schema` onto ArgumentMetadata passed to pipes (packages/core/src/common/interfaces/http.interface.ts, packages/core/src/http/pipeline/param-extractor.ts)
     it.skip("should pass schema to pipe via @Body(property, options)", async () => {
       await ctx
         .request()

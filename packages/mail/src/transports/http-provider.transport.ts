@@ -36,7 +36,9 @@ export abstract class HttpProviderTransport extends MailTransport {
       `${this.constructor.name} \`timeout\``,
     );
     if (options.fetch !== undefined && typeof options.fetch !== "function") {
-      throw new TypeError(`${this.constructor.name} \`fetch\` must be a function`);
+      throw new TypeError(
+        `${this.constructor.name} \`fetch\` must be a function`,
+      );
     }
     this.fetchOverride = options.fetch;
   }
@@ -78,9 +80,7 @@ export abstract class HttpProviderTransport extends MailTransport {
       }
       let text: string;
       try {
-        text = response.ok
-          ? await response.text()
-          : await readCapped(response);
+        text = response.ok ? await response.text() : await readCapped(response);
       } catch (error) {
         throw this.networkError(error, signal, timer.signal, url);
       }

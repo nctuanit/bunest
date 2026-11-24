@@ -1,10 +1,11 @@
-import "reflect-metadata";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "bun:test";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  ensureDir,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   type GqlModuleOptions,
@@ -75,17 +76,20 @@ describeConformance(
     let app: BunestApplication;
     let tmpDir: string;
 
-    beforeAll(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-fed-async-class-"));
-      writeFileSync(
+    beforeAll(async () => {
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-fed-async-class-${crypto.randomUUID()}`,
+      );
+      await ensureDir(tmpDir);
+      await Bun.write(
         join(tmpDir, "users.types.graphql"),
         USERS_FEDERATION_SDL,
-        "utf8",
       );
     });
 
-    afterAll(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(async () => {

@@ -1,4 +1,8 @@
-import type { ContextId, InjectionToken, OnRequestDestroy } from "@bunest/common";
+import type {
+  ContextId,
+  InjectionToken,
+  OnRequestDestroy,
+} from "../common/index";
 import type { RequestScopeContainer } from "../interfaces/core-types.interface";
 
 type RequestResolverFn = (

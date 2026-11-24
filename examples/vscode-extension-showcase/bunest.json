@@ -1,0 +1,10 @@
+{
+  "sourceRoot": "src",
+  "entryFile": "main",
+  "typegen": {
+    "enabled": true,
+    "outDir": ".bunest/types",
+    "fileName": "bunest.d.ts",
+    "includeGlobalNamespace": true
+  }
+}

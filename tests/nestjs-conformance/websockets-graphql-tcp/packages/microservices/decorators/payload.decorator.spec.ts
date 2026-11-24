@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   ParseIntPipe,
   type PipeTransform,
   type StandardSchemaV1,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Ctx,
   InMemoryBroker,
@@ -158,7 +157,10 @@ describeConformance(
 
     it("should extract property and execute param pipes at runtime via MicroserviceHost", async () => {
       const broker = new InMemoryBroker();
-      const server = new InMemoryServer({ channel: "payload-dec-test", broker });
+      const server = new InMemoryServer({
+        channel: "payload-dec-test",
+        broker,
+      });
 
       class UpperPipe implements PipeTransform<unknown, unknown> {
         transform(value: unknown) {
@@ -220,7 +222,9 @@ describeConformance(
         ) => ParameterDecorator;
 
         class TestSchemaOnly {
-          public test(@dynamicPayload({ schema: mockSchema }) _payload: unknown) {}
+          public test(
+            @dynamicPayload({ schema: mockSchema }) _payload: unknown,
+          ) {}
         }
 
         const metadata = MetadataRegistry.getOwn<

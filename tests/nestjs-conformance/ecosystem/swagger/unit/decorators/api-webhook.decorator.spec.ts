@@ -1,10 +1,6 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Controller, Post } from "../../../../../../packages/common/src";
-import {
-  ApiWebhook,
-  DECORATORS,
-} from "../../../../../../packages/swagger/src";
+import { Controller, Post } from "../../../../../../packages/core/src/common";
+import { ApiWebhook, DECORATORS } from "../../../../../../packages/swagger/src";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(

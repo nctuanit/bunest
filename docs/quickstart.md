@@ -1,12 +1,12 @@
 # Quickstart — Build a Validated REST CRUD API in < 15 Minutes
 
-This guide walks through creating, running, documenting, and testing a complete NestJS-style REST CRUD API with **Bunest** on **Bun >= 1.4.3**.
+This guide walks through creating, running, documenting, and testing a complete NestJS-style REST CRUD API with **Bunest** on **Bun >= 1.4.5**.
 
 ---
 
 ## Prerequisites
 
-- **Bun >= 1.4.3** (`bun --version`)
+- **Bun >= 1.4.5** (`bun --version`)
 - No Node.js, Express, or Fastify required.
 
 ---
@@ -41,7 +41,7 @@ Or initialize manually with the required `tsconfig.json` settings (see [ADR-002]
 Install core dependencies:
 
 ```bash
-bun add reflect-metadata class-validator class-transformer @bunest/core @bunest/swagger
+bun add @bunest/core @bunest/validation @bunest/swagger
 bun add -d @bunest/testing @types/bun
 ```
 
@@ -64,8 +64,15 @@ bunx @bunest/cli g res users
 ## Step 3: Define Validated DTOs (`src/users/dto/create-user.dto.ts`)
 
 ```ts
-import { IsEmail, IsInt, IsOptional, IsString, Min, MinLength } from "class-validator";
-import { Type } from "class-transformer";
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from "@bunest/validation/validator";
+import { Type } from "@bunest/validation/transformer";
 import { ApiProperty, ApiPropertyOptional } from "@bunest/swagger";
 
 export class CreateUserDto {
@@ -181,7 +188,12 @@ import {
   Patch,
   Post,
 } from "@bunest/core";
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@bunest/swagger";
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@bunest/swagger";
 import { CreateUserDto, UpdateUserDto } from "./dto/create-user.dto";
 import { UsersService } from "./users.service";
 
@@ -244,10 +256,9 @@ import { UsersService } from "./users/users.service";
 export class AppModule {}
 ```
 
-`src/main.ts` — **import `"reflect-metadata"` on line 1**, before any decorated module:
+`src/main.ts` — `@bunest/core` includes a built-in zero-dependency Reflect Metadata shim ([ADR-017](./adr/ADR-017.md)), so no `import "reflect-metadata"` boilerplate is required:
 
 ```ts
-import "reflect-metadata";
 import { BunestFactory, ValidationPipe } from "@bunest/core";
 import { DocumentBuilder, SwaggerModule } from "@bunest/swagger";
 import { AppModule } from "./app.module";
@@ -267,7 +278,8 @@ const document = SwaggerModule.createDocument(app, swaggerConfig);
 SwaggerModule.setup("docs", app, document);
 
 app.enableShutdownHooks();
-await app.listen(3000);
+const port = Number(Bun.env.PORT ?? 3000);
+await app.listen(port);
 console.log(`Listening on ${app.getUrl()} (Swagger UI: ${app.getUrl()}/docs)`);
 ```
 
@@ -303,7 +315,6 @@ curl http://localhost:3000/docs-json
 `@bunest/testing` runs directly against `app.fetch()` with zero open ports—or against live `app.listen(0)` when needed:
 
 ```ts
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ValidationPipe, type BunestApplication } from "@bunest/core";
 import { Test, request } from "@bunest/testing";

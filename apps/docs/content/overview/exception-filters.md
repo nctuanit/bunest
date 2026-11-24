@@ -4,9 +4,10 @@ Bunest includes a centralized exception handling layer that catches every unhand
 
 ## Throwing Standard Exceptions
 
-`@bunest/common` (re-exported by `@bunest/core`) provides `HttpException` and 16 ready-to-use HTTP exception subclasses:
+`@bunest/core` (re-exported by `@bunest/core`) provides `HttpException` and 16 ready-to-use HTTP exception subclasses:
 
 @@filename(users.controller.ts)
+
 ```ts
 import {
   ConflictException,
@@ -39,24 +40,24 @@ export class UsersController {
 
 ### Built-in HTTP Exceptions
 
-| Exception Class | Status | Default Reason Phrase |
-|---|---|---|
-| `BadRequestException` | `400` | Bad Request |
-| `UnauthorizedException` | `401` | Unauthorized |
-| `ForbiddenException` | `403` | Forbidden |
-| `NotFoundException` | `404` | Not Found |
-| `MethodNotAllowedException` | `405` | Method Not Allowed |
-| `ConflictException` | `409` | Conflict |
-| `GoneException` | `410` | Gone |
-| `PayloadTooLargeException` | `413` | Payload Too Large |
-| `UnsupportedMediaTypeException` | `415` | Unsupported Media Type |
-| `UnprocessableEntityException` | `422` | Unprocessable Entity |
-| `TooManyRequestsException` | `429` | Too Many Requests |
-| `InternalServerErrorException` | `500` | Internal Server Error |
-| `NotImplementedException` | `501` | Not Implemented |
-| `BadGatewayException` | `502` | Bad Gateway |
-| `ServiceUnavailableException` | `503` | Service Unavailable |
-| `GatewayTimeoutException` | `504` | Gateway Timeout |
+| Exception Class                 | Status | Default Reason Phrase  |
+| ------------------------------- | ------ | ---------------------- |
+| `BadRequestException`           | `400`  | Bad Request            |
+| `UnauthorizedException`         | `401`  | Unauthorized           |
+| `ForbiddenException`            | `403`  | Forbidden              |
+| `NotFoundException`             | `404`  | Not Found              |
+| `MethodNotAllowedException`     | `405`  | Method Not Allowed     |
+| `ConflictException`             | `409`  | Conflict               |
+| `GoneException`                 | `410`  | Gone                   |
+| `PayloadTooLargeException`      | `413`  | Payload Too Large      |
+| `UnsupportedMediaTypeException` | `415`  | Unsupported Media Type |
+| `UnprocessableEntityException`  | `422`  | Unprocessable Entity   |
+| `TooManyRequestsException`      | `429`  | Too Many Requests      |
+| `InternalServerErrorException`  | `500`  | Internal Server Error  |
+| `NotImplementedException`       | `501`  | Not Implemented        |
+| `BadGatewayException`           | `502`  | Bad Gateway            |
+| `ServiceUnavailableException`   | `503`  | Service Unavailable    |
+| `GatewayTimeoutException`       | `504`  | Gateway Timeout        |
 
 ## Normalized Error Envelope
 
@@ -79,6 +80,7 @@ All Bunest exceptions share a uniform JSON response structure ([ADR-009](/archit
 Create a custom filter by implementing `ExceptionFilter` and decorating it with `@Catch(...exceptionTypes)`. Returning a native Web `Response` (or using `ResponseContext`) handles the error cleanly:
 
 @@filename(http-exception.filter.ts)
+
 ```ts
 import {
   Catch,
@@ -115,6 +117,7 @@ Attach filters at method, controller, or global scope—either via `@UseFilters(
 
 @@filename(binding-filters.ts)
 @@tab(Controller / Method)
+
 ```ts
 import { Controller, Get, UseFilters } from "@bunest/core";
 import { CustomHttpExceptionFilter } from "./http-exception.filter";
@@ -128,8 +131,10 @@ export class OrdersController {
   }
 }
 ```
+
 @@switch
 @@tab(Global DI Token)
+
 ```ts
 import { APP_FILTER, Module } from "@bunest/core";
 import { CustomHttpExceptionFilter } from "./http-exception.filter";

@@ -30,7 +30,7 @@ import {
   type VersioningOptions,
   type ViewEngineRenderer,
   type WebSocketAdapter,
-} from "@bunest/common";
+} from "../common/index";
 import {
   BunHttpAdapter,
   CookieSigner,
@@ -44,7 +44,7 @@ import {
   type ListeningServerInfo,
   type MiddlewareEntry,
   type RequestScopeContainer,
-} from "@bunest/http";
+} from "../http/index";
 import { DIContainer } from "../di/di-container";
 import type {
   BunestApplicationContextOptions,
@@ -161,7 +161,9 @@ function buildInjectRequest(input: string | InjectOptions): Request {
   return new Request(baseUrl.toString(), init);
 }
 
-function extractInjectHeaders(raw: Response): Record<string, string | string[]> {
+function extractInjectHeaders(
+  raw: Response,
+): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   raw.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
@@ -252,7 +254,7 @@ class CoreHttpBridge implements HttpRuntimeBridge {
 
 /**
  * Full Bunest HTTP application uniting `@bunest/core`'s DI/Module/Lifecycle engine
- * with `@bunest/http`'s native `BunHttpAdapter`.
+ * with `@bunest/core/http`'s native `BunHttpAdapter`.
  */
 export class BunestApplication extends BunestApplicationContext {
   private readonly httpAdapter: BunHttpAdapter;
@@ -268,7 +270,8 @@ export class BunestApplication extends BunestApplicationContext {
   }> = [];
   private readonly microservices: MicroserviceInstance[] = [];
   private readonly startedMicroservices = new WeakSet<MicroserviceInstance>();
-  private readonly inheritedConfigMicroservices = new Set<MicroserviceInstance>();
+  private readonly inheritedConfigMicroservices =
+    new Set<MicroserviceInstance>();
   private wsAdapter?: WebSocketAdapter;
   private isWsModuleRegistered = false;
   private routesDirty = true;
@@ -362,7 +365,10 @@ export class BunestApplication extends BunestApplicationContext {
     if (this.isWsModuleRegistered) {
       return;
     }
-    if (this.wsAdapter && typeof this.wsAdapter.attachToHttpAdapter === "function") {
+    if (
+      this.wsAdapter &&
+      typeof this.wsAdapter.attachToHttpAdapter === "function"
+    ) {
       this.wsAdapter.attachToHttpAdapter(this.httpAdapter);
       this.isWsModuleRegistered = true;
     }
@@ -481,7 +487,9 @@ export class BunestApplication extends BunestApplicationContext {
         });
       }
     }
-    this.container.getApplicationConfig().useGlobalInterceptors(...interceptors);
+    this.container
+      .getApplicationConfig()
+      .useGlobalInterceptors(...interceptors);
     this.httpAdapter.useGlobalInterceptors(...interceptors);
     this.routesDirty = true;
     return this;
@@ -619,9 +627,13 @@ export class BunestApplication extends BunestApplicationContext {
     rootDir: string,
     options?: StaticAssetsOptions | ExtendedStaticAssetsOptions,
   ): this;
-  useStaticAssets(options: ExtendedStaticAssetsOptions & { root?: string; rootPath?: string }): this;
   useStaticAssets(
-    rootDirOrOptions: string | (ExtendedStaticAssetsOptions & { root?: string; rootPath?: string }),
+    options: ExtendedStaticAssetsOptions & { root?: string; rootPath?: string },
+  ): this;
+  useStaticAssets(
+    rootDirOrOptions:
+      | string
+      | (ExtendedStaticAssetsOptions & { root?: string; rootPath?: string }),
     options?: StaticAssetsOptions | ExtendedStaticAssetsOptions,
   ): this {
     const rootDir =
@@ -634,10 +646,12 @@ export class BunestApplication extends BunestApplicationContext {
       rootDir,
       options: resolvedOptions ? { ...resolvedOptions } : undefined,
     };
-    this.staticAssetsConfigs.push(entry as {
-      readonly rootDir: string;
-      readonly options?: StaticAssetsOptions;
-    });
+    this.staticAssetsConfigs.push(
+      entry as {
+        readonly rootDir: string;
+        readonly options?: StaticAssetsOptions;
+      },
+    );
     const adapterExt = this.httpAdapter as unknown as ExtendedHttpAdapter;
     adapterExt.useStaticAssets?.(rootDir, entry.options as StaticAssetsOptions);
     this.routesDirty = true;
@@ -694,15 +708,23 @@ export class BunestApplication extends BunestApplicationContext {
         const configurable = ms as MicroserviceInstance & {
           useGlobalPipes?: (...pipes: PipeLike[]) => unknown;
           useGlobalGuards?: (...guards: GuardLike[]) => unknown;
-          useGlobalInterceptors?: (...interceptors: InterceptorLike[]) => unknown;
+          useGlobalInterceptors?: (
+            ...interceptors: InterceptorLike[]
+          ) => unknown;
           useGlobalFilters?: (...filters: ExceptionFilterLike[]) => unknown;
         };
         const pipes = appCfg.getGlobalPipes();
-        if (pipes.length > 0 && typeof configurable.useGlobalPipes === "function") {
+        if (
+          pipes.length > 0 &&
+          typeof configurable.useGlobalPipes === "function"
+        ) {
           configurable.useGlobalPipes(...pipes);
         }
         const guards = appCfg.getGlobalGuards();
-        if (guards.length > 0 && typeof configurable.useGlobalGuards === "function") {
+        if (
+          guards.length > 0 &&
+          typeof configurable.useGlobalGuards === "function"
+        ) {
           configurable.useGlobalGuards(...guards);
         }
         const interceptors = appCfg.getGlobalInterceptors();
@@ -824,9 +846,9 @@ export class BunestApplication extends BunestApplicationContext {
     const collectToken = <T>(
       token: InjectionToken,
       onRequestScoped?: (wrapper: {
-        readonly token: InjectionToken<any>;
-        readonly metatype: Type<any> | Function | undefined;
-        readonly instance: any;
+        readonly token: InjectionToken<unknown>;
+        readonly metatype: Type<unknown> | Function | undefined;
+        readonly instance: unknown;
         readonly moduleRef: ReturnType<DIContainer["getModuleRef"]>;
         readonly moduleId: string;
         readonly scope: Scope;
@@ -865,16 +887,16 @@ export class BunestApplication extends BunestApplicationContext {
     // consistently in both BunestFactory.create() and TestingModule.createBunestApplication().
     this.httpAdapter.setDiGlobalEnhancers({
       guards: collectToken<GuardLike>(APP_GUARD, (w) =>
-        appConfig.addGlobalRequestGuard(w),
+        appConfig.addGlobalRequestGuard(w as any),
       ),
       pipes: collectToken<PipeLike>(APP_PIPE, (w) =>
-        appConfig.addGlobalRequestPipe(w),
+        appConfig.addGlobalRequestPipe(w as any),
       ),
       interceptors: collectToken<InterceptorLike>(APP_INTERCEPTOR, (w) =>
-        appConfig.addGlobalRequestInterceptor(w),
+        appConfig.addGlobalRequestInterceptor(w as any),
       ),
       filters: collectToken<ExceptionFilterLike>(APP_FILTER, (w) =>
-        appConfig.addGlobalRequestFilter(w),
+        appConfig.addGlobalRequestFilter(w as any),
       ),
     });
   }

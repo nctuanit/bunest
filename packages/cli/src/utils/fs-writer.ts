@@ -1,5 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, ensureDir, statPath, writeTextSync } from "@bunest/core";
 import type { GeneratedFile } from "../types";
 import { resolveSafeChildPath } from "./naming";
 
@@ -26,7 +25,7 @@ export class FileCollisionError extends Error {
 
 async function pathExists(filePath: string): Promise<boolean> {
   try {
-    await stat(filePath);
+    await statPath(filePath);
     return true;
   } catch {
     return false;
@@ -77,8 +76,12 @@ export async function writePlannedFiles(
       continue;
     }
 
-    await mkdir(dirname(entry.fullPath), { recursive: true });
-    await Bun.write(entry.fullPath, entry.content);
+    await ensureDir(dirname(entry.fullPath));
+    if (typeof Bun !== "undefined") {
+      await Bun.write(entry.fullPath, entry.content);
+    } else {
+      writeTextSync(entry.fullPath, entry.content);
+    }
 
     results.push({
       path: entry.fullPath,

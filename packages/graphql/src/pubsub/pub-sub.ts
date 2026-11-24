@@ -76,10 +76,11 @@ export class PubSub implements PubSubEngine {
 
   asyncIterator<T = unknown>(
     triggers: string | readonly string[],
-  ): AsyncIterableIterator<T> {
-    const triggerList = typeof triggers === "string" ? [triggers] : [...triggers];
+  ): AsyncIterableIterator<T, undefined> {
+    const triggerList =
+      typeof triggers === "string" ? [triggers] : [...triggers];
     const pushQueue: T[] = [];
-    const pullQueue: Array<(result: IteratorResult<T>) => void> = [];
+    const pullQueue: Array<(result: IteratorResult<T, undefined>) => void> = [];
     const subIds: number[] = [];
     let closed = false;
 
@@ -118,36 +119,36 @@ export class PubSub implements PubSubEngine {
       pushQueue.length = 0;
       while (pullQueue.length > 0) {
         const resolve = pullQueue.shift()!;
-        resolve({ value: undefined as unknown as T, done: true });
+        resolve({ value: undefined, done: true });
       }
     };
 
-    const iterator: AsyncIterableIterator<T> = {
+    const iterator: AsyncIterableIterator<T, undefined> = {
       [Symbol.asyncIterator]() {
         return iterator;
       },
-      next(): Promise<IteratorResult<T>> {
+      next(): Promise<IteratorResult<T, undefined>> {
         if (pushQueue.length > 0) {
           return Promise.resolve({ value: pushQueue.shift()!, done: false });
         }
         if (closed) {
           return Promise.resolve({
-            value: undefined as unknown as T,
+            value: undefined,
             done: true,
           });
         }
-        return new Promise<IteratorResult<T>>((resolve) => {
+        return new Promise<IteratorResult<T, undefined>>((resolve) => {
           pullQueue.push(resolve);
         });
       },
-      return(): Promise<IteratorResult<T>> {
+      return(): Promise<IteratorResult<T, undefined>> {
         cleanup();
         return Promise.resolve({
-          value: undefined as unknown as T,
+          value: undefined,
           done: true,
         });
       },
-      throw(error?: unknown): Promise<IteratorResult<T>> {
+      throw(error?: unknown): Promise<IteratorResult<T, undefined>> {
         cleanup();
         return Promise.reject(error);
       },
@@ -192,19 +193,19 @@ export function withFilter<TPayload = any, TVariables = any>(
       return sourceIterator;
     };
 
-    const filtered: AsyncIterableIterator<TPayload> = {
+    const filtered: AsyncIterableIterator<TPayload, undefined> = {
       [Symbol.asyncIterator]() {
         return filtered;
       },
-      async next(): Promise<IteratorResult<TPayload>> {
+      async next(): Promise<IteratorResult<TPayload, undefined>> {
         if (closed) {
-          return { value: undefined as unknown as TPayload, done: true };
+          return { value: undefined, done: true };
         }
         const src = await ensureSource();
         while (!closed) {
           const step = await src.next();
           if (step.done) {
-            return { value: undefined as unknown as TPayload, done: true };
+            return { value: undefined, done: true };
           }
           const matched = await filterFn(
             step.value,
@@ -216,16 +217,16 @@ export function withFilter<TPayload = any, TVariables = any>(
             return { value: step.value, done: false };
           }
         }
-        return { value: undefined as unknown as TPayload, done: true };
+        return { value: undefined, done: true };
       },
-      async return(): Promise<IteratorResult<TPayload>> {
+      async return(): Promise<IteratorResult<TPayload, undefined>> {
         closed = true;
         if (sourceIterator && typeof sourceIterator.return === "function") {
           await sourceIterator.return();
         }
-        return { value: undefined as unknown as TPayload, done: true };
+        return { value: undefined, done: true };
       },
-      async throw(error?: unknown): Promise<IteratorResult<TPayload>> {
+      async throw(error?: unknown): Promise<IteratorResult<TPayload, undefined>> {
         closed = true;
         if (sourceIterator && typeof sourceIterator.return === "function") {
           await sourceIterator.return();

@@ -46,8 +46,55 @@ function throwFromResponseError(
 }
 
 // ---------------------------------------------------------------------------
-// Redis Pub/Sub Transport Adapter
+// Redis Pub/Sub Transport Adapter (supports native Bun.RedisClient via url)
 // ---------------------------------------------------------------------------
+
+function createBunRedisPubSubClient(url?: string): RedisTransportClientLike {
+  const native = url ? new Bun.RedisClient(url) : Bun.redis;
+  const listeners = new Map<string, (msg: string, channel: string) => void>();
+  return {
+    publish: async (channel, message) => {
+      await native.publish(channel, message);
+    },
+    subscribe: async (channel, handler) => {
+      const listener = (msg: string, ch: string) => {
+        handler(typeof msg === "string" ? msg : String(msg), ch || channel);
+      };
+      listeners.set(channel, listener);
+      await native.subscribe(channel, listener);
+    },
+    unsubscribe: async (channel) => {
+      const listener = listeners.get(channel);
+      listeners.delete(channel);
+      if (listener) {
+        await native.unsubscribe(channel, listener);
+      } else {
+        await native.send("UNSUBSCRIBE", [channel]);
+      }
+    },
+    close: () => native.close(),
+  };
+}
+
+function resolveRedisTransportClients(options: RedisTransportOptions): {
+  pubClient: RedisTransportClientLike;
+  subClient: RedisTransportClientLike;
+} {
+  if (options.pubClient) {
+    return {
+      pubClient: options.pubClient,
+      subClient: options.subClient ?? options.pubClient,
+    };
+  }
+  const url =
+    options.url ??
+    (options.host
+      ? `redis://${options.host}:${options.port ?? 6379}`
+      : undefined);
+  const pubClient = createBunRedisPubSubClient(url);
+  const subClient = options.subClient ?? createBunRedisPubSubClient(url);
+  return { pubClient, subClient };
+}
 
 export class RedisTransportServer extends MicroserviceTransportServer {
   public readonly transport = Transport.REDIS;
@@ -59,12 +106,15 @@ export class RedisTransportServer extends MicroserviceTransportServer {
 
   constructor(options: RedisTransportOptions) {
     super();
-    this.pubClient = options.pubClient;
-    this.subClient = options.subClient ?? options.pubClient;
+    const resolved = resolveRedisTransportClients(options);
+    this.pubClient = resolved.pubClient;
+    this.subClient = resolved.subClient;
     this.prefix = options.channelPrefix ?? "bunest:rpc";
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;
@@ -148,8 +198,9 @@ export class RedisClientProxy extends ClientProxy {
 
   constructor(options: RedisTransportOptions) {
     super(options.defaultTimeoutMs ?? 5000);
-    this.pubClient = options.pubClient;
-    this.subClient = options.subClient ?? options.pubClient;
+    const resolved = resolveRedisTransportClients(options);
+    this.pubClient = resolved.pubClient;
+    this.subClient = resolved.subClient;
     this.prefix = options.channelPrefix ?? "bunest:rpc";
     this.clientId = options.clientId ?? crypto.randomUUID();
     this.replyChannel = `${this.prefix}:reply:${this.clientId}`;
@@ -267,7 +318,10 @@ export class RedisClientProxy extends ClientProxy {
       signal?.addEventListener("abort", onAbort, { once: true });
 
       Promise.resolve(
-        this.pubClient.publish(`${this.prefix}:${pattern}`, JSON.stringify(req)),
+        this.pubClient.publish(
+          `${this.prefix}:${pattern}`,
+          JSON.stringify(req),
+        ),
       ).catch((err) => {
         clearTimeout(timer);
         cleanup();
@@ -315,7 +369,9 @@ export class NatsTransportServer extends MicroserviceTransportServer {
     this.prefix = options.subjectPrefix ? `${options.subjectPrefix}.` : "";
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;
@@ -541,7 +597,9 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
     this.noAck = options.noAck ?? false;
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;
@@ -645,7 +703,8 @@ export class RabbitMqClientProxy extends ClientProxy {
     this.channel = options.channel;
     this.queue = options.queue;
     this.replyQueue =
-      options.replyQueue ?? `${options.queue}.reply.${crypto.randomUUID().slice(0, 8)}`;
+      options.replyQueue ??
+      `${options.queue}.reply.${crypto.randomUUID().slice(0, 8)}`;
   }
 
   async connect(): Promise<void> {

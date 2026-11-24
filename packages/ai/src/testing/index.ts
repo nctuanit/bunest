@@ -1,15 +1,15 @@
-import type { INestApplicationContext } from '@bunest/common';
-import type { TestingModuleBuilder } from '@bunest/testing';
-import type { AiCaller } from '../interfaces/ai-tool.interface';
+import type { INestApplicationContext } from "@bunest/core";
+import type { TestingModuleBuilder } from "@bunest/testing";
+import type { AiCaller } from "../interfaces/ai-tool.interface";
 import type {
   EmbeddingModel,
   LanguageModel,
-} from '../interfaces/ai-types.interface';
+} from "../interfaces/ai-types.interface";
 import {
   AI_EMBEDDING_MODEL_OVERRIDES,
   AI_MODEL_OVERRIDES,
-} from '../ai.constants';
-import { AiTools } from '../tools/ai-tools.service';
+} from "../ai.constants";
+import { AiTools } from "../tools/ai-tools.service";
 
 export {
   FakeModel,
@@ -19,7 +19,7 @@ export {
   type FakeModelCall,
   type FakeToolCall,
   type FakeTurn,
-} from './fake-model';
+} from "./fake-model";
 
 export {
   FakeEmbeddingModel,
@@ -28,7 +28,7 @@ export {
   type FakeEmbeddingModelCall,
   type FakeEmbeddingModelOptions,
   type FakeEmbeddingTurn,
-} from './fake-embedding-model';
+} from "./fake-embedding-model";
 
 /**
  * Replaces configured models by name (`{ default: new FakeModel([...]) }`) in a testing module,

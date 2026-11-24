@@ -1,8 +1,5 @@
-import { isDeepStrictEqual } from "node:util";
-
 /** A random pause of up to 4 ms, to shuffle the calls a race starts together. */
-export const jitter = (): Promise<unknown> =>
-  new Promise((resolve) => setTimeout(resolve, Math.random() * 4));
+export const jitter = (): Promise<unknown> => Bun.sleep(Math.random() * 4);
 
 export function show(value: unknown): string {
   return (
@@ -12,15 +9,12 @@ export function show(value: unknown): string {
   );
 }
 
-export function equal(
-  actual: unknown,
-  expected: unknown,
-  label: string,
-): void {
+export function equal(actual: unknown, expected: unknown, label: string): void {
   if (
-    !isDeepStrictEqual(
+    !Bun.deepEquals(
       normalizeUndefined(actual),
       normalizeUndefined(expected),
+      true,
     )
   ) {
     throw new Error(
@@ -30,11 +24,7 @@ export function equal(
 }
 
 /** Every key of `pattern` matches, recursively (arrays by length and element); other keys are ignored. */
-export function expect(
-  actual: unknown,
-  pattern: unknown,
-  label: string,
-): void {
+export function expect(actual: unknown, pattern: unknown, label: string): void {
   const mismatch = match(actual, pattern, "");
   if (mismatch !== null) {
     throw new Error(

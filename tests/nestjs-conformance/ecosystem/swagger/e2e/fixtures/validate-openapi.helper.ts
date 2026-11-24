@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import type { OpenAPIObject } from "../../../../../../packages/swagger/src";
 
 const OAS_30_31_HTTP_METHODS = new Set([
@@ -34,7 +33,11 @@ export function validateOpenApiDocument(doc: OpenAPIObject): OpenAPIObject {
   if (typeof doc.openapi !== "string" || !/^\d+\.\d+\.\d+$/.test(doc.openapi)) {
     throw new Error(`Invalid openapi version: ${String(doc.openapi)}`);
   }
-  if (!doc.info || typeof doc.info.title !== "string" || typeof doc.info.version !== "string") {
+  if (
+    !doc.info ||
+    typeof doc.info.title !== "string" ||
+    typeof doc.info.version !== "string"
+  ) {
     throw new Error("OpenAPI document requires info.title and info.version");
   }
   if (!doc.paths || typeof doc.paths !== "object") {

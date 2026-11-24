@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -23,18 +23,41 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./tracing": {
+      "types": "./src/tracing/index.ts",
+      "bun": "./src/tracing/index.ts",
+      "import": "./dist/tracing/index.js",
+      "default": "./dist/tracing/index.js"
+    },
+    "./metrics": {
+      "types": "./src/metrics/index.ts",
+      "bun": "./src/metrics/index.ts",
+      "import": "./dist/metrics/index.js",
+      "default": "./dist/metrics/index.js"
+    },
+    "./health": {
+      "types": "./src/health/index.ts",
+      "bun": "./src/health/index.ts",
+      "import": "./dist/health/index.js",
+      "default": "./dist/health/index.js"
+    },
+    "./devtools": {
+      "types": "./src/devtools/index.ts",
+      "bun": "./src/devtools/index.ts",
+      "import": "./dist/devtools/index.js",
+      "default": "./dist/devtools/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external @bunest/core --external @bunest/http --external reflect-metadata",
+    "build": "bun build ./src/index.ts ./src/tracing/index.ts ./src/metrics/index.ts ./src/health/index.ts ./src/devtools/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/core --external @bunest/core/common --external @bunest/core/http",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
-    "@bunest/core": "workspace:*",
-    "@bunest/http": "workspace:*"
+    "@bunest/core": "workspace:*"
   }
 }

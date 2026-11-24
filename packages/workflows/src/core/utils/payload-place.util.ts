@@ -1,7 +1,12 @@
-import type { PayloadContext } from '../interfaces/payload-codec.interface';
+import type { PayloadContext } from "../interfaces/payload-codec.interface";
 
 /** The keys of workflows' payload contexts, in the order their authenticated data lists them. */
-export const WORKFLOW_PLACES = ['instanceId', 'entry', 'signal', 'schedule'] as const;
+export const WORKFLOW_PLACES = [
+  "instanceId",
+  "entry",
+  "signal",
+  "schedule",
+] as const;
 
 /**
  * Where a payload is, for errors: `entry "charge" of instance "order-1" (result)` for workflows' contexts, and the
@@ -19,7 +24,10 @@ export function describePlace(context: PayloadContext): string {
     where = `schedule "${context.schedule}"`;
   } else {
     const keys = otherPlaces(context);
-    where = keys.length > 0 ? keys.map((key) => `${key} "${context[key]}"`).join(', ') : 'an unnamed place';
+    where =
+      keys.length > 0
+        ? keys.map((key) => `${key} "${context[key]}"`).join(", ")
+        : "an unnamed place";
   }
   return `${where} (${context.field})`;
 }
@@ -27,6 +35,11 @@ export function describePlace(context: PayloadContext): string {
 /** The context's keys other than `field` and workflows' own, that hold a value, by name. */
 export function otherPlaces(context: PayloadContext): string[] {
   return Object.keys(context)
-    .filter((key) => key !== 'field' && !(WORKFLOW_PLACES as readonly string[]).includes(key) && context[key] !== undefined)
+    .filter(
+      (key) =>
+        key !== "field" &&
+        !(WORKFLOW_PLACES as readonly string[]).includes(key) &&
+        context[key] !== undefined,
+    )
     .sort();
 }

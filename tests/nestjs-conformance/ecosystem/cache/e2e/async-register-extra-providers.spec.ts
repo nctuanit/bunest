@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Inject,
   Injectable,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CACHE_MANAGER,
@@ -15,11 +14,7 @@ import {
   type CacheModuleOptions,
   type CacheOptionsFactory,
 } from "../../../../../packages/cache/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Injectable()
 class ConfigService {
@@ -71,7 +66,8 @@ describeConformance(
       "cache-manager/tests/e2e/async-register-extra-providers.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
-    notes: "Uses Bunest zero-socket request(app) helper instead of Express/supertest.",
+    notes:
+      "Uses Bunest zero-socket request(app) helper instead of Express/supertest.",
   },
   () => {
     let app: BunestApplication;

@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Class Schematic Factory",
@@ -24,19 +36,18 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-class-"));
+      tempDir = makeTempDir("bunest-cli-conf-class-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     it("should manage name only", async () => {
-      const planned = buildSchematicFiles(
-        "class",
-        parseSchematicName("foo"),
-        { flat: true, spec: true },
-      );
+      const planned = buildSchematicFiles("class", parseSchematicName("foo"), {
+        flat: true,
+        spec: true,
+      });
       const classFile = planned.find((f) => f.relativePath === "foo.ts");
       expect(classFile).toBeDefined();
       expect(classFile?.content).toEqual("export class Foo {}\n");
@@ -53,7 +64,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.ts"),
       ).toBeDefined();
-      expect(readFileSync(join(tempDir, "foo.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "foo.ts"))).toEqual(
         "export class Foo {}\n",
       );
     });
@@ -83,7 +94,7 @@ describeConformance(
       expect(result.files.map((f) => f.relativePath)).toEqual([
         "bar/foo/foo.ts",
       ]);
-      expect(readFileSync(join(tempDir, "bar/foo/foo.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "bar/foo/foo.ts"))).toEqual(
         "export class Foo {}\n",
       );
     });
@@ -101,7 +112,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo/foo.ts"),
       ).toBeDefined();
-      expect(readFileSync(join(tempDir, "baz/foo/foo.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "baz/foo/foo.ts"))).toEqual(
         "export class Foo {}\n",
       );
     });
@@ -141,7 +152,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "_foo-bar/_foo-bar.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_foo-bar/_foo-bar.ts"), "utf8"),
+        readTextSync(join(tempDir, "_foo-bar/_foo-bar.ts")),
       ).toEqual("export class FooBar {}\n");
     });
 
@@ -160,7 +171,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "bar-baz/_foo/_foo.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "bar-baz/_foo/_foo.ts"), "utf8"),
+        readTextSync(join(tempDir, "bar-baz/_foo/_foo.ts")),
       ).toEqual("export class Foo {}\n");
     });
 
@@ -170,11 +181,10 @@ describeConformance(
       () => {
         expect(resolveSchematicType("cl")).toBe("class");
 
-        const files = buildSchematicFiles(
-          "class",
-          parseSchematicName("foo"),
-          { flat: false, spec: false },
-        );
+        const files = buildSchematicFiles("class", parseSchematicName("foo"), {
+          flat: false,
+          spec: false,
+        });
         expect(files.map((f) => f.relativePath)).toEqual(["foo/foo.ts"]);
         expect(files.some((f) => f.relativePath.endsWith(".js"))).toBe(false);
       },
@@ -195,7 +205,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.entity.ts"),
       ).toBeDefined();
-      expect(readFileSync(join(tempDir, "foo.entity.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "foo.entity.ts"))).toEqual(
         "export class FooEntity {}\n",
       );
     });
@@ -213,7 +223,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -233,8 +243,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.test.ts"))).toBe(true);
     });
 
     itAdapted(
@@ -249,7 +259,7 @@ describeConformance(
           cwd: tempDir,
         });
 
-        expect(readFileSync(join(tempDir, "src/foo.spec.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "src/foo.spec.ts"))).toEqual(
           'import { describe, expect, it } from "bun:test";\n' +
             'import { Foo } from "./foo";\n' +
             "\n" +

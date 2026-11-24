@@ -1,7 +1,7 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash, randomUUID } from "node:crypto";
-import { setImmediate as nextMacrotask } from "node:timers/promises";
-import { Logger, type Type } from "@bunest/common";
+import { ContextStorage, Logger, type Type } from "@bunest/core";
+
+const nextMacrotask = () => Bun.sleep(0);
+const randomUUID = () => crypto.randomUUID();
 import type { LeasedRun } from "../core/interfaces/leased-worker-options.interface";
 import type { ResolvedRetry } from "../core/interfaces/retry-settings.interface";
 import { nextRetry, resolveRetry } from "../core/retries/retry";
@@ -108,8 +108,7 @@ export interface ExecutionDeps {
 }
 
 export type RunOutcome =
-  | { ok: true; value: unknown }
-  | { ok: false; error: unknown };
+  { ok: true; value: unknown } | { ok: false; error: unknown };
 
 export type CompensationOutcome =
   | { state: "done"; count: number }
@@ -118,12 +117,11 @@ export type CompensationOutcome =
   | { state: "interrupted" }
   | { state: "terminated" };
 
-type EventBody =
-  WorkflowEvent extends infer E
-    ? E extends WorkflowEventBase
-      ? Omit<E, keyof WorkflowEventBase>
-      : never
-    : never;
+type EventBody = WorkflowEvent extends infer E
+  ? E extends WorkflowEventBase
+    ? Omit<E, keyof WorkflowEventBase>
+    : never
+  : never;
 
 /**
  * What `ctx.signalWait()` and `ctx.timer()` make for `ctx.waitForAny()`.
@@ -243,7 +241,7 @@ interface StepFrame {
 }
 
 const COMPENSATE = "$compensate:";
-const insideStep = new AsyncLocalStorage<StepFrame>();
+const insideStep = new ContextStorage<StepFrame>();
 const PARENT_CLOSE: readonly WorkflowParentClose[] = [
   "cancel",
   "terminate",
@@ -718,9 +716,11 @@ export class WorkflowExecution {
     const request = {
       id,
       workflow: resolved.name,
-      input: createHash("sha256")
-        .update(canonical(normalize(input) ?? null))
-        .digest("base64url"),
+      input: Buffer.from(
+        new Bun.CryptoHasher("sha256")
+          .update(canonical(normalize(input) ?? null))
+          .digest(),
+      ).toString("base64url"),
     };
     const entry = this.journal.get(name);
     if (entry && entry.status !== "pending") {
@@ -901,7 +901,8 @@ export class WorkflowExecution {
         data.waits[key] = branch.wait;
       } else {
         data.timers[key] =
-          reached?.timers[key] ?? wakeTime(`${name}: ${key}`, branch.timer!, now);
+          reached?.timers[key] ??
+          wakeTime(`${name}: ${key}`, branch.timer!, now);
       }
     }
     const deadlines = Object.values(data.timers);
@@ -1711,8 +1712,7 @@ function wakeTime(
   if (typeof when !== "object") {
     return now + parseDuration(when);
   }
-  const until =
-    when.until instanceof Date ? when.until.getTime() : when.until;
+  const until = when.until instanceof Date ? when.until.getTime() : when.until;
   if (typeof until !== "number" || !Number.isFinite(until)) {
     throw new TypeError(
       `Invalid deadline for sleep "${name}": ${String(when.until)}. Pass a valid Date or a timestamp in milliseconds.`,

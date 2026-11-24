@@ -3,7 +3,7 @@ import {
   type DynamicModule,
   type OnModuleInit,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { DiscoveryModule, ModuleRef } from "@bunest/core";
 import { WorkflowEvents } from "./events/workflow-events.service";
 import type { WorkflowPayloadCodec } from "./interfaces/workflow-payload-codec.interface";

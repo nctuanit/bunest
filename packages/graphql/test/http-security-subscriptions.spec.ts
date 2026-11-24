@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, test } from "bun:test";
-import { Module } from "@bunest/common";
+import { Module } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   Args,
@@ -196,7 +195,10 @@ describe("GraphQL Security Hardening, GraphiQL, Error Formatting & Live SSE Subs
       expect(rawText).not.toContain("TOP_SECRET_SQL_CREDENTIAL");
       expect(rawText).not.toContain("stacktrace");
       const errJson = JSON.parse(rawText) as {
-        errors?: Array<{ message: string; extensions?: Record<string, unknown> }>;
+        errors?: Array<{
+          message: string;
+          extensions?: Record<string, unknown>;
+        }>;
       };
       expect(errJson.errors?.[0]?.message).toBe("Internal server error");
       expect(errJson.errors?.[0]?.extensions?.stacktrace).toBeUndefined();

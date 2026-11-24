@@ -1,7 +1,5 @@
-import "reflect-metadata";
-import { createPublicKey, createSecretKey } from "node:crypto";
 import { describe, expect, it } from "bun:test";
-import { Injectable, Module, UnauthorizedException } from "@bunest/common";
+import { Injectable, Module, UnauthorizedException } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   JsonWebTokenError,
@@ -51,7 +49,9 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
     expect(jwt.decode<string>(strToken)).toBe("plain-text-payload");
 
     // 3. Uint8Array / Buffer payload
-    const binToken = await jwt.signAsync(Buffer.from("binary-secret-msg", "utf8"));
+    const binToken = await jwt.signAsync(
+      Buffer.from("binary-secret-msg", "utf8"),
+    );
     const verifiedBin = await jwt.verifyAsync<string>(binToken);
     expect(verifiedBin).toBe("binary-secret-msg");
 
@@ -131,10 +131,13 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
     expect(tolerated.sub).toBe("u2");
 
     // Token without iat rejected when maxAge is requested
-    const noIatToken = await jwt.signAsync({ sub: "no-iat" }, { noTimestamp: true });
-    await expect(
-      jwt.verifyAsync(noIatToken, { maxAge: "1m" }),
-    ).rejects.toThrow(JsonWebTokenError);
+    const noIatToken = await jwt.signAsync(
+      { sub: "no-iat" },
+      { noTimestamp: true },
+    );
+    await expect(jwt.verifyAsync(noIatToken, { maxAge: "1m" })).rejects.toThrow(
+      JsonWebTokenError,
+    );
   });
 
   it("exports jsonwebtoken-compatible error classes sharing instanceof with Bunest exceptions", async () => {
@@ -197,12 +200,17 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
         seenCalls.push(requestType);
         await Promise.resolve();
         if (requestType === JwtSecretRequestType.SIGN) {
-          const tenant = (tokenOrPayload as { tenant?: string }).tenant ?? "tenant-a";
+          const tenant =
+            (tokenOrPayload as { tenant?: string }).tenant ?? "tenant-a";
           return { key: tenantSecrets[tenant] ?? "" };
         }
         const decoded = jwt.decode<{ tenant?: string }>(String(tokenOrPayload));
         const tenant = decoded?.tenant ?? "tenant-a";
-        return createSecretKey(Buffer.from(tenantSecrets[tenant] ?? "", "utf8"));
+        const secretBuf = Buffer.from(tenantSecrets[tenant] ?? "", "utf8");
+        return {
+          type: "secret" as const,
+          export: () => secretBuf,
+        };
       },
     });
 
@@ -275,7 +283,10 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
       );
     }
 
-    const rsaPublicKeyObj = createPublicKey(rsaPubPem);
+    const rsaPublicKeyObj = {
+      type: "public" as const,
+      export: () => rsaPubPem,
+    };
     const keyObjVictim = new JwtService({
       secretOrKeyProvider: () => rsaPublicKeyObj,
     });
@@ -290,7 +301,9 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
     );
 
     // Deprecated secretOrPrivateKey alias still works
-    const legacyJwt = new JwtService({ secretOrPrivateKey: "legacy-secret-key" });
+    const legacyJwt = new JwtService({
+      secretOrPrivateKey: "legacy-secret-key",
+    });
     const legacyTok = await legacyJwt.signAsync({ sub: "legacy" });
     expect((await legacyJwt.verifyAsync<{ sub: string }>(legacyTok)).sub).toBe(
       "legacy",
@@ -303,7 +316,10 @@ describe("@nestjs/jwt v12 Parity (JwtService, JwtModule, Errors & Dynamic Secret
     @Injectable()
     class ConfigJwtOptionsFactory implements JwtOptionsFactory {
       createJwtOptions(): JwtModuleOptions {
-        return { secret: "from-use-class-factory", signOptions: { issuer: "class-iss" } };
+        return {
+          secret: "from-use-class-factory",
+          signOptions: { issuer: "class-iss" },
+        };
       }
     }
 

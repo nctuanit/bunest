@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   HealthIndicatorService,
@@ -80,7 +79,9 @@ describeConformance(
 
     describe("size strings", () => {
       it("checks the heap against a size string", async () => {
-        expect((await memory.checkHeap("heap", "150mb")).heap.status).toBe("up");
+        expect((await memory.checkHeap("heap", "150mb")).heap.status).toBe(
+          "up",
+        );
         expect((await memory.checkHeap("heap", "50mb")).heap.status).toBe(
           "down",
         );

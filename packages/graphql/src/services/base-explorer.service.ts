@@ -1,4 +1,4 @@
-import type { ContextId } from "@bunest/common";
+import type { ContextId } from "@bunest/core";
 import { ContextIdFactory } from "@bunest/core";
 import type { ExploredResolverMetadata } from "../interfaces/graphql.interface";
 
@@ -16,17 +16,23 @@ function isDerivedFrom(derived: Function, base: Function): boolean {
   return false;
 }
 
+export interface ExplorerModuleLike {
+  readonly metatype?: Function;
+  readonly moduleClass?: Function;
+  readonly providers?: Map<unknown, unknown> | readonly unknown[];
+}
+
 /**
  * Base explorer helper mirroring `@nestjs/graphql` `BaseExplorerService` for
  * module filtering, flat-mapping providers, grouping resolver metadata with
  * inheritance precedence, and context-id extraction.
  */
 export class BaseExplorerService {
-  getModules(
-    modulesContainer: Map<any, any> | undefined,
+  getModules<TKey = unknown, TModule = ExplorerModuleLike>(
+    modulesContainer: ReadonlyMap<TKey, TModule> | undefined,
     include: Function[],
     _skipGlobalImports = false,
-  ): any[] {
+  ): TModule[] {
     if (!modulesContainer) {
       return [];
     }
@@ -36,14 +42,15 @@ export class BaseExplorerService {
     return this.includeWhitelisted(modulesContainer, include);
   }
 
-  includeWhitelisted(
-    modulesContainer: Map<any, any>,
+  includeWhitelisted<TKey = unknown, TModule = ExplorerModuleLike>(
+    modulesContainer: ReadonlyMap<TKey, TModule>,
     include: Function[],
-  ): any[] {
+  ): TModule[] {
     const allowed = new Set<Function>(include);
-    const result: any[] = [];
+    const result: TModule[] = [];
     for (const mod of modulesContainer.values()) {
-      const metatype = mod?.metatype ?? mod?.moduleClass;
+      const moduleLike = mod as ExplorerModuleLike | null | undefined;
+      const metatype = moduleLike?.metatype ?? moduleLike?.moduleClass;
       if (metatype && allowed.has(metatype)) {
         result.push(mod);
       }
@@ -51,20 +58,24 @@ export class BaseExplorerService {
     return result;
   }
 
-  flatMap<T = ExploredResolverMetadata>(
-    modules: any[],
-    callback: (instance: any, moduleRef: any) => T | T[],
+  flatMap<
+    T = ExploredResolverMetadata,
+    TModule extends ExplorerModuleLike = ExplorerModuleLike,
+    TProvider = unknown,
+  >(
+    modules: readonly TModule[],
+    callback: (instance: TProvider, moduleRef: TModule) => T | T[],
   ): T[] {
     const out: T[] = [];
     for (const mod of modules) {
-      const providers: Iterable<any> =
+      const providers: Iterable<unknown> =
         mod?.providers instanceof Map
           ? mod.providers.values()
           : Array.isArray(mod?.providers)
             ? mod.providers
             : [];
       for (const wrapper of providers) {
-        const mapped = callback(wrapper, mod);
+        const mapped = callback(wrapper as TProvider, mod);
         if (Array.isArray(mapped)) {
           for (const item of mapped) {
             if (item !== undefined && item !== null) out.push(item);
@@ -79,10 +90,16 @@ export class BaseExplorerService {
 
   groupMetadata(
     resolvers: ExploredResolverMetadata[],
-  ): Record<string, Record<string, Function | Record<string, any>>> {
+  ): Record<string, Record<string, Function | Record<string, unknown>>> {
     const grouped: Record<
       string,
-      Record<string, { meta: ExploredResolverMetadata; value: Function | Record<string, any> }>
+      Record<
+        string,
+        {
+          meta: ExploredResolverMetadata;
+          value: Function | Record<string, unknown>;
+        }
+      >
     > = {};
 
     for (const resolver of resolvers) {
@@ -100,7 +117,7 @@ export class BaseExplorerService {
 
     const result: Record<
       string,
-      Record<string, Function | Record<string, any>>
+      Record<string, Function | Record<string, unknown>>
     > = {};
     for (const [typeName, fields] of Object.entries(grouped)) {
       result[typeName] = {};
@@ -111,7 +128,7 @@ export class BaseExplorerService {
     return result;
   }
 
-  getContextId(gqlContext: Record<string | symbol, any>): ContextId {
+  getContextId(gqlContext: Record<string | symbol, unknown>): ContextId {
     if (gqlContext && gqlContext[CONTEXT_ID_SYMBOL]) {
       return gqlContext[CONTEXT_ID_SYMBOL] as ContextId;
     }

@@ -1,13 +1,15 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   ConfigModule,
   ConfigService,
   type ConfigModuleOptions,
-} from "../../../../../packages/config/src";
+} from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 
 describeConformance(
@@ -20,9 +22,9 @@ describeConformance(
     let originalEnv: NodeJS.ProcessEnv;
     let tmpDir: string;
 
-    function writeEnvFile(name: string, content: string | Buffer) {
+    function writeEnvFile(name: string, content: string | Uint8Array) {
       const envFilePath = join(tmpDir, name);
-      fs.writeFileSync(envFilePath, content);
+      writeTextSync(envFilePath, content);
       return envFilePath;
     }
 
@@ -35,15 +37,19 @@ describeConformance(
 
     beforeEach(() => {
       originalEnv = { ...process.env };
-      tmpDir = fs.mkdtempSync(join(tmpdir(), "bunest-config-"));
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-config-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(tmpDir);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       process.env = originalEnv;
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
-    // BUNEST_BUG: ConfigModule.forRoot() calls assignVariablesToProcess(snapshot.fileValues) synchronously BEFORE validation runs and never writes validated/transformed values back to process.env (expected process.env.MAX_UPLOAD_MB="100" & ADMIN_BYPASS=undefined, received "100000" & "1"; packages/config/src/config.module.ts:60-69)
+    // BUNEST_BUG: ConfigModule.forRoot() calls assignVariablesToProcess(snapshot.fileValues) synchronously BEFORE validation runs and never writes validated/transformed values back to process.env (expected process.env.MAX_UPLOAD_MB="100" & ADMIN_BYPASS=undefined, received "100000" & "1"; packages/core/src/config/config.module.ts:60-69)
     it.skip("should assign expanded variables to process.env only after validation", async () => {
       const envFilePath = writeEnvFile(
         ".env",
@@ -63,7 +69,7 @@ describeConformance(
       expect(configService.get("ADMIN_BYPASS")).toBeUndefined();
     });
 
-    // BUNEST_BUG: Empty predefined process.env variable (EMPTY_VAR="") is treated as set instead of replaceable by expanded .env values (expected "myapp.test", received ""; packages/config/src/config.module.ts:268, packages/config/src/env-parser.ts:351,565-572)
+    // BUNEST_BUG: Empty predefined process.env variable (EMPTY_VAR="") is treated as set instead of replaceable by expanded .env values (expected "myapp.test", received ""; packages/core/src/config/config.module.ts:268, packages/core/src/config/env-parser.ts:351,565-572)
     it.skip("should replace an empty predefined variable with the expanded value", async () => {
       process.env.EMPTY_VAR = "";
       const envFilePath = writeEnvFile(
@@ -99,7 +105,7 @@ describeConformance(
       expect(process.env.DB_PASSWORD).toBe("p$ssw0rd");
     });
 
-    // BUNEST_BUG: Env file parser/loader does not reject values containing a NUL (\0) byte (expected rejection with 'Environment variable "CALLBACK_URL"', resolved silently; packages/config/src/env-parser.ts, packages/config/src/config.module.ts)
+    // BUNEST_BUG: Env file parser/loader does not reject values containing a NUL (\0) byte (expected rejection with 'Environment variable "CALLBACK_URL"', resolved silently; packages/core/src/config/env-parser.ts, packages/core/src/config/config.module.ts)
     it.skip("should reject a value that contains a NUL character", async () => {
       const envFilePath = writeEnvFile(
         ".env",

@@ -1,10 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import {
-  Injectable,
-  Module,
-  Scope,
-} from "../../../../../packages/common/src";
+import { Injectable, Module, Scope } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,

@@ -10,15 +10,11 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*",
     "@bunest/observability": "workspace:*",
-    "@bunest/sqlite": "workspace:*",
+    "@bunest/orm": "workspace:*",
     "@bunest/swagger": "workspace:*",
-    "@bunest/validation": "workspace:*",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "reflect-metadata": "^0.2.2"
+    "@bunest/validation": "workspace:*"
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"

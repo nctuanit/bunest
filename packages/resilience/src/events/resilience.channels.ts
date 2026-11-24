@@ -1,4 +1,4 @@
-import { channel, type Channel } from "node:diagnostics_channel";
+import { channel, type DiagnosticChannel } from "@bunest/core";
 import type {
   EventSink,
   ResilienceEvent,
@@ -17,9 +17,10 @@ const TYPES: readonly ResilienceEventType[] = [
   "fallback",
 ];
 
-const channels: Record<ResilienceEventType, Channel> = Object.fromEntries(
-  TYPES.map((type) => [type, channel(`nestjs:resilience:${type}`)]),
-) as Record<ResilienceEventType, Channel>;
+const channels: Record<ResilienceEventType, DiagnosticChannel> =
+  Object.fromEntries(
+    TYPES.map((type) => [type, channel(`nestjs:resilience:${type}`)]),
+  ) as Record<ResilienceEventType, DiagnosticChannel>;
 
 /** Where module-created policies also deliver their events (the app's `ResilienceEvents`). */
 const sinks = new WeakMap<object, EventSink>();

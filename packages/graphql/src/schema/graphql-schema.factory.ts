@@ -1,4 +1,3 @@
-import { writeFileSync } from "node:fs";
 import {
   type ArgumentMetadata,
   type BunestInterceptor,
@@ -16,7 +15,7 @@ import {
   type PipeLike,
   type PipeTransform,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   buildASTSchema,
   defaultFieldResolver,
@@ -48,11 +47,8 @@ import {
   lexicographicSortSchema,
   parse,
   printSchema,
-} from "graphql";
-import {
-  GRAPHQL_METADATA_KEYS,
-  GRAPHQL_SDL_FILE_END,
-} from "../constants";
+} from "../engine";
+import { GRAPHQL_METADATA_KEYS, GRAPHQL_SDL_FILE_END } from "../constants";
 import { GraphQLExecutionContextHost } from "../context/gql-execution-context";
 import {
   getResolverFields,
@@ -221,9 +217,10 @@ function wrapInputNullability(
   return wrapped;
 }
 
-function unwrapListMeta(
-  value: ReturnTypeFuncValue,
-): { base: unknown; listDepth: number } {
+function unwrapListMeta(value: ReturnTypeFuncValue): {
+  base: unknown;
+  listDepth: number;
+} {
   let current: unknown = value;
   let listDepth = 0;
   while (Array.isArray(current)) {
@@ -238,10 +235,12 @@ function isPlainThunk(value: unknown): value is () => Function {
   if (value.prototype === undefined) return true;
   const src = Function.prototype.toString.call(value).trimStart();
   if (src.startsWith("class ") || src.startsWith("class{")) return false;
-  return !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, value) &&
+  return (
+    !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, value) &&
     !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, value) &&
     !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, value) &&
-    value.length === 0;
+    value.length === 0
+  );
 }
 
 function applyFieldMiddleware(
@@ -258,7 +257,7 @@ function applyFieldMiddleware(
       context: context ?? {},
       info,
     };
-    const dispatch = (index: number): Promise<any> => {
+    const dispatch = (index: number): Promise<unknown> => {
       if (index >= middlewares.length) {
         return Promise.resolve(baseResolver(source, args, context, info));
       }
@@ -578,10 +577,9 @@ export class GraphQLSchemaFactory {
             }
           }
 
-          return await (compiled.handlerFn as (...a: unknown[]) => unknown).apply(
-            compiled.instance,
-            callArgs,
-          );
+          return await (
+            compiled.handlerFn as (...a: unknown[]) => unknown
+          ).apply(compiled.instance, callArgs);
         };
 
         if (compiled.interceptors.length === 0) {
@@ -636,10 +634,7 @@ export class GraphQLSchemaFactory {
         info,
       )) as AsyncIterable<unknown>;
 
-      if (
-        !iterable ||
-        typeof iterable[Symbol.asyncIterator] !== "function"
-      ) {
+      if (!iterable || typeof iterable[Symbol.asyncIterator] !== "function") {
         throw new Error(
           `Subscription "${op.name}" must return an AsyncIterable / AsyncIterator.`,
         );
@@ -1104,7 +1099,7 @@ export class GraphQLSchemaFactory {
           const existingField = fields[rfMeta.name];
           const fieldType = rfMeta.returnTypeFn
             ? this.resolveOutputType(rfMeta.returnTypeFn(), rfMeta.nullable)
-            : existingField?.type ?? GraphQLString;
+            : (existingField?.type ?? GraphQLString);
           const argsConfig = this.buildArgsConfig(compiled.params);
           const rfMw: FieldMiddleware[] = [
             ...globalMiddleware,
@@ -1374,7 +1369,11 @@ export class GraphQLSchemaFactory {
     const entityTypes: GraphQLObjectType[] = [];
     const referenceResolvers = new Map<
       string,
-      (reference: Record<string, unknown>, context: any, info: GraphQLResolveInfo) => unknown
+      (
+        reference: Record<string, unknown>,
+        context: any,
+        info: GraphQLResolveInfo,
+      ) => unknown
     >();
 
     if (federationEnabled) {
@@ -1463,7 +1462,8 @@ export class GraphQLSchemaFactory {
         const EntityUnion = new GraphQLUnionType({
           name: "_Entity",
           types: entityTypes,
-          resolveType: (val: any) => val?.__typename,
+          resolveType: (val: unknown) =>
+            (val as { __typename?: string } | null | undefined)?.__typename,
         });
         queryFields._entities = {
           type: new GraphQLNonNull(new GraphQLList(EntityUnion)),
@@ -1474,13 +1474,20 @@ export class GraphQLSchemaFactory {
               ),
             },
           },
-          resolve: async (_parent, args: any, context, info) => {
+          resolve: async (
+            _parent,
+            args: { representations?: unknown[] } | undefined,
+            context,
+            info,
+          ) => {
             const reps = Array.isArray(args?.representations)
               ? args.representations
               : [];
             const results = [];
             for (const rep of reps) {
-              const typename = rep?.__typename;
+              const typename = (
+                rep as { __typename?: unknown } | null | undefined
+              )?.__typename;
               const resolver =
                 typeof typename === "string"
                   ? referenceResolvers.get(typename)
@@ -1488,7 +1495,11 @@ export class GraphQLSchemaFactory {
               if (!resolver) {
                 results.push(null);
               } else {
-                const resolved = await resolver(rep, context, info);
+                const resolved = await resolver(
+                  rep as Record<string, unknown>,
+                  context,
+                  info,
+                );
                 results.push(
                   resolved && typeof resolved === "object"
                     ? { __typename: typename, ...(resolved as object) }
@@ -1556,7 +1567,7 @@ export class GraphQLSchemaFactory {
         (this.activeBuildSchemaOptions.addNewlineAtEnd
           ? GRAPHQL_SDL_FILE_END
           : "");
-      writeFileSync(autoSchemaPath, printed, "utf8");
+      await Bun.write(autoSchemaPath, printed);
     }
 
     if (options.transformSchema) {
@@ -1569,7 +1580,7 @@ export class GraphQLSchemaFactory {
         (this.activeBuildSchemaOptions.addNewlineAtEnd
           ? GRAPHQL_SDL_FILE_END
           : "");
-      writeFileSync(autoSchemaPath, printed, "utf8");
+      await Bun.write(autoSchemaPath, printed);
     }
 
     // Keep helper references reachable (avoid unused import warnings)

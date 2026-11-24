@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   HttpException,
   ParseFloatPipe,
   type ArgumentMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class CustomTestError extends HttpException {
@@ -48,42 +47,42 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error", async () => {
           return expect(
             target.transform("123.123abc", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error for hex strings", async () => {
           return expect(
             target.transform("0xFF", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error for binary strings", async () => {
           return expect(
             target.transform("0b101", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error for Infinity", async () => {
           return expect(
             target.transform("Infinity", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error for -Infinity", async () => {
           return expect(
             target.transform("-Infinity", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseFloatPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error for whitespace-padded input", async () => {
           return expect(
             target.transform(" 3.33", {} as ArgumentMetadata),

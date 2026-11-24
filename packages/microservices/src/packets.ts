@@ -9,13 +9,13 @@ export interface PacketId {
 export type PacketMetadata = Record<string, string>;
 
 export interface ReadPacket<T = any> {
-  pattern: any;
+  pattern: unknown;
   data: T;
   metadata?: PacketMetadata;
 }
 
 export interface WritePacket<T = any> {
-  err?: any;
+  err?: unknown;
   response?: T;
   isDisposed?: boolean;
   status?: string;
@@ -34,25 +34,25 @@ export interface MsObjectPattern {
   [key: string]: MsFundamentalPattern | MsObjectPattern;
 }
 export type MsPattern = MsObjectPattern | MsFundamentalPattern | MsPatternMatch;
-export type PatternMetadata = Record<string, any> | string;
+export type PatternMetadata = Record<string, unknown> | string;
 
 export interface Serializer<TInput = any, TOutput = any> {
   serialize(
     value: TInput,
-    options?: Record<string, any>,
+    options?: Record<string, unknown>,
   ): TOutput | Promise<TOutput>;
 }
 
 export type ProducerSerializer = Serializer<
   OutgoingEvent | OutgoingRequest,
-  any
+  unknown
 >;
-export type ConsumerSerializer = Serializer<OutgoingResponse, any>;
+export type ConsumerSerializer = Serializer<OutgoingResponse, unknown>;
 
 export interface Deserializer<TInput = any, TOutput = any> {
   deserialize(
     value: TInput,
-    options?: Record<string, any>,
+    options?: Record<string, unknown>,
   ): TOutput | Promise<TOutput>;
 }
 

@@ -1,21 +1,21 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   MetadataRegistry,
   SSE_ABORT_CONTROLLER,
   SseSignal,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   HttpExecutionContext,
   RequestContext,
   compileParameters,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "@SseSignal",
   {
-    upstreamPath: "packages/common/test/decorators/sse-signal.decorator.spec.ts",
+    upstreamPath:
+      "packages/common/test/decorators/sse-signal.decorator.spec.ts",
     category: "DIRECT_PORT",
     adrs: ["ADR-001", "ADR-004"],
     notes:

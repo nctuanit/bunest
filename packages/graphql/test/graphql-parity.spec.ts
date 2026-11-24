@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   APP_FILTER,
@@ -10,7 +9,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   Args,
@@ -202,7 +201,12 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       @Query(() => [SearchResultUnion])
       search() {
         return [
-          { id: "s1", status: ContentStatus.PUBLISHED, title: "Union Hit", authorId: "a2" },
+          {
+            id: "s1",
+            status: ContentStatus.PUBLISHED,
+            title: "Union Hit",
+            authorId: "a2",
+          },
           { id: "s2", status: ContentStatus.ARCHIVED, body: "Union Comment" },
         ];
       }
@@ -210,17 +214,38 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       @Query(() => [ArticleNode])
       articles() {
         return [
-          { id: "1", status: ContentStatus.PUBLISHED, title: "A1", authorId: "a1" },
-          { id: "2", status: ContentStatus.PUBLISHED, title: "A2", authorId: "a2" },
-          { id: "3", status: ContentStatus.PUBLISHED, title: "A3", authorId: "a1" },
-          { id: "4", status: ContentStatus.PUBLISHED, title: "A4", authorId: "a2" },
+          {
+            id: "1",
+            status: ContentStatus.PUBLISHED,
+            title: "A1",
+            authorId: "a1",
+          },
+          {
+            id: "2",
+            status: ContentStatus.PUBLISHED,
+            title: "A2",
+            authorId: "a2",
+          },
+          {
+            id: "3",
+            status: ContentStatus.PUBLISHED,
+            title: "A3",
+            authorId: "a1",
+          },
+          {
+            id: "4",
+            status: ContentStatus.PUBLISHED,
+            title: "A4",
+            authorId: "a2",
+          },
         ];
       }
 
       @ResolveField(() => AuthorModel, { nullable: true })
       author(
         @Parent() article: ArticleNode,
-        @Context("authorLoader") loader: BunestDataLoader<string, AuthorModel | null>,
+        @Context("authorLoader")
+        loader: BunestDataLoader<string, AuthorModel | null>,
       ) {
         return loader.load(article.authorId);
       }
@@ -303,8 +328,18 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
     expect(await polyRes.json()).toEqual({
       data: {
         nodes: [
-          { __typename: "ArticleNode", id: "n1", status: "PUBLISHED", title: "Bunest GraphQL" },
-          { __typename: "CommentNode", id: "n2", status: "DRAFT", body: "Great interfaces!" },
+          {
+            __typename: "ArticleNode",
+            id: "n1",
+            status: "PUBLISHED",
+            title: "Bunest GraphQL",
+          },
+          {
+            __typename: "CommentNode",
+            id: "n2",
+            status: "DRAFT",
+            body: "Great interfaces!",
+          },
         ],
         search: [
           { __typename: "ArticleNode", id: "s1", title: "Union Hit" },
@@ -375,9 +410,7 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
     const loader = new BunestDataLoader<number, string>(
       async (keys) => {
         calls.push([...keys]);
-        return keys.map((k) =>
-          k < 0 ? new Error(`negative:${k}`) : `v:${k}`,
-        );
+        return keys.map((k) => (k < 0 ? new Error(`negative:${k}`) : `v:${k}`));
       },
       { maxBatchSize: 2 },
     );
@@ -546,7 +579,9 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
         payload: { query: "{ version }" },
       }),
     );
-    const qNext = await waitForMessage((m) => m.id === "q1" && m.type === "next");
+    const qNext = await waitForMessage(
+      (m) => m.id === "q1" && m.type === "next",
+    );
     expect(qNext.payload).toEqual({ data: { version: 2 } });
     await waitForMessage((m) => m.id === "q1" && m.type === "complete");
 
@@ -640,7 +675,9 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       }
 
       @Subscription(() => Int)
-      async slowSub(@Args("delayMs", { type: () => Int, nullable: true }) delayMs?: number) {
+      async slowSub(
+        @Args("delayMs", { type: () => Int, nullable: true }) delayMs?: number,
+      ) {
         if (delayMs && delayMs > 0) {
           await Bun.sleep(delayMs);
         }
@@ -655,7 +692,8 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
           subscriptions: {
             "graphql-ws": {
               context: async (_ctx, msg) => {
-                const vars = msg.payload.variables as Record<string, unknown> | undefined;
+                const vars = msg.payload.variables as
+                  Record<string, unknown> | undefined;
                 if (vars?.throwContext === true) {
                   throw new Error("ws context failed");
                 }
@@ -674,7 +712,9 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
     })
     class RaceGraphqlModule {}
 
-    const app = await BunestFactory.create(RaceGraphqlModule, { logger: false });
+    const app = await BunestFactory.create(RaceGraphqlModule, {
+      logger: false,
+    });
     app.get(GraphQLService).attachWebSocket(app);
     const info = await app.listen({ port: 0, hostname: "127.0.0.1" });
     cleanups.push(() => app.close());
@@ -693,7 +733,10 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       });
       socket.send(JSON.stringify({ type: "connection_init" }));
       const ackDeadline = Date.now() + 1500;
-      while (!msgs.some((m) => m.type === "connection_ack") && Date.now() < ackDeadline) {
+      while (
+        !msgs.some((m) => m.type === "connection_ack") &&
+        Date.now() < ackDeadline
+      ) {
         await Bun.sleep(5);
       }
       return { socket, msgs };
@@ -747,7 +790,8 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
     expect(activeIterators).toBeGreaterThanOrEqual(beforeCloseActive);
 
     // 4b-ii: Client sends `complete` while `subscribeQuery()` is still awaiting -> iterator cleaned immediately, no stray frames!
-    const { socket: completeRaceWs, msgs: completeMsgs } = await openInitializedSocket();
+    const { socket: completeRaceWs, msgs: completeMsgs } =
+      await openInitializedSocket();
     completeRaceWs.send(
       JSON.stringify({
         id: "early-complete",
@@ -758,10 +802,14 @@ describe("GraphQL P1 #8: @InterfaceType, createUnionType, @UseFilters, BunestDat
       }),
     );
     await Bun.sleep(10);
-    completeRaceWs.send(JSON.stringify({ id: "early-complete", type: "complete" }));
+    completeRaceWs.send(
+      JSON.stringify({ id: "early-complete", type: "complete" }),
+    );
     await Bun.sleep(100);
     expect(cleanedIterators).toBe(activeIterators);
-    expect(completeMsgs.filter((m) => m.id === "early-complete")).toHaveLength(0);
+    expect(completeMsgs.filter((m) => m.id === "early-complete")).toHaveLength(
+      0,
+    );
 
     // 4c: Throwing `options.context()` sends `{ id, type: "error" }` cleanly with 0 unhandled rejections!
     let unhandledCount = 0;

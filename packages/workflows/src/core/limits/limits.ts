@@ -1,5 +1,11 @@
-import type { ConcurrencyLimit, RateLimit, RateWindowState, ResolvedConcurrency, ResolvedRateLimit } from '../interfaces/limits.interface';
-import { parseDuration } from '../time/duration';
+import type {
+  ConcurrencyLimit,
+  RateLimit,
+  RateWindowState,
+  ResolvedConcurrency,
+  ResolvedRateLimit,
+} from "../interfaces/limits.interface";
+import { parseDuration } from "../time/duration";
 
 /**
  * The highest priority (the last to run): BullMQ's, which the family shares. Priorities are integers from 1 (first)
@@ -19,15 +25,25 @@ export const MAX_PRIORITY = 2_097_151;
  * assertPriority(options.priority, 'add()'); // add(): invalid priority 1.5. Use an integer from 1 (first) to 2097151.
  * ```
  */
-export function assertPriority(priority: unknown, owner: string): asserts priority is number {
+export function assertPriority(
+  priority: unknown,
+  owner: string,
+): asserts priority is number {
   if (!isPriority(priority)) {
-    throw new TypeError(`${owner}: invalid priority ${JSON.stringify(priority)}. Use an integer from 1 (first) to ${MAX_PRIORITY}.`);
+    throw new TypeError(
+      `${owner}: invalid priority ${JSON.stringify(priority)}. Use an integer from 1 (first) to ${MAX_PRIORITY}.`,
+    );
   }
 }
 
 /** Whether `value` is an integer from 0 (none) to `MAX_PRIORITY`. */
 export function isPriority(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_PRIORITY;
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAX_PRIORITY
+  );
 }
 
 /**
@@ -45,19 +61,27 @@ export function resolveConcurrency<I = any>(
 ): ResolvedConcurrency<I> {
   const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
   if (limits.length === 0 || limits.length > 2) {
-    throw new TypeError(`${capitalized(owner)} has ${limits.length} concurrency limits. Give it one, or two: one without a key and one with.`);
+    throw new TypeError(
+      `${capitalized(owner)} has ${limits.length} concurrency limits. Give it one, or two: one without a key and one with.`,
+    );
   }
   const resolved: ResolvedConcurrency<I> = { limit: null, perKey: null };
   for (const { limit, key } of limits) {
     if (!Number.isSafeInteger(limit) || limit < 1) {
-      throw new TypeError(`Invalid concurrency limit ${JSON.stringify(limit)} for ${owner}. Use a positive integer.`);
+      throw new TypeError(
+        `Invalid concurrency limit ${JSON.stringify(limit)} for ${owner}. Use a positive integer.`,
+      );
     }
-    if (key !== undefined && typeof key !== 'function') {
-      throw new TypeError(`Invalid concurrency key for ${owner}. Use a function of the input, such as (order) => order.customerId.`);
+    if (key !== undefined && typeof key !== "function") {
+      throw new TypeError(
+        `Invalid concurrency key for ${owner}. Use a function of the input, such as (order) => order.customerId.`,
+      );
     }
-    const slot = key === undefined ? 'limit' : 'perKey';
+    const slot = key === undefined ? "limit" : "perKey";
     if (resolved[slot] !== null) {
-      throw new TypeError(`${capitalized(owner)} has two concurrency limits ${key === undefined ? 'without' : 'with'} a key. Give it at most one of each.`);
+      throw new TypeError(
+        `${capitalized(owner)} has two concurrency limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
+      );
     }
     resolved[slot] = limit;
     if (key) {
@@ -76,15 +100,22 @@ export function resolveConcurrency<I = any>(
  * // { limit: { max: 100, duration: 1_000 }, perKey: null }
  * ```
  */
-export function resolveRateLimit<I = any>(owner: string, rateLimit: RateLimit<I> | RateLimit<I>[]): ResolvedRateLimit<I> {
+export function resolveRateLimit<I = any>(
+  owner: string,
+  rateLimit: RateLimit<I> | RateLimit<I>[],
+): ResolvedRateLimit<I> {
   const limits = Array.isArray(rateLimit) ? rateLimit : [rateLimit];
   if (limits.length === 0 || limits.length > 2) {
-    throw new TypeError(`${capitalized(owner)} has ${limits.length} rate limits. Give it one, or two: one without a key and one with.`);
+    throw new TypeError(
+      `${capitalized(owner)} has ${limits.length} rate limits. Give it one, or two: one without a key and one with.`,
+    );
   }
   const resolved: ResolvedRateLimit<I> = { limit: null, perKey: null };
   for (const { max, duration, key } of limits) {
     if (!Number.isSafeInteger(max) || max < 1) {
-      throw new TypeError(`Invalid rate limit max ${JSON.stringify(max)} for ${owner}. Use a positive integer.`);
+      throw new TypeError(
+        `Invalid rate limit max ${JSON.stringify(max)} for ${owner}. Use a positive integer.`,
+      );
     }
     let ms: number;
     try {
@@ -93,14 +124,20 @@ export function resolveRateLimit<I = any>(owner: string, rateLimit: RateLimit<I>
       ms = 0;
     }
     if (!(ms > 0)) {
-      throw new TypeError(`Invalid rate limit duration ${JSON.stringify(duration)} for ${owner}. Use a positive duration, such as "1m".`);
+      throw new TypeError(
+        `Invalid rate limit duration ${JSON.stringify(duration)} for ${owner}. Use a positive duration, such as "1m".`,
+      );
     }
-    if (key !== undefined && typeof key !== 'function') {
-      throw new TypeError(`Invalid rate limit key for ${owner}. Use a function of the input, such as (order) => order.customerId.`);
+    if (key !== undefined && typeof key !== "function") {
+      throw new TypeError(
+        `Invalid rate limit key for ${owner}. Use a function of the input, such as (order) => order.customerId.`,
+      );
     }
-    const slot = key === undefined ? 'limit' : 'perKey';
+    const slot = key === undefined ? "limit" : "perKey";
     if (resolved[slot] !== null) {
-      throw new TypeError(`${capitalized(owner)} has two rate limits ${key === undefined ? 'without' : 'with'} a key. Give it at most one of each.`);
+      throw new TypeError(
+        `${capitalized(owner)} has two rate limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
+      );
     }
     resolved[slot] = { max, duration: ms };
     if (key) {
@@ -119,7 +156,11 @@ export function resolveRateLimit<I = any>(owner: string, rateLimit: RateLimit<I>
  * rateWindowRoom({ windowEnd: 60_000, count: 7 }, 10, 60_000); // 10: it ended
  * ```
  */
-export function rateWindowRoom(window: RateWindowState | null | undefined, max: number, now: number): number {
+export function rateWindowRoom(
+  window: RateWindowState | null | undefined,
+  max: number,
+  now: number,
+): number {
   return window && window.windowEnd > now ? max - window.count : max;
 }
 

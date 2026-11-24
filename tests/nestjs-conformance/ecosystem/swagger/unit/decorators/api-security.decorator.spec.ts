@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   ApiBearerAuth,
   ApiSecurity,

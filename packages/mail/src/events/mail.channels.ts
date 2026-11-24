@@ -1,8 +1,8 @@
-import { channel, type Channel } from "node:diagnostics_channel";
+import { channel, type DiagnosticChannel } from "@bunest/core";
 import type { MailEvent } from "./mail-events.interface";
 
-/** The `node:diagnostics_channel` channel of each event type. */
-export const channels: Record<MailEvent["type"], Channel> = {
+/** The Bunest diagnostics channel of each mail event type. */
+export const channels: Record<MailEvent["type"], DiagnosticChannel> = {
   sent: channel("nestjs:mail:sent"),
   failed: channel("nestjs:mail:failed"),
 };

@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import net from "node:net";
 import {
   afterAll,
   afterEach,
@@ -314,27 +312,29 @@ describeConformance(
     });
 
     describe("GRPCHealthIndicator with a local server / stub", () => {
-      let tcpServer: net.Server;
+      let tcpServer: Bun.TCPSocketListener<undefined>;
       let listeningUrl: string;
       let closedUrl: string;
 
-      beforeAll(async () => {
-        tcpServer = net.createServer();
-        await new Promise<void>((resolve) =>
-          tcpServer.listen(0, "127.0.0.1", resolve),
-        );
-        listeningUrl = `127.0.0.1:${(tcpServer.address() as net.AddressInfo).port}`;
+      beforeAll(() => {
+        tcpServer = Bun.listen({
+          hostname: "127.0.0.1",
+          port: 0,
+          socket: { data() {} },
+        });
+        listeningUrl = `127.0.0.1:${tcpServer.port}`;
 
-        const probe = net.createServer();
-        await new Promise<void>((resolve) =>
-          probe.listen(0, "127.0.0.1", resolve),
-        );
-        closedUrl = `127.0.0.1:${(probe.address() as net.AddressInfo).port}`;
-        await new Promise<void>((resolve) => probe.close(() => resolve()));
+        const probe = Bun.listen({
+          hostname: "127.0.0.1",
+          port: 0,
+          socket: { data() {} },
+        });
+        closedUrl = `127.0.0.1:${probe.port}`;
+        probe.stop(true);
       });
 
-      afterAll(async () => {
-        await new Promise<void>((resolve) => tcpServer.close(() => resolve()));
+      afterAll(() => {
+        tcpServer.stop(true);
       });
 
       itAdapted(

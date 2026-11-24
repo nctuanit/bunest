@@ -1,4 +1,4 @@
-import { Injectable, type OnApplicationShutdown } from "@bunest/common";
+import { Injectable, type OnApplicationShutdown } from "@bunest/core";
 import { EventSubject, type ReactiveStream } from "../utils/reactive.util";
 import type { ResilienceEvent } from "./resilience-events.interface";
 

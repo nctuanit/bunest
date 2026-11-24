@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { Readable } from "node:stream";
 import { StorageDisk } from "../disks/storage.disk";
 import {
   StorageError,
@@ -21,7 +19,7 @@ import type {
   StorageSignedUploadRequest,
   StorageWriteResult,
 } from "../interfaces/storage-types";
-import { readAll } from "../utils/body.util";
+import { bytesToReadableStream, readAll } from "../utils/body.util";
 import { DEFAULT_CONTENT_TYPE } from "../utils/content-type.util";
 import {
   assertValidPrefix,
@@ -34,13 +32,8 @@ import {
   resolveRetry,
   sleep,
 } from "./retry.util";
-import {
-  EMPTY_SHA256,
-  presignUrl,
-  sha256Hex,
-  signRequest,
-} from "./sigv4.util";
-import { encodeXml, xmlElements, xmlText } from "./xml.util";
+import { EMPTY_SHA256, presignUrl, sha256Hex, signRequest } from "./sigv4.util";
+import { encodeXml, xmlNodes, xmlText } from "./xml.util";
 
 const MIN_PART_SIZE = 5 * 1024 * 1024;
 const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
@@ -105,7 +98,7 @@ function formatRangeHeader(range: StorageRange): string {
 
 /**
  * Amazon S3 and S3-compatible stores (Cloudflare R2, MinIO, Backblaze B2, Google Cloud
- * Storage's interoperability API), over native `fetch` with Signature Version 4 on `node:crypto`.
+ * Storage's interoperability API), over native `fetch` with Signature Version 4.
  */
 export class S3Disk extends StorageDisk {
   readonly bucket: string;
@@ -113,8 +106,7 @@ export class S3Disk extends StorageDisk {
   private readonly endpoint: URL;
   private readonly pathStyle: boolean;
   private readonly credentials:
-    | S3Credentials
-    | (() => S3Credentials | Promise<S3Credentials>);
+    S3Credentials | (() => S3Credentials | Promise<S3Credentials>);
   private readonly prefix: string;
   private readonly encryptionHeaders: Record<string, string>;
   private readonly partSize: number;
@@ -454,7 +446,7 @@ export class S3Disk extends StorageDisk {
       key: to,
       size: head.size,
       contentType: head.contentType,
-      ...(etag ?? head.etag ? { etag: etag ?? head.etag } : {}),
+      ...((etag ?? head.etag) ? { etag: etag ?? head.etag } : {}),
     };
   }
 
@@ -490,10 +482,18 @@ export class S3Disk extends StorageDisk {
       options?.signal?.throwIfAborted();
       const batch = keys.slice(i, i + 1000);
       const xml = `<Delete><Quiet>true</Quiet>${batch
-        .map((k) => `<Object><Key>${encodeXml(this.prefixedKey(k))}</Key></Object>`)
+        .map(
+          (k) =>
+            `<Object><Key>${encodeXml(this.prefixedKey(k))}</Key></Object>`,
+        )
         .join("")}</Delete>`;
       const bodyBytes = Buffer.from(xml, "utf8");
-      const contentMd5 = createHash("md5").update(bodyBytes).digest("base64");
+      const md5Bytes = new Bun.CryptoHasher("md5").update(bodyBytes).digest();
+      const contentMd5 = Buffer.from(
+        md5Bytes.buffer,
+        md5Bytes.byteOffset,
+        md5Bytes.byteLength,
+      ).toString("base64");
       const url = this.bucketUrl();
       url.searchParams.set("delete", "");
       await this.send(
@@ -538,16 +538,17 @@ export class S3Disk extends StorageDisk {
     const size = parsedRange ? parsedRange.total : contentLength;
     const contentType = res.headers.get("content-type") ?? DEFAULT_CONTENT_TYPE;
     const lastModifiedStr = res.headers.get("last-modified");
-    const lastModified = lastModifiedStr ? new Date(lastModifiedStr) : new Date();
+    const lastModified = lastModifiedStr
+      ? new Date(lastModifiedStr)
+      : new Date();
     const etag = res.headers.get("etag") ?? undefined;
     const cacheControl = res.headers.get("cache-control") ?? undefined;
     const contentDispositionHeader =
       res.headers.get("content-disposition") ?? undefined;
     const metadata = parseMetadataHeaders(res.headers);
 
-    const body = res.body
-      ? Readable.fromWeb(res.body as unknown as import("node:stream/web").ReadableStream)
-      : Readable.from([]);
+    const body: ReadableStream<Uint8Array> =
+      res.body ?? bytesToReadableStream();
 
     return {
       key,
@@ -585,7 +586,9 @@ export class S3Disk extends StorageDisk {
     const size = Number(res.headers.get("content-length") ?? "0");
     const contentType = res.headers.get("content-type") ?? DEFAULT_CONTENT_TYPE;
     const lastModifiedStr = res.headers.get("last-modified");
-    const lastModified = lastModifiedStr ? new Date(lastModifiedStr) : new Date();
+    const lastModified = lastModifiedStr
+      ? new Date(lastModifiedStr)
+      : new Date();
     const etag = res.headers.get("etag") ?? undefined;
     const cacheControl = res.headers.get("cache-control") ?? undefined;
     const contentDispositionHeader =
@@ -633,16 +636,20 @@ export class S3Disk extends StorageDisk {
     );
     const xml = await res.text();
     const entries: StorageListEntry[] = [];
-    for (const itemXml of xmlElements(xml, "Contents")) {
-      const rawKey = xmlText(itemXml, "Key");
+    for (const item of xmlNodes(xml, "Contents")) {
+      const rawKey = item["Key"] !== undefined ? String(item["Key"]) : undefined;
       if (!rawKey) continue;
       const key =
         this.prefix && rawKey.startsWith(this.prefix)
           ? rawKey.slice(this.prefix.length)
           : rawKey;
-      const size = Number(xmlText(itemXml, "Size") ?? "0");
-      const lastMod = xmlText(itemXml, "LastModified");
-      const etag = xmlText(itemXml, "ETag");
+      const size = Number(item["Size"] ?? "0");
+      const lastMod =
+        item["LastModified"] !== undefined
+          ? String(item["LastModified"])
+          : undefined;
+      const etag =
+        item["ETag"] !== undefined ? String(item["ETag"]) : undefined;
       entries.push({
         key,
         size,
@@ -899,7 +906,9 @@ export class S3Disk extends StorageDisk {
       undefined;
 
     if (
-      (response.status === 404 || code === "NoSuchKey" || code === "NotFound") &&
+      (response.status === 404 ||
+        code === "NoSuchKey" ||
+        code === "NotFound") &&
       key !== undefined
     ) {
       return new StorageFileNotFoundError(key);

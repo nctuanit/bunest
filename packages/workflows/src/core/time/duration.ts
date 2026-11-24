@@ -8,9 +8,10 @@
  * }
  * ```
  */
-export type Duration = number | `${number}${'ms' | 's' | 'm' | 'h' | 'd' | 'w'}`;
+export type Duration =
+  number | `${number}${"ms" | "s" | "m" | "h" | "d" | "w"}`;
 
-const UNITS: Record<'ms' | 's' | 'm' | 'h' | 'd' | 'w', number> = {
+const UNITS: Record<"ms" | "s" | "m" | "h" | "d" | "w", number> = {
   ms: 1,
   s: 1_000,
   m: 60_000,
@@ -29,15 +30,19 @@ const UNITS: Record<'ms' | 's' | 'm' | 'h' | 'd' | 'w', number> = {
  * ```
  */
 export function parseDuration(duration: Duration): number {
-  if (typeof duration === 'number') {
+  if (typeof duration === "number") {
     if (!Number.isFinite(duration) || duration < 0) {
-      throw new TypeError(`Invalid duration ${duration}. Use a non-negative number of milliseconds.`);
+      throw new TypeError(
+        `Invalid duration ${duration}. Use a non-negative number of milliseconds.`,
+      );
     }
     return duration;
   }
   const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d|w)$/.exec(duration);
   if (!match) {
-    throw new TypeError(`Invalid duration "${duration}". Use milliseconds or a string such as "15m" or "3d".`);
+    throw new TypeError(
+      `Invalid duration "${duration}". Use milliseconds or a string such as "15m" or "3d".`,
+    );
   }
   return Math.round(Number(match[1]) * UNITS[match[2] as keyof typeof UNITS]);
 }

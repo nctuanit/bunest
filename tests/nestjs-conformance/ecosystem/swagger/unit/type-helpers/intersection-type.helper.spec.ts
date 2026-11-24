@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Expose,
@@ -6,8 +5,11 @@ import {
   Type as TransformType,
   instanceToInstance,
   plainToInstance,
-} from "class-transformer";
-import { IsBoolean, IsString } from "class-validator";
+} from "../../../../../../packages/validation/src/transformer";
+import {
+  IsBoolean,
+  IsString,
+} from "../../../../../../packages/validation/src/validator";
 import {
   ApiProperty,
   IntersectionType,
@@ -69,7 +71,7 @@ describeConformance(
     ) {}
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: SchemaExplorer / IntersectionType (packages/swagger/src/schema-explorer.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() properties
+      // BUNEST_BUG: SchemaExplorer / IntersectionType (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() properties
       it.skip("should return combined class", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(UpdateUserDto);
@@ -102,7 +104,7 @@ describeConformance(
 
       class IntersectionDto extends IntersectionType(ClassA, ClassB) {}
 
-      // BUNEST_BUG: IntersectionType (packages/common/src/mapped-types/mapped-types.utils.ts:609) passes stackDecorators=true, stacking duplicate @Transform decorators on repeatedProperty ("value_transformed_transformed" vs "value_transformed")
+      // BUNEST_BUG: IntersectionType (packages/core/src/common/mapped-types/mapped-types.utils.ts:609) passes stackDecorators=true, stacking duplicate @Transform decorators on repeatedProperty ("value_transformed_transformed" vs "value_transformed")
       it.skip("should not stack transformers declared on the same property", () => {
         const result = instanceToInstance(new IntersectionDto());
         expect(result.repeatedProperty).toEqual("value_transformed");
@@ -112,7 +114,7 @@ describeConformance(
         other = "other";
       }
 
-      // BUNEST_BUG: IntersectionType (packages/common/src/mapped-types/mapped-types.utils.ts:595-620) reverses base/derived @Transform execution order ("value_derived_base" vs "value_base_derived")
+      // BUNEST_BUG: IntersectionType (packages/core/src/common/mapped-types/mapped-types.utils.ts:595-620) reverses base/derived @Transform execution order ("value_derived_base" vs "value_base_derived")
       it.skip("should keep the transformers of a derived class and its base", () => {
         class BaseClass {
           @Transform(({ value }) => `${String(value)}_base`)

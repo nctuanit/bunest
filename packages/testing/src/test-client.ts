@@ -1,3 +1,4 @@
+import type { RoutePathInput } from "@bunest/core";
 import type {
   FetchCapable,
   TestClientOptions,
@@ -565,7 +566,10 @@ export class TestClient {
           )
           .join("; ");
         const existing = headers.get("cookie");
-        headers.set("cookie", existing ? `${existing}; ${serialized}` : serialized);
+        headers.set(
+          "cookie",
+          existing ? `${existing}; ${serialized}` : serialized,
+        );
       }
       return this.dispatcher.fetch(new Request(input, { headers }));
     }
@@ -633,37 +637,49 @@ export class TestClient {
   }
 
   get(
-    path: string,
+    path: RoutePathInput<"GET">,
     options?: Omit<TestRequestOptions, "json" | "body" | "formData">,
   ): Promise<TestResponse> {
     return this.request("GET", path, options);
   }
 
-  post(path: string, options?: TestRequestOptions): Promise<TestResponse> {
+  post(
+    path: RoutePathInput<"POST">,
+    options?: TestRequestOptions,
+  ): Promise<TestResponse> {
     return this.request("POST", path, options);
   }
 
-  put(path: string, options?: TestRequestOptions): Promise<TestResponse> {
+  put(
+    path: RoutePathInput<"PUT">,
+    options?: TestRequestOptions,
+  ): Promise<TestResponse> {
     return this.request("PUT", path, options);
   }
 
-  patch(path: string, options?: TestRequestOptions): Promise<TestResponse> {
+  patch(
+    path: RoutePathInput<"PATCH">,
+    options?: TestRequestOptions,
+  ): Promise<TestResponse> {
     return this.request("PATCH", path, options);
   }
 
-  delete(path: string, options?: TestRequestOptions): Promise<TestResponse> {
+  delete(
+    path: RoutePathInput<"DELETE">,
+    options?: TestRequestOptions,
+  ): Promise<TestResponse> {
     return this.request("DELETE", path, options);
   }
 
   head(
-    path: string,
+    path: RoutePathInput<"HEAD">,
     options?: Omit<TestRequestOptions, "json" | "body" | "formData">,
   ): Promise<TestResponse> {
     return this.request("HEAD", path, options);
   }
 
   options(
-    path: string,
+    path: RoutePathInput<"OPTIONS">,
     options?: Omit<TestRequestOptions, "json" | "body" | "formData">,
   ): Promise<TestResponse> {
     return this.request("OPTIONS", path, options);

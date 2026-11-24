@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -7,7 +6,7 @@ import {
   Module,
   type BunestModule,
   type MiddlewareConsumer,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   MemoryThrottlerStorage,
@@ -195,7 +194,9 @@ describe("ThrottlerModule / ThrottlerGuard & SecurityHeadersMiddleware", () => {
       expect(res.headers.get("x-frame-options")).toBe("DENY");
       expect(res.headers.get("referrer-policy")).toBe("no-referrer");
       expect(res.headers.get("cross-origin-opener-policy")).toBe("same-origin");
-      expect(res.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+      expect(res.headers.get("cross-origin-resource-policy")).toBe(
+        "same-origin",
+      );
       expect(res.headers.get("x-dns-prefetch-control")).toBe("off");
       expect(res.headers.get("content-security-policy")).toBe(
         "default-src 'self'; img-src 'self' data:",

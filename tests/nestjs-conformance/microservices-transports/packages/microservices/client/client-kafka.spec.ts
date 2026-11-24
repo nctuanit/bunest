@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   describeConformance,
@@ -25,7 +24,10 @@ import {
 
 interface RegisteredConsumer {
   readonly groupId: string;
-  readonly subscriptions: Array<{ topic: string | RegExp; fromBeginning?: boolean }>;
+  readonly subscriptions: Array<{
+    topic: string | RegExp;
+    fromBeginning?: boolean;
+  }>;
   eachMessage?: (payload: KafkaEachMessagePayload) => Promise<void>;
   autoCommit?: boolean;
   connected: boolean;
@@ -643,9 +645,9 @@ describeConformance(
           expect(reqRecord).toBeDefined();
           const sentMsg = reqRecord!.messages[0]!;
           expect(sentMsg.value).toBe(JSON.stringify({ n: 21 }));
-          expect(
-            typeof sentMsg.headers?.[KAFKA_CORRELATION_ID_HEADER],
-          ).toBe("string");
+          expect(typeof sentMsg.headers?.[KAFKA_CORRELATION_ID_HEADER]).toBe(
+            "string",
+          );
           expect(sentMsg.headers?.[KAFKA_REPLY_TOPIC_HEADER]).toBe(
             "math.double.reply",
           );
@@ -713,7 +715,9 @@ describeConformance(
 
           expect(await client.send("echo.any", undefined)).toBeNull();
           expect(await client.send("echo.any", null)).toBeNull();
-          expect(await client.send("echo.any", "plain-text")).toBe("plain-text");
+          expect(await client.send("echo.any", "plain-text")).toBe(
+            "plain-text",
+          );
           expect(
             await client.sendRecord("echo.any", {
               key: Buffer.from("buf-key"),
@@ -736,7 +740,10 @@ describeConformance(
           // Intercept producer.send to craft raw Kafka reply payloads manually
           const origProducerSend = broker.sentRecords;
           const sendAndReply = async (
-            craftReply: (correlationId: string, replyTopic: string) => KafkaEachMessagePayload,
+            craftReply: (
+              correlationId: string,
+              replyTopic: string,
+            ) => KafkaEachMessagePayload,
           ) => {
             const before = origProducerSend.length;
             const promise = client.send("manual.reply", { ok: true });
@@ -784,7 +791,10 @@ describeConformance(
                 }),
               ),
               headers: {
-                [KAFKA_CORRELATION_ID_HEADER]: [Buffer.from(cid), Buffer.from("extra")],
+                [KAFKA_CORRELATION_ID_HEADER]: [
+                  Buffer.from(cid),
+                  Buffer.from("extra"),
+                ],
               },
             },
           }));
@@ -823,9 +833,10 @@ describeConformance(
             new KafkaClientProxy({ client: kafkaClient }),
           );
 
-          const total = await client.send<number>({ v: 1, cmd: "sum" }, [
-            10, 20, 30,
-          ]);
+          const total = await client.send<number>(
+            { v: 1, cmd: "sum" },
+            [10, 20, 30],
+          );
           expect(total).toBe(60);
         },
       );
@@ -1322,12 +1333,12 @@ describeConformance(
           client.setPreRequestHook(() => {
             throw new Error("blocked by hook");
           });
-          await expect(client.send("hook.op", { blocked: true })).rejects.toThrow(
-            "blocked by hook",
-          );
-          await expect(client.emit("hook.ev", { blocked: true })).rejects.toThrow(
-            "blocked by hook",
-          );
+          await expect(
+            client.send("hook.op", { blocked: true }),
+          ).rejects.toThrow("blocked by hook");
+          await expect(
+            client.emit("hook.ev", { blocked: true }),
+          ).rejects.toThrow("blocked by hook");
           expect(broker.sentRecords.length).toBe(beforeCount);
 
           // Clearing hook with undefined restores normal operation

@@ -1,16 +1,22 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import { buildProject } from "../../../../../packages/cli/src";
 import { describeConformance } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "deleteOutDir behavior in buildProject",
@@ -26,96 +32,76 @@ describeConformance(
     let projectDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-delout-"));
+      tmpDir = makeTempDir("bunest-cli-conf-delout-");
       projectDir = join(tmpDir, "app");
-      mkdirSync(join(projectDir, "src"), { recursive: true });
-      mkdirSync(join(projectDir, "dist"), { recursive: true });
-      writeFileSync(
-        join(projectDir, "src", "main.ts"),
-        `export const version = 1;\n`,
-        "utf8",
-      );
-      writeFileSync(join(projectDir, "dist", "stale.js"), "// stale\n", "utf8");
-      mkdirSync(join(projectDir, "dist", "nested"), { recursive: true });
-      writeFileSync(
-        join(projectDir, "dist", "nested", "old.js"),
-        "// old\n",
-        "utf8",
-      );
+      mkdirSyncPath(join(projectDir, "src"), { recursive: true });
+      mkdirSyncPath(join(projectDir, "dist"), { recursive: true });
+      writeTextSync(join(projectDir, "src", "main.ts"), `export const version = 1;\n`);
+      writeTextSync(join(projectDir, "dist", "stale.js"), "// stale\n");
+      mkdirSyncPath(join(projectDir, "dist", "nested"), { recursive: true });
+      writeTextSync(join(projectDir, "dist", "nested", "old.js"), "// old\n");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     it("should not delete anything when deleteOutDir is disabled by default", async () => {
       const res = await buildProject({ cwd: projectDir });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "nested", "old.js"))).toBe(
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "nested", "old.js"))).toBe(
         true,
       );
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should not delete anything when deleteOutDir is explicitly false in bunest.json", async () => {
-      writeFileSync(
-        join(projectDir, "bunest.json"),
-        JSON.stringify({ compilerOptions: { deleteOutDir: false } }),
-        "utf8",
-      );
+      writeTextSync(join(projectDir, "bunest.json"), JSON.stringify({ compilerOptions: { deleteOutDir: false } }));
 
       const res = await buildProject({ cwd: projectDir });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should delete the output directory before building when deleteOutDir is enabled via CLI option", async () => {
       const res = await buildProject({ cwd: projectDir, deleteOutDir: true });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(false);
-      expect(existsSync(join(projectDir, "dist", "nested", "old.js"))).toBe(
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(false);
+      expect(existsSyncPath(join(projectDir, "dist", "nested", "old.js"))).toBe(
         false,
       );
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should delete the output directory when enabled in bunest.json compilerOptions.deleteOutDir", async () => {
-      writeFileSync(
-        join(projectDir, "bunest.json"),
-        JSON.stringify({ compilerOptions: { deleteOutDir: true } }),
-        "utf8",
-      );
+      writeTextSync(join(projectDir, "bunest.json"), JSON.stringify({ compilerOptions: { deleteOutDir: true } }));
 
       const res = await buildProject({ cwd: projectDir });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(false);
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(false);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should allow explicit CLI deleteOutDir: false to override bunest.json deleteOutDir: true", async () => {
-      writeFileSync(
-        join(projectDir, "bunest.json"),
-        JSON.stringify({ compilerOptions: { deleteOutDir: true } }),
-        "utf8",
-      );
+      writeTextSync(join(projectDir, "bunest.json"), JSON.stringify({ compilerOptions: { deleteOutDir: true } }));
 
       const res = await buildProject({ cwd: projectDir, deleteOutDir: false });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should delete a custom outdir inside the project when deleteOutDir is enabled", async () => {
       const customOut = join(projectDir, "build", "out");
-      mkdirSync(customOut, { recursive: true });
-      writeFileSync(join(customOut, "legacy.js"), "// legacy\n", "utf8");
+      mkdirSyncPath(customOut, { recursive: true });
+      writeTextSync(join(customOut, "legacy.js"), "// legacy\n");
 
       const res = await buildProject({
         cwd: projectDir,
@@ -124,17 +110,17 @@ describeConformance(
       });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(customOut, "legacy.js"))).toBe(false);
-      expect(existsSync(join(customOut, "main.js"))).toBe(true);
+      expect(existsSyncPath(join(customOut, "legacy.js"))).toBe(false);
+      expect(existsSyncPath(join(customOut, "main.js"))).toBe(true);
     });
 
     it("should succeed cleanly when deleteOutDir is enabled and outdir does not exist yet", async () => {
-      rmSync(join(projectDir, "dist"), { recursive: true, force: true });
+      await removePath(join(projectDir, "dist"), { recursive: true, force: true });
 
       const res = await buildProject({ cwd: projectDir, deleteOutDir: true });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(projectDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should not delete outdir if entry file validation fails beforehand", async () => {
@@ -146,15 +132,15 @@ describeConformance(
         }),
       ).rejects.toThrow(/Build entry file not found/);
 
-      expect(existsSync(join(projectDir, "dist", "stale.js"))).toBe(true);
+      expect(existsSyncPath(join(projectDir, "dist", "stale.js"))).toBe(true);
     });
 
     describe("path confinement", () => {
       // BUNEST_BUG: buildProject() calls `rm(outdir, { recursive: true, force: true })` without checking path confinement against `cwd` or honoring `compilerOptions.allowOutsidePaths` (packages/cli/src/commands/build.ts:103-105)
       it.skip("should refuse to delete an outDir outside the project by default", async () => {
         const outsideDir = join(tmpDir, "outside-dist");
-        mkdirSync(outsideDir, { recursive: true });
-        writeFileSync(join(outsideDir, "keep.txt"), "precious", "utf8");
+        mkdirSyncPath(outsideDir, { recursive: true });
+        writeTextSync(join(outsideDir, "keep.txt"), "precious");
 
         await expect(
           buildProject({
@@ -162,9 +148,11 @@ describeConformance(
             outdir: "../outside-dist",
             deleteOutDir: true,
           }),
-        ).rejects.toThrow(/outside of or equal to the project directory|Unsafe/);
+        ).rejects.toThrow(
+          /outside of or equal to the project directory|Unsafe/,
+        );
 
-        expect(existsSync(join(outsideDir, "keep.txt"))).toBe(true);
+        expect(existsSyncPath(join(outsideDir, "keep.txt"))).toBe(true);
       });
 
       // BUNEST_BUG: buildProject() does not refuse `outdir: "."` when `deleteOutDir: true`, which would wipe the project root itself (packages/cli/src/commands/build.ts:103-105)
@@ -175,25 +163,23 @@ describeConformance(
             outdir: ".",
             deleteOutDir: true,
           }),
-        ).rejects.toThrow(/outside of or equal to the project directory|Unsafe/);
+        ).rejects.toThrow(
+          /outside of or equal to the project directory|Unsafe/,
+        );
 
-        expect(existsSync(join(projectDir, "src", "main.ts"))).toBe(true);
+        expect(existsSyncPath(join(projectDir, "src", "main.ts"))).toBe(true);
       });
 
       it("should allow deleting an outside outdir when compilerOptions.allowOutsidePaths is enabled", async () => {
         const outsideDir = join(tmpDir, "outside-dist");
-        mkdirSync(outsideDir, { recursive: true });
-        writeFileSync(join(outsideDir, "old.js"), "// old", "utf8");
-        writeFileSync(
-          join(projectDir, "bunest.json"),
-          JSON.stringify({
+        mkdirSyncPath(outsideDir, { recursive: true });
+        writeTextSync(join(outsideDir, "old.js"), "// old");
+        writeTextSync(join(projectDir, "bunest.json"), JSON.stringify({
             compilerOptions: {
               deleteOutDir: true,
               allowOutsidePaths: true,
             },
-          }),
-          "utf8",
-        );
+          }));
 
         const res = await buildProject({
           cwd: projectDir,
@@ -201,27 +187,23 @@ describeConformance(
         });
 
         expect(res.success).toBe(true);
-        expect(existsSync(join(outsideDir, "old.js"))).toBe(false);
-        expect(existsSync(join(outsideDir, "main.js"))).toBe(true);
+        expect(existsSyncPath(join(outsideDir, "old.js"))).toBe(false);
+        expect(existsSyncPath(join(outsideDir, "main.js"))).toBe(true);
       });
 
       // BUNEST_BUG: buildProject() does not inspect tsconfig `tsBuildInfoFile` / `incremental` to delete stale buildinfo files when `deleteOutDir: true` (packages/cli/src/commands/build.ts)
       it.skip("should delete tsBuildInfoFile when deleteOutDir is enabled", async () => {
         const infoPath = join(projectDir, "tsconfig.tsbuildinfo");
-        writeFileSync(infoPath, "{}", "utf8");
-        writeFileSync(
-          join(projectDir, "tsconfig.json"),
-          JSON.stringify({
+        writeTextSync(infoPath, "{}");
+        writeTextSync(join(projectDir, "tsconfig.json"), JSON.stringify({
             compilerOptions: {
               incremental: true,
               tsBuildInfoFile: "./tsconfig.tsbuildinfo",
             },
-          }),
-          "utf8",
-        );
+          }));
 
         await buildProject({ cwd: projectDir, deleteOutDir: true });
-        expect(existsSync(infoPath)).toBe(false);
+        expect(existsSyncPath(infoPath)).toBe(false);
       });
     });
   },

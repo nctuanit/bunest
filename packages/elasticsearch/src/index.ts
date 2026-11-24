@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 export { ELASTICSEARCH_MODULE_OPTIONS } from "./elasticsearch.constants";
 export { ElasticsearchModule } from "./elasticsearch.module";
@@ -42,17 +41,20 @@ export type {
   ElasticsearchOptionsFactory,
 } from "./interfaces/elasticsearch-module-options.interface";
 export type {
+  AcknowledgedResponse,
   AgentFn,
   ApiKeyAuth,
   BasicAuth,
   BearerAuth,
   BulkRequest,
   BulkResponse,
+  CatResponse,
   ClearScrollRequest,
   ClearScrollResponse,
   ClientOptions,
   ClosePointInTimeRequest,
   ClosePointInTimeResponse,
+  ClusterHealthResponse,
   Context,
   CountRequest,
   CountResponse,
@@ -64,6 +66,8 @@ export type {
   DeleteResponse,
   ElasticsearchAuth,
   EsParams,
+  EsResponse,
+  EsRestResponse,
   ExistsRequest,
   ExistsResponse,
   ExistsSourceRequest,

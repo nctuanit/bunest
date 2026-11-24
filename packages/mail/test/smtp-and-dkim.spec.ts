@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { createHash, generateKeyPairSync, verify, type KeyObject } from "node:crypto";
-import { createServer, type Server, type Socket } from "node:net";
+import { ensureDir, join, removePath } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   MailConnectionError,
@@ -35,148 +34,203 @@ interface MockSmtpBehavior {
   stallOnData?: boolean;
 }
 
-function startMockSmtpServer(behavior: MockSmtpBehavior = {}): Promise<{
-  server: Server;
+interface StoppableServer {
+  stop(closeActiveConnections?: boolean): void;
+}
+
+interface MockSmtpConnState {
+  txCount: number;
+  buf: string;
+  inData: boolean;
+  dataBuf: string;
+  loginStage: number;
+  current: RecordedSmtpTx;
+}
+
+function derToPem(der: Uint8Array, label: string): string {
+  const b64 = Buffer.from(der).toString("base64");
+  const lines = b64.match(/.{1,64}/g)?.join("\n") ?? b64;
+  return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
+}
+
+function pkcs8ToPkcs1Der(pkcs8: Uint8Array): Uint8Array {
+  const readTlv = (offset: number) => {
+    const lenByte = pkcs8[offset + 1]!;
+    let len = lenByte;
+    let start = offset + 2;
+    if ((lenByte & 0x80) !== 0) {
+      const count = lenByte & 0x7f;
+      len = 0;
+      for (let i = 0; i < count; i++) {
+        len = (len << 8) | pkcs8[offset + 2 + i]!;
+      }
+      start = offset + 2 + count;
+    }
+    return { start, end: start + len, next: start + len };
+  };
+  const seq = readTlv(0);
+  const ver = readTlv(seq.start);
+  const alg = readTlv(ver.next);
+  const oct = readTlv(alg.next);
+  return pkcs8.subarray(oct.start, oct.end);
+}
+
+async function startMockSmtpServer(behavior: MockSmtpBehavior = {}): Promise<{
+  server: StoppableServer;
   port: number;
   connections: () => number;
   transactions: RecordedSmtpTx[];
 }> {
   const transactions: RecordedSmtpTx[] = [];
   let connCount = 0;
+  const states = new WeakMap<Bun.Socket<unknown>, MockSmtpConnState>();
 
-  const server = createServer((socket: Socket) => {
-    connCount++;
-    let txCount = 0;
-    let buf = "";
-    let inData = false;
-    let dataBuf = "";
-    let loginStage = 0;
-    let current: RecordedSmtpTx = { authCommands: [], rcptTo: [] };
-
-    socket.write("220 mock.smtp.local ESMTP ready\r\n");
-
-    socket.on("data", (chunk: Buffer) => {
-      buf += chunk.toString("utf8");
-      while (true) {
-        if (inData) {
-          const endIdx = buf.indexOf("\r\n.\r\n");
-          if (endIdx === -1) {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open(socket) {
+        connCount++;
+        states.set(socket, {
+          txCount: 0,
+          buf: "",
+          inData: false,
+          dataBuf: "",
+          loginStage: 0,
+          current: { authCommands: [], rcptTo: [] },
+        });
+        socket.write("220 mock.smtp.local ESMTP ready\r\n");
+      },
+      data(socket, chunk) {
+        const state = states.get(socket);
+        if (!state) return;
+        state.buf += Buffer.from(chunk).toString("utf8");
+        while (true) {
+          if (state.inData) {
+            const endIdx = state.buf.indexOf("\r\n.\r\n");
+            if (endIdx === -1) {
+              return;
+            }
+            state.dataBuf += state.buf.slice(0, endIdx);
+            state.buf = state.buf.slice(endIdx + 5);
+            state.inData = false;
+            // Unstuff leading dots
+            state.current.data = state.dataBuf.replace(/(^|\r\n)\.\./g, "$1.");
+            state.dataBuf = "";
+            transactions.push(state.current);
+            state.current = { authCommands: [], rcptTo: [] };
+            state.txCount++;
+            if (!behavior.stallOnData) {
+              socket.write(`250 2.0.0 Ok: queued as MSG${state.txCount}\r\n`);
+            }
+            continue;
+          }
+          const nl = state.buf.indexOf("\r\n");
+          if (nl === -1) {
             return;
           }
-          dataBuf += buf.slice(0, endIdx);
-          buf = buf.slice(endIdx + 5);
-          inData = false;
-          // Unstuff leading dots
-          current.data = dataBuf.replace(/(^|\r\n)\.\./g, "$1.");
-          dataBuf = "";
-          transactions.push(current);
-          current = { authCommands: [], rcptTo: [] };
-          txCount++;
-          if (!behavior.stallOnData) {
-            socket.write(`250 2.0.0 Ok: queued as MSG${txCount}\r\n`);
-          }
-          continue;
-        }
-        const nl = buf.indexOf("\r\n");
-        if (nl === -1) {
-          return;
-        }
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 2);
+          const line = state.buf.slice(0, nl);
+          state.buf = state.buf.slice(nl + 2);
 
-        if (loginStage === 1) {
-          current.authCommands.push(line);
-          loginStage = 2;
-          socket.write("334 UGFzc3dvcmQ6\r\n");
-          continue;
-        }
-        if (loginStage === 2) {
-          current.authCommands.push(line);
-          loginStage = 0;
-          socket.write(
-            behavior.authOk === false
-              ? "535 5.7.8 Authentication credentials invalid\r\n"
-              : "235 2.7.0 Authentication successful\r\n",
-          );
-          continue;
-        }
+          if (state.loginStage === 1) {
+            state.current.authCommands.push(line);
+            state.loginStage = 2;
+            socket.write("334 UGFzc3dvcmQ6\r\n");
+            continue;
+          }
+          if (state.loginStage === 2) {
+            state.current.authCommands.push(line);
+            state.loginStage = 0;
+            socket.write(
+              behavior.authOk === false
+                ? "535 5.7.8 Authentication credentials invalid\r\n"
+                : "235 2.7.0 Authentication successful\r\n",
+            );
+            continue;
+          }
 
-        const upper = line.toUpperCase();
-        if (upper.startsWith("EHLO ")) {
-          current.ehlo = line;
-          const caps = behavior.capabilities ?? [
-            "AUTH PLAIN LOGIN XOAUTH2",
-            "SIZE 1048576",
-            "SMTPUTF8",
-            "8BITMIME",
-          ];
-          if (caps.length === 0) {
-            socket.write("250 mock.smtp.local\r\n");
+          const upper = line.toUpperCase();
+          if (upper.startsWith("EHLO ")) {
+            state.current.ehlo = line;
+            const caps = behavior.capabilities ?? [
+              "AUTH PLAIN LOGIN XOAUTH2",
+              "SIZE 1048576",
+              "SMTPUTF8",
+              "8BITMIME",
+            ];
+            if (caps.length === 0) {
+              socket.write("250 mock.smtp.local\r\n");
+            } else {
+              socket.write("250-mock.smtp.local\r\n");
+              caps.forEach((cap, idx) => {
+                socket.write(
+                  `${idx === caps.length - 1 ? "250 " : "250-"}${cap}\r\n`,
+                );
+              });
+            }
+          } else if (upper.startsWith("AUTH LOGIN")) {
+            state.current.authCommands.push(line);
+            state.loginStage = 1;
+            socket.write("334 VXNlcm5hbWU6\r\n");
+          } else if (upper.startsWith("AUTH ")) {
+            state.current.authCommands.push(line);
+            socket.write(
+              behavior.authOk === false
+                ? "535 5.7.8 Authentication credentials invalid\r\n"
+                : "235 2.7.0 Authentication successful\r\n",
+            );
+          } else if (upper.startsWith("MAIL FROM:")) {
+            if (behavior.dropBeforeSecondMailFrom && state.txCount === 1) {
+              socket.terminate();
+              return;
+            }
+            state.current.mailFrom = line;
+            socket.write("250 2.1.0 Ok\r\n");
+          } else if (upper.startsWith("RCPT TO:")) {
+            const addr = line.slice(
+              line.indexOf("<") + 1,
+              line.lastIndexOf(">"),
+            );
+            state.current.rcptTo.push(addr);
+            const rejectReply = behavior.rejectRcpt?.[addr];
+            if (rejectReply) {
+              socket.write(`${rejectReply}\r\n`);
+            } else {
+              socket.write("250 2.1.5 Ok\r\n");
+            }
+          } else if (upper === "DATA") {
+            state.inData = true;
+            socket.write("354 End data with <CR><LF>.<CR><LF>\r\n");
+          } else if (upper === "RSET") {
+            state.current = { authCommands: [], rcptTo: [] };
+            socket.write("250 2.0.0 Ok\r\n");
+          } else if (upper === "QUIT") {
+            socket.write("221 2.0.0 Bye\r\n");
+            socket.end();
           } else {
-            socket.write("250-mock.smtp.local\r\n");
-            caps.forEach((cap, idx) => {
-              socket.write(`${idx === caps.length - 1 ? "250 " : "250-"}${cap}\r\n`);
-            });
+            socket.write("502 Command not implemented\r\n");
           }
-        } else if (upper.startsWith("AUTH LOGIN")) {
-          current.authCommands.push(line);
-          loginStage = 1;
-          socket.write("334 VXNlcm5hbWU6\r\n");
-        } else if (upper.startsWith("AUTH ")) {
-          current.authCommands.push(line);
-          socket.write(
-            behavior.authOk === false
-              ? "535 5.7.8 Authentication credentials invalid\r\n"
-              : "235 2.7.0 Authentication successful\r\n",
-          );
-        } else if (upper.startsWith("MAIL FROM:")) {
-          if (behavior.dropBeforeSecondMailFrom && txCount === 1) {
-            socket.destroy();
-            return;
-          }
-          current.mailFrom = line;
-          socket.write("250 2.1.0 Ok\r\n");
-        } else if (upper.startsWith("RCPT TO:")) {
-          const addr = line.slice(line.indexOf("<") + 1, line.lastIndexOf(">"));
-          current.rcptTo.push(addr);
-          const rejectReply = behavior.rejectRcpt?.[addr];
-          if (rejectReply) {
-            socket.write(`${rejectReply}\r\n`);
-          } else {
-            socket.write("250 2.1.5 Ok\r\n");
-          }
-        } else if (upper === "DATA") {
-          inData = true;
-          socket.write("354 End data with <CR><LF>.<CR><LF>\r\n");
-        } else if (upper === "RSET") {
-          current = { authCommands: [], rcptTo: [] };
-          socket.write("250 2.0.0 Ok\r\n");
-        } else if (upper === "QUIT") {
-          socket.write("221 2.0.0 Bye\r\n");
-          socket.end();
-        } else {
-          socket.write("502 Command not implemented\r\n");
         }
-      }
-    });
+      },
+    },
   });
 
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      resolve({ server, port, connections: () => connCount, transactions });
-    });
-  });
+  return { server, port: server.port, connections: () => connCount, transactions };
 }
 
-function verifyDkimSignedMime(signedMime: Buffer, publicKey: KeyObject, algorithm: "rsa-sha256" | "ed25519-sha256") {
+async function verifyDkimSignedMime(
+  signedMime: Buffer,
+  publicKey: CryptoKey,
+  algorithm: "rsa-sha256" | "ed25519-sha256",
+) {
   const text = signedMime.toString("utf8");
   const split = text.indexOf("\r\n\r\n");
   const head = text.slice(0, split + 2);
   const body = text.slice(split + 4);
   const fields = parseHeaderFields(head);
-  const dkimField = fields.find((f) => f.name.toLowerCase() === "dkim-signature")!;
+  const dkimField = fields.find(
+    (f) => f.name.toLowerCase() === "dkim-signature",
+  )!;
   expect(dkimField).toBeDefined();
 
   const unfolded = dkimField.raw.replace(/\r\n[ \t]+/g, " ");
@@ -191,7 +245,11 @@ function verifyDkimSignedMime(signedMime: Buffer, publicKey: KeyObject, algorith
   );
 
   // Verify body hash (bh)
-  const expectedBh = createHash("sha256").update(relaxedBody(body), "utf8").digest("base64");
+  const expectedBh = Buffer.from(
+    new Bun.CryptoHasher("sha256")
+      .update(relaxedBody(body), "utf8")
+      .digest(),
+  ).toString("base64");
   expect(tags.bh).toBe(expectedBh);
 
   // Reconstruct signed header payload (bottom-up per RFC 6376)
@@ -208,21 +266,35 @@ function verifyDkimSignedMime(signedMime: Buffer, publicKey: KeyObject, algorith
   }
   payload += relaxedHeader(dkimField.raw.replace(/(\bb=)[\s\S]*$/, "$1"));
 
-  const sigBuf = Buffer.from(tags.b!.replace(/\s+/g, ""), "base64");
+  const sigBuf = new Uint8Array(
+    Buffer.from(tags.b!.replace(/\s+/g, ""), "base64"),
+  );
   const ok =
     algorithm === "ed25519-sha256"
-      ? verify(null, createHash("sha256").update(payload, "utf8").digest(), publicKey, sigBuf)
-      : verify("sha256", Buffer.from(payload, "utf8"), publicKey, sigBuf);
+      ? await crypto.subtle.verify(
+          "Ed25519",
+          publicKey,
+          sigBuf,
+          new Uint8Array(
+            new Bun.CryptoHasher("sha256").update(payload, "utf8").digest(),
+          ),
+        )
+      : await crypto.subtle.verify(
+          "RSASSA-PKCS1-v1_5",
+          publicKey,
+          sigBuf,
+          new TextEncoder().encode(payload),
+        );
   expect(ok).toBe(true);
 }
 
 describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
-  const servers: Server[] = [];
+  const servers: StoppableServer[] = [];
 
   afterEach(async () => {
-    await Promise.all(
-      servers.splice(0).map((s) => new Promise<void>((r) => s.close(() => r()))),
-    );
+    for (const s of servers.splice(0)) {
+      s.stop(true);
+    }
   });
 
   it("delivers mail via real TCP SMTP with AUTH PLAIN, URL config, dot-stuffing, and verify()", async () => {
@@ -256,8 +328,13 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     expect(res.response).toBe("250 2.0.0 Ok: queued as MSG1");
     expect(mock.transactions).toHaveLength(1);
     expect(mock.transactions[0]?.authCommands[0]).toStartWith("AUTH PLAIN ");
-    expect(mock.transactions[0]?.mailFrom).toContain("MAIL FROM:<sender@example.com> SIZE=");
-    expect(mock.transactions[0]?.rcptTo).toEqual(["ada@example.com", "hidden@example.com"]);
+    expect(mock.transactions[0]?.mailFrom).toContain(
+      "MAIL FROM:<sender@example.com> SIZE=",
+    );
+    expect(mock.transactions[0]?.rcptTo).toEqual([
+      "ada@example.com",
+      "hidden@example.com",
+    ]);
     expect(mock.transactions[0]?.data).toContain("Subject: Real SMTP");
     expect(mock.transactions[0]?.data).not.toContain("hidden@example.com");
 
@@ -334,7 +411,11 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
 
     // Partial recipient refusal resets transaction without DATA, then connection still works
     await expect(
-      mailer.send({ to: ["ok3@example.com", "bad@example.com"], subject: "3", text: "three" }),
+      mailer.send({
+        to: ["ok3@example.com", "bad@example.com"],
+        subject: "3",
+        text: "three",
+      }),
     ).rejects.toThrow(MailRecipientsRejectedError);
     expect(mock.transactions).toHaveLength(2);
 
@@ -345,14 +426,19 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     await mod.close();
     // Closed transport refuses further sends
     await expect(
-      transport.send(await mailer.render({ to: "a@b.com", subject: "s", text: "t" }), {
-        signal: new AbortController().signal,
-        attempt: 1,
-      }),
+      transport.send(
+        await mailer.render({ to: "a@b.com", subject: "s", text: "t" }),
+        {
+          signal: new AbortController().signal,
+          attempt: 1,
+        },
+      ),
     ).rejects.toThrow(MailConnectionError);
 
     // Transparent stale pooled connection recovery
-    const dropMock = await startMockSmtpServer({ dropBeforeSecondMailFrom: true });
+    const dropMock = await startMockSmtpServer({
+      dropBeforeSecondMailFrom: true,
+    });
     servers.push(dropMock.server);
     const poolTransport = new SmtpTransport({
       host: "127.0.0.1",
@@ -361,11 +447,19 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     });
     const mod2 = await Test.createTestingModule({
       imports: [
-        MailModule.forRoot({ transport: poolTransport, from: "a@example.com", retry: false }),
+        MailModule.forRoot({
+          transport: poolTransport,
+          from: "a@example.com",
+          retry: false,
+        }),
       ],
     }).compile();
-    await mod2.get(Mailer).send({ to: "u@example.com", subject: "First", text: "1" });
-    await mod2.get(Mailer).send({ to: "u@example.com", subject: "Second", text: "2" });
+    await mod2
+      .get(Mailer)
+      .send({ to: "u@example.com", subject: "First", text: "1" });
+    await mod2
+      .get(Mailer)
+      .send({ to: "u@example.com", subject: "Second", text: "2" });
     expect(dropMock.connections()).toBe(2);
     expect(dropMock.transactions).toHaveLength(2);
     await mod2.close();
@@ -378,7 +472,10 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     const mod = await Test.createTestingModule({
       imports: [
         MailModule.forRoot({
-          transport: new SmtpTransport({ host: "127.0.0.1", port: smallMock.port }),
+          transport: new SmtpTransport({
+            host: "127.0.0.1",
+            port: smallMock.port,
+          }),
           from: "a@example.com",
           retry: false,
         }),
@@ -387,23 +484,34 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     const mailer = mod.get(Mailer);
 
     await expect(
-      mailer.send({ to: "u@example.com", subject: "Too big", text: "x".repeat(200) }),
+      mailer.send({
+        to: "u@example.com",
+        subject: "Too big",
+        text: "x".repeat(200),
+      }),
     ).rejects.toThrow(MailSmtpError);
 
     // Server without SMTPUTF8 refuses internationalized address
-    const noUtf8Mock = await startMockSmtpServer({ capabilities: ["SIZE 100000"] });
+    const noUtf8Mock = await startMockSmtpServer({
+      capabilities: ["SIZE 100000"],
+    });
     servers.push(noUtf8Mock.server);
     const mod2 = await Test.createTestingModule({
       imports: [
         MailModule.forRoot({
-          transport: new SmtpTransport({ host: "127.0.0.1", port: noUtf8Mock.port }),
+          transport: new SmtpTransport({
+            host: "127.0.0.1",
+            port: noUtf8Mock.port,
+          }),
           from: "a@example.com",
           retry: false,
         }),
       ],
     }).compile();
     await expect(
-      mod2.get(Mailer).send({ to: "josé@example.com", subject: "UTF8", text: "hi" }),
+      mod2
+        .get(Mailer)
+        .send({ to: "josé@example.com", subject: "UTF8", text: "hi" }),
     ).rejects.toThrow(MailConnectionError);
 
     // startTls: required fails permanently when server does not advertise STARTTLS
@@ -431,15 +539,29 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
       ],
     }).compile();
     await expect(
-      mod3.get(Mailer).send({ to: "u@example.com", subject: "Stall", text: "hi" }),
+      mod3
+        .get(Mailer)
+        .send({ to: "u@example.com", subject: "Stall", text: "hi" }),
     ).rejects.toThrow(MailTimeoutError);
 
     await Promise.all([mod.close(), mod2.close(), mod3.close()]);
   });
 
   it("signs MIME messages with cryptographically verifiable DKIM (RSA-SHA256 and Ed25519-SHA256) and sends over SMTP", async () => {
-    const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const ed = generateKeyPairSync("ed25519");
+    const rsa = await crypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const ed = (await crypto.subtle.generateKey("Ed25519", true, [
+      "sign",
+      "verify",
+    ])) as CryptoKeyPair;
 
     const mock = await startMockSmtpServer();
     servers.push(mock.server);
@@ -466,17 +588,22 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
     });
 
     const received = Buffer.from(mock.transactions[0]!.data!, "utf8");
-    verifyDkimSignedMime(received, rsa.publicKey, "rsa-sha256");
+    await verifyDkimSignedMime(received, rsa.publicKey, "rsa-sha256");
     expect(mock.transactions[0]!.data).toContain("d=example.com;");
     expect(mock.transactions[0]!.data).toContain("s=mail2026;");
-    expect(mock.transactions[0]!.data).toContain("h=from:to:subject:date:message-id:mime-version:content-type:content-transfer-encoding:x-custom:from");
+    expect(mock.transactions[0]!.data).toContain(
+      "h=from:to:subject:date:message-id:mime-version:content-type:content-transfer-encoding:x-custom:from",
+    );
 
     // Also test Ed25519-SHA256 DKIM signing directly
+    const edPkcs8 = new Uint8Array(
+      await crypto.subtle.exportKey("pkcs8", ed.privateKey),
+    );
     const edSigner = createDkimSigner(
       {
         domainName: "example.com",
         keySelector: "ed2026",
-        privateKey: ed.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+        privateKey: derToPem(edPkcs8, "PRIVATE KEY"),
       },
       "test",
     );
@@ -484,9 +611,170 @@ describe("SmtpTransport (real loopback TCP mock SMTP server) & DKIM", () => {
       "From: a@example.com\r\nTo: b@example.com\r\nSubject: Ed25519\r\n\r\nHello world\r\n",
       "utf8",
     );
-    const edSigned = edSigner(sampleMime, Date.UTC(2026, 8, 22, 0, 0, 0));
-    verifyDkimSignedMime(edSigned, ed.publicKey, "ed25519-sha256");
+    const edSigned = await edSigner(sampleMime, Date.UTC(2026, 8, 22, 0, 0, 0));
+    await verifyDkimSignedMime(edSigned, ed.publicKey, "ed25519-sha256");
+
+    // Also test PKCS#1 RSA PEM key directly
+    const rsaPkcs8 = new Uint8Array(
+      await crypto.subtle.exportKey("pkcs8", rsa.privateKey),
+    );
+    const pkcs1Signer = createDkimSigner(
+      {
+        domainName: "example.com",
+        keySelector: "pkcs1",
+        privateKey: derToPem(pkcs8ToPkcs1Der(rsaPkcs8), "RSA PRIVATE KEY"),
+      },
+      "test",
+    );
+    const pkcs1Signed = await pkcs1Signer(
+      sampleMime,
+      Date.UTC(2026, 8, 22, 0, 0, 0),
+    );
+    await verifyDkimSignedMime(pkcs1Signed, rsa.publicKey, "rsa-sha256");
 
     await mod.close();
+  });
+
+  it("supports implicit TLS and STARTTLS (via Bun socket.upgradeTLS) and rejects untrusted certs", async () => {
+    const dir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-smtp-tls-${crypto.randomUUID()}`,
+    );
+    await ensureDir(dir);
+    try {
+      const keyPath = join(dir, "key.pem");
+      const certPath = join(dir, "cert.pem");
+      Bun.spawnSync([
+        "openssl",
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        keyPath,
+        "-out",
+        certPath,
+        "-days",
+        "1",
+        "-nodes",
+        "-subj",
+        "/CN=localhost",
+        "-addext",
+        "subjectAltName=DNS:localhost,IP:127.0.0.1",
+      ]);
+      const key = await Bun.file(keyPath).text();
+      const cert = await Bun.file(certPath).text();
+
+      // 1. Implicit TLS SMTP server
+      const implicitServer = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        tls: { key, cert },
+        socket: {
+          open(s) {
+            s.write("220 tls.smtp.local ESMTP\r\n");
+          },
+          data(s, d) {
+            const msg = Buffer.from(d).toString("utf8");
+            if (msg.startsWith("EHLO ")) {
+              s.write("250 tls.smtp.local\r\n");
+            } else if (msg.startsWith("QUIT")) {
+              s.write("221 Bye\r\n");
+              s.end();
+            }
+          },
+        },
+      });
+      try {
+        const secureOk = new SmtpTransport({
+          host: "127.0.0.1",
+          port: implicitServer.port,
+          secure: true,
+          tls: { ca: cert, servername: "localhost" },
+        });
+        await secureOk.verify();
+
+        // Untrusted self-signed cert rejected when ca is not provided
+        const secureUntrusted = new SmtpTransport({
+          host: "127.0.0.1",
+          port: implicitServer.port,
+          secure: true,
+          tls: { servername: "localhost" },
+        });
+        await expect(secureUntrusted.verify()).rejects.toThrow(
+          MailConnectionError,
+        );
+      } finally {
+        implicitServer.stop(true);
+      }
+
+      // 2. STARTTLS SMTP server (plaintext -> STARTTLS -> Bun socket.upgradeTLS -> second EHLO -> QUIT)
+      let sawPostTlsEhlo = false;
+      const startTlsStates = new WeakMap<
+        Bun.Socket<unknown>,
+        { upgraded: boolean; pbuf: string }
+      >();
+      const startTlsServer = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: {
+          open(plain) {
+            startTlsStates.set(plain, { upgraded: false, pbuf: "" });
+            plain.write("220 starttls.smtp.local ESMTP\r\n");
+          },
+          data(plain, chunk) {
+            const state = startTlsStates.get(plain);
+            if (!state || state.upgraded) return;
+            state.pbuf += Buffer.from(chunk).toString("utf8");
+            let nl: number;
+            while ((nl = state.pbuf.indexOf("\r\n")) !== -1) {
+              const line = state.pbuf.slice(0, nl);
+              state.pbuf = state.pbuf.slice(nl + 2);
+              if (line.startsWith("EHLO ")) {
+                plain.write("250-starttls.smtp.local\r\n250 STARTTLS\r\n");
+              } else if (line === "STARTTLS") {
+                state.upgraded = true;
+                plain.write("220 Ready to start TLS\r\n");
+                plain.flush();
+                let tbuf = "";
+                plain.upgradeTLS({
+                  tls: { key, cert },
+                  socket: {
+                    data(tlsSock, td) {
+                      tbuf += Buffer.from(td).toString("utf8");
+                      let tnl: number;
+                      while ((tnl = tbuf.indexOf("\r\n")) !== -1) {
+                        const tline = tbuf.slice(0, tnl);
+                        tbuf = tbuf.slice(tnl + 2);
+                        if (tline.startsWith("EHLO ")) {
+                          sawPostTlsEhlo = true;
+                          tlsSock.write("250 starttls.smtp.local\r\n");
+                        } else if (tline === "QUIT") {
+                          tlsSock.write("221 Bye\r\n");
+                          tlsSock.end();
+                        }
+                      }
+                    },
+                  },
+                });
+                return;
+              }
+            }
+          },
+        },
+      });
+      servers.push(startTlsServer);
+
+      const startTlsTransport = new SmtpTransport({
+        host: "127.0.0.1",
+        port: startTlsServer.port,
+        startTls: "required",
+        tls: { ca: cert, servername: "localhost" },
+      });
+      await startTlsTransport.verify();
+      expect(sawPostTlsEhlo).toBe(true);
+    } finally {
+      await removePath(dir, { recursive: true, force: true });
+    }
   });
 });

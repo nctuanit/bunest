@@ -1,14 +1,10 @@
-import { ForbiddenException } from "@bunest/common";
+import { ForbiddenException } from "@bunest/core";
 import {
   type BunHttpAdapter,
   type BunServerLike,
   normalizePath,
-} from "@bunest/http";
-import {
-  getOperationAST,
-  type GraphQLFormattedError,
-  parse,
-} from "graphql";
+} from "@bunest/core/http";
+import { getOperationAST, type GraphQLFormattedError, parse } from "../engine";
 import type {
   GraphQLWsConnectionContext,
   GraphQLWsOptions,
@@ -221,7 +217,8 @@ export class GraphQLWsHandler {
       headers["Sec-WebSocket-Protocol"] = GRAPHQL_TRANSPORT_WS_PROTOCOL;
     }
 
-    const upgraded = server.upgrade?.(req, { data: socketData, headers }) ?? false;
+    const upgraded =
+      server.upgrade?.(req, { data: socketData, headers }) ?? false;
     if (upgraded) {
       return undefined;
     }
@@ -359,8 +356,7 @@ export class GraphQLWsHandler {
               err instanceof ForbiddenException
                 ? GRAPHQL_WS_CLOSE_CODES.FORBIDDEN
                 : GRAPHQL_WS_CLOSE_CODES.UNAUTHORIZED;
-            const reason =
-              err instanceof Error ? err.message : "Unauthorized";
+            const reason = err instanceof Error ? err.message : "Unauthorized";
             this.closeSocketWithProtocolError(
               ws,
               closeCode,

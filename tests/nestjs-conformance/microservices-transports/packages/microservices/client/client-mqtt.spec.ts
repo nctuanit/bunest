@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   describeConformance,
@@ -50,10 +49,7 @@ class InMemoryMqttBroker {
     useRemoveListenerOnly?: boolean;
     useCloseOnly?: boolean;
     omitUnsubscribe?: boolean;
-    onDelivery?: (
-      topic: string,
-      payload: Uint8Array | Buffer | string,
-    ) => void;
+    onDelivery?: (topic: string, payload: Uint8Array | Buffer | string) => void;
   }): { client: MqttClientLike; state: MockMqttClientState } {
     const broker = this;
     const state: MockMqttClientState = {
@@ -669,7 +665,9 @@ describeConformance(
           );
 
           await expect(c1.send("a/b", 1)).rejects.toThrow("sync publish error");
-          await expect(c2.send("a/b", 1)).rejects.toThrow("async publish error");
+          await expect(c2.send("a/b", 1)).rejects.toThrow(
+            "async publish error",
+          );
         },
       );
 
@@ -760,12 +758,20 @@ describeConformance(
           broker.deliverRaw(
             state,
             "sensor/read/reply/other-client",
-            JSON.stringify({ type: "response", id: req.id, response: "wrong-topic" }),
+            JSON.stringify({
+              type: "response",
+              id: req.id,
+              response: "wrong-topic",
+            }),
           );
           // 2. Malformed non-JSON payload on subscribed reply topic
           broker.deliverRaw(state, req.replyTo, "<<<corrupt-json>>>");
           // 3. Valid JSON that is not an RpcEnvelope
-          broker.deliverRaw(state, req.replyTo, JSON.stringify({ plain: true }));
+          broker.deliverRaw(
+            state,
+            req.replyTo,
+            JSON.stringify({ plain: true }),
+          );
           // 4. Non-response envelope (request / event)
           broker.deliverRaw(
             state,
@@ -775,7 +781,12 @@ describeConformance(
           broker.deliverRaw(
             state,
             req.replyTo,
-            JSON.stringify({ type: "request", id: req.id, pattern: "x", data: 1 }),
+            JSON.stringify({
+              type: "request",
+              id: req.id,
+              pattern: "x",
+              data: 1,
+            }),
           );
           // 5. Response envelope with mismatched id
           broker.deliverRaw(

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   DEFAULT_IPV6_SUBNET_PREFIX,
@@ -108,9 +107,9 @@ describeConformance(
       expect(
         normalizeIp("2001:db8:0:1:dead:beef:1:2", Number.POSITIVE_INFINITY),
       ).toBe(expected);
-      expect(
-        normalizeIp("2001:db8:0:1:dead:beef:1:2", Number(undefined)),
-      ).toBe(expected);
+      expect(normalizeIp("2001:db8:0:1:dead:beef:1:2", Number(undefined))).toBe(
+        expected,
+      );
     });
 
     it("strips the zone index so it cannot widen the keyspace", () => {

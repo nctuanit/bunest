@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   IsEmail,
@@ -7,7 +6,7 @@ import {
   Validate,
   ValidatorConstraint,
   type ValidatorConstraintInterface,
-} from "class-validator";
+} from "../packages/validation/src/validator";
 import {
   Body,
   BunestFactory,
@@ -54,8 +53,10 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
       }
     }
 
-    const baseRoutes = MetadataRegistry.getControllerRoutes(BaseItemsController);
-    const childRoutes = MetadataRegistry.getControllerRoutes(ChildItemsController);
+    const baseRoutes =
+      MetadataRegistry.getControllerRoutes(BaseItemsController);
+    const childRoutes =
+      MetadataRegistry.getControllerRoutes(ChildItemsController);
 
     expect(baseRoutes.map((r) => String(r.handlerKey))).toEqual(["list"]);
     expect(childRoutes.map((r) => String(r.handlerKey)).sort()).toEqual([
@@ -188,9 +189,9 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
     @Module({ controllers: [DupController] })
     class DupModule {}
 
-    await expect(BunestFactory.create(DupModule, { logger: false })).rejects.toThrow(
-      DuplicateRouteException,
-    );
+    await expect(
+      BunestFactory.create(DupModule, { logger: false }),
+    ).rejects.toThrow(DuplicateRouteException);
 
     class UnregisteredDependency {}
 
@@ -241,7 +242,10 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
       register(@Body() dto: SignupDto) {
         handlerCalls += 1;
         timeline.push("handler");
-        return { registered: dto.username, isInstance: dto instanceof SignupDto };
+        return {
+          registered: dto.username,
+          isInstance: dto instanceof SignupDto,
+        };
       }
     }
 
@@ -284,7 +288,10 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
         new Request("http://localhost/signup", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: "alice@example.com", username: "alice" }),
+          body: JSON.stringify({
+            email: "alice@example.com",
+            username: "alice",
+          }),
         }),
       );
       expect(okRes.status).toBe(201);
@@ -304,7 +311,9 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
     class FaultController {
       @Get()
       crash(): never {
-        throw new Error("FATAL postgres://admin:supersecret_pw@db.internal:5432");
+        throw new Error(
+          "FATAL postgres://admin:supersecret_pw@db.internal:5432",
+        );
       }
     }
 
@@ -322,7 +331,10 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
       expect(rawText).not.toContain("supersecret_pw");
       expect(rawText).not.toContain("FaultController");
       expect(rawText).not.toContain("stack");
-      const json = JSON.parse(rawText) as { statusCode: number; message: string };
+      const json = JSON.parse(rawText) as {
+        statusCode: number;
+        message: string;
+      };
       expect(json.statusCode).toBe(500);
       expect(json.message).toBe("Internal server error");
     } finally {
@@ -392,7 +404,10 @@ describe("Pre-Alpha Release Gate Checklist (Implementation Plan §20.2)", () => 
 
     @Injectable()
     class ResourceHolder
-      implements OnModuleDestroy, BeforeApplicationShutdown, OnApplicationShutdown
+      implements
+        OnModuleDestroy,
+        BeforeApplicationShutdown,
+        OnApplicationShutdown
     {
       onModuleDestroy() {
         lifecycleEvents.push("onModuleDestroy");

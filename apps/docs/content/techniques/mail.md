@@ -13,6 +13,7 @@ bun add @bunest/mail
 Configure `MailModule.forRoot()` with your chosen transport (`SmtpTransport`, `ResendTransport`, `PostmarkTransport`, `SendGridTransport`, `SesTransport`, `LogMailTransport`, `FileMailTransport`, or `InMemoryMailTransport` for tests):
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { MailModule, ResendTransport } from "@bunest/mail";
@@ -35,6 +36,7 @@ export class AppModule {}
 Inject `MailService` to send plain text, HTML, or template-rendered messages:
 
 @@filename(notifications.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { MailService } from "@bunest/mail";

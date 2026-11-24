@@ -2,12 +2,16 @@ import {
   ALL_LOG_LEVELS,
   Inject,
   Injectable,
+  LOG_LEVEL_COLORS,
   Logger,
   Optional,
+  clc,
+  formatNestTimestamp,
+  isColorAllowed,
   type LogLevel,
   type LoggerOptions,
   type LoggerService,
-} from "@bunest/common";
+} from "@bunest/core";
 import { traceContextStorage } from "../tracing/trace-context";
 
 export const OBSERVABILITY_LOGGER_OPTIONS = Symbol.for(
@@ -31,7 +35,7 @@ function defaultWriter(line: string, level: LogLevel): void {
 }
 
 /**
- * Structured correlated logger built on `@bunest/common`'s `Logger` redaction engine.
+ * Structured correlated logger built on `@bunest/core`'s `Logger` redaction engine.
  * Automatically injects active `traceId`, `spanId`, `parentSpanId`, and `requestId`
  * from `TraceContextStorage` into every log entry while deeply redacting secrets.
  */
@@ -41,6 +45,9 @@ export class ObservabilityLogger implements LoggerService {
   private levels: Set<LogLevel>;
   private readonly json: boolean;
   private readonly timestamp: boolean;
+  private readonly colors?: boolean;
+  private readonly prefix: string;
+  private readonly showPid: boolean;
   private readonly serviceName?: string;
   private readonly includeCorrelation: boolean;
   private readonly writer: (line: string, level: LogLevel) => void;
@@ -57,6 +64,9 @@ export class ObservabilityLogger implements LoggerService {
     this.levels = new Set(options.levels ?? ALL_LOG_LEVELS);
     this.json = options.json ?? true;
     this.timestamp = options.timestamp ?? true;
+    this.colors = options.colors;
+    this.prefix = options.prefix ?? "Bunest";
+    this.showPid = options.pid ?? true;
     this.serviceName = options.serviceName;
     this.includeCorrelation = options.includeCorrelation ?? true;
     this.writer = options.writer ?? defaultWriter;
@@ -169,26 +179,45 @@ export class ObservabilityLogger implements LoggerService {
       return;
     }
 
-    const parts: string[] = ["[Bunest]"];
-    if (ts) parts.push(ts);
-    parts.push(level.toUpperCase());
-    if (this.serviceName) parts.push(`[${this.serviceName}]`);
-    if (resolvedContext) parts.push(`[${resolvedContext}]`);
+    const useColors = this.colors ?? isColorAllowed();
+    const colorize = (s: string): string =>
+      useColors ? LOG_LEVEL_COLORS[level](s) : s;
+    const colorYellow = (s: string): string => (useColors ? clc.yellow(s) : s);
+
+    const pidPrefix = this.showPid
+      ? `[${this.prefix}] ${process.pid}  - `
+      : `[${this.prefix}] `;
+    const pidMessage = colorize(pidPrefix);
+    const tsPart = this.timestamp ? `${formatNestTimestamp()} ` : "";
+    const formattedLevel = colorize(level.toUpperCase().padStart(7, " "));
+
+    const tags: string[] = [];
+    if (this.serviceName) tags.push(colorYellow(`[${this.serviceName}]`));
+    if (resolvedContext) tags.push(colorYellow(`[${resolvedContext}]`));
     if (spanCtx?.traceId) {
-      parts.push(`[trace=${spanCtx.traceId} span=${spanCtx.spanId}]`);
+      tags.push(colorYellow(`[trace=${spanCtx.traceId} span=${spanCtx.spanId}]`));
     }
     if (spanCtx?.requestId) {
-      parts.push(`[req=${spanCtx.requestId}]`);
+      tags.push(colorYellow(`[req=${spanCtx.requestId}]`));
     }
-    parts.push(
+    const tagsPart = tags.length > 0 ? `${tags.join(" ")} ` : "";
+
+    const bodyParts: string[] = [
       typeof redactedMessage === "string"
-        ? redactedMessage
-        : JSON.stringify(redactedMessage),
-    );
+        ? colorize(redactedMessage)
+        : Bun.inspect(redactedMessage, { colors: useColors, compact: true }),
+    ];
     for (const p of redactedParams) {
-      parts.push(typeof p === "string" ? p : JSON.stringify(p));
+      bodyParts.push(
+        typeof p === "string"
+          ? colorize(p)
+          : Bun.inspect(p, { colors: useColors, compact: true }),
+      );
     }
 
-    this.writer(parts.join(" "), level);
+    this.writer(
+      `${pidMessage}${tsPart}${formattedLevel} ${tagsPart}${bodyParts.join(" ")}`,
+      level,
+    );
   }
 }

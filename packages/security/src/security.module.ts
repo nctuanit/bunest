@@ -8,7 +8,7 @@ import {
   type MiddlewareConsumer,
   type ModuleImport,
   type Provider,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   JWT_AUTH_GUARD_OPTIONS,
   JwtAuthGuard,

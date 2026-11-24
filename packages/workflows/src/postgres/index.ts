@@ -1,5 +1,5 @@
 // The `@bunest/workflows/postgres` entry: the first-party PostgreSQL store. Nothing here imports a driver or an ORM:
-// the executors (from @bunest/store-kit, which every first-party store builds on) reach the client the application
+// the executors (from @bunest/orm/store, which every first-party store builds on) reach the client the application
 // passes them.
 
 // The store, and the error it fails startup with while its schema is behind
@@ -15,10 +15,10 @@ export {
   fromPrisma,
   fromTypeOrm,
   type PrismaExecutorOptions,
-} from "@bunest/store-kit/postgres";
+} from "@bunest/orm/postgres";
 export type {
   SqlExecutor,
   SqlIsolationLevel,
   SqlTransaction,
   SqlTransactionOptions,
-} from "@bunest/store-kit/postgres";
+} from "@bunest/orm/postgres";

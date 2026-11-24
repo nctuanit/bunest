@@ -1,4 +1,4 @@
-import { APP_INTERCEPTOR, Module, type DynamicModule } from "@bunest/common";
+import { APP_INTERCEPTOR, Module, type DynamicModule } from "@bunest/core";
 import { DiscoveryModule } from "@bunest/core";
 import { ResilienceMethodAspectHandler } from "./aspects/resilience-aspect.handler";
 import { ResilienceContext } from "./context/resilience.context";

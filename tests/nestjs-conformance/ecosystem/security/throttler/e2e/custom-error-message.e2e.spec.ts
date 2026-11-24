@@ -1,10 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import {
-  Controller,
-  Get,
-  Module,
-} from "../../../../../../packages/common/src";
+import { Controller, Get, Module } from "../../../../../../packages/core/src/common";
 import { APP_GUARD } from "../../../../../../packages/core/src";
 import {
   SkipThrottle,

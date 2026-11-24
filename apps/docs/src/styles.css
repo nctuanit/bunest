@@ -57,9 +57,11 @@
   --bn-sidebar-w: 274px;
   --bn-toc-w: 236px;
 
-  --bn-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bn-font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --bn-font-display: "Plus Jakarta Sans", "Inter", -apple-system, sans-serif;
-  --bn-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bn-font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 [data-theme="dark"] {
@@ -249,7 +251,10 @@ a:hover {
   font-family: inherit;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .bn-search-trigger:hover {
@@ -297,7 +302,9 @@ a:hover {
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .bn-header-pill:hover {
@@ -325,7 +332,10 @@ a:hover {
   background: transparent;
   color: var(--bn-text-secondary);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .bn-icon-btn:hover {
@@ -393,7 +403,9 @@ a:hover {
   color: var(--bn-text);
   text-decoration: none;
   border-left: 3px solid transparent;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .bn-nav-top-link:hover {
@@ -427,7 +439,9 @@ a:hover {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .bn-nav-group-btn:hover {
@@ -470,7 +484,9 @@ a:hover {
   color: var(--bn-text-secondary);
   text-decoration: none;
   position: relative;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .bn-nav-link:hover {
@@ -628,7 +644,9 @@ a:hover {
   text-decoration: none;
   border-left: 2px solid transparent;
   margin-left: -1.5px;
-  transition: color 0.14s ease, border-color 0.14s ease;
+  transition:
+    color 0.14s ease,
+    border-color 0.14s ease;
 }
 
 .bn-toc-item.level-3 .bn-toc-link {
@@ -667,7 +685,9 @@ a:hover {
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .bn-back-top:hover {
@@ -896,7 +916,9 @@ a:hover {
   padding: 4px 10px;
   border-radius: 5px;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .bn-code-tab:hover {
@@ -921,7 +943,10 @@ a:hover {
   font-size: 0.73rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .bn-copy-btn:hover {
@@ -969,16 +994,39 @@ a:hover {
 }
 
 /* Syntax Token Palette (One Dark Pro / NestJS Docs) */
-.tok-keyword { color: #c678dd; font-weight: 500; }
-.tok-decorator { color: #ff5c85; font-weight: 500; }
-.tok-string { color: #98c379; }
-.tok-number { color: #d19a66; }
-.tok-comment { color: #64748b; font-style: italic; }
-.tok-class { color: #e5c07b; }
-.tok-type { color: #56b6c2; }
-.tok-fn { color: #61afef; }
-.tok-prop { color: #e06c75; }
-.tok-punct { color: #94a3b8; }
+.tok-keyword {
+  color: #c678dd;
+  font-weight: 500;
+}
+.tok-decorator {
+  color: #ff5c85;
+  font-weight: 500;
+}
+.tok-string {
+  color: #98c379;
+}
+.tok-number {
+  color: #d19a66;
+}
+.tok-comment {
+  color: #64748b;
+  font-style: italic;
+}
+.tok-class {
+  color: #e5c07b;
+}
+.tok-type {
+  color: #56b6c2;
+}
+.tok-fn {
+  color: #61afef;
+}
+.tok-prop {
+  color: #e06c75;
+}
+.tok-punct {
+  color: #94a3b8;
+}
 
 /* ==========================================================================
    Callouts & Blockquotes
@@ -1110,7 +1158,11 @@ a:hover {
   border-radius: 14px;
   border: 1px solid var(--bn-primary-border);
   background:
-    radial-gradient(circle at top right, var(--bn-primary-soft), transparent 60%),
+    radial-gradient(
+      circle at top right,
+      var(--bn-primary-soft),
+      transparent 60%
+    ),
     var(--bn-bg-subtle);
 }
 
@@ -1156,7 +1208,10 @@ a:hover {
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+  transition:
+    transform 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease;
 }
 
 .bn-btn:hover {
@@ -1213,7 +1268,10 @@ a:hover {
   border: 1px solid var(--bn-border);
   background: var(--bn-bg-elevated);
   text-decoration: none;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .bn-feature-card:hover {
@@ -1560,7 +1618,10 @@ a:hover {
   border: 1px solid var(--bn-border);
   background: var(--bn-bg-elevated);
   text-decoration: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .bn-pager-card:hover {
@@ -1716,7 +1777,9 @@ a:hover {
   text-decoration: none;
   color: var(--bn-text);
   border: 1px solid transparent;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
 }
 
 .bn-search-item:hover,

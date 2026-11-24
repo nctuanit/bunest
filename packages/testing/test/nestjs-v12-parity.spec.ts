@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { ConsoleLogger, Injectable } from "@bunest/common";
+import { ConsoleLogger, Injectable } from "@bunest/core";
 import {
   CapturingLogger,
   Test,
@@ -30,7 +29,11 @@ describe("@bunest/testing NestJS v12 Parity Suite", () => {
 
     // Context management inherited from ConsoleLogger
     logger.setContext("PaymentsService");
-    logger.warn("Retrying payment", { orderId: 42, meta: { attempt: 2 } }, { region: "us-east" });
+    logger.warn(
+      "Retrying payment",
+      { orderId: 42, meta: { attempt: 2 } },
+      { region: "us-east" },
+    );
     logger.resetContext();
     logger.log(() => "Lazy evaluated message");
 

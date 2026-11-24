@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Body,
   Controller,
@@ -9,7 +8,7 @@ import {
   Param,
   Post,
   Query,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ApiBearerAuth,
   ApiBody,

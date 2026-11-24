@@ -1,13 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createHash } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   Controller,
   Get,
   Module,
   type ExecutionContext,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { APP_GUARD } from "../../../../../../packages/core/src";
 import {
   SkipThrottle,
@@ -21,7 +18,7 @@ import {
 } from "../../../../_helpers/index";
 
 function md5(text: string): string {
-  return createHash("md5").update(text).digest("hex");
+  return new Bun.CryptoHasher("md5").update(text).digest("hex");
 }
 
 const commonHeader = (prefix: string, name?: string) =>
@@ -148,7 +145,7 @@ describeConformance(
         const r6 = await ctx.request().get("/").expect(429);
         expect(r6.headers[retryHeader()]).toMatch(/^\d+$/);
 
-        await delay(WINDOW_MS + 60);
+        await Bun.sleep(WINDOW_MS + 60);
 
         const r7 = await ctx.request().get("/").expect(200);
         expect(r7.headers[remainingHeader()]).toBe("1");
@@ -172,7 +169,7 @@ describeConformance(
         const r4 = await ctx.request().get("/custom/1").expect(429);
         expect(r4.headers[retryHeader(custom)]).toMatch(/^\d+$/);
 
-        await delay(WINDOW_MS + 60);
+        await Bun.sleep(WINDOW_MS + 60);
 
         const r5 = await ctx.request().get("/custom").expect(200);
         expect(r5.headers[remainingHeader(custom)]).toBe("1");

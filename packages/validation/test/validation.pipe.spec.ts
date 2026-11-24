@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -8,8 +7,8 @@ import {
   MetadataRegistry,
   UnprocessableEntityException,
   type ValidationErrorResponse,
-} from "@bunest/common";
-import { Transform, Type } from "class-transformer";
+} from "@bunest/core";
+import { Transform, Type } from "../src/transformer";
 import {
   IsArray,
   IsBoolean,
@@ -25,7 +24,7 @@ import {
   type ValidationArguments,
   type ValidationError,
   type ValidatorConstraintInterface,
-} from "class-validator";
+} from "../src/validator";
 import {
   VALIDATION_PIPE_OPTIONS,
   ValidationPipe,
@@ -431,9 +430,9 @@ describe("ValidationPipe", () => {
       expect(byField.get("items[0].quantity")?.messages).toEqual([
         "quantity must not be less than 1",
       ]);
-      expect(byField.get("unexpectedField")?.constraints.whitelistValidation).toBe(
-        "property unexpectedField should not exist",
-      );
+      expect(
+        byField.get("unexpectedField")?.constraints.whitelistValidation,
+      ).toBe("property unexpectedField should not exist");
     });
   });
 
@@ -454,8 +453,8 @@ describe("ValidationPipe", () => {
         ),
       );
       expect(
-        (invalidOptional.getResponse() as unknown as ValidationErrorResponse).details[0]
-          ?.field,
+        (invalidOptional.getResponse() as unknown as ValidationErrorResponse)
+          .details[0]?.field,
       ).toBe("bio");
 
       const skipMissingPipe = new ValidationPipe({
@@ -502,7 +501,8 @@ describe("ValidationPipe", () => {
         ),
       );
       expect(
-        (createErr.getResponse() as unknown as ValidationErrorResponse).details[0]?.field,
+        (createErr.getResponse() as unknown as ValidationErrorResponse)
+          .details[0]?.field,
       ).toBe("password");
 
       // Missing password passes "update" group when reason is provided
@@ -680,7 +680,8 @@ describe("ValidationPipe", () => {
         }),
       );
       expect(
-        (namedErr.getResponse() as unknown as ValidationErrorResponse).details[0]?.field,
+        (namedErr.getResponse() as unknown as ValidationErrorResponse)
+          .details[0]?.field,
       ).toBe("user");
     });
   });
@@ -709,7 +710,8 @@ describe("ValidationPipe", () => {
         pipe.transform(ctorPayload, { type: "body", metatype: CreateUserDto }),
       );
       expect(
-        (err2.getResponse() as unknown as ValidationErrorResponse).details[0]?.field,
+        (err2.getResponse() as unknown as ValidationErrorResponse).details[0]
+          ?.field,
       ).toBe("constructor");
       expect(({} as Record<string, unknown>).polluted2).toBeUndefined();
 
@@ -725,7 +727,8 @@ describe("ValidationPipe", () => {
         }),
       );
       expect(
-        (err3.getResponse() as unknown as ValidationErrorResponse).details[0]?.field,
+        (err3.getResponse() as unknown as ValidationErrorResponse).details[0]
+          ?.field,
       ).toBe("prototype");
     });
 
@@ -819,8 +822,8 @@ describe("ValidationPipe", () => {
         ),
       );
       const firstConstraints = Object.keys(
-        (firstErr.getResponse() as unknown as ValidationErrorResponse).details[0]
-          ?.constraints ?? {},
+        (firstErr.getResponse() as unknown as ValidationErrorResponse)
+          .details[0]?.constraints ?? {},
       );
       expect(firstConstraints).toHaveLength(1);
 
@@ -846,7 +849,8 @@ describe("ValidationPipe", () => {
           { type: "body", metatype: CreateUserDto },
         ),
       );
-      const dismissBody = dismissErr.getResponse() as unknown as ValidationErrorResponse;
+      const dismissBody =
+        dismissErr.getResponse() as unknown as ValidationErrorResponse;
       expect(dismissBody.details[0]?.field).toBe("email");
       expect(dismissBody.details[0]?.constraints.isEmail).toBe("");
 
@@ -861,9 +865,9 @@ describe("ValidationPipe", () => {
       );
       expect(err422).toBeInstanceOf(UnprocessableEntityException);
       expect(err422.getStatus()).toBe(422);
-      expect((err422.getResponse() as unknown as ValidationErrorResponse).error).toBe(
-        "Unprocessable Entity",
-      );
+      expect(
+        (err422.getResponse() as unknown as ValidationErrorResponse).error,
+      ).toBe("Unprocessable Entity");
 
       const status418Pipe = new ValidationPipe({
         errorHttpStatusCode: HttpStatus.I_AM_A_TEAPOT,
@@ -875,9 +879,9 @@ describe("ValidationPipe", () => {
         ),
       );
       expect(err418.getStatus()).toBe(418);
-      expect((err418.getResponse() as unknown as ValidationErrorResponse).error).toBe(
-        "I'm a Teapot",
-      );
+      expect(
+        (err418.getResponse() as unknown as ValidationErrorResponse).error,
+      ).toBe("I'm a Teapot");
     });
 
     it("supports expectedType and validateCustomDecorators", async () => {

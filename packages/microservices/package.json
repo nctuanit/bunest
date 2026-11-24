@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -28,12 +28,11 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external @bunest/core --external reflect-metadata --external bun",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/core --external bun --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*"
   },
   "devDependencies": {

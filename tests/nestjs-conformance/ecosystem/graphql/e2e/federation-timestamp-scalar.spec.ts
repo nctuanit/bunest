@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { Module } from "../../../../../packages/common/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Field,

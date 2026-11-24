@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -14,7 +13,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
   type OnRequestDestroy,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ScopeLeakException } from "@bunest/core";
 import { Test, request } from "../../src";
 
@@ -70,7 +69,8 @@ describe("E2E: Scopes (SINGLETON, REQUEST, TRANSIENT, ADR-012 ScopeLeakException
           singletonId: this.singleton.id,
           requestId: this.tracker.id,
           sameRequestTracker: this.tracker === this.svc.tracker,
-          distinctTransients: this.tracker.transient.id !== this.svc.transient.id,
+          distinctTransients:
+            this.tracker.transient.id !== this.svc.transient.id,
           reqHeader: this.tracker.req.headers.get("x-req-id"),
         };
       }
@@ -78,7 +78,12 @@ describe("E2E: Scopes (SINGLETON, REQUEST, TRANSIENT, ADR-012 ScopeLeakException
 
     const mod = await Test.createTestingModule({
       controllers: [ScopesController],
-      providers: [SingletonCounter, TransientHelper, RequestTracker, RequestService],
+      providers: [
+        SingletonCounter,
+        TransientHelper,
+        RequestTracker,
+        RequestService,
+      ],
     }).compile();
 
     const app = mod.createNestApplication();

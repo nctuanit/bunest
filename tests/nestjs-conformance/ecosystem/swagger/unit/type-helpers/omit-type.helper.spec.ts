@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { getMetadataStorage, IsNumber } from "class-validator";
+import {
+  getMetadataStorage,
+  IsNumber,
+} from "../../../../../../packages/validation/src/validator";
 import {
   ApiProperty,
   OmitType,
@@ -24,7 +26,7 @@ describeConformance(
   },
   () => {
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: OmitType / SchemaExplorer (packages/common/src/mapped-types/mapped-types.utils.ts, packages/swagger/src/plugin-metadata-store.ts) does not inherit SwaggerModule.loadPluginMetadata() properties onto mapped type classes (omits "active")
+      // BUNEST_BUG: OmitType / SchemaExplorer (packages/core/src/common/mapped-types/mapped-types.utils.ts, packages/swagger/src/plugin-metadata-store.ts) does not inherit SwaggerModule.loadPluginMetadata() properties onto mapped type classes (omits "active")
       it.skip('should omit "login" property', async () => {
         await SwaggerModule.loadPluginMetadata(async () => SERIALIZED_METADATA);
 

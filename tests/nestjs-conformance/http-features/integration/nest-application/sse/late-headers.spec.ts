@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -14,7 +13,7 @@ import {
   type ExecutionContext,
   type ResponseContext,
   type SseMessageEvent,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../../_helpers";
 
@@ -181,7 +180,7 @@ describeConformance(
       expect(response.headers.get("x-handler")).toBe("set");
     });
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so an interceptor's res.header('Content-Type', 'application/json') overwrites it (packages/http/src/pipeline/response-serializer.ts:554-563).
+    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so an interceptor's res.header('Content-Type', 'application/json') overwrites it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
     it.skip("keeps the event stream content type over one that an interceptor sets", async () => {
       const response = await openStream("content-type");
       expect(response.headers.get("content-type")).toContain(
@@ -200,7 +199,7 @@ describeConformance(
       expect(response.headers.get("x-async-handler")).toBe("set");
     });
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header('Content-Type', 'application/json') overwrites it (packages/http/src/pipeline/response-serializer.ts:554-563).
+    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header('Content-Type', 'application/json') overwrites it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
     it.skip("keeps the event stream content type over one set with @Header()", async () => {
       const response = await openStream("header-content-type");
       expect(response.headers.get("content-type")).toContain(

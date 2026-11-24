@@ -36,5 +36,4 @@ export interface WorkflowPayloadContext extends PayloadContext {
  * Encodes what workflows store for you before the store sees it, and decodes it on the way back: to encrypt it, or
  * compress it.
  */
-export interface WorkflowPayloadCodec
-  extends PayloadCodec<WorkflowPayloadContext> {}
+export interface WorkflowPayloadCodec extends PayloadCodec<WorkflowPayloadContext> {}

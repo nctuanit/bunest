@@ -75,7 +75,8 @@ export interface CompiledTemplate {
   partials: PartialRef[];
 }
 
-type TagKind = "comment" | "value" | "raw" | "open" | "else" | "close" | "partial";
+type TagKind =
+  "comment" | "value" | "raw" | "open" | "else" | "close" | "partial";
 
 interface TextToken {
   type: "text";
@@ -278,7 +279,13 @@ export function renderTemplate(
   context: object,
   partials: Map<string, CompiledTemplate>,
 ): string {
-  return renderNodes(template, template.nodes, { scopes: [context] }, partials, 0);
+  return renderNodes(
+    template,
+    template.nodes,
+    { scopes: [context] },
+    partials,
+    0,
+  );
 }
 
 function renderNodes(

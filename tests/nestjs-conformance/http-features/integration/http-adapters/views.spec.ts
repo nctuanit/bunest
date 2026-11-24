@@ -1,9 +1,12 @@
-import "reflect-metadata";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import {
   Controller,
   Get,
@@ -12,8 +15,14 @@ import {
   Query,
   Render,
   type ViewEngineRenderer,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Test,
   describeConformance,
@@ -68,20 +77,19 @@ function createPartialsRenderer(
     let filePath = directPath;
     let source: string;
     try {
-      source = await readFile(directPath, "utf8");
+      source = await Bun.file(directPath).text();
     } catch {
       filePath = indexPath;
-      source = await readFile(indexPath, "utf8");
+      source = await Bun.file(indexPath).text();
     }
 
     const merged = { ...defaultLocals, ...data };
     let html = source;
     for (const match of html.matchAll(/\{\{> (\w+)\}\}/g)) {
       const name = match[1]!;
-      const partial = await readFile(
+      const partial = await Bun.file(
         join(viewsDir, "partials", `${name}.tpl`),
-        "utf8",
-      );
+      ).text();
       html = html.replace(`{{> ${name}}}`, partial);
     }
 
@@ -95,7 +103,8 @@ function createPartialsRenderer(
           String(merged[key] ?? ""),
         );
     } catch (err) {
-      (err as Error).message = `${filePath}\n${source}\n${(err as Error).message}`;
+      (err as Error).message =
+        `${filePath}\n${source}\n${(err as Error).message}`;
       throw err;
     }
   };
@@ -115,30 +124,36 @@ describeConformance(
     let app: BunestApplication;
 
     beforeAll(() => {
-      viewsDir = mkdtempSync(join(tmpdir(), "bunest-views-"));
-      mkdirSync(join(viewsDir, "partials"), { recursive: true });
-      mkdirSync(join(viewsDir, "section"), { recursive: true });
-      writeFileSync(
+      viewsDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-views-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(join(viewsDir, "partials"), { recursive: true });
+      mkdirSyncPath(join(viewsDir, "section"), { recursive: true });
+      writeTextSync(
         join(viewsDir, "index.tpl"),
         "<h1>{{message}}</h1>{{> footer}}",
       );
-      writeFileSync(join(viewsDir, "locals.tpl"), "<p>{{message}} {{user}}</p>");
-      writeFileSync(
+      writeTextSync(
+        join(viewsDir, "locals.tpl"),
+        "<p>{{message}} {{user}}</p>",
+      );
+      writeTextSync(
         join(viewsDir, "decode.tpl"),
         '{{! shown to the server only }}\n<a href="{{decode next}}">Continue</a>\n',
       );
-      writeFileSync(
+      writeTextSync(
         join(viewsDir, "partials", "footer.tpl"),
         "<footer>{{year}}</footer>",
       );
-      writeFileSync(
+      writeTextSync(
         join(viewsDir, "section", "index.tpl"),
         "<h1>{{message}} section</h1>",
       );
     });
 
-    afterAll(() => {
-      rmSync(viewsDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(viewsDir, { recursive: true, force: true });
     });
 
     describe("with custom ViewEngineRenderer", () => {
@@ -199,7 +214,7 @@ describeConformance(
         expect(res.body.statusCode).toBe(500);
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher use safeDecodeSegment() which silently swallows URIError on malformed percent-encoding (%E0%A4%A) instead of rejecting with 400 Bad Request (packages/http/src/router/fallback-radix-router.ts:139-145).
+      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher use safeDecodeSegment() which silently swallows URIError on malformed percent-encoding (%E0%A4%A) instead of rejecting with 400 Bad Request (packages/core/src/http/router/fallback-radix-router.ts:139-145).
       it.skip("should answer a path param it cannot decode with 400", async () => {
         const res = await request(app).get("/pages/%E0%A4%A");
 

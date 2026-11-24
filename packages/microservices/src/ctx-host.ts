@@ -31,7 +31,7 @@ export class BaseRpcContext<T = unknown[]> {
   }
 }
 
-export type TcpContextArgs = [any, string, PacketMetadata?];
+export type TcpContextArgs = [unknown, string, PacketMetadata?];
 
 /**
  * RPC context host for TCP microservice handlers.
@@ -107,7 +107,7 @@ export class RedisContext extends BaseRpcContext<RedisContextArgs> {
   }
 }
 
-export type NatsContextArgs = [string, any];
+export type NatsContextArgs = [string, unknown];
 
 /**
  * RPC context host for NATS microservice handlers.
@@ -149,25 +149,27 @@ export class NatsContext extends BaseRpcContext<NatsContextArgs> {
     if (!headers || typeof headers !== "object") {
       return undefined;
     }
+    const iterHeaders = headers as {
+      keys?: () => Iterable<string>;
+      values?: (key: string) => Iterable<unknown>;
+    };
     if (
-      typeof headers.keys === "function" &&
-      typeof headers.values === "function"
+      typeof iterHeaders.keys === "function" &&
+      typeof iterHeaders.values === "function"
     ) {
-      const keys = Array.from(headers.keys() as Iterable<string>);
+      const keys = Array.from(iterHeaders.keys());
       return toPacketMetadata(
         keys.map((key) => {
-          const values = Array.from(headers.values(key) as Iterable<unknown>);
+          const values = Array.from(iterHeaders.values!(key));
           return [key, values.length === 1 ? values[0] : undefined] as const;
         }),
       );
     }
-    return toPacketMetadata(
-      Object.entries(headers as Record<string, unknown>),
-    );
+    return toPacketMetadata(Object.entries(headers as Record<string, unknown>));
   }
 }
 
-export type RmqContextArgs = [Record<string, any>, any, string];
+export type RmqContextArgs = [Record<string, unknown>, unknown, string];
 
 /**
  * RPC context host for RabbitMQ (RMQ) microservice handlers.
@@ -183,9 +185,12 @@ export class RmqContext extends BaseRpcContext<RmqContextArgs> {
   ) {
     super(args);
     this.pattern = args[2];
+    const props = args[0]?.properties as
+      | { correlationId?: unknown; replyTo?: unknown }
+      | undefined;
     this.metadata = extraMetadata ?? {
-      correlationId: args[0]?.properties?.correlationId,
-      replyTo: args[0]?.properties?.replyTo,
+      correlationId: props?.correlationId,
+      replyTo: props?.replyTo,
     };
   }
 
@@ -214,7 +219,10 @@ export class RmqContext extends BaseRpcContext<RmqContextArgs> {
    * Returns the message's string headers as `PacketMetadata`.
    */
   getMetadata(): PacketMetadata | undefined {
-    const headers = this.args[0]?.properties?.headers;
+    const props = this.args[0]?.properties as
+      | { headers?: unknown }
+      | undefined;
+    const headers = props?.headers;
     if (headers && typeof headers === "object" && !Array.isArray(headers)) {
       return toPacketMetadata(
         Object.entries(headers as Record<string, unknown>),
@@ -231,10 +239,10 @@ export interface RequestContext<
   TData = any,
   TContext extends BaseRpcContext = any,
 > {
-  pattern: string | Record<string, any>;
+  pattern: string | Record<string, unknown>;
   data: TData;
   context?: TContext;
   getData(): TData;
-  getPattern(): string | Record<string, any>;
+  getPattern(): string | Record<string, unknown>;
   getContext(): TContext;
 }

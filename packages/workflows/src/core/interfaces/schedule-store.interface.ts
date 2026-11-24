@@ -43,7 +43,11 @@ export interface ScheduleStore {
    * clears the lease (`leaseToken`, `leaseUntil`), only while `token` is the schedule's lease token; otherwise writes
    * nothing and returns `false`. One conditional update.
    */
-  writeSchedule(id: string, token: string, write: ScheduleWrite): Promise<boolean>;
+  writeSchedule(
+    id: string,
+    token: string,
+    write: ScheduleWrite,
+  ): Promise<boolean>;
 }
 
 /**

@@ -4,11 +4,12 @@ import {
   MetadataRegistry,
   SetMetadata,
   type CustomDecorator,
+  type FactoryDependency,
   type InjectionToken,
   type MetadataKey,
   type Scope,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import type { ModuleRef } from "../di/module-ref";
 import type { ModuleNode } from "../module/module-node";
 
@@ -20,6 +21,9 @@ export interface InstanceWrapper<T = unknown> {
   readonly moduleId: string;
   readonly scope: Scope;
   readonly isDependencyTreeStatic: boolean;
+  readonly isAlias?: boolean;
+  readonly isTransient?: boolean;
+  readonly inject?: readonly FactoryDependency[];
 }
 
 export interface FilterByInclude {
@@ -39,7 +43,9 @@ export interface FilterByMetadataKey {
 export type DiscoveryOptions = FilterByInclude & FilterByMetadataKey;
 export type DiscoveryFilterOptions = DiscoveryOptions;
 
-export type DiscoverableDecorator<T> = ((opts?: T) => CustomDecorator<string>) & {
+export type DiscoverableDecorator<T> = ((
+  opts?: T,
+) => CustomDecorator<string>) & {
   KEY: string;
 };
 
@@ -84,7 +90,9 @@ export class DiscoveryService {
     if (options?.metadataKey === undefined) {
       return all;
     }
-    return all.filter((w) => this.wrapperHasMetadataKey(w, options.metadataKey!));
+    return all.filter((w) =>
+      this.wrapperHasMetadataKey(w, options.metadataKey!),
+    );
   }
 
   getControllers(options?: DiscoveryOptions): InstanceWrapper[] {
@@ -92,7 +100,9 @@ export class DiscoveryService {
     if (options?.metadataKey === undefined) {
       return all;
     }
-    return all.filter((w) => this.wrapperHasMetadataKey(w, options.metadataKey!));
+    return all.filter((w) =>
+      this.wrapperHasMetadataKey(w, options.metadataKey!),
+    );
   }
 
   /**
@@ -104,23 +114,30 @@ export class DiscoveryService {
     instanceWrapper: InstanceWrapper,
     methodKey?: string | symbol,
   ): T extends DiscoverableDecorator<infer R> ? R | undefined : unknown {
+    type Result =
+      T extends DiscoverableDecorator<infer R> ? R | undefined : unknown;
     const target =
       instanceWrapper.metatype ??
       (instanceWrapper.instance && typeof instanceWrapper.instance === "object"
         ? instanceWrapper.instance.constructor
         : undefined);
     if (typeof target !== "function") {
-      return undefined as any;
+      return undefined as Result;
     }
     if (methodKey !== undefined) {
-      const proto = target.prototype as Record<string | symbol, unknown> | undefined;
+      const proto = target.prototype as
+        Record<string | symbol, unknown> | undefined;
       const fn = proto?.[methodKey];
       if (typeof fn === "function") {
-        return MetadataRegistry.get(decorator.KEY, fn) as any;
+        return MetadataRegistry.get<Result>(decorator.KEY, fn) as Result;
       }
-      return MetadataRegistry.get(decorator.KEY, target.prototype, methodKey) as any;
+      return MetadataRegistry.get<Result>(
+        decorator.KEY,
+        target.prototype,
+        methodKey,
+      ) as Result;
     }
-    return MetadataRegistry.get(decorator.KEY, target) as any;
+    return MetadataRegistry.get<Result>(decorator.KEY, target) as Result;
   }
 
   private wrapperHasMetadataKey(

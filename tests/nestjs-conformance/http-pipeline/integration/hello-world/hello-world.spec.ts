@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   HostParam,
   Injectable,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -85,8 +84,12 @@ class HostController {
   }
 
   @Get("stream")
-  streamGreeting(@HostParam("tenant") tenant: string): ReadableStream<Uint8Array> {
-    return createStringStream(`${this.hostService.greeting()} tenant=${tenant}`);
+  streamGreeting(
+    @HostParam("tenant") tenant: string,
+  ): ReadableStream<Uint8Array> {
+    return createStringStream(
+      `${this.hostService.greeting()} tenant=${tenant}`,
+    );
   }
 }
 
@@ -122,8 +125,12 @@ class HostArrayController {
   }
 
   @Get("stream")
-  streamGreeting(@HostParam("tenant") tenant: string): ReadableStream<Uint8Array> {
-    return createStringStream(`${this.hostService.greeting()} tenant=${tenant}`);
+  streamGreeting(
+    @HostParam("tenant") tenant: string,
+  ): ReadableStream<Uint8Array> {
+    return createStringStream(
+      `${this.hostService.greeting()} tenant=${tenant}`,
+    );
   }
 }
 

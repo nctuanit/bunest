@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   type CanActivate,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Module,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Field,
@@ -17,11 +16,7 @@ import {
   ResolveField,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @ObjectType()
 class User {

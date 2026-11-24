@@ -1,31 +1,34 @@
-# SQLite (`bun:sqlite`)
+# SQLite (`bun:sqlite` via `@bunest/orm`)
 
-**`@bunest/sqlite`** integrates Bun's ultra-fast native `bun:sqlite` driver directly into Bunest with DI lifecycle management, `AsyncLocalStorage`-propagated nested `SAVEPOINT` transactions (`@Transactional`), versioned SQL migrations (`SqliteMigrationRunner`), and **Spring Data-style compiled-once declarative repositories** (`@SqliteRepository` + `JpaRepository`, [ADR-014](/architecture/adrs)).
+**`@bunest/orm`** integrates Bun's ultra-fast native `bun:sqlite` driver (`SqliteOrmDriver`) directly into Bunest with DI lifecycle management (`OrmModule`), `AsyncLocalStorage`-propagated nested `SAVEPOINT` transactions (`@Transactional`), versioned SQL migrations (`OrmMigrationRunner`), TypeORM-style `Repository<Entity>`, and **Spring Data-style compiled-once declarative repositories** (`@OrmRepository` + `CrudRepository`, [ADR-014](/architecture/adrs)).
 
 ## Installation
 
 ```bash
-bun add @bunest/sqlite
+bun add @bunest/orm
 ```
 
 ## Module Setup
 
-Register `SqliteModule.forRoot()` (global by default) and bind declarative repositories with `SqliteModule.forFeature()`:
+Register `OrmModule.forRoot({ type: "sqlite", ... })` (global by default) and bind entities or declarative repositories with `OrmModule.forFeature()`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { SqliteModule } from "@bunest/sqlite";
+import { OrmModule } from "@bunest/orm";
 import { UserRepository } from "./user.repository";
 
 @Module({
   imports: [
-    SqliteModule.forRoot({
-      path: "./app.db",
-      wal: true,
-      foreignKeys: true,
+    OrmModule.forRoot({
+      type: "sqlite",
+      database: "./app.db",
+      enableWAL: true,
+      enforceForeignKeys: true,
+      synchronize: true,
     }),
-    SqliteModule.forFeature([UserRepository]),
+    OrmModule.forFeature([UserRepository]),
   ],
 })
 export class AppModule {}
@@ -33,30 +36,45 @@ export class AppModule {}
 
 ## Spring Data-Style Declarative Repositories
 
-Extend `JpaRepository<TEntity, TKey>` and decorate the abstract class with `@SqliteRepository()`. Derived finder names and `@Query()` templates are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
+Extend `CrudRepository<TEntity, TKey>` and decorate the abstract class with `@OrmRepository()`. Derived finder names and `@Query()` templates are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
 
 @@filename(user.repository.ts)
+
 ```ts
 import {
-  JpaRepository,
+  Column,
+  CrudRepository,
+  Entity,
   Modifying,
+  OrmRepository,
+  PrimaryGeneratedColumn,
   Query,
-  SqliteRepository,
   SqlParam,
-} from "@bunest/sqlite";
+} from "@bunest/orm";
 
+@Entity("users")
 export class User {
+  @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: "text", unique: true })
   email!: string;
+
+  @Column({ type: "text", default: "member" })
   role!: string;
+
+  @Column({ type: "boolean", default: true })
   active!: boolean;
 }
 
-@SqliteRepository({ entity: User, table: "users" })
-export abstract class UserRepository extends JpaRepository<User, number> {
+@OrmRepository(User)
+export abstract class UserRepository extends CrudRepository<User, number> {
   // Derived finders compiled once at startup:
   abstract findByEmail(email: string): Promise<User | null>;
-  abstract findAllByRoleAndActiveOrderByIdDesc(role: string, active: boolean): Promise<User[]>;
+  abstract findAllByRoleAndActiveOrderByIdDesc(
+    role: string,
+    active: boolean,
+  ): Promise<User[]>;
   abstract existsByEmail(email: string): Promise<boolean>;
   abstract countByRole(role: string): Promise<number>;
 
@@ -72,9 +90,10 @@ export abstract class UserRepository extends JpaRepository<User, number> {
 Decorate service methods with `@Transactional()`. Nested `@Transactional()` calls automatically create SQLite `SAVEPOINT`s via `AsyncLocalStorage`, rolling back cleanly on thrown errors:
 
 @@filename(users.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { Transactional } from "@bunest/sqlite";
+import { Transactional } from "@bunest/orm";
 import { UserRepository } from "./user.repository";
 
 @Injectable()
@@ -88,4 +107,4 @@ export class UsersService {
 }
 ```
 
-> info **Direct `SqliteService` & Migrations** Inject `SqliteService` whenever you need raw prepared statements (`query`, `run`, `transaction`, `transactionSync`), and use `SqliteMigrationRunner` to run idempotent schema migrations at startup.
+> info **Direct `DataSource` & `OrmMigrationRunner`** Inject `DataSource` whenever you need raw parameterized queries (`dataSource.query(sql, params)`, `dataSource.transaction(...)`, `dataSource.ping()`), and inject `OrmMigrationRunner` (or set `autoMigrate: true` / `migrationsRun: true`) to run idempotent versioned schema migrations at startup.

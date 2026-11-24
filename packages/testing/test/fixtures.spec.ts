@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Injectable,
@@ -8,12 +7,9 @@ import {
   type CallHandler,
   type CanActivate,
   type ExecutionContext,
-} from "@bunest/common";
-import {
-  ClassSerializerInterceptor,
-  SerializeOptions,
 } from "@bunest/core";
-import { Exclude, Expose } from "class-transformer";
+import { ClassSerializerInterceptor, SerializeOptions } from "@bunest/core";
+import { Exclude, Expose } from "../../validation/src/transformer";
 import {
   Test,
   createMockCallHandler,
@@ -46,10 +42,7 @@ class RolesGuard implements CanActivate {
 class CacheShortCircuitInterceptor implements BunestInterceptor {
   constructor(private readonly cachedValue?: unknown) {}
 
-  async intercept(
-    _ctx: ExecutionContext,
-    next: CallHandler,
-  ): Promise<unknown> {
+  async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
     if (this.cachedValue !== undefined) {
       return this.cachedValue;
     }
@@ -132,10 +125,14 @@ describe("Testing Fixtures (createMockRequest, createMockExecutionContext, creat
     const ctx = createMockExecutionContext();
 
     const shortCircuitHandler = createMockCallHandler({ value: 42 });
-    const cachedInterceptor = new CacheShortCircuitInterceptor({ cached: true });
-    expect(await cachedInterceptor.intercept(ctx, shortCircuitHandler)).toEqual({
+    const cachedInterceptor = new CacheShortCircuitInterceptor({
       cached: true,
     });
+    expect(await cachedInterceptor.intercept(ctx, shortCircuitHandler)).toEqual(
+      {
+        cached: true,
+      },
+    );
     expect(shortCircuitHandler.called).toBe(false);
     expect(shortCircuitHandler.callCount).toBe(0);
 

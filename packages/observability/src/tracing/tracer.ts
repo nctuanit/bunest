@@ -3,7 +3,7 @@ import {
   Injectable,
   Optional,
   type OnModuleDestroy,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   Span,
   type SpanAttributeValue,

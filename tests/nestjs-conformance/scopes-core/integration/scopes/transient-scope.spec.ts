@@ -1,5 +1,12 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import {
   Controller,
   Get,
@@ -17,7 +24,7 @@ import {
   type NestInterceptor,
   type PipeTransform,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   createContextId,
   type BunestApplication,
@@ -360,7 +367,12 @@ describeConformance(
 
       beforeAll(async () => {
         const module = await Test.createTestingModule({
-          providers: [FirstService, SecondService, LoggerService, DeepTransient],
+          providers: [
+            FirstService,
+            SecondService,
+            LoggerService,
+            DeepTransient,
+          ],
         }).compile();
 
         app = module.createNestApplication({ logger: false });
@@ -644,7 +656,9 @@ describeConformance(
       });
 
       it("should isolate nested transient instances for each parent service", async () => {
-        const response = await request(app).get("/nested-transient").expect(200);
+        const response = await request(app)
+          .get("/nested-transient")
+          .expect(200);
         const body = response.body as any;
 
         expect(body.firstServiceContext).toBe("NESTED-FirstService");
@@ -763,7 +777,9 @@ describeConformance(
         expect(new Set(parents).size).toBe(contextIds.length);
         expect(
           new Set(
-            parents.map((parent) => parent.chain.next.next.next.next.instanceId),
+            parents.map(
+              (parent) => parent.chain.next.next.next.next.instanceId,
+            ),
           ).size,
         ).toBe(contextIds.length);
         expect(
@@ -786,7 +802,9 @@ describeConformance(
         expect(new Set(parents).size).toBe(1);
         expect(
           new Set(
-            parents.map((parent) => parent.chain.next.next.next.next.instanceId),
+            parents.map(
+              (parent) => parent.chain.next.next.next.next.instanceId,
+            ),
           ).size,
         ).toBe(1);
         expect(

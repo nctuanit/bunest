@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -58,7 +57,11 @@ describe("JwtService & JwtModule", () => {
       true,
       ["sign", "verify"],
     );
-    const rsaPrivPem = await exportPem(rsaPair.privateKey, "pkcs8", "PRIVATE KEY");
+    const rsaPrivPem = await exportPem(
+      rsaPair.privateKey,
+      "pkcs8",
+      "PRIVATE KEY",
+    );
     const rsaPubPem = await exportPem(rsaPair.publicKey, "spki", "PUBLIC KEY");
 
     const rsaJwt = new JwtService({
@@ -76,7 +79,11 @@ describe("JwtService & JwtModule", () => {
       true,
       ["sign", "verify"],
     );
-    const ecPrivPem = await exportPem(ecPair.privateKey, "pkcs8", "PRIVATE KEY");
+    const ecPrivPem = await exportPem(
+      ecPair.privateKey,
+      "pkcs8",
+      "PRIVATE KEY",
+    );
     const ecPubPem = await exportPem(ecPair.publicKey, "spki", "PUBLIC KEY");
 
     const ecJwt = new JwtService({
@@ -146,8 +153,7 @@ describe("JwtService & JwtModule", () => {
     await expect(jwt.verify(`${h}.${tamperedPayload}.${s}`)).rejects.toThrow(
       JwtInvalidException,
     );
-    const flippedSig =
-      (s[0] === "A" ? "B" : "A") + s.slice(1);
+    const flippedSig = (s[0] === "A" ? "B" : "A") + s.slice(1);
     await expect(jwt.verify(`${h}.${p}.${flippedSig}`)).rejects.toThrow(
       JwtInvalidException,
     );
@@ -173,7 +179,9 @@ describe("JwtService & JwtModule", () => {
       ["verify"],
     );
 
-    const forgedHeader = base64UrlEncode(JSON.stringify({ alg: "HS512", typ: "JWT" }));
+    const forgedHeader = base64UrlEncode(
+      JSON.stringify({ alg: "HS512", typ: "JWT" }),
+    );
     const forgedPayload = base64UrlEncode(JSON.stringify({ sub: "attacker" }));
     const forgedInput = `${forgedHeader}.${forgedPayload}`;
     const sha256Sig = new Uint8Array(
@@ -186,12 +194,14 @@ describe("JwtService & JwtModule", () => {
     const forgedHs512WithSha256 = `${forgedInput}.${base64UrlEncode(sha256Sig)}`;
 
     const hmacCryptoVerifier = new JwtService({ secret: sha256VerifyOnlyKey });
-    await expect(hmacCryptoVerifier.verify(forgedHs512WithSha256)).rejects.toThrow(
-      JwtInvalidException,
-    );
+    await expect(
+      hmacCryptoVerifier.verify(forgedHs512WithSha256),
+    ).rejects.toThrow(JwtInvalidException);
     // Even with explicit algorithms: ["HS512"], hash mismatch on CryptoKey MUST reject
     await expect(
-      hmacCryptoVerifier.verify(forgedHs512WithSha256, { algorithms: ["HS512"] }),
+      hmacCryptoVerifier.verify(forgedHs512WithSha256, {
+        algorithms: ["HS512"],
+      }),
     ).rejects.toThrow(JwtInvalidException);
 
     // 7. Verify-only HMAC CryptoKey succeeds on legitimate HS256 token (no InvalidAccessError!)
@@ -199,7 +209,9 @@ describe("JwtService & JwtModule", () => {
       { sub: "valid-user" },
       { algorithm: "HS256" },
     );
-    const verifiedLegit = await hmacCryptoVerifier.verify<{ sub: string }>(legitHs256);
+    const verifiedLegit = await hmacCryptoVerifier.verify<{ sub: string }>(
+      legitHs256,
+    );
     expect(verifiedLegit.sub).toBe("valid-user");
 
     // 8. Malformed/empty PEM throws JwtInvalidException (401), NOT raw Error (500)
@@ -208,9 +220,13 @@ describe("JwtService & JwtModule", () => {
       publicKey: "-----BEGIN PUBLIC KEY-----\n-----END PUBLIC KEY-----",
       signOptions: { algorithm: "RS256" },
     });
-    await expect(badPemJwt.sign({ sub: "x" })).rejects.toThrow(JwtInvalidException);
+    await expect(badPemJwt.sign({ sub: "x" })).rejects.toThrow(
+      JwtInvalidException,
+    );
     const dummyRs256 = `${base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${base64UrlEncode(JSON.stringify({ sub: "x" }))}.${base64UrlEncode("sig")}`;
-    await expect(badPemJwt.verify(dummyRs256)).rejects.toThrow(JwtInvalidException);
+    await expect(badPemJwt.verify(dummyRs256)).rejects.toThrow(
+      JwtInvalidException,
+    );
   });
 
   it("enforces exp, nbf, clockTolerance, iss, aud, sub, and jti claims", async () => {
@@ -221,16 +237,18 @@ describe("JwtService & JwtModule", () => {
     const expiredToken = await jwt.sign({ sub: "u1", exp: nowSec - 10 });
     await expect(jwt.verify(expiredToken)).rejects.toThrow(JwtExpiredException);
     // Accepted within clockTolerance
-    expect(
-      (await jwt.verify(expiredToken, { clockTolerance: 20 })).sub,
-    ).toBe("u1");
+    expect((await jwt.verify(expiredToken, { clockTolerance: 20 })).sub).toBe(
+      "u1",
+    );
 
     // Future nbf token
     const futureToken = await jwt.sign({ sub: "u1", nbf: nowSec + 30 });
-    await expect(jwt.verify(futureToken)).rejects.toThrow(JwtNotBeforeException);
-    expect(
-      (await jwt.verify(futureToken, { clockTolerance: 60 })).sub,
-    ).toBe("u1");
+    await expect(jwt.verify(futureToken)).rejects.toThrow(
+      JwtNotBeforeException,
+    );
+    expect((await jwt.verify(futureToken, { clockTolerance: 60 })).sub).toBe(
+      "u1",
+    );
 
     // iss, aud, sub, jti checks
     const fullToken = await jwt.sign(
@@ -260,9 +278,9 @@ describe("JwtService & JwtModule", () => {
     await expect(
       jwt.verify(fullToken, { subject: "other-user" }),
     ).rejects.toThrow(JwtInvalidException);
-    await expect(
-      jwt.verify(fullToken, { jwtid: "wrong-jti" }),
-    ).rejects.toThrow(JwtInvalidException);
+    await expect(jwt.verify(fullToken, { jwtid: "wrong-jti" })).rejects.toThrow(
+      JwtInvalidException,
+    );
   });
 
   it("integrates JwtModule.register and JwtModule.registerAsync with DI", async () => {
@@ -271,7 +289,10 @@ describe("JwtService & JwtModule", () => {
         JwtModule.registerAsync({
           useFactory: async () => {
             await Promise.resolve();
-            return { secret: "async-di-secret", signOptions: { expiresIn: "1h" } };
+            return {
+              secret: "async-di-secret",
+              signOptions: { expiresIn: "1h" },
+            };
           },
         }),
       ],

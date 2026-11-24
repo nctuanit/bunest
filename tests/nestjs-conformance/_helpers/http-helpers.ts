@@ -1,5 +1,4 @@
-import "reflect-metadata";
-import type { ModuleMetadata } from "../../../packages/common/src";
+import type { ModuleMetadata } from "../../../packages/core/src/common";
 import type { BunestApplication } from "../../../packages/core/src";
 import {
   CapturingLogger,

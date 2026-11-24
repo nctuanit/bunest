@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -6,7 +5,7 @@ import {
   HttpStatus,
   UnprocessableEntityException,
   type ValidationErrorResponse,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   SchemaValidationPipe,
   type SchemaValidationIssue,
@@ -87,7 +86,9 @@ const orderZodLikeSchema: SchemaValidator<ParsedOrder> = {
 
 function getValidationBody(err: unknown): ValidationErrorResponse {
   expect(err).toBeInstanceOf(HttpException);
-  return (err as HttpException).getResponse() as unknown as ValidationErrorResponse;
+  return (
+    err as HttpException
+  ).getResponse() as unknown as ValidationErrorResponse;
 }
 
 describe("SchemaValidationPipe", () => {
@@ -150,7 +151,9 @@ describe("SchemaValidationPipe", () => {
   it("prefers safeParseAsync over sync safeParse for async refinements", async () => {
     const asyncSchema: SchemaValidator<{ username: string }> = {
       safeParse() {
-        throw new Error("sync safeParse should not be called when safeParseAsync exists");
+        throw new Error(
+          "sync safeParse should not be called when safeParseAsync exists",
+        );
       },
       async safeParseAsync(input: unknown) {
         await Bun.sleep(5);
@@ -182,9 +185,9 @@ describe("SchemaValidationPipe", () => {
     };
 
     const pipe = new SchemaValidationPipe(asyncSchema);
-    expect(await pipe.transform({ username: "alice" }, { type: "body" })).toEqual(
-      { username: "alice" },
-    );
+    expect(
+      await pipe.transform({ username: "alice" }, { type: "body" }),
+    ).toEqual({ username: "alice" });
 
     try {
       await pipe.transform({ username: "taken" }, { type: "body" });

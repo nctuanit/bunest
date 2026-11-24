@@ -63,7 +63,10 @@ const server = Bun.serve({
     },
   },
   fetch() {
-    return Response.json({ statusCode: 404, message: "Not Found" }, { status: 404 });
+    return Response.json(
+      { statusCode: 404, message: "Not Found" },
+      { status: 404 },
+    );
   },
 });
 

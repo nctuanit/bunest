@@ -1,5 +1,4 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, statPath } from "@bunest/core";
 import type {
   CliIO,
   SpawnFn,
@@ -34,7 +33,7 @@ export async function upgradeProject(
 
   let packages: string[] = [];
   try {
-    const info = await stat(pkgPath);
+    const info = await statPath(pkgPath);
     if (info.isFile()) {
       const pkg = (await Bun.file(pkgPath).json()) as {
         dependencies?: Record<string, string>;
@@ -59,9 +58,7 @@ export async function upgradeProject(
 
   const subcommand = tag && targets.length > 0 ? "add" : "update";
   const displayCmd =
-    targets.length > 0
-      ? ["bun", subcommand, ...targets]
-      : ["bun", "update"];
+    targets.length > 0 ? ["bun", subcommand, ...targets] : ["bun", "update"];
   const spawnCmd =
     targets.length > 0
       ? [process.execPath, subcommand, ...targets]
@@ -71,7 +68,9 @@ export async function upgradeProject(
     if (io) {
       const label = dryRun ? "[dry-run]" : "[skip-install]";
       const pkgList =
-        packages.length > 0 ? packages.join(", ") : "(all project dependencies)";
+        packages.length > 0
+          ? packages.join(", ")
+          : "(all project dependencies)";
       io.stdout(`${label} Would upgrade: ${pkgList}`);
       io.stdout(`${label} Command: ${displayCmd.join(" ")}`);
     }
@@ -91,7 +90,7 @@ export async function upgradeProject(
   const spawn = options.spawn ?? defaultSpawn;
   const { exitCode } = await spawn(spawnCmd, {
     cwd,
-    env: process.env,
+    env: Bun.env,
   });
 
   if (exitCode !== 0) {

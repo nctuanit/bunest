@@ -34,8 +34,7 @@ const THROTTLING = new Set([
  */
 export class SesTransport extends HttpProviderTransport {
   #credentials:
-    | AwsCredentials
-    | (() => AwsCredentials | Promise<AwsCredentials>);
+    AwsCredentials | (() => AwsCredentials | Promise<AwsCredentials>);
   private readonly region: string;
   private readonly url: URL;
   private readonly configurationSetName?: string;
@@ -43,7 +42,9 @@ export class SesTransport extends HttpProviderTransport {
   constructor(options: SesTransportOptions = {}) {
     super("SES", options);
     const region =
-      options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      options.region ??
+      process.env.AWS_REGION ??
+      process.env.AWS_DEFAULT_REGION;
     if (!region || !/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) {
       throw new TypeError(
         'SesTransport `region` is required (or AWS_REGION), e.g. "eu-west-1"',
@@ -60,8 +61,7 @@ export class SesTransport extends HttpProviderTransport {
       checkCredentials(resolved);
     }
     this.#credentials = resolved as
-      | AwsCredentials
-      | (() => AwsCredentials | Promise<AwsCredentials>);
+      AwsCredentials | (() => AwsCredentials | Promise<AwsCredentials>);
     this.configurationSetName = options.configurationSetName;
   }
 
@@ -158,7 +158,9 @@ function fromEnvironment(): AwsCredentials | undefined {
   };
 }
 
-function checkCredentials(credentials: unknown): asserts credentials is AwsCredentials {
+function checkCredentials(
+  credentials: unknown,
+): asserts credentials is AwsCredentials {
   if (
     !credentials ||
     typeof (credentials as AwsCredentials).accessKeyId !== "string" ||

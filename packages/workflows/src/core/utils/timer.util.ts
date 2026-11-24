@@ -13,6 +13,9 @@ export function setTimer(callback: () => void, ms: number): NodeJS.Timeout {
 }
 
 /** @internal `setInterval`, capped like `setTimer()`. */
-export function setRepeatingTimer(callback: () => void, ms: number): NodeJS.Timeout {
+export function setRepeatingTimer(
+  callback: () => void,
+  ms: number,
+): NodeJS.Timeout {
   return setInterval(callback, Math.min(ms, MAX_TIMER_DELAY));
 }

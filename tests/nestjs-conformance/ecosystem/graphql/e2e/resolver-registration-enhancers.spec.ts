@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -11,7 +10,7 @@ import {
   Scope,
   type Type,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,
@@ -153,7 +152,9 @@ describeConformance(
     describe("enhancers referenced by class", () => {
       it('should run them for a resolver registered with "useClass"', async () => {
         await (
-          await createApp([CatsModule.register("useClass", GuardedCatsResolver)])
+          await createApp([
+            CatsModule.register("useClass", GuardedCatsResolver),
+          ])
         ).init();
 
         const { body } = await query("{ getGuardedAnimalName }");
@@ -196,18 +197,21 @@ describeConformance(
       it.skip.each([
         ["as a class", CatsResolver],
         ['with "useClass" under another token', "CATS_RESOLVER"],
-      ] as const)("should run them for a resolver registered %s", async (_, token) => {
-        await (
-          await createApp(
-            [CatsModule.register("useClass", CatsResolver, token)],
-            [globalGuard],
-          )
-        ).init();
+      ] as const)(
+        "should run them for a resolver registered %s",
+        async (_, token) => {
+          await (
+            await createApp(
+              [CatsModule.register("useClass", CatsResolver, token)],
+              [globalGuard],
+            )
+          ).init();
 
-        const { body } = await query("{ getAnimalName }");
-        expect(body.data).toBeNull();
-        expect(body.errors[0].message).toBe("Forbidden resource");
-      });
+          const { body } = await query("{ getAnimalName }");
+          expect(body.data).toBeNull();
+          expect(body.errors[0].message).toBe("Forbidden resource");
+        },
+      );
 
       // BUNEST_BUG: GraphQLService.buildSchema() does not validate non-entry useFactory/useValue resolver providers against request-scoped global APP_GUARD enhancers at startup (packages/graphql/src/driver/graphql-http.handler.ts:224-290).
       it.skip.each(["useFactory", "useValue"] as const)(

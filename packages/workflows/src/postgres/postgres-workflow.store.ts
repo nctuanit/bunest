@@ -1,4 +1,4 @@
-import { Logger, type OnModuleInit } from "@bunest/common";
+import { Logger, type OnModuleInit } from "@bunest/core";
 import {
   advisoryLock,
   assertReadCommittedTransaction,
@@ -14,7 +14,7 @@ import {
   toInt,
   toJson,
   toText,
-} from "@bunest/store-kit/postgres";
+} from "@bunest/orm/postgres";
 import type {
   WorkflowInstance,
   WorkflowJournalEntry,
@@ -137,7 +137,10 @@ export class PostgresWorkflowStore implements WorkflowStore, OnModuleInit {
   /** The schema migrated (`migrate`) or checked before the first statement: see `onModuleInit()`. */
   private readonly readiness: StoreReadiness;
 
-  constructor(options: PostgresWorkflowStoreOptions, storage?: WorkflowStorage) {
+  constructor(
+    options: PostgresWorkflowStoreOptions,
+    storage?: WorkflowStorage,
+  ) {
     const resolved = workflowStoreSchema.resolveOptions(options);
     this.executor = resolved.executor;
     this.schema = resolved.schema;
@@ -326,8 +329,7 @@ RETURNING id`,
     await this.readiness.readyIn(tx);
     await assertReadCommittedTransaction(tx, {
       operation: "signal() with { transaction }",
-      reason:
-        "its wake-ups would miss the waits committed after its snapshot",
+      reason: "its wake-ups would miss the waits committed after its snapshot",
     });
     return this.insertSignal(tx, signal);
   }

@@ -1,11 +1,11 @@
 # Task Scheduling
 
-**`@bunest/scheduler`** provides declarative cron jobs, intervals, and one-shot timeouts using a pure-TypeScript 5- and 6-field DST-aware cron parser with zero external runtime dependencies and 83 built-in `CronExpression` presets.
+**`@bunest/jobs/scheduler`** provides declarative cron jobs, intervals, and one-shot timeouts using a pure-TypeScript 5- and 6-field DST-aware cron parser with zero external runtime dependencies and 83 built-in `CronExpression` presets.
 
 ## Installation
 
 ```bash
-bun add @bunest/scheduler
+bun add @bunest/jobs/scheduler
 ```
 
 ## Module Setup
@@ -13,9 +13,10 @@ bun add @bunest/scheduler
 Import `ScheduleModule.forRoot()` once in your root `AppModule`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { ScheduleModule } from "@bunest/scheduler";
+import { ScheduleModule } from "@bunest/jobs/scheduler";
 import { TasksService } from "./tasks.service";
 
 @Module({
@@ -30,9 +31,10 @@ export class AppModule {}
 Decorate methods on any `@Injectable()` provider with `@Cron()`, `@Interval()`, or `@Timeout()`:
 
 @@filename(tasks.service.ts)
+
 ```ts
 import { Injectable, Logger } from "@bunest/core";
-import { Cron, CronExpression, Interval, Timeout } from "@bunest/scheduler";
+import { Cron, CronExpression, Interval, Timeout } from "@bunest/jobs/scheduler";
 
 @Injectable()
 export class TasksService {
@@ -59,16 +61,17 @@ export class TasksService {
 }
 ```
 
-> info **Overlap Protection** Set `preventOverlap: true` to guarantee a slow execution is never re-entered concurrently on the same instance. For multi-instance cluster deduplication, combine with `@OnOneInstance()` or `@WithoutOverlapping()` from [`@bunest/locks`](/distributed/locks-idempotency).
+> info **Overlap Protection** Set `preventOverlap: true` to guarantee a slow execution is never re-entered concurrently on the same instance. For multi-instance cluster deduplication, combine with `@OnOneInstance()` or `@WithoutOverlapping()` from [`@bunest/resilience/locks`](/distributed/locks-idempotency).
 
 ## Dynamic Job Management (`SchedulerRegistry`)
 
 Inject `SchedulerRegistry` to inspect, start, stop, add, or delete cron jobs, intervals, and timeouts at runtime:
 
 @@filename(jobs.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { CronJob, SchedulerRegistry } from "@bunest/scheduler";
+import { CronJob, SchedulerRegistry } from "@bunest/jobs/scheduler";
 
 @Injectable()
 export class JobsService {

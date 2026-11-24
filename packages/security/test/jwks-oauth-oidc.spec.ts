@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -370,8 +369,11 @@ describe("JWKS Client (RS256/384/512, ES256/384/512, rotation, DoS cooldown, sec
       JwtExpiredException,
     );
     expect(
-      (await jwks.verifyJwtWithJwks<{ sub: string }>(expired, { clockTolerance: 30 }))
-        .sub,
+      (
+        await jwks.verifyJwtWithJwks<{ sub: string }>(expired, {
+          clockTolerance: 30,
+        })
+      ).sub,
     ).toBe("u1");
 
     // 8. Future nbf throws JwtNotBeforeException
@@ -454,14 +456,18 @@ describe("PKCE, Provider Presets & OAuth2Service / OAuth2Module", () => {
     expect(pkce.codeChallengeMethod).toBe("S256");
     expect(pkce.codeVerifier.length).toBeGreaterThanOrEqual(43);
     expect(pkce.codeVerifier.length).toBeLessThanOrEqual(128);
-    expect(pkce.codeChallenge).toBe(await computePkceChallenge(pkce.codeVerifier));
-    expect(await verifyPkceChallenge(pkce.codeVerifier, pkce.codeChallenge)).toBe(
-      true,
+    expect(pkce.codeChallenge).toBe(
+      await computePkceChallenge(pkce.codeVerifier),
     );
+    expect(
+      await verifyPkceChallenge(pkce.codeVerifier, pkce.codeChallenge),
+    ).toBe(true);
     expect(
       await verifyPkceChallenge(`${pkce.codeVerifier}x`, pkce.codeChallenge),
     ).toBe(false);
-    expect(await verifyPkceChallenge("too-short", pkce.codeChallenge)).toBe(false);
+    expect(await verifyPkceChallenge("too-short", pkce.codeChallenge)).toBe(
+      false,
+    );
 
     const s1 = generateState();
     const s2 = generateState();
@@ -489,9 +495,13 @@ describe("PKCE, Provider Presets & OAuth2Service / OAuth2Module", () => {
     });
 
     const gh = OAuth2Providers.github();
-    expect(gh.authorizationUrl).toBe("https://github.com/login/oauth/authorize");
+    expect(gh.authorizationUrl).toBe(
+      "https://github.com/login/oauth/authorize",
+    );
     expect(gh.userInfoUrl).toBe("https://api.github.com/user");
-    const ghEnt = OAuth2Providers.github({ enterpriseDomain: "git.corp.internal" });
+    const ghEnt = OAuth2Providers.github({
+      enterpriseDomain: "git.corp.internal",
+    });
     expect(ghEnt.userInfoUrl).toBe("https://git.corp.internal/api/v3/user");
 
     const ms = OAuth2Providers.microsoft({ tenant: "contoso-tenant" });
@@ -625,7 +635,9 @@ describe("PKCE, Provider Presets & OAuth2Service / OAuth2Module", () => {
     );
     const sentBody = new URLSearchParams(String(tokenReq.init?.body));
     expect(sentBody.get("code_verifier")).toBe(authUrl.codeVerifier!);
-    expect(sentBody.get("redirect_uri")).toBe("https://app.example.com/callback");
+    expect(sentBody.get("redirect_uri")).toBe(
+      "https://app.example.com/callback",
+    );
 
     // 3. Invalid code throws OAuth2Exception with oauthError
     await expect(
@@ -715,7 +727,10 @@ describe("OidcService & OidcModule (Discovery + PKCE + ID Token Verification)", 
         const body = new URLSearchParams(String(init?.body ?? ""));
         const verifier = body.get("code_verifier");
         if (lastCodeChallenge) {
-          if (!verifier || !(await verifyPkceChallenge(verifier, lastCodeChallenge))) {
+          if (
+            !verifier ||
+            !(await verifyPkceChallenge(verifier, lastCodeChallenge))
+          ) {
             return jsonResponse({ error: "invalid_grant" }, 400);
           }
         }

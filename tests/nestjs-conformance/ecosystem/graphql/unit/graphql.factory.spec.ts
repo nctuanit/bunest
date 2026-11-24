@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import {
   GraphQLEnumType,
@@ -10,8 +9,8 @@ import {
   GraphQLString,
   Kind,
   graphql,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Logger } from "../../../../../packages/common/src";
+} from "../../../../../packages/graphql/src";
+import { Logger } from "../../../../../packages/core/src/common";
 import {
   type CustomScalar,
   GraphQLFactory,
@@ -48,7 +47,9 @@ describeConformance(
       it("should support transforming the resolvers", async () => {
         const echo = mock(() => "ok");
         const resolvers: SchemaFirstResolversMap[] = [{ Query: { echo } }];
-        const transformResolvers = mock((r: SchemaFirstResolversMap | SchemaFirstResolversMap[]) => r);
+        const transformResolvers = mock(
+          (r: SchemaFirstResolversMap | SchemaFirstResolversMap[]) => r,
+        );
 
         const schema = await graphqlFactory.generateSchema({
           resolvers,
@@ -126,7 +127,8 @@ describeConformance(
             return value;
           },
           parseLiteral: (ast) => {
-            const value = ast.kind === Kind.INT ? Number(ast.value) : Number.NaN;
+            const value =
+              ast.kind === Kind.INT ? Number(ast.value) : Number.NaN;
             if (!Number.isInteger(value) || value <= 0) {
               throw new TypeError("Amount must be a positive integer");
             }
@@ -248,12 +250,14 @@ describeConformance(
             const invoice = schema.getType("Invoice") as GraphQLObjectType;
 
             expect(
-              invoice.getFields().owner?.resolve?.(
-                null,
-                {},
-                null,
-                null as unknown as GraphQLResolveInfo,
-              ),
+              invoice
+                .getFields()
+                .owner?.resolve?.(
+                  null,
+                  {},
+                  null,
+                  null as unknown as GraphQLResolveInfo,
+                ),
             ).toBe("PrivateNode");
           },
         );
@@ -278,12 +282,14 @@ describeConformance(
           const invoice = schema.getType("Invoice") as GraphQLObjectType;
 
           expect(
-            invoice.getFields().owner?.resolve?.(
-              null,
-              {},
-              null,
-              null as unknown as GraphQLResolveInfo,
-            ),
+            invoice
+              .getFields()
+              .owner?.resolve?.(
+                null,
+                {},
+                null,
+                null as unknown as GraphQLResolveInfo,
+              ),
           ).toBe("Restricted");
         });
 
@@ -303,12 +309,14 @@ describeConformance(
           const invoice = schema.getType("Invoice") as GraphQLObjectType;
 
           expect(
-            invoice.getFields().owner?.resolve?.(
-              null,
-              {},
-              null,
-              null as unknown as GraphQLResolveInfo,
-            ),
+            invoice
+              .getFields()
+              .owner?.resolve?.(
+                null,
+                {},
+                null,
+                null as unknown as GraphQLResolveInfo,
+              ),
           ).toBe("Invoice");
         });
       });

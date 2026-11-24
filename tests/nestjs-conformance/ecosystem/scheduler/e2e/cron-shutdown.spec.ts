@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, jest, mock } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
@@ -6,7 +5,7 @@ import {
   CronJob,
   ScheduleModule,
   SchedulerRegistry,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 import {
   advanceTimersByTimeAsync,
@@ -58,7 +57,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.onModuleDestroy() to stop all cron jobs and await in-flight waitForCompletion: true callbacks before onApplicationShutdown runs, but packages/scheduler/src/scheduler.registry.ts stopAll() is synchronous and does not await active ticks.
+    // BUNEST_BUG: Expected SchedulerRegistry.onModuleDestroy() to stop all cron jobs and await in-flight waitForCompletion: true callbacks before onApplicationShutdown runs, but packages/jobs/src/scheduler/scheduler.registry.ts stopAll() is synchronous and does not await active ticks.
     it.skip("should stop all jobs before waiting for active callbacks during shutdown [ADR-001: native CronJob fireOnce()/isRunning()]", async () => {
       const lifecycle: string[] = [];
       onApplicationShutdown.mockImplementation(() =>
@@ -128,28 +127,32 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected CronJob to support onComplete callback on stop() and SchedulerRegistry shutdown to preserve jobs newly added by an onComplete hook, but packages/scheduler/src/cron/cron-job.ts has no onComplete option and packages/scheduler/src/scheduler.registry.ts stopAll() clears the entire cronJobs map.
+    // BUNEST_BUG: Expected CronJob to support onComplete callback on stop() and SchedulerRegistry shutdown to preserve jobs newly added by an onComplete hook, but packages/jobs/src/scheduler/cron/cron-job.ts has no onComplete option and packages/jobs/src/scheduler/scheduler.registry.ts stopAll() clears the entire cronJobs map.
     it.skip("should not stop jobs added by a completion callback during shutdown", async () => {
       const replacementOnComplete = mock(() => {});
-      const job = new CronJob(CronExpression.EVERY_SECOND, mock(() => {}), {
-        // Upstream CronJob onComplete option
-        ...({
-          onComplete: () => {
-            const replacement = new CronJob(
-              CronExpression.EVERY_SECOND,
-              mock(() => {}),
-              {
-                ...({ onComplete: replacementOnComplete } as Record<
-                  string,
-                  unknown
-                >),
-              },
-            );
-            replacement.start();
-            registry.addCronJob("replacement", replacement);
-          },
-        } as Record<string, unknown>),
-      });
+      const job = new CronJob(
+        CronExpression.EVERY_SECOND,
+        mock(() => {}),
+        {
+          // Upstream CronJob onComplete option
+          ...({
+            onComplete: () => {
+              const replacement = new CronJob(
+                CronExpression.EVERY_SECOND,
+                mock(() => {}),
+                {
+                  ...({ onComplete: replacementOnComplete } as Record<
+                    string,
+                    unknown
+                  >),
+                },
+              );
+              replacement.start();
+              registry.addCronJob("replacement", replacement);
+            },
+          } as Record<string, unknown>),
+        },
+      );
       job.start();
       registry.addCronJob("original", job);
 
@@ -166,7 +169,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected CronJob to invoke onComplete on stop() and SchedulerRegistry shutdown to stop a later job replaced during an earlier job's onComplete callback, but packages/scheduler/src/cron/cron-job.ts does not support onComplete.
+    // BUNEST_BUG: Expected CronJob to invoke onComplete on stop() and SchedulerRegistry shutdown to stop a later job replaced during an earlier job's onComplete callback, but packages/jobs/src/scheduler/cron/cron-job.ts does not support onComplete.
     it.skip("should stop a later job replaced by a completion callback during shutdown", async () => {
       const replacementOnComplete = mock(() => {});
       const replacement = new CronJob(
@@ -176,15 +179,19 @@ describeConformance(
           ...({ onComplete: replacementOnComplete } as Record<string, unknown>),
         },
       );
-      const first = new CronJob(CronExpression.EVERY_SECOND, mock(() => {}), {
-        ...({
-          onComplete: () => {
-            registry.deleteCronJob("replaced");
-            registry.addCronJob("replaced", replacement);
-            replacement.start();
-          },
-        } as Record<string, unknown>),
-      });
+      const first = new CronJob(
+        CronExpression.EVERY_SECOND,
+        mock(() => {}),
+        {
+          ...({
+            onComplete: () => {
+              registry.deleteCronJob("replaced");
+              registry.addCronJob("replaced", replacement);
+              replacement.start();
+            },
+          } as Record<string, unknown>),
+        },
+      );
       first.start();
       const replaced = new CronJob(
         CronExpression.EVERY_SECOND,

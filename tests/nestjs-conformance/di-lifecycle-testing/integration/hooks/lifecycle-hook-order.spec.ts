@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Injectable,
@@ -7,12 +6,8 @@ import {
   type OnApplicationShutdown,
   type OnModuleDestroy,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
-import {
-  Test,
-  createSpy,
-  describeConformance,
-} from "../../../_helpers";
+} from "../../../../../packages/core/src/common";
+import { Test, createSpy, describeConformance } from "../../../_helpers";
 
 @Injectable()
 class TestInjectable

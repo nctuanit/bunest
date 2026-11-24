@@ -1,8 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { join } from "node:path";
-import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigService } from "../../../../../packages/config/src";
+import { join, type BunestApplication } from "../../../../../packages/core/src";
+import { ConfigService } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { AppModule, fixturesDir } from "../_fixtures/app.module";
 
@@ -37,7 +35,7 @@ describeConformance(
       process.env = originalEnv;
     });
 
-    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/config/src/validator.ts:262)
+    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/core/src/config/validator.ts:262)
     it.skip("should prevent application from bootstrapping if error is thrown due to loaded env variables", async () => {
       let hasThrown = false;
       try {
@@ -54,7 +52,7 @@ describeConformance(
       expect(hasThrown).toBe(true);
     });
 
-    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/config/src/validator.ts:262)
+    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/core/src/config/validator.ts:262)
     it.skip("should prevent application from bootstrapping if error is thrown even when ignoreEnvFile is true", async () => {
       let hasThrown = false;
       try {
@@ -73,9 +71,7 @@ describeConformance(
 
     it("should load env variables if everything is ok", async () => {
       const moduleRef = await Test.createTestingModule({
-        imports: [
-          AppModule.withValidateFunction(validate, envValidFilePath),
-        ],
+        imports: [AppModule.withValidateFunction(validate, envValidFilePath)],
       }).compile();
 
       app = moduleRef.createNestApplication({ logger: false });

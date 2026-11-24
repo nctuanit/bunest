@@ -1,4 +1,4 @@
-import type { SqlExecutor } from "@bunest/store-kit/mysql";
+import type { SqlExecutor } from "@bunest/orm/mysql";
 
 /** What `new MySqlWorkflowStore(options, storage)` takes. */
 export interface MySqlWorkflowStoreOptions {

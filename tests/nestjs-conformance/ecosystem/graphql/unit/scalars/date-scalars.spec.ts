@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   GraphQLList,
@@ -10,7 +9,7 @@ import {
   Kind,
   type ValueNode,
   graphqlSync,
-} from "../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../packages/graphql/src";
 import {
   GraphQLISODateTime,
   GraphQLTimestamp,
@@ -190,7 +189,8 @@ describeConformance(
         scalar: GraphQLScalarType,
         source: string,
         variableValues?: Record<string, unknown>,
-      ) => graphqlSync({ schema: createSchema(scalar), source, variableValues });
+      ) =>
+        graphqlSync({ schema: createSchema(scalar), source, variableValues });
 
       const scalars: Record<string, GraphQLScalarType> = {
         DateTime: GraphQLISODateTime,

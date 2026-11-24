@@ -1,30 +1,22 @@
-# HTTP Client & Axios
+# HTTP Client
 
-Bunest offers two zero-dependency outbound HTTP client packages built directly on Bun's native `fetch()`:
-
-- **`@bunest/http-client`** — Modern Bun-native HTTP client with named clients, typed errors, automatic retries, timeouts, request/response interceptors, and DI integration.
-- **`@bunest/axios`** — Drop-in `@nestjs/axios` v12 migration package (`HttpModule` & `HttpService`) backed by native `fetch()` with **zero Axios and zero RxJS** (methods return native `Promise<AxiosResponse<T>>`, [ADR-013](/architecture/adrs)).
+**`@bunest/core/client`** is Bunest's zero-dependency outbound HTTP client built directly on Bun's native `fetch()`—with named clients, typed errors, automatic retries, timeouts, request/response interceptors, and DI integration.
 
 ## Installation
 
-@@tab(@bunest/http-client)
 ```bash
-bun add @bunest/http-client
-```
-@@switch
-@@tab(@bunest/axios)
-```bash
-bun add @bunest/axios
+bun add @bunest/core/client
 ```
 
-## Using `@bunest/http-client`
+## Using `@bunest/core/client`
 
 Register default or named HTTP clients via `HttpClientModule.forRoot()` / `forFeature()`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { HttpClientModule } from "@bunest/http-client";
+import { HttpClientModule } from "@bunest/core/client";
 
 @Module({
   imports: [
@@ -42,9 +34,10 @@ export class AppModule {}
 Inject `HttpClient` and make strongly typed requests:
 
 @@filename(github.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { HttpClient, HttpResponseError } from "@bunest/http-client";
+import { HttpClient, HttpResponseError } from "@bunest/core/client";
 
 @Injectable()
 export class GithubService {
@@ -52,9 +45,10 @@ export class GithubService {
 
   async getRepo(owner: string, repo: string) {
     try {
-      return await this.http.get<{ full_name: string; stargazers_count: number }>(
-        `/repos/${owner}/${repo}`,
-      );
+      return await this.http.get<{
+        full_name: string;
+        stargazers_count: number;
+      }>(`/repos/${owner}/${repo}`);
     } catch (err) {
       if (err instanceof HttpResponseError && err.status === 404) {
         return null;
@@ -63,30 +57,4 @@ export class GithubService {
     }
   }
 }
-```
-
-## Drop-In `@bunest/axios`
-
-Replace `@nestjs/axios` imports with `@bunest/axios` to use `HttpModule` and `HttpService` with `AbortSignal.timeout`, interceptors, form helpers (`postForm`, `putForm`, `patchForm`), and `axiosRef`:
-
-@@filename(payments.service.ts)
-```ts
-import { Injectable, Module } from "@bunest/core";
-import { HttpModule, HttpService } from "@bunest/axios";
-
-@Injectable()
-export class PaymentsService {
-  constructor(private readonly http: HttpService) {}
-
-  async fetchStatus(id: string) {
-    const res = await this.http.get<{ status: string }>(`https://api.example.com/payments/${id}`);
-    return res.data;
-  }
-}
-
-@Module({
-  imports: [HttpModule.register({ timeout: 5_000 })],
-  providers: [PaymentsService],
-})
-export class PaymentsModule {}
 ```

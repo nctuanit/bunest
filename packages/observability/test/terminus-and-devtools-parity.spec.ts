@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Controller, Get, Injectable, Module } from "@bunest/common";
+import { Controller, Get, Injectable, Module } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   DevtoolsModule,
@@ -34,7 +33,7 @@ import {
   type TerminusAsyncModuleOptions,
   type TerminusOptionsFactory,
 } from "../src";
-import { MetadataRegistry } from "@bunest/common";
+import { MetadataRegistry } from "@bunest/core";
 
 describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
   it("exports runtime HealthIndicatorStatus and HealthCheckStatus constants and unit parsers", () => {
@@ -103,7 +102,9 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
     const degradedFail = await svc
       .check("recs")
       .attempt(async () => {
-        const err = Object.assign(new Error("downstream down"), { code: "E_DOWN" });
+        const err = Object.assign(new Error("downstream down"), {
+          code: "E_DOWN",
+        });
         throw err;
       })
       .withFailureData((e) => ({ code: (e as { code?: string }).code }))
@@ -188,9 +189,12 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
     // Degraded returns without throwing (HTTP 200)
     const degradedResult = await healthSvc.check([
       () => legacy.checkDog(true),
-      indicatorSvc.check("search").attempt(() => {
-        throw new Error("search lagging");
-      }).degradedOnFailure(),
+      indicatorSvc
+        .check("search")
+        .attempt(() => {
+          throw new Error("search lagging");
+        })
+        .degradedOnFailure(),
     ]);
     expect(degradedResult.status).toBe(HealthCheckStatus.DEGRADED);
     expect(degradedResult.info?.dog?.status).toBe("up");
@@ -245,15 +249,17 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
     })
     class AppMod {}
 
-    const meta = MetadataRegistry.get<{ noCache: boolean; swaggerDocumentation: boolean }>(
-      HEALTH_CHECK_METADATA,
-      HealthCtrl.prototype.checkDefault,
-    );
+    const meta = MetadataRegistry.get<{
+      noCache: boolean;
+      swaggerDocumentation: boolean;
+    }>(HEALTH_CHECK_METADATA, HealthCtrl.prototype.checkDefault);
     expect(meta).toEqual({ noCache: true, swaggerDocumentation: true });
 
     const app = await BunestFactory.create(AppMod, { logger: false });
     try {
-      const r1 = await app.fetch(new Request("http://localhost/health-ctrl/nocache"));
+      const r1 = await app.fetch(
+        new Request("http://localhost/health-ctrl/nocache"),
+      );
       expect(r1.status).toBe(200);
       expect(r1.headers.get("cache-control")).toBe(
         "no-cache, no-store, must-revalidate",
@@ -261,7 +267,9 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
       const body1 = (await r1.json()) as { status: string };
       expect(body1.status).toBe("ok");
 
-      const r2 = await app.fetch(new Request("http://localhost/health-ctrl/cached"));
+      const r2 = await app.fetch(
+        new Request("http://localhost/health-ctrl/cached"),
+      );
       expect(r2.status).toBe(200);
       expect(r2.headers.get("cache-control")).toBeNull();
     } finally {
@@ -291,10 +299,17 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
     expect(fetchUp.api.status).toBe("up");
     expect(bodyCanceled).toBe(true);
 
-    const fetchDown = await fetchInd.pingCheck("api", "https://example.test/fail", {
-      fetch: async () =>
-        ({ status: 503, statusText: "Service Unavailable" }) as unknown as Response,
-    });
+    const fetchDown = await fetchInd.pingCheck(
+      "api",
+      "https://example.test/fail",
+      {
+        fetch: async () =>
+          ({
+            status: 503,
+            statusText: "Service Unavailable",
+          }) as unknown as Response,
+      },
+    );
     expect(fetchDown.api.status).toBe("down");
     expect(fetchDown.api.statusCode).toBe(503);
     expect(fetchDown.api.statusText).toBe("Service Unavailable");
@@ -303,7 +318,8 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
       "billing",
       "https://example.test/200",
       {
-        fetch: async () => ({ status: 200, statusText: "OK" }) as unknown as Response,
+        fetch: async () =>
+          ({ status: 200, statusText: "OK" }) as unknown as Response,
         verify: (res) => res.status === 204,
       },
     );
@@ -490,9 +506,13 @@ describe("@bunest/observability Terminus v12 & Devtools Parity", () => {
     const app1 = await BunestFactory.create(FactoryApp, { logger: false });
     try {
       expect(app1.get(HealthCheckService)).toBeInstanceOf(HealthCheckService);
-      expect(app1.get(FetchHealthIndicator)).toBeInstanceOf(FetchHealthIndicator);
+      expect(app1.get(FetchHealthIndicator)).toBeInstanceOf(
+        FetchHealthIndicator,
+      );
       expect(app1.get(DiskHealthIndicator)).toBeInstanceOf(DiskHealthIndicator);
-      expect(app1.get(PrismaHealthIndicator)).toBeInstanceOf(PrismaHealthIndicator);
+      expect(app1.get(PrismaHealthIndicator)).toBeInstanceOf(
+        PrismaHealthIndicator,
+      );
       expect(app1.get(MicroserviceHealthIndicator)).toBeInstanceOf(
         MicroserviceHealthIndicator,
       );

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, jest } from "bun:test";
-import { Injectable } from "../../../../../packages/common/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Cron,
@@ -8,7 +7,7 @@ import {
   CronJob,
   ScheduleModule,
   SchedulerRegistry,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 @Injectable()

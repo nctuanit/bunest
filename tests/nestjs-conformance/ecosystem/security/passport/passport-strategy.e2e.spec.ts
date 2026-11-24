@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   PassportStrategy,
@@ -21,7 +20,8 @@ class MockLocalStrategy {
     verify: (...args: unknown[]) => unknown,
   );
   constructor(
-    optionsOrVerify: Record<string, unknown> | ((...args: unknown[]) => unknown),
+    optionsOrVerify:
+      Record<string, unknown> | ((...args: unknown[]) => unknown),
     verify?: (...args: unknown[]) => unknown,
   ) {
     if (typeof optionsOrVerify === "function") {

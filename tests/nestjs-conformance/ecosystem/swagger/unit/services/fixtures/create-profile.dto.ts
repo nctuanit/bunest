@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { ApiProperty } from "../../../../../../../packages/swagger/src";
 import { CreateUserDto } from "./create-user.dto";
 

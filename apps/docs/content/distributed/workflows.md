@@ -10,18 +10,19 @@ bun add @bunest/workflows
 
 ## Subpath Exports
 
-| Subpath | Purpose |
-|---|---|
-| `@bunest/workflows` | Core decorators, `WorkflowsModule`, `WorkflowClient`, `InMemoryWorkflowStore`, `AesGcmPayloadCodec`, `ManualWorkflowClock` |
-| `@bunest/workflows/postgres` | PostgreSQL durable workflow store over `Bun.SQL` |
-| `@bunest/workflows/mysql` | MySQL / MariaDB durable workflow store over `Bun.SQL` |
-| `@bunest/workflows/cqrs` | Integration bridge with [`@bunest/cqrs`](/distributed/cqrs) commands and events |
-| `@bunest/workflows/testing` | Deterministic workflow replay & time-travel test harness |
-| `@bunest/workflows/core` | Framework-agnostic durable execution engine |
+| Subpath                      | Purpose                                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `@bunest/workflows`          | Core decorators, `WorkflowsModule`, `WorkflowClient`, `InMemoryWorkflowStore`, `AesGcmPayloadCodec`, `ManualWorkflowClock` |
+| `@bunest/workflows/postgres` | PostgreSQL durable workflow store over `Bun.SQL`                                                                           |
+| `@bunest/workflows/mysql`    | MySQL / MariaDB durable workflow store over `Bun.SQL`                                                                      |
+| `@bunest/workflows/cqrs`     | Integration bridge with [`@bunest/messaging/cqrs`](/distributed/cqrs) commands and events                                            |
+| `@bunest/workflows/testing`  | Deterministic workflow replay & time-travel test harness                                                                   |
+| `@bunest/workflows/core`     | Framework-agnostic durable execution engine                                                                                |
 
 ## Quick Start
 
 @@filename(onboarding.workflow.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { InMemoryWorkflowStore, WorkflowsModule } from "@bunest/workflows";

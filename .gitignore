@@ -4,6 +4,7 @@ node_modules
 # output
 out
 dist
+.bunest
 *.tgz
 
 # code coverage
@@ -21,6 +22,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.test.local
 .env.production.local
 .env.local
+!tests/nestjs-conformance/ecosystem/config/_fixtures/.env
+!tests/nestjs-conformance/ecosystem/config/_fixtures/.env.local
 
 # caches
 .eslintcache

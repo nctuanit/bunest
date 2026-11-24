@@ -60,7 +60,7 @@ export interface NodeOptions {
   id?: string;
   agent?: HttpAgentOptions | UndiciAgentOptions;
   ssl?: TlsConnectionOptions;
-  headers?: Record<string, any>;
+  headers?: Record<string, string | string[] | number | undefined>;
   roles?: NodeRoles;
 }
 
@@ -97,10 +97,10 @@ export interface NodeConnectionState {
 export interface ClientOptions {
   node?: string | string[] | NodeOptions | NodeOptions[];
   nodes?: string | string[] | NodeOptions | NodeOptions[];
-  Connection?: new (...args: any[]) => any;
-  ConnectionPool?: new (...args: any[]) => any;
-  Transport?: new (...args: any[]) => any;
-  Serializer?: new (...args: any[]) => any;
+  Connection?: new (...args: any[]) => unknown;
+  ConnectionPool?: new (...args: any[]) => unknown;
+  Transport?: new (...args: any[]) => unknown;
+  Serializer?: new (...args: any[]) => unknown;
   maxRetries?: number;
   requestTimeout?: number;
   pingTimeout?: number;
@@ -114,7 +114,7 @@ export interface ClientOptions {
   agent?: false | HttpAgentOptions | UndiciAgentOptions | AgentFn;
   nodeFilter?: NodeFilterFn;
   nodeSelector?: NodeSelectorFn;
-  headers?: Record<string, any>;
+  headers?: Record<string, string | string[] | number | undefined>;
   opaqueIdPrefix?: string;
   generateRequestId?: GenerateRequestIdFn;
   name?: string | symbol;
@@ -137,18 +137,18 @@ export interface ClientOptions {
 export interface TransportRequestParams {
   method: string;
   path: string;
-  querystring?: Record<string, any> | string;
+  querystring?: Record<string, unknown> | string;
   body?: unknown;
   ndjson?: boolean;
-  headers?: Record<string, any>;
+  headers?: Record<string, string | string[] | number | undefined>;
 }
 
 export interface TransportRequestOptions {
   ignore?: number[];
   requestTimeout?: number;
   maxRetries?: number;
-  headers?: Record<string, any>;
-  querystring?: Record<string, any>;
+  headers?: Record<string, string | string[] | number | undefined>;
+  querystring?: Record<string, unknown>;
   context?: Context;
   opaqueId?: string;
   meta?: boolean;
@@ -156,17 +156,15 @@ export interface TransportRequestOptions {
   signal?: AbortSignal;
 }
 
-export interface TransportRequestOptionsWithOutMeta
-  extends TransportRequestOptions {
+export interface TransportRequestOptionsWithOutMeta extends TransportRequestOptions {
   meta?: false;
 }
 
-export interface TransportRequestOptionsWithMeta
-  extends TransportRequestOptions {
+export interface TransportRequestOptionsWithMeta extends TransportRequestOptions {
   meta: true;
 }
 
-export interface TransportResult<TBody = any> {
+export interface TransportResult<TBody = unknown> {
   body: TBody;
   statusCode: number;
   headers: Record<string, string>;
@@ -189,7 +187,71 @@ export interface TransportResult<TBody = any> {
 }
 
 // Common Elasticsearch REST Request & Response Types
-export type EsParams = Record<string, any>;
+export type EsParams = Record<string, unknown>;
+
+export interface AcknowledgedResponse {
+  acknowledged: boolean;
+  shards_acknowledged?: boolean;
+  index?: string;
+  [key: string]: unknown;
+}
+
+export type EsRestResponse = Record<string, unknown>;
+
+export type EsResponse<
+  T,
+  TOptions extends TransportRequestOptions | undefined = undefined,
+> = [TOptions] extends [undefined]
+  ? T
+  : TOptions extends { meta: true }
+    ? TransportResult<T>
+    : TOptions extends { meta?: false }
+      ? T
+      : T | TransportResult<T>;
+
+export interface ClusterHealthResponse {
+  cluster_name: string;
+  status: "green" | "yellow" | "red";
+  timed_out: boolean;
+  number_of_nodes: number;
+  number_of_data_nodes: number;
+  active_primary_shards: number;
+  active_shards: number;
+  relocating_shards: number;
+  initializing_shards: number;
+  unassigned_shards: number;
+  [key: string]: unknown;
+}
+
+export type CatResponse = Array<Record<string, unknown>>;
+
+export type IndicesGetMappingResponse = Record<
+  string,
+  {
+    mappings: {
+      properties?: Record<string, Record<string, unknown>>;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  }
+>;
+
+export type IngestGetPipelineResponse = Record<
+  string,
+  {
+    description?: string;
+    processors?: Array<Record<string, unknown>>;
+    version?: number;
+    [key: string]: unknown;
+  }
+>;
+
+export interface SqlQueryResponse {
+  columns: Array<{ name: string; type: string }>;
+  rows: unknown[][];
+  cursor?: string;
+  [key: string]: unknown;
+}
 
 export interface PingRequest extends EsParams {
   error_trace?: boolean;
@@ -219,7 +281,7 @@ export interface InfoResponse {
     minimum_index_compatibility_version?: string;
   };
   tagline: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ShardsResponse {
@@ -227,7 +289,7 @@ export interface ShardsResponse {
   successful: number;
   skipped?: number;
   failed: number;
-  failures?: Array<Record<string, any>>;
+  failures?: Array<Record<string, unknown>>;
 }
 
 export interface SearchHit<TDocument = unknown> {
@@ -238,10 +300,10 @@ export interface SearchHit<TDocument = unknown> {
   _version?: number;
   _seq_no?: number;
   _primary_term?: number;
-  fields?: Record<string, any>;
+  fields?: Record<string, unknown>;
   highlight?: Record<string, string[]>;
   sort?: Array<string | number | boolean | null>;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SearchTotalHits {
@@ -251,27 +313,31 @@ export interface SearchTotalHits {
 
 export interface SearchRequest extends EsParams {
   index?: string | string[];
-  query?: Record<string, any>;
-  aggs?: Record<string, any>;
-  aggregations?: Record<string, any>;
+  query?: Record<string, unknown>;
+  aggs?: Record<string, unknown>;
+  aggregations?: Record<string, unknown>;
   from?: number;
   size?: number;
-  sort?: any;
-  _source?: boolean | string | string[] | { includes?: string[]; excludes?: string[] };
-  highlight?: Record<string, any>;
+  sort?:
+    | string
+    | Record<string, unknown>
+    | Array<string | Record<string, unknown>>;
+  _source?:
+    boolean | string | string[] | { includes?: string[]; excludes?: string[] };
+  highlight?: Record<string, unknown>;
   scroll?: string;
   pit?: { id: string; keep_alive?: string };
-  search_after?: any[];
+  search_after?: Array<string | number | boolean | null>;
   track_total_hits?: boolean | number;
   routing?: string;
   preference?: string;
   q?: string;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
 }
 
 export interface SearchResponse<
   TDocument = unknown,
-  TAggregations = Record<string, any>,
+  TAggregations = Record<string, unknown>,
 > {
   took: number;
   timed_out: boolean;
@@ -284,7 +350,7 @@ export interface SearchResponse<
   aggregations?: TAggregations;
   _scroll_id?: string;
   pit_id?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface IndexRequest<TDocument = unknown> extends EsParams {
@@ -311,7 +377,7 @@ export interface IndexResponse {
   _shards: ShardsResponse;
   _seq_no: number;
   _primary_term: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface CreateRequest<TDocument = unknown> extends EsParams {
@@ -348,8 +414,8 @@ export interface GetResponse<TDocument = unknown> {
   _primary_term?: number;
   found: boolean;
   _source?: TDocument;
-  fields?: Record<string, any>;
-  [key: string]: any;
+  fields?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface GetSourceRequest extends GetRequest {}
@@ -362,14 +428,14 @@ export interface UpdateRequest<
   index: string;
   id: string;
   doc?: TPartialDocument;
-  script?: string | Record<string, any>;
+  script?: string | Record<string, unknown>;
   upsert?: TDocument;
   doc_as_upsert?: boolean;
   _source?: boolean | string | string[];
   refresh?: boolean | "wait_for";
   routing?: string;
   retry_on_conflict?: number;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
 }
 
 export interface UpdateResponse<TDocument = unknown> {
@@ -384,7 +450,7 @@ export interface UpdateResponse<TDocument = unknown> {
     found: boolean;
     _source?: TDocument;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DeleteRequest extends EsParams {
@@ -406,7 +472,7 @@ export interface DeleteResponse {
   _shards: ShardsResponse;
   _seq_no: number;
   _primary_term: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface BulkRequest<
@@ -414,8 +480,8 @@ export interface BulkRequest<
   TPartialDocument = Partial<TDocument>,
 > extends EsParams {
   index?: string;
-  operations?: Array<Record<string, any> | TDocument | TPartialDocument>;
-  body?: Array<Record<string, any> | TDocument | TPartialDocument>;
+  operations?: Array<Record<string, unknown> | TDocument | TPartialDocument>;
+  body?: Array<Record<string, unknown> | TDocument | TPartialDocument>;
   refresh?: boolean | "wait_for";
   routing?: string;
   pipeline?: string;
@@ -425,16 +491,16 @@ export interface BulkRequest<
 export interface BulkResponse {
   took: number;
   errors: boolean;
-  items: Array<Record<string, any>>;
-  [key: string]: any;
+  items: Array<Record<string, unknown>>;
+  [key: string]: unknown;
 }
 
 export interface CountRequest extends EsParams {
   index?: string | string[];
-  query?: Record<string, any>;
+  query?: Record<string, unknown>;
   q?: string;
   routing?: string;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
 }
 
 export interface CountResponse {
@@ -456,27 +522,38 @@ export type ExistsSourceResponse = boolean;
 export interface MgetRequest extends EsParams {
   index?: string;
   ids?: string[];
-  docs?: Array<{ _index?: string; _id: string; _source?: any; routing?: string }>;
-  body?: Record<string, any>;
+  docs?: Array<{
+    _index?: string;
+    _id: string;
+    _source?:
+      | boolean
+      | string
+      | string[]
+      | { includes?: string[]; excludes?: string[] };
+    routing?: string;
+  }>;
+  body?: Record<string, unknown>;
 }
 
 export interface MgetResponse<TDocument = unknown> {
-  docs: Array<GetResponse<TDocument> & { error?: any }>;
+  docs: Array<GetResponse<TDocument> & { error?: unknown }>;
 }
 
 export interface MsearchRequest extends EsParams {
   index?: string | string[];
-  searches?: Array<Record<string, any>>;
-  body?: Array<Record<string, any>>;
+  searches?: Array<Record<string, unknown>>;
+  body?: Array<Record<string, unknown>>;
   max_concurrent_searches?: number;
 }
 
 export interface MsearchResponse<
   TDocument = unknown,
-  TAggregations = Record<string, any>,
+  TAggregations = Record<string, unknown>,
 > {
   took: number;
-  responses: Array<SearchResponse<TDocument, TAggregations> & { status?: number; error?: any }>;
+  responses: Array<
+    SearchResponse<TDocument, TAggregations> & { status?: number; error?: unknown }
+  >;
 }
 
 export interface ScrollRequest extends EsParams {
@@ -486,7 +563,7 @@ export interface ScrollRequest extends EsParams {
 
 export type ScrollResponse<
   TDocument = unknown,
-  TAggregations = Record<string, any>,
+  TAggregations = Record<string, unknown>,
 > = SearchResponse<TDocument, TAggregations>;
 
 export interface ClearScrollRequest extends EsParams {
@@ -518,13 +595,13 @@ export interface ClosePointInTimeResponse {
 
 export interface DeleteByQueryRequest extends EsParams {
   index: string | string[];
-  query?: Record<string, any>;
+  query?: Record<string, unknown>;
   conflicts?: "abort" | "proceed";
   refresh?: boolean;
   max_docs?: number;
   scroll_size?: number;
   wait_for_completion?: boolean;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
 }
 
 export interface DeleteByQueryResponse {
@@ -535,20 +612,20 @@ export interface DeleteByQueryResponse {
   batches?: number;
   version_conflicts?: number;
   noops?: number;
-  failures?: any[];
+  failures?: unknown[];
   task?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface UpdateByQueryRequest extends EsParams {
   index: string | string[];
-  query?: Record<string, any>;
-  script?: string | Record<string, any>;
+  query?: Record<string, unknown>;
+  script?: string | Record<string, unknown>;
   conflicts?: "abort" | "proceed";
   refresh?: boolean;
   max_docs?: number;
   wait_for_completion?: boolean;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
 }
 
 export interface UpdateByQueryResponse {
@@ -560,15 +637,15 @@ export interface UpdateByQueryResponse {
   batches?: number;
   version_conflicts?: number;
   noops?: number;
-  failures?: any[];
+  failures?: unknown[];
   task?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ReindexRequest extends EsParams {
-  source: Record<string, any>;
-  dest: Record<string, any>;
-  script?: string | Record<string, any>;
+  source: Record<string, unknown>;
+  dest: Record<string, unknown>;
+  script?: string | Record<string, unknown>;
   conflicts?: "abort" | "proceed";
   refresh?: boolean;
   max_docs?: number;
@@ -583,7 +660,7 @@ export interface ReindexResponse {
   updated?: number;
   deleted?: number;
   batches?: number;
-  failures?: any[];
+  failures?: unknown[];
   task?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }

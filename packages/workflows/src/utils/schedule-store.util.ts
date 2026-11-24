@@ -20,7 +20,10 @@ export type WorkflowScheduleMethods =
   | "claimSchedules"
   | "writeSchedule";
 
-type WorkflowScheduleStoreMethods = Pick<WorkflowStore, WorkflowScheduleMethods>;
+type WorkflowScheduleStoreMethods = Pick<
+  WorkflowStore,
+  WorkflowScheduleMethods
+>;
 
 /**
  * A workflow store's schedules as the core's `ScheduleStore`, for its `Scheduler`: a schedule's workflow is its
@@ -43,9 +46,9 @@ export function workflowScheduleStore(
       ).map(fromWorkflows),
     deleteSchedule: (id, revision) => store().deleteSchedule(id, revision),
     claimSchedules: async ({ targets, ...request }) =>
-      (
-        await store().claimSchedules({ ...request, workflows: targets })
-      ).map(fromWorkflows),
+      (await store().claimSchedules({ ...request, workflows: targets })).map(
+        fromWorkflows,
+      ),
     writeSchedule: (id, token, write) =>
       store().writeSchedule(id, token, write),
   };
@@ -75,9 +78,9 @@ export function workflowScheduleMethods(
       workflows,
       ...request
     }: WorkflowScheduleClaimRequest) =>
-      (
-        await store.claimSchedules({ ...request, targets: workflows })
-      ).map(toWorkflows),
+      (await store.claimSchedules({ ...request, targets: workflows })).map(
+        toWorkflows,
+      ),
     writeSchedule: (id: string, token: string, write: WorkflowScheduleWrite) =>
       store.writeSchedule(id, token, write),
   };

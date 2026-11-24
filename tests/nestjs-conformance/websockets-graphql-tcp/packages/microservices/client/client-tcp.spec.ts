@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { TCPSocketListener } from "bun";
 import {
@@ -287,7 +286,11 @@ describeConformance(
           throw new RpcException("denied");
         });
         server.addMessageHandler("rpc-err-obj", () => {
-          throw new RpcException({ status: 403, message: "forbidden", code: "E_FORB" });
+          throw new RpcException({
+            status: 403,
+            message: "forbidden",
+            code: "E_FORB",
+          });
         });
         server.addMessageHandler("plain-err", () => {
           const e = new TypeError("bad type");
@@ -696,9 +699,18 @@ describeConformance(
 
           const blob = "Bunest-TCP-Backpressure-".repeat(12_000); // ~288 KB
           const results = await Promise.all([
-            client.send<{ tag: string; len: number }>("size", { tag: "a", blob }),
-            client.send<{ tag: string; len: number }>("size", { tag: "b", blob }),
-            client.send<{ tag: string; len: number }>("size", { tag: "c", blob }),
+            client.send<{ tag: string; len: number }>("size", {
+              tag: "a",
+              blob,
+            }),
+            client.send<{ tag: string; len: number }>("size", {
+              tag: "b",
+              blob,
+            }),
+            client.send<{ tag: string; len: number }>("size", {
+              tag: "c",
+              blob,
+            }),
           ]);
 
           expect(results).toEqual([
@@ -720,9 +732,11 @@ describeConformance(
         });
         clients.push(client);
 
-        const hook = createSpy((ctx: { pattern: string; transport: Transport }) => {
-          expect(ctx.transport).toBe(Transport.TCP);
-        });
+        const hook = createSpy(
+          (ctx: { pattern: string; transport: Transport }) => {
+            expect(ctx.transport).toBe(Transport.TCP);
+          },
+        );
         client.setPreRequestHook(hook);
 
         expect(await client.send("echo", { ok: true })).toEqual({ ok: true });

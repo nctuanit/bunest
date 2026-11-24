@@ -1,10 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Type } from "class-transformer";
-import { Length, Max, MaxLength, Min } from "class-validator";
+import { Type } from "../../../../../packages/validation/src/transformer";
+import {
+  Length,
+  Max,
+  MaxLength,
+  Min,
+} from "../../../../../packages/validation/src/validator";
 import {
   APP_FILTER,
   type ArgumentsHost,
@@ -19,8 +20,14 @@ import {
   UnauthorizedException,
   UseGuards,
   UseInterceptors,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
+import {
+  existsSyncPath,
+  join,
+  readTextSync,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   ArgsType,
@@ -133,7 +140,10 @@ let interceptorInvocations = 0;
 
 @Injectable()
 class DataInterceptor implements BunestInterceptor {
-  async intercept(_context: ExecutionContext, next: CallHandler): Promise<unknown> {
+  async intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<unknown> {
     interceptorInvocations++;
     return next.handle();
   }
@@ -235,7 +245,7 @@ describeConformance(
     beforeEach(async () => {
       interceptorInvocations = 0;
       schemaFilePath = join(
-        tmpdir(),
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
         `bunest-gql-code-first-${crypto.randomUUID()}.gql`,
       );
 
@@ -260,8 +270,8 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      if (existsSync(schemaFilePath)) {
-        rmSync(schemaFilePath, { force: true });
+      if (existsSyncPath(schemaFilePath)) {
+        await removePath(schemaFilePath, { force: true });
       }
     });
 
@@ -287,8 +297,8 @@ describeConformance(
       ["ADR-001", "ADR-008"],
       "should emit code-first autoSchemaFile SDL and execute custom DateScalar + mutations",
       async () => {
-        expect(existsSync(schemaFilePath)).toBe(true);
-        const sdl = readFileSync(schemaFilePath, "utf8");
+        expect(existsSyncPath(schemaFilePath)).toBe(true);
+        const sdl = readTextSync(schemaFilePath);
         expect(sdl).toContain("type Recipe");
         expect(sdl).toContain("scalar Date");
         expect(sdl).toContain("input NewRecipeInput");

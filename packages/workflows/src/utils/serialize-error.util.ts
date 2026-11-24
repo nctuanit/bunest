@@ -1,9 +1,8 @@
-import { inspect } from "node:util";
 import type { SerializedWorkflowError } from "../interfaces/serialized-workflow-error.interface";
 
 /**
  * Never throws: a thrown value the engine can't serialize (a circular object, a
- * BigInt, `undefined`) is described by `util.inspect()` instead, so the instance
+ * BigInt, `undefined`) is described by `Bun.inspect()` instead, so the instance
  * still records an outcome.
  */
 export function serializeError(error: unknown): SerializedWorkflowError {
@@ -26,7 +25,7 @@ export function serializeError(error: unknown): SerializedWorkflowError {
   }
   return {
     name: "Error",
-    message: message ?? inspect(error, { depth: 3, breakLength: Infinity }),
+    message: message ?? Bun.inspect(error, { depth: 3 }),
   };
 }
 
@@ -34,7 +33,7 @@ function text(value: unknown): string {
   try {
     return String(value);
   } catch {
-    return inspect(value, { depth: 3, breakLength: Infinity });
+    return Bun.inspect(value, { depth: 3 });
   }
 }
 

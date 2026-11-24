@@ -3,9 +3,7 @@ import { WorkflowError } from "./workflow.error";
 
 /** How an instance ended when it didn't complete. */
 export type WorkflowFailureStatus =
-  | "failed"
-  | "cancelled"
-  | "compensation_failed";
+  "failed" | "cancelled" | "compensation_failed";
 
 /**
  * Thrown by `ctx.fail()`: fails the instance and runs its compensations. Also what

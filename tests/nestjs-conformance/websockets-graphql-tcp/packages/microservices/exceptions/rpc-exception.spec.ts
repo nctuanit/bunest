@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   RpcException,
@@ -94,7 +93,11 @@ describeConformance(
       });
 
       it("should round-trip a structured object RpcException with numeric status", () => {
-        const payload = { status: 422, message: "Validation failed", field: "email" };
+        const payload = {
+          status: 422,
+          message: "Validation failed",
+          field: "email",
+        };
         const original = new RpcException(payload);
         const serialized = original.toSerialized();
 

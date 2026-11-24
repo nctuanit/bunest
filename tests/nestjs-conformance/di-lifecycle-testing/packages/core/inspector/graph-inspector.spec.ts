@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect } from "bun:test";
 import {
   Controller,
   Injectable,
   Module,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   GraphInspector,
   ModuleScanner,
@@ -71,7 +70,9 @@ describeConformance(
           expect(labels).toContain("ItemsController");
           expect(labels).toContain("TransientHelper");
 
-          const transientNode = nodes.find((n) => n.label === "TransientHelper");
+          const transientNode = nodes.find(
+            (n) => n.label === "TransientHelper",
+          );
           expect(transientNode?.metadata.transient).toBe(true);
           expect(transientNode?.metadata.static).toBe(false);
 

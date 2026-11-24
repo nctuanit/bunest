@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -10,7 +9,7 @@ import {
   Scope,
   type ExceptionFilter,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   MessagePattern,
   MicroserviceHost,
@@ -35,9 +34,7 @@ const schemaOf = (tenant: string) => {
 class TenantSchema {
   public readonly name: string;
 
-  constructor(
-    @Inject(REQUEST) ctx: { data: { tenant: string } },
-  ) {
+  constructor(@Inject(REQUEST) ctx: { data: { tenant: string } }) {
     this.name = schemaOf(ctx.data.tenant);
   }
 }

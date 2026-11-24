@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "bunest.config.ts",
+    "src/**/*.ts",
+    "test/**/*.ts",
+    ".bunest/types/**/*.d.ts"
+  ],
+  "exclude": [
+    "src/bunest-macros.d.ts"
+  ]
+}

@@ -117,7 +117,8 @@ class TimeWindow implements SlidingWindow {
 
   record(failure: boolean): void {
     const id = Math.floor(Date.now() / this.width);
-    const idx = ((id % TimeWindow.BUCKETS) + TimeWindow.BUCKETS) % TimeWindow.BUCKETS;
+    const idx =
+      ((id % TimeWindow.BUCKETS) + TimeWindow.BUCKETS) % TimeWindow.BUCKETS;
     const bucket = this.buckets[idx]!;
     if (bucket.id !== id) {
       bucket.id = id;

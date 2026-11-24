@@ -7,6 +7,7 @@ Providers are the fundamental building block of Bunest's Dependency Injection (D
 Decorate a class with `@Injectable()` to mark it as managed by the Bunest IoC container:
 
 @@filename(cats.service.ts)
+
 ```ts
 import { Injectable, NotFoundException } from "@bunest/core";
 
@@ -44,6 +45,7 @@ export class CatsService {
 Inject `CatsService` into `CatsController` using standard TypeScript constructor injection. Bunest reads `design:paramtypes` at bootstrap and resolves dependencies automatically:
 
 @@filename(cats.controller.ts)
+
 ```ts
 import { Body, Controller, Get, Param, Post } from "@bunest/core";
 import { CatsService } from "./cats.service";
@@ -77,6 +79,7 @@ export class CatsController {
 When injecting an interface, string token, or `Symbol` token (which TypeScript erases at runtime), use `@Inject(token)`. To allow a dependency to resolve to `undefined` when not registered, combine it with `@Optional()`:
 
 @@filename(http-client.service.ts)
+
 ```ts
 import { Inject, Injectable, Optional } from "@bunest/core";
 
@@ -106,6 +109,7 @@ export class HttpClientService {
 While constructor injection is strongly recommended, Bunest also supports property injection with `@Inject(token)` (useful when subclassing base classes with complex constructors):
 
 @@filename(audit.service.ts)
+
 ```ts
 import { Inject, Injectable, Logger } from "@bunest/core";
 
@@ -130,6 +134,7 @@ export class AuditService {
 Every provider must be registered inside a module's `providers` array so Bunest's `ModuleScanner` and `DIContainer` can discover and instantiate it at bootstrap:
 
 @@filename(cats.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { CatsController } from "./cats.controller";

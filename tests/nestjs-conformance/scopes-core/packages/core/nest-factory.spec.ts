@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Module,
   type MicroserviceInstance,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunHttpAdapter,
   BunestApplication,
@@ -134,7 +133,9 @@ describeConformance(
             { controller: [TestController] } as any,
             { logger: false, abortOnError: false },
           ),
-        ).rejects.toThrow(/InvalidModuleException|Invalid property 'controller'/i);
+        ).rejects.toThrow(
+          /InvalidModuleException|Invalid property 'controller'/i,
+        );
       });
 
       // BUNEST_BUG: ModuleScanner.scan() fails with TypeError ("No default value" from String() on null-prototype object) instead of throwing InvalidModuleException for module namespace objects (packages/core/src/module/module-scanner.ts:40-55).
@@ -148,7 +149,9 @@ describeConformance(
             logger: false,
             abortOnError: false,
           }),
-        ).rejects.toThrow(/InvalidModuleException|Invalid property 'TestModule'/i);
+        ).rejects.toThrow(
+          /InvalidModuleException|Invalid property 'TestModule'/i,
+        );
       });
 
       it("should create a microservice from plain module metadata", async () => {

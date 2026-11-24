@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   ScheduleClaimRequest,
   ScheduleQuery,
@@ -82,7 +81,7 @@ export function scheduleCases(
           for (;;) {
             const claimed = await store.claimSchedules({
               owner,
-              token: randomUUID(),
+              token: crypto.randomUUID(),
               now: 1_000,
               leaseUntil: FAR,
               limit: 3,
@@ -274,7 +273,9 @@ export function scheduleCases(
     async (store) => {
       await store.saveSchedule(schedule("late", { wakeAt: 50 }));
       await store.saveSchedule(schedule("early", { wakeAt: 10 }));
-      await store.saveSchedule(schedule("paused", { wakeAt: 10, paused: true }));
+      await store.saveSchedule(
+        schedule("paused", { wakeAt: 10, paused: true }),
+      );
       await store.saveSchedule(schedule("ended", { wakeAt: null }));
       await store.saveSchedule(schedule("future", { wakeAt: 5_000 }));
       await store.saveSchedule(
@@ -286,7 +287,7 @@ export function scheduleCases(
       ) =>
         store.claimSchedules({
           owner: o.owner ?? "w1",
-          token: o.token ?? randomUUID(),
+          token: o.token ?? crypto.randomUUID(),
           now,
           leaseUntil: o.leaseUntil ?? now + 1_000,
           limit: o.limit ?? 100,

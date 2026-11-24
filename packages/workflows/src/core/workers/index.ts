@@ -1,1 +1,1 @@
-export * from './leased-worker';
+export * from "./leased-worker";

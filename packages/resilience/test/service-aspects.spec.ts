@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   BadRequestException,
@@ -8,7 +7,7 @@ import {
   Module,
   Post,
   Scope,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   Bulkhead,
@@ -121,7 +120,10 @@ describe("@bunest/resilience Service-Level Method Aspect Integration", () => {
         ResilienceModule.forRoot({
           presets: {
             "external-api": {
-              retry: { attempts: 2, backoff: { delay: 1, factor: 1, jitter: "none" } },
+              retry: {
+                attempts: 2,
+                backoff: { delay: 1, factor: 1, jitter: "none" },
+              },
               circuitBreaker: {
                 minimumCalls: 2,
                 failureRateThreshold: 50,
@@ -145,10 +147,15 @@ describe("@bunest/resilience Service-Level Method Aspect Integration", () => {
       const resilience = ctx.get(ResilienceService);
 
       // 1. @Retry on service method
-      expect(await svc.fetchWithRetry()).toEqual({ attempts: 3, ctxAttempt: 3 });
+      expect(await svc.fetchWithRetry()).toEqual({
+        attempts: 3,
+        ctxAttempt: 3,
+      });
 
       // 2. @Timeout on service method + ResilienceContext.signal abort
-      await expect(svc.slowCall()).rejects.toBeInstanceOf(ResilienceTimeoutError);
+      await expect(svc.slowCall()).rejects.toBeInstanceOf(
+        ResilienceTimeoutError,
+      );
       expect(timeoutSignalAborted).toBe(true);
 
       // 3. @CircuitBreaker on service method opens and throws CircuitOpenError
@@ -166,9 +173,13 @@ describe("@bunest/resilience Service-Level Method Aspect Integration", () => {
       expect(await p1).toBe("done");
 
       // 5. @Fallback method & function recovery, skipping 4xx client errors
-      expect(await svc.failingWithMethodFallback("x")).toBe("recovered:failed:x");
+      expect(await svc.failingWithMethodFallback("x")).toBe(
+        "recovered:failed:x",
+      );
       expect(await svc.failingWithFnFallback()).toBe("fn-fallback:boom");
-      await expect(svc.clientFault()).rejects.toBeInstanceOf(BadRequestException);
+      await expect(svc.clientFault()).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
 
       // 6. Stacked decorators run ONCE (exactly 3 attempts, then fallback)
       expect(await svc.stackedFailure()).toBe("stacked-fallback");
@@ -274,6 +285,8 @@ describe("@bunest/resilience Service-Level Method Aspect Integration", () => {
     class BrokenModule {}
 
     const app = await BunestFactory.create(BrokenModule, { logger: false });
-    await expect(app.init()).rejects.toThrow(/has no method "nonExistentMethod"/);
+    await expect(app.init()).rejects.toThrow(
+      /has no method "nonExistentMethod"/,
+    );
   });
 });

@@ -8,7 +8,7 @@ import {
   GraphQLString,
   Kind,
   print,
-} from "graphql";
+} from "./engine";
 
 /**
  * Built-in GraphQL scalar tokens usable in `@Field(() => Int)`,

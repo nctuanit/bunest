@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -20,7 +19,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type HostComponentInfo,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   type BunestApplication,
@@ -62,9 +61,7 @@ class DurableContextIdStrategy implements ContextIdStrategy<Request> {
 class DurableService {
   public instanceCounter = 0;
 
-  constructor(
-    @Inject(REQUEST) private readonly requestPayload: TenantContext,
-  ) {
+  constructor(@Inject(REQUEST) private readonly requestPayload: TenantContext) {
     if (requestPayload.forceError) {
       throw new PreconditionFailedException("Forced error");
     }

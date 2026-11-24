@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { runStoreCli, type StoreCliIo } from "@bunest/store-kit";
+import { resolve } from "@bunest/core";
+import { runStoreCli, type StoreCliIo } from "@bunest/orm/store";
 import { WorkflowError } from "../src/errors/workflow.error";
 import type { WorkflowJournalEntry } from "../src/interfaces/workflow-instance.interface";
 import type {
@@ -125,13 +124,15 @@ function sampleScheduleRow(overrides: Partial<Row> = {}): Row {
   };
 }
 
-function createMockPgExecutor(options: {
-  defaultIsolation?: string;
-  txIsolation?: string;
-  schemaVersion?: number;
-  schemaExists?: boolean;
-  onQuery?: QueryResponder;
-} = {}) {
+function createMockPgExecutor(
+  options: {
+    defaultIsolation?: string;
+    txIsolation?: string;
+    schemaVersion?: number;
+    schemaExists?: boolean;
+    onQuery?: QueryResponder;
+  } = {},
+) {
   const calls: RecordedCall[] = [];
   let currentVersion = options.schemaVersion ?? 1;
   let schemaExists = options.schemaExists ?? currentVersion > 0;
@@ -152,7 +153,9 @@ function createMockPgExecutor(options: {
       return [{ isolation: txIsolation } as unknown as R];
     }
     if (sql.includes("pg_catalog.pg_class")) {
-      return [{ exists: currentVersion > 0 ? "true" : "false" } as unknown as R];
+      return [
+        { exists: currentVersion > 0 ? "true" : "false" } as unknown as R,
+      ];
     }
     if (sql.includes("pg_catalog.pg_namespace")) {
       return [{ exists: schemaExists ? "true" : "false" } as unknown as R];
@@ -164,7 +167,10 @@ function createMockPgExecutor(options: {
       schemaExists = true;
       return [];
     }
-    if (sql.startsWith("INSERT INTO") && sql.includes(".migrations (version, name)")) {
+    if (
+      sql.startsWith("INSERT INTO") &&
+      sql.includes(".migrations (version, name)")
+    ) {
       currentVersion = 1;
       return [];
     }
@@ -210,20 +216,25 @@ function createMockPgExecutor(options: {
   };
 }
 
-function createMockMySqlExecutor(options: {
-  serverVersion?: string;
-  database?: string;
-  schemaVersion?: number;
-  existingLocks?: string[];
-  onQuery?: QueryResponder;
-  onExecute?: ExecuteResponder;
-} = {}) {
+function createMockMySqlExecutor(
+  options: {
+    serverVersion?: string;
+    database?: string;
+    schemaVersion?: number;
+    existingLocks?: string[];
+    onQuery?: QueryResponder;
+    onExecute?: ExecuteResponder;
+  } = {},
+) {
   const calls: RecordedCall[] = [];
   let currentVersion = options.schemaVersion ?? 1;
   const serverVersion = options.serverVersion ?? "8.4.3";
   const database = options.database ?? "app_db";
   const knownLocks = new Set(options.existingLocks ?? []);
-  const migrationProgress = new Map<number, { started: number; applied: number }>();
+  const migrationProgress = new Map<
+    number,
+    { started: number; applied: number }
+  >();
 
   const handleQuery = async <R extends object>(
     sql: string,
@@ -262,13 +273,26 @@ function createMockMySqlExecutor(options: {
     ) {
       return [];
     }
-    if (sql.includes("_migrations") && sql.includes("SELECT CAST(started AS CHAR)")) {
-      const p = migrationProgress.get(Number(params[0])) ?? { started: 0, applied: 0 };
+    if (
+      sql.includes("_migrations") &&
+      sql.includes("SELECT CAST(started AS CHAR)")
+    ) {
+      const p = migrationProgress.get(Number(params[0])) ?? {
+        started: 0,
+        applied: 0,
+      };
       return [
-        { started: String(p.started), applied: String(p.applied) } as unknown as R,
+        {
+          started: String(p.started),
+          applied: String(p.applied),
+        } as unknown as R,
       ];
     }
-    if (sql.includes("_migrations") && sql.startsWith("UPDATE") && sql.includes("applied_at = UNIX_TIMESTAMP()")) {
+    if (
+      sql.includes("_migrations") &&
+      sql.startsWith("UPDATE") &&
+      sql.includes("applied_at = UNIX_TIMESTAMP()")
+    ) {
       currentVersion = Number(params[0]);
       return [];
     }
@@ -604,7 +628,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
     expect(PostgresWorkflowStore.schemaVersion).toBe(1);
 
     const sql = PostgresWorkflowStore.migrationSql();
-    expect(sql).toContain('@bunest/workflows: PostgresWorkflowStore\'s schema "nest_workflows"');
+    expect(sql).toContain(
+      '@bunest/workflows: PostgresWorkflowStore\'s schema "nest_workflows"',
+    );
     expect(sql).toContain('CREATE SCHEMA IF NOT EXISTS "nest_workflows"');
     expect(sql).toContain('CREATE TABLE "nest_workflows".instances');
     expect(sql).toContain('CREATE TABLE "nest_workflows".journal');
@@ -632,9 +658,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
     const store = new PostgresWorkflowStore({ executor }, storage);
     expect(storage.source).toBe(store);
 
-    expect(
-      () => new PostgresWorkflowStore({ executor }, storage),
-    ).toThrow(/registered after WorkflowsModule initialized/);
+    expect(() => new PostgresWorkflowStore({ executor }, storage)).toThrow(
+      /registered after WorkflowsModule initialized/,
+    );
 
     expect(
       () =>
@@ -671,7 +697,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
     const applied = await store.migrate();
     expect(applied).toEqual([1]);
     expect(
-      autoMigrate.calls.some((c) => c.sql.includes("CREATE TABLE \"nest_workflows\".instances")),
+      autoMigrate.calls.some((c) =>
+        c.sql.includes('CREATE TABLE "nest_workflows".instances'),
+      ),
     ).toBe(true);
     expect(await store.migrate()).toEqual([]);
 
@@ -681,9 +709,7 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
     const badIsoStore = new PostgresWorkflowStore({
       executor: badIso.executor,
     });
-    await expect(badIsoStore.onModuleInit()).rejects.toThrow(
-      /READ COMMITTED/,
-    );
+    await expect(badIsoStore.onModuleInit()).rejects.toThrow(/READ COMMITTED/);
   });
 
   test("unstorableText refuses U+0000 in text/json and lone surrogates in json only", () => {
@@ -717,7 +743,8 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
           return [
             sampleInstanceRow({
               waits: '[{"signal":"approved","key":"k1"}]',
-              journal: '[{"name":"step-1","kind":"step","status":"completed","attempts":1}]',
+              journal:
+                '[{"name":"step-1","kind":"step","status":"completed","attempts":1}]',
             }),
           ];
         }
@@ -729,7 +756,10 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
           ];
         }
         if (sql.includes('FROM "nest_workflows".instances i')) {
-          return [sampleInstanceRow({ id: "wf-1" }), sampleInstanceRow({ id: "wf-2" })];
+          return [
+            sampleInstanceRow({ id: "wf-1" }),
+            sampleInstanceRow({ id: "wf-2" }),
+          ];
         }
         if (sql.startsWith('UPDATE "nest_workflows".instances')) {
           return [{ id: "wf-1" }];
@@ -788,8 +818,8 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
       offset: 5,
     });
     expect(listed.map((i) => i.id)).toEqual(["wf-1", "wf-2"]);
-    const listCall = mock.calls.find(
-      (c) => c.sql.includes("ORDER BY i.created_at, i.id LIMIT"),
+    const listCall = mock.calls.find((c) =>
+      c.sql.includes("ORDER BY i.created_at, i.id LIMIT"),
     );
     expect(listCall?.sql).toContain("status IN ($1::text, $2::text)");
     expect(listCall?.sql).toContain("workflow = $3::text");
@@ -832,7 +862,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
       }),
     ).toBe(true);
     expect(
-      mock.calls.some((c) => c.sql.includes('INSERT INTO "nest_workflows".journal')),
+      mock.calls.some((c) =>
+        c.sql.includes('INSERT INTO "nest_workflows".journal'),
+      ),
     ).toBe(true);
 
     // delete
@@ -846,7 +878,11 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
         if (sql.startsWith('INSERT INTO "nest_workflows".signals')) {
           return dedupeHit ? [] : [{ id: "10" }];
         }
-        if (sql.includes('SELECT id::text AS id, key FROM "nest_workflows".signals')) {
+        if (
+          sql.includes(
+            'SELECT id::text AS id, key FROM "nest_workflows".signals',
+          )
+        ) {
           return [{ id: "7", key: "order-42" }];
         }
         if (sql.includes("WITH woken AS")) {
@@ -944,7 +980,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
           return [{ id: "daily-report" }];
         }
         if (sql.includes("WITH claimed AS") && sql.includes(".schedules")) {
-          return [sampleScheduleRow({ lease_owner: "w1", lease_until: "9000" })];
+          return [
+            sampleScheduleRow({ lease_owner: "w1", lease_until: "9000" }),
+          ];
         }
         if (sql.includes("WITH claimed AS") && sql.includes(".instances")) {
           return [
@@ -977,7 +1015,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
         if (sql.includes("SELECT cancel_requested::text AS cancel_requested")) {
           return [{ cancel_requested: "false" }];
         }
-        if (sql.includes('SELECT id::text AS id FROM "nest_workflows".signals')) {
+        if (
+          sql.includes('SELECT id::text AS id FROM "nest_workflows".signals')
+        ) {
           return [];
         }
         return [];
@@ -1072,7 +1112,13 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
     const wrote = await store.write("wf-1", "tok-1", {
       now: 2000,
       entries: [
-        { name: "s1", kind: "step", status: "completed", attempts: 1, result: 7 },
+        {
+          name: "s1",
+          kind: "step",
+          status: "completed",
+          attempts: 1,
+          result: 7,
+        },
       ],
       status: "suspended",
       customStatus: { step: "waiting" },
@@ -1087,7 +1133,9 @@ describe("PostgresWorkflowStore & ./postgres entry", () => {
       mock.calls.some((c) => c.sql.includes("pg_advisory_xact_lock_shared")),
     ).toBe(true);
     expect(
-      mock.calls.some((c) => c.sql.includes('INSERT INTO "nest_workflows".waits')),
+      mock.calls.some((c) =>
+        c.sql.includes('INSERT INTO "nest_workflows".waits'),
+      ),
     ).toBe(true);
   });
 });
@@ -1122,7 +1170,9 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
     expect(statements[4]).toContain("CREATE TABLE `nest_workflows_waits`");
     expect(statements[5]).toContain("CREATE TABLE `nest_workflows_signals`");
     expect(statements[6]).toContain("CREATE TABLE `nest_workflows_schedules`");
-    expect(statements[7]).toContain("CREATE TABLE `nest_workflows_rate_limits`");
+    expect(statements[7]).toContain(
+      "CREATE TABLE `nest_workflows_rate_limits`",
+    );
     expect(statements[8]).toContain("INSERT INTO `nest_workflows_migrations`");
 
     const sql = MySqlWorkflowStore.migrationSql({
@@ -1211,7 +1261,10 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
     let dupOnInsert = false;
     const mock = createMockMySqlExecutor({
       onExecute: (sql) => {
-        if (sql.startsWith("INSERT INTO `nest_workflows_instances`") && dupOnInsert) {
+        if (
+          sql.startsWith("INSERT INTO `nest_workflows_instances`") &&
+          dupOnInsert
+        ) {
           const err = new Error("Duplicate entry") as Error & {
             errno?: number;
             sqlState?: string;
@@ -1235,11 +1288,21 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
               journal: JSON.stringify([
                 {
                   seq: 2,
-                  entry: { name: "b", kind: "step", status: "completed", attempts: 1 },
+                  entry: {
+                    name: "b",
+                    kind: "step",
+                    status: "completed",
+                    attempts: 1,
+                  },
                 },
                 {
                   seq: 1,
-                  entry: { name: "a", kind: "step", status: "completed", attempts: 1 },
+                  entry: {
+                    name: "a",
+                    kind: "step",
+                    status: "completed",
+                    attempts: 1,
+                  },
                 },
               ]),
             }),
@@ -1332,10 +1395,14 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
     // delete removes instance + journal + waits
     expect(await store.delete("wf-1", ["completed"])).toBe(true);
     expect(
-      mock.calls.some((c) => c.sql.startsWith("DELETE FROM `nest_workflows_journal`")),
+      mock.calls.some((c) =>
+        c.sql.startsWith("DELETE FROM `nest_workflows_journal`"),
+      ),
     ).toBe(true);
     expect(
-      mock.calls.some((c) => c.sql.startsWith("DELETE FROM `nest_workflows_waits`")),
+      mock.calls.some((c) =>
+        c.sql.startsWith("DELETE FROM `nest_workflows_waits`"),
+      ),
     ).toBe(true);
   });
 
@@ -1344,7 +1411,10 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
     let deadlockOnce = true;
     const mock = createMockMySqlExecutor({
       onExecute: (sql) => {
-        if (sql.startsWith("INSERT INTO `nest_workflows_signals`") && dupSignal) {
+        if (
+          sql.startsWith("INSERT INTO `nest_workflows_signals`") &&
+          dupSignal
+        ) {
           const err = new Error("Dup") as Error & {
             errno?: number;
             sqlState?: string;
@@ -1353,7 +1423,11 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
           err.sqlState = "23000";
           throw err;
         }
-        if (sql.startsWith("UPDATE `nest_workflows_instances` FORCE INDEX (PRIMARY) SET wake_at")) {
+        if (
+          sql.startsWith(
+            "UPDATE `nest_workflows_instances` FORCE INDEX (PRIMARY) SET wake_at",
+          )
+        ) {
           return { affectedRows: 2 };
         }
         if (sql.startsWith("DELETE FROM `nest_workflows_signals`")) {
@@ -1368,13 +1442,24 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
         if (sql === "SELECT CAST(LAST_INSERT_ID() AS CHAR) AS id") {
           return [{ id: "15" }];
         }
-        if (sql.includes("FROM `nest_workflows_waits` wt FORCE INDEX (waits_signal)")) {
+        if (
+          sql.includes(
+            "FROM `nest_workflows_waits` wt FORCE INDEX (waits_signal)",
+          )
+        ) {
           return [{ id: "wf-1" }, { id: "wf-2" }];
         }
-        if (sql.includes("FROM `nest_workflows_signals` s WHERE s.name = ? AND s.dedupe_id")) {
+        if (
+          sql.includes(
+            "FROM `nest_workflows_signals` s WHERE s.name = ? AND s.dedupe_id",
+          )
+        ) {
           return [{ id: "9", key: "order-42" }];
         }
-        if (sql.includes("FROM `nest_workflows_signals` s") && sql.includes("s.id >")) {
+        if (
+          sql.includes("FROM `nest_workflows_signals` s") &&
+          sql.includes("s.id >")
+        ) {
           return [
             {
               id: "15",
@@ -1388,16 +1473,29 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
         if (sql.includes("CAST(MAX(s.id) AS CHAR) AS newest")) {
           return [{ newest: "20", lowest: "10" }];
         }
-        if (sql.includes("SELECT CAST(s.id AS CHAR) AS id FROM `nest_workflows_signals`")) {
+        if (
+          sql.includes(
+            "SELECT CAST(s.id AS CHAR) AS id FROM `nest_workflows_signals`",
+          )
+        ) {
           return [{ id: "1" }, { id: "2" }];
         }
-        if (sql.includes("FROM `nest_workflows_rate_limits` rl") && sql.includes("window_end <")) {
+        if (
+          sql.includes("FROM `nest_workflows_rate_limits` rl") &&
+          sql.includes("window_end <")
+        ) {
           return [{ workflow: "order", key: "" }];
         }
-        if (sql.includes("FROM `nest_workflows_rate_limits` rl") && sql.includes("window_end")) {
+        if (
+          sql.includes("FROM `nest_workflows_rate_limits` rl") &&
+          sql.includes("window_end")
+        ) {
           return [{ workflow: "order", key: "", window_end: "0", count: "0" }];
         }
-        if (sql.includes("FROM `nest_workflows_schedules` s") && sql.includes("CAST(s.id AS CHAR)")) {
+        if (
+          sql.includes("FROM `nest_workflows_schedules` s") &&
+          sql.includes("CAST(s.id AS CHAR)")
+        ) {
           return [{ id: "daily-report" }];
         }
         if (sql.includes("FROM `nest_workflows_schedules` s")) {
@@ -1406,10 +1504,17 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
         if (sql.includes("WITH limits AS")) {
           return [{ id: "wf-1" }];
         }
-        if (sql.includes("`rate_limit_key`") && sql.includes("FOR UPDATE SKIP LOCKED")) {
+        if (
+          sql.includes("`rate_limit_key`") &&
+          sql.includes("FOR UPDATE SKIP LOCKED")
+        ) {
           return [{ id: "wf-1", workflow: "order", rate_limit_key: null }];
         }
-        if (sql.includes("SELECT CAST(i.id AS CHAR) AS id FROM `nest_workflows_instances`")) {
+        if (
+          sql.includes(
+            "SELECT CAST(i.id AS CHAR) AS id FROM `nest_workflows_instances`",
+          )
+        ) {
           return [{ id: "wf-1" }];
         }
         if (sql.includes("FROM `nest_workflows_instances` i WHERE")) {
@@ -1418,10 +1523,19 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
         if (sql.includes("COALESCE(MAX(s.id), 0)")) {
           return [{ id: "15" }];
         }
-        if (sql.includes("CAST(`cancel_requested` AS CHAR) AS `cancel_requested`, CAST(`terminate_requested`")) {
+        if (
+          sql.includes(
+            "CAST(`cancel_requested` AS CHAR) AS `cancel_requested`, CAST(`terminate_requested`",
+          )
+        ) {
           return [{ cancel_requested: "0", terminate_requested: "1" }];
         }
-        if (sql.includes("CAST(`cancel_requested` AS CHAR) AS `cancel_requested`") && sql.includes("FOR UPDATE")) {
+        if (
+          sql.includes(
+            "CAST(`cancel_requested` AS CHAR) AS `cancel_requested`",
+          ) &&
+          sql.includes("FOR UPDATE")
+        ) {
           if (deadlockOnce) {
             deadlockOnce = false;
             const err = new Error("Deadlock") as Error & {
@@ -1455,7 +1569,8 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
     });
     dupSignal = false;
     expect(
-      (await store.signalInTransaction(mock.validNativeTx, makeSignal())).created,
+      (await store.signalInTransaction(mock.validNativeTx, makeSignal()))
+        .created,
     ).toBe(true);
 
     // signals query
@@ -1480,9 +1595,9 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
       "daily-report",
     );
     expect((await store.getSchedule("daily-report"))?.id).toBe("daily-report");
-    expect(
-      (await store.listSchedules({ limit: 10, offset: 0 })).length,
-    ).toBe(1);
+    expect((await store.listSchedules({ limit: 10, offset: 0 })).length).toBe(
+      1,
+    );
     expect(await store.deleteSchedule("daily-report", 1)).toBe(true);
     expect(
       (
@@ -1554,7 +1669,11 @@ describe("MySqlWorkflowStore & ./mysql entry", () => {
       }),
     ).toBe(true);
     const finalUpdate = mock.calls
-      .filter((c) => c.kind === "execute" && c.sql.startsWith("UPDATE `nest_workflows_instances` SET status ="))
+      .filter(
+        (c) =>
+          c.kind === "execute" &&
+          c.sql.startsWith("UPDATE `nest_workflows_instances` SET status ="),
+      )
       .at(-1);
     expect(finalUpdate?.params).toContain("3000");
   });
@@ -1602,7 +1721,7 @@ describe("Re-exported adapters & CLI", () => {
 
   test("src/cli.ts starts with #!/usr/bin/env bun and runStoreCli prints Postgres/MySQL SQL and help", async () => {
     const cliPath = resolve(import.meta.dir, "../src/cli.ts");
-    const firstLine = readFileSync(cliPath, "utf8").split(/\r?\n/)[0];
+    const firstLine = (await Bun.file(cliPath).text()).split(/\r?\n/)[0];
     expect(firstLine).toBe("#!/usr/bin/env bun");
 
     const capture = async (argv: string[]) => {

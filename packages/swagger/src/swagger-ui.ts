@@ -4,12 +4,7 @@ import type {
 } from "./interfaces/openapi.interface";
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return Bun.escapeHTML(text);
 }
 
 function serializeSafeJsValue(value: unknown): string {
@@ -29,12 +24,12 @@ function toStringArray(value: string | string[] | undefined): string[] {
 function renderCustomHeadAssets(options: SwaggerSetupOptions): string {
   const parts: string[] = [];
   if (options.customfavIcon) {
-    parts.push(`  <link rel="icon" href="${escapeHtml(options.customfavIcon)}" />`);
+    parts.push(
+      `  <link rel="icon" href="${escapeHtml(options.customfavIcon)}" />`,
+    );
   }
   for (const cssUrl of toStringArray(options.customCssUrl)) {
-    parts.push(
-      `  <link rel="stylesheet" href="${escapeHtml(cssUrl)}" />`,
-    );
+    parts.push(`  <link rel="stylesheet" href="${escapeHtml(cssUrl)}" />`);
   }
   return parts.length > 0 ? `${parts.join("\n")}\n` : "";
 }

@@ -1,14 +1,13 @@
-import "reflect-metadata";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it } from "bun:test";
 import {
+  ContextStorage,
   Controller,
   Inject,
   Injectable,
   IntrinsicException,
   REQUEST,
   type ArgumentsHost,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   BaseRpcContext,
@@ -137,15 +136,25 @@ describe("NestJS v12 API Parity — Enums, Tokens & Aliases", () => {
     expect<string>(KafkaHeaders.REPLY_TOPIC).toBe("kafka_replyTopic");
     expect<string>(KafkaHeaders.REPLY_PARTITION).toBe("kafka_replyPartition");
     expect<string>(KafkaHeaders.NEST_ERR).toBe("kafka_nest-err");
-    expect<string>(KafkaHeaders.NEST_IS_DISPOSED).toBe("kafka_nest-is-disposed");
-    expect<string>(KafkaHeaders.NEST_NO_RESPONSE).toBe("kafka_nest-no-response");
-    expect<string>(KafkaHeaders.DLT_ORIGINAL_TOPIC).toBe("kafka_dlt-original-topic");
+    expect<string>(KafkaHeaders.NEST_IS_DISPOSED).toBe(
+      "kafka_nest-is-disposed",
+    );
+    expect<string>(KafkaHeaders.NEST_NO_RESPONSE).toBe(
+      "kafka_nest-no-response",
+    );
+    expect<string>(KafkaHeaders.DLT_ORIGINAL_TOPIC).toBe(
+      "kafka_dlt-original-topic",
+    );
     expect<string>(KafkaHeaders.BATCH_CONVERTED_HEADERS).toBe(
       "kafka_batchConvertedHeaders",
     );
-    expect<string>(KAFKA_CORRELATION_ID_HEADER).toBe(KafkaHeaders.CORRELATION_ID);
+    expect<string>(KAFKA_CORRELATION_ID_HEADER).toBe(
+      KafkaHeaders.CORRELATION_ID,
+    );
     expect<string>(KAFKA_REPLY_TOPIC_HEADER).toBe(KafkaHeaders.REPLY_TOPIC);
-    expect<string>(KAFKA_REPLY_PARTITION_HEADER).toBe(KafkaHeaders.REPLY_PARTITION);
+    expect<string>(KAFKA_REPLY_PARTITION_HEADER).toBe(
+      KafkaHeaders.REPLY_PARTITION,
+    );
   });
 
   it("exports Transport.RMQ alias, CONTEXT token, GrpcMethodStreamingType, and all 6 transport *Status enums", () => {
@@ -255,7 +264,10 @@ describe("ClientProxyFactory, @Client(), ClientsModule v12 options & Transport.R
       }
       async connect(): Promise<void> {}
       async close(): Promise<void> {}
-      protected override async sendOnce<TRes>(pattern: string, data: unknown): Promise<TRes> {
+      protected override async sendOnce<TRes>(
+        pattern: string,
+        data: unknown,
+      ): Promise<TRes> {
         return { custom: true, pattern, data, cfg: this.cfg } as TRes;
       }
       protected override async dispatchEvent(): Promise<void> {}
@@ -380,23 +392,49 @@ describe("ClientProxyFactory, @Client(), ClientsModule v12 options & Transport.R
 
 describe("All 16 Grpc*Exception subclasses, GrpcException, BaseRpcExceptionFilter & GrpcExceptionFilter", () => {
   it("constructs all 16 typed Grpc*Exception subclasses with canonical codes and default/custom messages", () => {
-    const cases: Array<[new (msg?: string) => GrpcException, GrpcStatus, string]> = [
+    const cases: Array<
+      [new (msg?: string) => GrpcException, GrpcStatus, string]
+    > = [
       [GrpcCancelledException, GrpcStatus.CANCELLED, "Cancelled"],
       [GrpcUnknownException, GrpcStatus.UNKNOWN, "Unknown"],
-      [GrpcInvalidArgumentException, GrpcStatus.INVALID_ARGUMENT, "Invalid argument"],
-      [GrpcDeadlineExceededException, GrpcStatus.DEADLINE_EXCEEDED, "Deadline exceeded"],
+      [
+        GrpcInvalidArgumentException,
+        GrpcStatus.INVALID_ARGUMENT,
+        "Invalid argument",
+      ],
+      [
+        GrpcDeadlineExceededException,
+        GrpcStatus.DEADLINE_EXCEEDED,
+        "Deadline exceeded",
+      ],
       [GrpcNotFoundException, GrpcStatus.NOT_FOUND, "Not found"],
       [GrpcAlreadyExistsException, GrpcStatus.ALREADY_EXISTS, "Already exists"],
-      [GrpcPermissionDeniedException, GrpcStatus.PERMISSION_DENIED, "Permission denied"],
-      [GrpcResourceExhaustedException, GrpcStatus.RESOURCE_EXHAUSTED, "Resource exhausted"],
-      [GrpcFailedPreconditionException, GrpcStatus.FAILED_PRECONDITION, "Failed precondition"],
+      [
+        GrpcPermissionDeniedException,
+        GrpcStatus.PERMISSION_DENIED,
+        "Permission denied",
+      ],
+      [
+        GrpcResourceExhaustedException,
+        GrpcStatus.RESOURCE_EXHAUSTED,
+        "Resource exhausted",
+      ],
+      [
+        GrpcFailedPreconditionException,
+        GrpcStatus.FAILED_PRECONDITION,
+        "Failed precondition",
+      ],
       [GrpcAbortedException, GrpcStatus.ABORTED, "Aborted"],
       [GrpcOutOfRangeException, GrpcStatus.OUT_OF_RANGE, "Out of range"],
       [GrpcUnimplementedException, GrpcStatus.UNIMPLEMENTED, "Unimplemented"],
       [GrpcInternalException, GrpcStatus.INTERNAL, "Internal"],
       [GrpcUnavailableException, GrpcStatus.UNAVAILABLE, "Unavailable"],
       [GrpcDataLossException, GrpcStatus.DATA_LOSS, "Data loss"],
-      [GrpcUnauthenticatedException, GrpcStatus.UNAUTHENTICATED, "Unauthenticated"],
+      [
+        GrpcUnauthenticatedException,
+        GrpcStatus.UNAUTHENTICATED,
+        "Unauthenticated",
+      ],
     ];
 
     expect(cases).toHaveLength(16);
@@ -426,7 +464,11 @@ describe("All 16 Grpc*Exception subclasses, GrpcException, BaseRpcExceptionFilte
     expect(defaultCode.getCode()).toBe(GrpcStatus.UNKNOWN);
 
     const md = new GrpcMetadata({ "x-id": "1" });
-    const bunestStyle = new GrpcException(GrpcStatus.PERMISSION_DENIED, "nope", md);
+    const bunestStyle = new GrpcException(
+      GrpcStatus.PERMISSION_DENIED,
+      "nope",
+      md,
+    );
     expect(bunestStyle.getCode()).toBe(GrpcStatus.PERMISSION_DENIED);
     expect(bunestStyle.message).toBe("nope");
     expect(bunestStyle.metadata).toBe(md);
@@ -440,12 +482,18 @@ describe("All 16 Grpc*Exception subclasses, GrpcException, BaseRpcExceptionFilte
     ).rejects.toEqual({ status: "error", message: "bad input" });
 
     await expect(
-      filter.catch(new RpcException({ code: 400, reason: "invalid" }), dummyHost),
+      filter.catch(
+        new RpcException({ code: 400, reason: "invalid" }),
+        dummyHost,
+      ),
     ).rejects.toEqual({ code: 400, reason: "invalid" });
 
     // Wrapped Error inside RpcException should not leak internal Error fields
     await expect(
-      filter.catch(new RpcException(new IntrinsicException("secret")), dummyHost),
+      filter.catch(
+        new RpcException(new IntrinsicException("secret")),
+        dummyHost,
+      ),
     ).rejects.toEqual({ status: "error", message: "Internal server error" });
 
     // KafkaRetriableException returns itself from getError() so it keeps travelling
@@ -483,7 +531,10 @@ describe("All 16 Grpc*Exception subclasses, GrpcException, BaseRpcExceptionFilte
 
     await expect(
       filter.catch(
-        new RpcException({ code: GrpcStatus.INVALID_ARGUMENT, message: "bad arg" }),
+        new RpcException({
+          code: GrpcStatus.INVALID_ARGUMENT,
+          message: "bad arg",
+        }),
         dummyHost,
       ),
     ).rejects.toEqual({
@@ -557,7 +608,9 @@ describe("RPC Context Hosts (BaseRpcContext, Tcp/Redis/Nats/Rmq/Mqtt/Kafka/Grpc)
         payload: "{}",
         qos: 1,
         retain: true,
-        properties: { userProperties: { "x-region": "ap-se", arr: ["a", "b"] } },
+        properties: {
+          userProperties: { "x-region": "ap-se", arr: ["a", "b"] },
+        },
       },
     ]);
     expect(mqttCtx).toBeInstanceOf(BaseRpcContext);
@@ -603,7 +656,7 @@ describe("RPC Context Hosts (BaseRpcContext, Tcp/Redis/Nats/Rmq/Mqtt/Kafka/Grpc)
 
 describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", () => {
   it("runs ClientProxy.setOnDispatchHook, Server.setOnProcessingStartHook (ALS), and setOnProcessingEndHook end-to-end over live TCP", async () => {
-    const als = new AsyncLocalStorage<{ spanId: string }>();
+    const als = new ContextStorage<{ spanId: string }>();
     const events: string[] = [];
     const customTransportId = Symbol("CUSTOM_TCP_TRANSPORT");
 
@@ -611,11 +664,15 @@ describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", (
     server.setTransportId(customTransportId);
 
     server.setOnProcessingStartHook((tid, ctx, done) => {
-      events.push(`start:${String(tid === customTransportId)}:${ctx instanceof TcpContext}`);
+      events.push(
+        `start:${String(tid === customTransportId)}:${ctx instanceof TcpContext}`,
+      );
       return als.run({ spanId: "span-42" }, done);
     });
     server.setOnProcessingEndHook((tid, ctx) => {
-      events.push(`end:${String(tid === customTransportId)}:${(ctx as TcpContext).getPattern()}`);
+      events.push(
+        `end:${String(tid === customTransportId)}:${(ctx as TcpContext).getPattern()}`,
+      );
     });
 
     server.addHandler("trace.echo", (data) => {
@@ -623,8 +680,16 @@ describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", (
     });
     expect(server.getHandlerByPattern("trace.echo")).not.toBeNull();
     expect(server.getHandlers().has("trace.echo")).toBe(true);
-    expect(server.getOptionsProp({ host: "localhost" }, "host")).toBe("localhost");
-    expect(server.getOptionsProp(undefined as { port?: number } | undefined, "port", 3000)).toBe(3000);
+    expect(server.getOptionsProp({ host: "localhost" }, "host")).toBe(
+      "localhost",
+    );
+    expect(
+      server.getOptionsProp(
+        undefined as { port?: number } | undefined,
+        "port",
+        3000,
+      ),
+    ).toBe(3000);
 
     // Server.send & transformToObservable
     const written: WritePacket[] = [];
@@ -693,8 +758,13 @@ describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", (
       });
       await inMemServer.listen();
 
-      const inMemClient = new InMemoryClientProxy({ channel: "hook-err", broker });
-      await expect(inMemClient.send("boom", {})).rejects.toThrow("expected-failure");
+      const inMemClient = new InMemoryClientProxy({
+        channel: "hook-err",
+        broker,
+      });
+      await expect(inMemClient.send("boom", {})).rejects.toThrow(
+        "expected-failure",
+      );
       await Bun.sleep(10);
       expect(endCalls).toBe(1);
       expect(unhandled).toHaveLength(0);
@@ -745,12 +815,16 @@ describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", (
         return "late";
       });
       await tcpServer.listen();
-      const tcpClient = new ClientTCP({ host: "127.0.0.1", port: tcpServer.port! });
+      const tcpClient = new ClientTCP({
+        host: "127.0.0.1",
+        port: tcpServer.port!,
+      });
       await expect(
         tcpClient.send("slow-op", {}, { timeoutMs: 15 }),
       ).rejects.toThrow(/timed out/);
       expect(
-        (tcpClient as unknown as { pending: Map<string, unknown> }).pending.size,
+        (tcpClient as unknown as { pending: Map<string, unknown> }).pending
+          .size,
       ).toBe(0);
       await tcpClient.close();
       await tcpServer.close();
@@ -853,8 +927,12 @@ describe("NestJS v12 Lifecycle & Observability Hooks + Server/Client Helpers", (
     expect(client.consumer).toBe(mockConsumer);
     expect(client.getConsumerAssignments()).toEqual({});
 
-    await client.commitOffsets([{ topic: "orders", partition: 0, offset: "42" }]);
-    expect(committed).toEqual([{ topic: "orders", partition: 0, offset: "42" }]);
+    await client.commitOffsets([
+      { topic: "orders", partition: 0, offset: "42" },
+    ]);
+    expect(committed).toEqual([
+      { topic: "orders", partition: 0, offset: "42" },
+    ]);
 
     await client.emitBatch("orders.batch", {
       messages: [{ value: { id: 1 }, key: "k1" }, { id: 2 }],
@@ -912,7 +990,9 @@ describe("Deserializers, Serializers & Protocol Helpers (JsonSocket, KafkaParser
     });
 
     const resDeser = new IncomingResponseDeserializer();
-    expect(resDeser.deserialize({ id: "1", response: "ok", isDisposed: true })).toEqual({
+    expect(
+      resDeser.deserialize({ id: "1", response: "ok", isDisposed: true }),
+    ).toEqual({
       id: "1",
       response: "ok",
       isDisposed: true,
@@ -966,7 +1046,10 @@ describe("Deserializers, Serializers & Protocol Helpers (JsonSocket, KafkaParser
       ),
     ).toEqual({ id: "1", response: 42, isDisposed: true });
     expect(
-      natsReqDeser.deserialize({ json: () => ({ hello: "nats" }) }, { channel: "subj" }),
+      natsReqDeser.deserialize(
+        { json: () => ({ hello: "nats" }) },
+        { channel: "subj" },
+      ),
     ).toEqual({ pattern: "subj", data: { hello: "nats" } });
 
     const natsResDeser = new NatsResponseJSONDeserializer();
@@ -982,7 +1065,11 @@ describe("Deserializers, Serializers & Protocol Helpers (JsonSocket, KafkaParser
       headers: {},
     });
     expect(
-      kafkaSer.serialize({ key: { id: 1 }, value: [1, 2], headers: { a: "b" } }),
+      kafkaSer.serialize({
+        key: { id: 1 },
+        value: [1, 2],
+        headers: { a: "b" },
+      }),
     ).toEqual({
       key: '{"id":1}',
       value: "[1,2]",
@@ -1043,7 +1130,9 @@ describe("Deserializers, Serializers & Protocol Helpers (JsonSocket, KafkaParser
     });
     expect(parsed.key).toBe("k1");
     expect(parsed.value).toEqual({ a: 1 });
-    expect(parsed.headers[KafkaHeaders.CORRELATION_ID]).toBe('{"notParsed":true}');
+    expect(parsed.headers[KafkaHeaders.CORRELATION_ID]).toBe(
+      '{"notParsed":true}',
+    );
     expect(parsed.headers.custom).toEqual({ ok: true });
     expect(parsed.headers.multi).toEqual(["one", { two: 2 }]);
 
@@ -1071,12 +1160,37 @@ describe("Deserializers, Serializers & Protocol Helpers (JsonSocket, KafkaParser
     const circular: Record<string, unknown> = { id: 1n };
     circular.self = circular;
 
-    handler({ namespace: "Consumer", level: 1, label: "ERROR", log: { message: "err", circular } });
-    handler({ namespace: "Consumer", level: 2, label: "WARN", log: { message: "warn" } });
-    handler({ namespace: "Consumer", level: 4, label: "INFO", log: { message: "info" } });
-    handler({ namespace: "Consumer", level: 5, label: "DEBUG", log: { message: "dbg" } });
+    handler({
+      namespace: "Consumer",
+      level: 1,
+      label: "ERROR",
+      log: { message: "err", circular },
+    });
+    handler({
+      namespace: "Consumer",
+      level: 2,
+      label: "WARN",
+      log: { message: "warn" },
+    });
+    handler({
+      namespace: "Consumer",
+      level: 4,
+      label: "INFO",
+      log: { message: "info" },
+    });
+    handler({
+      namespace: "Consumer",
+      level: 5,
+      label: "DEBUG",
+      log: { message: "dbg" },
+    });
 
-    expect(entries.map(([lvl]) => lvl)).toEqual(["error", "warn", "log", "debug"]);
+    expect(entries.map(([lvl]) => lvl)).toEqual([
+      "error",
+      "warn",
+      "log",
+      "debug",
+    ]);
     expect(entries[0]![1]).toContain("[Consumer]");
   });
 

@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { InMemorySpanExporter } from "@bunest/observability";
-import { SqliteService } from "@bunest/sqlite";
+import { DataSource } from "@bunest/orm";
 import { Test } from "@bunest/testing";
 import {
   OrderEventAuditListener,
@@ -34,7 +33,7 @@ describe("Distributed Worker Example (HTTP -> CQRS -> SQLite -> Queue -> Events 
     const client = mod.createTestClient(app);
     await app.init();
 
-    const sqlite = mod.get(SqliteService);
+    const dataSource = mod.get(DataSource);
     const auditListener = mod.get(OrderEventAuditListener);
 
     try {
@@ -101,6 +100,6 @@ describe("Distributed Worker Example (HTTP -> CQRS -> SQLite -> Queue -> Events 
       await app.close();
     }
 
-    expect(sqlite.isClosed).toBe(true);
+    expect(dataSource.isInitialized).toBe(false);
   });
 });

@@ -6,8 +6,8 @@ import {
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
-} from "@bunest/common";
-import { extractRequestCookies } from "@bunest/http";
+} from "@bunest/core";
+import { extractRequestCookies } from "@bunest/core/http";
 import type { JwtPayload, JwtVerifyOptions } from "../jwt/jwt.interface";
 import { JwtService } from "../jwt/jwt.service";
 import { IS_PUBLIC_KEY, setRequestUser } from "./auth.decorators";

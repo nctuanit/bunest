@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowJournalEntry,
   WorkflowParentClose,
@@ -309,9 +307,9 @@ export function workflowStoreContract(
         parentId: string,
         extra: Partial<WorkflowListQuery> = {},
       ) =>
-        (
-          await t.store.list({ limit: 100, offset: 0, parentId, ...extra })
-        ).map((i) => i.id);
+        (await t.store.list({ limit: 100, offset: 0, parentId, ...extra })).map(
+          (i) => i.id,
+        );
       equal(
         await children("order-1"),
         ["order-1/shipping#1", "order-1/shipping#2"],
@@ -1037,7 +1035,10 @@ export function workflowStoreContract(
         },
         "'one', replaced",
       );
-      absent(journal[0]!.progress, "'one'.progress, dropped by the replacement");
+      absent(
+        journal[0]!.progress,
+        "'one'.progress, dropped by the replacement",
+      );
       expect(
         journal[1],
         {
@@ -1050,7 +1051,11 @@ export function workflowStoreContract(
       );
       equal(journal[3]!.result, null, "a null result stays null");
       absent(journal[2]!.error, "an undefined error stays undefined");
-      equal((await t.store.get("a"))!.journal, undefined, "no journal unless asked");
+      equal(
+        (await t.store.get("a"))!.journal,
+        undefined,
+        "no journal unless asked",
+      );
     },
   );
 
@@ -1336,7 +1341,11 @@ export function workflowStoreContract(
         "an instance already due is not woken again",
       );
       const ids = [s1, s2, s3, s4, s5, s6].map((s) => s.id);
-      equal([...ids].sort((a, b) => a - b), ids, "ids increase");
+      equal(
+        [...ids].sort((a, b) => a - b),
+        ids,
+        "ids increase",
+      );
       equal(new Set(ids).size, 6, "ids are unique");
       const read = (key: string | null, afterId = 0, upToId = s6.id) =>
         t.store.signals({
@@ -1428,7 +1437,11 @@ export function workflowStoreContract(
       );
       expect(
         await t.store.get("b"),
-        { status: "suspended", wakeAt: FAR, waits: [{ signal: "go", key: "b" }] },
+        {
+          status: "suspended",
+          wakeAt: FAR,
+          waits: [{ signal: "go", key: "b" }],
+        },
         "b: another key, parked",
       );
       const [c] = (await t.claim(3, { token: "t2" })).instances;
@@ -1506,7 +1519,11 @@ export function workflowStoreContract(
           signal: { ...ended, now },
         });
       equal(await finish("stale", 6), false, "a stale write");
-      equal((await t.claim(0)).lastSignalId, 0, "no signal from the stale write");
+      equal(
+        (await t.claim(0)).lastSignalId,
+        0,
+        "no signal from the stale write",
+      );
       expect(await t.store.get("parent"), { wakeAt: FAR }, "nothing woken");
       equal(await finish("c", 7), true, "the lease holder ends the child");
       const { lastSignalId } = await t.claim(0);
@@ -1581,11 +1598,7 @@ export function workflowStoreContract(
         { amount: 2499 },
         2,
       );
-      expect(
-        first,
-        { created: true, woken: 1, key: "o1" },
-        "the first signal",
-      );
+      expect(first, { created: true, woken: 1, key: "o1" }, "the first signal");
       // Parked again on the same wait, having seen the first signal.
       await t.claim(2, { token: "t2" });
       await t.store.write("a", "t2", {
@@ -2225,7 +2238,11 @@ export function workflowStoreContract(
           ],
           now,
         });
-      equal(await reopen({ status: "completed", runs: 1 }, 3), false, "another status");
+      equal(
+        await reopen({ status: "completed", runs: 1 }, 3),
+        false,
+        "another status",
+      );
       equal(
         await reopen({ status: "failed", runs: 2 }, 3),
         false,
@@ -2568,7 +2585,7 @@ export function workflowStoreContract(
         for (;;) {
           const { instances } = await t.claim(1_000, {
             owner,
-            token: randomUUID(),
+            token: crypto.randomUUID(),
             limit: 7,
             leaseUntil: FAR,
           });
@@ -2602,7 +2619,11 @@ export function workflowStoreContract(
       "concurrent claims never lease more than a limit allows, and fill every free slot",
       async (t) => {
         for (let i = 0; i < 60; i++) {
-          await t.keyed(`k${i % 6}-${String(i).padStart(2, "0")}`, `k${i % 6}`, i);
+          await t.keyed(
+            `k${i % 6}-${String(i).padStart(2, "0")}`,
+            `k${i % 6}`,
+            i,
+          );
         }
         const limits: WorkflowConcurrencyLimit[] = [
           { workflow: W.name, limit: 4, perKey: 1 },
@@ -2613,7 +2634,7 @@ export function workflowStoreContract(
           await Promise.all(
             ["c1", "c2", "c3", "c4", "c5", "c6"].map(async (owner) => {
               await jitter();
-              const token = randomUUID();
+              const token = crypto.randomUUID();
               for (const instance of (
                 await t.claim(now, {
                   owner,
@@ -2678,7 +2699,7 @@ export function workflowStoreContract(
         for (let round = 0; round < 5; round++) {
           const now = 10_000 * (round + 1);
           const claim = async (owner: string) => {
-            const token = randomUUID();
+            const token = crypto.randomUUID();
             return (
               await t.claim(now, {
                 owner,
@@ -2740,7 +2761,8 @@ export function workflowStoreContract(
     );
 
     scheduleCases(
-      (name, run) => add(name, (t) => run(workflowScheduleStore(() => t.store))),
+      (name, run) =>
+        add(name, (t) => run(workflowScheduleStore(() => t.store))),
       "concurrent",
     );
 
@@ -2760,7 +2782,7 @@ export function workflowStoreContract(
         for (let round = 0; round < 5; round++) {
           const now = 1_000 * (round + 1);
           const claims = ["c1", "c2", "c3", "c4"].map(async (owner, i) => {
-            const token = randomUUID();
+            const token = crypto.randomUUID();
             await jitter();
             return (
               await t.claim(now + i, {
@@ -3048,11 +3070,7 @@ export function workflowStoreContract(
         const results = await Promise.all(
           Array.from({ length: 12 }, (_, i) => send(i)),
         );
-        equal(
-          results.filter((r) => r.created).length,
-          1,
-          "created once",
-        );
+        equal(results.filter((r) => r.created).length, 1, "created once");
         equal(
           new Set(results.map((r) => r.id)).size,
           1,
@@ -3130,15 +3148,11 @@ export function workflowStoreContract(
             ),
           ),
         );
-        equal(
-          created.filter((r) => r.created).length,
-          1,
-          "created once",
-        );
+        equal(created.filter((r) => r.created).length, 1, "created once");
         const winner = created.find((r) => r.created)!.instance;
         equal(
           created.filter(
-            (r) => !isDeepStrictEqual(r.instance.input, winner.input),
+            (r) => !Bun.deepEquals(r.instance.input, winner.input, true),
           ).length,
           0,
           "every call returns the stored instance",
@@ -3394,12 +3408,7 @@ const W = { name: "order-fulfilment", version: 1 };
 class Harness {
   constructor(readonly store: WorkflowStore) {}
 
-  create(
-    id: string,
-    now = 0,
-    workflow = "order-fulfilment",
-    version = 1,
-  ) {
+  create(id: string, now = 0, workflow = "order-fulfilment", version = 1) {
     return this.store.create({
       id,
       workflow,
@@ -3410,13 +3419,10 @@ class Harness {
     });
   }
 
-  claim(
-    now: number,
-    o: Partial<Omit<WorkflowClaimRequest, "now">> = {},
-  ) {
+  claim(now: number, o: Partial<Omit<WorkflowClaimRequest, "now">> = {}) {
     return this.store.claim({
       owner: o.owner ?? "w1",
-      token: o.token ?? randomUUID(),
+      token: o.token ?? crypto.randomUUID(),
       now,
       leaseUntil: o.leaseUntil ?? now + 1_000,
       limit: o.limit ?? 100,
@@ -3431,7 +3437,7 @@ class Harness {
     now: number,
     o: Partial<Omit<WorkflowClaimRequest, "now">> = {},
   ): Promise<string[]> {
-    const token = randomUUID();
+    const token = crypto.randomUUID();
     const { instances } = await this.claim(now, { ...o, token });
     for (const instance of instances) {
       await this.store.write(instance.id, token, {
@@ -3465,12 +3471,7 @@ class Harness {
   }
 
   /** An instance of `W` with a concurrency key. */
-  keyed(
-    id: string,
-    key: string | null,
-    now: number,
-    workflow = W.name,
-  ) {
+  keyed(id: string, key: string | null, now: number, workflow = W.name) {
     return this.store.create({
       id,
       workflow,

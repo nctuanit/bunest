@@ -33,7 +33,10 @@ export function matchMqttTopic(filter: string, topic: string): boolean {
   }
 
   // MQTT spec 4.7.2: wildcards at root must not match $-prefixed system topics
-  if (topic.startsWith("$") && (filter.startsWith("#") || filter.startsWith("+"))) {
+  if (
+    topic.startsWith("$") &&
+    (filter.startsWith("#") || filter.startsWith("+"))
+  ) {
     return false;
   }
 
@@ -239,7 +242,9 @@ export class MqttServer extends MicroserviceTransportServer {
     this.closeClientOnClose = options.closeClientOnClose ?? false;
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;
@@ -299,7 +304,8 @@ export class MqttServer extends MicroserviceTransportServer {
       return { filter: topic, handler: exact };
     }
 
-    let best: { filter: string; handler: MessageHandler; score: number } | undefined;
+    let best:
+      { filter: string; handler: MessageHandler; score: number } | undefined;
     for (const [filter, handler] of this.messageHandlers.entries()) {
       if (matchMqttTopic(filter, topic)) {
         const score = mqttFilterSpecificity(filter);

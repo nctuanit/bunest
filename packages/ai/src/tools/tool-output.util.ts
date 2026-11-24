@@ -1,7 +1,7 @@
-import { Logger } from '@bunest/common';
-import { AiToolError } from '../errors/ai.errors';
+import { Logger } from "@bunest/core";
+import { AiToolError } from "../errors/ai.errors";
 
-const logger = new Logger('AiModule');
+const logger = new Logger("AiModule");
 
 function isCallToolResult(value: unknown): value is {
   content: Array<{ type: string; text?: string }>;
@@ -9,20 +9,23 @@ function isCallToolResult(value: unknown): value is {
   isError?: boolean;
   _meta?: unknown;
 } {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !Array.isArray((value as any).content)
-  ) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const content = (value as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
     return false;
   }
   const keys = Object.keys(value);
   return (
     keys.every((key) =>
-      ['content', 'structuredContent', 'isError', '_meta'].includes(key),
+      ["content", "structuredContent", "isError", "_meta"].includes(key),
     ) &&
-    (value as any).content.every(
-      (block: any) => typeof block?.type === 'string',
+    content.every(
+      (block: unknown) =>
+        typeof block === "object" &&
+        block !== null &&
+        typeof (block as { type?: unknown }).type === "string",
     )
   );
 }
@@ -39,13 +42,15 @@ export function toToolOutput(
 ): unknown {
   if (isCallToolResult(value)) {
     const text = value.content
-      .filter((block) => block.type === 'text' && typeof block.text === 'string')
+      .filter(
+        (block) => block.type === "text" && typeof block.text === "string",
+      )
       .map((block) => block.text!)
-      .join('\n');
+      .join("\n");
     if (value.isError) {
-      throw new AiToolError(text || 'The tool failed', toolName);
+      throw new AiToolError(text || "The tool failed", toolName);
     }
-    if (value.content.some((block) => block.type !== 'text')) {
+    if (value.content.some((block) => block.type !== "text")) {
       logger.warn(
         `${where} returned content other than text, which agents are not sent; only its text is.`,
       );
@@ -58,7 +63,7 @@ export function toToolOutput(
 }
 
 function toJson(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     return value;
   }
   return JSON.parse(JSON.stringify(value));

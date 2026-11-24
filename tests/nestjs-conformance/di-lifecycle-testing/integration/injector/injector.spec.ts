@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Global,
@@ -9,7 +8,7 @@ import {
   forwardRef,
   type DynamicModule,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   CircularDependencyException,
   CoreBootstrapException,
@@ -247,7 +246,9 @@ describeConformance(
           class RepositoryB {}
 
           const buildApp = (explicitRequestScope: boolean) => {
-            const scope = explicitRequestScope ? Scope.REQUEST : Scope.SINGLETON;
+            const scope = explicitRequestScope
+              ? Scope.REQUEST
+              : Scope.SINGLETON;
 
             const repositoryAProvider = {
               provide: RepositoryA,

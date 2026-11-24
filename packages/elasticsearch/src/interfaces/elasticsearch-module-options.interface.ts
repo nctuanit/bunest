@@ -1,16 +1,17 @@
-import type { ModuleMetadata, Type } from "@bunest/common";
+import type { ModuleMetadata, Type } from "@bunest/core";
 import type { ClientOptions } from "./elasticsearch-types.interface";
 
 export type ElasticsearchModuleOptions = ClientOptions;
 
 export interface ElasticsearchOptionsFactory {
   createElasticsearchOptions():
-    | Promise<ElasticsearchModuleOptions>
-    | ElasticsearchModuleOptions;
+    Promise<ElasticsearchModuleOptions> | ElasticsearchModuleOptions;
 }
 
-export interface ElasticsearchModuleAsyncOptions
-  extends Pick<ModuleMetadata, "imports"> {
+export interface ElasticsearchModuleAsyncOptions extends Pick<
+  ModuleMetadata,
+  "imports"
+> {
   useExisting?: Type<ElasticsearchOptionsFactory>;
   useClass?: Type<ElasticsearchOptionsFactory>;
   useFactory?: (

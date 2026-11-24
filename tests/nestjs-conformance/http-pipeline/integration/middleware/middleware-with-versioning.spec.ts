@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, it } from "bun:test";
 import {
   Controller,
@@ -15,7 +14,7 @@ import {
   type RouteInfo,
   type Type,
   type VersioningOptions,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -228,7 +227,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: Expected GET /versioned (without Accept header) to execute middleware returning 200 "test_versioned", got 404. packages/http/src/router/route-compiler.ts (matchCompiledVersionGroup) rejects the unversioned request before executing middleware bound via forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL }).
+        // BUNEST_BUG: Expected GET /versioned (without Accept header) to execute middleware returning 200 "test_versioned", got 404. packages/core/src/http/router/route-compiler.ts (matchCompiledVersionGroup) rejects the unversioned request before executing middleware bound via forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL }).
         it.skip(`forRoutes({ path: '/versioned', version: '1', method: RequestMethod.ALL })`, async () => {
           await request(app!).get("/versioned").expect(200, VERSIONED_VALUE);
         });
@@ -346,7 +345,11 @@ describeConformance(
       });
 
       describe.each<
-        readonly [string, VersioningOptions, (version: string) => Record<string, string>]
+        readonly [
+          string,
+          VersioningOptions,
+          (version: string) => Record<string, string>,
+        ]
       >([
         [
           "HEADER",

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Catch,
@@ -308,7 +307,8 @@ describeConformance(
               undefined,
               {
                 guards: true,
-                callback: (result, firstArg) => `${String(result)} [${String(firstArg)}]`,
+                callback: (result, firstArg) =>
+                  `${String(result)} [${String(firstArg)}]`,
               },
             );
             expect(await wrapped("bun")).toBe("hello bun [bun]");
@@ -394,7 +394,12 @@ describeConformance(
             factory,
             undefined,
             undefined,
-            { guards: false, interceptors: false, filters: false, pipes: false },
+            {
+              guards: false,
+              interceptors: false,
+              filters: false,
+              pipes: false,
+            },
           );
 
           expect(await wrapped("req")).toBe("first:alpha:req-second:beta:req");
@@ -537,9 +542,9 @@ describeConformance(
           transformToResult?: (resultOrDeferred: unknown) => Promise<unknown>;
         };
         expect(typeof creatorAny.transformToResult).toBe("function");
-        expect(
-          await creatorAny.transformToResult!(Promise.resolve(100)),
-        ).toBe(100);
+        expect(await creatorAny.transformToResult!(Promise.resolve(100))).toBe(
+          100,
+        );
         expect(await creatorAny.transformToResult!(100)).toBe(100);
       });
     });

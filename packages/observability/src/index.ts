@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 // Tracing & W3C Trace Context
 export {
@@ -137,10 +136,7 @@ export {
   type InferHealthIndicatorResult,
   type InferHealthIndicatorResults,
 } from "./health/health-indicator.service";
-export {
-  HEALTH_CHECK_METADATA,
-  HealthCheck,
-} from "./health/health.decorator";
+export { HEALTH_CHECK_METADATA, HealthCheck } from "./health/health.decorator";
 export {
   CustomHealthIndicator,
   DiskHealthIndicator,
@@ -153,6 +149,7 @@ export {
   MEMORY_HEALTH_RSS_LIMIT,
   MemoryHealthIndicator,
   MicroserviceHealthIndicator,
+  OrmHealthIndicator,
   PrismaHealthIndicator,
   QueueHealthIndicator,
   SqlHealthIndicator,
@@ -174,6 +171,8 @@ export {
   type HttpResponseLike,
   type MicroserviceHealthIndicatorOptions,
   type MicroserviceOptionsLike,
+  type OrmHealthTarget,
+  type OrmPingCheckOptions,
   type PrismaClientPingCheckSettings,
   type PrismaHealthClient,
   type QueueHealthCounts,

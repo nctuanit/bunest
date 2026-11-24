@@ -3,7 +3,7 @@ import {
   Injectable,
   Logger,
   type OnApplicationBootstrap,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { ScheduleRecord } from "../core/interfaces/schedule-store.interface";
 import type {
   DeclaredSchedule,
@@ -245,7 +245,9 @@ export class WorkflowScheduler implements OnApplicationBootstrap {
     declared,
     at,
     now,
-  }: DueOccurrence<WorkflowScheduleSpec>): Promise<{ created: boolean } | null> {
+  }: DueOccurrence<WorkflowScheduleSpec>): Promise<{
+    created: boolean;
+  } | null> {
     const workflow = this.registry.resolve(
       schedule.target,
       spec.version ?? undefined,

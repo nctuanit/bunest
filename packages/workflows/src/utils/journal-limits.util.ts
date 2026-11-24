@@ -13,9 +13,9 @@ export function resolveJournalLimits(
   limits: WorkflowJournalLimits = {},
 ): Required<WorkflowJournalLimits> {
   const resolved = { ...DEFAULT_JOURNAL_LIMITS };
-  for (const key of Object.keys(
-    DEFAULT_JOURNAL_LIMITS,
-  ) as Array<keyof WorkflowJournalLimits>) {
+  for (const key of Object.keys(DEFAULT_JOURNAL_LIMITS) as Array<
+    keyof WorkflowJournalLimits
+  >) {
     const value = limits[key];
     if (value === undefined) {
       continue;

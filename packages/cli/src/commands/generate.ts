@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve } from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveProjectConfiguration,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, expect, it, mock } from "bun:test";
 import {
   DiskHealthIndicator,

@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import { get } from "node:http";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +5,7 @@ import {
   Header,
   Module,
   StreamableFile,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -18,25 +16,24 @@ import {
 
 const STREAM = "hello world";
 
-function rawGet(
+async function rawGet(
   baseUrl: string,
   path: string,
-): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; text: string }> {
-  return new Promise((resolve, reject) => {
-    const req = get(new URL(path, baseUrl), (res) => {
-      let text = "";
-      res.setEncoding("utf8");
-      res.on("data", (chunk) => (text += chunk));
-      res.on("end", () =>
-        resolve({
-          status: res.statusCode ?? 0,
-          headers: res.headers,
-          text,
-        }),
-      );
-    });
-    req.on("error", reject);
+): Promise<{
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  text: string;
+}> {
+  const res = await fetch(new URL(path, baseUrl));
+  const headers: Record<string, string | string[] | undefined> = {};
+  res.headers.forEach((value, key) => {
+    headers[key.toLowerCase()] = value;
   });
+  return {
+    status: res.status,
+    headers,
+    text: await res.text(),
+  };
 }
 
 @Controller("chunked")
@@ -113,7 +110,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: serializeResponse builds a buffered string Response for JSON objects even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve ignores the hop-by-hop Transfer-Encoding header and emits Content-Length instead of chunked framing (packages/http/src/pipeline/response-serializer.ts:645-749).
+    // BUNEST_BUG: serializeResponse builds a buffered string Response for JSON objects even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve ignores the hop-by-hop Transfer-Encoding header and emits Content-Length instead of chunked framing (packages/core/src/http/pipeline/response-serializer.ts:645-749).
     it.skip("should leave out the Content-Length for an object", async () => {
       const res = await request(app.getUrl()!).get("/chunked/object");
 
@@ -123,7 +120,7 @@ describeConformance(
       expect(res.body).toEqual({ hello: "world" });
     });
 
-    // BUNEST_BUG: serializeResponse builds a buffered string Response for text even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve strips Transfer-Encoding and sends Content-Length (packages/http/src/pipeline/response-serializer.ts:645-749).
+    // BUNEST_BUG: serializeResponse builds a buffered string Response for text even when @Header('Transfer-Encoding', 'chunked') is set, so Bun.serve strips Transfer-Encoding and sends Content-Length (packages/core/src/http/pipeline/response-serializer.ts:645-749).
     it.skip("should leave out the Content-Length for a string", async () => {
       const res = await request(app.getUrl()!).get("/chunked/text");
 
@@ -133,7 +130,7 @@ describeConformance(
       expect(res.text).toBe("plain");
     });
 
-    // BUNEST_BUG: serializeResponse sets StreamableFile's Content-Length even when @Header('Transfer-Encoding', 'chunked') is explicitly declared, causing Bun.serve to emit Content-Length instead of chunked framing (packages/http/src/pipeline/response-serializer.ts:572-595).
+    // BUNEST_BUG: serializeResponse sets StreamableFile's Content-Length even when @Header('Transfer-Encoding', 'chunked') is explicitly declared, causing Bun.serve to emit Content-Length instead of chunked framing (packages/core/src/http/pipeline/response-serializer.ts:572-595).
     it.skip("should leave out the Content-Length of a stream that has one", async () => {
       const res = await request(app.getUrl()!).get("/chunked/stream");
 
@@ -148,11 +145,17 @@ describeConformance(
       "should never emit both Transfer-Encoding and Content-Length on the wire (RFC 9112) and should stream unsized ReadableStream chunked",
       async () => {
         const base = app.getUrl()!;
-        for (const path of ["/chunked/object", "/chunked/text", "/chunked/stream"]) {
+        for (const path of [
+          "/chunked/object",
+          "/chunked/text",
+          "/chunked/stream",
+        ]) {
           const res = await rawGet(base, path);
           expect(res.status).toBe(200);
           expect(
-            Boolean(res.headers["transfer-encoding"] && res.headers["content-length"]),
+            Boolean(
+              res.headers["transfer-encoding"] && res.headers["content-length"],
+            ),
           ).toBe(false);
         }
 

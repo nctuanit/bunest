@@ -1,12 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, expect, it } from "bun:test";
-import * as net from "node:net";
 import {
   Controller,
   Get,
   Injectable,
   Module,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Test,
   describeConformance,
@@ -62,15 +60,15 @@ kzJ7eyQwlGXM20atiFxPk43h0f273MneIJG8NgGiVU0ND4XnZkAB3KSAu7pB+nEw
 QRYMYDgo/8Q=
 -----END CERTIFICATE-----`;
 
-function allocatePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const port = (srv.address() as net.AddressInfo).port;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
-    });
+async function allocatePort(): Promise<number> {
+  const srv = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: { data() {} },
   });
+  const { port } = srv;
+  srv.stop(true);
+  return port;
 }
 
 @Injectable()
@@ -121,7 +119,9 @@ describeConformance(
       try {
         await app.listen(port);
         expect(app.getUrl()).toMatch(
-          new RegExp(`^http://(\\[::1\\]|127\\.0\\.0\\.1|localhost):${port}/?$`),
+          new RegExp(
+            `^http://(\\[::1\\]|127\\.0\\.0\\.1|localhost):${port}/?$`,
+          ),
         );
       } finally {
         await app.close();
@@ -140,7 +140,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected app.getUrl() to normalize wildcard bind address 0.0.0.0 to http://127.0.0.1:<port> (matching NestApplication.getUrl()); actual returns raw Bun server.url http://0.0.0.0:<port>/ (packages/core/src/application/bunest-application.ts, packages/http/src/adapter/bun-http.adapter.ts).
+    // BUNEST_BUG: Expected app.getUrl() to normalize wildcard bind address 0.0.0.0 to http://127.0.0.1:<port> (matching NestApplication.getUrl()); actual returns raw Bun server.url http://0.0.0.0:<port>/ (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
     it.skip("should return 127.0.0.1 for 0.0.0.0", async () => {
       const app = testModule.createNestApplication({ logger: false });
       try {
@@ -161,18 +161,22 @@ describeConformance(
           observedUrl = app.getUrl();
         });
         expect(observedUrl).toMatch(
-          new RegExp(`^http://(\\[::1\\]|127\\.0\\.0\\.1|localhost):${port}/?$`),
+          new RegExp(
+            `^http://(\\[::1\\]|127\\.0\\.0\\.1|localhost):${port}/?$`,
+          ),
         );
       } finally {
         await app.close();
       }
     });
 
-    // BUNEST_BUG: Expected app.getUrl() called before app.listen() to throw/reject with "app.listen() needs to be called before calling app.getUrl()"; actual synchronously returns undefined (packages/core/src/application/bunest-application.ts, packages/http/src/adapter/bun-http.adapter.ts).
+    // BUNEST_BUG: Expected app.getUrl() called before app.listen() to throw/reject with "app.listen() needs to be called before calling app.getUrl()"; actual synchronously returns undefined (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
     it.skip("should throw an error for calling getUrl before listen", async () => {
       const app = testModule.createNestApplication({ logger: false });
       try {
-        await expect(Promise.resolve().then(() => app.getUrl())).rejects.toEqual(
+        await expect(
+          Promise.resolve().then(() => app.getUrl()),
+        ).rejects.toEqual(
           "app.listen() needs to be called before calling app.getUrl()",
         );
       } finally {

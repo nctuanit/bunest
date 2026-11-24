@@ -1,17 +1,12 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { Global, Module } from "../../../../../packages/common/src";
+import { Global, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,
   Query,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Resolver()
 class AuditResolver {

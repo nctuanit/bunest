@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const expectedDecoratorSource = (kebab: string, pascal: string): string =>
   'import { SetMetadata } from "@bunest/core";\n' +
@@ -32,11 +43,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-dec-"));
+      tempDir = makeTempDir("bunest-cli-conf-dec-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -67,7 +78,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.decorator.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo/foo.decorator.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo/foo.decorator.ts")),
         ).toEqual(expectedDecoratorSource("foo", "Foo"));
       },
       "Bunest decorator template uses SetMetadata from @bunest/core with exported metadata key",
@@ -91,7 +102,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo/foo.decorator.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo/foo.decorator.ts")),
         ).toEqual(expectedDecoratorSource("foo", "Foo"));
       },
       "Bunest decorator template uses SetMetadata from @bunest/core",
@@ -113,7 +124,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.decorator.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "baz/foo/foo.decorator.ts"), "utf8"),
+          readTextSync(join(tempDir, "baz/foo/foo.decorator.ts")),
         ).toEqual(expectedDecoratorSource("foo", "Foo"));
       },
       "Bunest uses dir option for base directory",
@@ -137,7 +148,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo-bar/foo-bar.decorator.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo-bar/foo-bar.decorator.ts")),
         ).toEqual(expectedDecoratorSource("foo-bar", "FooBar"));
       },
       "Normalizes camelCase decorator name to kebab-case filename and PascalCase symbol",
@@ -161,7 +172,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo/foo.decorator.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo/foo.decorator.ts")),
         ).toEqual(expectedDecoratorSource("foo", "Foo"));
       },
       "Normalizes camelCase path segments to kebab-case",
@@ -183,7 +194,7 @@ describeConformance(
         ),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_bar/_foo/_foo.decorator.ts"), "utf8"),
+        readTextSync(join(tempDir, "_bar/_foo/_foo.decorator.ts")),
       ).toEqual(expectedDecoratorSource("foo", "Foo"));
     });
 

@@ -21,16 +21,26 @@ const defaultSpawn: SpawnFn = async (cmd, options) => {
 };
 
 const PACKAGE_HINTS: Readonly<Record<string, string>> = {
+  "@bunest/core":
+    "Includes ConfigModule (`@bunest/core/config`), HTTP client (`@bunest/core/client`), WebSockets (`@bunest/core/ws`), and I18n (`@bunest/core/i18n`).",
   "@bunest/swagger":
     "Configure OpenAPI via `new DocumentBuilder()` and `SwaggerModule.setup('/docs', app, doc)`.",
-  "@bunest/config":
-    "Import `ConfigModule.forRoot({ isGlobal: true })` in your root AppModule.",
+  "@bunest/orm":
+    "Import `OrmModule.forRoot({ type: 'sqlite', database: ':memory:', synchronize: true })` in your root AppModule.",
   "@bunest/graphql":
-    "Import `GraphQLModule.forRoot({ autoSchemaFile: true })` in your root AppModule.",
-  "@bunest/websockets":
-    "Generate a WebSocket gateway with `bunest g ga <name>`.",
+    "Import `GraphQLModule.forRoot({ autoSchemaFile: true })` (or `@bunest/graphql/apollo`) in your root AppModule.",
   "@bunest/security":
-    "Configure JWT, Throttler, and Auth strategies via `JwtModule`, `ThrottlerModule`, and `AuthModule`.",
+    "Configure SecurityModule.forRoot(), JwtModule (`@bunest/security/jwt`), ThrottlerModule (`@bunest/security/throttler`), Auth (`@bunest/security/auth`), and Authorization (`@bunest/security/authz`).",
+  "@bunest/cache":
+    "Import `CacheModule.forRoot({ isGlobal: true })` or use `RedisCacheStore` backed by `Bun.RedisClient`.",
+  "@bunest/messaging":
+    "Import `EventEmitterModule` (`./events`), `CqrsModule` (`./cqrs`), `OutboxModule` (`./outbox`), or `WebhooksModule` (`./webhooks`).",
+  "@bunest/jobs":
+    "Import `QueueModule` (`./queues`) or `ScheduleModule` (`./scheduler`) in your root AppModule.",
+  "@bunest/resilience":
+    "Use `@Retry`/`@CircuitBreaker`, `@WithLock` (`./locks`), and `@Idempotent` (`./idempotency`).",
+  "@bunest/ai":
+    "Import `AiModule` or `McpModule` (`@bunest/ai/mcp`) in your root AppModule.",
 };
 
 /**
@@ -82,7 +92,7 @@ export async function addLibrary(
   const spawn = options.spawn ?? defaultSpawn;
   const { exitCode } = await spawn(spawnCmd, {
     cwd,
-    env: process.env,
+    env: Bun.env,
   });
 
   if (exitCode !== 0) {

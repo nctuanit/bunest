@@ -1,4 +1,4 @@
-import { HttpException } from "@bunest/common";
+import { HttpException } from "@bunest/core";
 import { ClientProxy } from "../client-proxy";
 import { BaseRpcContext } from "../ctx-host";
 import { GrpcStatus } from "../enums";
@@ -62,7 +62,9 @@ export function encodeGrpcFrame(
   payload: Uint8Array,
   compressed = false,
 ): Uint8Array<ArrayBuffer> {
-  const frame = new Uint8Array(new ArrayBuffer(GRPC_HEADER_BYTES + payload.byteLength));
+  const frame = new Uint8Array(
+    new ArrayBuffer(GRPC_HEADER_BYTES + payload.byteLength),
+  );
   const view = new DataView(frame.buffer);
   frame[0] = compressed ? GRPC_FLAG_COMPRESSED : 0x00;
   view.setUint32(1, payload.byteLength, false);
@@ -87,7 +89,9 @@ export function encodeGrpcTrailerFrame(
     .filter(Boolean)
     .join("");
   const payload = new TextEncoder().encode(lines);
-  const frame = new Uint8Array(new ArrayBuffer(GRPC_HEADER_BYTES + payload.byteLength));
+  const frame = new Uint8Array(
+    new ArrayBuffer(GRPC_HEADER_BYTES + payload.byteLength),
+  );
   const view = new DataView(frame.buffer);
   frame[0] = GRPC_FLAG_TRAILERS;
   view.setUint32(1, payload.byteLength, false);
@@ -128,7 +132,9 @@ export class GrpcFrameDecoder {
       if (this.buffer.byteLength === 0) {
         this.buffer = new Uint8Array(chunk);
       } else {
-        const merged = new Uint8Array(this.buffer.byteLength + chunk.byteLength);
+        const merged = new Uint8Array(
+          this.buffer.byteLength + chunk.byteLength,
+        );
         merged.set(this.buffer, 0);
         merged.set(chunk, this.buffer.byteLength);
         this.buffer = merged;
@@ -198,7 +204,9 @@ export function formatGrpcTimeout(timeoutMs: number): string {
   return `${clamped}m`;
 }
 
-export function parseGrpcTimeout(raw: string | null | undefined): number | undefined {
+export function parseGrpcTimeout(
+  raw: string | null | undefined,
+): number | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   const match = /^(\d+)([HMSmun])$/.exec(trimmed);
@@ -234,7 +242,9 @@ export class JsonGrpcCodec implements GrpcCodec {
   public readonly contentType = "application/grpc+json";
 
   encode(value: unknown): Uint8Array {
-    return textEncoder.encode(JSON.stringify(value === undefined ? null : value));
+    return textEncoder.encode(
+      JSON.stringify(value === undefined ? null : value),
+    );
   }
 
   decode<T = unknown>(bytes: Uint8Array): T {
@@ -315,7 +325,9 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   );
 }
 
-function parseGrpcPath(path: string): { service: string; method: string } | null {
+function parseGrpcPath(
+  path: string,
+): { service: string; method: string } | null {
   const clean = path.startsWith("/") ? path.slice(1) : path;
   const slashIdx = clean.indexOf("/");
   if (slashIdx <= 0 || slashIdx === clean.length - 1) {
@@ -413,7 +425,11 @@ function resolveHostAndPort(options: GrpcTransportOptions): {
       host: options.host ?? parsed.hostname,
       port:
         options.port ??
-        (parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80),
+        (parsed.port
+          ? Number(parsed.port)
+          : parsed.protocol === "https:"
+            ? 443
+            : 80),
       baseUrl: `${parsed.protocol}//${parsed.host}`,
     };
   }
@@ -579,7 +595,9 @@ export class GrpcServer extends MicroserviceTransportServer {
     }
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening && this.server) {
       callback?.();
       return;
@@ -617,7 +635,9 @@ export class GrpcServer extends MicroserviceTransportServer {
     // Try PascalCase method fallback (e.g. findOne -> FindOne)
     const capitalizedMethod =
       parsed.method.charAt(0).toUpperCase() + parsed.method.slice(1);
-    const byCap = this.grpcRoutes.get(`/${parsed.service}/${capitalizedMethod}`);
+    const byCap = this.grpcRoutes.get(
+      `/${parsed.service}/${capitalizedMethod}`,
+    );
     if (byCap) return byCap;
 
     // Try stripping package prefix if request sent `/pkg.Service/Method`
@@ -692,10 +712,12 @@ export class GrpcServer extends MicroserviceTransportServer {
 
     const incomingMetadata = GrpcMetadata.fromHeaders(req.headers);
     const timeoutMs = parseGrpcTimeout(req.headers.get("grpc-timeout"));
-    const deadline = timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
+    const deadline =
+      timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
 
     const abortController = new AbortController();
-    const onClientAbort = () => abortController.abort(new Error("Client cancelled"));
+    const onClientAbort = () =>
+      abortController.abort(new Error("Client cancelled"));
     req.signal.addEventListener("abort", onClientAbort, { once: true });
 
     let timedOut = false;
@@ -710,7 +732,9 @@ export class GrpcServer extends MicroserviceTransportServer {
           ),
         );
       }, timeoutMs);
-      if (typeof (timeoutTimer as { unref?: () => void }).unref === "function") {
+      if (
+        typeof (timeoutTimer as { unref?: () => void }).unref === "function"
+      ) {
         (timeoutTimer as { unref: () => void }).unref();
       }
     }
@@ -1019,7 +1043,9 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
   async close(): Promise<void> {
     this.closed = true;
     for (const controller of [...this.activeControllers]) {
-      controller.abort(new GrpcException(GrpcStatus.CANCELLED, "GrpcClientProxy closed"));
+      controller.abort(
+        new GrpcException(GrpcStatus.CANCELLED, "GrpcClientProxy closed"),
+      );
     }
     this.activeControllers.clear();
   }
@@ -1389,9 +1415,14 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     timeoutMs: number,
   ): Promise<TRes> {
     const resolved = this.parsePatternToServiceMethod(pattern);
-    return await this.call<TRes, TReq>(resolved.service, resolved.method, data, {
-      timeoutMs,
-    });
+    return await this.call<TRes, TReq>(
+      resolved.service,
+      resolved.method,
+      data,
+      {
+        timeoutMs,
+      },
+    );
   }
 
   protected override async dispatchEvent<TReq = any>(

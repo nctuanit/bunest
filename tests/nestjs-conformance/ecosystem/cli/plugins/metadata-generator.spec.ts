@@ -1,17 +1,22 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import { generateMetadataFile } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Metadata Generator (generateMetadataFile & ESM import extensions)",
@@ -27,29 +32,23 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-metagen-"));
-      mkdirSync(join(tmpDir, "src", "users"), { recursive: true });
-      mkdirSync(join(tmpDir, "src", "shared"), { recursive: true });
+      tmpDir = makeTempDir("bunest-cli-conf-metagen-");
+      mkdirSyncPath(join(tmpDir, "src", "users"), { recursive: true });
+      mkdirSyncPath(join(tmpDir, "src", "shared"), { recursive: true });
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     const seedFixtureProject = () => {
-      writeFileSync(
-        join(tmpDir, "src", "shared", "address.dto.ts"),
-        `export class AddressDto {
+      writeTextSync(join(tmpDir, "src", "shared", "address.dto.ts"), `export class AddressDto {
   /** Street line */
   street!: string;
   readonly zipCode!: string;
 }
-`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "users", "create-user.dto.ts"),
-        `import { AddressDto } from "../shared/address.dto";
+`);
+      writeTextSync(join(tmpDir, "src", "users", "create-user.dto.ts"), `import { AddressDto } from "../shared/address.dto";
 
 export enum UserRole {
   ADMIN = "admin",
@@ -76,12 +75,8 @@ export class CreateUserDto {
   @ApiHideProperty()
   secret!: string;
 }
-`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "users", "users.controller.ts"),
-        `import { CreateUserDto } from "./create-user.dto";
+`);
+      writeTextSync(join(tmpDir, "src", "users", "users.controller.ts"), `import { CreateUserDto } from "./create-user.dto";
 
 function Get(): MethodDecorator { return () => {}; }
 function Post(): MethodDecorator { return () => {}; }
@@ -99,20 +94,10 @@ export class UsersController {
     return {} as CreateUserDto;
   }
 }
-`,
-        "utf8",
-      );
+`);
       // Files that MUST be skipped by walkSourceFiles
-      writeFileSync(
-        join(tmpDir, "src", "users", "users.controller.spec.ts"),
-        `export class IgnoredSpecController { @Get() run(): string { return ""; } }\n`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "users", "types.dto.d.ts"),
-        `export declare class IgnoredDtsDto { id: string; }\n`,
-        "utf8",
-      );
+      writeTextSync(join(tmpDir, "src", "users", "users.controller.spec.ts"), `export class IgnoredSpecController { @Get() run(): string { return ""; } }\n`);
+      writeTextSync(join(tmpDir, "src", "users", "types.dto.d.ts"), `export declare class IgnoredDtsDto { id: string; }\n`);
     };
 
     describe("ESM `.js` import extension rewriting (esmCompatible)", () => {
@@ -127,7 +112,7 @@ export class UsersController {
 
         expect(res.modelsCount).toBe(2);
         expect(res.controllersCount).toBe(1);
-        expect(existsSync(res.outputPath)).toBe(true);
+        expect(existsSyncPath(res.outputPath)).toBe(true);
         expect(res.code).toContain('import("./shared/address.dto")');
         expect(res.code).toContain('import("./users/create-user.dto")');
         expect(res.code).toContain('import("./users/users.controller")');
@@ -164,22 +149,20 @@ export class UsersController {
 
         expect(res.outputPath).toBe(join(tmpDir, "generated", "metadata.ts"));
         expect(res.code).toContain('import("../src/shared/address.dto.js")');
-        expect(res.code).toContain('import("../src/users/users.controller.js")');
+        expect(res.code).toContain(
+          'import("../src/users/users.controller.js")',
+        );
       });
 
       // BUNEST_BUG: generateMetadataFile() only checks `options.esmCompatible === true` and does not inspect tsconfig.json `moduleResolution: "NodeNext"` / `"Node16"` to auto-enable `.js` extensions when `esmCompatible` is unset (packages/cli/src/plugins/metadata.plugin.ts:2054)
       it.skip("auto-enables `.js` import extensions when tsconfig uses NodeNext/Node16 moduleResolution", async () => {
         seedFixtureProject();
-        writeFileSync(
-          join(tmpDir, "tsconfig.json"),
-          JSON.stringify({
+        writeTextSync(join(tmpDir, "tsconfig.json"), JSON.stringify({
             compilerOptions: {
               module: "NodeNext",
               moduleResolution: "NodeNext",
             },
-          }),
-          "utf8",
-        );
+          }));
 
         const res = await generateMetadataFile({
           rootDir: tmpDir,
@@ -194,20 +177,12 @@ export class UsersController {
     describe("metadata tree extraction & runtime loadability", () => {
       it("ignores .spec.ts, .test.ts, .d.ts, node_modules, and dist directories", async () => {
         seedFixtureProject();
-        mkdirSync(join(tmpDir, "src", "node_modules", "pkg"), {
+        mkdirSyncPath(join(tmpDir, "src", "node_modules", "pkg"), {
           recursive: true,
         });
-        writeFileSync(
-          join(tmpDir, "src", "node_modules", "pkg", "ignored.dto.ts"),
-          `export class NodeModDto { x!: string; }\n`,
-          "utf8",
-        );
-        mkdirSync(join(tmpDir, "src", "dist"), { recursive: true });
-        writeFileSync(
-          join(tmpDir, "src", "dist", "built.dto.ts"),
-          `export class DistDto { x!: string; }\n`,
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "src", "node_modules", "pkg", "ignored.dto.ts"), `export class NodeModDto { x!: string; }\n`);
+        mkdirSyncPath(join(tmpDir, "src", "dist"), { recursive: true });
+        writeTextSync(join(tmpDir, "src", "dist", "built.dto.ts"), `export class DistDto { x!: string; }\n`);
 
         const res = await generateMetadataFile({
           rootDir: tmpDir,
@@ -253,16 +228,8 @@ export class UsersController {
       });
 
       it("supports custom dtoFileNameSuffix and controllerFileNameSuffix filters", async () => {
-        writeFileSync(
-          join(tmpDir, "src", "item.schema.ts"),
-          `export class ItemSchema { title!: string; }\n`,
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "src", "item.handler.ts"),
-          `export class ItemHandler { @Get() list(): string { return ""; } }\n`,
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "src", "item.schema.ts"), `export class ItemSchema { title!: string; }\n`);
+        writeTextSync(join(tmpDir, "src", "item.handler.ts"), `export class ItemHandler { @Get() list(): string { return ""; } }\n`);
 
         const res = await generateMetadataFile({
           rootDir: tmpDir,
@@ -282,16 +249,8 @@ export class UsersController {
         ["ADR-001", "ADR-002"],
         "generates an executable ESM metadata.ts module directly importable by Bun",
         async () => {
-          writeFileSync(
-            join(tmpDir, "src", "simple.dto.ts"),
-            `export class SimpleDto {\n  /** Name */\n  name!: string;\n}\n`,
-            "utf8",
-          );
-          writeFileSync(
-            join(tmpDir, "src", "simple.controller.ts"),
-            `function Get(): MethodDecorator { return () => {}; }\nexport class SimpleController {\n  /** Ping */\n  @Get()\n  ping(): string { return "pong"; }\n}\n`,
-            "utf8",
-          );
+          writeTextSync(join(tmpDir, "src", "simple.dto.ts"), `export class SimpleDto {\n  /** Name */\n  name!: string;\n}\n`);
+          writeTextSync(join(tmpDir, "src", "simple.controller.ts"), `function Get(): MethodDecorator { return () => {}; }\nexport class SimpleController {\n  /** Ping */\n  @Get()\n  ping(): string { return "pong"; }\n}\n`);
 
           const res = await generateMetadataFile({
             rootDir: tmpDir,
@@ -301,7 +260,7 @@ export class UsersController {
           });
 
           const mod = (await import(
-            `${pathToFileURL(res.outputPath).href}?t=${Date.now()}`
+            `${Bun.pathToFileURL(res.outputPath).href}?t=${Date.now()}`
           )) as {
             default: () => Promise<{
               "@nestjs/swagger": {

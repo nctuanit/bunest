@@ -6,7 +6,7 @@ import {
   type MicroserviceInstance,
   type ResponseContext,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   BunestApplication,
   BunestApplicationContext,
@@ -14,7 +14,7 @@ import {
   type ModuleNode,
   type RequestContainer,
 } from "@bunest/core";
-import { BunHttpAdapter } from "@bunest/http";
+import { BunHttpAdapter } from "@bunest/core/http";
 import { createMockRequest } from "./fixtures";
 import type {
   CreateTestingAppOptions,
@@ -162,8 +162,7 @@ export class TestingModule extends BunestApplicationContext {
   ): TestClient;
   createTestClient(
     appOrOptions?:
-      | BunestApplication
-      | (CreateTestingAppOptions & TestClientOptions),
+      BunestApplication | (CreateTestingAppOptions & TestClientOptions),
     clientOptions?: TestClientOptions,
   ): TestClient {
     if (appOrOptions instanceof BunestApplication) {

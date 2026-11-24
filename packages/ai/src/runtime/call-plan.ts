@@ -1,24 +1,20 @@
-import type { ResiliencePolicy } from '@bunest/resilience';
+import type { ResiliencePolicy } from "@bunest/resilience";
 import type {
   AiCallOptions,
   AiModelReference,
   AiToolChoice,
-} from '../interfaces/ai-call-options.interface';
+} from "../interfaces/ai-call-options.interface";
 import type {
   AiBudget,
   AiModuleOptions,
-} from '../interfaces/ai-module-options.interface';
-import type { AiCaller } from '../interfaces/ai-tool.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import type { AiUsageEvent } from '../interfaces/ai-usage.interface';
-import type { AiModels, ResolvedModel } from '../models/ai-models.service';
-import type { AiTools } from '../tools/ai-tools.service';
-import { AiConfigurationError } from '../errors/ai.errors';
-import {
-  modelPolicy,
-  type PolicyPlan,
-  type StepAttempt,
-} from './model-policy';
+} from "../interfaces/ai-module-options.interface";
+import type { AiCaller } from "../interfaces/ai-tool.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
+import type { AiUsageEvent } from "../interfaces/ai-usage.interface";
+import type { AiModels, ResolvedModel } from "../models/ai-models.service";
+import type { AiTools } from "../tools/ai-tools.service";
+import { AiConfigurationError } from "../errors/ai.errors";
+import { modelPolicy, type PolicyPlan, type StepAttempt } from "./model-policy";
 
 const DEFAULT_MAX_STEPS = 10;
 
@@ -32,7 +28,7 @@ export interface GenerationSettings {
   stopSequences?: string[];
   presencePenalty?: number;
   frequencyPenalty?: number;
-  providerOptions?: Record<string, Record<string, any>>;
+  providerOptions?: Record<string, Record<string, unknown>>;
   headers?: Record<string, string | undefined>;
 }
 
@@ -43,7 +39,7 @@ export interface CallPlan extends PolicyPlan {
   budget?: AiBudget;
   instructions?: string;
   messages: ModelMessage[];
-  tools?: Record<string, any>;
+  tools?: ReturnType<AiTools["select"]>;
   toolChoice?: AiToolChoice;
   caller: AiCaller;
   listeners: Array<(event: AiUsageEvent) => void | Promise<void>>;
@@ -74,14 +70,17 @@ export function createCallPlan(
     toolExecution?: boolean;
   },
 ): CallPlan {
-  if (typeof options !== 'object' || options === null) {
+  if (typeof options !== "object" || options === null) {
     throw new AiConfigurationError(
-      'Pass the call its options: { prompt } or { messages }, and the rest.',
+      "Pass the call its options: { prompt } or { messages }, and the rest.",
     );
   }
   const defaults = moduleOptions.defaults ?? {};
   const primary = models.resolve(options.model);
-  const chain = [primary, ...fallbacks(options.fallback, primary, models)].filter(
+  const chain = [
+    primary,
+    ...fallbacks(options.fallback, primary, models),
+  ].filter(
     (model, index, all) =>
       all.findIndex((other) => other.model === model.model) === index,
   );
@@ -97,7 +96,7 @@ export function createCallPlan(
     message?: string;
   }) =>
     plan.running?.emit({
-      type: 'data-tool-progress',
+      type: "data-tool-progress",
       id: progress.toolCallId,
       data: progress,
       transient: true,
@@ -124,7 +123,9 @@ export function createCallPlan(
     model: ResolvedModel,
     key: K,
   ): GenerationSettings[K] =>
-    (options as any)[key] ?? (model.settings as any)[key] ?? (defaults as any)[key];
+    (options as Partial<GenerationSettings>)[key] ??
+    (model.settings as Partial<GenerationSettings>)[key] ??
+    (defaults as Partial<GenerationSettings>)[key];
 
   return Object.assign(plan, {
     ...(options.label !== undefined && { label: options.label }),
@@ -143,15 +144,17 @@ export function createCallPlan(
     caller,
     listeners: [moduleOptions.onUsage, options.onUsage].filter(
       (listener): listener is (event: AiUsageEvent) => void | Promise<void> =>
-        typeof listener === 'function',
+        typeof listener === "function",
     ),
-    source: options.label ?? 'AiService',
+    source: options.label ?? "AiService",
     fallbackIf: options.fallbackIf ?? (() => true),
     policyFor: (model: ResolvedModel) => {
       let policy = policies.get(model);
       if (!policies.has(model)) {
         const own =
-          options.resilience ?? model.settings.resilience ?? defaults.resilience;
+          options.resilience ??
+          model.settings.resilience ??
+          defaults.resilience;
         policy =
           own === undefined
             ? modelPolicy(model, {
@@ -159,7 +162,7 @@ export function createCallPlan(
                 timeout:
                   options.timeout ?? model.settings.timeout ?? defaults.timeout,
               })
-            : typeof own === 'string'
+            : typeof own === "string"
               ? preset(own)
               : own;
         policies.set(model, policy);
@@ -169,20 +172,20 @@ export function createCallPlan(
     settingsFor: (model: ResolvedModel) => {
       const settings: GenerationSettings = {};
       for (const key of [
-        'maxOutputTokens',
-        'temperature',
-        'topP',
-        'topK',
-        'seed',
-        'stopSequences',
-        'presencePenalty',
-        'frequencyPenalty',
-        'providerOptions',
-        'headers',
+        "maxOutputTokens",
+        "temperature",
+        "topP",
+        "topK",
+        "seed",
+        "stopSequences",
+        "presencePenalty",
+        "frequencyPenalty",
+        "providerOptions",
+        "headers",
       ] as const) {
         const value = pick(model, key);
         if (value !== undefined) {
-          (settings as any)[key] = value;
+          (settings as Record<keyof GenerationSettings, unknown>)[key] = value;
         }
       }
       return settings;
@@ -191,7 +194,7 @@ export function createCallPlan(
 }
 
 function fallbacks(
-  option: AiCallOptions['fallback'],
+  option: AiCallOptions["fallback"],
   primary: ResolvedModel,
   models: AiModels,
 ): ResolvedModel[] {
@@ -210,15 +213,15 @@ function fallbacks(
 function messagesOf(options: AiCallOptions): ModelMessage[] {
   const { prompt, messages } = options;
   if (prompt !== undefined && messages !== undefined) {
-    throw new AiConfigurationError('Pass `prompt` or `messages`, not both.');
+    throw new AiConfigurationError("Pass `prompt` or `messages`, not both.");
   }
-  if (typeof prompt === 'string') {
-    return [{ role: 'user', content: prompt }];
+  if (typeof prompt === "string") {
+    return [{ role: "user", content: prompt }];
   }
   if (Array.isArray(messages) && messages.length > 0) {
     return [...messages];
   }
   throw new AiConfigurationError(
-    'Pass `prompt` (a string) or `messages` (a non-empty array of model messages).',
+    "Pass `prompt` (a string) or `messages` (a non-empty array of model messages).",
   );
 }

@@ -65,10 +65,7 @@ export interface WorkflowStore {
   } | null>;
   write(id: string, token: string, write: WorkflowWrite): Promise<boolean>;
   checkKey?(kind: WorkflowKeyKind, value: string): void;
-  unstorableText?(
-    text: string,
-    column: WorkflowTextColumn,
-  ): string | undefined;
+  unstorableText?(text: string, column: WorkflowTextColumn): string | undefined;
 }
 
 /** The ids, names and keys `WorkflowStore.checkKey()` checks. */

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,54 +5,46 @@ import {
   Injectable,
   Module,
   Post,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
-  BaseSqliteRepository,
-  InjectSqliteRepository,
-  SqliteEntity,
-  SqliteModule,
-} from "../../../../../packages/sqlite/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+  Column,
+  Entity,
+  InjectRepository,
+  OrmModule,
+  PrimaryGeneratedColumn,
+  type Repository,
+} from "../../../../../packages/orm/src";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
-interface PhotoRow extends Record<string, unknown> {
-  id: number;
-  name: string;
-  description: string;
-  views: number;
+@Entity("photos")
+class Photo {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  name!: string;
+
+  @Column()
+  description!: string;
+
+  @Column({ type: "integer", default: 0 })
+  views!: number;
 }
-
-@SqliteEntity("photos")
-class Photo {}
-
-const CREATE_PHOTOS_MIGRATION = {
-  id: "001_create_photos",
-  up: `CREATE TABLE IF NOT EXISTS photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    views INTEGER NOT NULL DEFAULT 0
-  )`,
-  down: "DROP TABLE IF EXISTS photos",
-};
 
 @Injectable()
 class PhotoService {
   constructor(
-    @InjectSqliteRepository(Photo)
-    private readonly photoRepository: BaseSqliteRepository<PhotoRow, number>,
+    @InjectRepository(Photo)
+    private readonly photoRepository: Repository<Photo>,
   ) {}
 
-  findAll(): PhotoRow[] {
-    return this.photoRepository.findAll();
+  findAll(): Promise<Photo[]> {
+    return this.photoRepository.find();
   }
 
-  create(): Omit<PhotoRow, "id"> {
-    const created = this.photoRepository.insertReturning({
+  async create(): Promise<Omit<Photo, "id">> {
+    const created = await this.photoRepository.save({
       name: "Nest",
       description: "Is great!",
       views: 6000,
@@ -71,18 +62,18 @@ class PhotoController {
   constructor(private readonly photoService: PhotoService) {}
 
   @Get()
-  findAll(): PhotoRow[] {
+  findAll(): Promise<Photo[]> {
     return this.photoService.findAll();
   }
 
   @Post()
-  create(): Omit<PhotoRow, "id"> {
+  create(): Promise<Omit<Photo, "id">> {
     return this.photoService.create();
   }
 }
 
 @Module({
-  imports: [SqliteModule.forFeature([Photo])],
+  imports: [OrmModule.forFeature([Photo])],
   providers: [PhotoService],
   controllers: [PhotoController],
 })
@@ -90,10 +81,11 @@ class PhotoModule {}
 
 @Module({
   imports: [
-    SqliteModule.forRoot({
-      filename: ":memory:",
-      autoMigrate: true,
-      migrations: [CREATE_PHOTOS_MIGRATION],
+    OrmModule.forRoot({
+      type: "sqlite",
+      database: ":memory:",
+      entities: [Photo],
+      synchronize: true,
     }),
     PhotoModule,
   ],
@@ -107,7 +99,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Adapts synchronous TypeOrmModule.forRoot() + forFeature() HTTP CRUD test to SqliteModule + BaseSqliteRepository.",
+      "Adapts synchronous TypeOrmModule.forRoot() + forFeature() HTTP CRUD test to @bunest/orm OrmModule + Repository<Photo>.",
   },
   () => {
     let app: BunestApplication;

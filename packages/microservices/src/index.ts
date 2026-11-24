@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 // Tokens & Constants
 export {
@@ -116,10 +115,7 @@ export {
   NatsRequestJSONDeserializer,
   NatsResponseJSONDeserializer,
 } from "./deserializers";
-export {
-  IdentitySerializer,
-  KafkaRequestSerializer,
-} from "./serializers";
+export { IdentitySerializer, KafkaRequestSerializer } from "./serializers";
 
 // Protocol Helpers
 export {
@@ -133,6 +129,17 @@ export {
   type KafkaReplyPartitionAssignerClientLike,
   type KafkaReplyPartitionAssignerCluster,
 } from "./helpers";
+
+// Module Augmentation Registries (populated by `bunest dev` / `bunest typegen`)
+export type {
+  BunestEventPatternRegistry,
+  BunestMessagePatternRegistry,
+  MessagePatternRequest,
+  MessagePatternResponse,
+  RegisteredEventPatternKey,
+  RegisteredMessagePatternEntry,
+  RegisteredMessagePatternKey,
+} from "./pattern-registry.interface";
 
 // Core Interfaces & Transport Config Types
 export {

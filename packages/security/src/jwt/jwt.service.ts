@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/common";
+import { Inject, Injectable, Optional } from "@bunest/core";
 import {
   base64UrlDecode,
   base64UrlDecodeUtf8,
@@ -101,7 +101,11 @@ function normalizeSecretMaterial(
   if (raw === undefined || raw === null) {
     return undefined;
   }
-  if (typeof raw === "string" || raw instanceof Uint8Array || isCryptoKey(raw)) {
+  if (
+    typeof raw === "string" ||
+    raw instanceof Uint8Array ||
+    isCryptoKey(raw)
+  ) {
     return raw;
   }
   if (typeof raw === "object") {
@@ -153,8 +157,15 @@ function normalizeSecretMaterial(
   return undefined;
 }
 
-function encodeStringWithEncoding(value: string, encoding?: string): Uint8Array {
-  if (!encoding || encoding.toLowerCase() === "utf8" || encoding.toLowerCase() === "utf-8") {
+function encodeStringWithEncoding(
+  value: string,
+  encoding?: string,
+): Uint8Array {
+  if (
+    !encoding ||
+    encoding.toLowerCase() === "utf8" ||
+    encoding.toLowerCase() === "utf-8"
+  ) {
     return utf8Encode(value);
   }
   return new Uint8Array(Buffer.from(value, encoding as BufferEncoding));
@@ -784,9 +795,7 @@ export class JwtService {
     }
 
     const rawBytes =
-      typeof secret === "string"
-        ? utf8Encode(secret)
-        : new Uint8Array(secret);
+      typeof secret === "string" ? utf8Encode(secret) : new Uint8Array(secret);
     if (rawBytes.byteLength === 0) {
       throw new JwtInvalidException("JWT secret must not be empty");
     }
@@ -821,8 +830,7 @@ export class JwtService {
     alg: JwtAlgorithm,
     kind: "private" | "public",
   ): Promise<CryptoKey> {
-    const expectedAlgoName =
-      alg === "RS256" ? "RSASSA-PKCS1-v1_5" : "ECDSA";
+    const expectedAlgoName = alg === "RS256" ? "RSASSA-PKCS1-v1_5" : "ECDSA";
 
     if (isCryptoKey(keyInput)) {
       if (keyInput.type !== kind) {

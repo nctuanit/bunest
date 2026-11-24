@@ -1,19 +1,20 @@
 # Model Context Protocol (MCP)
 
-**`@bunest/mcp`** turns any Bunest application into a **Model Context Protocol (MCP)** server with zero external runtime dependencies—exposing `@Tool()`, `@Resource()`, `@ResourceTemplate()`, and `@Prompt()` handlers over native **Streamable HTTP**, **SSE**, and **stdio** JSON-RPC 2.0 transports.
+**`@bunest/ai/mcp`** turns any Bunest application into a **Model Context Protocol (MCP)** server with zero external runtime dependencies—exposing `@Tool()`, `@Resource()`, `@ResourceTemplate()`, and `@Prompt()` handlers over native **Streamable HTTP**, **SSE**, and **stdio** JSON-RPC 2.0 transports.
 
 ## Installation
 
 ```bash
-bun add @bunest/mcp
+bun add @bunest/ai/mcp
 ```
 
 ## Module Setup
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { McpModule } from "@bunest/mcp";
+import { McpModule } from "@bunest/ai/mcp";
 import { DocsMcpTools } from "./docs.mcp";
 
 @Module({
@@ -32,9 +33,10 @@ export class AppModule {}
 ## Defining Tools, Resources & Prompts
 
 @@filename(docs.mcp.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { Prompt, Resource, Tool } from "@bunest/mcp";
+import { Prompt, Resource, Tool } from "@bunest/ai/mcp";
 
 @Injectable()
 export class DocsMcpTools {
@@ -65,6 +67,6 @@ export class DocsMcpTools {
 }
 ```
 
-## Testing (`@bunest/mcp/testing`)
+## Testing (`@bunest/ai/mcp/testing`)
 
-Import `@bunest/mcp/testing` to invoke tools, resources, and prompts directly in-process over JSON-RPC 2.0 inside `bun:test`.
+Import `@bunest/ai/mcp/testing` to invoke tools, resources, and prompts directly in-process over JSON-RPC 2.0 inside `bun:test`.

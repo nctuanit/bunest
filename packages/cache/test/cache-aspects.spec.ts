@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
-import { Injectable, Module, Scope } from "@bunest/common";
+import { Injectable, Module, Scope } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   CacheEvict,
@@ -38,7 +37,11 @@ describe("@bunest/cache Service-Level Method Aspect Decorators", () => {
         id: string,
       ): Promise<{ id: string; orgId: string; fetchCount: number }> {
         userCalls += 1;
-        return { id, orgId: id.startsWith("a") ? "acme" : "beta", fetchCount: userCalls };
+        return {
+          id,
+          orgId: id.startsWith("a") ? "acme" : "beta",
+          fetchCount: userCalls,
+        };
       }
 
       @Cacheable({
@@ -158,7 +161,9 @@ describe("@bunest/cache Service-Level Method Aspect Decorators", () => {
         key: (id: string) => `profile:${id}`,
         tags: (id: string) => ["profiles", `profile:${id}`],
       })
-      async getProfile(id: string): Promise<{ id: string; name: string; rev: number }> {
+      async getProfile(
+        id: string,
+      ): Promise<{ id: string; name: string; rev: number }> {
         loads += 1;
         return { id, name: `Initial-${id}`, rev: loads };
       }
@@ -220,25 +225,49 @@ describe("@bunest/cache Service-Level Method Aspect Decorators", () => {
       const cache = ctx.get(CacheService);
 
       // Populate cache
-      expect(await svc.getProfile("1")).toEqual({ id: "1", name: "Initial-1", rev: 1 });
-      expect(await svc.getProfile("2")).toEqual({ id: "2", name: "Initial-2", rev: 2 });
+      expect(await svc.getProfile("1")).toEqual({
+        id: "1",
+        name: "Initial-1",
+        rev: 1,
+      });
+      expect(await svc.getProfile("2")).toEqual({
+        id: "2",
+        name: "Initial-2",
+        rev: 2,
+      });
       expect(loads).toBe(2);
 
       // @CachePut writes updated value directly into cache
       await svc.updateProfile("1", "Alice");
-      expect(await svc.getProfile("1")).toEqual({ id: "1", name: "Alice", rev: 99 });
+      expect(await svc.getProfile("1")).toEqual({
+        id: "1",
+        name: "Alice",
+        rev: 99,
+      });
       expect(loads).toBe(2);
 
       // @CacheEvict (default beforeInvocation: false) does NOT evict when method throws
-      await expect(svc.deleteProfile("1", true)).rejects.toThrow("delete failed");
-      expect(await svc.getProfile("1")).toEqual({ id: "1", name: "Alice", rev: 99 });
+      await expect(svc.deleteProfile("1", true)).rejects.toThrow(
+        "delete failed",
+      );
+      expect(await svc.getProfile("1")).toEqual({
+        id: "1",
+        name: "Alice",
+        rev: 99,
+      });
 
       // @CacheEvict evicts exact key on success
       await svc.deleteProfile("1", false);
-      expect(await svc.getProfile("1")).toEqual({ id: "1", name: "Initial-1", rev: 3 });
+      expect(await svc.getProfile("1")).toEqual({
+        id: "1",
+        name: "Initial-1",
+        rev: 3,
+      });
 
       // @CacheEvict({ beforeInvocation: true }) evicts even when method throws!
-      await expect(svc.forceEvictBefore("1")).rejects.toThrow("boom after evict");
+      await expect(svc.forceEvictBefore("1")).rejects.toThrow(
+        "boom after evict",
+      );
       expect(await cache.has("profile:1")).toBe(false);
 
       // Re-populate & evict by prefix

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { WsException } from "../../../../../../packages/websockets/src";
+import { WsException } from "../../../../../../packages/core/src/ws";
 import { describeConformance } from "../../../../_helpers/index";
 
 describeConformance(
@@ -32,7 +31,7 @@ describeConformance(
           expect(instance.getError()).toEqual(error);
         });
 
-        // BUNEST_BUG: WsException in packages/websockets/src/exceptions/ws.exception.ts hardcodes "WebSocket exception" when object error lacks `message` instead of splitting constructor.name into words ("Ws Exception") like upstream NestJS WsException (and Bunest's own HttpException.initMessage()).
+        // BUNEST_BUG: WsException in packages/core/src/ws/exceptions/ws.exception.ts hardcodes "WebSocket exception" when object error lacks `message` instead of splitting constructor.name into words ("Ws Exception") like upstream NestJS WsException (and Bunest's own HttpException.initMessage()).
         it.skip("should fallback error message to class name", () => {
           expect(instance.message).toEqual("Ws Exception");
         });
@@ -43,7 +42,7 @@ describeConformance(
         const error = { test: true };
         const instance = new WS(error);
 
-        // BUNEST_BUG: WsException in packages/websockets/src/exceptions/ws.exception.ts hardcodes "WebSocket exception" instead of falling back to "Error" when subclass name (e.g. `WS`) cannot be split into PascalCase words.
+        // BUNEST_BUG: WsException in packages/core/src/ws/exceptions/ws.exception.ts hardcodes "WebSocket exception" instead of falling back to "Error" when subclass name (e.g. `WS`) cannot be split into PascalCase words.
         it.skip('should fallback error message to "Error"', () => {
           expect(instance.message).toEqual("Error");
         });

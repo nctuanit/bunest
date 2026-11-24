@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import type { GraphQLObjectType } from "../../../../../../packages/graphql/node_modules/graphql";
+import type { GraphQLObjectType } from "../../../../../../packages/graphql/src";
 import {
   METADATA_KEYS,
   MetadataRegistry,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Field,
   GRAPHQL_METADATA_KEYS,
@@ -42,7 +41,8 @@ function resolveTargetName(resolverClass: Function): string | undefined {
 describeConformance(
   "@Resolver decorator",
   {
-    upstreamPath: "packages/graphql/tests/decorators/resolver.decorator.spec.ts",
+    upstreamPath:
+      "packages/graphql/tests/decorators/resolver.decorator.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:

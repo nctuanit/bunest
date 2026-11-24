@@ -16,50 +16,50 @@ All numbers below were measured directly via `bun run benchmarks/run.ts` and rec
 
 ### Recorded Environment ([`benchmarks/RESULTS.md`](../benchmarks/RESULTS.md))
 
-| Property | Value |
-|---|---|
-| Measured At (UTC) | `2026-11-20T07:49:29.185Z` |
-| Bun Runtime | `v1.4.3` (`c6da4a4d`) |
-| OS / Arch | `win32 10.0.26300 (x64)` |
-| CPU | `AMD Ryzen 7 5800H with Radeon Graphics` (16 logical cores) |
-| Total RAM | `63.36 GiB` |
-| Package Versions | `@bunest/core@0.1.0`, `class-validator@0.14.4`, `class-transformer@0.5.1` |
-| Live HTTP Config | 4,000 req/workload, 400 warmup, concurrency 32, `keep-alive`, 59-byte JSON payload, logging off |
-| In-Process Config | 10,000 ops/workload, 1,000 warmup, concurrency 1 |
-| DI Microbench Config | 10,000 hot ops, 50 cold bootstraps |
+| Property             | Value                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Measured At (UTC)    | `2026-11-20T07:49:29.185Z`                                                                      |
+| Bun Runtime          | `v1.4.3` (`c6da4a4d`)                                                                           |
+| OS / Arch            | `win32 10.0.26300 (x64)`                                                                        |
+| CPU                  | `AMD Ryzen 7 5800H with Radeon Graphics` (16 logical cores)                                     |
+| Total RAM            | `63.36 GiB`                                                                                     |
+| Package Versions     | `@bunest/core@0.1.0`, `class-validator@0.14.4`, `class-transformer@0.5.1`                       |
+| Live HTTP Config     | 4,000 req/workload, 400 warmup, concurrency 32, `keep-alive`, 59-byte JSON payload, logging off |
+| In-Process Config    | 10,000 ops/workload, 1,000 warmup, concurrency 1                                                |
+| DI Microbench Config | 10,000 hot ops, 50 cold bootstraps                                                              |
 
 ---
 
 ## 2. Live Loopback HTTP (`Bun.serve({ port: 0 })`, Concurrency 32)
 
-| Workload | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | Bunest p50 (ms) | p50 Overhead (ms) | Bunest p99 (ms) | p99 Overhead (ms) | Errors |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1. Static `GET /health` | 33,682 | **33,278** | **98.8%** | 0.900 | +0.055 | 2.051 | -0.027 | 0.00% |
-| 2. Param `GET /users/:id` + DI | 34,508 | **32,045** | **92.9%** | 0.941 | +0.084 | 1.792 | -0.132 | 0.00% |
-| 3. JSON `POST /users` (`@Body`) | 25,999 | **21,147** | **81.3%** | 1.401 | +0.254 | 2.930 | +0.223 | 0.00% |
-| 4. Validated `POST /users/validated` (DTO) | 12,149 | **12,756** | **105.0%** | 2.316 | -0.062 | 4.077 | -0.187 | 0.00% |
+| Workload                                   | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | Bunest p50 (ms) | p50 Overhead (ms) | Bunest p99 (ms) | p99 Overhead (ms) | Errors |
+| ------------------------------------------ | ----------------------: | -------------: | ------------------: | --------------: | ----------------: | --------------: | ----------------: | -----: |
+| 1. Static `GET /health`                    |                  33,682 |     **33,278** |           **98.8%** |           0.900 |            +0.055 |           2.051 |            -0.027 |  0.00% |
+| 2. Param `GET /users/:id` + DI             |                  34,508 |     **32,045** |           **92.9%** |           0.941 |            +0.084 |           1.792 |            -0.132 |  0.00% |
+| 3. JSON `POST /users` (`@Body`)            |                  25,999 |     **21,147** |           **81.3%** |           1.401 |            +0.254 |           2.930 |            +0.223 |  0.00% |
+| 4. Validated `POST /users/validated` (DTO) |                  12,149 |     **12,756** |          **105.0%** |           2.316 |            -0.062 |           4.077 |            -0.187 |  0.00% |
 
 ---
 
 ## 3. In-Process `fetch()` Dispatch Microbenchmark (10,000 ops)
 
-| Workload | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | Bunest p50 (ms) | p50 Overhead (ms) | Bunest p99 (ms) | p99 Overhead (ms) | Errors |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1. Static `GET /health` | 473,317 | **341,247** | **72.1%** | 0.002 | +0.001 | 0.014 | +0.006 | 0.00% |
-| 2. Param `GET /users/:id` + DI | 560,058 | **260,223** | **46.5%** | 0.003 | +0.002 | 0.017 | +0.011 | 0.00% |
-| 3. JSON `POST /users` (`@Body`) | 291,643 | **33,639** | **11.5%** | 0.009 | +0.006 | 0.873 | +0.856 | 0.00% |
-| 4. Validated `POST /users/validated` (DTO) | 54,668 | **18,295** | **33.5%** | 0.023 | +0.009 | 1.160 | +1.110 | 0.00% |
+| Workload                                   | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | Bunest p50 (ms) | p50 Overhead (ms) | Bunest p99 (ms) | p99 Overhead (ms) | Errors |
+| ------------------------------------------ | ----------------------: | -------------: | ------------------: | --------------: | ----------------: | --------------: | ----------------: | -----: |
+| 1. Static `GET /health`                    |                 473,317 |    **341,247** |           **72.1%** |           0.002 |            +0.001 |           0.014 |            +0.006 |  0.00% |
+| 2. Param `GET /users/:id` + DI             |                 560,058 |    **260,223** |           **46.5%** |           0.003 |            +0.002 |           0.017 |            +0.011 |  0.00% |
+| 3. JSON `POST /users` (`@Body`)            |                 291,643 |     **33,639** |           **11.5%** |           0.009 |            +0.006 |           0.873 |            +0.856 |  0.00% |
+| 4. Validated `POST /users/validated` (DTO) |                  54,668 |     **18,295** |           **33.5%** |           0.023 |            +0.009 |           1.160 |            +1.110 |  0.00% |
 
 ---
 
 ## 4. DI Container & Bootstrap Microbenchmarks
 
-| Operation | Iterations | Throughput (ops/s) | p50 (ms) | p95 (ms) | p99 (ms) | RSS (MB) |
-|---|---:|---:|---:|---:|---:|---:|
-| Cold bootstrap (scan + DI + route compile + init) | 50 | 1,987 | 0.3675 | 0.8238 | 3.3632 | 122.7 |
-| Hot singleton DI lookup (`app.get`) | 10,000 | 1,811,988 | 0.0004 | 0.0007 | 0.0014 | 123.1 |
-| Hot transient DI resolve (`app.resolve`) | 10,000 | 110,042 | 0.0070 | 0.0161 | 0.0224 | 137.3 |
-| Request-scoped DI lifecycle (create + resolve + destroy) | 10,000 | 157,979 | 0.0051 | 0.0091 | 0.0167 | 136.5 |
+| Operation                                                | Iterations | Throughput (ops/s) | p50 (ms) | p95 (ms) | p99 (ms) | RSS (MB) |
+| -------------------------------------------------------- | ---------: | -----------------: | -------: | -------: | -------: | -------: |
+| Cold bootstrap (scan + DI + route compile + init)        |         50 |              1,987 |   0.3675 |   0.8238 |   3.3632 |    122.7 |
+| Hot singleton DI lookup (`app.get`)                      |     10,000 |          1,811,988 |   0.0004 |   0.0007 |   0.0014 |    123.1 |
+| Hot transient DI resolve (`app.resolve`)                 |     10,000 |            110,042 |   0.0070 |   0.0161 |   0.0224 |    137.3 |
+| Request-scoped DI lifecycle (create + resolve + destroy) |     10,000 |            157,979 |   0.0051 |   0.0091 |   0.0167 |    136.5 |
 
 ---
 

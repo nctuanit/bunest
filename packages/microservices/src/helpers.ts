@@ -4,16 +4,23 @@ import { KafkaHeaders } from "./enums";
 // gRPC Package Definition Helper
 // ---------------------------------------------------------------------------
 
+export interface GrpcPackageDefinitionOptions {
+  protoPath?: string | string[];
+  packageDefinition?: unknown;
+  loader?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 /**
  * Loads a gRPC package definition from `options.packageDefinition` or
  * `options.protoPath` using the provided `grpcProtoLoaderPackage`.
  */
 export function getGrpcPackageDefinition(
-  options: Record<string, any> | undefined,
+  options: GrpcPackageDefinitionOptions | undefined,
   grpcProtoLoaderPackage: {
-    loadSync(path: string | string[], loader?: Record<string, any>): any;
+    loadSync(path: string | string[], loader?: Record<string, unknown>): unknown;
   },
-): any {
+): unknown {
   const file = options?.protoPath;
   const packageDefinition = options?.packageDefinition;
   if (file && packageDefinition) {
@@ -28,7 +35,7 @@ export function getGrpcPackageDefinition(
   }
   return (
     packageDefinition ||
-    grpcProtoLoaderPackage.loadSync(file, options?.loader)
+    grpcProtoLoaderPackage.loadSync(file!, options?.loader)
   );
 }
 
@@ -66,10 +73,10 @@ export const KafkaLogger =
     label,
     log,
   }: {
-    namespace: any;
-    level: any;
-    label: any;
-    log: any;
+    namespace: unknown;
+    level: unknown;
+    label: unknown;
+    log: unknown;
   }): void => {
     let loggerMethod: "error" | "warn" | "log" | "debug";
     switch (level) {
@@ -133,30 +140,42 @@ export class KafkaParser {
         : maxMessageSize;
   }
 
-  public parse<T = any>(data: any): T {
-    const messageSize = this.getMessageSize(data);
+  public parse<T = any>(data: unknown): T {
+    const record =
+      data !== null && typeof data === "object"
+        ? (data as {
+            key?: unknown;
+            value?: unknown;
+            headers?: Record<string, unknown> | null;
+            [key: string]: unknown;
+          })
+        : undefined;
+    const messageSize = this.getMessageSize(record);
     if (messageSize > this.maxMessageSize) {
       throw new Error(
         `Kafka message size (${messageSize} bytes) exceeds maximum allowed size (${this.maxMessageSize} bytes).`,
       );
     }
 
-    const result: Record<string, any> = {
-      ...data,
-      headers: { ...(data?.headers ?? {}) },
+    const decodedHeaders: Record<string, unknown> = {
+      ...(record?.headers ?? {}),
+    };
+    const result: Record<string, unknown> = {
+      ...(record ?? {}),
+      headers: decodedHeaders,
     };
 
     if (!this.keepBinary) {
-      result.value = this.decode(data?.value);
+      result.value = this.decode(record?.value);
     }
-    if (data?.key !== null && data?.key !== undefined) {
-      result.key = this.decode(data.key);
+    if (record?.key !== null && record?.key !== undefined) {
+      result.key = this.decode(record.key);
     }
-    if (data?.headers !== null && data?.headers !== undefined) {
-      for (const key of Object.keys(data.headers)) {
-        result.headers[key] = TRANSPORT_HEADERS.includes(key)
-          ? this.decodeAsString(data.headers[key])
-          : this.decodeHeader(data.headers[key]);
+    if (record?.headers !== null && record?.headers !== undefined) {
+      for (const key of Object.keys(record.headers)) {
+        decodedHeaders[key] = TRANSPORT_HEADERS.includes(key)
+          ? this.decodeAsString(record.headers[key])
+          : this.decodeHeader(record.headers[key]);
       }
     } else {
       result.headers = {};
@@ -165,7 +184,7 @@ export class KafkaParser {
     return result as T;
   }
 
-  public decode(value: any): any {
+  public decode(value: unknown): unknown {
     if (value === null || value === undefined) {
       return null;
     }
@@ -176,11 +195,11 @@ export class KafkaParser {
     ) {
       return value;
     }
-    let result = value.toString();
-    const startChar = result.charAt(0);
+    let result: unknown = String(value);
+    const startChar = (result as string).charAt(0);
     if (startChar === "{" || startChar === "[") {
       try {
-        result = JSON.parse(result);
+        result = JSON.parse(result as string);
       } catch {
         // Keep raw string when payload is not valid JSON
       }
@@ -188,25 +207,34 @@ export class KafkaParser {
     return result;
   }
 
-  public decodeAsString(value: any): string | null {
-    return value === null || value === undefined ? null : value.toString();
+  public decodeAsString(value: unknown): string | null {
+    return value === null || value === undefined ? null : String(value);
   }
 
-  public decodeHeader(value: any): any {
+  public decodeHeader(value: unknown): unknown {
     return Array.isArray(value)
       ? value.map((item) => this.decode(item))
       : this.decode(value);
   }
 
-  protected getMessageSize(data: any): number {
+  protected getMessageSize(data: unknown): number {
+    const record =
+      data !== null && typeof data === "object"
+        ? (data as {
+            key?: { length?: number } | null;
+            value?: { length?: number } | null;
+            headers?: Record<string, unknown> | null;
+          })
+        : undefined;
     let size =
-      (data?.key?.length ?? 0) +
-      (this.keepBinary ? 0 : (data?.value?.length ?? 0));
-    for (const [name, value] of Object.entries(data?.headers ?? {})) {
+      (record?.key?.length ?? 0) +
+      (this.keepBinary ? 0 : (record?.value?.length ?? 0));
+    for (const [name, value] of Object.entries(record?.headers ?? {})) {
       const values = Array.isArray(value) ? value : [value];
       size += name.length;
       for (const headerValue of values) {
-        size += (headerValue as { length?: number } | null | undefined)?.length ?? 0;
+        size +=
+          (headerValue as { length?: number } | null | undefined)?.length ?? 0;
       }
     }
     return size;
@@ -448,6 +476,18 @@ export interface JsonSocketOptions {
   pauseOnBackpressure?: boolean;
 }
 
+export interface JsonSocketStreamLike {
+  on?(event: string, listener: (...args: any[]) => void): unknown;
+  connect?(port: number, host?: string): unknown;
+  end?(): unknown;
+  write?(
+    data: string,
+    encoding?: string,
+    callback?: (err?: unknown) => void,
+  ): unknown;
+  readonly writableLength?: number;
+}
+
 /**
  * Bun-native JSON-framed socket wrapper using `<length>#<json>` framing,
  * enforcing NestJS v12 `maxBufferSize`, `incompleteMessageTimeout`,
@@ -474,7 +514,7 @@ export class JsonSocket {
   private readonly listeners = new Map<string, Set<Function>>();
 
   constructor(
-    public readonly socket: any,
+    public readonly socket: JsonSocketStreamLike | null | undefined,
     options?: JsonSocketOptions,
   ) {
     this.maxBufferSize = this.resolveLimit(
@@ -561,7 +601,7 @@ export class JsonSocket {
     this.socket?.end?.();
   }
 
-  sendMessage(message: any, callback?: (err?: any) => void): void {
+  sendMessage(message: unknown, callback?: (err?: unknown) => void): void {
     if (this.isClosed) {
       callback?.(new Error("The socket is closed."));
       return;
@@ -588,7 +628,10 @@ export class JsonSocket {
     this.handleData(dataRaw);
   }
 
-  protected handleSend(message: any, callback?: (err?: any) => void): void {
+  protected handleSend(
+    message: unknown,
+    callback?: (err?: unknown) => void,
+  ): void {
     const data = this.formatMessageData(message);
     if (
       this.maxSendBufferSize > 0 &&
@@ -756,7 +799,7 @@ export class JsonSocket {
     }
   }
 
-  protected formatMessageData(message: any): string {
+  protected formatMessageData(message: unknown): string {
     const messageData = JSON.stringify(message);
     return `${messageData.length}${this.delimiter}${messageData}`;
   }

@@ -1,6 +1,6 @@
-import { Inject } from '@bunest/common';
-import { DEFAULT_MODEL_NAME, getModelToken } from '../ai.constants';
-import { recordModelRequest } from '../models/model-requests';
+import { Inject } from "@bunest/core";
+import { DEFAULT_MODEL_NAME, getModelToken } from "../ai.constants";
+import { recordModelRequest } from "../models/model-requests";
 
 /**
  * Injects the configured `LanguageModel` called `name` (default `'default'`).

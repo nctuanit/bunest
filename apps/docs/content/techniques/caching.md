@@ -13,6 +13,7 @@ bun add @bunest/cache
 Register `CacheModule.register()` (or `registerAsync()`) in your root module:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { CacheModule, MemoryCacheStore } from "@bunest/cache";
@@ -37,6 +38,7 @@ For multi-instance deployments, pass `new RedisCacheStore({ client: redisClient,
 Decorate `@Injectable()` service methods directly with `@Cacheable()`, `@CacheEvict()`, and `@CachePut()`. `CacheModule` automatically registers the aspect handlers with `DIContainer`'s `MethodAspectWeaver`:
 
 @@filename(users.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { Cacheable, CacheEvict, CachePut } from "@bunest/cache";
@@ -76,6 +78,7 @@ export class UsersService {
 Cache GET controller responses with `CacheInterceptor`, `@CacheKey()`, `@CacheTTL()`, and `@NoCache()`:
 
 @@filename(catalog.controller.ts)
+
 ```ts
 import { Controller, Get, UseInterceptors } from "@bunest/core";
 import { CacheInterceptor, CacheKey, CacheTTL, NoCache } from "@bunest/cache";
@@ -103,6 +106,7 @@ export class CatalogController {
 Inject `CacheService` (or `@Inject(CACHE_MANAGER)`) for direct `get`, `set`, `del`, `wrap`, `mget`, `mset`, and tag-based invalidation:
 
 @@filename(stats.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { CacheService } from "@bunest/cache";
@@ -112,7 +116,11 @@ export class StatsService {
   constructor(private readonly cache: CacheService) {}
 
   async getDailyMetrics() {
-    return this.cache.wrap("metrics:daily", () => this.computeMetrics(), 60_000);
+    return this.cache.wrap(
+      "metrics:daily",
+      () => this.computeMetrics(),
+      60_000,
+    );
   }
 }
 ```

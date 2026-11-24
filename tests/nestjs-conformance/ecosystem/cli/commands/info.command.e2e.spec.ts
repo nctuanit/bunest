@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   CLI_VERSION,
   formatEnvironmentInfo,
@@ -12,6 +14,15 @@ import {
   type EnvironmentInfo,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -44,11 +55,11 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-info-"));
+      tmpDir = makeTempDir("bunest-cli-conf-info-");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     describe("without installed dependencies", () => {
@@ -106,16 +117,15 @@ describeConformance(
     describe("with installed dependencies", () => {
       // BUNEST_BUG: `bunest info` only outputs OS/Bun/CPU/Memory/CLI version and does not inspect package.json or node_modules to display installed @bunest/* package versions (packages/cli/src/commands/info.ts)
       it.skip("should display installed @bunest/* package versions", async () => {
-        writeFileSync(
+        writeTextSync(
           join(tmpDir, "package.json"),
           JSON.stringify({
             name: "info-deps-app",
             dependencies: {
-              "@bunest/common": "^0.1.0",
               "@bunest/core": "^0.1.0",
+              "@bunest/validation": "^0.1.0",
             },
           }),
-          "utf8",
         );
 
         const cap = createCapturedIO(tmpDir);

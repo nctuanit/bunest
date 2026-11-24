@@ -25,7 +25,9 @@ function toBuffer(chunk: unknown): Buffer {
   if (typeof chunk === "string") {
     return Buffer.from(chunk, "utf8");
   }
-  throw new TypeError("Storage body chunk must be a Uint8Array, Buffer, or string");
+  throw new TypeError(
+    "Storage body chunk must be a Uint8Array, Buffer, or string",
+  );
 }
 
 /** Any accepted body as an async iterable of Buffers. Throws a `TypeError` for anything else. */
@@ -129,13 +131,76 @@ export function checkLength(
 }
 
 export async function readAll(
-  stream: AsyncIterable<Uint8Array>,
+  stream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
 ): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  if (stream instanceof ReadableStream) {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          chunks.push(toBuffer(value));
+        }
+      }
+    } catch (err) {
+      await reader.cancel(err).catch(() => {});
+      throw err;
+    } finally {
+      reader.releaseLock();
+    }
+    return Buffer.concat(chunks);
+  }
   for await (const chunk of stream) {
     chunks.push(toBuffer(chunk));
   }
   return Buffer.concat(chunks);
+}
+
+/** Wraps an in-memory byte slice (or empty body) as a Web `ReadableStream<Uint8Array>`. */
+export function bytesToReadableStream(
+  data?: Uint8Array,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (data && data.byteLength > 0) {
+        controller.enqueue(data);
+      }
+      controller.close();
+    },
+  });
+}
+
+/** Ensures a `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>` is a Web `ReadableStream<Uint8Array>`. */
+export function toReadableStream(
+  source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  if (source instanceof ReadableStream) {
+    return source;
+  }
+  let iterator: AsyncIterator<Uint8Array> | undefined;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (!iterator) {
+        iterator = source[Symbol.asyncIterator]();
+      }
+      const next = await iterator.next();
+      if (next.done) {
+        controller.close();
+        return;
+      }
+      const value = next.value;
+      if (value instanceof Uint8Array) {
+        controller.enqueue(value);
+      } else {
+        controller.enqueue(toBuffer(value));
+      }
+    },
+    async cancel() {
+      await iterator?.return?.().catch(() => {});
+    },
+  });
 }
 
 /**

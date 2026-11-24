@@ -1,5 +1,4 @@
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "@bunest/core";
 import {
   ALL_PAGES,
   findPageBySlug,
@@ -9,7 +8,7 @@ import {
 } from "./navigation";
 import { renderMarkdown, type TocItem } from "./markdown";
 
-const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+const SRC_DIR = import.meta.dirname;
 export const DOCS_ROOT = dirname(SRC_DIR);
 export const CONTENT_DIR = join(DOCS_ROOT, "content");
 

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Catch,
@@ -12,17 +11,13 @@ import {
   type CanActivate,
   type ExceptionFilter,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   APP_FILTER,
   APP_GUARD,
   type BunestApplication,
 } from "../../../../../packages/core/src";
-import {
-  Test,
-  describeConformance,
-  stubMethod,
-} from "../../../_helpers";
+import { Test, describeConformance, stubMethod } from "../../../_helpers";
 
 // An abstract class used as a DI token, with the implementation provided
 // under it: what `@UseGuards()` gets is the abstract class itself.
@@ -85,7 +80,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Expected app.init() to reject with InvalidEnhancerException when @UseGuards() binds an abstract class without canActivate on its prototype; actual resolves silently because Bunest lacks InvalidEnhancerException shape validation (packages/core/src/di/di-container.ts, packages/http/src/router/route-compiler.ts).
+    // BUNEST_BUG: Expected app.init() to reject with InvalidEnhancerException when @UseGuards() binds an abstract class without canActivate on its prototype; actual resolves silently because Bunest lacks InvalidEnhancerException shape validation (packages/core/src/di/di-container.ts, packages/core/src/http/router/route-compiler.ts).
     it.skip('should fail to start when a guard bound with @UseGuards() has no "canActivate"', async () => {
       const moduleRef = await Test.createTestingModule({
         controllers: [SecretController],
@@ -96,7 +91,7 @@ describeConformance(
       await expect(app.init()).rejects.toThrow(/InvalidEnhancer|canActivate/i);
     });
 
-    // BUNEST_BUG: Expected bootstrap to reject when APP_GUARD uses useValue with a guard class constructor instead of an instance; actual silently instantiates the class in route-compiler.ts instead of throwing InvalidEnhancerException (packages/core/src/application/bunest-application.ts, packages/http/src/router/route-compiler.ts).
+    // BUNEST_BUG: Expected bootstrap to reject when APP_GUARD uses useValue with a guard class constructor instead of an instance; actual silently instantiates the class in route-compiler.ts instead of throwing InvalidEnhancerException (packages/core/src/application/bunest-application.ts, packages/core/src/http/router/route-compiler.ts).
     it.skip("should fail to start when APP_GUARD gives a guard class instead of an instance", async () => {
       await expect(
         (async () => {

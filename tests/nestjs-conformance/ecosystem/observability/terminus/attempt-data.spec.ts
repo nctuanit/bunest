@@ -1,12 +1,45 @@
-import "reflect-metadata";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { setTimeout as sleep } from "node:timers/promises";
-import { Logger } from "../../../../../packages/common/src";
-import { HealthIndicatorService } from "../../../../../packages/observability/src";
 import {
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers/index";
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
+import { Logger } from "../../../../../packages/core/src/common";
+import { HealthIndicatorService } from "../../../../../packages/observability/src";
+import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function sleep(
+  ms: number,
+  _value?: undefined,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const signal = options?.signal;
+  if (!signal) {
+    return Bun.sleep(ms);
+  }
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+    );
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        signal.reason ??
+          new DOMException("The operation was aborted.", "AbortError"),
+      );
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 describeConformance(
   "AttemptData",
@@ -353,7 +386,10 @@ describeConformance(
           },
         ],
         ["returns null", () => null as unknown as Record<string, unknown>],
-        ["returns a string", () => "oops" as unknown as Record<string, unknown>],
+        [
+          "returns a string",
+          () => "oops" as unknown as Record<string, unknown>,
+        ],
         ["returns an array", () => [1] as unknown as Record<string, unknown>],
       ])(
         "should skip a function that %s and keep the other data",

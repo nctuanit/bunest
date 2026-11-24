@@ -1,22 +1,23 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, mkdirSync, realpathSync } from "node:fs";
-import type { Stats } from "node:fs";
 import {
-  copyFile,
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  unlink,
-} from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
-import { Readable } from "node:stream";
+  dirname,
+  ensureDir,
+  type FsStats,
+  join,
+  lstatPath,
+  mkdirSyncPath,
+  openFileHandle,
+  readDirEntries,
+  readDirNames,
+  realpathOf,
+  realpathSyncOf,
+  relative,
+  removeEmptyDir,
+  removePath,
+  renamePath,
+  resolve,
+  sep,
+  statPath,
+} from "@bunest/core";
 import {
   StorageError,
   StorageFileNotFoundError,
@@ -35,6 +36,7 @@ import type {
   StorageSignalOptions,
   StorageWriteResult,
 } from "../interfaces/storage-types";
+import { bytesToReadableStream } from "../utils/body.util";
 import { contentTypeFromKey } from "../utils/content-type.util";
 import { assertValidKey } from "../utils/keys.util";
 import { compareKeys, decodeCursor, encodeCursor } from "./in-memory.disk";
@@ -50,7 +52,7 @@ interface SidecarMetadata {
 }
 
 function fileEtag(stats: { size: number; mtimeMs: number }): string {
-  const hash = createHash("sha256")
+  const hash = new Bun.CryptoHasher("sha256")
     .update(`${stats.size}:${Math.trunc(stats.mtimeMs)}`)
     .digest("hex")
     .slice(0, 32);
@@ -82,12 +84,12 @@ export class LocalDisk extends StorageDisk {
       throw new TypeError("LocalDisk requires a non-empty `root` directory");
     }
     this.root = resolve(options.root);
-    mkdirSync(this.root, { recursive: true });
-    this.realRoot = realpathSync(this.root);
+    mkdirSyncPath(this.root, { recursive: true });
+    this.realRoot = realpathSyncOf(this.root);
     this.tmpDir = join(this.realRoot, INTERNAL_DIR, "tmp");
     this.metaDir = join(this.realRoot, INTERNAL_DIR, "meta");
-    mkdirSync(this.tmpDir, { recursive: true });
-    mkdirSync(this.metaDir, { recursive: true });
+    mkdirSyncPath(this.tmpDir, { recursive: true });
+    mkdirSyncPath(this.metaDir, { recursive: true });
   }
 
   /** The absolute path of a key's file, for tools that need a path. */
@@ -103,19 +105,16 @@ export class LocalDisk extends StorageDisk {
     file: StorageObjectWrite,
   ): Promise<StorageWriteResult> {
     this.checkKey(key);
-    await mkdir(this.tmpDir, { recursive: true });
-    const tempPath = join(this.tmpDir, `${randomUUID()}.tmp`);
-    const fh = await open(tempPath, "wx");
+    await ensureDir(this.tmpDir, { recursive: true });
+    const tempPath = join(this.tmpDir, `${Bun.randomUUIDv7()}.tmp`);
+    const fh = await openFileHandle(tempPath, "wx");
     let size = 0;
     try {
       for await (const chunk of body) {
         let offset = 0;
         while (offset < chunk.byteLength) {
-          const { bytesWritten } = await fh.write(
-            chunk,
-            offset,
-            chunk.byteLength - offset,
-          );
+          const slice = offset === 0 ? chunk : chunk.subarray(offset);
+          const { bytesWritten } = await fh.write(slice);
           if (bytesWritten <= 0) {
             throw new StorageError("LocalDisk write made no progress");
           }
@@ -126,7 +125,7 @@ export class LocalDisk extends StorageDisk {
       await fh.sync();
     } catch (err) {
       await fh.close().catch(() => {});
-      await unlink(tempPath).catch(() => {});
+      await Bun.file(tempPath).delete().catch(() => {});
       throw err;
     }
     await fh.close();
@@ -162,7 +161,7 @@ export class LocalDisk extends StorageDisk {
         etag: fileEtag(stats),
       };
     } catch (err) {
-      await unlink(tempPath).catch(() => {});
+      await Bun.file(tempPath).delete().catch(() => {});
       throw err;
     }
   }
@@ -177,10 +176,10 @@ export class LocalDisk extends StorageDisk {
     options?.signal?.throwIfAborted();
     const srcInfo = await this.headObject(from);
     const srcPath = await this.assertSafeFilePath(from);
-    await mkdir(this.tmpDir, { recursive: true });
-    const tempPath = join(this.tmpDir, `${randomUUID()}.tmp`);
+    await ensureDir(this.tmpDir, { recursive: true });
+    const tempPath = join(this.tmpDir, `${Bun.randomUUIDv7()}.tmp`);
     try {
-      await copyFile(srcPath, tempPath);
+      await Bun.write(tempPath, Bun.file(srcPath));
       const explicitCt = srcInfo.contentType !== contentTypeFromKey(to);
       const sidecar: SidecarMetadata | undefined =
         explicitCt ||
@@ -208,7 +207,7 @@ export class LocalDisk extends StorageDisk {
         etag: fileEtag(stats),
       };
     } catch (err) {
-      await unlink(tempPath).catch(() => {});
+      await Bun.file(tempPath).delete().catch(() => {});
       throw err;
     }
   }
@@ -244,9 +243,10 @@ export class LocalDisk extends StorageDisk {
           }
         : undefined;
     const stats = await this.commit(to, srcPath, target, sidecar);
-    await rm(this.sidecarDir(from), { recursive: true, force: true }).catch(
-      () => {},
-    );
+    await removePath(this.sidecarDir(from), {
+      recursive: true,
+      force: true,
+    }).catch(() => {});
     await this.prune(dirname(srcPath));
     return {
       key: to,
@@ -265,10 +265,10 @@ export class LocalDisk extends StorageDisk {
     const info = await this.headObject(key);
 
     if (range === undefined) {
-      const body =
+      const body: ReadableStream<Uint8Array> =
         info.size === 0
-          ? Readable.from([])
-          : createReadStream(filePath);
+          ? bytesToReadableStream()
+          : Bun.file(filePath).stream();
       return { ...info, body };
     }
 
@@ -276,10 +276,9 @@ export class LocalDisk extends StorageDisk {
     if (!resolved) {
       throw new StorageRangeNotSatisfiableError(key, info.size);
     }
-    const body = createReadStream(filePath, {
-      start: resolved.start,
-      end: resolved.end,
-    });
+    const body: ReadableStream<Uint8Array> = Bun.file(filePath)
+      .slice(resolved.start, resolved.end + 1)
+      .stream();
     return {
       ...info,
       body,
@@ -290,9 +289,9 @@ export class LocalDisk extends StorageDisk {
   protected override async headObject(key: string): Promise<StorageFile> {
     this.checkKey(key);
     const filePath = await this.assertSafeFilePath(key);
-    let stats: Stats;
+    let stats: FsStats;
     try {
-      stats = await lstat(filePath);
+      stats = await lstatPath(filePath);
     } catch (err) {
       if (hasErrCode(err, "ENOENT", "ENOTDIR")) {
         throw new StorageFileNotFoundError(key);
@@ -327,14 +326,14 @@ export class LocalDisk extends StorageDisk {
             "path escapes LocalDisk root via symbolic link",
           );
         }
-        const st = await lstat(target);
+        const st = await lstatPath(target);
         if (st.isSymbolicLink()) {
           throw new StorageInvalidKeyError(
             "symbolic links are not permitted inside LocalDisk root",
           );
         }
         if (st.isFile()) {
-          await unlink(target);
+          await Bun.file(target).delete();
           dirsToPrune.add(dirname(target));
         }
       } catch (err) {
@@ -342,9 +341,10 @@ export class LocalDisk extends StorageDisk {
           throw err;
         }
       }
-      await rm(this.sidecarDir(key), { recursive: true, force: true }).catch(
-        () => {},
-      );
+      await removePath(this.sidecarDir(key), {
+        recursive: true,
+        force: true,
+      }).catch(() => {});
     }
     const sortedDirs = [...dirsToPrune].sort((a, b) => b.length - a.length);
     for (const dir of sortedDirs) {
@@ -386,7 +386,7 @@ export class LocalDisk extends StorageDisk {
     signal?.throwIfAborted();
     let dirEntries;
     try {
-      dirEntries = await readdir(dirPath, { withFileTypes: true });
+      dirEntries = await readDirEntries(dirPath);
     } catch (err) {
       if (hasErrCode(err, "ENOENT")) {
         return;
@@ -394,10 +394,7 @@ export class LocalDisk extends StorageDisk {
       throw err;
     }
     for (const entry of dirEntries) {
-      if (
-        relPrefix === "" &&
-        entry.name.toLowerCase() === INTERNAL_DIR
-      ) {
+      if (relPrefix === "" && entry.name.toLowerCase() === INTERNAL_DIR) {
         continue;
       }
       if (entry.isSymbolicLink()) {
@@ -419,7 +416,7 @@ export class LocalDisk extends StorageDisk {
           continue;
         }
         try {
-          const st = await lstat(fullPath);
+          const st = await lstatPath(fullPath);
           if (st.isFile()) {
             out.push({
               key,
@@ -442,15 +439,15 @@ export class LocalDisk extends StorageDisk {
     fromPath: string,
     targetPath: string,
     sidecar: SidecarMetadata | undefined,
-  ): Promise<Stats> {
+  ): Promise<FsStats> {
     await this.ensureParent(key, targetPath);
-    const srcStats = await stat(fromPath);
+    const srcStats = await statPath(fromPath);
     const ver = this.versionKey(srcStats);
     if (sidecar) {
       await this.writeSidecar(key, ver, sidecar);
     }
     await this.place(key, fromPath, targetPath);
-    const finalStats = await lstat(targetPath);
+    const finalStats = await lstatPath(targetPath);
     const finalVer = this.versionKey(finalStats);
     if (sidecar && finalVer !== ver) {
       await this.writeSidecar(key, finalVer, sidecar);
@@ -465,11 +462,11 @@ export class LocalDisk extends StorageDisk {
     sidecar: SidecarMetadata,
   ): Promise<void> {
     const dir = this.sidecarDir(key);
-    await mkdir(dir, { recursive: true });
-    const tmp = join(this.tmpDir, `meta-${randomUUID()}.json`);
+    await ensureDir(dir, { recursive: true });
+    const tmp = join(this.tmpDir, `meta-${Bun.randomUUIDv7()}.json`);
     const dest = join(dir, `${version}.json`);
     await Bun.write(tmp, JSON.stringify(sidecar));
-    await rename(tmp, dest);
+    await renamePath(tmp, dest);
   }
 
   private async removeStaleSidecars(
@@ -479,18 +476,18 @@ export class LocalDisk extends StorageDisk {
     const dir = this.sidecarDir(key);
     let files: string[];
     try {
-      files = await readdir(dir);
+      files = await readDirNames(dir);
     } catch {
       return;
     }
     const keepFile = keepVersion ? `${keepVersion}.json` : undefined;
     for (const file of files) {
       if (file !== keepFile) {
-        await unlink(join(dir, file)).catch(() => {});
+        await Bun.file(join(dir, file)).delete().catch(() => {});
       }
     }
     if (!keepFile) {
-      await rmdir(dir).catch(() => {});
+      await removeEmptyDir(dir).catch(() => {});
     }
   }
 
@@ -500,7 +497,7 @@ export class LocalDisk extends StorageDisk {
     targetPath: string,
   ): Promise<void> {
     try {
-      const existing = await lstat(targetPath);
+      const existing = await lstatPath(targetPath);
       if (existing.isSymbolicLink()) {
         throw new StorageInvalidKeyError(
           "cannot overwrite a symbolic link inside LocalDisk root",
@@ -508,7 +505,7 @@ export class LocalDisk extends StorageDisk {
       }
       if (existing.isDirectory()) {
         try {
-          await rmdir(targetPath);
+          await removeEmptyDir(targetPath);
         } catch {
           throw new StorageKeyConflictError(key);
         }
@@ -523,7 +520,7 @@ export class LocalDisk extends StorageDisk {
     }
 
     try {
-      await rename(fromPath, targetPath);
+      await renamePath(fromPath, targetPath);
     } catch (err) {
       if (hasErrCode(err, "EISDIR", "ENOTDIR", "EEXIST")) {
         throw new StorageKeyConflictError(key);
@@ -534,12 +531,9 @@ export class LocalDisk extends StorageDisk {
 
   private async prune(startDir: string): Promise<void> {
     let current = resolve(startDir);
-    while (
-      current !== this.realRoot &&
-      this.inside(current)
-    ) {
+    while (current !== this.realRoot && this.inside(current)) {
       try {
-        await rmdir(current);
+        await removeEmptyDir(current);
       } catch {
         break;
       }
@@ -571,7 +565,7 @@ export class LocalDisk extends StorageDisk {
   }
 
   private sidecarDir(key: string): string {
-    const hash = createHash("sha256").update(key, "utf8").digest("hex");
+    const hash = new Bun.CryptoHasher("sha256").update(key).digest("hex");
     return join(this.metaDir, hash);
   }
 
@@ -591,9 +585,9 @@ export class LocalDisk extends StorageDisk {
         "path escapes LocalDisk root via symbolic link",
       );
     }
-    let st: Stats;
+    let st: FsStats;
     try {
-      st = await lstat(target);
+      st = await lstatPath(target);
     } catch (err) {
       if (hasErrCode(err, "ENOENT", "ENOTDIR")) {
         throw new StorageFileNotFoundError(key);
@@ -612,7 +606,7 @@ export class LocalDisk extends StorageDisk {
     let dir = dirname(targetPath);
     while (true) {
       try {
-        const resolved = await realpath(dir);
+        const resolved = await realpathOf(dir);
         return this.inside(resolved);
       } catch (err) {
         if (hasErrCode(err, "ENOENT")) {
@@ -649,7 +643,7 @@ export class LocalDisk extends StorageDisk {
     for (const seg of segments) {
       current = join(current, seg);
       try {
-        const st = await lstat(current);
+        const st = await lstatPath(current);
         if (st.isSymbolicLink()) {
           throw new StorageInvalidKeyError(
             "symbolic links are not permitted inside LocalDisk root",
@@ -663,7 +657,7 @@ export class LocalDisk extends StorageDisk {
           throw err;
         }
         if (hasErrCode(err, "ENOENT")) {
-          await mkdir(current);
+          await ensureDir(current, { recursive: false });
         } else {
           throw err;
         }
@@ -673,21 +667,23 @@ export class LocalDisk extends StorageDisk {
 
   private async readSidecar(
     key: string,
-    stats: Stats,
+    stats: FsStats,
   ): Promise<SidecarMetadata | undefined> {
     const dir = this.sidecarDir(key);
     const exact = join(dir, `${this.versionKey(stats)}.json`);
     try {
-      const text = await readFile(exact, "utf8");
+      const text = await Bun.file(exact).text();
       return JSON.parse(text) as SidecarMetadata;
     } catch {
       // Fallback: match by size-mtime prefix if inode changed
       const prefix = `${stats.size}-${Math.trunc(stats.mtimeMs)}-`;
       try {
-        const entries = await readdir(dir);
-        const match = entries.find((f) => f.startsWith(prefix) && f.endsWith(".json"));
+        const entries = await readDirNames(dir);
+        const match = entries.find(
+          (f) => f.startsWith(prefix) && f.endsWith(".json"),
+        );
         if (match) {
-          const text = await readFile(join(dir, match), "utf8");
+          const text = await Bun.file(join(dir, match)).text();
           return JSON.parse(text) as SidecarMetadata;
         }
       } catch {
@@ -699,7 +695,7 @@ export class LocalDisk extends StorageDisk {
 
   private describe(
     key: string,
-    stats: Stats,
+    stats: FsStats,
     sidecar: SidecarMetadata | undefined,
   ): StorageFile {
     return {

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   renderSwaggerHtml,
@@ -46,7 +45,9 @@ describeConformance(
           });
 
           // Bunest HTML-escapes `&` to `&amp;` for XSS safety while preserving `$` patterns verbatim
-          expect(html).toContain("<title>Cost $$ &amp; $&amp; Dashboard $1</title>");
+          expect(html).toContain(
+            "<title>Cost $$ &amp; $&amp; Dashboard $1</title>",
+          );
         },
         "Bunest escapeHtml escapes `&` to `&amp;` while preserving `$$`, `$&`, `$1` verbatim",
       );
@@ -83,13 +84,14 @@ describeConformance(
             '<link rel="icon" href="https://example.com/icon.png?v=$$$&amp;a=$1" />',
           );
         },
-        "Bunest renders double-quoted `<link rel=\"icon\" href=\"...\" />` with HTML-escaped `&amp;`",
+        'Bunest renders double-quoted `<link rel="icon" href="..." />` with HTML-escaped `&amp;`',
       );
     });
 
     describe("buildSwaggerInitJS (embedded spec & swagger-ui preset)", () => {
       it('inserts OpenAPI descriptions with "$" replacement-pattern characters verbatim', () => {
-        const description = "Must match `^[a-z][a-z0-9_]{1,63}$` plus $& $' $1 $$";
+        const description =
+          "Must match `^[a-z][a-z0-9_]{1,63}$` plus $& $' $1 $$";
         const swaggerDoc: OpenAPIObject = {
           openapi: "3.0.0",
           info: { title: "Test", version: "1.0.0" },

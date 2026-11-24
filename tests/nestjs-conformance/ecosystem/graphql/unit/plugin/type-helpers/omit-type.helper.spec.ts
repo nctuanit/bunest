@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { IsNumber } from "class-validator";
+import { IsNumber } from "../../../../../../../packages/validation/src/validator";
 import {
   Field,
   ObjectType,

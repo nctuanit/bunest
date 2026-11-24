@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, it } from "bun:test";
 import {
   All,
@@ -11,7 +10,7 @@ import {
   type BunestModule,
   type MiddlewareConsumer,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -168,7 +167,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /docs/x.json to match "@Get(':id.json')" and return 200 "middleware", got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) does not support mixed param+literal segments like `:id.json`.
+      // BUNEST_BUG: Expected GET /docs/x.json to match "@Get(':id.json')" and return 200 "middleware", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) does not support mixed param+literal segments like `:id.json`.
       it.skip(`should run on "/docs/admin" next to "/docs/:id.json"`, async () => {
         await createApp([DocsController]);
         await request(app!).get("/docs/x.json").expect(200, MIDDLEWARE_VALUE);
@@ -178,8 +177,7 @@ describeConformance(
       it(`should run on "/v2/accounts/me" next to "/v1/accounts/:id"`, async () => {
         await createApp(
           [AccountsV1Controller, AccountsV2Controller],
-          (instance) =>
-            instance.enableVersioning({ type: VersioningType.URI }),
+          (instance) => instance.enableVersioning({ type: VersioningType.URI }),
         );
         await request(app!).get("/v1/accounts/1").expect(200, MIDDLEWARE_VALUE);
         await request(app!)
@@ -187,7 +185,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /api/users/1 to return 200 "middleware", got 404. packages/http/src/scanner/path-normalizer.ts (matchesPathPattern line 151) matches static globalPrefix exclusion "users/me" against "/users/:id" because `tSeg.startsWith(":")`, erroneously dropping the "api" prefix from "/users/:id".
+      // BUNEST_BUG: Expected GET /api/users/1 to return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) matches static globalPrefix exclusion "users/me" against "/users/:id" because `tSeg.startsWith(":")`, erroneously dropping the "api" prefix from "/users/:id".
       it.skip(`should run on "/users/me" excluded from the global prefix next to "/api/users/:id"`, async () => {
         await createApp([UsersController], (instance) =>
           instance.setGlobalPrefix("api", { exclude: ["users/me"] }),
@@ -202,14 +200,14 @@ describeConformance(
         await request(app!).get("/invoices").expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /a/1 to match "@Get('{:id}')" and return 200 "middleware", got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) does not support path-to-regexp v8 brace optional param syntax `{:id}`.
+      // BUNEST_BUG: Expected GET /a/1 to match "@Get('{:id}')" and return 200 "middleware", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) does not support path-to-regexp v8 brace optional param syntax `{:id}`.
       it.skip(`should run on the root route "/a" next to "/a/{:id}"`, async () => {
         await createApp([OptionalIdController]);
         await request(app!).get("/a/1").expect(200, MIDDLEWARE_VALUE);
         await request(app!).get("/a").expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /files/a/b to match "@Get('{*path}')" and return 200 "middleware", got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) does not support path-to-regexp v8 brace optional wildcard syntax `{*path}`.
+      // BUNEST_BUG: Expected GET /files/a/b to match "@Get('{*path}')" and return 200 "middleware", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) does not support path-to-regexp v8 brace optional wildcard syntax `{*path}`.
       it.skip(`should run on "/files/a/b" next to "/files/:id"`, async () => {
         await createApp([FilesController]);
         await request(app!).get("/files/a").expect(200, MIDDLEWARE_VALUE);
@@ -245,7 +243,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /shop/admin/reports to run middleware ("middleware") bound via plain string "shop/admin", got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern) requires exact segment count and does not mount plain string middleware routes onto child paths.
+      // BUNEST_BUG: Expected GET /shop/admin/reports to run middleware ("middleware") bound via plain string "shop/admin", got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) requires exact segment count and does not mount plain string middleware routes onto child paths.
       it.skip(`should run under "/shop/admin" next to "/shop/:id"`, async () => {
         await createApp(ShopController, (consumer) =>
           consumer
@@ -264,7 +262,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /shop/admin/undeclared to run middleware ("middleware") bound via plain string "shop/admin", got 404. packages/http/src/router/route-compiler.ts does not execute module middlewares on unmatched routes without a controller handler, and path-normalizer.ts does not mount plain strings on sub-paths.
+      // BUNEST_BUG: Expected GET /shop/admin/undeclared to run middleware ("middleware") bound via plain string "shop/admin", got 404. packages/core/src/http/router/route-compiler.ts does not execute module middlewares on unmatched routes without a controller handler, and path-normalizer.ts does not mount plain strings on sub-paths.
       it.skip("should run under the string next to a controller with an @All() route", async () => {
         await createApp(ShopWithAllController, (consumer) =>
           consumer

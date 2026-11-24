@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { GraphQLError } from "../../../../../packages/graphql/node_modules/graphql";
+import { GraphQLError } from "../../../../../packages/graphql/src";
 import {
   BadRequestException,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,
@@ -12,11 +11,7 @@ import {
   Query,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Resolver()
 class IssueResolver {

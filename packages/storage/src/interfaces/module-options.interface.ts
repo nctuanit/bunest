@@ -2,7 +2,7 @@ import type {
   ConfigurableModuleAsyncOptions,
   ModuleMetadata,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { StorageDisk } from "../disks/storage.disk";
 import type { UploadFileInfo } from "./storage-types";
 

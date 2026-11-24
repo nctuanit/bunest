@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, it } from "bun:test";
-import { VersioningType } from "../../../../../packages/common/src";
+import { VersioningType } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 import { AppModule } from "./fixtures/app.module";
@@ -62,7 +61,7 @@ describeConformance(
             .expect("Hello World V2!");
         });
 
-        // BUNEST_BUG: Expected Accept `application/json;v="\2"` to unescape RFC 9110 quoted-pair `\2` -> `"2"` and return 200 "Hello World V2!", but got 404. packages/http/src/scanner/version-resolver.ts:177-183 strips outer quotes without unescaping backslash quoted-pairs.
+        // BUNEST_BUG: Expected Accept `application/json;v="\2"` to unescape RFC 9110 quoted-pair `\2` -> `"2"` and return 200 "Hello World V2!", but got 404. packages/core/src/http/scanner/version-resolver.ts:177-183 strips outer quotes without unescaping backslash quoted-pairs.
         it.skip('V2 with quoted parameters: application/json;v="\\2"', async () => {
           await request(app)
             .get("/")
@@ -71,7 +70,7 @@ describeConformance(
             .expect("Hello World V2!");
         });
 
-        // BUNEST_BUG: Expected unterminated quoted parameters in Accept header (`application/json;note="a;v=2` and `text/html;note="a,application/json;v=2`) to ignore `v=2` inside the unclosed quote and return 404, but got 200 "Hello World V2!". packages/http/src/scanner/version-resolver.ts:164-175 splits Accept on `,` and `;` naively without quote-aware lexing.
+        // BUNEST_BUG: Expected unterminated quoted parameters in Accept header (`application/json;note="a;v=2` and `text/html;note="a,application/json;v=2`) to ignore `v=2` inside the unclosed quote and return 404, but got 200 "Hello World V2!". packages/core/src/http/scanner/version-resolver.ts:164-175 splits Accept on `,` and `;` naively without quote-aware lexing.
         it.skip.each([
           'application/json;note="a;v=2',
           'text/html;note="a,application/json;v=2',
@@ -121,7 +120,7 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=1) to return "Parameter V1!", but got "Hello from middleware function!". packages/http/src/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/http/src/router/route-compiler.ts:475).
+        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=1) to return "Parameter V1!", but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/core/src/http/router/route-compiler.ts:475).
         it.skip("V1", async () => {
           await request(app)
             .get("/param/hello")
@@ -130,7 +129,7 @@ describeConformance(
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/http/src/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
+        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
         it.skip("V2", async () => {
           await request(app)
             .get("/param/hello")
@@ -338,7 +337,7 @@ describeConformance(
       });
 
       describe("GET /multiple-neutral", () => {
-        // BUNEST_BUG: Expected GET /multiple-neutral (`@Version([VERSION_NEUTRAL, "2"])`) with explicit unsupported version `Accept: application/json;v=1` to return 404, but got 200 "Multiple Versions Neutral or 2". packages/http/src/router/route-compiler.ts:137-154 (`matchCompiledVersionGroup`) and packages/http/src/router/fallback-radix-router.ts:120-137 unconditionally fall back to `group.neutral` even when an explicit unmatched version was requested on a multi-version `[VERSION_NEUTRAL, "2"]` route.
+        // BUNEST_BUG: Expected GET /multiple-neutral (`@Version([VERSION_NEUTRAL, "2"])`) with explicit unsupported version `Accept: application/json;v=1` to return 404, but got 200 "Multiple Versions Neutral or 2". packages/core/src/http/router/route-compiler.ts:137-154 (`matchCompiledVersionGroup`) and packages/core/src/http/router/fallback-radix-router.ts:120-137 unconditionally fall back to `group.neutral` even when an explicit unmatched version was requested on a multi-version `[VERSION_NEUTRAL, "2"]` route.
         it.skip("V1", async () => {
           await request(app)
             .get("/multiple-neutral")
@@ -461,7 +460,7 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=1) to return "Parameter V1!", but got "Hello from middleware function!". packages/http/src/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/http/src/router/route-compiler.ts:475).
+        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=1) to return "Parameter V1!", but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts:151 (`matchesPathPattern`) treats `tSeg.startsWith(":")` as matching static middleware segment `"middleware"`, binding MiddlewareController's middleware (`/middleware/*`) to `/:param/hello` (packages/core/src/http/router/route-compiler.ts:475).
         it.skip("V1", async () => {
           await request(app)
             .get("/param/hello")
@@ -470,7 +469,7 @@ describeConformance(
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/http/src/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
+        // BUNEST_BUG: Expected GET /param/hello (Accept: application/json;v=2) to return "Parameter V2!", but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
         it.skip("V2", async () => {
           await request(app)
             .get("/param/hello")

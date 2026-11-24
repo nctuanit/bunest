@@ -16,7 +16,7 @@ import {
   type Provider,
   type RouteDefinition,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   BunestApplication,
   BunestApplicationContext,
@@ -56,15 +56,13 @@ export interface DevtoolsModuleOptions {
 
 export interface DevtoolsOptionsFactory {
   createDevtoolsOptions():
-    | Promise<DevtoolsModuleOptions>
-    | DevtoolsModuleOptions;
+    Promise<DevtoolsModuleOptions> | DevtoolsModuleOptions;
 }
 
 export interface DevtoolsModuleAsyncOptions {
   imports?: ModuleImport[];
   useExisting?:
-    | Type<DevtoolsOptionsFactory>
-    | InjectionToken<DevtoolsOptionsFactory>;
+    Type<DevtoolsOptionsFactory> | InjectionToken<DevtoolsOptionsFactory>;
   useClass?: Type<DevtoolsOptionsFactory>;
   useFactory?: (
     ...args: any[]
@@ -147,9 +145,7 @@ export interface DevtoolsApplicationGraph {
 }
 
 export type DevtoolsTarget =
-  | BunestApplication
-  | BunestApplicationContext
-  | DIContainer;
+  BunestApplication | BunestApplicationContext | DIContainer;
 
 function isOptionalFactoryDep(
   dep: FactoryDependency,
@@ -483,7 +479,8 @@ export class DevtoolsService {
 
     if (this.attachedApp) {
       return {
-        modules: this.attachedApp.getModuleContainer().getGraph().topologicalOrder,
+        modules: this.attachedApp.getModuleContainer().getGraph()
+          .topologicalOrder,
         app:
           this.attachedApp instanceof BunestApplication
             ? this.attachedApp
@@ -606,9 +603,7 @@ export class DevtoolsService {
         index: p.index,
         source: p.source,
         ...(p.key !== undefined ? { key: p.key } : {}),
-        ...(p.metatype
-          ? { metatype: p.metatype.name || "<anonymous>" }
-          : {}),
+        ...(p.metatype ? { metatype: p.metatype.name || "<anonymous>" } : {}),
       })),
       guards: collectEnhancers(METADATA_KEYS.GUARDS),
       pipes: collectEnhancers(METADATA_KEYS.PIPES),

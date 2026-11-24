@@ -1,10 +1,17 @@
-import type { KeyObject } from "node:crypto";
 import type {
   FactoryDependency,
   ModuleMetadata,
   Provider,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
+
+/** Structural key-object contract (compatible with Node `KeyObject` without importing `node:crypto`). */
+export interface CryptoKeyObjectLike {
+  readonly type: string;
+  readonly asymmetricKeyType?: string;
+  readonly symmetricKeySize?: number;
+  export(options?: never): unknown;
+}
 
 export const JWT_MODULE_OPTIONS = Symbol.for(
   "bunest:security:jwt_module_options",
@@ -51,13 +58,13 @@ export interface JwtSecretKeyObject {
 
 export type GetSecretKeyResult =
   | JwtSecretInput
-  | KeyObject
+  | CryptoKeyObjectLike
   | JwtSecretKeyObject;
 
 export interface JwtSignOptions {
   algorithm?: JwtAlgorithm;
   secret?: GetSecretKeyResult;
-  privateKey?: JwtAsymmetricKeyInput | KeyObject | JwtSecretKeyObject;
+  privateKey?: JwtAsymmetricKeyInput | CryptoKeyObjectLike | JwtSecretKeyObject;
   expiresIn?: number | string;
   notBefore?: number | string;
   audience?: string | string[];
@@ -76,7 +83,7 @@ export interface JwtSignOptions {
 export interface JwtVerifyOptions {
   algorithms?: readonly JwtAlgorithm[];
   secret?: GetSecretKeyResult;
-  publicKey?: JwtAsymmetricKeyInput | KeyObject | JwtSecretKeyObject;
+  publicKey?: JwtAsymmetricKeyInput | CryptoKeyObjectLike | JwtSecretKeyObject;
   audience?: string | RegExp | ReadonlyArray<string | RegExp>;
   issuer?: string | readonly string[];
   subject?: string;
@@ -94,8 +101,8 @@ export interface JwtVerifyOptions {
 
 export interface JwtModuleOptions {
   secret?: GetSecretKeyResult;
-  publicKey?: JwtAsymmetricKeyInput | KeyObject | JwtSecretKeyObject;
-  privateKey?: JwtAsymmetricKeyInput | KeyObject | JwtSecretKeyObject;
+  publicKey?: JwtAsymmetricKeyInput | CryptoKeyObjectLike | JwtSecretKeyObject;
+  privateKey?: JwtAsymmetricKeyInput | CryptoKeyObjectLike | JwtSecretKeyObject;
   /** @deprecated Prefer explicit `secret`, `privateKey`/`publicKey`, or `secretOrKeyProvider`. */
   secretOrPrivateKey?: GetSecretKeyResult;
   secretOrKeyProvider?: (
@@ -116,9 +123,7 @@ export interface JwtModuleAsyncOptions {
   imports?: ModuleMetadata["imports"];
   useExisting?: Type<JwtOptionsFactory>;
   useClass?: Type<JwtOptionsFactory>;
-  useFactory?: (
-    ...args: any[]
-  ) => JwtModuleOptions | Promise<JwtModuleOptions>;
+  useFactory?: (...args: any[]) => JwtModuleOptions | Promise<JwtModuleOptions>;
   inject?: FactoryDependency[];
   extraProviders?: Provider[];
   global?: boolean;

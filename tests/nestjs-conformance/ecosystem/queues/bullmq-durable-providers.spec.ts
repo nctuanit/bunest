@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import {
   Inject,
   Injectable,
   REQUEST,
   Scope,
-} from "../../../../packages/common/src";
+} from "../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   DiscoveryModule,
@@ -18,12 +17,8 @@ import {
   ProcessorDecoratorService,
   WorkerHost,
   type Job,
-} from "../../../../packages/queues/src";
-import {
-  Test,
-  TestingModule,
-  describeConformance,
-} from "../../_helpers/index";
+} from "../../../../packages/jobs/src/queues";
+import { Test, TestingModule, describeConformance } from "../../_helpers/index";
 
 const workerCtorSpy = mock((..._args: unknown[]) => {});
 
@@ -133,11 +128,13 @@ describeConformance(
         ContextIdFactory.reset();
       });
 
-      // BUNEST_BUG: Expected durable dependency instances (`durable1 === durable2`) to be reused via ContextIdFactory.apply() strategy while non-durable instances differ, actual creates distinct DurableDependency instances (counter 0 vs 1) because BullMQExplorer.registerProcessor (packages/queues/src/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`, bypassing active ContextIdStrategy.
+      // BUNEST_BUG: Expected durable dependency instances (`durable1 === durable2`) to be reused via ContextIdFactory.apply() strategy while non-durable instances differ, actual creates distinct DurableDependency instances (counter 0 vs 1) because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`, bypassing active ContextIdStrategy.
       it.skip("should load durable processor dependencies", async () => {
         bullExplorer.register();
         const processorFunction = workerCtorSpy.mock.calls[0]?.[1] as
-          | ((job: unknown) => Promise<[DurableDependency, NonDurableDependency]>)
+          | ((
+              job: unknown,
+            ) => Promise<[DurableDependency, NonDurableDependency]>)
           | undefined;
         expect(processorFunction).toBeDefined();
 
@@ -148,7 +145,7 @@ describeConformance(
         expect(nonDurable1).not.toBe(nonDurable2);
       });
 
-      // BUNEST_BUG: Expected `moduleRef.resolve(DurableDependency, durableContextId)` to resolve the cached durable dependency with `REQUEST` populated from the job payload attached via ContextIdStrategy, actual throws `Request-scoped token Symbol(bunest:token:request) requested by "DurableDependency" requires an active RequestContainer...` because BullMQExplorer.registerProcessor (packages/queues/src/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`.
+      // BUNEST_BUG: Expected `moduleRef.resolve(DurableDependency, durableContextId)` to resolve the cached durable dependency with `REQUEST` populated from the job payload attached via ContextIdStrategy, actual throws `Request-scoped token Symbol(bunest:token:request) requested by "DurableDependency" requires an active RequestContainer...` because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`.
       it.skip("should inject the request dependency", async () => {
         const durableDependency = await moduleRef.resolve(
           DurableDependency,

@@ -1,7 +1,3 @@
-import "reflect-metadata";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Body,
@@ -15,22 +11,20 @@ import {
   Query,
   Req,
   StreamableFile,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
 import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers";
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
+import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 @Controller("inject")
 class InjectController {
   @Get("items/:id")
-  find(
-    @Param("id") id: string,
-    @Query("q") q: string,
-    @Req() req: Request,
-  ) {
+  find(@Param("id") id: string, @Query("q") q: string, @Req() req: Request) {
     const token = req.headers.get("x-token") ?? undefined;
     return { id, q, token };
   }
@@ -155,9 +149,13 @@ describeConformance(
       let filesDir: string;
 
       beforeAll(async () => {
-        filesDir = mkdtempSync(join(tmpdir(), "bunest-inject-files-"));
-        writeFileSync(join(filesDir, "hello.txt"), "hello world\n");
-        mkdirSync(join(filesDir, "folder"));
+        filesDir = join(
+          Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+          `bunest-inject-files-${crypto.randomUUID()}`,
+        );
+        mkdirSyncPath(filesDir, { recursive: true });
+        writeTextSync(join(filesDir, "hello.txt"), "hello world\n");
+        mkdirSyncPath(join(filesDir, "folder"));
 
         const moduleRef = await Test.createTestingModule({
           imports: [InjectModule],
@@ -169,7 +167,7 @@ describeConformance(
 
       afterAll(async () => {
         await app.close();
-        rmSync(filesDir, { recursive: true, force: true });
+        await removePath(filesDir, { recursive: true, force: true });
       });
 
       it("should answer without a listening server", async () => {

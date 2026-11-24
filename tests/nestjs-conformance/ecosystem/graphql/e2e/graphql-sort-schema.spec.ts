@@ -1,12 +1,8 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   type GraphQLSchema,
   printSchema,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import {
   type CanActivate,
   type ExecutionContext,
@@ -14,8 +10,13 @@ import {
   Module,
   ParseIntPipe,
   UseGuards,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
+import {
+  ensureDir,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   GRAPHQL_SDL_FILE_HEADER,
@@ -173,9 +174,12 @@ describeConformance(
     let schemaDir: string;
 
     beforeEach(async () => {
-      schemaDir = join(tmpdir(), `bunest-sort-schema-${crypto.randomUUID()}`);
-      mkdirSync(schemaDir, { recursive: true });
-      writeFileSync(join(schemaDir, "cats.types.graphql"), CATS_SCHEMA_SDL);
+      schemaDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-sort-schema-${crypto.randomUUID()}`,
+      );
+      await ensureDir(schemaDir);
+      await Bun.write(join(schemaDir, "cats.types.graphql"), CATS_SCHEMA_SDL);
 
       @Module({
         imports: [
@@ -201,7 +205,7 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      rmSync(schemaDir, { recursive: true, force: true });
+      await removePath(schemaDir, { recursive: true, force: true });
     });
 
     it("should match schema snapshot", () => {

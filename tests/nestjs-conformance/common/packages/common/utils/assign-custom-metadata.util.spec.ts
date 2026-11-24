@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   MetadataRegistry,
   assignMetadata,
   createParamDecorator,
   type PipeTransform,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(

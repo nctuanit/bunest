@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   applySecurityHeaders,
   compileSecurityHeaders,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 const HELMET_DEFAULT_CSP =
@@ -93,7 +92,7 @@ describeConformance(
         ).toBe("default-src 'self';img-src *");
       });
 
-      // BUNEST_BUG: compileSecurityHeaders does not require default-src when useDefaults is false (packages/http/src/security/security-headers.ts).
+      // BUNEST_BUG: compileSecurityHeaders does not require default-src when useDefaults is false (packages/core/src/http/security/security-headers.ts).
       it.skip("requires default-src unless it is removed explicitly", () => {
         expect(() =>
           getCsp({
@@ -109,7 +108,7 @@ describeConformance(
       });
 
       describe("rejects injection attempts and invalid input", () => {
-        // BUNEST_BUG: compileSecurityHeaders does not validate CSP directive names/values for header injection (; , CR/LF tab non-ASCII), invalid names, unquoted keywords/nonces, or duplicate camel/kebab directives (packages/http/src/security/security-headers.ts).
+        // BUNEST_BUG: compileSecurityHeaders does not validate CSP directive names/values for header injection (; , CR/LF tab non-ASCII), invalid names, unquoted keywords/nonces, or duplicate camel/kebab directives (packages/core/src/http/security/security-headers.ts).
         it.skip.each([
           ['a ";" in a value', { scriptSrc: ["'self'; script-src *"] }],
           ['a "," in a value', { scriptSrc: "'self', script-src *" }],
@@ -272,14 +271,14 @@ describeConformance(
         ]);
       });
 
-      it.each([
-        [{ xFrameOptions: { action: 1 as any } }],
-        [null as any],
-      ])("rejects invalid options %j", (options) => {
-        expect(() => compileSecurityHeaders(options)).toThrow();
-      });
+      it.each([[{ xFrameOptions: { action: 1 as any } }], [null as any]])(
+        "rejects invalid options %j",
+        (options) => {
+          expect(() => compileSecurityHeaders(options)).toThrow();
+        },
+      );
 
-      // BUNEST_BUG: compileSecurityHeaders lacks strict option schema/enum/range/type validation for security header sub-options (packages/http/src/security/security-headers.ts).
+      // BUNEST_BUG: compileSecurityHeaders lacks strict option schema/enum/range/type validation for security header sub-options (packages/core/src/http/security/security-headers.ts).
       it.skip.each([
         [{ crossOriginOpenerPolicy: { policy: "same-site" as any } }],
         [{ crossOriginResourcePolicy: { policy: "none" as any } }],
@@ -314,11 +313,13 @@ describeConformance(
         ).toThrow(/Unknown security headers option "contentSecurityPolicies"/);
       });
 
-      // BUNEST_BUG: compileSecurityHeaders only validates top-level option keys and does not reject unknown nested keys like contentSecurityPolicy.directive (packages/http/src/security/security-headers.ts).
+      // BUNEST_BUG: compileSecurityHeaders only validates top-level option keys and does not reject unknown nested keys like contentSecurityPolicy.directive (packages/core/src/http/security/security-headers.ts).
       it.skip("rejects unknown nested options like contentSecurityPolicy.directive", () => {
         expect(() =>
           compileSecurityHeaders({
-            contentSecurityPolicy: { directive: { scriptSrc: "'none'" } } as any,
+            contentSecurityPolicy: {
+              directive: { scriptSrc: "'none'" },
+            } as any,
           }),
         ).toThrow(/directive/);
       });

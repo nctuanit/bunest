@@ -1,14 +1,27 @@
-import { randomUUID } from 'node:crypto';
-import { Logger, type LoggerService } from '@bunest/common';
-import { PayloadCodecs } from '../codecs/payload-codecs';
-import type { Clock } from '../interfaces/clock.interface';
-import type { ScheduleSpec } from '../interfaces/schedule.interface';
-import type { ScheduleRecord, ScheduleSave, ScheduleStore } from '../interfaces/schedule-store.interface';
-import type { DeclaredSchedule, ScheduleProduction, SchedulerOptions, ScheduleSkip } from '../interfaces/scheduler-options.interface';
-import { systemClock } from '../time/clock';
-import { canonical } from '../utils/canonical.util';
-import { EncodedScheduleStore } from './encoded-schedule.store';
-import { latestOccurrences, nextOccurrence, occurrenceId, sameTiming } from './schedule-spec';
+import { Logger, type LoggerService } from "@bunest/core";
+import { PayloadCodecs } from "../codecs/payload-codecs";
+import type { Clock } from "../interfaces/clock.interface";
+import type { ScheduleSpec } from "../interfaces/schedule.interface";
+import type {
+  ScheduleRecord,
+  ScheduleSave,
+  ScheduleStore,
+} from "../interfaces/schedule-store.interface";
+import type {
+  DeclaredSchedule,
+  ScheduleProduction,
+  SchedulerOptions,
+  ScheduleSkip,
+} from "../interfaces/scheduler-options.interface";
+import { systemClock } from "../time/clock";
+import { canonical } from "../utils/canonical.util";
+import { EncodedScheduleStore } from "./encoded-schedule.store";
+import {
+  latestOccurrences,
+  nextOccurrence,
+  occurrenceId,
+  sameTiming,
+} from "./schedule-spec";
 
 /** `missed: 'skip'` still starts an occurrence found this soon after its time. */
 const ON_TIME_MS = 60_000;
@@ -25,7 +38,7 @@ const CONFIRM_MS = 60_000;
 /** A declared schedule that no process confirmed for this long has no running code that declares it. */
 const STALE_MS = 5 * 60_000;
 /** The stored payload of a schedule that no codec can read any more: never equal to the code's. */
-const UNREADABLE = Symbol('unreadable');
+const UNREADABLE = Symbol("unreadable");
 
 interface PendingStart {
   at: number;
@@ -62,7 +75,10 @@ interface ResolvedLabels {
  * );
  * ```
  */
-export type ScheduleFields = Omit<ScheduleSave, 'id' | 'expectRevision' | 'now'>;
+export type ScheduleFields = Omit<
+  ScheduleSave,
+  "id" | "expectRevision" | "now"
+>;
 
 /**
  * The engine of schedules, over a `ScheduleStore`: it starts each occurrence's run exactly once however many workers
@@ -92,7 +108,7 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
   readonly store: ScheduleStore;
   private readonly encoded: EncodedScheduleStore;
   private readonly clock: Clock;
-  private readonly logger: Pick<LoggerService, 'log' | 'warn' | 'error'>;
+  private readonly logger: Pick<LoggerService, "log" | "warn" | "error">;
   private readonly labels: ResolvedLabels;
   private syncing?: Promise<void>;
   /** When `produce()` next reconciles the declared schedules with the code (the clock's time). */
@@ -103,17 +119,18 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     this.options = options;
     this.store = options.store;
     this.clock = options.clock ?? systemClock;
-    this.logger = options.logger ?? new Logger('Scheduler');
+    this.logger = options.logger ?? new Logger("Scheduler");
     this.labels = {
       target: options.labels?.target ?? ((name) => `target "${name}"`),
-      targets: options.labels?.targets ?? 'targets',
-      payload: options.labels?.payload ?? 'payload',
-      upsert: options.labels?.upsert ?? 'upsert()',
+      targets: options.labels?.targets ?? "targets",
+      payload: options.labels?.payload ?? "payload",
+      upsert: options.labels?.upsert ?? "upsert()",
     };
     this.encoded = new EncodedScheduleStore(
       options.store,
       options.codecs ?? new PayloadCodecs([]),
-      options.payloadContext ?? ((schedule) => ({ field: 'payload', schedule })),
+      options.payloadContext ??
+        ((schedule) => ({ field: "payload", schedule })),
       this.logger,
     );
   }
@@ -149,11 +166,21 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
       try {
         await this.reconcile(false);
       } catch (error) {
-        this.logger.error(`Reconciling the schedules the ${this.labels.targets} declare failed; it is tried again in a minute.`, error);
+        this.logger.error(
+          `Reconciling the schedules the ${this.labels.targets} declare failed; it is tried again in a minute.`,
+          error,
+        );
       }
     }
-    const token = randomUUID();
-    const claimed = await this.encoded.claimSchedules({ owner, token, now, leaseUntil: now + leaseMs, limit: BATCH, targets });
+    const token = crypto.randomUUID();
+    const claimed = await this.encoded.claimSchedules({
+      owner,
+      token,
+      now,
+      leaseUntil: now + leaseMs,
+      limit: BATCH,
+      targets,
+    });
     const production: ScheduleProduction = { started: 0, cancelled: [] };
     for (const record of claimed) {
       try {
@@ -161,7 +188,10 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
         production.started += one.started;
         production.cancelled.push(...one.cancelled);
       } catch (error) {
-        this.logger.error(`Starting the occurrences of schedule "${record.id}" failed; it is retried when its lease expires.`, error);
+        this.logger.error(
+          `Starting the occurrences of schedule "${record.id}" failed; it is retried when its lease expires.`,
+          error,
+        );
       }
     }
     return production;
@@ -179,14 +209,21 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     options: { replacing?: boolean; asStored?: boolean } = {},
   ): Promise<ScheduleRecord | null> {
     const store = options.asStored ? this.store : this.encoded;
-    const read = options.replacing ? (scheduleId: string) => this.readReplacing(scheduleId) : (scheduleId: string) => store.getSchedule(scheduleId);
+    const read = options.replacing
+      ? (scheduleId: string) => this.readReplacing(scheduleId)
+      : (scheduleId: string) => store.getSchedule(scheduleId);
     for (let attempt = 0; attempt < 10; attempt++) {
       const current = await read(id);
       const fields = change(current);
       if (!fields) {
         return current;
       }
-      const saved = await store.saveSchedule({ ...fields, id, expectRevision: current?.revision ?? null, now: this.clock.now() });
+      const saved = await store.saveSchedule({
+        ...fields,
+        id,
+        expectRevision: current?.revision ?? null,
+        now: this.clock.now(),
+      });
       if (saved) {
         return saved;
       }
@@ -207,21 +244,43 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
   ): ScheduleFields {
     const now = this.clock.now();
     if (!current) {
-      const state: ScheduleState = { next: nextOccurrence(next.spec, now), runs: 0, buffered: null, pending: [] };
-      return { ...next, paused: false, state, wakeAt: wakeAt(state, now), releaseLease: false };
+      const state: ScheduleState = {
+        next: nextOccurrence(next.spec, now),
+        runs: 0,
+        buffered: null,
+        pending: [],
+      };
+      return {
+        ...next,
+        paused: false,
+        state,
+        wakeAt: wakeAt(state, now),
+        releaseLease: false,
+      };
     }
     const previous = current.state as ScheduleState;
     const retimed = !sameTiming(current.spec as ScheduleSpec, next.spec);
     // A retimed schedule drops its buffered occurrence, which then never starts: it no longer counts.
-    const runs = retimed && previous.buffered !== null ? previous.runs - 1 : previous.runs;
+    const runs =
+      retimed && previous.buffered !== null ? previous.runs - 1 : previous.runs;
     const ended = limitReached(next.spec, runs);
     const state: ScheduleState = {
       ...previous,
       runs,
-      next: ended ? null : retimed ? nextOccurrence(next.spec, now) : (previous.next ?? nextOccurrence(next.spec, now)),
+      next: ended
+        ? null
+        : retimed
+          ? nextOccurrence(next.spec, now)
+          : (previous.next ?? nextOccurrence(next.spec, now)),
       buffered: retimed ? null : previous.buffered,
     };
-    return { ...next, paused: current.paused, state, wakeAt: wakeAt(state, now), releaseLease: retimed };
+    return {
+      ...next,
+      paused: current.paused,
+      state,
+      wakeAt: wakeAt(state, now),
+      releaseLease: retimed,
+    };
   }
 
   /**
@@ -230,9 +289,16 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
    * unknown id.
    */
   pause(id: string): Promise<ScheduleRecord | null> {
-    return this.save(id, (current) => (!current || current.paused ? null : { ...fieldsOf(current), paused: true, releaseLease: true }), {
-      asStored: true,
-    });
+    return this.save(
+      id,
+      (current) =>
+        !current || current.paused
+          ? null
+          : { ...fieldsOf(current), paused: true, releaseLease: true },
+      {
+        asStored: true,
+      },
+    );
   }
 
   /**
@@ -249,8 +315,19 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
         const now = this.clock.now();
         const spec = current.spec as ScheduleSpec;
         const previous = current.state as ScheduleState;
-        const state: ScheduleState = { ...previous, next: limitReached(spec, previous.runs) ? null : nextOccurrence(spec, now) };
-        return { ...fieldsOf(current), paused: false, state, wakeAt: wakeAt(state, now), releaseLease: true };
+        const state: ScheduleState = {
+          ...previous,
+          next: limitReached(spec, previous.runs)
+            ? null
+            : nextOccurrence(spec, now),
+        };
+        return {
+          ...fieldsOf(current),
+          paused: false,
+          state,
+          wakeAt: wakeAt(state, now),
+          releaseLease: true,
+        };
       },
       { asStored: true },
     );
@@ -268,7 +345,9 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     } catch (error) {
       if (!this.warned.has(`unreadable:${record.id}`)) {
         this.warned.add(`unreadable:${record.id}`);
-        this.logger.warn(`Schedule "${record.id}" is shown without its ${this.labels.payload}, which can't be read: ${(error as Error).message}`);
+        this.logger.warn(
+          `Schedule "${record.id}" is shown without its ${this.labels.payload}, which can't be read: ${(error as Error).message}`,
+        );
       }
       return { ...record, payload: null };
     }
@@ -278,9 +357,17 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
    * Where a stored schedule is: when its next occurrence is due (`null` while paused, or once it ended), how many it
    * started (what `limit` counts), and the occurrence buffered for `overlap: 'buffer-one'`.
    */
-  progress(record: ScheduleRecord): { nextAt: number | null; runs: number; bufferedAt: number | null } {
+  progress(record: ScheduleRecord): {
+    nextAt: number | null;
+    runs: number;
+    bufferedAt: number | null;
+  } {
     const state = record.state as ScheduleState;
-    return { nextAt: record.paused ? null : state.next, runs: state.runs, bufferedAt: state.buffered };
+    return {
+      nextAt: record.paused ? null : state.next,
+      runs: state.runs,
+      bufferedAt: state.buffered,
+    };
   }
 
   // ---------------------------------------------------------------- reconciling the declared schedules
@@ -333,31 +420,74 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     schedule: DeclaredSchedule<S>,
     at: { now: number; startup: boolean },
   ): ScheduleFields | null {
-    const payload = typeof schedule.payload === 'function' ? null : (schedule.payload ?? null);
-    const spec: StoredSpec<S> = { ...schedule.spec, declaredBy: schedule.version, confirmedAt: at.now };
+    const payload =
+      typeof schedule.payload === "function"
+        ? null
+        : (schedule.payload ?? null);
+    const spec: StoredSpec<S> = {
+      ...schedule.spec,
+      declaredBy: schedule.version,
+      confirmedAt: at.now,
+    };
     if (!current?.declared) {
-      return this.changed(current, { target: schedule.target, declared: true, spec, payload });
+      return this.changed(current, {
+        target: schedule.target,
+        declared: true,
+        spec,
+        payload,
+      });
     }
     const stored = current.spec as StoredSpec<S>;
     const sameTarget = current.target === schedule.target;
-    const samePayload = canonical(current.payload ?? null) === canonical(payload);
-    if (sameTarget && canonical(declaration(stored)) === canonical(schedule.spec) && (samePayload || current.payload === UNREADABLE)) {
+    const samePayload =
+      canonical(current.payload ?? null) === canonical(payload);
+    if (
+      sameTarget &&
+      canonical(declaration(stored)) === canonical(schedule.spec) &&
+      (samePayload || current.payload === UNREADABLE)
+    ) {
       // With a codec, the payload is saved again at each startup: encoded with the current key, a rotated one can go.
-      const rewrite = !samePayload || (at.startup && this.encoded.encodes && payload !== null);
-      const confirm = stored.confirmedAt === undefined || at.now - stored.confirmedAt >= CONFIRM_MS;
+      const rewrite =
+        !samePayload ||
+        (at.startup && this.encoded.encodes && payload !== null);
+      const confirm =
+        stored.confirmedAt === undefined ||
+        at.now - stored.confirmedAt >= CONFIRM_MS;
       if (!rewrite && !confirm) {
         return null;
       }
       const { target, paused, wakeAt: wake, state } = current;
       const by = Math.max(stored.declaredBy ?? 0, schedule.version);
-      return { target, declared: true, spec: { ...stored, declaredBy: by, confirmedAt: at.now }, payload, paused, wakeAt: wake, state, releaseLease: false };
+      return {
+        target,
+        declared: true,
+        spec: { ...stored, declaredBy: by, confirmedAt: at.now },
+        payload,
+        paused,
+        wakeAt: wake,
+        state,
+        releaseLease: false,
+      };
     }
     // Declared otherwise by other code. A newer version's declaration stays while a process of it confirms it; the
     // code that starts takes the others over, and a running process one that no process confirms any more (the code
     // that declared it is gone) or an older version's.
     const by = stored.declaredBy ?? 0;
-    const takeOver = !confirmed(current, at.now) || (sameTarget ? (at.startup ? by <= schedule.version : by < schedule.version) : at.startup);
-    return takeOver ? this.changed(current, { target: schedule.target, declared: true, spec, payload }) : null;
+    const takeOver =
+      !confirmed(current, at.now) ||
+      (sameTarget
+        ? at.startup
+          ? by <= schedule.version
+          : by < schedule.version
+        : at.startup);
+    return takeOver
+      ? this.changed(current, {
+          target: schedule.target,
+          declared: true,
+          spec,
+          payload,
+        })
+      : null;
   }
 
   /**
@@ -379,7 +509,11 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
    */
   private async remove(record: ScheduleRecord, now: number): Promise<void> {
     let current: ScheduleRecord | null = record;
-    for (let attempt = 0; attempt < 10 && current?.declared && !confirmed(current, now); attempt++) {
+    for (
+      let attempt = 0;
+      attempt < 10 && current?.declared && !confirmed(current, now);
+      attempt++
+    ) {
       if (await this.store.deleteSchedule(current.id, current.revision)) {
         this.logger.log(
           `Deleted schedule "${current.id}" of ${this.labels.target(current.target)}: no process whose code declares it confirmed it for five minutes.`,
@@ -394,7 +528,11 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
   private async allDeclared(): Promise<ScheduleRecord[]> {
     const records: ScheduleRecord[] = [];
     for (let offset = 0; ; offset += BATCH) {
-      const page = await this.store.listSchedules({ declared: true, limit: BATCH, offset });
+      const page = await this.store.listSchedules({
+        declared: true,
+        limit: BATCH,
+        offset,
+      });
       records.push(...page);
       if (page.length < BATCH) {
         return records;
@@ -408,23 +546,37 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
 
   // ---------------------------------------------------------------- producing occurrences
 
-  private async produceOne(record: ScheduleRecord, token: string, now: number): Promise<ScheduleProduction> {
+  private async produceOne(
+    record: ScheduleRecord,
+    token: string,
+    now: number,
+  ): Promise<ScheduleProduction> {
     const spec = record.spec as S;
     const state = record.state as ScheduleState;
-    const declared = record.declared ? this.declared().get(record.id) : undefined;
+    const declared = record.declared
+      ? this.declared().get(record.id)
+      : undefined;
     if (record.declared && !declared) {
       // A declared schedule belongs to the code that declares it: in a rolling deploy, a worker of code that doesn't
       // (yet, or any more) leaves it to one that does, and it goes once no process confirms it (see reconcile()).
-      await this.encoded.writeSchedule(record.id, token, { now, state, wakeAt: record.wakeAt, release: true });
+      await this.encoded.writeSchedule(record.id, token, {
+        now,
+        state,
+        wakeAt: record.wakeAt,
+        release: true,
+      });
       if (!this.warned.has(`undeclared:${record.id}`)) {
         this.warned.add(`undeclared:${record.id}`);
-        this.logger.warn(`Schedule "${record.id}" is declared by code this worker doesn't run; it leaves it to a worker whose code declares it.`);
+        this.logger.warn(
+          `Schedule "${record.id}" is declared by code this worker doesn't run; it leaves it to a worker whose code declares it.`,
+        );
       }
       return { started: 0, cancelled: [] };
     }
     const st: ScheduleState = { ...state, pending: [...state.pending] };
     const skipped: ScheduleSkip[] = [];
-    const running = spec.overlap === 'allow' ? [] : await this.options.running(record);
+    const running =
+      spec.overlap === "allow" ? [] : await this.options.running(record);
     const busy = () => running.length > 0 || st.pending.length > 0;
     if (st.buffered !== null && !busy()) {
       st.pending.push({ at: st.buffered, cancel: [] });
@@ -433,26 +585,36 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     if (st.next !== null && st.next <= now) {
       const due = dueOccurrences(spec, st.next, now);
       if (due.skipped) {
-        skipped.push({ reason: 'missed', ...due.skipped });
+        skipped.push({ reason: "missed", ...due.skipped });
       }
       let starts = due.start;
-      if (spec.overlap === 'cancel-previous' && starts.length > 1) {
+      if (spec.overlap === "cancel-previous" && starts.length > 1) {
         // Each would cancel the one before it at once: only the latest runs.
-        skipped.push({ reason: 'overlap', from: starts[0]!, to: starts[starts.length - 2]! });
+        skipped.push({
+          reason: "overlap",
+          from: starts[0]!,
+          to: starts[starts.length - 2]!,
+        });
         starts = starts.slice(-1);
       }
       for (const at of starts) {
         if (limitReached(spec, st.runs)) {
           break;
         }
-        if (spec.overlap === 'allow' || !busy()) {
+        if (spec.overlap === "allow" || !busy()) {
           st.pending.push({ at, cancel: [] });
-        } else if (spec.overlap === 'cancel-previous') {
-          st.pending.push({ at, cancel: [...running, ...st.pending.map((start) => occurrenceId(record.id, start.at))] });
-        } else if (spec.overlap === 'buffer-one' && st.buffered === null) {
+        } else if (spec.overlap === "cancel-previous") {
+          st.pending.push({
+            at,
+            cancel: [
+              ...running,
+              ...st.pending.map((start) => occurrenceId(record.id, start.at)),
+            ],
+          });
+        } else if (spec.overlap === "buffer-one" && st.buffered === null) {
           st.buffered = at;
         } else {
-          skipped.push({ reason: 'overlap', from: at, to: at });
+          skipped.push({ reason: "overlap", from: at, to: at });
           continue;
         }
         st.runs++;
@@ -460,7 +622,15 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
       st.next = limitReached(spec, st.runs) ? null : nextOccurrence(spec, now);
     }
     // The decisions first: whatever happens to this worker from here on, the next producer finishes them.
-    if (canonical(st) !== canonical(state) && !(await this.encoded.writeSchedule(record.id, token, { now, state: st, wakeAt: now, release: false }))) {
+    if (
+      canonical(st) !== canonical(state) &&
+      !(await this.encoded.writeSchedule(record.id, token, {
+        now,
+        state: st,
+        wakeAt: now,
+        release: false,
+      }))
+    ) {
       return { started: 0, cancelled: [] };
     }
     const production: ScheduleProduction = { started: 0, cancelled: [] };
@@ -475,7 +645,14 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
             production.cancelled.push(id);
           }
         }
-        const started = await this.options.fire({ schedule: record, spec, declared, id: occurrenceId(record.id, start.at), at: start.at, now });
+        const started = await this.options.fire({
+          schedule: record,
+          spec,
+          declared,
+          id: occurrenceId(record.id, start.at),
+          at: start.at,
+          now,
+        });
         if (!started) {
           skippedStarts++;
         } else if (started.created) {
@@ -486,7 +663,12 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
         // that can never be stored doesn't hold the schedule up forever.
         const attempts = (start.attempts ?? 0) + 1;
         const message = `Schedule "${record.id}" couldn't start its occurrence of ${occurrence} (attempt ${attempts} of ${MAX_START_ATTEMPTS})`;
-        this.logger.error(attempts < MAX_START_ATTEMPTS ? `${message}; it tries again.` : `${message}; it gives up on it.`, error);
+        this.logger.error(
+          attempts < MAX_START_ATTEMPTS
+            ? `${message}; it tries again.`
+            : `${message}; it gives up on it.`,
+          error,
+        );
         if (attempts < MAX_START_ATTEMPTS) {
           retries.push({ ...start, attempts });
         } else {
@@ -499,12 +681,30 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     const done: ScheduleState = {
       ...st,
       runs,
-      next: st.next === null && !limitReached(spec, runs) ? nextOccurrence(spec, now) : st.next,
+      next:
+        st.next === null && !limitReached(spec, runs)
+          ? nextOccurrence(spec, now)
+          : st.next,
       pending: retries,
     };
-    const backoff = Math.min(1_000 * 2 ** (Math.max(0, ...retries.map((start) => start.attempts ?? 0)) - 1), 60_000);
-    const due = retries.length > 0 ? Math.min(now + backoff, wakeAt({ ...done, pending: [] }, now) ?? Infinity) : wakeAt(done, now);
-    await this.encoded.writeSchedule(record.id, token, { now, state: done, wakeAt: due, release: true });
+    const backoff = Math.min(
+      1_000 *
+        2 ** (Math.max(0, ...retries.map((start) => start.attempts ?? 0)) - 1),
+      60_000,
+    );
+    const due =
+      retries.length > 0
+        ? Math.min(
+            now + backoff,
+            wakeAt({ ...done, pending: [] }, now) ?? Infinity,
+          )
+        : wakeAt(done, now);
+    await this.encoded.writeSchedule(record.id, token, {
+      now,
+      state: done,
+      wakeAt: due,
+      release: true,
+    });
     for (const skip of skipped) {
       this.options.skipped?.(record, skip, now);
     }
@@ -513,7 +713,11 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
 }
 
 /** What the code declares: the stored spec without its bookkeeping. */
-function declaration<S extends ScheduleSpec>({ declaredBy: _declaredBy, confirmedAt: _confirmedAt, ...spec }: StoredSpec<S>): S {
+function declaration<S extends ScheduleSpec>({
+  declaredBy: _declaredBy,
+  confirmedAt: _confirmedAt,
+  ...spec
+}: StoredSpec<S>): S {
   return spec as S;
 }
 
@@ -523,8 +727,18 @@ function confirmed(record: ScheduleRecord, now: number): boolean {
   return confirmedAt !== undefined && now - confirmedAt < STALE_MS;
 }
 
-function fieldsOf(record: ScheduleRecord): Omit<ScheduleFields, 'releaseLease'> {
-  const { target, declared, spec, payload, paused, wakeAt: wake, state } = record;
+function fieldsOf(
+  record: ScheduleRecord,
+): Omit<ScheduleFields, "releaseLease"> {
+  const {
+    target,
+    declared,
+    spec,
+    payload,
+    paused,
+    wakeAt: wake,
+    state,
+  } = record;
   return { target, declared, spec, payload, paused, wakeAt: wake, state };
 }
 
@@ -546,12 +760,21 @@ function dueOccurrences(
   from: number,
   now: number,
 ): { start: number[]; skipped: { from: number; to: number } | null } {
-  const keep = spec.missed === 'all' ? MAX_CATCH_UP : 1;
+  const keep = spec.missed === "all" ? MAX_CATCH_UP : 1;
   const latest = latestOccurrences(spec, from, now, keep + 1);
   const due = latest.slice(-keep);
-  const start = spec.missed === 'skip' && due.length > 0 && now - due[due.length - 1]! > ON_TIME_MS ? [] : due;
+  const start =
+    spec.missed === "skip" &&
+    due.length > 0 &&
+    now - due[due.length - 1]! > ON_TIME_MS
+      ? []
+      : due;
   if (start.length === 0) {
-    return { start, skipped: latest.length > 0 ? { from, to: latest[latest.length - 1]! } : null };
+    return {
+      start,
+      skipped:
+        latest.length > 0 ? { from, to: latest[latest.length - 1]! } : null,
+    };
   }
   const passed = latest.length > keep ? latest[0]! : null;
   return { start, skipped: passed === null ? null : { from, to: passed } };

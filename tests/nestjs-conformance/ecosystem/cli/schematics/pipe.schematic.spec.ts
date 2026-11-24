@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function expectedPipeSource(pascal: string): string {
   return `import {
@@ -47,16 +58,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -83,7 +94,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo/foo.pipe.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "src/foo/foo.pipe.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "src/foo/foo.pipe.ts"))).toEqual(
           expectedPipeSource("Foo"),
         );
       },
@@ -111,7 +122,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar/foo/foo.pipe.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar/foo/foo.pipe.ts")),
         ).toEqual(expectedPipeSource("Foo"));
       },
       "emits pipe under nested folder path",
@@ -132,7 +143,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo/foo.pipe.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "baz/foo/foo.pipe.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "baz/foo/foo.pipe.ts"))).toEqual(
           expectedPipeSource("Foo"),
         );
       },
@@ -160,7 +171,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/foo-bar/foo-bar.pipe.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo-bar/foo-bar.pipe.ts")),
         ).toEqual(expectedPipeSource("FooBar"));
       },
       "normalizes camelCase name to kebab-case file and PascalCase class",
@@ -187,7 +198,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar-baz/foo/foo.pipe.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar-baz/foo/foo.pipe.ts")),
         ).toEqual(expectedPipeSource("Foo"));
       },
       "normalizes camelCase directory segment to kebab-case",
@@ -213,9 +224,9 @@ describeConformance(
           flat: false,
           spec: true,
         });
-        expect(
-          planned.every((file) => file.relativePath.endsWith(".ts")),
-        ).toBe(true);
+        expect(planned.every((file) => file.relativePath.endsWith(".ts"))).toBe(
+          true,
+        );
         expect(findFile(planned, "foo/foo.pipe.js")).toBeUndefined();
         expect(findFile(planned, "foo/foo.pipe.ts")?.content).toEqual(
           expectedPipeSource("Foo"),
@@ -277,11 +288,8 @@ describeConformance(
           cwd,
         });
 
-        expect(
-          readFileSync(join(cwd, "src/foo.pipe.spec.ts"), "utf8"),
-        ).toEqual(
-          `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+        expect(readTextSync(join(cwd, "src/foo.pipe.spec.ts"))).toEqual(
+          `import { describe, expect, it } from "bun:test";
 import { FooPipe } from "./foo.pipe";
 
 describe("FooPipe", () => {

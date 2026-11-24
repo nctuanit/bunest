@@ -1,10 +1,9 @@
-import { isDeepStrictEqual } from "node:util";
 import {
   ConsoleLogger,
   LOG_LEVELS,
   type ConsoleLoggerOptions,
   type LogLevel,
-} from "@bunest/common";
+} from "@bunest/core";
 
 /**
  * A log call recorded by `CapturingLogger` (NestJS v12 parity).
@@ -23,7 +22,7 @@ export interface CapturedLog {
   /**
    * The plain objects passed after the message, merged.
    */
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   /**
    * The first `Error` passed to the call, as the message or after it.
    */
@@ -76,16 +75,12 @@ export type CapturingLoggerFilterOptions = CapturedLogFilter;
  * NestJS v12 matcher accepted by `filter`, `find`, `assertLogged`, `assertNotLogged`.
  */
 export type CapturedLogMatcher =
-  | CapturedLogFilter
-  | ((entry: CapturedLog) => boolean);
+  CapturedLogFilter | ((entry: CapturedLog) => boolean);
 
 /**
  * Extended matcher also accepting legacy Bunest string/RegExp shorthands.
  */
-export type LogEntryMatcher =
-  | CapturedLogMatcher
-  | string
-  | RegExp;
+export type LogEntryMatcher = CapturedLogMatcher | string | RegExp;
 
 /**
  * Options for `CapturingLogger` extending `ConsoleLoggerOptions` (NestJS v12 parity),
@@ -104,7 +99,7 @@ export interface CapturingLoggerOptions extends ConsoleLoggerOptions {
   levels?: readonly LogLevel[];
 }
 
-function isPlainObject(value: unknown): value is Record<string, any> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
@@ -130,10 +125,7 @@ function formatMessageForSummary(message: unknown): string {
   }
 }
 
-function matchesMessage(
-  actual: unknown,
-  expected: string | RegExp,
-): boolean {
+function matchesMessage(actual: unknown, expected: string | RegExp): boolean {
   if (typeof actual !== "string") {
     return false;
   }
@@ -157,7 +149,7 @@ function matchesContext(
 }
 
 function matchesParams(
-  actual: Record<string, any> | undefined,
+  actual: Record<string, unknown> | undefined,
   expected: Record<string, unknown>,
 ): boolean {
   if (!actual || typeof actual !== "object") {
@@ -167,17 +159,14 @@ function matchesParams(
     if (!Object.prototype.hasOwnProperty.call(actual, key)) {
       return false;
     }
-    if (!isDeepStrictEqual(actual[key], expectedVal)) {
+    if (!Bun.deepEquals(actual[key], expectedVal, true)) {
       return false;
     }
   }
   return true;
 }
 
-function matchesFilter(
-  entry: CapturedLog,
-  filter: CapturedLogFilter,
-): boolean {
+function matchesFilter(entry: CapturedLog, filter: CapturedLogFilter): boolean {
   if (filter.level !== undefined) {
     if (Array.isArray(filter.level)) {
       if (!filter.level.includes(entry.level)) {
@@ -259,42 +248,42 @@ export class CapturingLogger extends ConsoleLogger {
     return [...this.captured];
   }
 
-  override log(message: any, ...optionalParams: any[]): void {
+  override log(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("log", message, optionalParams);
     if (this.shouldPrint) {
       super.log(message, ...optionalParams);
     }
   }
 
-  override error(message: any, ...optionalParams: any[]): void {
+  override error(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("error", message, optionalParams);
     if (this.shouldPrint) {
       super.error(message, ...optionalParams);
     }
   }
 
-  override warn(message: any, ...optionalParams: any[]): void {
+  override warn(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("warn", message, optionalParams);
     if (this.shouldPrint) {
       super.warn(message, ...optionalParams);
     }
   }
 
-  override debug(message: any, ...optionalParams: any[]): void {
+  override debug(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("debug", message, optionalParams);
     if (this.shouldPrint) {
       super.debug(message, ...optionalParams);
     }
   }
 
-  override verbose(message: any, ...optionalParams: any[]): void {
+  override verbose(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("verbose", message, optionalParams);
     if (this.shouldPrint) {
       super.verbose(message, ...optionalParams);
     }
   }
 
-  override fatal(message: any, ...optionalParams: any[]): void {
+  override fatal(message: unknown, ...optionalParams: unknown[]): void {
     this.capture("fatal", message, optionalParams);
     if (this.shouldPrint) {
       super.fatal(message, ...optionalParams);
@@ -456,7 +445,7 @@ export class CapturingLogger extends ConsoleLogger {
     }
 
     // Merge plain object params passed after the message
-    let mergedParams: Record<string, any> | undefined;
+    let mergedParams: Record<string, unknown> | undefined;
     for (let i = 0; i < rest.length; i++) {
       const item = rest[i];
       if (item instanceof Error) {

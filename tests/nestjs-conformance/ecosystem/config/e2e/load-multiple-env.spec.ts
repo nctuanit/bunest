@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { describeConformance, Test } from "../../../_helpers/index";

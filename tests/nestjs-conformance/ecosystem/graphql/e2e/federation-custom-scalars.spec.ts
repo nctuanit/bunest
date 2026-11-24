@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   GraphQLError,
   GraphQLScalarType,
   Kind,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Module } from "../../../../../packages/common/src";
+} from "../../../../../packages/graphql/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -83,8 +82,7 @@ class CustomScalarsFederationModule {}
 describeConformance(
   "Federation - custom scalars of the code-first schema",
   {
-    upstreamPath:
-      "packages/apollo/tests/e2e/federation-custom-scalars.spec.ts",
+    upstreamPath: "packages/apollo/tests/e2e/federation-custom-scalars.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:

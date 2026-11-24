@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { Socket } from "bun";
 import {
@@ -245,9 +244,7 @@ describeConformance(
         expect(decoder.push(header.subarray(0, 2))).toEqual([]);
 
         // Remaining 2 bytes complete the header and immediately trigger limit error
-        expect(() => decoder.push(header.subarray(2))).toThrow(
-          /exceeds limit/,
-        );
+        expect(() => decoder.push(header.subarray(2))).toThrow(/exceeds limit/);
       });
 
       it("should clear internal buffer after throwing on oversized frame", () => {

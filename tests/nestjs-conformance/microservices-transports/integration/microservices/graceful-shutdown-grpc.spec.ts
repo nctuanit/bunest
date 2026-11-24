@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Controller } from "../../../../../packages/common/src";
+import { Controller } from "../../../../../packages/core/src/common";
 import {
   GrpcClientProxy,
   GrpcContext,
@@ -177,7 +176,12 @@ describeConformance(
         // Subsequent RPCs must fail with UNAVAILABLE
         let postCloseErr: unknown;
         try {
-          await client!.call("AsyncMap", "ServerStream", { n: 1 }, { timeoutMs: 500 });
+          await client!.call(
+            "AsyncMap",
+            "ServerStream",
+            { n: 1 },
+            { timeoutMs: 500 },
+          );
         } catch (err) {
           postCloseErr = err;
         }

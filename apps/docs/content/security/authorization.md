@@ -1,11 +1,11 @@
 # Authorization
 
-**`@bunest/authorization`** provides declarative, policy-based authorization with `@Policy()` classes, `@Can()` and `@Can.Anyone()` route enforcement, imperative `AuthorizationService` checks, and structured audit events—with zero external runtime dependencies.
+**`@bunest/security/authz`** provides declarative, policy-based authorization with `@Policy()` classes, `@Can()` and `@Can.Anyone()` route enforcement, imperative `AuthorizationService` checks, and structured audit events—with zero external runtime dependencies.
 
 ## Installation
 
 ```bash
-bun add @bunest/authorization
+bun add @bunest/security/authz
 ```
 
 ## Defining a Policy
@@ -13,8 +13,9 @@ bun add @bunest/authorization
 Create a `@Policy()` provider encapsulating resource-level permission rules:
 
 @@filename(article.policy.ts)
+
 ```ts
-import { Policy } from "@bunest/authorization";
+import { Policy } from "@bunest/security/authz";
 
 export interface UserPrincipal {
   id: string;
@@ -43,9 +44,10 @@ export class ArticlePolicy {
 Register `AuthorizationModule.forRoot()` and enforce rules declaratively with `@Can()` or imperatively with `AuthorizationService`:
 
 @@filename(articles.controller.ts)
+
 ```ts
 import { Controller, Get, Param, Patch } from "@bunest/core";
-import { AuthorizationService, Can } from "@bunest/authorization";
+import { AuthorizationService, Can } from "@bunest/security/authz";
 
 @Controller("articles")
 export class ArticlesController {

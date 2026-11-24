@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Module,
   Param,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../../packages/core/src";
 import {
   ApiParam,
@@ -26,7 +25,10 @@ async function getPathParams(
   class TestModule {}
   const app = await BunestFactory.create(TestModule, { logger: false });
   try {
-    const doc = SwaggerModule.createDocument(app, new DocumentBuilder().build());
+    const doc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().build(),
+    );
     return (doc.paths[path]?.get?.parameters ?? []).filter(
       (p) => p.in === "path",
     );

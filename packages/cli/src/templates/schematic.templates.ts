@@ -120,8 +120,7 @@ export class ${pascal}Controller {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.controller.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { ${pascal}Controller } from "./${kebab}.controller";
 
@@ -163,8 +162,7 @@ export class ${pascal}Service {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.service.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { ${pascal}Service } from "./${kebab}.service";
 
@@ -205,7 +203,7 @@ export class ${pascal}Module {}
     case "dto": {
       files.push({
         relativePath: joinRel(folder, `${kebab}.dto.ts`),
-        content: `import { IsOptional, IsString, MinLength } from "class-validator";
+        content: `import { IsOptional, IsString, MinLength } from "@bunest/validation/validator";
 
 export class ${pascal}Dto {
   @IsString()
@@ -279,8 +277,7 @@ export class ${pascal} {}
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { ${pascal} } from "./${kebab}";
 
@@ -306,7 +303,7 @@ describe("${pascal}", () => {
         content: `import {
   SubscribeMessage,
   WebSocketGateway,
-} from "@bunest/websockets";
+} from "@bunest/core/ws";
 
 @WebSocketGateway()
 export class ${pascal}Gateway {
@@ -320,8 +317,7 @@ export class ${pascal}Gateway {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.gateway.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { ${pascal}Gateway } from "./${kebab}.gateway";
 
 describe("${pascal}Gateway", () => {
@@ -355,8 +351,7 @@ export class ${pascal}Resolver {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.resolver.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { ${pascal}Resolver } from "./${kebab}.resolver";
 
 describe("${pascal}Resolver", () => {
@@ -446,8 +441,7 @@ export class ${pascal}Module {}
       if (spec) {
         files.push({
           relativePath: joinRel(libSrc, `${kebab}.service.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { ${pascal}Service } from "./${kebab}.service";
 
@@ -472,13 +466,12 @@ describe("${pascal}Service", () => {
       const appSrc = joinRel(appRoot, "src");
       files.push({
         relativePath: joinRel(appSrc, "main.ts"),
-        content: `import "reflect-metadata";
-import { BunestFactory } from "@bunest/core";
+        content: `import { BunestFactory } from "@bunest/core";
 import { ${pascal}Module } from "./${kebab}.module";
 
 async function bootstrap(): Promise<void> {
   const app = await BunestFactory.create(${pascal}Module);
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(Bun.env.PORT ?? 3000);
   await app.listen(port);
 }
 
@@ -544,8 +537,7 @@ export class ${pascal}Module {}
       if (spec) {
         files.push({
           relativePath: joinRel(appSrc, `${kebab}.controller.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { ${pascal}Module } from "./${kebab}.module";
 
@@ -603,8 +595,7 @@ export class ${pascal}Guard implements CanActivate {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.guard.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { createMockExecutionContext } from "@bunest/testing";
 import { ${pascal}Guard } from "./${kebab}.guard";
 
@@ -641,8 +632,7 @@ export class ${pascal}Pipe<T = unknown> implements PipeTransform<T, T> {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.pipe.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { ${pascal}Pipe } from "./${kebab}.pipe";
 
 describe("${pascal}Pipe", () => {
@@ -682,9 +672,11 @@ export class ${pascal}Interceptor<T = unknown>
       });
       if (spec) {
         files.push({
-          relativePath: joinRel(folder, `${kebab}.interceptor.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          relativePath: joinRel(
+            folder,
+            `${kebab}.interceptor.${specSuffix}.ts`,
+          ),
+          content: `import { describe, expect, it } from "bun:test";
 import {
   createMockCallHandler,
   createMockExecutionContext,
@@ -738,8 +730,7 @@ export class ${pascal}Filter implements ExceptionFilter<HttpException> {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.filter.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { BadRequestException } from "@bunest/core";
 import {
   createMockExecutionContext,
@@ -791,8 +782,7 @@ export class ${pascal}Middleware implements BunestMiddleware {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.middleware.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { HttpResponseContext } from "@bunest/core";
 import { createMockRequest } from "@bunest/testing";
 import { ${pascal}Middleware } from "./${kebab}.middleware";
@@ -821,7 +811,7 @@ describe("${pascal}Middleware", () => {
       files.push({
         relativePath: joinRel(folder, `${kebab}.endpoint.ts`),
         content: `import { Body, Controller, Post } from "@bunest/core";
-import { IsString, MinLength } from "class-validator";
+import { IsString, MinLength } from "@bunest/validation/validator";
 
 export class ${pascal}RequestDto {
   @IsString()
@@ -841,8 +831,7 @@ export class ${pascal}Endpoint {
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.endpoint.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { ValidationPipe } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import { ${pascal}Endpoint } from "./${kebab}.endpoint";
@@ -878,7 +867,7 @@ describe("${pascal}Endpoint", () => {
 
       files.push({
         relativePath: joinRel(dtoDir, `create-${kebab}.dto.ts`),
-        content: `import { IsOptional, IsString, MinLength } from "class-validator";
+        content: `import { IsOptional, IsString, MinLength } from "@bunest/validation/validator";
 
 export class Create${pascal}Dto {
   @IsString()
@@ -894,7 +883,7 @@ export class Create${pascal}Dto {
 
       files.push({
         relativePath: joinRel(dtoDir, `update-${kebab}.dto.ts`),
-        content: `import { IsOptional, IsString, MinLength } from "class-validator";
+        content: `import { IsOptional, IsString, MinLength } from "@bunest/validation/validator";
 
 export class Update${pascal}Dto {
   @IsOptional()
@@ -1038,8 +1027,7 @@ export class ${pascal}Module {}
       if (spec) {
         files.push({
           relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
-          content: `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          content: `import { describe, expect, it } from "bun:test";
 import { ValidationPipe } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import { ${pascal}Module } from "./${kebab}.module";

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Injectable,
   type DynamicModule,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { Test, describeConformance } from "../../../_helpers";
 
 @Injectable()

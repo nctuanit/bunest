@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -60,9 +59,9 @@ describe("InMemoryTransport", () => {
       status: "paid",
     });
 
-    await expect(client.send("orders.get", { id: "missing" })).rejects.toBeInstanceOf(
-      RpcException,
-    );
+    await expect(
+      client.send("orders.get", { id: "missing" }),
+    ).rejects.toBeInstanceOf(RpcException);
 
     await client.emit("orders.paid", { id: "ord_1" });
     expect(events).toEqual([{ id: "ord_1" }]);
@@ -124,9 +123,9 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
     });
 
     expect(await client.send<number>("math.mul", { a: 6, b: 7 })).toBe(42);
-    await expect(
-      client.send("math.div", { a: 1, b: 0 }),
-    ).rejects.toThrow("division by zero");
+    await expect(client.send("math.div", { a: 1, b: 0 })).rejects.toThrow(
+      "division by zero",
+    );
 
     await client.emit("math.logged", { op: "mul" });
     expect(receivedEvents).toEqual([{ op: "mul" }]);
@@ -141,7 +140,9 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
       Set<(msg: NatsMessageLike) => Promise<void> | void>
     >();
 
-    const makeNatsClient = (withNativeRequest: boolean): NatsTransportClientLike => {
+    const makeNatsClient = (
+      withNativeRequest: boolean,
+    ): NatsTransportClientLike => {
       const client: NatsTransportClientLike = {
         subscribe(subject, handler) {
           let set = subs.get(subject);
@@ -223,7 +224,10 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
   it("RabbitMqTransportAdapter handles queue RPC with correlationId, ack, and events", async () => {
     const consumers = new Map<
       string,
-      Array<{ tag: string; handler: (msg: RabbitMqMessageLike) => Promise<void> | void }>
+      Array<{
+        tag: string;
+        handler: (msg: RabbitMqMessageLike) => Promise<void> | void;
+      }>
     >();
     let ackedCount = 0;
     let tagSeq = 0;
@@ -307,7 +311,10 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
 
   it("ignores malformed JSON payloads across Redis and NATS adapters without unhandled rejections", async () => {
     // Redis malformed payload resilience
-    const redisChannels = new Map<string, Set<(msg: string, ch: string) => void>>();
+    const redisChannels = new Map<
+      string,
+      Set<(msg: string, ch: string) => void>
+    >();
     const mockRedis: RedisTransportClientLike = {
       subscribe(ch, fn) {
         let s = redisChannels.get(ch);
@@ -342,7 +349,10 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
     await rServer.close();
 
     // NATS malformed payload resilience
-    const natsSubs = new Map<string, Set<(msg: NatsMessageLike) => Promise<void> | void>>();
+    const natsSubs = new Map<
+      string,
+      Set<(msg: NatsMessageLike) => Promise<void> | void>
+    >();
     const mockNats: NatsTransportClientLike = {
       subscribe(subject, handler) {
         let s = natsSubs.get(subject);
@@ -351,7 +361,11 @@ describe("Broker Transport Adapters (Redis, NATS, RabbitMQ)", () => {
           natsSubs.set(subject, s);
         }
         s.add(handler);
-        return { unsubscribe: () => { s?.delete(handler); } };
+        return {
+          unsubscribe: () => {
+            s?.delete(handler);
+          },
+        };
       },
       async publish(subject, data, options) {
         for (const h of [...(natsSubs.get(subject) ?? [])]) {

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   METADATA_KEYS,
@@ -6,7 +5,7 @@ import {
   UseGuards,
   applyDecorators,
   type CanActivate,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -38,7 +37,7 @@ describeConformance(
       };
     }
 
-    // BUNEST_BUG: applyDecorators() in packages/common/src/decorators/apply-decorators.ts:54-95 ignores plain-object targets when propertyKey is undefined (`typeof target === "function"` check fails and falls through without calling any decorator) and executes class decorators bottom-to-top instead of forward order (reversing non-commutative mutations like myParam = 1 then += 2).
+    // BUNEST_BUG: applyDecorators() in packages/core/src/common/decorators/apply-decorators.ts:54-95 ignores plain-object targets when propertyKey is undefined (`typeof target === "function"` check fails and falls through without calling any decorator) and executes class decorators bottom-to-top instead of forward order (reversing non-commutative mutations like myParam = 1 then += 2).
     it.skip("should apply all decorators", () => {
       const testParams = {
         decorator1: { param: 1 },

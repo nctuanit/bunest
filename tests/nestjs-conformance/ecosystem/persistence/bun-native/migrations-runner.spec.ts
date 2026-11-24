@@ -1,107 +1,122 @@
-import "reflect-metadata";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
-  SqlMigrationRunner,
-  SqlModule,
-  SqlService,
-  type MigrationDefinition,
-} from "../../../../../packages/sql/src";
+  join,
+  mkdirSyncPath,
+  removePath,
+} from "../../../../../packages/core/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import {
-  SqliteMigrationRunner,
-  SqliteModule,
-  SqliteService,
-  type SqliteMigration,
-} from "../../../../../packages/sqlite/src";
+  DEFAULT_ORM_MIGRATIONS_TABLE,
+  DataSource,
+  InjectOrmMigrations,
+  OrmMigrationRunner,
+  OrmModule,
+  splitSqlStatements,
+  type OrmMigration,
+} from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
 describeConformance(
-  "Persistence (bun-native) - SqliteMigrationRunner & SqlMigrationRunner",
+  "Persistence (bun-native) - @bunest/orm OrmMigrationRunner (SqliteOrmDriver & BunSqlOrmDriver)",
   {
     upstreamPath: "bun-native/migrations-runner",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Covers read-only safe status/getApplied/getPending, batching, steps, transactional rollback, down(), transactional: false, custom migrationsTable, autoMigrate, and dialect advisory locks.",
+      "Covers read-only safe status/getApplied/getPending, batching, steps, transactional rollback, down(), transactional: false, custom migrationsTable, autoMigrate, multi-statement SQL splitting, and DI via @InjectOrmMigrations.",
   },
   () => {
-    const openSqlite: SqliteService[] = [];
-    const openSql: SqlService[] = [];
+    const openSources: DataSource[] = [];
     const tempDirs: string[] = [];
 
-    const trackSqlite = (svc: SqliteService): SqliteService => {
-      openSqlite.push(svc);
-      return svc;
-    };
-
-    const trackSql = (svc: SqlService): SqlService => {
-      openSql.push(svc);
-      return svc;
+    const track = async (ds: DataSource): Promise<DataSource> => {
+      await ds.initialize();
+      openSources.push(ds);
+      return ds;
     };
 
     afterEach(async () => {
-      while (openSqlite.length > 0) {
-        openSqlite.pop()!.close();
-      }
-      while (openSql.length > 0) {
-        await openSql.pop()!.close();
+      while (openSources.length > 0) {
+        await openSources.pop()!.destroy();
       }
       while (tempDirs.length > 0) {
-        rmSync(tempDirs.pop()!, { recursive: true, force: true });
+        await removePath(tempDirs.pop()!, { recursive: true, force: true });
       }
     });
 
-    describe("SqliteMigrationRunner", () => {
-      it("returns empty applied and full pending from status()/getApplied()/getPending() without executing write DDL", () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const migrations: SqliteMigration[] = [
+    it("splits multi-statement SQL scripts cleanly while preserving quotes, comments, and Postgres dollar-quoted blocks", () => {
+      const statements = splitSqlStatements(`
+        -- Leading comment
+        CREATE TABLE a (id INT, note TEXT DEFAULT 'hello;world');
+        /* block; comment */
+        CREATE FUNCTION f() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;
+      `);
+      expect(statements).toHaveLength(2);
+      expect(statements[0]).toContain("'hello;world'");
+      expect(statements[1]).toContain("PERFORM 1;");
+    });
+
+    describe("OrmMigrationRunner on SqliteOrmDriver", () => {
+      it("returns empty applied and full pending from status()/getApplied()/getPending() without executing write DDL", async () => {
+        const ds = await track(
+          new DataSource({ type: "sqlite", database: ":memory:" }),
+        );
+        const migrations: OrmMigration[] = [
           {
             id: "001_init",
             up: "CREATE TABLE items (id INTEGER PRIMARY KEY)",
             down: "DROP TABLE items",
           },
         ];
-        const runner = new SqliteMigrationRunner(db, migrations);
+        const runner = new OrmMigrationRunner(ds, migrations);
 
-        expect(runner.getApplied()).toEqual([]);
-        expect(runner.getPending()).toHaveLength(1);
-        expect(runner.status()).toEqual({ applied: [], pending: migrations });
+        expect(await runner.getApplied()).toEqual([]);
+        expect(await runner.getPending()).toHaveLength(1);
+        expect(await runner.status()).toEqual({
+          applied: [],
+          pending: migrations,
+        });
 
-        // Migrations table must NOT have been created by read-only inspection
-        const tableCheck = db.queryOne<{ name: string }>(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_bunest_migrations'",
+        const tableCheck = await ds.query<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+          [DEFAULT_ORM_MIGRATIONS_TABLE],
         );
-        expect(tableCheck).toBeNull();
+        expect(tableCheck).toEqual([]);
       });
 
       it("runs status(), getApplied(), getPending(), and down() safely on readonly: true SQLite connections", async () => {
-        const dir = mkdtempSync(join(tmpdir(), "bunest-mig-ro-"));
+        const dir = join(
+          Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+          `bunest-orm-mig-ro-${crypto.randomUUID()}`,
+        );
+        mkdirSyncPath(dir);
         tempDirs.push(dir);
         const dbPath = join(dir, "readonly.sqlite");
 
-        const seed = new SqliteService({ filename: dbPath });
-        seed.exec("CREATE TABLE existing (id INTEGER PRIMARY KEY)");
-        seed.close();
+        const seed = new DataSource({ type: "sqlite", database: dbPath });
+        await seed.initialize();
+        await seed.driver.execute("CREATE TABLE existing (id INTEGER PRIMARY KEY)");
+        await seed.destroy();
 
-        const roDb = trackSqlite(
-          new SqliteService({ filename: dbPath, readonly: true }),
+        const roDs = await track(
+          new DataSource({ type: "sqlite", database: dbPath, readonly: true }),
         );
-        const migrations: SqliteMigration[] = [
+        const migrations: OrmMigration[] = [
           { id: "001_a", up: "CREATE TABLE a (id INTEGER PRIMARY KEY)" },
         ];
-        const runner = new SqliteMigrationRunner(roDb, migrations);
+        const runner = new OrmMigrationRunner(roDs, migrations);
 
-        expect(runner.getApplied()).toEqual([]);
-        expect(runner.getPending()).toHaveLength(1);
-        expect(runner.status().pending).toHaveLength(1);
+        expect(await runner.getApplied()).toEqual([]);
+        expect(await runner.getPending()).toHaveLength(1);
+        expect((await runner.status()).pending).toHaveLength(1);
         expect(await runner.down()).toEqual([]);
       });
 
       it("applies SQL string and callback migrations in order, increments batch numbers, supports steps, and is idempotent", async () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const migrations: SqliteMigration[] = [
+        const ds = await track(
+          new DataSource({ type: "sqlite", database: ":memory:" }),
+        );
+        const migrations: OrmMigration[] = [
           {
             id: "001_users",
             name: "Create users table",
@@ -110,13 +125,13 @@ describeConformance(
           },
           {
             id: "002_seed",
-            up: (exec) => {
-              exec.run("INSERT INTO users (email) VALUES (?)", [
+            up: async (exec) => {
+              await exec.execute("INSERT INTO users (email) VALUES (?)", [
                 "admin@bunest.dev",
               ]);
             },
-            down: (exec) => {
-              exec.run("DELETE FROM users WHERE email = ?", [
+            down: async (exec) => {
+              await exec.execute("DELETE FROM users WHERE email = ?", [
                 "admin@bunest.dev",
               ]);
             },
@@ -128,34 +143,34 @@ describeConformance(
           },
         ];
 
-        const runner = new SqliteMigrationRunner(db, migrations);
+        const runner = new OrmMigrationRunner(ds, migrations);
 
-        // steps: 0 -> no-op
         expect(await runner.up(undefined, { steps: 0 })).toEqual([]);
 
-        // Batch 1: apply first 2 migrations
         const batch1 = await runner.up(undefined, { steps: 2 });
         expect(batch1.map((m) => [m.id, m.name, m.batch])).toEqual([
           ["001_users", "Create users table", 1],
           ["002_seed", "002_seed", 1],
         ]);
-        expect(runner.getPending().map((m) => m.id)).toEqual(["003_posts"]);
+        expect((await runner.getPending()).map((m) => m.id)).toEqual([
+          "003_posts",
+        ]);
 
-        // Batch 2: apply remaining
         const batch2 = await runner.up();
         expect(batch2.map((m) => [m.id, m.batch])).toEqual([["003_posts", 2]]);
 
-        // Idempotent re-run
         expect(await runner.up()).toEqual([]);
-        expect(runner.status().pending).toEqual([]);
-        expect(
-          db.query<{ email: string }>("SELECT email FROM users"),
-        ).toEqual([{ email: "admin@bunest.dev" }]);
+        expect((await runner.status()).pending).toEqual([]);
+        expect(await ds.query<{ email: string }>("SELECT email FROM users")).toEqual([
+          { email: "admin@bunest.dev" },
+        ]);
       });
 
       it("rolls back migration #2 atomically when it throws while keeping migration #1 committed", async () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const migrations: SqliteMigration[] = [
+        const ds = await track(
+          new DataSource({ type: "sqlite", database: ":memory:" }),
+        );
+        const migrations: OrmMigration[] = [
           {
             id: "001_good",
             up: "CREATE TABLE good (id INTEGER PRIMARY KEY)",
@@ -163,32 +178,37 @@ describeConformance(
           },
           {
             id: "002_bad",
-            up: (exec) => {
-              exec.exec("CREATE TABLE partial_bad (id INTEGER PRIMARY KEY)");
+            up: async (exec) => {
+              await exec.execute("CREATE TABLE partial_bad (id INTEGER PRIMARY KEY)");
               throw new Error("migration-2-exploded");
             },
             down: "DROP TABLE partial_bad",
           },
         ];
 
-        const runner = new SqliteMigrationRunner(db, migrations);
+        const runner = new OrmMigrationRunner(ds, migrations);
         await expect(runner.up()).rejects.toThrow("migration-2-exploded");
 
-        // Migration #1 committed, #2 rolled back completely
-        expect(runner.getApplied().map((m) => m.id)).toEqual(["001_good"]);
-        expect(runner.getPending().map((m) => m.id)).toEqual(["002_bad"]);
+        expect((await runner.getApplied()).map((m) => m.id)).toEqual([
+          "001_good",
+        ]);
+        expect((await runner.getPending()).map((m) => m.id)).toEqual([
+          "002_bad",
+        ]);
 
-        const tables = db
-          .query<{ name: string }>(
+        const tables = (
+          await ds.query<{ name: string }>(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('good', 'partial_bad')",
           )
-          .map((r) => r.name);
+        ).map((r) => r.name);
         expect(tables).toEqual(["good"]);
       });
 
-      it("reverts latest batch by default, { steps: N }, and { all: true }, and rejects missing definition or missing down handler", async () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const migrations: SqliteMigration[] = [
+      it("reverts latest batch by default, { steps: N }, and { all: true }, and rejects missing definition or down handler", async () => {
+        const ds = await track(
+          new DataSource({ type: "sqlite", database: ":memory:" }),
+        );
+        const migrations: OrmMigration[] = [
           {
             id: "001_a",
             up: "CREATE TABLE a (id INTEGER PRIMARY KEY)",
@@ -206,31 +226,27 @@ describeConformance(
           },
         ];
 
-        const runner = new SqliteMigrationRunner(db, migrations);
+        const runner = new OrmMigrationRunner(ds, migrations);
         await runner.up(undefined, { steps: 1 }); // batch 1: 001_a
         await runner.up(); // batch 2: 002_b, 003_c
 
-        // Default down() reverts entire latest batch (batch 2) in reverse order
         const revertedBatch = await runner.down();
         expect(revertedBatch.map((m) => m.id)).toEqual(["003_c", "002_b"]);
-        expect(runner.getApplied().map((m) => m.id)).toEqual(["001_a"]);
+        expect((await runner.getApplied()).map((m) => m.id)).toEqual(["001_a"]);
 
-        // Re-apply all, then revert 1 step
         await runner.up();
         const revertedOne = await runner.down(undefined, { steps: 1 });
         expect(revertedOne.map((m) => m.id)).toEqual(["003_c"]);
-        expect(runner.getApplied().map((m) => m.id)).toEqual([
+        expect((await runner.getApplied()).map((m) => m.id)).toEqual([
           "001_a",
           "002_b",
         ]);
 
-        // Revert all remaining
         const revertedAll = await runner.down(undefined, { all: true });
         expect(revertedAll.map((m) => m.id)).toEqual(["002_b", "001_a"]);
-        expect(runner.getApplied()).toEqual([]);
+        expect(await runner.getApplied()).toEqual([]);
 
-        // Missing definition & missing down handler errors
-        const noDownRunner = new SqliteMigrationRunner(db, [
+        const noDownRunner = new OrmMigrationRunner(ds, [
           { id: "010_nodown", up: "CREATE TABLE nd (id INTEGER PRIMARY KEY)" },
         ]);
         await noDownRunner.up();
@@ -242,21 +258,36 @@ describeConformance(
         );
       });
 
-      it("supports transactional: false migrations, custom migrationsTable, and validates empty/duplicate IDs", async () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const runner = new SqliteMigrationRunner(
-          db,
+      it("supports transactional: false, custom migrationsTable, ID validation, and SQLi migrationsTable rejection", async () => {
+        const ds = await track(
+          new DataSource({ type: "sqlite", database: ":memory:" }),
+        );
+
+        for (const badTable of [
+          "_migs; DROP TABLE users; --",
+          'bad"table',
+          "bad table",
+          "123migs",
+          "",
+        ]) {
+          expect(() => new OrmMigrationRunner(ds, [], badTable)).toThrow(
+            /Invalid migrations table name/,
+          );
+        }
+
+        const runner = new OrmMigrationRunner(
+          ds,
           [
             {
               id: "001_nontx",
               transactional: false,
-              up: (exec) => {
-                expect(exec.isInTransaction()).toBe(false);
-                exec.exec("CREATE TABLE nt (id INTEGER PRIMARY KEY)");
+              up: async (exec) => {
+                expect(ds.driver.isInTransaction()).toBe(false);
+                await exec.execute("CREATE TABLE nt (id INTEGER PRIMARY KEY)");
               },
-              down: (exec) => {
-                expect(exec.isInTransaction()).toBe(false);
-                exec.exec("DROP TABLE nt");
+              down: async (exec) => {
+                expect(ds.driver.isInTransaction()).toBe(false);
+                await exec.execute("DROP TABLE nt");
               },
             },
           ],
@@ -266,201 +297,103 @@ describeConformance(
         expect(runner.migrationsTableName).toBe("custom_schema_history");
         await runner.up();
 
-        const historyRows = db.query<{ id: string }>(
+        const historyRows = await ds.query<{ id: string }>(
           'SELECT id FROM "custom_schema_history"',
         );
         expect(historyRows).toEqual([{ id: "001_nontx" }]);
 
         await runner.down();
-        expect(runner.getApplied()).toEqual([]);
+        expect(await runner.getApplied()).toEqual([]);
 
-        expect(() => runner.status([{ id: "   ", up: "SELECT 1" }])).toThrow(
-          /non-empty/,
-        );
-        expect(() =>
+        await expect(
+          runner.status([{ id: "   ", up: "SELECT 1" }]),
+        ).rejects.toThrow(/non-empty/);
+        await expect(
           runner.status([
             { id: "dup", up: "SELECT 1" },
             { id: "dup", up: "SELECT 1" },
           ]),
-        ).toThrow(/Duplicate migration id "dup"/);
-      });
-
-      it("runs pending migrations automatically during SqliteModule onModuleInit when autoMigrate: true", async () => {
-        const mod = await Test.createTestingModule({
-          imports: [
-            SqliteModule.forRoot({
-              filename: ":memory:",
-              autoMigrate: true,
-              migrationsTable: "app_migrations",
-              migrations: [
-                {
-                  id: "001_auto",
-                  up: "CREATE TABLE auto_tbl (id INTEGER PRIMARY KEY)",
-                  down: "DROP TABLE auto_tbl",
-                },
-              ],
-            }),
-          ],
-        }).compile({ logger: false });
-
-        await mod.init();
-        try {
-          const runner = mod.get(SqliteMigrationRunner);
-          expect(runner.migrationsTableName).toBe("app_migrations");
-          expect(runner.getApplied().map((m) => m.id)).toEqual(["001_auto"]);
-        } finally {
-          await mod.close();
-        }
+        ).rejects.toThrow(/Duplicate migration id "dup"/);
       });
     });
 
-    describe("SqlMigrationRunner", () => {
-      it("keeps status() and getApplied() read-only safe on uninitialized sqlite://:memory:", async () => {
-        const svc = trackSql(new SqlService("sqlite://:memory:"));
-        const migrations: MigrationDefinition<SqlService>[] = [
-          {
-            id: "001_items",
-            up: "CREATE TABLE items (id INTEGER PRIMARY KEY)",
-            down: "DROP TABLE items",
-          },
-        ];
-        const runner = new SqlMigrationRunner(svc, migrations);
+    describe("OrmMigrationRunner on BunSqlOrmDriver & OrmModule DI", () => {
+      it("applies, rolls back failed migrations, reverts via down(), and injects via @InjectOrmMigrations()", async () => {
+        @Injectable()
+        class MigrationConsumer {
+          constructor(
+            readonly defaultRunner: OrmMigrationRunner,
+            @InjectOrmMigrations("reporting")
+            readonly reportingRunner: OrmMigrationRunner,
+          ) {}
+        }
 
-        const status = await runner.status();
-        expect(status.applied).toEqual([]);
-        expect(status.pending).toHaveLength(1);
-
-        const table = await svc.queryOne(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_bunest_migrations'",
-        );
-        expect(table).toBeNull();
-      });
-
-      it("applies, batches, rolls back failed migrations atomically, and reverts via down() on SqlService", async () => {
-        const svc = trackSql(new SqlService("sqlite://:memory:"));
-        const migrations: MigrationDefinition<SqlService>[] = [
-          {
-            id: "001_orders",
-            up: "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT NOT NULL)",
-            down: "DROP TABLE orders",
-          },
-          {
-            id: "002_seed_order",
-            up: async (db) => {
-              await db.sql`INSERT INTO orders (sku) VALUES (${"SKU-100"})`;
-            },
-            down: async (db) => {
-              await db.sql`DELETE FROM orders WHERE sku = ${"SKU-100"}`;
-            },
-          },
-          {
-            id: "003_extra",
-            up: "CREATE TABLE extra (id INTEGER PRIMARY KEY)",
-            down: "DROP TABLE extra",
-          },
-        ];
-
-        const runner = new SqlMigrationRunner(svc, migrations);
-
-        // Batch 1: steps 1
-        const b1 = await runner.up(undefined, { steps: 1 });
-        expect(b1.map((m) => [m.id, m.batch])).toEqual([["001_orders", 1]]);
-
-        // Failing migration rolls back cleanly
-        await expect(
-          runner.up([
-            ...migrations.slice(0, 1),
-            {
-              id: "002_broken",
-              up: async (db) => {
-                await db.unsafe(
-                  "CREATE TABLE should_not_exist (id INTEGER PRIMARY KEY)",
-                );
-                throw new Error("sql-mig-fail");
-              },
-            },
-          ]),
-        ).rejects.toThrow("sql-mig-fail");
-        expect(
-          await svc.queryOne(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'should_not_exist'",
-          ),
-        ).toBeNull();
-
-        // Batch 2: apply remaining valid migrations
-        const b2 = await runner.up();
-        expect(b2.map((m) => [m.id, m.batch])).toEqual([
-          ["002_seed_order", 2],
-          ["003_extra", 2],
-        ]);
-        expect(await runner.up()).toEqual([]); // idempotent
-
-        // Default down() reverts latest batch (batch 2)
-        const revBatch = await runner.down();
-        expect(revBatch.map((m) => m.id)).toEqual([
-          "003_extra",
-          "002_seed_order",
-        ]);
-        expect((await runner.status()).applied.map((m) => m.id)).toEqual([
-          "001_orders",
-        ]);
-
-        // Re-apply and test { steps: 1 } and { all: true }
-        await runner.up();
-        const revStep = await runner.down(undefined, { steps: 1 });
-        expect(revStep.map((m) => m.id)).toEqual(["003_extra"]);
-
-        const revAll = await runner.down(undefined, { all: true });
-        expect(revAll.map((m) => m.id)).toEqual([
-          "002_seed_order",
-          "001_orders",
-        ]);
-        expect((await runner.status()).applied).toEqual([]);
-      });
-
-      it("supports transactional: false, custom migrationsTable, duplicate/empty ID validation, and autoMigrate on SqlModule", async () => {
         const mod = await Test.createTestingModule({
           imports: [
-            SqlModule.forRoot({
+            OrmModule.forRoot({
+              type: "sqlite",
               url: "sqlite://:memory:",
+              useBunSql: true,
               autoMigrate: true,
-              migrationsTable: "sql_mig_log",
+              migrationsTable: "orm_mig_log",
               migrations: [
                 {
-                  id: "001_nontx",
-                  transactional: false,
-                  up: async (db: SqlService) => {
-                    expect(db.isInTransaction()).toBe(false);
-                    await db.unsafe(
-                      "CREATE TABLE nontx_tbl (id INTEGER PRIMARY KEY)",
-                    );
+                  id: "001_orders",
+                  up: "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT NOT NULL)",
+                  down: "DROP TABLE orders",
+                },
+                {
+                  id: "002_seed_order",
+                  up: async (exec) => {
+                    await exec.execute("INSERT INTO orders (sku) VALUES (?)", [
+                      "SKU-100",
+                    ]);
+                  },
+                  down: async (exec) => {
+                    await exec.execute("DELETE FROM orders WHERE sku = ?", [
+                      "SKU-100",
+                    ]);
                   },
                 },
               ],
             }),
+            OrmModule.forRoot({
+              name: "reporting",
+              type: "sqlite",
+              database: ":memory:",
+              autoMigrate: true,
+              migrations: [
+                {
+                  id: "001_reports",
+                  up: "CREATE TABLE reports (id INTEGER PRIMARY KEY)",
+                  down: "DROP TABLE reports",
+                },
+              ],
+            }),
           ],
+          providers: [MigrationConsumer],
         }).compile({ logger: false });
 
         await mod.init();
         try {
-          const runner = mod.get(SqlMigrationRunner);
-          expect(runner.migrationsTableName).toBe("sql_mig_log");
-          expect((await runner.status()).applied.map((m) => m.id)).toEqual([
-            "001_nontx",
+          const consumer = mod.get(MigrationConsumer);
+          expect(consumer.defaultRunner.migrationsTableName).toBe("orm_mig_log");
+          expect(
+            (await consumer.defaultRunner.getApplied()).map((m) => m.id),
+          ).toEqual(["001_orders", "002_seed_order"]);
+          expect(
+            (await consumer.reportingRunner.getApplied()).map((m) => m.id),
+          ).toEqual(["001_reports"]);
+
+          // Revert all on default BunSqlOrmDriver DataSource
+          const reverted = await consumer.defaultRunner.down(undefined, {
+            all: true,
+          });
+          expect(reverted.map((m) => m.id)).toEqual([
+            "002_seed_order",
+            "001_orders",
           ]);
-          await expect(runner.down()).rejects.toThrow(/no "down" handler/);
-          await expect(runner.down([])).rejects.toThrow(
-            /migration definition not found/,
-          );
-          await expect(
-            runner.status([{ id: "", up: "SELECT 1" }]),
-          ).rejects.toThrow(/non-empty/);
-          await expect(
-            runner.status([
-              { id: "x", up: "SELECT 1" },
-              { id: "x", up: "SELECT 1" },
-            ]),
-          ).rejects.toThrow(/Duplicate migration id "x"/);
+          expect((await consumer.defaultRunner.status()).applied).toEqual([]);
         } finally {
           await mod.close();
         }

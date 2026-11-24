@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { ContextIdFactory, ModuleRef } from "../../../../../packages/core/src";
 import {
   Test,
@@ -156,7 +155,9 @@ describeConformance(
 
       expect(moduleRef.get(FirstService).loader).toBe(loader);
       expect(moduleRef.get(SecondService).loader).toBe(loader);
-      expect(await moduleRef.resolve<TransientLoader>(LOADER_ALIAS)).toBe(loader);
+      expect(await moduleRef.resolve<TransientLoader>(LOADER_ALIAS)).toBe(
+        loader,
+      );
     });
   },
 );

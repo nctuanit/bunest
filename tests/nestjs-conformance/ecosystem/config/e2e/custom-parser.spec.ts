@@ -1,8 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { join } from "node:path";
-import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigModule } from "../../../../../packages/config/src";
+import { join, type BunestApplication } from "../../../../../packages/core/src";
+import { ConfigModule } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { AppModule, fixturesDir } from "../_fixtures/app.module";
 

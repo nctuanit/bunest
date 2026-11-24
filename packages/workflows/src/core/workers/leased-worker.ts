@@ -1,11 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { hostname } from 'node:os';
-import { Logger } from '@bunest/common';
-import type { Clock } from '../interfaces/clock.interface';
-import type { LeasedRun, LeasedWorkerOptions, LeaseRequest } from '../interfaces/leased-worker-options.interface';
-import { systemClock } from '../time/clock';
-import { parseDuration } from '../time/duration';
-import { setRepeatingTimer, setTimer } from '../utils/timer.util';
+import { getHostname, Logger } from "@bunest/core";
+import type { Clock } from "../interfaces/clock.interface";
+import type {
+  LeasedRun,
+  LeasedWorkerOptions,
+  LeaseRequest,
+} from "../interfaces/leased-worker-options.interface";
+import { systemClock } from "../time/clock";
+import { parseDuration } from "../time/duration";
+import { setRepeatingTimer, setTimer } from "../utils/timer.util";
 
 /**
  * A claim-execute loop under leases, any number of processes sharing a store: it claims due items (as many as it has
@@ -70,24 +72,34 @@ export class LeasedWorker<T> {
 
   constructor(options: LeasedWorkerOptions<T>) {
     this.options = options;
-    const name = options.name ?? 'worker';
+    const name = options.name ?? "worker";
     this.logger = new Logger(name);
     this.clock = options.clock ?? systemClock;
-    this.owner = options.owner ?? `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
-    this.leaseMs = parseDuration(options.leaseDuration ?? '30s');
+    this.owner =
+      options.owner ??
+      `${getHostname()}:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+    this.leaseMs = parseDuration(options.leaseDuration ?? "30s");
     this.concurrency = options.concurrency ?? 10;
-    this.pollMs = parseDuration(options.pollInterval ?? '1s');
-    this.heartbeatMs = parseDuration(options.heartbeatInterval ?? Math.floor(this.leaseMs / 3));
-    this.shutdownMs = parseDuration(options.shutdownTimeout ?? '10s');
+    this.pollMs = parseDuration(options.pollInterval ?? "1s");
+    this.heartbeatMs = parseDuration(
+      options.heartbeatInterval ?? Math.floor(this.leaseMs / 3),
+    );
+    this.shutdownMs = parseDuration(options.shutdownTimeout ?? "10s");
     this.produceMs = parseDuration(options.produceInterval ?? 0);
     if (!Number.isInteger(this.concurrency) || this.concurrency < 1) {
-      throw new TypeError(`${name}.concurrency (${this.concurrency}) must be a positive integer.`);
+      throw new TypeError(
+        `${name}.concurrency (${this.concurrency}) must be a positive integer.`,
+      );
     }
     if (this.pollMs <= 0 || this.heartbeatMs <= 0) {
-      throw new TypeError(`${name}.pollInterval and ${name}.heartbeatInterval must be positive, such as "1s".`);
+      throw new TypeError(
+        `${name}.pollInterval and ${name}.heartbeatInterval must be positive, such as "1s".`,
+      );
     }
     if (this.heartbeatMs >= this.leaseMs) {
-      throw new TypeError(`${name}.heartbeatInterval (${this.heartbeatMs}ms) must be shorter than ${name}.leaseDuration (${this.leaseMs}ms).`);
+      throw new TypeError(
+        `${name}.heartbeatInterval (${this.heartbeatMs}ms) must be shorter than ${name}.leaseDuration (${this.leaseMs}ms).`,
+      );
     }
   }
 
@@ -116,7 +128,11 @@ export class LeasedWorker<T> {
    */
   async drain(options: { maxRounds?: number } = {}): Promise<number> {
     let total = 0;
-    for (let round = 0; round < (options.maxRounds ?? 1_000) && !this.stopped; round++) {
+    for (
+      let round = 0;
+      round < (options.maxRounds ?? 1_000) && !this.stopped;
+      round++
+    ) {
       const produced = this.options.produce ? await this.options.produce() : 0;
       const executions = await this.claim(this.concurrency);
       if (executions.length === 0 && produced === 0) {
@@ -187,7 +203,7 @@ export class LeasedWorker<T> {
         try {
           await this.options.produce();
         } catch (error) {
-          this.report(error, 'produce');
+          this.report(error, "produce");
         }
       }
       const free = this.concurrency - this.runs.size;
@@ -198,7 +214,7 @@ export class LeasedWorker<T> {
             void execution.finally(() => this.kick());
           }
         } catch (error) {
-          this.report(error, 'claim');
+          this.report(error, "claim");
         }
       }
       await this.idle();
@@ -230,7 +246,12 @@ export class LeasedWorker<T> {
       return [];
     }
     const now = this.clock.now();
-    const lease: LeaseRequest = { owner: this.owner, token: randomUUID(), now, until: now + this.leaseMs };
+    const lease: LeaseRequest = {
+      owner: this.owner,
+      token: crypto.randomUUID(),
+      now,
+      until: now + this.leaseMs,
+    };
     const claim = this.options.claim(lease, limit);
     this.claiming.add(claim);
     try {
@@ -242,7 +263,9 @@ export class LeasedWorker<T> {
   }
 
   private launch(item: T): Promise<void> {
-    const run: Run<T> = new Run(item, this.heartbeatMs, (): Promise<boolean> => this.renew(run));
+    const run: Run<T> = new Run(item, this.heartbeatMs, (): Promise<boolean> =>
+      this.renew(run),
+    );
     this.runs.add(run);
     if (this.stopped) {
       run.halt();
@@ -256,7 +279,7 @@ export class LeasedWorker<T> {
       executing = Promise.reject(error);
     }
     run.done = executing
-      .catch((error) => this.report(error, 'execute'))
+      .catch((error) => this.report(error, "execute"))
       .finally(() => {
         run.end();
         this.runs.delete(run);
@@ -268,11 +291,14 @@ export class LeasedWorker<T> {
     return this.options.renew(run.item, this.clock.now() + this.leaseMs);
   }
 
-  private report(error: unknown, stage: 'claim' | 'produce' | 'execute'): void {
+  private report(error: unknown, stage: "claim" | "produce" | "execute"): void {
     if (this.options.onError) {
       this.options.onError(error, stage);
     } else {
-      this.logger.error(`${stage === 'claim' ? 'Claiming' : stage === 'produce' ? 'Producing' : 'Executing'} failed; the worker carries on.`, error);
+      this.logger.error(
+        `${stage === "claim" ? "Claiming" : stage === "produce" ? "Producing" : "Executing"} failed; the worker carries on.`,
+        error,
+      );
     }
   }
 }
@@ -299,7 +325,10 @@ class Run<T> implements LeasedRun {
   private sent = 0;
   /** The `seq` of the latest renewal that landed (the store wrote its `until`). */
   private landed = 0;
-  private again?: { promise: Promise<boolean>; resolve: (held: boolean) => void };
+  private again?: {
+    promise: Promise<boolean>;
+    resolve: (held: boolean) => void;
+  };
   heartbeat?: NodeJS.Timeout;
   done!: Promise<void>;
 
@@ -424,13 +453,15 @@ class Run<T> implements LeasedRun {
     }
     this.lost = true;
     clearInterval(this.heartbeat);
-    this.controller.abort(new Error('The lease was lost: another worker may run this item now.'));
+    this.controller.abort(
+      new Error("The lease was lost: another worker may run this item now."),
+    );
   }
 
   /** The worker shuts down: its work should stop. */
   halt(): void {
     if (!this.controller.signal.aborted) {
-      this.controller.abort(new Error('The worker is shutting down.'));
+      this.controller.abort(new Error("The worker is shutting down."));
     }
   }
 

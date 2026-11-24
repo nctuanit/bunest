@@ -4,7 +4,7 @@ import {
   Optional,
   type OnApplicationShutdown,
   type OnModuleDestroy,
-} from "@bunest/common";
+} from "@bunest/core";
 import type {
   ThrottlerStorage,
   ThrottlerStorageOptions,

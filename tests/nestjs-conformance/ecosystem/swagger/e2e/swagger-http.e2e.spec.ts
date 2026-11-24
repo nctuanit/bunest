@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BunestFactory,
@@ -8,11 +7,7 @@ import {
   DocumentBuilder,
   SwaggerModule,
 } from "../../../../../packages/swagger/src";
-import {
-  describeConformance,
-  itAdapted,
-  request,
-} from "../../../_helpers";
+import { describeConformance, itAdapted, request } from "../../../_helpers";
 import {
   ApplicationModule,
   FullSwaggerAppModule,

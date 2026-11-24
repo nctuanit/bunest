@@ -1,13 +1,20 @@
-import "reflect-metadata";
-import { Body, Controller, Get, Injectable, Module, Param, Post } from "@bunest/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  Module,
+  Param,
+  Post,
+} from "@bunest/core";
 import {
   CommandBus,
   CommandHandler,
   CqrsModule,
   type ICommand,
   type ICommandHandler,
-} from "@bunest/cqrs";
-import { EmitEvent, EventEmitterModule, OnEvent } from "@bunest/events";
+} from "@bunest/messaging/cqrs";
+import { EmitEvent, EventEmitterModule, OnEvent } from "@bunest/messaging/events";
 import {
   InMemorySpanExporter,
   ObservabilityModule,
@@ -24,16 +31,19 @@ import {
   Queue,
   QueueModule,
   type Job,
-} from "@bunest/queues";
+} from "@bunest/jobs/queues";
 import {
-  JpaRepository,
+  Column,
+  CrudRepository,
+  Entity,
   Modifying,
+  OrmModule,
+  OrmRepository,
+  PrimaryGeneratedColumn,
   Query,
   SqlParam,
-  SqliteModule,
-  SqliteRepository,
-  type SqliteMigration,
-} from "@bunest/sqlite";
+  type OrmMigration,
+} from "@bunest/orm";
 
 export interface OrderRecord {
   readonly id: number;
@@ -56,7 +66,7 @@ export class CreateOrderCommand implements ICommand {
   ) {}
 }
 
-export const ORDER_MIGRATIONS: readonly SqliteMigration[] = [
+export const ORDER_MIGRATIONS: readonly OrmMigration[] = [
   {
     id: "001_create_orders",
     up: `
@@ -71,8 +81,26 @@ export const ORDER_MIGRATIONS: readonly SqliteMigration[] = [
   },
 ];
 
-@SqliteRepository({ table: "orders", camelCaseMapping: false })
-export abstract class OrderRepository extends JpaRepository<OrderRecord, number> {
+@Entity("orders")
+export class OrderEntity implements OrderRecord {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ type: "text" })
+  item!: string;
+
+  @Column({ type: "integer" })
+  amount!: number;
+
+  @Column({ type: "text" })
+  status!: string;
+}
+
+@OrmRepository(OrderEntity)
+export abstract class OrderRepository extends CrudRepository<
+  OrderEntity,
+  number
+> {
   @Modifying()
   @Query("UPDATE orders SET status = :status WHERE id = :id")
   updateStatus(
@@ -83,14 +111,27 @@ export abstract class OrderRepository extends JpaRepository<OrderRecord, number>
   }
 }
 
+@Injectable()
+export class OrdersService {
+  constructor(private readonly orders: OrderRepository) {}
+
+  findById(id: number): Promise<OrderRecord | null> {
+    return this.orders.findById(id);
+  }
+}
+
 @CommandHandler(CreateOrderCommand)
-export class CreateOrderHandler
-  implements ICommandHandler<CreateOrderCommand, OrderRecord>
-{
+export class CreateOrderHandler implements ICommandHandler<
+  CreateOrderCommand,
+  OrderRecord
+> {
   constructor(
     private readonly orders: OrderRepository,
     @InjectQueue("orders")
-    private readonly ordersQueue: Queue<ProcessOrderJobData, { orderId: number }>,
+    private readonly ordersQueue: Queue<
+      ProcessOrderJobData,
+      { orderId: number }
+    >,
   ) {}
 
   async execute(command: CreateOrderCommand): Promise<OrderRecord> {
@@ -192,7 +233,7 @@ export class OrderEventAuditListener {
 export class OrdersController {
   constructor(
     private readonly commandBus: CommandBus,
-    private readonly orders: OrderRepository,
+    private readonly ordersService: OrdersService,
   ) {}
 
   @Post()
@@ -206,7 +247,7 @@ export class OrdersController {
 
   @Get(":id")
   findOne(@Param("id") id: string): Promise<OrderRecord | null> {
-    return this.orders.findById(Number(id));
+    return this.ordersService.findById(Number(id));
   }
 }
 
@@ -233,13 +274,13 @@ export function createDistributedWorkerModule(
           global: true,
         },
       }),
-      SqliteModule.forRoot({
-        filename: ":memory:",
+      OrmModule.forRoot({
+        type: "sqlite",
+        database: ":memory:",
         migrations: ORDER_MIGRATIONS,
         autoMigrate: true,
-        global: true,
       }),
-      SqliteModule.forFeature([OrderRepository]),
+      OrmModule.forFeature([OrderRepository]),
       EventEmitterModule.forRoot({ global: true }),
       CqrsModule.forRoot({ global: true }),
       QueueModule.forRoot({
@@ -253,6 +294,7 @@ export function createDistributedWorkerModule(
     ],
     controllers: [OrdersController],
     providers: [
+      OrdersService,
       CreateOrderHandler,
       OrdersProcessor,
       OrderEventAuditListener,

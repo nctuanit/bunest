@@ -1,5 +1,5 @@
-import type { Duration } from '../time/duration';
-import type { Clock } from './clock.interface';
+import type { Duration } from "../time/duration";
+import type { Clock } from "./clock.interface";
 
 /**
  * The lease `LeasedWorker` asks its `claim` to take: every item the claim returns is leased to `owner` under `token`
@@ -97,5 +97,5 @@ export interface LeasedWorkerOptions<T> {
   /** Where lease times come from. Default `systemClock`. */
   clock?: Clock;
   /** Where the loop reports what failed; it carries on. Default: logged. `drain()` throws instead. */
-  onError?(error: unknown, stage: 'claim' | 'produce' | 'execute'): void;
+  onError?(error: unknown, stage: "claim" | "produce" | "execute"): void;
 }

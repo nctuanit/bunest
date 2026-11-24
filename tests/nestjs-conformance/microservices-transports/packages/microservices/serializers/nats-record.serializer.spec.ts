@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   NatsClientProxy,
@@ -6,10 +5,7 @@ import {
   NatsRecordBuilder,
   type NatsTransportClientLike,
 } from "../../../../../../packages/microservices/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "NatsRecordSerializer & NatsRecordBuilder",
@@ -77,8 +73,10 @@ describeConformance(
         "ADR-001",
         "should JSON-serialize primitive, Buffer, array, and object event payloads via NatsClientProxy.emit()",
         async () => {
-          const published: Array<{ subject: string; data: string | Uint8Array }> =
-            [];
+          const published: Array<{
+            subject: string;
+            data: string | Uint8Array;
+          }> = [];
           const mockNats: NatsTransportClientLike = {
             publish(subject, data) {
               published.push({ subject, data });
@@ -117,9 +115,11 @@ describeConformance(
 
       // BUNEST_BUG: @bunest/microservices exports NatsRecord and NatsRecordBuilder (packages/microservices/src/records.ts), but does NOT export NatsRecordSerializer and NatsClientProxy/NatsTransportClientLike do not unwrap NatsRecord headers on outgoing packets or replies (packages/microservices/src/transports/broker.transports.ts).
       it.skip("should export NatsRecordSerializer and unwrap NatsRecord packets and replies with headers", async () => {
-        const mod = (await import(
-          "../../../../../../packages/microservices/src"
-        )) as Record<string, unknown>;
+        const mod =
+          (await import("../../../../../../packages/microservices/src")) as Record<
+            string,
+            unknown
+          >;
         const NatsRecordSerializer = mod.NatsRecordSerializer as
           | (new () => {
               serialize(packet: unknown): {

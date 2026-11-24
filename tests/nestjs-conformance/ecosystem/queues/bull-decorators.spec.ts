@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   Scope,
   type InjectTokenMetadata,
-} from "../../../../packages/common/src";
+} from "../../../../packages/core/src/common";
 import {
   InjectFlowProducer,
   InjectQueue,
@@ -29,7 +28,7 @@ import {
   type QueueEventMetadata,
   type QueueEventsListenerOptions,
   type WorkerEventMetadata,
-} from "../../../../packages/queues/src";
+} from "../../../../packages/jobs/src/queues";
 import { describeConformance, itAdapted } from "../../_helpers/index";
 
 const BULL_QUEUE_EVENTS = [
@@ -250,7 +249,9 @@ describeConformance(
           ChildQueue,
         );
 
-        expect(baseMeta).toEqual([{ methodName: "handleBase", jobName: "base" }]);
+        expect(baseMeta).toEqual([
+          { methodName: "handleBase", jobName: "base" },
+        ]);
         expect(childMeta).toEqual([
           { methodName: "handleChild", jobName: "child" },
         ]);
@@ -290,9 +291,9 @@ describeConformance(
           });
 
           it(`should define QUEUE_EVENT_METADATA with the '${eventName}' event name`, () => {
-            expect(
-              Reflect.getMetadata(QUEUE_EVENT_METADATA, MyQueue),
-            ).toEqual([{ methodName: "prop", event: eventName, eventName }]);
+            expect(Reflect.getMetadata(QUEUE_EVENT_METADATA, MyQueue)).toEqual([
+              { methodName: "prop", event: eventName, eventName },
+            ]);
           });
         });
       }
@@ -311,9 +312,9 @@ describeConformance(
           });
 
           it(`should define QUEUE_EVENT_METADATA with the '${eventName}' event name`, () => {
-            expect(
-              Reflect.getMetadata(QUEUE_EVENT_METADATA, MyQueue),
-            ).toEqual([{ methodName: "prop", event: eventName, eventName }]);
+            expect(Reflect.getMetadata(QUEUE_EVENT_METADATA, MyQueue)).toEqual([
+              { methodName: "prop", event: eventName, eventName },
+            ]);
           });
         });
       }

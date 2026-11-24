@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 export const SERIALIZED_METADATA = {
   "@nestjs/swagger": {

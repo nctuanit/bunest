@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -11,7 +10,7 @@ import {
   type MiddlewareConsumer,
   type MicroserviceInstance,
   type OnModuleDestroy,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   BunestFactory,
   ClsInterceptor,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Injectable,
@@ -6,7 +5,7 @@ import {
   Module,
   type LoggerService,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,
@@ -60,9 +59,7 @@ describeConformance(
   },
   () => {
     let app:
-      | BunestMicroserviceApplication<TcpServer>
-      | BunestApplication
-      | undefined;
+      BunestMicroserviceApplication<TcpServer> | BunestApplication | undefined;
     let logger: CollectingLogger;
 
     beforeEach(() => {
@@ -74,7 +71,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: BunestApplicationContext.init() never flushes buffered logs when bufferLogs: true and autoFlushLogs !== false, and NestFactory.createMicroservice() does not attach Logger.attachBuffer() or route new Logger() instances to the application logger (packages/core/src/application/bunest-application-context.ts, packages/common/src/logger/logger.ts)
+    // BUNEST_BUG: BunestApplicationContext.init() never flushes buffered logs when bufferLogs: true and autoFlushLogs !== false, and NestFactory.createMicroservice() does not attach Logger.attachBuffer() or route new Logger() instances to the application logger (packages/core/src/application/bunest-application-context.ts, packages/core/src/common/logger/logger.ts)
     it.skip("should flush buffered logs on init() when the microservice never listens", async () => {
       app = await NestFactory.createMicroservice(
         AppModule,
@@ -152,7 +149,7 @@ describeConformance(
           },
         );
 
-      // BUNEST_BUG: BunestApplicationContext.init() does not flush buffered logs on rejection, and instance `new Logger(context)` writes directly to console instead of routing through the application's buffered logger (packages/core/src/application/bunest-application-context.ts, packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: BunestApplicationContext.init() does not flush buffered logs on rejection, and instance `new Logger(context)` writes directly to console instead of routing through the application's buffered logger (packages/core/src/application/bunest-application-context.ts, packages/core/src/common/logger/logger.ts)
       it.skip("should flush buffered logs when init() rejects", async () => {
         app = await createFailingMicroservice();
         app.getLogger().log("Starting Bunest microservice...");
@@ -166,7 +163,7 @@ describeConformance(
         expect(logger.messages).toContain("Database unavailable");
       });
 
-      // BUNEST_BUG: BunestMicroserviceApplication.listen() does not flush buffered logs when init() rejects, and instance `new Logger(context)` bypasses the application's buffered logger (packages/core/src/application/bunest-factory.ts, packages/core/src/application/bunest-application-context.ts, packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: BunestMicroserviceApplication.listen() does not flush buffered logs when init() rejects, and instance `new Logger(context)` bypasses the application's buffered logger (packages/core/src/application/bunest-factory.ts, packages/core/src/application/bunest-application-context.ts, packages/core/src/common/logger/logger.ts)
       it.skip("should flush buffered logs when listen() rejects", async () => {
         app = await createFailingMicroservice();
         app.getLogger().log("Starting Bunest microservice...");

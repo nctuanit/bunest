@@ -1,9 +1,9 @@
-import type { Duration } from '@bunest/workflows';
-import type { AiToolChoice } from '../interfaces/ai-call-options.interface';
-import type { AiBudget } from '../interfaces/ai-module-options.interface';
-import type { AiTextResult } from '../interfaces/ai-result.interface';
-import type { AiToolSelection } from '../interfaces/ai-tool.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
+import type { Duration } from "@bunest/workflows";
+import type { AiToolChoice } from "../interfaces/ai-call-options.interface";
+import type { AiBudget } from "../interfaces/ai-module-options.interface";
+import type { AiTextResult } from "../interfaces/ai-result.interface";
+import type { AiToolSelection } from "../interfaces/ai-tool.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
 
 /** Who a durable run acts for. */
 export interface AiAgentCaller<TUser = unknown> {

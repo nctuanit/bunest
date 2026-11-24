@@ -11,14 +11,18 @@ import {
   type ModuleMetadata,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
-import { getCurrentRequestContext } from "@bunest/http";
+import { getCurrentRequestContext } from "@bunest/core/http";
 import type { JwtPayload, JwtVerifyOptions } from "../jwt/jwt.interface";
 import { JwtService } from "../jwt/jwt.service";
 import { JwksClient, type JwksVerifyOptions } from "../oauth/jwks.client";
 import { timingSafeEqualString } from "../utils/crypto.util";
-import { IS_PUBLIC_KEY, getRequestUser, setRequestUser } from "./auth.decorators";
+import {
+  IS_PUBLIC_KEY,
+  getRequestUser,
+  setRequestUser,
+} from "./auth.decorators";
 import {
   extractBearerToken,
   extractCookieToken,
@@ -28,6 +32,7 @@ import {
   defaultPassportInstance,
   type AuthGuardAuthenticateOptions,
   type IAuthGuard,
+  type PassportStrategyLike,
 } from "./passport.compat";
 
 export const AUTH_MODULE_OPTIONS = Symbol.for(
@@ -73,7 +78,7 @@ export interface IAuthModuleOptions {
   strategies?: readonly AuthStrategyRegistration[];
   imports?: ModuleMetadata["imports"];
   global?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export class AuthModuleOptions implements IAuthModuleOptions {
@@ -83,12 +88,11 @@ export class AuthModuleOptions implements IAuthModuleOptions {
   strategies?: readonly AuthStrategyRegistration[];
   imports?: ModuleMetadata["imports"];
   global?: boolean;
+  [key: string]: unknown;
 }
 
 export interface AuthOptionsFactory {
-  createAuthOptions():
-    | Promise<IAuthModuleOptions>
-    | IAuthModuleOptions;
+  createAuthOptions(): Promise<IAuthModuleOptions> | IAuthModuleOptions;
 }
 
 export interface AuthModuleAsyncOptions {
@@ -179,14 +183,16 @@ interface StrategyOutcome {
 }
 
 async function executeStrategy(
-  strat: any,
-  req: any,
+  strat: AuthStrategy | PassportStrategyLike,
+  req: unknown,
   context: ExecutionContext,
-  options: Record<string, any>,
+  options: Record<string, unknown>,
 ): Promise<StrategyOutcome> {
   // Passport-style strategy implementing `authenticate(req, options)`
-  if (typeof strat.authenticate === "function") {
-    const instance = Object.create(strat);
+  if ("authenticate" in strat && typeof strat.authenticate === "function") {
+    const instance = Object.create(strat) as Record<string, unknown> & {
+      authenticate(r: unknown, o: Record<string, unknown>): unknown;
+    };
     return await new Promise<StrategyOutcome>((resolve) => {
       let settled = false;
       const finish = (outcome: StrategyOutcome) => {
@@ -211,8 +217,13 @@ async function executeStrategy(
 
       try {
         const maybePromise = instance.authenticate(req, options);
-        if (maybePromise && typeof maybePromise.then === "function") {
-          maybePromise.catch((err: unknown) => finish({ err, user: null }));
+        if (
+          maybePromise &&
+          typeof (maybePromise as PromiseLike<unknown>).then === "function"
+        ) {
+          Promise.resolve(maybePromise).catch((err: unknown) =>
+            finish({ err, user: null }),
+          );
         }
       } catch (err) {
         finish({ err, user: null });
@@ -222,7 +233,10 @@ async function executeStrategy(
 
   // Bunest-native `AuthStrategy` implementing `validate(request, context)`
   try {
-    const principal = await strat.validate(req, context);
+    const principal = await (strat as AuthStrategy).validate(
+      req as Request,
+      context,
+    );
     return { err: null, user: principal };
   } catch (err) {
     return { err, user: null };
@@ -230,7 +244,7 @@ async function executeStrategy(
 }
 
 function attachPrincipal(
-  request: any,
+  request: unknown,
   context: ExecutionContext,
   principal: unknown,
   property = "user",
@@ -276,9 +290,7 @@ const authGuardMixinCache = new Map<string, Type<IAuthGuard>>();
  * - Tries configured strategies in order; attaches the resolved principal to
  *   `request[property]`, `requestContext.user`, and `@CurrentUser()`.
  */
-export function AuthGuard(
-  type?: string | readonly string[],
-): Type<IAuthGuard> {
+export function AuthGuard(type?: string | readonly string[]): Type<IAuthGuard> {
   const strategyList: readonly string[] | undefined =
     type === undefined
       ? undefined
@@ -298,9 +310,7 @@ export function AuthGuard(
   }
 
   const cacheKey =
-    strategyList === undefined
-      ? "__default__"
-      : JSON.stringify(strategyList);
+    strategyList === undefined ? "__default__" : JSON.stringify(strategyList);
 
   const cached = authGuardMixinCache.get(cacheKey);
   if (cached) {
@@ -342,12 +352,13 @@ export function AuthGuard(
       }
 
       const authOptions = await this.getAuthenticateOptions(context);
-      const mergedOptions: IAuthModuleOptions & Record<string, any> = {
+      const mergedOptions: IAuthModuleOptions & Record<string, unknown> = {
         ...DEFAULT_AUTH_OPTIONS,
         ...(this.options ?? {}),
         ...(authOptions ?? {}),
       };
-      const userProperty = mergedOptions.property || DEFAULT_AUTH_OPTIONS.property;
+      const userProperty =
+        mergedOptions.property || DEFAULT_AUTH_OPTIONS.property;
 
       const resolvedNames = this.resolveStrategyNames(mergedOptions);
       const req = this.getRequest(context);
@@ -442,9 +453,8 @@ export function AuthGuard(
     async logIn<TRequest extends { logIn: Function } = any>(
       request: TRequest,
     ): Promise<void> {
-      const property =
-        this.options?.property || DEFAULT_AUTH_OPTIONS.property;
-      const reqObj = request as unknown as Record<string, any>;
+      const property = this.options?.property || DEFAULT_AUTH_OPTIONS.property;
+      const reqObj = request as unknown as Record<string, unknown>;
       const user =
         reqObj?.[property] ??
         (reqObj && typeof reqObj === "object"
@@ -453,7 +463,13 @@ export function AuthGuard(
 
       if (reqObj && typeof reqObj.logIn === "function") {
         await new Promise<void>((resolve, reject) =>
-          reqObj.logIn(user, this.options, (err?: unknown) =>
+          (
+            reqObj.logIn as (
+              u: unknown,
+              opts: IAuthModuleOptions,
+              cb: (err?: unknown) => void,
+            ) => void
+          )(user, this.options, (err?: unknown) =>
             err ? reject(err) : resolve(),
           ),
         );
@@ -464,8 +480,12 @@ export function AuthGuard(
         const serialized = await defaultPassportInstance.serialize(user);
         if (reqObj && typeof reqObj === "object") {
           try {
+            const existingSession =
+              reqObj.session && typeof reqObj.session === "object"
+                ? (reqObj.session as Record<string, unknown>)
+                : {};
             reqObj.session = {
-              ...(reqObj.session ?? {}),
+              ...existingSession,
               passport: { user: serialized },
             };
           } catch {
@@ -476,11 +496,11 @@ export function AuthGuard(
     }
 
     handleRequest<TUser = any>(
-      err: any,
-      user: any,
-      _info: any,
+      err: unknown,
+      user: unknown,
+      _info: unknown,
       _context: ExecutionContext,
-      _status?: any,
+      _status?: unknown,
     ): TUser {
       if (err || !user) {
         throw err || new UnauthorizedException("Authentication failed");
@@ -748,7 +768,11 @@ export class ApiKeyAuthStrategy implements AuthStrategy {
         request,
         context,
       );
-      if (principal === null || principal === undefined || principal === false) {
+      if (
+        principal === null ||
+        principal === undefined ||
+        principal === false
+      ) {
         throw new UnauthorizedException("Invalid API key");
       }
       return principal;
@@ -878,7 +902,11 @@ export class BasicAuthStrategy implements AuthStrategy {
         request,
         context,
       );
-      if (principal === null || principal === undefined || principal === false) {
+      if (
+        principal === null ||
+        principal === undefined ||
+        principal === false
+      ) {
         throw new UnauthorizedException("Invalid Basic credentials");
       }
       return principal;
@@ -965,10 +993,7 @@ export class AuthModule {
         { provide: AuthModuleOptions, useExisting: AUTH_MODULE_OPTIONS },
         {
           provide: AuthStrategyRegistry,
-          inject: [
-            AUTH_MODULE_OPTIONS,
-            { token: ModuleRef, optional: true },
-          ],
+          inject: [AUTH_MODULE_OPTIONS, { token: ModuleRef, optional: true }],
           useFactory: async (
             resolvedOptions: IAuthModuleOptions = {},
             moduleRef?: ModuleRef,

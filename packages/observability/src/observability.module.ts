@@ -3,7 +3,7 @@ import {
   type DynamicModule,
   type ModuleImport,
   type Provider,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   CountedAspectHandler,
   SpanAspectHandler,
@@ -11,10 +11,7 @@ import {
 } from "./decorators/observability.decorators";
 import { DevtoolsModule } from "./devtools/devtools.module";
 import type { DevtoolsModuleOptions } from "./devtools/devtools.service";
-import {
-  HealthModule,
-  type HealthModuleOptions,
-} from "./health/health.module";
+import { HealthModule, type HealthModuleOptions } from "./health/health.module";
 import {
   OBSERVABILITY_LOGGER_OPTIONS,
   ObservabilityLogger,

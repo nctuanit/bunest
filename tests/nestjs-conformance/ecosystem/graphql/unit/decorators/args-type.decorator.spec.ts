@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import type { Type } from "../../../../../../packages/common/src";
+import type { Type } from "../../../../../../packages/core/src/common";
 import {
   ArgsType,
   Field,
@@ -13,7 +12,8 @@ class FeatureModule {}
 describeConformance(
   "@ArgsType decorator",
   {
-    upstreamPath: "packages/graphql/tests/decorators/args-type.decorator.spec.ts",
+    upstreamPath:
+      "packages/graphql/tests/decorators/args-type.decorator.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:

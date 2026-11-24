@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it, spyOn } from "bun:test";
-import { Logger } from "../../../../../../packages/common/src";
+import { Logger } from "../../../../../../packages/core/src/common";
 import {
   SchemaExplorer,
   defaultStandardSchemaConverter,
@@ -44,7 +43,9 @@ function runConverter(
   schema: unknown,
   schemaType: "input" | "output" = "input",
   customConverter?: StandardSchemaConverter,
-): { schema: OpenApiSchema; components: Record<string, OpenApiSchema> } | undefined {
+):
+  | { schema: OpenApiSchema; components: Record<string, OpenApiSchema> }
+  | undefined {
   const explorer = new SchemaExplorer(
     customConverter ? { standardSchemaConverter: customConverter } : {},
   );
@@ -157,9 +158,9 @@ describeConformance(
         schema: { type: "string" },
         components: {},
       });
-      expect(
-        schemaConverter.calledWith(schema, { schemaType: "input" }),
-      ).toBe(true);
+      expect(schemaConverter.calledWith(schema, { schemaType: "input" })).toBe(
+        true,
+      );
     });
 
     // BUNEST_BUG: defaultStandardSchemaConverter (packages/swagger/src/schema-explorer.ts:130-140) rethrows instead of catching, logging a Logger.warn, and returning undefined for function-shaped standard schemas that fail target conversion

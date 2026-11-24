@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, it } from "bun:test";
 import {
   type CanActivate,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Module,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   type BunestApplication,
   NestFactory,
@@ -20,11 +19,7 @@ import {
   ResolveField,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 const CATS_TYPE_DEFS = `
   type Query {

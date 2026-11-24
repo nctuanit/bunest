@@ -6,9 +6,10 @@ import type {
   PipeLike,
   ResponseContext,
   Type,
-} from "@bunest/common";
-import type { BunHttpAdapter } from "@bunest/http";
+} from "@bunest/core";
+import type { BunHttpAdapter } from "@bunest/core/http";
 import type {
+  DocumentNode,
   execute as graphqlExecute,
   GraphQLCompositeType,
   GraphQLDirective,
@@ -20,7 +21,7 @@ import type {
   GraphQLTypeResolver,
   subscribe as graphqlSubscribe,
   ValueNode,
-} from "graphql";
+} from "../engine";
 
 // ---------------------------------------------------------------------------
 // Utility & Helper Types
@@ -33,24 +34,20 @@ export type Union<T extends readonly any[]> = InstanceType<ArrayElement<T>>;
 
 export type FieldType<T> = T;
 
-export type GqlTypeReference<T = any> =
-  | Type<T>
-  | GraphQLScalarType
-  | Function
-  | object
-  | symbol
-  | string;
+export type GqlTypeReference<T = unknown> =
+  Type<T> | GraphQLScalarType | Function | object | symbol | string;
 
 export type ResolverTypeFn = (of?: void) => Function;
 
-export type ResolveTypeFn<TSource = any, TContext = any> = (
+export type ResolveTypeFn<TSource = unknown, TContext = unknown> = (
   ...args: Parameters<GraphQLTypeResolver<TSource, TContext>>
-) => any;
+) =>
+  | ReturnType<GraphQLTypeResolver<TSource, TContext>>
+  | Function
+  | Promise<Function>;
 
 export type RegisterInOption =
-  | Function
-  | (() => Function)
-  | Array<Function | (() => Function)>;
+  Function | (() => Function) | Array<Function | (() => Function)>;
 
 export type NullableList = "items" | "itemsAndList";
 
@@ -67,8 +64,7 @@ type NullableBaseType<T = any> = {
 };
 
 export type BaseTypeOptions<T = any> =
-  | NonNullableBaseType<T>
-  | NullableBaseType<T>;
+  NonNullableBaseType<T> | NullableBaseType<T>;
 
 export type Enhancer = "guards" | "interceptors" | "filters";
 
@@ -141,9 +137,7 @@ export interface GraphQLDriver<TOptions = any> {
 // ---------------------------------------------------------------------------
 
 export type InterfaceImplementsInput =
-  | Function
-  | readonly Function[]
-  | (() => Function | readonly Function[]);
+  Function | readonly Function[] | (() => Function | readonly Function[]);
 
 export type TypeResolverFn = (
   value: any,
@@ -157,7 +151,7 @@ export type TypeResolverFn = (
   | Promise<string | Function | null | undefined>;
 
 export interface UnionTypeRef<
-  T extends readonly Type<any>[] = readonly Type<any>[],
+  T extends readonly Type<unknown>[] = readonly Type<unknown>[],
 > {
   readonly __bunestGraphQLUnion: true;
   readonly name: string;
@@ -169,7 +163,7 @@ export interface UnionTypeRef<
 }
 
 export interface CreateUnionTypeOptions<
-  T extends readonly Type<any>[] = readonly Type<any>[],
+  T extends readonly Type<unknown>[] = readonly Type<unknown>[],
 > {
   readonly name: string;
   readonly types: () => T;
@@ -180,20 +174,21 @@ export interface CreateUnionTypeOptions<
 }
 
 export interface UnionOptions<
-  T extends readonly Type<any>[] = readonly Type<any>[],
+  T extends readonly Type<unknown>[] = readonly Type<unknown>[],
 > extends CreateUnionTypeOptions<T> {}
 
 export type ReturnTypeFuncValue =
-  | Type<any>
+  | Type<unknown>
   | Function
   | GraphQLScalarType
-  | UnionTypeRef<any>
+  | UnionTypeRef
   | Record<string, string | number>
   | [ReturnTypeFuncValue]
   | readonly ReturnTypeFuncValue[];
 
-export type ReturnTypeFunc<T extends ReturnTypeFuncValue = ReturnTypeFuncValue> =
-  () => T;
+export type ReturnTypeFunc<
+  T extends ReturnTypeFuncValue = ReturnTypeFuncValue,
+> = () => T;
 
 export interface ObjectTypeOptions {
   name?: string;
@@ -322,21 +317,23 @@ export type ResolveFieldOptions<T = any> = OperationOptions<T> & {
   middleware?: FieldMiddleware[];
 };
 
-export type SubscriptionOptions<TPayload = any, TVariables = any> =
-  OperationOptions & {
-    filter?: (
-      payload: TPayload,
-      variables: TVariables,
-      context: Record<string, unknown>,
-      info: GraphQLResolveInfo,
-    ) => boolean | Promise<boolean>;
-    resolve?: (
-      payload: TPayload,
-      args: TVariables,
-      context: Record<string, unknown>,
-      info: GraphQLResolveInfo,
-    ) => unknown | Promise<unknown>;
-  };
+export type SubscriptionOptions<
+  TPayload = any,
+  TVariables = any,
+> = OperationOptions & {
+  filter?: (
+    payload: TPayload,
+    variables: TVariables,
+    context: Record<string, unknown>,
+    info: GraphQLResolveInfo,
+  ) => boolean | Promise<boolean>;
+  resolve?: (
+    payload: TPayload,
+    args: TVariables,
+    context: Record<string, unknown>,
+    info: GraphQLResolveInfo,
+  ) => unknown | Promise<unknown>;
+};
 
 export interface ResolverOperationMetadata {
   readonly kind: "query" | "mutation" | "subscription";
@@ -430,12 +427,12 @@ export interface GraphQLWsServer {
     path?: string;
   };
   handleUpgrade(
-    request: any,
-    socket: any,
-    upgradeHead: any,
-    callback: (client: any, request: any) => void,
+    request: unknown,
+    socket: unknown,
+    upgradeHead: unknown,
+    callback: (client: unknown, request: unknown) => void,
   ): void;
-  emit(event: "connection", ...args: any[]): boolean;
+  emit(event: "connection", ...args: unknown[]): boolean;
 }
 
 export interface GraphQLWsOptions {
@@ -466,10 +463,10 @@ export interface GraphQLWsOptions {
     code?: number,
     reason?: string,
   ) => void | Promise<void>;
-  onSubscribe?: (...args: any[]) => any;
-  onNext?: (...args: any[]) => any;
-  onError?: (...args: any[]) => any;
-  validate?: (...args: any[]) => any;
+  onSubscribe?: (...args: any[]) => unknown;
+  onNext?: (...args: any[]) => unknown;
+  onError?: (...args: any[]) => unknown;
+  validate?: (...args: any[]) => unknown;
   /**
    * Optional per-operation GraphQL context factory for WS operations.
    */
@@ -498,7 +495,10 @@ export interface GqlSubscriptionServiceOptions extends SubscriptionConfig {
   execute?: typeof graphqlExecute;
   subscribe?: typeof graphqlSubscribe;
   path?: string;
-  context?: GraphQLWsOptions["context"];
+  context?:
+    | GraphQLWsOptions["context"]
+    | ((...args: any[]) => unknown)
+    | Record<string, unknown>;
 }
 
 export type GraphQLSubscriptionsConfig =
@@ -552,7 +552,7 @@ export interface CustomScalar<TExternal = any, TInternal = any> {
   parseValue(value: unknown): TInternal;
   serialize(value: TInternal): TExternal;
   parseLiteral?(
-    ast: ValueNode | any,
+    ast: ValueNode,
     variables?: Record<string, unknown> | null,
   ): TInternal;
 }
@@ -595,8 +595,8 @@ export interface SchemaFileConfig {
 export type AutoSchemaFileValue = boolean | string | SchemaFileConfig;
 
 export interface BuildFederatedSchemaOptions {
-  typeDefs: any;
-  resolvers?: any;
+  typeDefs: string | readonly string[] | DocumentNode;
+  resolvers?: SchemaFirstResolversMap | SchemaFirstResolversMap[];
 }
 
 export interface BuildSchemaOptions {
@@ -668,7 +668,7 @@ export interface GraphQLModuleOptions<TDriver extends GraphQLDriver = any> {
   /**
    * Deprecated directive resolvers option (kept for NestJS compatibility).
    */
-  directiveResolvers?: any;
+  directiveResolvers?: Record<string, unknown>;
   /**
    * Enable Apollo Federation Subgraph (`_service { sdl }` + `_entities(representations)`).
    */
@@ -738,7 +738,7 @@ export interface GraphQLModuleOptions<TDriver extends GraphQLDriver = any> {
   /**
    * Extra static metadata loader hook.
    */
-  metadata?: () => Promise<Record<string, any>>;
+  metadata?: () => Promise<Record<string, unknown>>;
   /**
    * Enable verbose debug logging.
    */
@@ -796,11 +796,12 @@ export interface GraphQLModuleOptions<TDriver extends GraphQLDriver = any> {
   global?: boolean;
 }
 
-export interface GqlModuleOptions<TDriver extends GraphQLDriver = any>
-  extends GraphQLModuleOptions<TDriver> {}
+export interface GqlModuleOptions<
+  TDriver extends GraphQLDriver = any,
+> extends GraphQLModuleOptions<TDriver> {}
 
 export interface GqlOptionsFactory<
-  T extends Record<string, any> = GraphQLModuleOptions,
+  T extends object = GraphQLModuleOptions,
 > {
   createGqlOptions(): Promise<Omit<T, "driver">> | Omit<T, "driver">;
 }

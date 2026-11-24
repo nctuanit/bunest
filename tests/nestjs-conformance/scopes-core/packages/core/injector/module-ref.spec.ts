@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Inject,
@@ -6,7 +5,7 @@ import {
   Module,
   REQUEST,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ModuleRef,
   UnknownDependencyException,

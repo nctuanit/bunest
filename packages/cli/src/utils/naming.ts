@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "@bunest/core";
 
 const VALID_PROJECT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const VALID_SEGMENT_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -8,7 +7,7 @@ import {
   Module,
   type LoggerService,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,
@@ -122,9 +121,7 @@ describeConformance(
           logger,
         });
 
-        await app
-          .init()
-          .catch((err: Error) => logger.error(err.message));
+        await app.init().catch((err: Error) => logger.error(err.message));
 
         expect(logger.messages).toContain("Database unavailable");
       });

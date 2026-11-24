@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect } from "bun:test";
 import {
   Inject,
@@ -7,7 +6,7 @@ import {
   type MicroserviceInstance,
   type OnApplicationBootstrap,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestApplicationContext,
   BunestFactory,
@@ -20,12 +19,8 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers";
+} from "../../../../../packages/core/src/ws";
+import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 let hooksCanComplete: Promise<void>;
 
@@ -140,7 +135,8 @@ function trySingleConnectAndAskState(
 describeConformance(
   "WebSocketGateway - clients connecting during startup",
   {
-    upstreamPath: "integration/websockets/e2e/connection-during-startup.spec.ts",
+    upstreamPath:
+      "integration/websockets/e2e/connection-during-startup.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:

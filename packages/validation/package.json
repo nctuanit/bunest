@@ -1,11 +1,11 @@
 {
   "name": "@bunest/validation",
   "version": "0.1.0",
-  "description": "DTO validation pipe, class serializer interceptor, and schema validator adapters for Bunest",
+  "description": "Zero-dependency Bun-native DTO validation & transformation engine (compile-once validator, transformer, ValidationPipe, ClassSerializerInterceptor, Standard Schema)",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -23,18 +23,38 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./validator": {
+      "types": "./src/validator/index.ts",
+      "bun": "./src/validator/index.ts",
+      "import": "./dist/validator/index.js",
+      "default": "./dist/validator/index.js"
+    },
+    "./transformer": {
+      "types": "./src/transformer/index.ts",
+      "bun": "./src/transformer/index.ts",
+      "import": "./dist/transformer/index.js",
+      "default": "./dist/transformer/index.js"
+    },
+    "./standard-schema": {
+      "types": "./src/standard-schema/index.ts",
+      "bun": "./src/standard-schema/index.ts",
+      "import": "./dist/standard-schema/index.js",
+      "default": "./dist/standard-schema/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external class-validator --external class-transformer --external reflect-metadata",
+    "build": "bun build ./src/index.ts ./src/validator/index.ts ./src/transformer/index.ts ./src/standard-schema/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/core --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1"
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/swagger": "workspace:*"
   }
 }

@@ -5,7 +5,7 @@ import {
   type BunestInterceptor,
   type CallHandler,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { HttpAdapterHost } from "@bunest/core";
 import { ResilienceError } from "../errors/resilience.error";
 import type { ResilienceModuleOptions } from "../interfaces/resilience-module-options.interface";
@@ -53,9 +53,7 @@ export class ResilienceInterceptor implements BunestInterceptor {
   ): Promise<unknown> {
     const plan = this.planner.planFor(context.getClass(), context.getHandler());
     try {
-      return await (plan
-        ? this.execute(plan, context, next)
-        : next.handle());
+      return await (plan ? this.execute(plan, context, next) : next.handle());
     } catch (error) {
       if (this.mapErrors && error instanceof ResilienceError) {
         throw await this.mapper.map(error, context);

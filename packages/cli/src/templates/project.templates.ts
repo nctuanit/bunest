@@ -6,7 +6,7 @@ export interface ProjectTemplateOptions {
 
 /**
  * Generates the complete set of files for `bunest new <project-name>`.
- * Matches Bun 1.4.3 empirically verified `tsconfig.json` and `verbatimModuleSyntax: true` rules.
+ * Matches Bun 1.4.5 empirically verified `tsconfig.json` and `verbatimModuleSyntax: true` rules.
  */
 export function buildProjectTemplateFiles(
   projectName: string,
@@ -19,20 +19,24 @@ export function buildProjectTemplateFiles(
     version: "0.1.0",
     private: true,
     type: "module",
+    engines: {
+      bun: ">=1.4.5",
+    },
     scripts: {
-      dev: "bun --watch src/main.ts",
-      build: "bun build ./src/main.ts --outdir ./dist --target bun --format esm",
+      dev: "bunest dev",
+      typegen: "bunest typegen",
+      build:
+        "bun build ./src/main.ts --outdir ./dist --target bun --format esm",
       start: "bun dist/main.js",
       test: "bun test",
       typecheck: "bun check",
     },
     dependencies: {
       "@bunest/core": "^0.1.0",
-      "class-transformer": "^0.5.1",
-      "class-validator": "^0.14.1",
-      "reflect-metadata": "^0.2.2",
+      "@bunest/validation": "^0.1.0",
     },
     devDependencies: {
+      "@bunest/cli": "^0.1.0",
       "@bunest/testing": "^0.1.0",
       "@types/bun": "latest",
       typescript: "^7.0.2",
@@ -57,12 +61,11 @@ export function buildProjectTemplateFiles(
       noUncheckedIndexedAccess: strict,
       noImplicitOverride: strict,
     },
-    include: ["src/**/*.ts", "test/**/*.ts"],
+    include: ["src/**/*.ts", "test/**/*.ts", ".bunest/types/**/*.d.ts"],
     exclude: ["node_modules", "dist"],
   };
 
-  const mainTs = `import "reflect-metadata";
-import { BunestFactory, ValidationPipe } from "@bunest/core";
+  const mainTs = `import { BunestFactory, ValidationPipe } from "@bunest/core";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
@@ -70,7 +73,7 @@ async function bootstrap(): Promise<void> {
   app.useGlobalPipes(new ValidationPipe());
   app.enableShutdownHooks();
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(Bun.env.PORT ?? 3000);
   const info = await app.listen(port);
   console.log(\`Bunest server listening at \${info.url}\`);
 }
@@ -122,8 +125,7 @@ import { AppService } from "./app.service";
 export class AppModule {}
 `;
 
-  const appSpecTs = `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+  const appSpecTs = `import { describe, expect, it } from "bun:test";
 import { ValidationPipe } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import { AppModule } from "../src/app.module";
@@ -159,6 +161,7 @@ describe("AppModule", () => {
 
   const gitignore = `node_modules/
 dist/
+.bunest/
 .env
 .env.local
 *.log

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -8,7 +7,7 @@ import {
   Param,
   Post,
   type CanActivate,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   Counter,
   DEFAULT_HTTP_BUCKETS,
@@ -123,7 +122,9 @@ describeConformance(
           counter.inc({ route: "/a" }, 0);
 
           expect(counter.get({ route: "/a" })).toBe(0);
-          expect(counter.formatPrometheus()).toContain('requests{route="/a"} 0');
+          expect(counter.formatPrometheus()).toContain(
+            'requests{route="/a"} 0',
+          );
         });
 
         itAdapted(
@@ -734,7 +735,9 @@ describeConformance(
 
       it("supports exposeEndpoint: false, custom registry, and endpoint guard", async () => {
         const sharedRegistry = new MetricsRegistry();
-        sharedRegistry.createCounter({ name: "boot_total", help: "Boots" }).inc();
+        sharedRegistry
+          .createCounter({ name: "boot_total", help: "Boots" })
+          .inc();
 
         const hidden = await createTestApp(
           {

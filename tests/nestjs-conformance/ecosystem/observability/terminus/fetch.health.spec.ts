@@ -1,12 +1,8 @@
-import "reflect-metadata";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
-import { HttpService } from "../../../../../packages/axios/src";
 import {
   HttpClient,
   type HttpResponse,
-} from "../../../../../packages/http-client/src";
+} from "../../../../../packages/core/src/client";
 import {
   FetchHealthIndicator,
   HealthIndicatorService,
@@ -49,75 +45,84 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-008"],
     notes:
-      "Adapts upstream @nestjs/terminus FetchHealthIndicator tests to Bunest native fetch, @bunest/http-client, and Promise-based @bunest/axios (ADR-001/ADR-008: zero RxJS).",
+      "Adapts upstream @nestjs/terminus FetchHealthIndicator tests to Bunest native fetch and @bunest/http-client (ADR-001/ADR-008: zero RxJS).",
   },
   () => {
-    let server: Server;
+    let server: ReturnType<typeof Bun.serve>;
     let base: string;
     let closed: string;
     let aborted = 0;
     const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
     beforeAll(async () => {
-      server = createServer((req, res) => {
-        let slowTimer: ReturnType<typeof setTimeout> | undefined;
-        req.on("close", () => {
-          if (slowTimer !== undefined) {
-            clearTimeout(slowTimer);
-            pendingTimers.delete(slowTimer);
+      server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/slow") {
+            return new Promise<Response>((resolve) => {
+              let settled = false;
+              const onAbort = () => {
+                if (settled) {
+                  return;
+                }
+                settled = true;
+                clearTimeout(slowTimer);
+                pendingTimers.delete(slowTimer);
+                aborted++;
+                resolve(new Response(null, { status: 499 }));
+              };
+              const slowTimer = setTimeout(() => {
+                if (settled) {
+                  return;
+                }
+                settled = true;
+                pendingTimers.delete(slowTimer);
+                req.signal.removeEventListener("abort", onAbort);
+                resolve(new Response("", { status: 200, statusText: "OK" }));
+              }, 2000);
+              pendingTimers.add(slowTimer);
+              req.signal.addEventListener("abort", onAbort, { once: true });
+            });
           }
-          if (!res.writableEnded) {
-            aborted++;
+          if (pathname === "/down") {
+            return new Response("nope", {
+              status: 503,
+              statusText: "Service Unavailable",
+            });
           }
-        });
-        if (req.url === "/slow") {
-          slowTimer = setTimeout(() => {
-            if (slowTimer !== undefined) {
-              pendingTimers.delete(slowTimer);
-            }
-            if (!res.writableEnded) {
-              res.end();
-            }
-          }, 2000);
-          pendingTimers.add(slowTimer);
-          return;
-        }
-        if (req.url === "/down") {
-          res.writeHead(503).end("nope");
-          return;
-        }
-        res.writeHead(req.url === "/empty" ? 204 : 200).end("woof");
+          if (pathname === "/empty") {
+            return new Response(null, { status: 204 });
+          }
+          return new Response("woof", { status: 200, statusText: "OK" });
+        },
       });
-      await new Promise<void>((resolve) =>
-        server.listen(0, "127.0.0.1", resolve),
-      );
-      base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      base = `http://127.0.0.1:${server.port}`;
 
-      const probe = createServer();
-      await new Promise<void>((resolve) =>
-        probe.listen(0, "127.0.0.1", resolve),
-      );
-      closed = `http://127.0.0.1:${(probe.address() as AddressInfo).port}`;
-      await new Promise<void>((resolve) => probe.close(() => resolve()));
+      const probe = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: { data() {} },
+      });
+      closed = `http://127.0.0.1:${probe.port}`;
+      probe.stop(true);
     });
 
-    afterAll(async () => {
+    afterAll(() => {
       for (const timer of pendingTimers) {
         clearTimeout(timer);
       }
       pendingTimers.clear();
-      server.closeAllConnections?.();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      server.stop(true);
     });
 
     const indicator = new FetchHealthIndicator(new HealthIndicatorService());
 
     const httpClient = new HttpClient({ retry: false });
-    const axios = new HttpService();
     const clients: Record<string, FetchLike | undefined> = {
       "native fetch": undefined,
-      "@bunest/http-client": httpClient.request as unknown as FetchLike,
-      "@bunest/axios": (url, init) => axios.request({ url, ...init }),
+      "@bunest/core/client": httpClient.request as unknown as FetchLike,
     };
 
     describe.each(Object.entries(clients))(
@@ -174,7 +179,9 @@ describeConformance(
               status: "down",
               message: "timeout of 50ms exceeded",
             });
-            await waitFor(() => expect(aborted).toBeGreaterThanOrEqual(before + 1));
+            await waitFor(() =>
+              expect(aborted).toBeGreaterThanOrEqual(before + 1),
+            );
           },
           "Uses local waitFor helper and Promise-based clients without RxJS",
         );
@@ -235,8 +242,10 @@ describeConformance(
         indicator.pingCheck("dep", base, {
           fetch: (url, init) => httpClient.request(url, init),
           verify: (res) => {
-            const _isHttpRes: AssertEqual<typeof res, HttpResponse<unknown>> =
-              true;
+            const _isHttpRes: AssertEqual<
+              typeof res,
+              HttpResponse<unknown>
+            > = true;
             return _isHttpRes;
           },
         });
@@ -274,15 +283,25 @@ describeConformance(
 
       itAdapted(
         ["ADR-008"],
-        "sees the response a client throws on 4xx/5xx (@bunest/axios)",
+        "sees the response a client throws on 4xx/5xx",
         async () => {
           const result = await indicator.pingCheck("dep", `${base}/down`, {
-            fetch: clients["@bunest/axios"],
+            fetch: async (url, init) => {
+              const res = await fetch(url, init);
+              if (!res.ok) {
+                const err = new Error(
+                  `Request failed with status code ${res.status}`,
+                ) as Error & { response?: Response };
+                err.response = res;
+                throw err;
+              }
+              return res;
+            },
             verify: (res) => res.status === 503,
           });
           expect(result.dep).toMatchObject({ status: "up" });
         },
-        "@bunest/axios returns Promises directly without RxJS",
+        "Clients throwing an error with an attached Response are inspected without RxJS",
       );
 
       it("does not see an error thrown without the response", async () => {

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Module,
   forwardRef,
   type DynamicModule,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { LazyModuleLoader } from "../../../../../packages/core/src";
 import {
   Test,

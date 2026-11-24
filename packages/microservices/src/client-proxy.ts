@@ -1,4 +1,4 @@
-import type { OnModuleDestroy, PreRequestHook } from "@bunest/common";
+import type { OnModuleDestroy, PreRequestHook } from "@bunest/core";
 import { RpcException, RpcTimeoutException } from "./exceptions";
 import {
   normalizePattern,
@@ -6,6 +6,12 @@ import {
   type SendOptions,
 } from "./interfaces";
 import type { ReadPacket } from "./packets";
+import type {
+  BunestEventPatternRegistry,
+  BunestMessagePatternRegistry,
+  MessagePatternRequest,
+  MessagePatternResponse,
+} from "./pattern-registry.interface";
 import type { Transport } from "./tokens";
 
 export type ClientStatus = "connected" | "disconnected" | "reconnecting";
@@ -29,8 +35,7 @@ function sleepUnref(ms: number): Promise<void> {
 export abstract class ClientProxy<
   EventsMap extends Record<string, Function> = Record<string, Function>,
   Status extends string = ClientStatus,
-> implements OnModuleDestroy
-{
+> implements OnModuleDestroy {
   abstract readonly transport: Transport;
 
   protected readonly defaultTimeoutMs: number;
@@ -144,6 +149,18 @@ export abstract class ClientProxy<
    * Sends a request-reply RPC message. Retries transient transport/timeout faults up to
    * `options.retries` times; application `RpcException` errors propagate immediately.
    */
+  send<K extends keyof BunestMessagePatternRegistry & string>(
+    pattern: K,
+    data: MessagePatternRequest<K>,
+    options?: SendOptions,
+  ): Promise<MessagePatternResponse<K>>;
+  send<TRes = any, TReq = any, TPattern extends PatternInput = PatternInput>(
+    pattern: TPattern extends keyof BunestMessagePatternRegistry
+      ? never
+      : TPattern,
+    data: TReq,
+    options?: SendOptions,
+  ): Promise<TRes>;
   async send<TRes = any, TReq = any>(
     pattern: PatternInput,
     data: TReq,
@@ -155,7 +172,11 @@ export abstract class ClientProxy<
       this.onDispatchHook(packet);
     }
     if (this.preRequestHook) {
-      await this.preRequestHook({ pattern: key, data, transport: this.transport });
+      await this.preRequestHook({
+        pattern: key,
+        data,
+        transport: this.transport,
+      });
     }
     const timeoutMs = Math.max(
       1,
@@ -167,10 +188,8 @@ export abstract class ClientProxy<
     let lastError: unknown;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await this.runWithTimeout(
-          key,
-          timeoutMs,
-          (signal) => this.sendOnce<TRes, TReq>(key, data, timeoutMs, signal),
+        return await this.runWithTimeout(key, timeoutMs, (signal) =>
+          this.sendOnce<TRes, TReq>(key, data, timeoutMs, signal),
         );
       } catch (err) {
         lastError = err;
@@ -193,6 +212,16 @@ export abstract class ClientProxy<
   /**
    * Emits a fire-and-forget event without awaiting a reply.
    */
+  emit<K extends keyof BunestEventPatternRegistry & string>(
+    pattern: K,
+    data: BunestEventPatternRegistry[K],
+  ): Promise<void>;
+  emit<TReq = any, TPattern extends PatternInput = PatternInput>(
+    pattern: TPattern extends keyof BunestEventPatternRegistry
+      ? never
+      : TPattern,
+    data: TReq,
+  ): Promise<void>;
   async emit<TReq = any>(pattern: PatternInput, data: TReq): Promise<void> {
     const key = normalizePattern(pattern);
     if (this.onDispatchHook) {
@@ -200,7 +229,11 @@ export abstract class ClientProxy<
       this.onDispatchHook(packet);
     }
     if (this.preRequestHook) {
-      await this.preRequestHook({ pattern: key, data, transport: this.transport });
+      await this.preRequestHook({
+        pattern: key,
+        data,
+        transport: this.transport,
+      });
     }
     await this.dispatchEvent(key, data);
   }

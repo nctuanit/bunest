@@ -1,17 +1,25 @@
-import "reflect-metadata";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+} from "bun:test";
 import {
   GraphQLSchema,
   Kind,
   type ValueNode,
   defaultFieldResolver,
   isObjectType,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/graphql/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  ensureDir,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   type CustomScalar,
@@ -148,10 +156,7 @@ class PostsResolvers {
   }
 
   @Mutation(() => Object, { name: "publishPost" })
-  publishPost(
-    @Args("id") id: string,
-    @Args("publishDate") publishDate: Date,
-  ) {
+  publishPost(@Args("id") id: string, @Args("publishDate") publishDate: Date) {
     return this.postsService.publish(id, publishDate);
   }
 
@@ -217,17 +222,20 @@ describeConformance(
     let app: BunestApplication;
     let tmpDir: string;
 
-    beforeAll(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-fed-schema-host-"));
-      writeFileSync(
+    beforeAll(async () => {
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-fed-schema-host-${crypto.randomUUID()}`,
+      );
+      await ensureDir(tmpDir);
+      await Bun.write(
         join(tmpDir, "posts.types.graphql"),
         POSTS_FEDERATION_SDL,
-        "utf8",
       );
     });
 
-    afterAll(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(async () => {

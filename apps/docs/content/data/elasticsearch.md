@@ -13,6 +13,7 @@ bun add @bunest/elasticsearch
 Register `ElasticsearchModule.register()` or `registerAsync()`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { ElasticsearchModule } from "@bunest/elasticsearch";
@@ -35,6 +36,7 @@ export class AppModule {}
 Inject `ElasticsearchService` to index, search, bulk-load, or manage indices and cluster health:
 
 @@filename(search.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { ElasticsearchService } from "@bunest/elasticsearch";

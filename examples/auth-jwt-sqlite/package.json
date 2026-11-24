@@ -3,21 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
   "description": "Full Auth (JWT, Argon2id, RBAC, Throttler, Security Headers) + SQLite migrations and transactional CRUD example",
   "scripts": {
     "start": "bun run src/main.ts",
     "dev": "bun --watch src/main.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*",
+    "@bunest/orm": "workspace:*",
     "@bunest/security": "workspace:*",
-    "@bunest/sqlite": "workspace:*",
-    "@bunest/validation": "workspace:*",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "reflect-metadata": "^0.2.2"
+    "@bunest/validation": "workspace:*"
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"

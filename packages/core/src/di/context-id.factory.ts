@@ -2,7 +2,7 @@ import type {
   ContextId,
   ContextIdStrategy,
   HostComponentInfo,
-} from "@bunest/common";
+} from "../common/index";
 
 let nextContextId = 1;
 let activeStrategy: ContextIdStrategy<any> | undefined;

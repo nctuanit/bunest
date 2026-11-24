@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 
 /** What `@StartOn()` and `@SignalOn()` record on a workflow class. */
 export type WorkflowEventRoute = WorkflowStartRoute | WorkflowSignalRoute;

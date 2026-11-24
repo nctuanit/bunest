@@ -1,5 +1,3 @@
-import "reflect-metadata";
-
 export { StorageModule } from "./storage.module";
 export { STORAGE_MODULE_OPTIONS } from "./constants";
 export { getDiskToken } from "./storage.module-definition";
@@ -16,6 +14,13 @@ export { StorageDisk } from "./disks/storage.disk";
 export { LocalDisk } from "./disks/local.disk";
 export { InMemoryDisk } from "./disks/in-memory.disk";
 export { S3Disk } from "./s3/s3.disk";
+export {
+  BunS3Disk,
+  type BunS3ClientLike,
+  type BunS3DiskOptions,
+  type BunS3FileLike,
+} from "./s3/bun-s3.disk";
+export { assertValidKey, assertValidPrefix } from "./utils/keys.util";
 export type {
   Duration,
   InMemoryDiskOptions,

@@ -1,4 +1,4 @@
-import { SetMetadata, type CustomDecorator } from "@bunest/common";
+import { SetMetadata, type CustomDecorator } from "@bunest/core";
 import {
   CACHE_KEY_METADATA,
   CACHE_TTL_METADATA,

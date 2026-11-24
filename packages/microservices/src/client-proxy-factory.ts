@@ -39,65 +39,61 @@ export interface IClientProxyFactory {
 export class ClientProxyFactory {
   static create(
     clientOptions: { readonly transport: Transport.GRPC } & (
-      | ClientOptions
-      | TransportConfig
+      ClientOptions | TransportConfig
     ),
   ): GrpcClientProxy;
   static create(
     clientOptions: { readonly transport: Transport.KAFKA } & (
-      | ClientOptions
-      | TransportConfig
+      ClientOptions | TransportConfig
     ),
   ): ClientKafkaProxy & KafkaClientProxy;
   static create(clientOptions: ClientOptions | TransportConfig): ClientProxy;
   static create(clientOptions: CustomClientOptions): ClientProxy;
   static create(clientOptions: ClientProvider | TransportConfig): ClientProxy;
-  static create(
-    clientOptions: ClientProvider | TransportConfig,
-  ): ClientProxy {
+  static create(clientOptions: ClientProvider | TransportConfig): ClientProxy {
     if (this.isCustomClientOptions(clientOptions)) {
       const { customClass, options } = clientOptions;
       return new customClass(options);
     }
 
-    const { transport, options } = (clientOptions ?? {
-      options: {},
-    }) as { transport?: Transport; options?: Record<string, unknown> };
+    if (!clientOptions) {
+      return new TcpClientProxy({});
+    }
 
-    switch (transport) {
+    switch (clientOptions.transport) {
       case Transport.REDIS:
         return new RedisClientProxy(
-          (options ?? {}) as unknown as RedisTransportOptions,
+          (clientOptions.options ?? {}) as RedisTransportOptions,
         );
       case Transport.NATS:
         return new NatsClientProxy(
-          (options ?? {}) as unknown as NatsTransportOptions,
+          (clientOptions.options ?? {}) as NatsTransportOptions,
         );
       case Transport.MQTT:
         return new MqttClientProxy(
-          (options ?? {}) as unknown as MqttTransportOptions,
+          (clientOptions.options ?? {}) as MqttTransportOptions,
         );
       case Transport.GRPC:
         return new GrpcClientProxy(
-          (options ?? {}) as unknown as GrpcTransportOptions,
+          (clientOptions.options ?? {}) as GrpcTransportOptions,
         );
       case Transport.RABBITMQ:
       case Transport.RMQ:
         return new RabbitMqClientProxy(
-          (options ?? {}) as unknown as RabbitMqTransportOptions,
+          (clientOptions.options ?? {}) as RabbitMqTransportOptions,
         );
       case Transport.KAFKA:
         return new KafkaClientProxy(
-          (options ?? {}) as unknown as KafkaTransportOptions,
+          (clientOptions.options ?? {}) as KafkaTransportOptions,
         );
       case Transport.IN_MEMORY:
         return new InMemoryClientProxy(
-          (options ?? {}) as unknown as InMemoryTransportOptions,
+          (clientOptions.options ?? {}) as InMemoryTransportOptions,
         );
       case Transport.TCP:
       default:
         return new TcpClientProxy(
-          (options ?? {}) as unknown as TcpTransportOptions,
+          (clientOptions.options ?? {}) as TcpTransportOptions,
         );
     }
   }
@@ -107,9 +103,9 @@ export class ClientProxyFactory {
   ): options is CustomClientOptions {
     return Boolean(
       options &&
-        typeof options === "object" &&
-        "customClass" in options &&
-        typeof options.customClass === "function",
+      typeof options === "object" &&
+      "customClass" in options &&
+      typeof options.customClass === "function",
     );
   }
 }

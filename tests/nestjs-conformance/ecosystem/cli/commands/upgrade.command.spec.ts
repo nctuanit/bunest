@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   parseCliArgs,
   runCli,
@@ -16,6 +18,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -48,19 +59,15 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-upgrade-"));
+      tmpDir = makeTempDir("bunest-cli-conf-upgrade-");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     const writePackageJson = (pkg: Record<string, unknown>) => {
-      writeFileSync(
-        join(tmpDir, "package.json"),
-        JSON.stringify(pkg, null, 2),
-        "utf8",
-      );
+      writeTextSync(join(tmpDir, "package.json"), JSON.stringify(pkg, null, 2));
     };
 
     describe("dependency discovery & upgrade execution", () => {
@@ -174,11 +181,7 @@ describeConformance(
 
       // BUNEST_BUG: UpgradeProjectOptions declares `collection?: string` and runner.ts forwards `--collection`, but upgradeProject() never reads `options.collection` or `bunest.json`/`nest-cli.json` `collection` (packages/cli/src/commands/upgrade.ts)
       it.skip("uses the collection from bunest.json when configured and prefers explicit --collection", async () => {
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ collection: "@acme/schematics" }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ collection: "@acme/schematics" }));
         const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
         const result = await upgradeProject({
           cwd: tmpDir,
@@ -195,7 +198,7 @@ describeConformance(
           name: "opts-demo",
           dependencies: {
             "@bunest/core": "^0.1.0",
-            "@bunest/config": "^0.1.0",
+            "@bunest/cache": "^0.1.0",
           },
         });
       });
@@ -213,9 +216,7 @@ describeConformance(
         expect(result.dryRun).toBe(false);
         expect(result.exitCode).toBe(0);
         expect(cap.stdout.join("\n")).toContain("[skip-install]");
-        expect(cap.stdout.join("\n")).toContain(
-          "@bunest/config, @bunest/core",
-        );
+        expect(cap.stdout.join("\n")).toContain("@bunest/cache, @bunest/core");
       });
 
       it("forwards --tag by switching to `bun add <pkg>@<tag>`", async () => {
@@ -230,13 +231,13 @@ describeConformance(
         expect(result.command).toEqual([
           "bun",
           "add",
-          "@bunest/config@next",
+          "@bunest/cache@next",
           "@bunest/core@next",
         ]);
         expect(spawnSpy.firstCall?.args[0]).toEqual([
           process.execPath,
           "add",
-          "@bunest/config@next",
+          "@bunest/cache@next",
           "@bunest/core@next",
         ]);
       });
@@ -251,7 +252,7 @@ describeConformance(
         expect(out.command).toEqual([
           "bun",
           "add",
-          "@bunest/config@canary",
+          "@bunest/cache@canary",
           "@bunest/core@canary",
         ]);
         expect(cap.stdout.join("\n")).toContain("@bunest/core@canary");
@@ -364,13 +365,13 @@ describeConformance(
       });
 
       it("prints '(all project dependencies)' in dry-run when no @bunest/* deps are listed", async () => {
-        const emptyDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-empty-"));
+        const emptyDir = makeTempDir("bunest-cli-conf-empty-");
         try {
           const cap = createCapturedIO(emptyDir);
           await upgradeProject({ cwd: emptyDir, dryRun: true }, cap.io);
           expect(cap.stdout.join("\n")).toContain("(all project dependencies)");
         } finally {
-          rmSync(emptyDir, { recursive: true, force: true });
+          await removePath(emptyDir, { recursive: true, force: true });
         }
       });
     });

@@ -1,4 +1,4 @@
-import type { SqlExecutor } from "@bunest/store-kit/postgres";
+import type { SqlExecutor } from "@bunest/orm/postgres";
 
 /** What `new PostgresWorkflowStore(options, storage)` takes. */
 export interface PostgresWorkflowStoreOptions {

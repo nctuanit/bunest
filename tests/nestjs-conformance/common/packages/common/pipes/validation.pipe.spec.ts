@@ -1,14 +1,13 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
-import * as classTransformer from "class-transformer";
+import * as classTransformer from "../../../../../../packages/validation/src/transformer";
 import {
   Exclude,
   Expose,
   Transform,
   Type,
   instanceToPlain,
-} from "class-transformer";
-import * as classValidator from "class-validator";
+} from "../../../../../../packages/validation/src/transformer";
+import * as classValidator from "../../../../../../packages/validation/src/validator";
 import {
   ArrayMinSize,
   IsArray,
@@ -24,14 +23,14 @@ import {
   ValidateNested,
   ValidatorConstraint,
   type ValidationError,
-} from "class-validator";
+} from "../../../../../../packages/validation/src/validator";
 import {
   BadRequestException,
   HttpException,
   HttpStatus,
   UnprocessableEntityException,
   type ArgumentMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ValidationPipe,
   type TransformerPackageLike,
@@ -116,7 +115,10 @@ describeConformance(
         ),
       ).rejects.toMatchObject({
         response: {
-          message: ["at least two children", "children.0.name must be a string"],
+          message: [
+            "at least two children",
+            "children.0.name must be a string",
+          ],
         },
       });
     });
@@ -190,9 +192,9 @@ describeConformance(
         const exception = pipe.createExceptionFactory()(nestedErrors);
         expect(exception.getResponse().message).toEqual(list);
         expect(map).toHaveBeenCalledTimes(4);
-        expect(
-          new Set(map.mock.results.map(({ value }) => value)).size,
-        ).toBe(1);
+        expect(new Set(map.mock.results.map(({ value }) => value)).size).toBe(
+          1,
+        );
       });
 
       // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `groupValidationErrors()` methods (packages/validation/src/validation.pipe.ts)
@@ -205,9 +207,9 @@ describeConformance(
         const exception = pipe.createExceptionFactory()(nestedErrors);
         expect(exception.getResponse().message).toEqual(grouped);
         expect(group).toHaveBeenCalledTimes(3);
-        expect(
-          new Set(group.mock.results.map(({ value }) => value)).size,
-        ).toBe(1);
+        expect(new Set(group.mock.results.map(({ value }) => value)).size).toBe(
+          1,
+        );
       });
 
       // BUNEST_BUG: ValidationPipe lacks public `createExceptionFactory()` and protected `mapChildrenToValidationErrors()` / `groupValidationErrors()` hooks (packages/validation/src/validation.pipe.ts)
@@ -217,9 +219,7 @@ describeConformance(
             error: ValidationError,
             parentPath?: string,
           ) {
-            return [
-              ...super.mapChildrenToValidationErrors(error, parentPath),
-            ];
+            return [...super.mapChildrenToValidationErrors(error, parentPath)];
           }
           protected override groupValidationErrors(
             validationErrors: ValidationError[],
@@ -232,16 +232,12 @@ describeConformance(
         }
 
         expect(
-          (
-            new CustomPipe({ errorFormat: "list" }) as any
-          )
+          (new CustomPipe({ errorFormat: "list" }) as any)
             .createExceptionFactory()(nestedErrors)
             .getResponse().message,
         ).toEqual(list);
         expect(
-          (
-            new CustomPipe({ errorFormat: "grouped" }) as any
-          )
+          (new CustomPipe({ errorFormat: "grouped" }) as any)
             .createExceptionFactory()(nestedErrors)
             .getResponse().message,
         ).toEqual(grouped);
@@ -426,9 +422,9 @@ describeConformance(
         it("should return the value unchanged if optional value is not defined", async () => {
           const testObj = { prop1: "value1", prop2: "value2" };
           expect(await target.transform(testObj, {} as any)).toBe(testObj);
-          expect(
-            await target.transform(testObj, metadata),
-          ).not.toBeInstanceOf(TestModel);
+          expect(await target.transform(testObj, metadata)).not.toBeInstanceOf(
+            TestModel,
+          );
         });
 
         it("should return the value unchanged if optional value is set undefined", async () => {
@@ -438,9 +434,9 @@ describeConformance(
             optionalProp: undefined,
           };
           expect(await target.transform(testObj, {} as any)).toBe(testObj);
-          expect(
-            await target.transform(testObj, metadata),
-          ).not.toBeInstanceOf(TestModel);
+          expect(await target.transform(testObj, metadata)).not.toBeInstanceOf(
+            TestModel,
+          );
         });
 
         it("should return the value unchanged if optional value is null", async () => {
@@ -450,9 +446,9 @@ describeConformance(
             optionalProp: null,
           };
           expect(await target.transform(testObj, {} as any)).toBe(testObj);
-          expect(
-            await target.transform(testObj, metadata),
-          ).not.toBeInstanceOf(TestModel);
+          expect(await target.transform(testObj, metadata)).not.toBeInstanceOf(
+            TestModel,
+          );
         });
 
         it("should return the value unchanged if optional value is set", async () => {
@@ -462,9 +458,9 @@ describeConformance(
             optionalProp: "optional value",
           };
           expect(await target.transform(testObj, {} as any)).toBe(testObj);
-          expect(
-            await target.transform(testObj, metadata),
-          ).not.toBeInstanceOf(TestModel);
+          expect(await target.transform(testObj, metadata)).not.toBeInstanceOf(
+            TestModel,
+          );
         });
       });
 
@@ -1262,7 +1258,10 @@ describeConformance(
               { prop1: "value1", prop2: "value2", prop3: "value3" },
             ];
 
-            const objMetadata = { ...metadata, metatype: TestModelNoValidation };
+            const objMetadata = {
+              ...metadata,
+              metatype: TestModelNoValidation,
+            };
             const result = await target.transform(testObj, objMetadata);
 
             expect(result).not.toBeInstanceOf(TestModel);
@@ -1281,13 +1280,12 @@ describeConformance(
               transform: true,
               forbidUnknownValues: false,
             });
-            const objMetadata = { ...metadata, metatype: TestModelNoValidation };
+            const objMetadata = {
+              ...metadata,
+              metatype: TestModelNoValidation,
+            };
 
-            for (const value of [
-              [],
-              [{ prop1: "value1" }],
-              Buffer.alloc(0),
-            ]) {
+            for (const value of [[], [{ prop1: "value1" }], Buffer.alloc(0)]) {
               const result = (await target.transform(
                 value,
                 objMetadata,
@@ -2059,7 +2057,8 @@ describeConformance(
 
       it("should return the original value when transformerPackage is provided", async () => {
         target = nestCompatibleValidationPipe({
-          transformerPackage: classTransformer,
+          transformerPackage:
+            classTransformer as unknown as TransformerPackageLike,
         });
         const testObj = { prop1: "value1", prop2: "value2" };
         const result = await target.transform(testObj, metadata);

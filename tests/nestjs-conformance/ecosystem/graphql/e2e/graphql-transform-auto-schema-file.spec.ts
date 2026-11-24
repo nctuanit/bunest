@@ -1,16 +1,17 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Type } from "class-transformer";
-import { Length, Max, MaxLength, Min } from "class-validator";
+import { Type } from "../../../../../packages/validation/src/transformer";
+import {
+  Length,
+  Max,
+  MaxLength,
+  Min,
+} from "../../../../../packages/validation/src/validator";
 import {
   type GraphQLSchema,
   Kind,
   type ValueNode,
   lexicographicSortSchema,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import {
   APP_FILTER,
   type ArgumentsHost,
@@ -22,8 +23,13 @@ import {
   NotFoundException,
   UnauthorizedException,
   UseGuards,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
+import {
+  existsSyncPath,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   ArgsType,
@@ -541,7 +547,7 @@ describeConformance(
 
     beforeEach(async () => {
       schemaFilePath = join(
-        tmpdir(),
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
         `bunest-transform-auto-schema-${crypto.randomUUID()}.graphql`,
       );
       writeFileMock = mock(() => Promise.resolve());
@@ -575,8 +581,8 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      if (existsSync(schemaFilePath)) {
-        rmSync(schemaFilePath, { force: true });
+      if (existsSyncPath(schemaFilePath)) {
+        await removePath(schemaFilePath, { force: true });
       }
     });
 

@@ -1,4 +1,4 @@
-import type { InjectionToken } from "@bunest/common";
+import type { InjectionToken } from "../common/index";
 
 /**
  * Allowlist of module or provider tokens permitted to instantiate even when
@@ -28,7 +28,9 @@ export class InitializeOnPreviewAllowlist {
       (typeof item === "object" && item !== null) ||
       typeof item === "function"
     ) {
-      return InitializeOnPreviewAllowlist.allowlist.get(item as object) === true;
+      return (
+        InitializeOnPreviewAllowlist.allowlist.get(item as object) === true
+      );
     }
     if (typeof item === "string" || typeof item === "symbol") {
       return InitializeOnPreviewAllowlist.primitiveAllowlist.has(item);

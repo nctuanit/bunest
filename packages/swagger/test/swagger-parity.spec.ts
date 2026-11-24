@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   Body,
@@ -25,10 +24,10 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import { Test } from "@bunest/testing";
-import { IsEmail, IsInt, IsString, MinLength } from "class-validator";
+import { IsEmail, IsInt, IsString, MinLength } from "../../validation/src/validator";
 import {
   ApiBearerAuth,
   ApiHeader,
@@ -124,7 +123,12 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
 
     @Module({
       controllers: [FeatureController],
-      providers: [FeatureLocalToken, FeatureLocalGuard, UppercasePipe, DomainConflictFilter],
+      providers: [
+        FeatureLocalToken,
+        FeatureLocalGuard,
+        UppercasePipe,
+        DomainConflictFilter,
+      ],
     })
     class FeatureModule {}
 
@@ -143,7 +147,9 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       SwaggerModule.setup("/docs", app, doc);
 
       // Guard must still resolve FeatureLocalToken from FeatureModule (requires controllerToken!)
-      const denied = await app.fetch(new Request("http://localhost/feature/hello"));
+      const denied = await app.fetch(
+        new Request("http://localhost/feature/hello"),
+      );
       expect(denied.status).toBe(403);
 
       const ok = await app.fetch(
@@ -196,12 +202,16 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       await testApp.init();
 
       // Guard override allows without header, Pipe override transforms param!
-      const res = await testApp.fetch(new Request("http://localhost/feature/abc"));
+      const res = await testApp.fetch(
+        new Request("http://localhost/feature/abc"),
+      );
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ slug: "OVERRIDDEN:abc" });
 
       // Swagger docs still served
-      const docsRes = await testApp.fetch(new Request("http://localhost/docs-json"));
+      const docsRes = await testApp.fetch(
+        new Request("http://localhost/docs-json"),
+      );
       expect(docsRes.status).toBe(200);
     } finally {
       await testApp.close();
@@ -249,7 +259,10 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
     try {
       const doc = SwaggerModule.createDocument(
         appUri,
-        new DocumentBuilder().setTitle("Versioned API").setVersion("2.0.0").build(),
+        new DocumentBuilder()
+          .setTitle("Versioned API")
+          .setVersion("2.0.0")
+          .build(),
       );
 
       // URI versioned paths generated without double-prefixing (including multi-version @Version(["1", "2"]))
@@ -272,7 +285,12 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       const allOpIds: string[] = [];
       for (const pathItem of Object.values(doc.paths)) {
         for (const op of Object.values(pathItem)) {
-          if (op && typeof op === "object" && "operationId" in op && typeof op.operationId === "string") {
+          if (
+            op &&
+            typeof op === "object" &&
+            "operationId" in op &&
+            typeof op.operationId === "string"
+          ) {
             allOpIds.push(op.operationId);
           }
         }
@@ -311,7 +329,9 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       expect(schemas.UpdateProfileDto?.required).toBeUndefined();
 
       // PickType: only email
-      expect(Object.keys(schemas.EmailOnlyDto?.properties ?? {})).toEqual(["email"]);
+      expect(Object.keys(schemas.EmailOnlyDto?.properties ?? {})).toEqual([
+        "email",
+      ]);
 
       // IntersectionType: email + name + version (and no password)
       expect(schemas.VersionedProfileDto?.properties?.email).toBeDefined();
@@ -323,8 +343,13 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
     }
 
     // 2. HEADER versioning adds version header parameter to operations
-    const appHdr = await BunestFactory.create(ProfileAppModule, { logger: false });
-    appHdr.enableVersioning({ type: VersioningType.HEADER, header: "X-API-Version" });
+    const appHdr = await BunestFactory.create(ProfileAppModule, {
+      logger: false,
+    });
+    appHdr.enableVersioning({
+      type: VersioningType.HEADER,
+      header: "X-API-Version",
+    });
     try {
       const doc = SwaggerModule.createDocument(
         appHdr,
@@ -365,7 +390,10 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       const config = new DocumentBuilder()
         .setTitle("Interactive Orders API")
         .addBearerAuth()
-        .addApiKey({ type: "apiKey", name: "X-API-Key", in: "header" }, "api-key")
+        .addApiKey(
+          { type: "apiKey", name: "X-API-Key", in: "header" },
+          "api-key",
+        )
         .build();
       const doc = SwaggerModule.createDocument(app, config);
 
@@ -388,16 +416,22 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       expect(scalarHtml).toContain('data-url="/docs-json"');
 
       // 3. Swagger-UI preset (verifies query-param `&` is NOT double-escaped as `&amp;` in JS literal, while `</script>` is safely escaped)
-      const swaggerUiHtml = renderSwaggerHtml(doc, "/docs-json?a=1&b=2", { ui: "swagger-ui" });
+      const swaggerUiHtml = renderSwaggerHtml(doc, "/docs-json?a=1&b=2", {
+        ui: "swagger-ui",
+      });
       expect(swaggerUiHtml).toContain("SwaggerUIBundle");
       expect(swaggerUiHtml).not.toContain("&amp;");
       const urlMatch = /url:\s*("(?:[^"\\]|\\.)*")/.exec(swaggerUiHtml);
       expect(urlMatch).not.toBeNull();
       expect(JSON.parse(urlMatch![1]!)).toBe("/docs-json?a=1&b=2");
 
-      const xssPresetHtml = renderSwaggerHtml(doc, "/docs-json?</script><img src=x>", {
-        ui: "swagger-ui",
-      });
+      const xssPresetHtml = renderSwaggerHtml(
+        doc,
+        "/docs-json?</script><img src=x>",
+        {
+          ui: "swagger-ui",
+        },
+      );
       expect(xssPresetHtml).not.toContain("</script><img");
     } finally {
       await app.close();
@@ -417,7 +451,9 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
     class VersionedDocsModule {}
 
     // 1. URI versioning with defaultVersion: "1" -> /docs and /docs-json must stay at /docs (not /v1/docs)
-    const uriApp = await BunestFactory.create(VersionedDocsModule, { logger: false });
+    const uriApp = await BunestFactory.create(VersionedDocsModule, {
+      logger: false,
+    });
     uriApp.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
     try {
       const doc = SwaggerModule.createDocument(
@@ -431,16 +467,22 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
       expect(uiRes.status).toBe(200);
       expect(uiRes.headers.get("content-type")).toContain("text/html");
 
-      const jsonRes = await uriApp.fetch(new Request("http://localhost/docs-json"));
+      const jsonRes = await uriApp.fetch(
+        new Request("http://localhost/docs-json"),
+      );
       expect(jsonRes.status).toBe(200);
-      const parsed = (await jsonRes.json()) as { paths: Record<string, unknown> };
+      const parsed = (await jsonRes.json()) as {
+        paths: Record<string, unknown>;
+      };
       expect(parsed.paths["/v1/items"]).toBeDefined();
     } finally {
       await uriApp.close();
     }
 
     // 2. HEADER versioning with defaultVersion: "1" -> /docs and /docs-json must work WITHOUT version header
-    const hdrApp = await BunestFactory.create(VersionedDocsModule, { logger: false });
+    const hdrApp = await BunestFactory.create(VersionedDocsModule, {
+      logger: false,
+    });
     hdrApp.enableVersioning({
       type: VersioningType.HEADER,
       header: "X-API-Version",
@@ -456,7 +498,9 @@ describe("SwaggerModule P0 #1 Bridge Delegation & P2 #10 Upgrades", () => {
 
       const uiRes = await hdrApp.fetch(new Request("http://localhost/docs"));
       expect(uiRes.status).toBe(200);
-      const jsonRes = await hdrApp.fetch(new Request("http://localhost/docs-json"));
+      const jsonRes = await hdrApp.fetch(
+        new Request("http://localhost/docs-json"),
+      );
       expect(jsonRes.status).toBe(200);
     } finally {
       await hdrApp.close();

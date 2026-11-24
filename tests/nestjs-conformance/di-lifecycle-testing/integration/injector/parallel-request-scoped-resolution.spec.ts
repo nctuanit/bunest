@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Injectable,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { REQUEST, createContextId } from "../../../../../packages/core/src";
 import {
   Test,
@@ -200,27 +199,23 @@ describeConformance(
       },
     );
 
-    it(
-      "should isolate request-scoped factory providers across overlapping context resolutions",
-      async () => {
-        const contexts = prepareContexts(testingModule, OVERLAP_REQUEST_COUNT);
+    it("should isolate request-scoped factory providers across overlapping context resolutions", async () => {
+      const contexts = prepareContexts(testingModule, OVERLAP_REQUEST_COUNT);
 
-        const payloads = await Promise.all(
-          contexts.map(({ contextId }) =>
-            testingModule.resolve<{ requestId: string }>(
-              ASYNC_REQUEST_SCOPED,
-              contextId,
-            ),
+      const payloads = await Promise.all(
+        contexts.map(({ contextId }) =>
+          testingModule.resolve<{ requestId: string }>(
+            ASYNC_REQUEST_SCOPED,
+            contextId,
           ),
-        );
+        ),
+      );
 
-        expect(payloads).toEqual(
-          contexts.map(({ request }) => ({ requestId: request.requestId })),
-        );
-        expect(new Set(payloads).size).toBe(contexts.length);
-      },
-      20000,
-    );
+      expect(payloads).toEqual(
+        contexts.map(({ request }) => ({ requestId: request.requestId })),
+      );
+      expect(new Set(payloads).size).toBe(contexts.length);
+    }, 20000);
 
     itAdapted(
       "ADR-012",
@@ -245,34 +240,36 @@ describeConformance(
       20000,
     );
 
-    it(
-      "should reuse a request-scoped factory provider for overlapping resolutions in the same context",
-      async () => {
-        const [{ contextId, request }] = prepareContexts(testingModule, 1) as [
-          { contextId: ReturnType<typeof createContextId>; request: { requestId: string } },
-        ];
+    it("should reuse a request-scoped factory provider for overlapping resolutions in the same context", async () => {
+      const [{ contextId, request }] = prepareContexts(testingModule, 1) as [
+        {
+          contextId: ReturnType<typeof createContextId>;
+          request: { requestId: string };
+        },
+      ];
 
-        const providers = await Promise.all(
-          Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
-            testingModule.resolve<{ requestId: string }>(
-              SAME_CONTEXT_REQUEST_SCOPED,
-              contextId,
-            ),
+      const providers = await Promise.all(
+        Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
+          testingModule.resolve<{ requestId: string }>(
+            SAME_CONTEXT_REQUEST_SCOPED,
+            contextId,
           ),
-        );
+        ),
+      );
 
-        expect(new Set(providers).size).toBe(1);
-        expect(providers[0]).toEqual({ requestId: request.requestId });
-      },
-      20000,
-    );
+      expect(new Set(providers).size).toBe(1);
+      expect(providers[0]).toEqual({ requestId: request.requestId });
+    }, 20000);
 
     itAdapted(
       "ADR-012",
       "should reuse an explicitly request-scoped consumer provider for overlapping resolutions in the same context",
       async () => {
         const [{ contextId, request }] = prepareContexts(testingModule, 1) as [
-          { contextId: ReturnType<typeof createContextId>; request: { requestId: string } },
+          {
+            contextId: ReturnType<typeof createContextId>;
+            request: { requestId: string };
+          },
         ];
 
         const providers = await Promise.all(
@@ -290,28 +287,24 @@ describeConformance(
       20000,
     );
 
-    it(
-      "should isolate request-scoped controllers during overlapping context resolutions",
-      async () => {
-        const contexts = prepareContexts(testingModule, OVERLAP_REQUEST_COUNT);
+    it("should isolate request-scoped controllers during overlapping context resolutions", async () => {
+      const contexts = prepareContexts(testingModule, OVERLAP_REQUEST_COUNT);
 
-        const controllers = await Promise.all(
-          contexts.map(({ contextId }) =>
-            testingModule.resolve(ParallelController, contextId),
-          ),
-        );
+      const controllers = await Promise.all(
+        contexts.map(({ contextId }) =>
+          testingModule.resolve(ParallelController, contextId),
+        ),
+      );
 
-        expect(new Set(controllers).size).toBe(contexts.length);
-        expect(controllers.map((controller) => controller.payload)).toEqual(
-          contexts.map(({ request }) => ({ requestId: request.requestId })),
-        );
-        expect(
-          controllers.map(
-            (controller) => controller.requestReader.request.requestId,
-          ),
-        ).toEqual(contexts.map(({ request }) => request.requestId));
-      },
-      20000,
-    );
+      expect(new Set(controllers).size).toBe(contexts.length);
+      expect(controllers.map((controller) => controller.payload)).toEqual(
+        contexts.map(({ request }) => ({ requestId: request.requestId })),
+      );
+      expect(
+        controllers.map(
+          (controller) => controller.requestReader.request.requestId,
+        ),
+      ).toEqual(contexts.map(({ request }) => request.requestId));
+    }, 20000);
   },
 );

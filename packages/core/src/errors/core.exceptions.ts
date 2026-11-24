@@ -1,4 +1,4 @@
-import { Scope } from "@bunest/common";
+import { Scope } from "../common/index";
 import { formatToken } from "./token-formatter";
 
 export class CoreBootstrapException extends Error {

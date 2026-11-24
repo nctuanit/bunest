@@ -7,6 +7,7 @@ Bunest exposes `ModuleRef` from `@bunest/core` so services can programmatically 
 `ModuleRef` is automatically available inside every module without extra registration:
 
 @@filename(plugin-runner.service.ts)
+
 ```ts
 import { Injectable, ModuleRef, type OnModuleInit } from "@bunest/core";
 import { EmailNotifier } from "./email-notifier.service";
@@ -34,15 +35,16 @@ export class PluginRunnerService implements OnModuleInit {
 
 ## `ModuleRef` Methods
 
-| Method | Sync / Async | Behavior |
-|---|---|---|
-| `get(token, { strict? })` | Sync | Retrieves an already-instantiated singleton. With `strict: true` *(default)*, respects the owning module's visibility rules. With `strict: false`, searches across the entire application graph. |
-| `resolve(token, requestContainer?, { strict? })` | Async | Resolves `SINGLETON`, `TRANSIENT` (fresh instance per call), or `REQUEST` (bound to the given `RequestContainer`) providers. |
-| `create(ClassType, requestContainer?)` | Async | Instantiates a class that was **not** registered in `providers`, injecting all of its constructor dependencies from the container. |
+| Method                                           | Sync / Async | Behavior                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `get(token, { strict? })`                        | Sync         | Retrieves an already-instantiated singleton. With `strict: true` _(default)_, respects the owning module's visibility rules. With `strict: false`, searches across the entire application graph. |
+| `resolve(token, requestContainer?, { strict? })` | Async        | Resolves `SINGLETON`, `TRANSIENT` (fresh instance per call), or `REQUEST` (bound to the given `RequestContainer`) providers.                                                                     |
+| `create(ClassType, requestContainer?)`           | Async        | Instantiates a class that was **not** registered in `providers`, injecting all of its constructor dependencies from the container.                                                               |
 
 ## Strict vs Global Lookup
 
 @@filename(global-lookup.service.ts)
+
 ```ts
 // Respects module encapsulation (default: strict = true)
 const localService = this.moduleRef.get(LocalService);

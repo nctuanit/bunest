@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/common";
+import { Inject, Injectable, Optional } from "@bunest/core";
 import { ResilienceEvents } from "../events/resilience-events.service";
 import { attachEventSink } from "../events/resilience.channels";
 import type {
@@ -295,7 +295,10 @@ function validateStages(
     spec.retry,
     (retry) =>
       new RetryPolicy(
-        mergeRetry(normalizeDefaultRetry(defaults.retry), normalizeRetry(retry)),
+        mergeRetry(
+          normalizeDefaultRetry(defaults.retry),
+          normalizeRetry(retry),
+        ),
       ),
   );
   check("timeout", spec.timeout, (timeout) => new TimeoutPolicy(timeout));

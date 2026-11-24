@@ -4,7 +4,7 @@ import {
   Logger,
   type ArgumentsHost,
   type RpcExceptionFilter,
-} from "@bunest/common";
+} from "@bunest/core";
 import { GrpcStatus } from "./enums";
 import type { GrpcMetadata } from "./grpc-metadata";
 
@@ -284,9 +284,10 @@ export class GrpcUnauthenticatedException extends GrpcException {
  * Default Promise-based RPC exception filter (ADR-008 zero-RxJS equivalent of
  * NestJS `BaseRpcExceptionFilter`).
  */
-export class BaseRpcExceptionFilter<T = any, R = any>
-  implements RpcExceptionFilter<T, R>
-{
+export class BaseRpcExceptionFilter<
+  T = any,
+  R = any,
+> implements RpcExceptionFilter<T, R> {
   protected static readonly logger = new Logger("RpcExceptionsHandler");
 
   catch(exception: T, _host: ArgumentsHost): Promise<R> {
@@ -311,7 +312,7 @@ export class BaseRpcExceptionFilter<T = any, R = any>
     return Promise.reject({ status, message: UNKNOWN_EXCEPTION_MESSAGE });
   }
 
-  isError(exception: any): exception is Error {
+  isError(exception: unknown): exception is Error {
     return Boolean(isPlainObjectLike(exception) && exception.message);
   }
 }
@@ -321,10 +322,10 @@ export class BaseRpcExceptionFilter<T = any, R = any>
  * `RpcException`, and unknown errors into canonical `GrpcExceptionBody` payloads.
  */
 @Catch()
-export class GrpcExceptionFilter implements RpcExceptionFilter<any, never> {
+export class GrpcExceptionFilter implements RpcExceptionFilter<unknown, never> {
   protected static readonly logger = new Logger("RpcExceptionsHandler");
 
-  catch(exception: any, _host: ArgumentsHost): Promise<never> {
+  catch(exception: unknown, _host: ArgumentsHost): Promise<never> {
     if (exception instanceof GrpcException) {
       const body: GrpcExceptionBody = {
         code: exception.getCode(),
@@ -341,13 +342,17 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any, never> {
     } satisfies GrpcExceptionBody);
   }
 
-  protected serializeRpcException(exception: RpcException): GrpcExceptionBody & Record<string, unknown> {
+  protected serializeRpcException(
+    exception: RpcException,
+  ): GrpcExceptionBody & Record<string, unknown> {
     const error = exception.getError();
     if (error instanceof Error && error !== exception) {
       if (!(error instanceof IntrinsicException)) {
         GrpcExceptionFilter.logger.error(error);
       }
-      const code = this.getErrorCode(error as unknown as Record<string, unknown>);
+      const code = this.getErrorCode(
+        error as unknown as Record<string, unknown>,
+      );
       return {
         code: typeof code === "number" ? code : GrpcStatus.UNKNOWN,
         message: UNKNOWN_EXCEPTION_MESSAGE,
@@ -371,7 +376,9 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any, never> {
     };
   }
 
-  protected getErrorCode(error: Record<string, unknown>): GrpcStatus | undefined {
+  protected getErrorCode(
+    error: Record<string, unknown>,
+  ): GrpcStatus | undefined {
     const { code, status } = error;
     if (typeof code === "number") {
       return code as GrpcStatus;

@@ -1,4 +1,4 @@
-import { parse } from "graphql";
+import { parse } from "../engine";
 import type {
   DefinitionsGeneratorOptions,
   GenerateOptions,

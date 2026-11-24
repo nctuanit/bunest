@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Catch,
@@ -9,7 +8,7 @@ import {
   UseGuards,
   type ArgumentsHost,
   type ExceptionFilter,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -99,7 +98,7 @@ describeConformance(
       await get("/guarded").expect(403);
     });
 
-    // BUNEST_BUG: Expected HTTP default error JSON body ({ statusCode: 500, message: "Internal server error" }) when a foreign/non-HTTP filter returns undefined without modifying ResponseContext; actual returns 500 with empty body because executeExceptionFilters() emits new Response(null, { status }) instead of delegating back to defaultFilter (packages/http/src/pipeline/exception-handler.ts).
+    // BUNEST_BUG: Expected HTTP default error JSON body ({ statusCode: 500, message: "Internal server error" }) when a foreign/non-HTTP filter returns undefined without modifying ResponseContext; actual returns 500 with empty body because executeExceptionFilters() emits new Response(null, { status }) instead of delegating back to defaultFilter (packages/core/src/http/pipeline/exception-handler.ts).
     it.skip("should answer the HTTP errors an async RPC-style filter leaves [ADR-008: Promise-based filter returning undefined replaces RxJS throwError() Observable]", async () => {
       app = await createFilteredApp(new AsyncRpcStyleFilter());
 

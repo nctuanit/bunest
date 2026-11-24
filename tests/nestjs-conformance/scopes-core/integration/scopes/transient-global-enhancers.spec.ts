@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -23,7 +22,7 @@ import {
   type PipeTransform,
   type Provider,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ExternalContextCreator,
   type BunestApplication,
@@ -41,7 +40,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketModule,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance, request } from "../../../_helpers";
 
 @Injectable()
@@ -292,7 +291,9 @@ describeConformance(
       describe("guard", () => {
         it("should deny the request when the global guard is transient", async () => {
           app = await createApp(
-            createModule([{ provide: APP_GUARD, useClass: TransientDenyGuard }]),
+            createModule([
+              { provide: APP_GUARD, useClass: TransientDenyGuard },
+            ]),
           );
 
           await request(app).get("/first").expect(403);
@@ -591,7 +592,7 @@ describeConformance(
         }
       };
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/websockets/src/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
+      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
       it.skip("should deny the message with a transient guard bound by class (arrow)", async () => {
         const reply = await send("arrow");
 
@@ -600,7 +601,7 @@ describeConformance(
         expect(reply.data?.message ?? reply.message).toContain("Forbidden");
       });
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/websockets/src/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
+      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
       it.skip("should deny the message with a transient guard bound by class (method)", async () => {
         const reply = await send("method");
 

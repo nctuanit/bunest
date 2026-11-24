@@ -1,7 +1,5 @@
-import "reflect-metadata";
-import net from "node:net";
 import { afterEach, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../../packages/core/src/common";
 import {
   GRPCHealthIndicator,
   HealthCheck,
@@ -109,7 +107,7 @@ describeConformance(
       "Uses Promise-based healthService stub instead of @grpc/grpc-js server",
     );
 
-    // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) NotServingError formats message as "The service is not serving (status: NOT_SERVING)" instead of "serving status: NOT_SERVING" (packages/observability/src/health/units.ts:111).
+    // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) NotServingError formats message as "The service is not serving (status: NOT_SERVING)" instead of "serving status: NOT_SERVING" (packages/observability/src/health/units.ts:111).
     it.skip("should be down when the service is NOT_SERVING", async () => {
       ctx = await startApp({
         healthService: {
@@ -135,7 +133,7 @@ describeConformance(
       expect(body.details).toEqual(details);
     });
 
-    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
     it.skip(
       adaptedTitle(
         ["ADR-001", "ADR-008"],
@@ -172,7 +170,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
     it.skip(
       adaptedTitle(
         ["ADR-001", "ADR-008"],
@@ -204,12 +202,13 @@ describeConformance(
         await ctx.close();
         ctx = undefined;
 
-        const probe = net.createServer();
-        await new Promise<void>((resolve) =>
-          probe.listen(0, "127.0.0.1", resolve),
-        );
-        const closedPort = (probe.address() as net.AddressInfo).port;
-        await new Promise<void>((resolve) => probe.close(() => resolve()));
+        const probe = Bun.listen({
+          hostname: "127.0.0.1",
+          port: 0,
+          socket: { data() {} },
+        });
+        const closedPort = probe.port;
+        probe.stop(true);
 
         ctx = await startApp({ url: `127.0.0.1:${closedPort}` });
         const tcpRes = await httpRequest(ctx.app).get("/health").expect(503);

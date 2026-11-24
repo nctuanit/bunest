@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@bunest/common";
+import { UnauthorizedException } from "@bunest/core";
 
 export class JwtException extends UnauthorizedException {
   public readonly inner?: Error;

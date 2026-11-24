@@ -1,9 +1,9 @@
-import type { LoggerService } from '@bunest/common';
-import type { PayloadCodecs } from '../codecs/payload-codecs';
-import type { Clock } from './clock.interface';
-import type { PayloadContext } from './payload-codec.interface';
-import type { ScheduleOccurrence, ScheduleSpec } from './schedule.interface';
-import type { ScheduleRecord, ScheduleStore } from './schedule-store.interface';
+import type { LoggerService } from "@bunest/core";
+import type { PayloadCodecs } from "../codecs/payload-codecs";
+import type { Clock } from "./clock.interface";
+import type { PayloadContext } from "./payload-codec.interface";
+import type { ScheduleOccurrence, ScheduleSpec } from "./schedule.interface";
+import type { ScheduleRecord, ScheduleStore } from "./schedule-store.interface";
 
 /**
  * A schedule the code declares (a decorator's, a queue definition's), which the `Scheduler` keeps in step with the
@@ -69,7 +69,7 @@ export interface DueOccurrence<S extends ScheduleSpec = ScheduleSpec> {
  * ```
  */
 export interface ScheduleSkip {
-  reason: 'missed' | 'overlap';
+  reason: "missed" | "overlap";
   /** The first occurrence it passed over (epoch milliseconds). */
   from: number;
   /** The last one. */
@@ -134,7 +134,7 @@ export interface SchedulerOptions<S extends ScheduleSpec = ScheduleSpec> {
   /** How its logs name things, such as `{ target: (name) => \`workflow "${name}"\`, targets: 'workflows' }`. */
   labels?: SchedulerLabels;
   /** Where it logs what it did (a deletion, a takeover) and what failed. Default: a Bunest `Logger`. */
-  logger?: Pick<LoggerService, 'log' | 'warn' | 'error'>;
+  logger?: Pick<LoggerService, "log" | "warn" | "error">;
 }
 
 /**

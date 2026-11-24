@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { serializeCookie } from "../../../../../../../packages/http/src";
+import { serializeCookie } from "../../../../../../../packages/core/src/http";
 import { describeConformance } from "../../../../../_helpers";
 
 describeConformance(
@@ -11,7 +10,7 @@ describeConformance(
     adrs: ["ADR-001"],
   },
   () => {
-    // BUNEST_BUG: serializeCookie does not default Path=/ when options.path is omitted (packages/http/src/security/cookie.ts:206-276) — returns "a=b" instead of "a=b; Path=/".
+    // BUNEST_BUG: serializeCookie does not default Path=/ when options.path is omitted (packages/core/src/http/security/cookie.ts:206-276) — returns "a=b" instead of "a=b; Path=/".
     it.skip('should default the path to "/"', () => {
       expect(serializeCookie("a", "b")).toBe("a=b; Path=/");
     });
@@ -37,12 +36,12 @@ describeConformance(
       expect(decodeURIComponent(encoded)).toBe(value);
     });
 
-    // BUNEST_BUG: serializeCookie lets encodeURIComponent throw URIError on lone surrogates instead of throwing TypeError (packages/http/src/security/cookie.ts:218).
+    // BUNEST_BUG: serializeCookie lets encodeURIComponent throw URIError on lone surrogates instead of throwing TypeError (packages/core/src/http/security/cookie.ts:218).
     it.skip("should reject values that are not well-formed strings", () => {
       expect(() => serializeCookie("a", "x\ud800y")).toThrow(TypeError);
     });
 
-    // BUNEST_BUG: serializeCookie emits attributes in a different order (Max-Age, Domain, Path instead of Path, Domain, Max-Age) (packages/http/src/security/cookie.ts:220-274).
+    // BUNEST_BUG: serializeCookie emits attributes in a different order (Max-Age, Domain, Path instead of Path, Domain, Max-Age) (packages/core/src/http/security/cookie.ts:220-274).
     it.skip("should serialize every attribute", () => {
       const serialized = serializeCookie("sid", "v", {
         path: "/app",
@@ -62,7 +61,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: serializeCookie matches sameSite/priority case-sensitively (silently drops "STRICT" and coerces "Low" / unknown priority) (packages/http/src/security/cookie.ts:252-273).
+    // BUNEST_BUG: serializeCookie matches sameSite/priority case-sensitively (silently drops "STRICT" and coerces "Low" / unknown priority) (packages/core/src/http/security/cookie.ts:252-273).
     it.skip("should normalize sameSite and priority casing", () => {
       expect(
         serializeCookie("a", "b", {
@@ -91,18 +90,14 @@ describeConformance(
       ).toBe("a=b; Path=/");
     });
 
-    it.each([
-      "",
-      "a b",
-      "a;b",
-      "a=b",
-      "a\r\nSet-Cookie: x",
-      "a,b",
-    ])("should reject the invalid name %j", (name) => {
-      expect(() => serializeCookie(name, "v")).toThrow(TypeError);
-    });
+    it.each(["", "a b", "a;b", "a=b", "a\r\nSet-Cookie: x", "a,b"])(
+      "should reject the invalid name %j",
+      (name) => {
+        expect(() => serializeCookie(name, "v")).toThrow(TypeError);
+      },
+    );
 
-    // BUNEST_BUG: serializeCookie does not reject non-ASCII or RFC 6265 separator characters like "é" and "(a)" in cookie names (packages/http/src/security/cookie.ts:209).
+    // BUNEST_BUG: serializeCookie does not reject non-ASCII or RFC 6265 separator characters like "é" and "(a)" in cookie names (packages/core/src/http/security/cookie.ts:209).
     it.skip.each(["\u00e9", "(a)"])(
       "should reject the invalid name %j",
       (name) => {
@@ -110,7 +105,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: serializeCookie coerces non-string values via encodeURIComponent instead of rejecting with TypeError (packages/http/src/security/cookie.ts:218).
+    // BUNEST_BUG: serializeCookie coerces non-string values via encodeURIComponent instead of rejecting with TypeError (packages/core/src/http/security/cookie.ts:218).
     it.skip("should reject non-string values", () => {
       expect(() => serializeCookie("a", 1 as any)).toThrow(TypeError);
       expect(() => serializeCookie("a", undefined as any)).toThrow(TypeError);
@@ -123,7 +118,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: serializeCookie only rejects CR/LF in path and allows ";", non-ASCII, and NUL characters (enabling Set-Cookie attribute injection) (packages/http/src/security/cookie.ts:234-239).
+    // BUNEST_BUG: serializeCookie only rejects CR/LF in path and allows ";", non-ASCII, and NUL characters (enabling Set-Cookie attribute injection) (packages/core/src/http/security/cookie.ts:234-239).
     it.skip.each(["/a;b", "/\u00e9", "/\u0000"])(
       "should reject the invalid path %j",
       (path) => {
@@ -138,7 +133,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: serializeCookie only rejects CR/LF in domain and allows "; HttpOnly", spaces, invalid labels, and empty string (enabling Set-Cookie attribute injection) (packages/http/src/security/cookie.ts:227-233).
+    // BUNEST_BUG: serializeCookie only rejects CR/LF in domain and allows "; HttpOnly", spaces, invalid labels, and empty string (enabling Set-Cookie attribute injection) (packages/core/src/http/security/cookie.ts:227-233).
     it.skip.each([
       "example.com; HttpOnly",
       "exa mple.com",
@@ -157,7 +152,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: serializeCookie truncates float maxAge via Math.floor and does not throw TypeError for non-integer/unsafe/non-number maxAge values (packages/http/src/security/cookie.ts:221-225).
+    // BUNEST_BUG: serializeCookie truncates float maxAge via Math.floor and does not throw TypeError for non-integer/unsafe/non-number maxAge values (packages/core/src/http/security/cookie.ts:221-225).
     it.skip("should reject a non-integer maxAge", () => {
       for (const maxAge of [1.5, NaN, Infinity, 1e21, "10" as any]) {
         expect(() => serializeCookie("a", "b", { maxAge })).toThrow(TypeError);
@@ -165,7 +160,7 @@ describeConformance(
       expect(serializeCookie("a", "b", { maxAge: 0 })).toContain("; Max-Age=0");
     });
 
-    // BUNEST_BUG: serializeCookie emits "Expires=Invalid Date" instead of throwing TypeError for invalid Date or non-Date expires values (packages/http/src/security/cookie.ts:241-244).
+    // BUNEST_BUG: serializeCookie emits "Expires=Invalid Date" instead of throwing TypeError for invalid Date or non-Date expires values (packages/core/src/http/security/cookie.ts:241-244).
     it.skip("should reject an invalid expires date", () => {
       expect(() =>
         serializeCookie("a", "b", { expires: new Date("invalid") }),
@@ -175,7 +170,7 @@ describeConformance(
       ).toThrow(TypeError);
     });
 
-    // BUNEST_BUG: serializeCookie silently ignores unknown sameSite values and coerces unknown priority values to "Low" instead of throwing TypeError (packages/http/src/security/cookie.ts:252-273).
+    // BUNEST_BUG: serializeCookie silently ignores unknown sameSite values and coerces unknown priority values to "Low" instead of throwing TypeError (packages/core/src/http/security/cookie.ts:252-273).
     it.skip("should reject unknown sameSite and priority values", () => {
       expect(() =>
         serializeCookie("a", "b", { sameSite: "Lax; Domain=evil" as any }),
@@ -185,7 +180,7 @@ describeConformance(
       ).toThrow(TypeError);
     });
 
-    // BUNEST_BUG: serializeCookie does not validate sameSite/priority against an allowlist and fails to throw TypeError on inherited property names (packages/http/src/security/cookie.ts:252-273).
+    // BUNEST_BUG: serializeCookie does not validate sameSite/priority against an allowlist and fails to throw TypeError on inherited property names (packages/core/src/http/security/cookie.ts:252-273).
     it.skip.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
       "should reject the inherited property name %j as sameSite or priority",
       (value) => {
@@ -198,7 +193,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: serializeCookie allows sameSite: "none" without secure: true instead of throwing TypeError (packages/http/src/security/cookie.ts:252-264).
+    // BUNEST_BUG: serializeCookie allows sameSite: "none" without secure: true instead of throwing TypeError (packages/core/src/http/security/cookie.ts:252-264).
     it.skip('should require "secure" for sameSite "none", which browsers reject otherwise', () => {
       expect(() => serializeCookie("a", "b", { sameSite: "none" })).toThrow(
         /requires "secure: true"/,
@@ -211,13 +206,17 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: serializeCookie allows partitioned: true without secure: true instead of throwing TypeError (packages/http/src/security/cookie.ts:250-251).
+    // BUNEST_BUG: serializeCookie allows partitioned: true without secure: true instead of throwing TypeError (packages/core/src/http/security/cookie.ts:250-251).
     it.skip('should require "secure" for partitioned cookies, which browsers reject otherwise', () => {
       expect(() => serializeCookie("a", "b", { partitioned: true })).toThrow(
         /requires "secure: true"/,
       );
       expect(
-        serializeCookie("a", "b", { path: "/", partitioned: true, secure: true }),
+        serializeCookie("a", "b", {
+          path: "/",
+          partitioned: true,
+          secure: true,
+        }),
       ).toBe("a=b; Path=/; Secure; Partitioned");
     });
   },

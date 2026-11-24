@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
   "description": "Minimal NestJS-style Bunest application running natively on Bun.serve()",
   "scripts": {
     "start": "bun run src/main.ts",
     "dev": "bun --watch src/main.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
-    "@bunest/core": "workspace:*",
-    "reflect-metadata": "^0.2.2"
+    "@bunest/core": "workspace:*"
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"

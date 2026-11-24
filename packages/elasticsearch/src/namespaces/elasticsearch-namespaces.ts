@@ -1,36 +1,45 @@
 import type {
+  AcknowledgedResponse,
   BulkResponse,
+  CatResponse,
+  ClusterHealthResponse,
   EsParams,
+  EsResponse,
+  EsRestResponse,
+  IndicesGetMappingResponse,
+  IngestGetPipelineResponse,
   SearchRequest,
   SearchResponse,
+  SqlQueryResponse,
   TransportRequestOptions,
+  TransportRequestParams,
   TransportResult,
 } from "../interfaces/elasticsearch-types.interface";
 import type { ElasticsearchTransport } from "../transport/elasticsearch-transport";
 
-export function encodeSegment(value: string | string[]): string {
+export function encodeSegment(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.map((v) => encodeURIComponent(v)).join(",");
+    return value.map((v) => encodeURIComponent(String(v))).join(",");
   }
-  return encodeURIComponent(value);
+  return encodeURIComponent(String(value));
 }
 
 export function splitParams(
-  params: Record<string, any> | undefined,
+  params: Record<string, unknown> | undefined,
   pathKeys: readonly string[],
   bodyKeys?: readonly string[],
-): { querystring: Record<string, any>; body?: Record<string, any> } {
-  const querystring: Record<string, any> = {};
+): { querystring: Record<string, unknown>; body?: Record<string, unknown> } {
+  const querystring: Record<string, unknown> = {};
   const pathSet = new Set(pathKeys);
   const bodySet = bodyKeys ? new Set(bodyKeys) : null;
-  let body: Record<string, any> | undefined;
+  let body: Record<string, unknown> | undefined;
 
   if (!params) {
     return { querystring };
   }
 
   if (params.body !== undefined) {
-    body = params.body;
+    body = params.body as Record<string, unknown>;
   }
 
   for (const [k, v] of Object.entries(params)) {
@@ -48,18 +57,24 @@ export function splitParams(
   return { querystring, body };
 }
 
-export async function dispatchRequest<T = any>(
+export function dispatchRequest<
+  T = EsRestResponse,
+  TOptions extends TransportRequestOptions | undefined = undefined,
+>(
   transport: ElasticsearchTransport,
-  req: {
-    method: string;
-    path: string;
-    querystring?: Record<string, any>;
-    body?: unknown;
-    ndjson?: boolean;
-    headers?: Record<string, any>;
-  },
+  req: TransportRequestParams,
+  options?: TOptions,
+): Promise<EsResponse<T, TOptions>>;
+export function dispatchRequest<T = EsRestResponse>(
+  transport: ElasticsearchTransport,
+  req: TransportRequestParams,
   options?: TransportRequestOptions,
-): Promise<any> {
+): Promise<T | TransportResult<T>>;
+export async function dispatchRequest<T = EsRestResponse>(
+  transport: ElasticsearchTransport,
+  req: TransportRequestParams,
+  options?: TransportRequestOptions,
+): Promise<T | TransportResult<T>> {
   const res = await transport.request<T>(req, options);
   return options?.meta ? res : res.body;
 }
@@ -67,24 +82,33 @@ export async function dispatchRequest<T = any>(
 export class IndicesApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  create(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  create<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["index"],
       ["aliases", "mappings", "settings"],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
-      { method: "PUT", path: `/${encodeSegment(params.index)}`, querystring, body },
+      {
+        method: "PUT",
+        path: `/${encodeSegment(params.index)}`,
+        querystring,
+        body,
+      },
       options,
     );
   }
 
-  delete(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  delete<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
-      { method: "DELETE", path: `/${encodeSegment(params.index)}`, querystring },
+      {
+        method: "DELETE",
+        path: `/${encodeSegment(params.index)}`,
+        querystring,
+      },
       options,
     );
   }
@@ -102,40 +126,49 @@ export class IndicesApi {
     return options?.meta ? { ...res, body: exists } : exists;
   }
 
-  get(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  get<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: `/${encodeSegment(params.index)}`, querystring },
       options,
     );
   }
 
-  refresh(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  refresh<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_refresh`
       : "/_refresh";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring },
       options,
     );
   }
 
-  flush(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  flush<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_flush`
       : "/_flush";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring },
       options,
     );
   }
 
-  putMapping(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  putMapping<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["index"],
@@ -152,7 +185,7 @@ export class IndicesApi {
         "runtime",
       ],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -164,31 +197,40 @@ export class IndicesApi {
     );
   }
 
-  getMapping(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getMapping<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<IndicesGetMappingResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_mapping`
       : "/_mapping";
-    return dispatchRequest(
+    return dispatchRequest<IndicesGetMappingResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  putSettings(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  putSettings<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(params, ["index"], ["settings"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_settings`
       : "/_settings";
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       { method: "PUT", path, querystring, body },
       options,
     );
   }
 
-  getSettings(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getSettings<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index", "name"]);
     let path = params.index
       ? `/${encodeSegment(params.index)}/_settings`
@@ -196,14 +238,17 @@ export class IndicesApi {
     if (params.name) {
       path += `/${encodeSegment(params.name)}`;
     }
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  stats(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  stats<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index", "metric"]);
     let path = params.index
       ? `/${encodeSegment(params.index)}/_stats`
@@ -211,62 +256,83 @@ export class IndicesApi {
     if (params.metric) {
       path += `/${encodeSegment(params.metric)}`;
     }
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  open(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  open<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
-      { method: "POST", path: `/${encodeSegment(params.index)}/_open`, querystring },
+      {
+        method: "POST",
+        path: `/${encodeSegment(params.index)}/_open`,
+        querystring,
+      },
       options,
     );
   }
 
-  close(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  close<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
-      { method: "POST", path: `/${encodeSegment(params.index)}/_close`, querystring },
+      {
+        method: "POST",
+        path: `/${encodeSegment(params.index)}/_close`,
+        querystring,
+      },
       options,
     );
   }
 
-  forcemerge(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  forcemerge<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_forcemerge`
       : "/_forcemerge";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring },
       options,
     );
   }
 
-  clearCache(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  clearCache<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/${encodeSegment(params.index)}/_cache/clear`
       : "/_cache/clear";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring },
       options,
     );
   }
 
-  putAlias(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  putAlias<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["index", "name"],
-      ["filter", "index_routing", "is_hidden", "is_write_index", "routing", "search_routing"],
+      [
+        "filter",
+        "index_routing",
+        "is_hidden",
+        "is_write_index",
+        "routing",
+        "search_routing",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -278,9 +344,12 @@ export class IndicesApi {
     );
   }
 
-  deleteAlias(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  deleteAlias<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index", "name"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "DELETE",
@@ -291,11 +360,14 @@ export class IndicesApi {
     );
   }
 
-  getAlias(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getAlias<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index", "name"]);
     const prefix = params.index ? `/${encodeSegment(params.index)}` : "";
     const suffix = params.name ? `/${encodeSegment(params.name)}` : "";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: `${prefix}/_alias${suffix}`, querystring },
       options,
@@ -317,38 +389,66 @@ export class IndicesApi {
     return options?.meta ? { ...res, body: exists } : exists;
   }
 
-  updateAliases(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  updateAliases<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(params, [], ["actions"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_aliases", querystring, body },
       options,
     );
   }
 
-  analyze(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  analyze<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["index"],
-      ["analyzer", "attributes", "char_filter", "explain", "field", "filter", "normalizer", "text", "tokenizer"],
+      [
+        "analyzer",
+        "attributes",
+        "char_filter",
+        "explain",
+        "field",
+        "filter",
+        "normalizer",
+        "text",
+        "tokenizer",
+      ],
     );
     const path = params.index
       ? `/${encodeSegment(params.index)}/_analyze`
       : "/_analyze";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring, body },
       options,
     );
   }
 
-  putIndexTemplate(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  putIndexTemplate<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["name"],
-      ["index_patterns", "template", "composed_of", "priority", "version", "_meta", "data_stream", "allow_auto_create"],
+      [
+        "index_patterns",
+        "template",
+        "composed_of",
+        "priority",
+        "version",
+        "_meta",
+        "data_stream",
+        "allow_auto_create",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -360,21 +460,27 @@ export class IndicesApi {
     );
   }
 
-  getIndexTemplate(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getIndexTemplate<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["name"]);
     const path = params.name
       ? `/_index_template/${encodeSegment(params.name)}`
       : "/_index_template";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  deleteIndexTemplate(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  deleteIndexTemplate<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["name"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "DELETE",
@@ -389,85 +495,108 @@ export class IndicesApi {
 export class ClusterApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  health(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  health<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<ClusterHealthResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/_cluster/health/${encodeSegment(params.index)}`
       : "/_cluster/health";
-    return dispatchRequest(
+    return dispatchRequest<ClusterHealthResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  state(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  state<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["metric", "index"]);
     let path = "/_cluster/state";
     if (params.metric) path += `/${encodeSegment(params.metric)}`;
     if (params.index) path += `/${encodeSegment(params.index)}`;
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  stats(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  stats<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["node_id"]);
     const path = params.node_id
       ? `/_cluster/stats/nodes/${encodeSegment(params.node_id)}`
       : "/_cluster/stats";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  getSettings(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getSettings<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_cluster/settings", querystring },
       options,
     );
   }
 
-  putSettings(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  putSettings<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["persistent", "transient"],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       { method: "PUT", path: "/_cluster/settings", querystring, body },
       options,
     );
   }
 
-  pendingTasks(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  pendingTasks<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_cluster/pending_tasks", querystring },
       options,
     );
   }
 
-  allocationExplain(
+  allocationExplain<TOptions extends TransportRequestOptions | undefined = undefined>(
     params: EsParams = {},
-    options?: TransportRequestOptions,
-  ): Promise<any> {
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["index", "shard", "primary", "current_node"],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "POST", path: "/_cluster/allocation/explain", querystring, body },
+      {
+        method: "POST",
+        path: "/_cluster/allocation/explain",
+        querystring,
+        body,
+      },
       options,
     );
   }
@@ -476,75 +605,96 @@ export class ClusterApi {
 export class CatApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  indices(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  indices<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/_cat/indices/${encodeSegment(params.index)}`
       : "/_cat/indices";
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  health(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  health<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_cat/health", querystring },
       options,
     );
   }
 
-  nodes(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  nodes<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_cat/nodes", querystring },
       options,
     );
   }
 
-  shards(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  shards<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/_cat/shards/${encodeSegment(params.index)}`
       : "/_cat/shards";
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  count(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  count<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, ["index"]);
     const path = params.index
       ? `/_cat/count/${encodeSegment(params.index)}`
       : "/_cat/count";
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  aliases(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  aliases<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, ["name"]);
     const path = params.name
       ? `/_cat/aliases/${encodeSegment(params.name)}`
       : "/_cat/aliases";
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  tasks(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  tasks<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<CatResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<CatResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_cat/tasks", querystring },
       options,
@@ -555,13 +705,16 @@ export class CatApi {
 export class IngestApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  putPipeline(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  putPipeline<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["id"],
       ["description", "processors", "on_failure", "version", "_meta"],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -573,21 +726,27 @@ export class IngestApi {
     );
   }
 
-  getPipeline(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getPipeline<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<IngestGetPipelineResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
     const path = params.id
       ? `/_ingest/pipeline/${encodeSegment(params.id)}`
       : "/_ingest/pipeline";
-    return dispatchRequest(
+    return dispatchRequest<IngestGetPipelineResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  deletePipeline(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  deletePipeline<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "DELETE",
@@ -598,7 +757,10 @@ export class IngestApi {
     );
   }
 
-  simulate(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  simulate<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["id"],
@@ -607,7 +769,7 @@ export class IngestApi {
     const path = params.id
       ? `/_ingest/pipeline/${encodeSegment(params.id)}/_simulate`
       : "/_ingest/pipeline/_simulate";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring, body },
       options,
@@ -618,30 +780,37 @@ export class IngestApi {
 export class TasksApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  get(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  get<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["task_id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "GET", path: `/_tasks/${encodeSegment(params.task_id)}`, querystring },
+      {
+        method: "GET",
+        path: `/_tasks/${encodeSegment(params.task_id)}`,
+        querystring,
+      },
       options,
     );
   }
 
-  list(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  list<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams = {}, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_tasks", querystring },
       options,
     );
   }
 
-  cancel(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  cancel<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["task_id"]);
     const path = params.task_id
       ? `/_tasks/${encodeSegment(params.task_id)}/_cancel`
       : "/_tasks/_cancel";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring },
       options,
@@ -652,25 +821,28 @@ export class TasksApi {
 export class NodesApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  info(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  info<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams = {}, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["node_id", "metric"]);
     let path = "/_nodes";
     if (params.node_id) path += `/${encodeSegment(params.node_id)}`;
     if (params.metric) path += `/${encodeSegment(params.metric)}`;
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  stats(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  stats<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["node_id", "metric"]);
     let path = params.node_id
       ? `/_nodes/${encodeSegment(params.node_id)}/stats`
       : "/_nodes/stats";
     if (params.metric) path += `/${encodeSegment(params.metric)}`;
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
@@ -681,13 +853,16 @@ export class NodesApi {
 export class SnapshotApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  createRepository(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  createRepository<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["repository"],
       ["type", "settings", "verify"],
     );
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -699,25 +874,34 @@ export class SnapshotApi {
     );
   }
 
-  getRepository(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getRepository<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["repository"]);
     const path = params.repository
       ? `/_snapshot/${encodeSegment(params.repository)}`
       : "/_snapshot";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path, querystring },
       options,
     );
   }
 
-  create(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  create<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["repository", "snapshot"],
-      ["indices", "ignore_unavailable", "include_global_state", "metadata", "partial"],
+      [
+        "indices",
+        "ignore_unavailable",
+        "include_global_state",
+        "metadata",
+        "partial",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       {
         method: "PUT",
@@ -729,9 +913,9 @@ export class SnapshotApi {
     );
   }
 
-  get(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  get<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["repository", "snapshot"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       {
         method: "GET",
@@ -742,9 +926,9 @@ export class SnapshotApi {
     );
   }
 
-  delete(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  delete<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring } = splitParams(params, ["repository", "snapshot"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
       {
         method: "DELETE",
@@ -755,13 +939,19 @@ export class SnapshotApi {
     );
   }
 
-  restore(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  restore<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["repository", "snapshot"],
-      ["indices", "ignore_unavailable", "include_global_state", "rename_pattern", "rename_replacement"],
+      [
+        "indices",
+        "ignore_unavailable",
+        "include_global_state",
+        "rename_pattern",
+        "rename_replacement",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       {
         method: "POST",
@@ -777,43 +967,52 @@ export class SnapshotApi {
 export class SecurityApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  authenticate(options?: TransportRequestOptions): Promise<any> {
-    return dispatchRequest(
+  authenticate<TOptions extends TransportRequestOptions | undefined = undefined>(options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_security/_authenticate" },
       options,
     );
   }
 
-  createApiKey(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  createApiKey<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["name", "expiration", "role_descriptors", "metadata"],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_security/api_key", querystring, body },
       options,
     );
   }
 
-  getApiKey(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getApiKey<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, []);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "GET", path: "/_security/api_key", querystring },
       options,
     );
   }
 
-  invalidateApiKey(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  invalidateApiKey<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["id", "ids", "name", "owner", "realm_name", "username"],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "DELETE", path: "/_security/api_key", querystring, body },
       options,
@@ -824,35 +1023,49 @@ export class SecurityApi {
 export class SqlApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  query(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  query<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<SqlQueryResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
-      ["query", "cursor", "fetch_size", "filter", "params", "time_zone", "columnar"],
+      [
+        "query",
+        "cursor",
+        "fetch_size",
+        "filter",
+        "params",
+        "time_zone",
+        "columnar",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<SqlQueryResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_sql", querystring, body },
       options,
     );
   }
 
-  clearCursor(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  clearCursor<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(params, [], ["cursor"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_sql/close", querystring, body },
       options,
     );
   }
 
-  translate(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  translate<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["query", "fetch_size", "filter", "params"],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_sql/translate", querystring, body },
       options,
@@ -863,46 +1076,72 @@ export class SqlApi {
 export class EsqlApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  query(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  query<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<SqlQueryResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
       ["query", "filter", "params", "columnar", "locale"],
     );
-    return dispatchRequest(
+    return dispatchRequest<SqlQueryResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_query", querystring, body },
       options,
     );
   }
 
-  asyncQuery(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  asyncQuery<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       [],
-      ["query", "filter", "params", "wait_for_completion_timeout", "keep_alive"],
+      [
+        "query",
+        "filter",
+        "params",
+        "wait_for_completion_timeout",
+        "keep_alive",
+      ],
     );
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path: "/_query/async", querystring, body },
       options,
     );
   }
 
-  asyncQueryGet(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  asyncQueryGet<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "GET", path: `/_query/async/${encodeSegment(params.id)}`, querystring },
+      {
+        method: "GET",
+        path: `/_query/async/${encodeSegment(params.id)}`,
+        querystring,
+      },
       options,
     );
   }
 
-  asyncQueryDelete(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  asyncQueryDelete<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "DELETE", path: `/_query/async/${encodeSegment(params.id)}`, querystring },
+      {
+        method: "DELETE",
+        path: `/_query/async/${encodeSegment(params.id)}`,
+        querystring,
+      },
       options,
     );
   }
@@ -911,7 +1150,10 @@ export class EsqlApi {
 export class AsyncSearchApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  submit(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  submit<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring, body } = splitParams(
       params,
       ["index"],
@@ -920,36 +1162,48 @@ export class AsyncSearchApi {
     const path = params.index
       ? `/${encodeSegment(params.index)}/_async_search`
       : "/_async_search";
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
       { method: "POST", path, querystring, body },
       options,
     );
   }
 
-  get(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  get<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "GET", path: `/_async_search/${encodeSegment(params.id)}`, querystring },
+      {
+        method: "GET",
+        path: `/_async_search/${encodeSegment(params.id)}`,
+        querystring,
+      },
       options,
     );
   }
 
-  status(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  status<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "GET", path: `/_async_search/status/${encodeSegment(params.id)}`, querystring },
+      {
+        method: "GET",
+        path: `/_async_search/status/${encodeSegment(params.id)}`,
+        querystring,
+      },
       options,
     );
   }
 
-  delete(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  delete<TOptions extends TransportRequestOptions | undefined = undefined>(params: EsParams, options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["id"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "DELETE", path: `/_async_search/${encodeSegment(params.id)}`, querystring },
+      {
+        method: "DELETE",
+        path: `/_async_search/${encodeSegment(params.id)}`,
+        querystring,
+      },
       options,
     );
   }
@@ -958,34 +1212,60 @@ export class AsyncSearchApi {
 export class IlmApi {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  putLifecycle(params: EsParams, options?: TransportRequestOptions): Promise<any> {
+  putLifecycle<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
     const { querystring, body } = splitParams(params, ["policy"], ["policy"]);
-    return dispatchRequest(
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
       this.transport,
-      { method: "PUT", path: `/_ilm/policy/${encodeSegment(params.policy)}`, querystring, body: params.body ?? params },
+      {
+        method: "PUT",
+        path: `/_ilm/policy/${encodeSegment(params.policy)}`,
+        querystring,
+        body: params.body ?? params,
+      },
       options,
     );
   }
 
-  getLifecycle(params: EsParams = {}, options?: TransportRequestOptions): Promise<any> {
+  getLifecycle<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams = {},
+    options?: TOptions,
+  ): Promise<EsResponse<EsRestResponse, TOptions>> {
     const { querystring } = splitParams(params, ["policy"]);
     const path = params.policy
       ? `/_ilm/policy/${encodeSegment(params.policy)}`
       : "/_ilm/policy";
-    return dispatchRequest(this.transport, { method: "GET", path, querystring }, options);
-  }
-
-  deleteLifecycle(params: EsParams, options?: TransportRequestOptions): Promise<any> {
-    const { querystring } = splitParams(params, ["policy"]);
-    return dispatchRequest(
+    return dispatchRequest<EsRestResponse, TOptions>(
       this.transport,
-      { method: "DELETE", path: `/_ilm/policy/${encodeSegment(params.policy)}`, querystring },
+      { method: "GET", path, querystring },
       options,
     );
   }
 
-  getStatus(options?: TransportRequestOptions): Promise<any> {
-    return dispatchRequest(this.transport, { method: "GET", path: "/_ilm/status" }, options);
+  deleteLifecycle<TOptions extends TransportRequestOptions | undefined = undefined>(
+    params: EsParams,
+    options?: TOptions,
+  ): Promise<EsResponse<AcknowledgedResponse, TOptions>> {
+    const { querystring } = splitParams(params, ["policy"]);
+    return dispatchRequest<AcknowledgedResponse, TOptions>(
+      this.transport,
+      {
+        method: "DELETE",
+        path: `/_ilm/policy/${encodeSegment(params.policy)}`,
+        querystring,
+      },
+      options,
+    );
+  }
+
+  getStatus<TOptions extends TransportRequestOptions | undefined = undefined>(options?: TOptions): Promise<EsResponse<EsRestResponse, TOptions>> {
+    return dispatchRequest<EsRestResponse, TOptions>(
+      this.transport,
+      { method: "GET", path: "/_ilm/status" },
+      options,
+    );
   }
 }
 
@@ -995,19 +1275,22 @@ export class RestNamespaceApi {
     readonly basePath: string,
   ) {}
 
-  request<T = any>(
+  request<
+    T = EsRestResponse,
+    TOptions extends TransportRequestOptions | undefined = undefined,
+  >(
     method: string,
     subPath = "",
     params?: EsParams,
-    options?: TransportRequestOptions,
-  ): Promise<T> {
+    options?: TOptions,
+  ): Promise<EsResponse<T, TOptions>> {
     const normalizedSub = subPath
       ? subPath.startsWith("/")
         ? subPath
         : `/${subPath}`
       : "";
     const { querystring, body } = splitParams(params, []);
-    return dispatchRequest<T>(
+    return dispatchRequest<T, TOptions>(
       this.transport,
       {
         method,
@@ -1020,9 +1303,11 @@ export class RestNamespaceApi {
   }
 }
 
-export interface BulkHelperOptions<T = any> {
+export interface BulkHelperOptions<T = unknown> {
   datasource: Iterable<T> | AsyncIterable<T>;
-  onDocument: (doc: T) => Record<string, any> | Array<Record<string, any>>;
+  onDocument: (
+    doc: T,
+  ) => Record<string, unknown> | Array<Record<string, unknown>>;
   flushBytes?: number;
   refreshOnCompletion?: boolean | string;
   onDrop?: (doc: T) => void;
@@ -1041,14 +1326,16 @@ export interface BulkHelperResult {
 export class ElasticsearchHelpers {
   constructor(private readonly transport: ElasticsearchTransport) {}
 
-  async bulk<T = any>(options: BulkHelperOptions<T>): Promise<BulkHelperResult> {
+  async bulk<T = unknown>(
+    options: BulkHelperOptions<T>,
+  ): Promise<BulkHelperResult> {
     const started = performance.now();
     const flushBytes = options.flushBytes ?? 5 * 1024 * 1024;
     let total = 0;
     let successful = 0;
     let failed = 0;
     let bytes = 0;
-    let batch: any[] = [];
+    let batch: unknown[] = [];
     let batchBytes = 0;
 
     const flush = async () => {
@@ -1067,7 +1354,9 @@ export class ElasticsearchHelpers {
       });
       const items = res.body?.items ?? [];
       for (const item of items) {
-        const opResult = Object.values(item)[0] as Record<string, any> | undefined;
+        const opResult = Object.values(item)[0] as
+          | Record<string, unknown>
+          | undefined;
         if (opResult?.error) {
           failed += 1;
         } else {
@@ -1123,7 +1412,16 @@ export class ElasticsearchHelpers {
     const { querystring, body } = splitParams(
       { ...params, scroll: scrollTtl },
       ["index"],
-      ["query", "aggs", "aggregations", "from", "size", "sort", "_source", "highlight"],
+      [
+        "query",
+        "aggs",
+        "aggregations",
+        "from",
+        "size",
+        "sort",
+        "_source",
+        "highlight",
+      ],
     );
     const searchPath = params.index
       ? `/${encodeSegment(params.index)}/_search`
@@ -1176,7 +1474,16 @@ export class ElasticsearchHelpers {
     const { querystring, body } = splitParams(
       { ...params, scroll: scrollTtl },
       ["index"],
-      ["query", "aggs", "aggregations", "from", "size", "sort", "_source", "highlight"],
+      [
+        "query",
+        "aggs",
+        "aggregations",
+        "from",
+        "size",
+        "sort",
+        "_source",
+        "highlight",
+      ],
     );
     const searchPath = params.index
       ? `/${encodeSegment(params.index)}/_search`
@@ -1197,7 +1504,9 @@ export class ElasticsearchHelpers {
             : (res.hits.total?.value ?? res.hits.hits.length);
         const documents = res.hits.hits
           .map((h: { _source?: TDocument }) => h._source)
-          .filter((s: TDocument | undefined): s is TDocument => s !== undefined);
+          .filter(
+            (s: TDocument | undefined): s is TDocument => s !== undefined,
+          );
         yield { documents, total, scrollId };
         if (!scrollId) break;
         res = await dispatchRequest<SearchResponse<TDocument>>(this.transport, {
@@ -1226,17 +1535,29 @@ export class ElasticsearchHelpers {
     const { querystring, body } = splitParams(
       params,
       ["index"],
-      ["query", "aggs", "aggregations", "from", "size", "sort", "_source", "highlight"],
+      [
+        "query",
+        "aggs",
+        "aggregations",
+        "from",
+        "size",
+        "sort",
+        "_source",
+        "highlight",
+      ],
     );
     const searchPath = params.index
       ? `/${encodeSegment(params.index)}/_search`
       : "/_search";
-    const res = await dispatchRequest<SearchResponse<TDocument>>(this.transport, {
-      method: "POST",
-      path: searchPath,
-      querystring,
-      body,
-    });
+    const res = await dispatchRequest<SearchResponse<TDocument>>(
+      this.transport,
+      {
+        method: "POST",
+        path: searchPath,
+        querystring,
+        body,
+      },
+    );
     return (res.hits?.hits ?? [])
       .map((h: { _source?: TDocument }) => h._source)
       .filter((s: TDocument | undefined): s is TDocument => s !== undefined);

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   createSandbox,
@@ -264,7 +263,9 @@ describeConformance(
           }),
         );
 
-        await expect(client.connect()).rejects.toThrow("NOPERM subscribe failed");
+        await expect(client.connect()).rejects.toThrow(
+          "NOPERM subscribe failed",
+        );
         await expect(client.connect()).resolves.toBeUndefined();
         expect(subscribeCalls).toBe(2);
       });
@@ -273,7 +274,10 @@ describeConformance(
       it.skip("transitions client status and notifies onStatus listeners on connect() and close()", async () => {
         const bus = createMockRedisBus();
         const client = trackClient(
-          new RedisClientProxy({ pubClient: bus.createClient(), clientId: "st-1" }),
+          new RedisClientProxy({
+            pubClient: bus.createClient(),
+            clientId: "st-1",
+          }),
         );
         const statuses: ClientStatus[] = [];
         const off = client.onStatus((s) => statuses.push(s));

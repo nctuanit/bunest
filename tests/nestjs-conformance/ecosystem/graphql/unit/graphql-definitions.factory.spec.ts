@@ -1,8 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  ensureDir,
+  join,
+  removePath,
+} from "../../../../../packages/core/src";
 import { GraphQLDefinitionsFactory } from "../../../../../packages/graphql/src";
 import { describeConformance } from "../../../_helpers/index";
 
@@ -19,17 +20,19 @@ describeConformance(
     let directory: string;
 
     beforeEach(async () => {
-      directory = await mkdtemp(
-        join(tmpdir(), "nestjs-graphql-definitions-"),
+      directory = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `nestjs-graphql-definitions-${crypto.randomUUID()}`,
       );
+      await ensureDir(directory);
     });
 
     afterEach(async () => {
-      await rm(directory, { force: true, recursive: true });
+      await removePath(directory, { force: true, recursive: true });
     });
 
     it("generates class definitions from type path glob patterns", async () => {
-      await writeFile(
+      await Bun.write(
         join(directory, "schema.graphql"),
         "type Query { ok: Boolean }",
       );
@@ -44,7 +47,7 @@ describeConformance(
         debug: false,
       });
 
-      const generated = await readFile(outputPath, "utf8");
+      const generated = await Bun.file(outputPath).text();
       expect(generated).toContain("export abstract class IQuery");
       expect(generated).toContain("ok");
     });
@@ -53,7 +56,7 @@ describeConformance(
     it.skip("watches files resolved from type path glob patterns", async () => {
       const schemaPath = join(directory, "schema.graphql");
       const outputPath = join(directory, "graphql.ts");
-      await writeFile(schemaPath, "type Query { ok: Boolean }");
+      await Bun.write(schemaPath, "type Query { ok: Boolean }");
 
       const factory = new GraphQLDefinitionsFactory();
       await factory.generate({
@@ -64,13 +67,13 @@ describeConformance(
         debug: false,
       });
 
-      await writeFile(
+      await Bun.write(
         schemaPath,
         "type Query { ok: Boolean, updated: String }",
       );
       await Bun.sleep(150);
 
-      const regenerated = await readFile(outputPath, "utf8");
+      const regenerated = await Bun.file(outputPath).text();
       expect(regenerated).toContain("updated");
     });
   },

@@ -4,7 +4,7 @@ import {
   MetadataRegistry,
   type ExecutionContext,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
 import { OptionError } from "../errors/option.error";
 import type { BulkheadOptions } from "../interfaces/bulkhead-options.interface";
@@ -107,7 +107,10 @@ interface StageMatch<T = unknown> {
  */
 @Injectable()
 export class EntrypointPlanner {
-  private readonly plans = new Map<Type, Map<Function, EntrypointPlan | null>>();
+  private readonly plans = new Map<
+    Type,
+    Map<Function, EntrypointPlan | null>
+  >();
   private readonly instances = new Map<Type, Record<string, unknown>>();
 
   constructor(
@@ -213,16 +216,18 @@ export class EntrypointPlanner {
       idempotent: false,
       requestStream: false,
       sse:
-        Reflect.getMetadata(METADATA_KEYS.SSE, handler) === true ||
-        Reflect.getMetadata(NEST_SSE_METADATA, handler) === true,
+        MetadataRegistry.get(METADATA_KEYS.SSE, handler) === true ||
+        MetadataRegistry.get(NEST_SSE_METADATA, handler) === true,
       perHandler: [] as Array<"circuitBreaker" | "bulkhead">,
       warnings: [] as string[],
     };
 
-    if (Reflect.getMetadata(GRAPHQL_RESOLVER_TYPE, handler) === "Subscription") {
+    if (
+      MetadataRegistry.get(GRAPHQL_RESOLVER_TYPE, handler) === "Subscription"
+    ) {
       if (
         RESILIENCE_METADATA_KEYS.some(
-          (key) => Reflect.getMetadata(key, handler) !== undefined,
+          (key) => MetadataRegistry.get(key, handler) !== undefined,
         )
       ) {
         base.warnings.push(
@@ -232,7 +237,7 @@ export class EntrypointPlanner {
       return base.warnings.length ? { ...base, spec: {} } : null;
     }
 
-    const levels: Function[] = Reflect.getMetadata(
+    const levels: Function[] = MetadataRegistry.get(
       GRAPHQL_FIELD_RESOLVER,
       handler,
     )
@@ -241,9 +246,7 @@ export class EntrypointPlanner {
 
     const presets = new Map<Function, ResiliencePreset | undefined>(
       levels.map((level) => {
-        const name = Reflect.getMetadata(PRESET_METADATA, level) as
-          | string
-          | undefined;
+        const name = MetadataRegistry.get<string>(PRESET_METADATA, level);
         return [
           level,
           name === undefined ? undefined : this.factory.presetOptions(name),
@@ -251,11 +254,13 @@ export class EntrypointPlanner {
       }),
     );
 
-    const findAll = <T = unknown>(stage: keyof ResiliencePreset): StageMatch<T>[] => {
+    const findAll = <T = unknown>(
+      stage: keyof ResiliencePreset,
+    ): StageMatch<T>[] => {
       const matches: StageMatch<T>[] = [];
       for (const level of levels) {
         const key = STAGE_METADATA[stage];
-        const explicit = key ? Reflect.getMetadata(key, level) : undefined;
+        const explicit = key ? MetadataRegistry.get(key, level) : undefined;
         if (explicit !== undefined) {
           matches.push({ value: explicit as T, preset: false, level });
         }
@@ -302,7 +307,7 @@ export class EntrypointPlanner {
               "target" in context &&
               typeof (context as { target?: unknown }).target === "object" &&
               (context as { target?: unknown }).target !== null
-                ? ((context as { target: Record<string, unknown> }).target)
+                ? (context as { target: Record<string, unknown> }).target
                 : undefined;
             const instance =
               aspectTarget && typeof aspectTarget[namedMethod!] === "function"
@@ -315,15 +320,10 @@ export class EntrypointPlanner {
             return targetFn.call(instance, error, context);
           };
       spec.fallback = {
-        handler: ((
-          error: unknown,
-          _attempt: unknown,
-          invocation?: unknown,
-        ) =>
-          invokeFallback(
-            error,
-            invocation as ExecutionContext,
-          )) as NonNullable<ResiliencePreset["fallback"]> extends infer F
+        handler: ((error: unknown, _attempt: unknown, invocation?: unknown) =>
+          invokeFallback(error, invocation as ExecutionContext)) as NonNullable<
+          ResiliencePreset["fallback"]
+        > extends infer F
           ? F extends { handler: infer H }
             ? H
             : never
@@ -448,7 +448,9 @@ function onHandler<T>(source: string, fn: () => T): T {
     return fn();
   } catch (error) {
     if (error instanceof OptionError) {
-      throw new TypeError(`Resilience decorators on ${source}: ${error.message}`);
+      throw new TypeError(
+        `Resilience decorators on ${source}: ${error.message}`,
+      );
     }
     throw error;
   }
@@ -459,8 +461,8 @@ function isNamed(value: unknown): boolean {
     typeof value === "string" ||
     Boolean(
       typeof value === "object" &&
-        value !== null &&
-        (value as { name?: unknown }).name,
+      value !== null &&
+      (value as { name?: unknown }).name,
     )
   );
 }
@@ -487,10 +489,14 @@ function methodKey(cls: Type, handler: Function): string {
   return handler.name;
 }
 
-function handlesOwnResponse(cls: Type, handler: Function, method: string): boolean {
+function handlesOwnResponse(
+  cls: Type,
+  handler: Function,
+  method: string,
+): boolean {
   const isHttp =
-    Reflect.getMetadata(METADATA_KEYS.ROUTE_METHOD, handler) !== undefined ||
-    Reflect.getMetadata(NEST_METHOD_METADATA, handler) !== undefined;
+    MetadataRegistry.get(METADATA_KEYS.ROUTE_METHOD, handler) !== undefined ||
+    MetadataRegistry.get(NEST_METHOD_METADATA, handler) !== undefined;
   if (!isHttp) {
     return false;
   }
@@ -506,11 +512,11 @@ function handlesOwnResponse(cls: Type, handler: Function, method: string): boole
   }
 
   // NestJS-compat fallback metadata
-  const nestArgs = Reflect.getMetadata(
+  const nestArgs = MetadataRegistry.get<Record<string, unknown>>(
     NEST_ROUTE_ARGS_METADATA,
     cls,
     method,
-  ) as Record<string, unknown> | undefined;
+  );
   if (!nestArgs) {
     return false;
   }
@@ -520,12 +526,12 @@ function handlesOwnResponse(cls: Type, handler: Function, method: string): boole
   });
   return (
     manual &&
-    !Reflect.getMetadata(NEST_RESPONSE_PASSTHROUGH_METADATA, cls, method)
+    !MetadataRegistry.get(NEST_RESPONSE_PASSTHROUGH_METADATA, cls, method)
   );
 }
 
 function readsRequestStream(handler: Function): boolean {
-  const patterns = Reflect.getMetadata(MICROSERVICES_PATTERN, handler);
+  const patterns = MetadataRegistry.get(MICROSERVICES_PATTERN, handler);
   return (
     Array.isArray(patterns) &&
     patterns.some((p: { streaming?: unknown } | undefined) => {

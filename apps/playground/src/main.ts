@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { BunestFactory } from "@bunest/core";
 import { AppModule, configurePlaygroundApp } from "./app.module";
 

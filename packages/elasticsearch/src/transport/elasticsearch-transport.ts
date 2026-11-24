@@ -189,7 +189,10 @@ export class ElasticsearchTransport {
     if (params.body !== undefined && params.body !== null) {
       if (useNdjson && Array.isArray(params.body)) {
         serializedBody = this.serializer.ndserialize(params.body);
-      } else if (typeof params.body === "string" || params.body instanceof Uint8Array) {
+      } else if (
+        typeof params.body === "string" ||
+        params.body instanceof Uint8Array
+      ) {
         serializedBody = params.body;
       } else {
         serializedBody = this.serializer.serialize(params.body);
@@ -203,7 +206,9 @@ export class ElasticsearchTransport {
       attempt += 1;
       const connection = this.connectionPool.getConnection();
       if (!connection) {
-        throw new ElasticsearchConnectionError("No living connections available");
+        throw new ElasticsearchConnectionError(
+          "No living connections available",
+        );
       }
 
       const targetUrl = new URL(fullPath, connection.url);
@@ -213,7 +218,7 @@ export class ElasticsearchTransport {
       if (this.enableMetaHeader) {
         headers.set(
           "x-elastic-client-meta",
-          `es=9.0.0,js=${process.version},t=9.0.0,hc=bun`,
+          `es=9.0.0,js=${Bun.version},t=9.0.0,hc=bun`,
         );
       }
 
@@ -302,7 +307,7 @@ export class ElasticsearchTransport {
         const warnings = parseWarnings(response.headers);
         const statusCode = response.status;
 
-        let parsedBody: any;
+        let parsedBody: unknown;
         if (params.method.toUpperCase() === "HEAD") {
           parsedBody = "";
         } else {
@@ -313,7 +318,12 @@ export class ElasticsearchTransport {
           ) {
             throw new ElasticsearchConnectionError(
               `Response size exceeds maxResponseSize (${this.maxResponseSize})`,
-              { statusCode, headers: responseHeaders, warnings, meta: metaBase },
+              {
+                statusCode,
+                headers: responseHeaders,
+                warnings,
+                meta: metaBase,
+              },
             );
           }
           const ct = (responseHeaders["content-type"] ?? "").toLowerCase();

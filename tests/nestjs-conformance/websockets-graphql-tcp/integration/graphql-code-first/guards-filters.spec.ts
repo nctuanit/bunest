@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -14,7 +13,7 @@ import {
   UnauthorizedException,
   UseGuards,
   UseInterceptors,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -26,11 +25,7 @@ import {
   Query,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @ObjectType()
 class Recipe {
@@ -61,7 +56,10 @@ class AuthGuard implements CanActivate {
 
 @Injectable()
 class DataInterceptor implements BunestInterceptor {
-  async intercept(_context: ExecutionContext, next: CallHandler): Promise<unknown> {
+  async intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<unknown> {
     return next.handle();
   }
 }

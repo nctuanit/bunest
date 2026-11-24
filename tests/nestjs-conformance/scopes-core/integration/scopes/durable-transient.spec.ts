@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -18,7 +17,7 @@ import {
   type ExecutionContext,
   type HostComponentInfo,
   type NestInterceptor,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   CircularDependencyException,
   ContextIdFactory,
@@ -63,9 +62,7 @@ class AuthGuard implements CanActivate {
 class TenantDatabase {
   static instances = 0;
 
-  constructor(
-    @Inject(REQUEST) private readonly tenant: { tenantId: string },
-  ) {
+  constructor(@Inject(REQUEST) private readonly tenant: { tenantId: string }) {
     TenantDatabase.instances++;
   }
 
@@ -120,8 +117,7 @@ class ProfileInterceptor implements NestInterceptor {
 
   async intercept(context: ExecutionContext, next: CallHandler) {
     const req = context.switchToHttp().getRequest<Request>();
-    const user =
-      (req as any).__user ?? req.headers.get("authorization") ?? "";
+    const user = (req as any).__user ?? req.headers.get("authorization") ?? "";
     this.profile ??= this.database.findProfile(user);
     const body = (await next.handle()) as Record<string, unknown>;
     return { ...body, seen: this.profile };
@@ -271,7 +267,9 @@ describeConformance(
         const constructions = new Map<string, number>();
         const subTrees = new Map<string, ContextId>();
 
-        class GateStrategy implements ContextIdStrategy<{ headers: Record<string, string> }> {
+        class GateStrategy implements ContextIdStrategy<{
+          headers: Record<string, string>;
+        }> {
           attach(
             contextId: ContextId,
             req: { headers: Record<string, string> },
@@ -325,7 +323,10 @@ describeConformance(
         ContextIdFactory.apply(new GateStrategy());
 
         try {
-          const resolveFor = <T>(type: new (...args: any[]) => T, tenantId: string) => {
+          const resolveFor = <T>(
+            type: new (...args: any[]) => T,
+            tenantId: string,
+          ) => {
             const req = { headers: { "x-tenant-id": tenantId } };
             const contextId = ContextIdFactory.getByRequest(req);
             moduleRef.registerRequestByContextId(req, contextId);

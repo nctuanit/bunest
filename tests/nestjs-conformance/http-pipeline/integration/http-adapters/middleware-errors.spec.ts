@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Catch,
@@ -15,7 +14,7 @@ import {
   type NextFunction,
   type ResponseContext,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -121,7 +120,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected http-errors-shaped error (CsrfError, statusCode: 403) thrown in app.use() middleware to be mapped to HttpException with { cause } so @Catch(HttpException) catches it (499); actual returns 500 because execution-pipeline does not wrap middleware http-errors objects into HttpException (packages/http/src/pipeline/execution-pipeline.ts, packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected http-errors-shaped error (CsrfError, statusCode: 403) thrown in app.use() middleware to be mapped to HttpException with { cause } so @Catch(HttpException) catches it (499); actual returns 500 because execution-pipeline does not wrap middleware http-errors objects into HttpException (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should hand an error thrown by app.use() middleware to filters as the cause of an HttpException", async () => {
         app = await createApp(ErrorsModule, (instance) => {
           instance.use((_req, _res, _next) => {
@@ -141,7 +140,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected http-errors-shaped error (CsrfError) thrown in class middleware to be mapped to HttpException with { cause } so @Catch(HttpException) catches it (499); actual returns 500 (packages/http/src/pipeline/execution-pipeline.ts, packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected http-errors-shaped error (CsrfError) thrown in class middleware to be mapped to HttpException with { cause } so @Catch(HttpException) catches it (499); actual returns 500 (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should hand an error from a class middleware to filters as the cause of an HttpException", async () => {
         app = await createApp(ClassMiddlewareErrorsModule, (instance) => {
           instance.useGlobalFilters(new CsrfErrorFilter());
@@ -153,7 +152,7 @@ describeConformance(
         expect(res.body.isCsrfError).toBe(true);
       });
 
-      // BUNEST_BUG: Expected http-errors-shaped error (statusCode: 403, expose: true) thrown in middleware to return 403 { statusCode: 403, message: "invalid csrf token" } without a filter; actual DefaultExceptionFilter ignores statusCode on non-HttpException errors and returns 500 (packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected http-errors-shaped error (statusCode: 403, expose: true) thrown in middleware to return 403 { statusCode: 403, message: "invalid csrf token" } without a filter; actual DefaultExceptionFilter ignores statusCode on non-HttpException errors and returns 500 (packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should answer an http-errors-style error with its status and message without a filter", async () => {
         app = await createApp(ErrorsModule, (instance) => {
           instance.use((_req, _res, _next) => {
@@ -170,7 +169,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected synchronously thrown http-errors-shaped error (statusCode: 403) in middleware to return 403; actual returns 500 (packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected synchronously thrown http-errors-shaped error (statusCode: 403) in middleware to return 403; actual returns 500 (packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should answer an error thrown synchronously by middleware the same way", async () => {
         app = await createApp(ErrorsModule, (instance) => {
           instance.use(() => {
@@ -181,7 +180,7 @@ describeConformance(
         expect((await get("/ok")).status).toBe(403);
       });
 
-      // BUNEST_BUG: Expected plain { statusCode: 422, message: "plain object" } thrown in middleware to return 422; actual returns 500 (packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected plain { statusCode: 422, message: "plain object" } thrown in middleware to return 422; actual returns 500 (packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should answer a plain { statusCode, message } object with its status", async () => {
         app = await createApp(ErrorsModule, (instance) => {
           instance.use(() => {
@@ -220,7 +219,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected async middleware rejection with http-errors-shaped CsrfError to be wrapped as HttpException with { cause } and caught by @Catch(HttpException) (499); actual returns 500 (packages/http/src/pipeline/execution-pipeline.ts, packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected async middleware rejection with http-errors-shaped CsrfError to be wrapped as HttpException with { cause } and caught by @Catch(HttpException) (499); actual returns 500 (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/pipeline/exception-handler.ts).
       it.skip("should hand the rejection to filters as the cause of an HttpException", async () => {
         app = await createApp(ErrorsModule, (instance) => {
           instance.use(async () => {

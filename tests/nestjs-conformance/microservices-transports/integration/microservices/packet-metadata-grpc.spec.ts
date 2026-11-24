@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Controller, Module } from "../../../../../packages/common/src";
+import { Controller, Module } from "../../../../../packages/core/src/common";
 import {
   Ctx,
   GrpcClientProxy,
@@ -52,8 +51,7 @@ class MathMetadataModule {}
 describeConformance(
   "Packet metadata (gRPC)",
   {
-    upstreamPath:
-      "integration/microservices/e2e/packet-metadata-grpc.spec.ts",
+    upstreamPath: "integration/microservices/e2e/packet-metadata-grpc.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-008"],
     notes:
@@ -73,10 +71,7 @@ describeConformance(
       });
 
       moduleRef = await Test.createTestingModule({
-        imports: [
-          MicroserviceModule.forRoot({ server }),
-          MathMetadataModule,
-        ],
+        imports: [MicroserviceModule.forRoot({ server }), MathMetadataModule],
       }).compile();
       await moduleRef.init();
       expect(server.port).toBeGreaterThan(0);
@@ -225,7 +220,10 @@ describeConformance(
         // drain
       }
 
-      expect(seenPatterns).toEqual(["/math.Math/Sum", "/math.Math/StreamDivide"]);
+      expect(seenPatterns).toEqual([
+        "/math.Math/Sum",
+        "/math.Math/StreamDivide",
+      ]);
     });
   },
 );

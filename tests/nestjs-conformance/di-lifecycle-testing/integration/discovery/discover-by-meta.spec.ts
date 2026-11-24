@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Injectable, Module } from "../../../../../packages/common/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
 import {
   DiscoveryModule,
   DiscoveryService,

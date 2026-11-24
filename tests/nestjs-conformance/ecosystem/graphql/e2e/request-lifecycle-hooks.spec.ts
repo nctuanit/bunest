@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Injectable,
   Module,
   ParseIntPipe,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -15,11 +14,7 @@ import {
   Resolver,
   ResolverDecoratorHost,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 const CATS_TYPE_DEFS = `
   type Query {

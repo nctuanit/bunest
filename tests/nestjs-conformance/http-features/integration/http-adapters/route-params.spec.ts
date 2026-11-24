@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Module,
   Param,
   VersioningType,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -85,7 +84,7 @@ describeConformance(
       expect(v2.body).toEqual({ userId: "5" });
     });
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/http/src/router/fallback-radix-router.ts:35-38, 159-204).
+    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
     it.skip.each(["/reports/report.en.json", "/reports/report.en.json/"])(
       "should preserve optional captures after a version miss on %s",
       async (path) => {
@@ -106,7 +105,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/http/src/router/fallback-radix-router.ts:35-38, 159-204).
+    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
     it.skip("should also match the versioned route without its optional part", async () => {
       for (const version of ["1", "2"]) {
         const response = await request(app)

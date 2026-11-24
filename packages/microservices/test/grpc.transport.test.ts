@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   UseGuards,
   type CanActivate,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   ClientsModule,
@@ -45,7 +44,9 @@ describe("gRPC Framing, Metadata & Timeout Utilities", () => {
       "x-trace-id": "tr_123",
     });
 
-    const combined = new Uint8Array(f1.byteLength + f2.byteLength + trailer.byteLength);
+    const combined = new Uint8Array(
+      f1.byteLength + f2.byteLength + trailer.byteLength,
+    );
     combined.set(f1, 0);
     combined.set(f2, f1.byteLength);
     combined.set(trailer, f1.byteLength + f2.byteLength);
@@ -58,7 +59,9 @@ describe("gRPC Framing, Metadata & Timeout Utilities", () => {
     }
     expect(out).toHaveLength(3);
     expect(out[0]!.isTrailer).toBe(false);
-    expect(JSON.parse(new TextDecoder().decode(out[0]!.payload))).toEqual({ id: 1 });
+    expect(JSON.parse(new TextDecoder().decode(out[0]!.payload))).toEqual({
+      id: 1,
+    });
     expect(JSON.parse(new TextDecoder().decode(out[1]!.payload))).toEqual({
       id: 2,
       msg: "hi",
@@ -91,7 +94,9 @@ describe("gRPC Framing, Metadata & Timeout Utilities", () => {
     const md = new GrpcMetadata({ "X-Request-Id": "req-1" });
     md.set("trace-bin", new Uint8Array([0xde, 0xad, 0xbe, 0xef]));
     expect(md.get("x-request-id")).toBe("req-1");
-    expect(Array.from(md.getBuffer("trace-bin")!)).toEqual([0xde, 0xad, 0xbe, 0xef]);
+    expect(Array.from(md.getBuffer("trace-bin")!)).toEqual([
+      0xde, 0xad, 0xbe, 0xef,
+    ]);
   });
 });
 
@@ -109,7 +114,11 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
   });
 
   it("executes unary RPC, metadata propagation, GrpcException status codes, and timeouts over live HTTP", async () => {
-    const server = new GrpcServer({ host: "127.0.0.1", port: 0, package: "hero" });
+    const server = new GrpcServer({
+      host: "127.0.0.1",
+      port: 0,
+      package: "hero",
+    });
     servers.push(server);
 
     server.addGrpcHandler("HeroService", "FindOne", (data, ctx) => {
@@ -165,7 +174,9 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
 
     // 2. Dynamic getService() proxy + standard ClientProxy.send()
     interface HeroServiceClient {
-      FindOne(req: { id: number }): Promise<{ id: number; name: string; reqId: string }>;
+      FindOne(req: {
+        id: number;
+      }): Promise<{ id: number; name: string; reqId: string }>;
     }
     const heroSvc = client.getService<HeroServiceClient>("HeroService");
     expect(await heroSvc.FindOne({ id: 9 })).toEqual({
@@ -281,7 +292,9 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
     }
     expect(partial).toEqual([1, 2]);
     expect(caughtErr).toBeInstanceOf(GrpcException);
-    expect((caughtErr as GrpcException).code).toBe(GrpcStatus.PERMISSION_DENIED);
+    expect((caughtErr as GrpcException).code).toBe(
+      GrpcStatus.PERMISSION_DENIED,
+    );
     expect((caughtErr as GrpcException).message).toBe("Denied at tick 3");
   });
 
@@ -304,7 +317,11 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
         return buf;
       },
       decode<T = unknown>(bytes: Uint8Array): T {
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const view = new DataView(
+          bytes.buffer,
+          bytes.byteOffset,
+          bytes.byteLength,
+        );
         if (bytes[0] !== 0x08 || bytes[5] !== 0x12) {
           throw new Error("Invalid binary protobuf wire tag");
         }
@@ -521,7 +538,10 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
     server.addGrpcHandler("SecService", "Flaky", () => {
       attempts++;
       if (attempts === 1) {
-        throw new GrpcException(GrpcStatus.UNAVAILABLE, "temporary-unavailable");
+        throw new GrpcException(
+          GrpcStatus.UNAVAILABLE,
+          "temporary-unavailable",
+        );
       }
       return { recovered: true, attempts };
     });
@@ -560,17 +580,18 @@ describe("GrpcServer & GrpcClientProxy (Real Live Bun.serve E2E)", () => {
     const elapsed = performance.now() - t0;
     expect(seen).toEqual([1]);
     expect(streamErr).toBeInstanceOf(GrpcException);
-    expect((streamErr as GrpcException).code).toBe(GrpcStatus.DEADLINE_EXCEEDED);
+    expect((streamErr as GrpcException).code).toBe(
+      GrpcStatus.DEADLINE_EXCEEDED,
+    );
     expect(elapsed).toBeLessThan(250);
     await Bun.sleep(20);
     expect(streamCleanupCalled).toBe(true);
 
     // Verify UNAVAILABLE is retried by send()
-    const recovered = await client.send<{ recovered: boolean; attempts: number }>(
-      "SecService.Flaky",
-      {},
-      { retries: 2, retryDelayMs: 10 },
-    );
+    const recovered = await client.send<{
+      recovered: boolean;
+      attempts: number;
+    }>("SecService.Flaky", {}, { retries: 2, retryDelayMs: 10 });
     expect(recovered).toEqual({ recovered: true, attempts: 2 });
 
     // Verify truncated gRPC frame throws DATA_LOSS

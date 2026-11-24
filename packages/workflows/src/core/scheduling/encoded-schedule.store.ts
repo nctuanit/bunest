@@ -1,6 +1,6 @@
-import type { LoggerService } from '@bunest/common';
-import { isEncodedPayload, type PayloadCodecs } from '../codecs/payload-codecs';
-import type { PayloadContext } from '../interfaces/payload-codec.interface';
+import type { LoggerService } from "@bunest/core";
+import { isEncodedPayload, type PayloadCodecs } from "../codecs/payload-codecs";
+import type { PayloadContext } from "../interfaces/payload-codec.interface";
 import type {
   ScheduleClaimRequest,
   ScheduleQuery,
@@ -8,7 +8,7 @@ import type {
   ScheduleSave,
   ScheduleStore,
   ScheduleWrite,
-} from '../interfaces/schedule-store.interface';
+} from "../interfaces/schedule-store.interface";
 
 /**
  * @internal A `ScheduleStore` as the `Scheduler` sees it: payloads encoded on the way in and decoded on the way out,
@@ -19,13 +19,13 @@ export class EncodedScheduleStore implements ScheduleStore {
   readonly inner: ScheduleStore;
   private readonly codecs: PayloadCodecs;
   private readonly context: (schedule: string) => PayloadContext;
-  private readonly logger: Pick<LoggerService, 'error'>;
+  private readonly logger: Pick<LoggerService, "error">;
 
   constructor(
     inner: ScheduleStore,
     codecs: PayloadCodecs,
     context: (schedule: string) => PayloadContext,
-    logger: Pick<LoggerService, 'error'>,
+    logger: Pick<LoggerService, "error">,
   ) {
     this.inner = inner;
     this.codecs = codecs;
@@ -39,7 +39,10 @@ export class EncodedScheduleStore implements ScheduleStore {
   }
 
   async saveSchedule(save: ScheduleSave): Promise<ScheduleRecord | null> {
-    const payload = await this.codecs.encode(save.payload, this.context(save.id));
+    const payload = await this.codecs.encode(
+      save.payload,
+      this.context(save.id),
+    );
     const saved = await this.inner.saveSchedule({ ...save, payload });
     return saved ? this.decode(saved) : null;
   }
@@ -50,35 +53,60 @@ export class EncodedScheduleStore implements ScheduleStore {
   }
 
   async listSchedules(query: ScheduleQuery): Promise<ScheduleRecord[]> {
-    return Promise.all((await this.inner.listSchedules(query)).map((record) => this.decode(record)));
+    return Promise.all(
+      (await this.inner.listSchedules(query)).map((record) =>
+        this.decode(record),
+      ),
+    );
   }
 
   deleteSchedule(id: string, revision?: number): Promise<boolean> {
     return this.inner.deleteSchedule(id, revision);
   }
 
-  async claimSchedules(request: ScheduleClaimRequest): Promise<ScheduleRecord[]> {
+  async claimSchedules(
+    request: ScheduleClaimRequest,
+  ): Promise<ScheduleRecord[]> {
     const decoded: ScheduleRecord[] = [];
     for (const record of await this.inner.claimSchedules(request)) {
       try {
         decoded.push(await this.decode(record));
       } catch (error) {
-        this.logger.error(`Schedule "${record.id}" can't be read, so it isn't run; it is claimed again later. ${(error as Error).message}`);
+        this.logger.error(
+          `Schedule "${record.id}" can't be read, so it isn't run; it is claimed again later. ${(error as Error).message}`,
+        );
         // Handed back untouched, due when its lease would have ended; at worst its lease expires, as if its worker died.
         await this.inner
-          .writeSchedule(record.id, request.token, { now: request.now, state: record.state, wakeAt: request.leaseUntil, release: true })
+          .writeSchedule(record.id, request.token, {
+            now: request.now,
+            state: record.state,
+            wakeAt: request.leaseUntil,
+            release: true,
+          })
           .catch(() => undefined);
       }
     }
     return decoded;
   }
 
-  writeSchedule(id: string, token: string, write: ScheduleWrite): Promise<boolean> {
+  writeSchedule(
+    id: string,
+    token: string,
+    write: ScheduleWrite,
+  ): Promise<boolean> {
     return this.inner.writeSchedule(id, token, write);
   }
 
   /** A schedule as stored, with its payload decoded. Throws if no listed codec can decode it. */
   async decode(record: ScheduleRecord): Promise<ScheduleRecord> {
-    return isEncodedPayload(record.payload) ? { ...record, payload: await this.codecs.decode(record.payload, this.context(record.id)) } : record;
+    return isEncodedPayload(record.payload)
+      ? {
+          ...record,
+          payload: await this.codecs.decode(
+            record.payload,
+            this.context(record.id),
+          ),
+        }
+      : record;
   }
 }

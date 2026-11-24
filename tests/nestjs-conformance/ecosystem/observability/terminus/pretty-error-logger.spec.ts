@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { LoggerService } from "../../../../../packages/common/src";
+import type { LoggerService } from "../../../../../packages/core/src/common";
 import {
   HealthCheckException,
   HealthCheckService,
@@ -9,11 +8,7 @@ import {
   TERMINUS_MODULE_OPTIONS,
   type HealthIndicatorResult,
 } from "../../../../../packages/observability/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers/index";
+import { Test, describeConformance, itAdapted } from "../../../_helpers/index";
 
 describeConformance(
   "PrettyErrorLogger",

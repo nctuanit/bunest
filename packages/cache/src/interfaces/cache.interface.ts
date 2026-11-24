@@ -5,7 +5,7 @@ import type {
   ModuleImport,
   Provider,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 
 export interface CacheSetOptions {
   /**
@@ -33,8 +33,7 @@ export interface CacheMsetItem<T = unknown> {
 export type CacheMsetTuple = readonly [string, unknown, CacheTtlOrOptions?];
 
 export type CacheMsetInput<T = unknown> =
-  | ReadonlyArray<CacheMsetTuple>
-  | ReadonlyArray<CacheMsetItem<T>>;
+  ReadonlyArray<CacheMsetTuple> | ReadonlyArray<CacheMsetItem<T>>;
 
 export interface CacheWrapOptions<T = unknown> {
   ttl?: number | ((value: T) => number);
@@ -44,14 +43,7 @@ export interface CacheWrapOptions<T = unknown> {
 }
 
 export type CacheEventName =
-  | "get"
-  | "mget"
-  | "set"
-  | "mset"
-  | "del"
-  | "mdel"
-  | "clear"
-  | "refresh";
+  "get" | "mget" | "set" | "mset" | "del" | "mdel" | "clear" | "refresh";
 
 export type CacheEventListener = (...args: any[]) => void;
 
@@ -129,11 +121,11 @@ export interface CacheManagerOptions {
 }
 
 export type CacheOptions<
-  StoreConfig extends Record<any, any> = Record<string, any>,
+  StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
 > = CacheManagerOptions & StoreConfig;
 
 export type CacheModuleOptions<
-  StoreConfig extends Record<any, any> = Record<string, any>,
+  StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
 > = CacheOptions<StoreConfig> & {
   /**
    * Custom `CacheStore` instance. Defaults to `MemoryCacheStore`.
@@ -161,23 +153,21 @@ export type CacheModuleOptions<
 };
 
 export interface CacheOptionsFactory<
-  StoreConfig extends Record<any, any> = Record<string, any>,
+  StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
 > {
   createCacheOptions():
-    | CacheModuleOptions<StoreConfig>
-    | Promise<CacheModuleOptions<StoreConfig>>;
+    CacheModuleOptions<StoreConfig> | Promise<CacheModuleOptions<StoreConfig>>;
 }
 
 export interface CacheModuleAsyncOptions<
-  StoreConfig extends Record<any, any> = Record<string, any>,
+  StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
 > {
   isGlobal?: boolean;
   imports?: ModuleImport[];
   useFactory?: (
     ...args: any[]
   ) =>
-    | CacheModuleOptions<StoreConfig>
-    | Promise<CacheModuleOptions<StoreConfig>>;
+    CacheModuleOptions<StoreConfig> | Promise<CacheModuleOptions<StoreConfig>>;
   inject?: FactoryDependency[];
   useClass?: Type<CacheOptionsFactory<StoreConfig>>;
   useExisting?: InjectionToken<CacheOptionsFactory<StoreConfig>>;

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Body,
@@ -9,7 +8,7 @@ import {
   Post,
   Req,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   AuthGuard,
   JwtModule,
@@ -116,7 +115,11 @@ class LocalBaseStrategy {
   );
   constructor(
     optionsOrVerify:
-      | { usernameField?: string; passwordField?: string; passReqToCallback?: boolean }
+      | {
+          usernameField?: string;
+          passwordField?: string;
+          passReqToCallback?: boolean;
+        }
       | ((
           username: string,
           password: string,

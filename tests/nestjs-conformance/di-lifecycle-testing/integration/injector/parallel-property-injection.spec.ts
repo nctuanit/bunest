@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   INQUIRER,
   REQUEST,
@@ -72,7 +71,8 @@ class ParallelModule {}
 describeConformance(
   "Parallel property injection",
   {
-    upstreamPath: "integration/injector/e2e/parallel-property-injection.spec.ts",
+    upstreamPath:
+      "integration/injector/e2e/parallel-property-injection.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-012"],
     notes:

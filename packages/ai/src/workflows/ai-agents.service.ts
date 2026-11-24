@@ -1,46 +1,45 @@
-import { Injectable } from '@bunest/common';
-import { ModuleRef } from '@bunest/core';
+import { Injectable } from "@bunest/core";
+import { ModuleRef } from "@bunest/core";
 import {
   NonRetryableStepError,
   WorkflowClient,
   WorkflowSignal,
   type WorkflowContext,
-} from '@bunest/workflows';
-import type { AiCallOptions } from '../interfaces/ai-call-options.interface';
+} from "@bunest/workflows";
+import type { AiCallOptions } from "../interfaces/ai-call-options.interface";
 import type {
   AiCallDefaults,
   AiModuleOptions,
-} from '../interfaces/ai-module-options.interface';
-import type {
-  AiStep,
-  AiToolResult,
-} from '../interfaces/ai-result.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import type { AiUsage } from '../interfaces/ai-usage.interface';
-import { AI_MODULE_OPTIONS } from '../ai.constants';
-import { AiConfigurationError, AiToolError } from '../errors/ai.errors';
-import { assertWithinBudget } from '../runtime/agent-loop';
-import { AiService } from '../services/ai.service';
-import { AiTools } from '../tools/ai-tools.service';
-import { INTERNAL_ERROR_MESSAGE } from '../utils/errors.util';
-import { addCost, addUsage, ZERO_USAGE } from '../utils/usage.util';
+} from "../interfaces/ai-module-options.interface";
+import type { AiStep, AiToolResult } from "../interfaces/ai-result.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
+import type { AiUsage } from "../interfaces/ai-usage.interface";
+import { AI_MODULE_OPTIONS } from "../ai.constants";
+import { AiConfigurationError, AiToolError } from "../errors/ai.errors";
+import { assertWithinBudget } from "../runtime/agent-loop";
+import { AiService } from "../services/ai.service";
+import { AiTools } from "../tools/ai-tools.service";
+import { INTERNAL_ERROR_MESSAGE } from "../utils/errors.util";
+import { addCost, addUsage, ZERO_USAGE } from "../utils/usage.util";
 import type {
   AiAgentRunOptions,
   AiAgentRunResult,
   AiPendingApproval,
   AiToolApproval,
-} from './ai-agent.interfaces';
+} from "./ai-agent.interfaces";
 
 /** The signal a tool call that waits for approval takes, keyed by the call (`AiPendingApproval.key`). */
 export const TOOL_APPROVAL: WorkflowSignal<AiToolApproval> =
-  new WorkflowSignal<AiToolApproval>('nestjs-ai.tool-approval');
+  new WorkflowSignal<AiToolApproval>("nestjs-ai.tool-approval");
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_STEPS_PER_INSTANCE = 10;
 
 /** A run's options, resolved once. Internal. */
-export interface AgentSettings
-  extends Omit<AiAgentRunOptions, 'tools' | 'prompt' | 'messages'> {
+export interface AgentSettings extends Omit<
+  AiAgentRunOptions,
+  "tools" | "prompt" | "messages"
+> {
   tools: string[];
   approve: string[];
   maxSteps: number;
@@ -59,7 +58,7 @@ export interface AgentState {
 }
 
 /** The workflow a run goes on in after `stepsPerInstance` model calls (`AiAgentSegment`). */
-export const AGENT_WORKFLOW = 'nestjs-ai.agent';
+export const AGENT_WORKFLOW = "nestjs-ai.agent";
 
 export function approvalKey(runId: string, toolCallId: string): string {
   return `${runId}:${toolCallId}`;
@@ -123,16 +122,18 @@ export class AiAgents {
         return;
       }
       const statusPending = (
-        details.customStatus as { pendingApprovals?: AiPendingApproval[] } | null
+        details.customStatus as {
+          pendingApprovals?: AiPendingApproval[];
+        } | null
       )?.pendingApprovals;
       if (statusPending) {
         pending.push(...statusPending);
       }
       for (const child of details.children ?? []) {
         if (
-          child.status !== 'completed' &&
-          child.status !== 'failed' &&
-          child.status !== 'cancelled'
+          child.status !== "completed" &&
+          child.status !== "failed" &&
+          child.status !== "cancelled"
         ) {
           await visit(child.id);
         }
@@ -173,7 +174,7 @@ export class AiAgents {
               : error;
           }),
       );
-      const step = outcome.step as Omit<AiStep, 'attempts'>;
+      const step = outcome.step as Omit<AiStep, "attempts">;
       const results = await this.runTools(ctx, settings, state, index, step);
       state.messages.push(...(outcome.responseMessages as ModelMessage[]));
       state.responseMessages.push(
@@ -192,7 +193,7 @@ export class AiAgents {
       state.usage = addUsage(state.usage, step.usage);
       state.cost = addCost(state.cost, step.cost);
       state.index++;
-      if (step.finishReason !== 'tool-calls' || step.toolCalls.length === 0) {
+      if (step.finishReason !== "tool-calls" || step.toolCalls.length === 0) {
         break;
       }
     }
@@ -204,10 +205,14 @@ export class AiAgents {
     settings: AgentSettings,
     state: AgentState,
     index: number,
-    step: Omit<AiStep, 'attempts'>,
+    step: Omit<AiStep, "attempts">,
   ): Promise<AiToolResult[]> {
-    const answered = new Set(step.toolResults.map((result) => result.toolCallId));
-    const calls = step.toolCalls.filter((call) => !answered.has(call.toolCallId));
+    const answered = new Set(
+      step.toolResults.map((result) => result.toolCallId),
+    );
+    const calls = step.toolCalls.filter(
+      (call) => !answered.has(call.toolCallId),
+    );
 
     const waiting: AiPendingApproval[] = calls
       .filter((call) => settings.approve.includes(call.toolName))
@@ -240,11 +245,13 @@ export class AiAgents {
           },
         );
         waiting.splice(waiting.indexOf(approval), 1);
-        ctx.setStatus(waiting.length > 0 ? { pendingApprovals: waiting } : null);
+        ctx.setStatus(
+          waiting.length > 0 ? { pendingApprovals: waiting } : null,
+        );
         if (!decision?.approved) {
           const error = decision
-            ? `The call was rejected${decision.reason ? `: ${decision.reason}` : ''}`
-            : 'No one approved the call in time';
+            ? `The call was rejected${decision.reason ? `: ${decision.reason}` : ""}`
+            : "No one approved the call in time";
           results.push({ ...call, error });
           continue;
         }
@@ -290,9 +297,9 @@ export class AiAgents {
   }
 
   private settings(options: AiAgentRunOptions): AgentSettings {
-    if (typeof options !== 'object' || options === null) {
+    if (typeof options !== "object" || options === null) {
       throw new AiConfigurationError(
-        'AiAgents.run() takes options: { prompt } or { messages }, and the rest.',
+        "AiAgents.run() takes options: { prompt } or { messages }, and the rest.",
       );
     }
     const { tools, prompt: _prompt, messages: _messages, ...rest } = options;
@@ -316,8 +323,7 @@ export class AiAgents {
       tools: names,
       approve,
       maxSteps: options.maxSteps ?? defaults.maxSteps ?? DEFAULT_MAX_STEPS,
-      stepsPerInstance:
-        options.stepsPerInstance ?? DEFAULT_STEPS_PER_INSTANCE,
+      stepsPerInstance: options.stepsPerInstance ?? DEFAULT_STEPS_PER_INSTANCE,
       ...(budget && { budget }),
     };
   }
@@ -347,16 +353,16 @@ export class AiAgents {
 
 function initialMessages(options: AiAgentRunOptions): ModelMessage[] {
   if (options.prompt !== undefined && options.messages !== undefined) {
-    throw new AiConfigurationError('Pass `prompt` or `messages`, not both.');
+    throw new AiConfigurationError("Pass `prompt` or `messages`, not both.");
   }
-  if (typeof options.prompt === 'string') {
-    return [{ role: 'user', content: options.prompt }];
+  if (typeof options.prompt === "string") {
+    return [{ role: "user", content: options.prompt }];
   }
   if (Array.isArray(options.messages) && options.messages.length > 0) {
     return [...options.messages];
   }
   throw new AiConfigurationError(
-    'Pass `prompt` (a string) or `messages` (a non-empty array of model messages).',
+    "Pass `prompt` (a string) or `messages` (a non-empty array of model messages).",
   );
 }
 
@@ -383,17 +389,17 @@ function callOptions(settings: AgentSettings): AiCallOptions {
 
 function toolMessage(results: AiToolResult[]): ModelMessage {
   return {
-    role: 'tool',
+    role: "tool",
     content: results.map((result) => ({
-      type: 'tool-result',
+      type: "tool-result",
       toolCallId: result.toolCallId,
       toolName: result.toolName,
       output:
         result.error !== undefined
-          ? { type: 'error-text', value: result.error }
-          : typeof result.output === 'string'
-            ? { type: 'text', value: result.output }
-            : { type: 'json', value: result.output ?? null },
+          ? { type: "error-text", value: result.error }
+          : typeof result.output === "string"
+            ? { type: "text", value: result.output }
+            : { type: "json", value: result.output ?? null },
     })),
   };
 }

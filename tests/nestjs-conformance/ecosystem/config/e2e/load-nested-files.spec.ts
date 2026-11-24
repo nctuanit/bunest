@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { describeConformance, Test } from "../../../_helpers/index";
@@ -24,7 +23,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally registerAs('database.driver', ...) stores flat store['database.driver'] instead of nested store.database.driver so configService.get('database.driver.host') splits on '.' and returns undefined (packages/config/src/config.module.ts:161, packages/config/src/config.service.ts:63)
+    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally registerAs('database.driver', ...) stores flat store['database.driver'] instead of nested store.database.driver so configService.get('database.driver.host') splits on '.' and returns undefined (packages/core/src/config/config.module.ts:161, packages/core/src/config/config.service.ts:63)
     it.skip("should return nested loaded configuration", () => {
       const host = app.get(AppModule).getNestedDatabaseHost();
       expect(host).toEqual("host");

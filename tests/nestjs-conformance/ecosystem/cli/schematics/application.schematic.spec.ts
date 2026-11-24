@@ -1,15 +1,13 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+  basename,
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   FileCollisionError,
   buildProjectTemplateFiles,
@@ -20,6 +18,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const EXPECTED_APP_FILES = (prefix: string): string[] =>
   [
@@ -47,11 +54,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-app-"));
+      tempDir = makeTempDir("bunest-cli-conf-app-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     describe("when only the name is supplied", () => {
@@ -83,7 +90,7 @@ describeConformance(
           );
 
           const pkg = JSON.parse(
-            readFileSync(join(tempDir, "project/package.json"), "utf8"),
+            readTextSync(join(tempDir, "project/package.json")),
           ) as {
             name: string;
             type: string;
@@ -98,7 +105,7 @@ describeConformance(
           expect(pkg.devDependencies["@bunest/testing"]).toBeDefined();
 
           const tsconfig = JSON.parse(
-            readFileSync(join(tempDir, "project/tsconfig.json"), "utf8"),
+            readTextSync(join(tempDir, "project/tsconfig.json")),
           ) as {
             compilerOptions: {
               types: string[];
@@ -133,7 +140,7 @@ describeConformance(
             EXPECTED_APP_FILES(""),
           );
           const pkg = JSON.parse(
-            readFileSync(join(tempDir, "project.foo.bar/package.json"), "utf8"),
+            readTextSync(join(tempDir, "project.foo.bar/package.json")),
           ) as { name: string };
           expect(pkg.name).toBe("project.foo.bar");
         },
@@ -152,7 +159,7 @@ describeConformance(
           EXPECTED_APP_FILES("project.foo.bar/"),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "project.foo.bar/package.json"), "utf8"),
+          readTextSync(join(tempDir, "project.foo.bar/package.json")),
         ) as { name: string };
         expect(pkg.name).toBe("project.foo.bar");
       });
@@ -172,7 +179,7 @@ describeConformance(
           );
 
           const pkg = JSON.parse(
-            readFileSync(join(tempDir, "awesome-project/package.json"), "utf8"),
+            readTextSync(join(tempDir, "awesome-project/package.json")),
           ) as { name: string };
           expect(pkg.name).toBe("awesome-project");
         },
@@ -191,7 +198,7 @@ describeConformance(
           EXPECTED_APP_FILES("_awesome-project/"),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "_awesome-project/package.json"), "utf8"),
+          readTextSync(join(tempDir, "_awesome-project/package.json")),
         ) as { name: string };
         expect(pkg.name).toBe("_awesome-project");
       });
@@ -208,7 +215,7 @@ describeConformance(
           EXPECTED_APP_FILES("@/package/"),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "@/package/package.json"), "utf8"),
+          readTextSync(join(tempDir, "@/package/package.json")),
         ) as { name: string };
         expect(pkg.name).toBe("package");
       });
@@ -225,7 +232,7 @@ describeConformance(
           EXPECTED_APP_FILES(""),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "package.json"), "utf8"),
+          readTextSync(join(tempDir, "package.json")),
         ) as { name: string };
         expect(pkg.name).toBe(basename(tempDir));
       });
@@ -243,7 +250,7 @@ describeConformance(
             EXPECTED_APP_FILES("@scope/package/"),
           );
           const pkg = JSON.parse(
-            readFileSync(join(tempDir, "@scope/package/package.json"), "utf8"),
+            readTextSync(join(tempDir, "@scope/package/package.json")),
           ) as { name: string };
           expect(pkg.name).toBe("@scope/package");
         });
@@ -260,7 +267,7 @@ describeConformance(
             EXPECTED_APP_FILES("@-/package/"),
           );
           const pkg = JSON.parse(
-            readFileSync(join(tempDir, "@-/package/package.json"), "utf8"),
+            readTextSync(join(tempDir, "@-/package/package.json")),
           ) as { name: string };
           expect(pkg.name).toBe("@-/package");
         });
@@ -282,7 +289,7 @@ describeConformance(
           EXPECTED_APP_FILES(""),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "123/package.json"), "utf8"),
+          readTextSync(join(tempDir, "123/package.json")),
         ) as { name: string };
         expect(pkg.name).toBe("123");
       },
@@ -301,7 +308,7 @@ describeConformance(
         EXPECTED_APP_FILES("123/"),
       );
       const pkg = JSON.parse(
-        readFileSync(join(tempDir, "123/package.json"), "utf8"),
+        readTextSync(join(tempDir, "123/package.json")),
       ) as { name: string };
       expect(pkg.name).toBe("123");
     });
@@ -345,7 +352,7 @@ describeConformance(
           EXPECTED_APP_FILES(""),
         );
         const pkg = JSON.parse(
-          readFileSync(join(tempDir, "app/package.json"), "utf8"),
+          readTextSync(join(tempDir, "app/package.json")),
         ) as { name: string };
         expect(pkg.name).toBe("project");
 
@@ -360,7 +367,7 @@ describeConformance(
           EXPECTED_APP_FILES(""),
         );
         const flatPkg = JSON.parse(
-          readFileSync(join(tempDir, "app-flat/package.json"), "utf8"),
+          readTextSync(join(tempDir, "app-flat/package.json")),
         ) as { name: string };
         expect(flatPkg.name).toBe("project");
       },
@@ -376,7 +383,7 @@ describeConformance(
         cwd: tempDir,
       });
 
-      expect(existsSync(join(tempDir, "app/package.json"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "app/package.json"))).toBe(true);
       expect(result.files.map((f) => f.relativePath)).toContain("package.json");
     });
 
@@ -407,7 +414,7 @@ describeConformance(
           (f) => f.relativePath === "project/test/app.spec.ts",
         );
         expect(specFile).toBeDefined();
-        expect(specFile?.content).toContain('import "reflect-metadata";');
+        expect(specFile?.content).not.toContain('import "reflect-metadata";');
         expect(specFile?.content).toContain(
           'import { describe, expect, it } from "bun:test";',
         );
@@ -471,7 +478,7 @@ describeConformance(
           const read = (rel: string) =>
             files.find((f) => f.relativePath === rel)?.content ?? "";
 
-          expect(read("src/main.ts")).toContain('import "reflect-metadata";');
+          expect(read("src/main.ts")).not.toContain('import "reflect-metadata";');
           expect(read("src/main.ts")).toContain(
             'import { BunestFactory, ValidationPipe } from "@bunest/core";',
           );
@@ -511,7 +518,7 @@ describeConformance(
           expect(created.projectName).toBe("loose-app");
 
           const tsconfig = JSON.parse(
-            readFileSync(join(tempDir, "loose-app/tsconfig.json"), "utf8"),
+            readTextSync(join(tempDir, "loose-app/tsconfig.json")),
           ) as {
             compilerOptions: {
               strict: boolean;
@@ -541,7 +548,7 @@ describeConformance(
         });
 
         const tsconfig = JSON.parse(
-          readFileSync(join(tempDir, "project/tsconfig.json"), "utf8"),
+          readTextSync(join(tempDir, "project/tsconfig.json")),
         ) as { compilerOptions: { strict: boolean } };
         expect(tsconfig.compilerOptions.strict).toBe(false);
       });
@@ -571,12 +578,9 @@ describeConformance(
     describe("in a directory that already has files", () => {
       it("should generate around files the template does not write", async () => {
         const projectDir = join(tempDir, "project");
-        mkdirSync(join(projectDir, ".git"), { recursive: true });
-        writeFileSync(join(projectDir, "SPEC.md"), "# What to build");
-        writeFileSync(
-          join(projectDir, ".git/HEAD"),
-          "ref: refs/heads/main",
-        );
+        mkdirSyncPath(join(projectDir, ".git"), { recursive: true });
+        writeTextSync(join(projectDir, "SPEC.md"), "# What to build");
+        writeTextSync(join(projectDir, ".git/HEAD"), "ref: refs/heads/main");
 
         const result = await generateSchematic({
           schematic: "application",
@@ -584,10 +588,10 @@ describeConformance(
           cwd: tempDir,
         });
 
-        expect(readFileSync(join(projectDir, "SPEC.md"), "utf8")).toBe(
+        expect(readTextSync(join(projectDir, "SPEC.md"))).toBe(
           "# What to build",
         );
-        expect(readFileSync(join(projectDir, ".git/HEAD"), "utf8")).toBe(
+        expect(readTextSync(join(projectDir, ".git/HEAD"))).toBe(
           "ref: refs/heads/main",
         );
         expect(result.files.map((f) => f.relativePath)).toContain(
@@ -601,9 +605,9 @@ describeConformance(
       // BUNEST_BUG: generateSchematic("application") throws FileCollisionError when README.md or .gitignore already exist instead of preserving them and generating the remaining files (packages/cli/src/utils/fs-writer.ts).
       it.skip("should keep an existing README.md and .gitignore instead of overwriting them", async () => {
         const projectDir = join(tempDir, "project");
-        mkdirSync(projectDir, { recursive: true });
-        writeFileSync(join(projectDir, "README.md"), "# My service");
-        writeFileSync(join(projectDir, ".gitignore"), "secrets/");
+        mkdirSyncPath(projectDir, { recursive: true });
+        writeTextSync(join(projectDir, "README.md"), "# My service");
+        writeTextSync(join(projectDir, ".gitignore"), "secrets/");
 
         const result = await generateSchematic({
           schematic: "application",
@@ -611,10 +615,10 @@ describeConformance(
           cwd: tempDir,
         });
 
-        expect(readFileSync(join(projectDir, "README.md"), "utf8")).toBe(
+        expect(readTextSync(join(projectDir, "README.md"))).toBe(
           "# My service",
         );
-        expect(readFileSync(join(projectDir, ".gitignore"), "utf8")).toBe(
+        expect(readTextSync(join(projectDir, ".gitignore"))).toBe(
           "secrets/",
         );
         expect(result.files.map((f) => f.relativePath)).toContain(
@@ -624,13 +628,10 @@ describeConformance(
 
       it("should refuse, naming every file it would overwrite, and write nothing", async () => {
         const projectDir = join(tempDir, "project");
-        mkdirSync(projectDir, { recursive: true });
-        writeFileSync(
-          join(projectDir, "package.json"),
-          '{ "name": "mine" }',
-        );
-        writeFileSync(join(projectDir, "tsconfig.json"), "{}");
-        writeFileSync(join(projectDir, "SPEC.md"), "# What to build");
+        mkdirSyncPath(projectDir, { recursive: true });
+        writeTextSync(join(projectDir, "package.json"), '{ "name": "mine" }');
+        writeTextSync(join(projectDir, "tsconfig.json"), "{}");
+        writeTextSync(join(projectDir, "SPEC.md"), "# What to build");
 
         let caught: unknown;
         try {
@@ -647,10 +648,10 @@ describeConformance(
         const collision = caught as FileCollisionError;
         expect(collision.collidingPaths).toContain("project/package.json");
         expect(collision.collidingPaths).toContain("project/tsconfig.json");
-        expect(readFileSync(join(projectDir, "package.json"), "utf8")).toBe(
+        expect(readTextSync(join(projectDir, "package.json"))).toBe(
           '{ "name": "mine" }',
         );
-        expect(existsSync(join(projectDir, "src/main.ts"))).toBe(false);
+        expect(existsSyncPath(join(projectDir, "src/main.ts"))).toBe(false);
       });
     });
   },

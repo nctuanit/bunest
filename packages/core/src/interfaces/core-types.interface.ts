@@ -16,7 +16,7 @@ import type {
   ShutdownSignal,
   Type,
   VersionValue,
-} from "@bunest/common";
+} from "../common/index";
 
 export type { ContextId };
 
@@ -51,9 +51,7 @@ export type IEntryNestModule =
   | DynamicModule
   | ForwardReference
   | ModuleMetadata
-  | Promise<
-      Type<any> | DynamicModule | ForwardReference | ModuleMetadata
-    >;
+  | Promise<Type<any> | DynamicModule | ForwardReference | ModuleMetadata>;
 
 export type ModuleRefGetOrResolveOpts = ModuleRefGetOptions;
 
@@ -70,7 +68,9 @@ export interface LifecycleModuleGroupLike {
  */
 export interface LifecycleManagerLike {
   callModuleInit(groups: readonly LifecycleModuleGroupLike[]): Promise<void>;
-  callModuleInitFor?(groups: readonly LifecycleModuleGroupLike[]): Promise<void>;
+  callModuleInitFor?(
+    groups: readonly LifecycleModuleGroupLike[],
+  ): Promise<void>;
   callApplicationBootstrap(
     groups: readonly LifecycleModuleGroupLike[],
   ): Promise<void>;
@@ -89,7 +89,7 @@ export interface LifecycleManagerLike {
   getIsClosed(): boolean;
 }
 
-declare module "@bunest/common" {
+declare module "../common/index" {
   interface BunestApplicationOptions {
     bufferLogs?: boolean;
     autoFlushLogs?: boolean;
@@ -97,8 +97,7 @@ declare module "@bunest/common" {
   }
 }
 
-export interface BunestApplicationContextOptions
-  extends BunestApplicationOptions {
+export interface BunestApplicationContextOptions extends BunestApplicationOptions {
   bufferLogs?: boolean;
   autoFlushLogs?: boolean;
   lifecycleManager?: LifecycleManagerLike;
@@ -169,9 +168,7 @@ export function isEnhancerOverrideEntry(
 }
 
 export type EnhancerOverrideValue =
-  | Type<unknown>
-  | object
-  | EnhancerOverrideEntry;
+  Type<unknown> | object | EnhancerOverrideEntry;
 
 export function isContextId(value: unknown): value is ContextId {
   return (
@@ -223,7 +220,7 @@ export interface InjectResponse {
 }
 
 /**
- * Structural contract matching `@bunest/http`'s `RequestScopeContainer`.
+ * Structural contract matching `@bunest/core/http`'s `RequestScopeContainer`.
  */
 export interface RequestScopeContainer {
   resolve<T = unknown>(token: InjectionToken<T>): Promise<T> | T;
@@ -233,9 +230,7 @@ export interface RequestScopeContainer {
 
 export interface MiddlewareConfigEntry {
   readonly middleware:
-    | MiddlewareFunction
-    | Type<BunestMiddleware>
-    | BunestMiddleware;
+    MiddlewareFunction | Type<BunestMiddleware> | BunestMiddleware;
   readonly include?: RouteInfo[];
   readonly exclude?: RouteInfo[];
   readonly moduleId: string;
@@ -247,10 +242,7 @@ export interface ContainerOverrides {
   pipes?: Map<Type<unknown>, EnhancerOverrideValue>;
   interceptors?: Map<Type<unknown>, EnhancerOverrideValue>;
   filters?: Map<Type<unknown>, EnhancerOverrideValue>;
-  modules?: Map<
-    Type<unknown> | DynamicModule,
-    Type<unknown> | DynamicModule
-  >;
+  modules?: Map<Type<unknown> | DynamicModule, Type<unknown> | DynamicModule>;
   mocker?: MockFactory;
 }
 

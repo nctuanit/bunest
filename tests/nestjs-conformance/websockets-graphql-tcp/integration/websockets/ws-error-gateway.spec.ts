@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import type { Type } from "../../../../../packages/common/src";
+import type { Type } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   SubscribeMessage,
@@ -8,7 +7,7 @@ import {
   WebSocketModule,
   WsException,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 @WebSocketGateway({ path: "/ws" })
@@ -79,20 +78,22 @@ describeConformance(
           ws!.addEventListener("error", reject, { once: true });
         });
 
-        const responsePromise = new Promise<WsMessageFrame>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("Timed out waiting for error frame")),
-            2000,
-          );
-          ws!.addEventListener(
-            "message",
-            (evt) => {
-              clearTimeout(timer);
-              resolve(JSON.parse(String(evt.data)) as WsMessageFrame);
-            },
-            { once: true },
-          );
-        });
+        const responsePromise = new Promise<WsMessageFrame>(
+          (resolve, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error("Timed out waiting for error frame")),
+              2000,
+            );
+            ws!.addEventListener(
+              "message",
+              (evt) => {
+                clearTimeout(timer);
+                resolve(JSON.parse(String(evt.data)) as WsMessageFrame);
+              },
+              { once: true },
+            );
+          },
+        );
 
         ws.send(
           JSON.stringify({
@@ -113,7 +114,7 @@ describeConformance(
       "native Bun WS error frame",
     );
 
-    // BUNEST_BUG: Expected BaseWsExceptionFilter to redact Error instances wrapped in WsException(new Error(...)) and emit { status: "error", message: "Internal server error" }, but BaseWsExceptionFilter spreads `...errPayload` directly, leaking enumerable properties like `config.headers.Authorization` to the client (packages/websockets/src/filters/base-ws-exception.filter.ts#L31-L39).
+    // BUNEST_BUG: Expected BaseWsExceptionFilter to redact Error instances wrapped in WsException(new Error(...)) and emit { status: "error", message: "Internal server error" }, but BaseWsExceptionFilter spreads `...errPayload` directly, leaking enumerable properties like `config.headers.Authorization` to the client (packages/core/src/ws/filters/base-ws-exception.filter.ts#L31-L39).
     it.skip("should send the unknown error payload for a WsException holding an error", async () => {
       const port = await startApp(WsErrorGateway);
       ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);

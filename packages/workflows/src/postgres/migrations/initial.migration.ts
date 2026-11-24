@@ -1,4 +1,4 @@
-import type { StoreMigration } from "@bunest/store-kit/postgres";
+import type { StoreMigration } from "@bunest/orm/postgres";
 
 /**
  * The store's tables. Times are epoch milliseconds from the engine's clock (`bigint`); inputs, outputs, errors,

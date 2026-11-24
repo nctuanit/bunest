@@ -1,12 +1,16 @@
 import { addLibrary } from "./commands/add";
 import { buildProject } from "./commands/build";
+import { runCheckCommand } from "./commands/check";
+import { runCodemodCommand, runDelombokCommand } from "./commands/codemod";
 import { deployProject } from "./commands/deploy";
 import { runDevServer } from "./commands/dev";
 import { generateSchematic } from "./commands/generate";
+import { generateRepositoryCommand } from "./commands/generate-repository";
 import { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
 import { createProject } from "./commands/new";
 import { runReplCommand } from "./commands/repl";
 import { runStartCommand } from "./commands/start";
+import { runTypegenCommand } from "./commands/typegen";
 import { upgradeProject } from "./commands/upgrade";
 import { parseCliArgs } from "./parser";
 import type { CliFlagValue, CliIO, CliResult } from "./types";
@@ -44,19 +48,61 @@ Commands:
     --force                         Overwrite existing files
 
   start                             Run Bunest application
-    -w, --watch                     Run in watch mode ("bun --watch")
+    -w, --watch                     Run in watch mode ("bun --watch" + live typegen)
     -d, --debug [hostport]          Enable Bun inspector ("bun --inspect")
     --entryFile, --entry <file>     Entrypoint file (default: src/main.ts)
     --sourceRoot <path>             Source root directory (default: src)
     -c, --config <path>             Path to bunest.json / nest-cli.json
     --env-file <path>               Load environment file (repeatable)
     --preserveWatchOutput           Keep terminal output across restarts
+    --no-typegen                    Disable automatic global typegen in watch mode
+    --typegen-dir <dir>             Output directory for generated types (default: .bunest/types)
     --silent                        Suppress CLI banner output
     -e, --exec <binary>             Custom runtime executable
 
-  dev                               Run development server via "bun --watch"
+  dev                               Run development server ("bun --watch") with live global typegen
     --entry <file>                  Entrypoint file (default: src/main.ts)
+    --sourceRoot <path>             Source root directory (default: src)
+    -c, --config <path>             Path to bunest.json / nest-cli.json
     --port <n>                      Override PORT environment variable
+    --no-typegen                    Disable automatic global typegen watcher
+    --typegen-dir <dir>             Output directory for generated types (default: .bunest/types)
+    --silent                        Suppress CLI output
+
+  typegen, tg                       Generate global DX type declarations (.bunest/types/bunest.d.ts)
+    -w, --watch                     Watch source & .env files and regenerate incrementally
+    --check                         Verify generated types are up-to-date (exits 1 if stale)
+    -o, --outdir <dir>              Output directory (default: .bunest/types)
+    --sourceRoot <path>             Source root directory (default: src)
+    --tsconfig <path>               Explicit path to tsconfig.json
+    -c, --config <path>             Path to bunest.json / nest-cli.json
+    --env-file <path>               Env file(s) to scan for config keys (repeatable)
+    -d, --dry-run                   Scan without writing files
+    --no-global                     Omit \`declare global { namespace Bunest }\` aliases
+    --silent                        Suppress output logs
+
+  check, doctor                     Run all 19 Bunest static diagnostics (DI, Repositories, Class Macros)
+    --fix                           Auto-apply safe AST fixes
+    --format <pretty|json>          Output format (default: pretty)
+    --strict                        Fail with exit code 1 on warnings as well as errors
+    --sourceRoot <path>             Source root directory (default: src)
+    --tsconfig <path>               Explicit path to tsconfig.json
+    --dry-run                       Preview --fix changes without writing files
+
+  delombok, expand <target>         Expand Class Macro decorators (@Data/@Builder/@WithLogger/...) to explicit TS
+    --decorator <Name>              Expand only one specific decorator
+    --class <ClassName>             Target class name when file has multiple classes
+    --dry-run                       Print expanded result without writing
+
+  codemod <action> <file>           Run surgical AST codemods
+    Actions: derived-to-query | collapse-logger | sync-di | add-provider
+    --method <name>                 Target method name (for derived-to-query)
+    --class <name>                  Target class name
+    --module <name>                 Target @Module class (for add-provider)
+    --symbol <name>                 Provider/Controller symbol (for add-provider)
+    --kind <providers|controllers|exports|imports>
+    --from <specifier>              Import specifier (for add-provider)
+    --dry-run                       Preview without writing
 
   build                             Bundle application using Bun.build()
     --entryFile, --entry <file>     Entrypoint file (default: src/main.ts)
@@ -164,7 +210,7 @@ export async function runCli(
         const projectName = positionals[0];
         if (!projectName) {
           io.stderr(
-            'Missing required argument: <project-name>.\nUsage: bunest new <project-name> [--dir <path>] [--strict] [--skip-git] [--package-manager <pm>] [--skip-install] [--dry-run]',
+            "Missing required argument: <project-name>.\nUsage: bunest new <project-name> [--dir <path>] [--strict] [--skip-git] [--package-manager <pm>] [--skip-install] [--dry-run]",
           );
           return { exitCode: 1 };
         }
@@ -193,6 +239,40 @@ export async function runCli(
       case "g": {
         const schematic = positionals[0];
         const rawName = positionals[1];
+
+        if (
+          schematic &&
+          ["repository", "repo"].includes(schematic.trim().toLowerCase())
+        ) {
+          if (!rawName) {
+            io.stderr(
+              "Missing required argument: <EntityNameOrFile>.\nUsage: bunest generate repository <EntityName> [--dialect sqlite|postgres|mysql] [--dir <path>] [--dry-run] [--force]",
+            );
+            return { exitCode: 1 };
+          }
+          const dialectRaw = getStringFlag(flags, "dialect");
+          const dialect =
+            dialectRaw === "postgres" ||
+            dialectRaw === "mysql" ||
+            dialectRaw === "sqlite"
+              ? dialectRaw
+              : "sqlite";
+          const result = await generateRepositoryCommand(
+            {
+              target: rawName,
+              dialect,
+              dir: getStringFlag(flags, "dir"),
+              sourceRoot: getStringFlag(flags, "sourceRoot"),
+              config: getStringFlag(flags, "config"),
+              cwd: io.cwd,
+              dryRun: getBoolFlag(flags, "dry-run") ?? false,
+              force: getBoolFlag(flags, "force") ?? false,
+            },
+            io,
+          );
+          return { exitCode: 0, output: result };
+        }
+
         const isConfigSchematic =
           schematic !== undefined &&
           ["config", "configuration"].includes(schematic.trim().toLowerCase());
@@ -200,7 +280,7 @@ export async function runCli(
 
         if (!schematic || !name) {
           io.stderr(
-            'Missing required arguments: <schematic> <name>.\nUsage: bunest generate <schematic> <name> [--dir <path>] [--sourceRoot <path>] [--project <name>] [--spec-file-suffix <suffix>] [--flat] [--no-spec] [--dry-run] [--force]',
+            "Missing required arguments: <schematic> <name>.\nUsage: bunest generate <schematic> <name> [--dir <path>] [--sourceRoot <path>] [--project <name>] [--spec-file-suffix <suffix>] [--flat] [--no-spec] [--dry-run] [--force]",
           );
           return { exitCode: 1 };
         }
@@ -239,6 +319,9 @@ export async function runCli(
           typeof rawDebug === "boolean" || typeof rawDebug === "string"
             ? rawDebug
             : undefined;
+        const noTypegen = getBoolFlag(flags, "no-typegen");
+        const typegenFlag = getBoolFlag(flags, "typegen");
+        const typegen = noTypegen === true ? false : typegenFlag;
         const result = await runStartCommand(
           {
             entry: getStringFlag(flags, "entry"),
@@ -254,6 +337,8 @@ export async function runCli(
             silent: getBoolFlag(flags, "silent") ?? false,
             exec: getStringFlag(flags, "exec"),
             port: parseOptionalPort(getStringFlag(flags, "port")),
+            typegen,
+            typegenOutDir: getStringFlag(flags, "typegen-dir"),
             cwd: io.cwd,
           },
           io,
@@ -263,11 +348,127 @@ export async function runCli(
 
       case "dev": {
         const port = parseOptionalPort(getStringFlag(flags, "port"));
+        const noTypegen = getBoolFlag(flags, "no-typegen");
+        const typegenFlag = getBoolFlag(flags, "typegen");
+        const typegen = noTypegen === true ? false : typegenFlag;
         const result = await runDevServer(
           {
             entry: getStringFlag(flags, "entry"),
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            config: getStringFlag(flags, "config"),
             port,
+            typegen,
+            typegenOutDir: getStringFlag(flags, "typegen-dir"),
+            silent: getBoolFlag(flags, "silent") ?? false,
             cwd: io.cwd,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "typegen":
+      case "tg": {
+        const noGlobal = getBoolFlag(flags, "no-global");
+        const result = await runTypegenCommand(
+          {
+            cwd: io.cwd,
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            outdir:
+              getStringFlag(flags, "outdir") ??
+              getStringFlag(flags, "typegen-dir"),
+            tsconfig: getStringFlag(flags, "tsconfig"),
+            config: getStringFlag(flags, "config"),
+            envFile: getStringArrayFlag(flags, "env-file"),
+            watch: getBoolFlag(flags, "watch") ?? false,
+            check: getBoolFlag(flags, "check") ?? false,
+            dryRun: getBoolFlag(flags, "dry-run") ?? false,
+            includeGlobalNamespace: noGlobal === true ? false : undefined,
+            silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "check":
+      case "doctor": {
+        const fmt = getStringFlag(flags, "format");
+        const result = await runCheckCommand(
+          {
+            cwd: io.cwd,
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            tsconfig: getStringFlag(flags, "tsconfig"),
+            config: getStringFlag(flags, "config"),
+            format: fmt === "json" ? "json" : "pretty",
+            strict: getBoolFlag(flags, "strict") ?? false,
+            fix: getBoolFlag(flags, "fix") ?? false,
+            dryRun: getBoolFlag(flags, "dry-run") ?? false,
+            silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "delombok":
+      case "expand": {
+        const target = positionals[0];
+        if (!target) {
+          io.stderr(
+            "Missing required argument: <fileOrClass>.\nUsage: bunest delombok <fileOrClass> [--decorator <Name>] [--class <ClassName>] [--dry-run]",
+          );
+          return { exitCode: 1 };
+        }
+        const result = await runDelombokCommand(
+          {
+            target,
+            decorator: getStringFlag(flags, "decorator"),
+            className: getStringFlag(flags, "class"),
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            tsconfig: getStringFlag(flags, "tsconfig"),
+            config: getStringFlag(flags, "config"),
+            cwd: io.cwd,
+            dryRun: getBoolFlag(flags, "dry-run") ?? false,
+            silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "codemod": {
+        const action = positionals[0];
+        const targetFile = positionals[1];
+        if (!action || !targetFile) {
+          io.stderr(
+            "Missing required arguments: <action> <file>.\nUsage: bunest codemod <derived-to-query|collapse-logger|sync-di|add-provider> <file> [--dry-run]",
+          );
+          return { exitCode: 1 };
+        }
+        const kindRaw = getStringFlag(flags, "kind");
+        const arrayProperty =
+          kindRaw === "controllers" ||
+          kindRaw === "exports" ||
+          kindRaw === "imports"
+            ? kindRaw
+            : "providers";
+        const result = await runCodemodCommand(
+          {
+            action,
+            targetFile,
+            className: getStringFlag(flags, "class"),
+            methodName: getStringFlag(flags, "method"),
+            moduleName: getStringFlag(flags, "module"),
+            symbolName: getStringFlag(flags, "symbol"),
+            arrayProperty,
+            importSpecifier: getStringFlag(flags, "from"),
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            tsconfig: getStringFlag(flags, "tsconfig"),
+            config: getStringFlag(flags, "config"),
+            cwd: io.cwd,
+            dryRun: getBoolFlag(flags, "dry-run") ?? false,
+            silent: getBoolFlag(flags, "silent") ?? false,
           },
           io,
         );
@@ -276,20 +477,13 @@ export async function runCli(
 
       case "build": {
         const target = getStringFlag(flags, "target") as
-          | "bun"
-          | "browser"
-          | "node"
-          | undefined;
+          "bun" | "browser" | "node" | undefined;
         const rawSourcemap = flags.sourcemap;
         const sourcemap =
           rawSourcemap === undefined
             ? undefined
             : (rawSourcemap as
-                | "none"
-                | "linked"
-                | "inline"
-                | "external"
-                | boolean);
+                "none" | "linked" | "inline" | "external" | boolean);
 
         const result = await buildProject(
           {
@@ -319,7 +513,7 @@ export async function runCli(
         const library = positionals[0];
         if (!library) {
           io.stderr(
-            'Missing required argument: <library>.\nUsage: bunest add <library> [--dry-run] [--skip-install] [--project <name>]',
+            "Missing required argument: <library>.\nUsage: bunest add <library> [--dry-run] [--skip-install] [--project <name>]",
           );
           return { exitCode: 1 };
         }

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { Scope } from "../../../../../../packages/common/src";
+import { Scope } from "../../../../../../packages/core/src/common";
 import {
   SerializedGraph,
   type GraphEntrypoint,
@@ -273,25 +272,29 @@ describeConformance(
         expect(result).toContain("Symbol(testSymbol)");
       });
 
-      itAdapted("ADR-007", "should convert function values to their names", () => {
-        function MyService() {}
-        serializedGraph.insertEdge({
-          source: "a",
-          target: "b",
-          metadata: {
-            type: "class-to-class",
-            sourceClassName: "A",
-            targetClassName: "B",
-            sourceModuleName: "AppModule",
-            targetModuleName: "AppModule",
-            injectionType: "constructor",
-            targetClassToken: MyService as unknown as string,
-          },
-        });
+      itAdapted(
+        "ADR-007",
+        "should convert function values to their names",
+        () => {
+          function MyService() {}
+          serializedGraph.insertEdge({
+            source: "a",
+            target: "b",
+            metadata: {
+              type: "class-to-class",
+              sourceClassName: "A",
+              targetClassName: "B",
+              sourceModuleName: "AppModule",
+              targetModuleName: "AppModule",
+              injectionType: "constructor",
+              targetClassToken: MyService as unknown as string,
+            },
+          });
 
-        const result = serializedGraph.toString();
-        expect(result).toContain("MyService");
-      });
+          const result = serializedGraph.toString();
+          expect(result).toContain("MyService");
+        },
+      );
     });
   },
 );

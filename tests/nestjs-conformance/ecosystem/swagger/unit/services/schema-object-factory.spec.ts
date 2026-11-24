@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   Body,
@@ -10,7 +9,7 @@ import {
   Post,
   Query,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../../packages/core/src";
 import {
   ApiExtension,
@@ -591,7 +590,9 @@ describeConformance(
 
       // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:575-582) silently disambiguates duplicate DTO names with _2 without logging a Logger.warn
       it.skip("should log a warning when detecting duplicate DTOs with different schemas", () => {
-        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(() => {});
+        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
+          () => {},
+        );
         try {
           class DuplicateDTO {
             @ApiProperty()
@@ -620,7 +621,9 @@ describeConformance(
         const loggerErrorSpy = spyOn(Logger, "error").mockImplementation(
           () => {},
         );
-        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(() => {});
+        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
+          () => {},
+        );
         try {
           class DuplicateDTO {
             @ApiProperty()
@@ -645,7 +648,9 @@ describeConformance(
       });
 
       it("should not log a warning when detecting duplicate DTOs with the same schemas", () => {
-        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(() => {});
+        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
+          () => {},
+        );
         try {
           class DuplicateDTO {
             @ApiProperty()
@@ -668,7 +673,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: PickType (packages/common/src/mapped-types/mapped-types.utils.ts) names inline classes Pick<Base> instead of key-suffixed Pick<Base><Keys>
+      // BUNEST_BUG: PickType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Pick<Base> instead of key-suffixed Pick<Base><Keys>
       it.skip("should keep inline PickType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
@@ -721,7 +726,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: OmitType (packages/common/src/mapped-types/mapped-types.utils.ts) names inline classes Omit<Base> instead of key-suffixed Omit<Base><Keys>
+      // BUNEST_BUG: OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) names inline classes Omit<Base> instead of key-suffixed Omit<Base><Keys>
       it.skip("should keep inline OmitType schemas distinct", () => {
         class ActivityContentDto {
           @ApiProperty()
@@ -759,7 +764,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: PickType/OmitType (packages/common/src/mapped-types/mapped-types.utils.ts) use base-only + numeric suffix names instead of visible-key-suffixed names
+      // BUNEST_BUG: PickType/OmitType (packages/core/src/common/mapped-types/mapped-types.utils.ts) use base-only + numeric suffix names instead of visible-key-suffixed names
       it.skip("should not spell properties hidden from the document in inline mapped type names", () => {
         class AccountDto {
           @ApiProperty()
@@ -780,7 +785,9 @@ describeConformance(
           })
           account!: Omit<AccountDto, "passwordHash" | "totpSecret">;
 
-          @ApiProperty({ type: PickType(AccountDto, ["email", "passwordHash"]) })
+          @ApiProperty({
+            type: PickType(AccountDto, ["email", "passwordHash"]),
+          })
           contact!: Pick<AccountDto, "email" | "passwordHash">;
 
           @ApiProperty({ type: OmitType(AccountDto, ["email", "totpSecret"]) })
@@ -1002,7 +1009,7 @@ describeConformance(
         });
       });
 
-      it('should represent nullable $ref properties cleanly (issue #3274)', () => {
+      it("should represent nullable $ref properties cleanly (issue #3274)", () => {
         class ProfileDto {
           @ApiProperty()
           bio!: string;
@@ -1019,7 +1026,10 @@ describeConformance(
         const { schemas } = exploreModel(UserWithNullableProfile, explorer);
         // Bunest emits OAS 3.1 `anyOf: [{ $ref }, { type: "null" }]` natively
         expect(schemas.UserWithNullableProfile?.properties?.profile).toEqual({
-          anyOf: [{ $ref: "#/components/schemas/ProfileDto" }, { type: "null" }],
+          anyOf: [
+            { $ref: "#/components/schemas/ProfileDto" },
+            { type: "null" },
+          ],
         });
       });
 
@@ -1033,7 +1043,10 @@ describeConformance(
           value!: string | number | null;
         }
 
-        const { schemas } = exploreModel(DtoWithNullablePrimitiveUnion, explorer);
+        const { schemas } = exploreModel(
+          DtoWithNullablePrimitiveUnion,
+          explorer,
+        );
         expect(
           schemas.DtoWithNullablePrimitiveUnion?.properties?.value,
         ).toEqual({
@@ -1054,7 +1067,9 @@ describeConformance(
         }
 
         const { schemas } = exploreModel(DtoWithExplicitTypeAndAllOf, explorer);
-        expect(schemas.DtoWithExplicitTypeAndAllOf?.properties?.username).toEqual({
+        expect(
+          schemas.DtoWithExplicitTypeAndAllOf?.properties?.username,
+        ).toEqual({
           type: "string",
           allOf: [{ pattern: "^[a-z]" }, { pattern: "^[a-z0-9_.-]*$" }],
         });
@@ -1116,7 +1131,8 @@ describeConformance(
           explorer,
         );
         expect(
-          schemas.DtoWithExplicitAdditionalPropertiesAndOneOf?.properties?.grade,
+          schemas.DtoWithExplicitAdditionalPropertiesAndOneOf?.properties
+            ?.grade,
         ).toEqual({
           additionalProperties: false,
           oneOf: [
@@ -1298,7 +1314,9 @@ describeConformance(
 
       // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:596-636) does not read static _OPENAPI_METADATA_FACTORY() metadata for nested default key picking
       it.skip("should read plugin metadata before picking the keys of a nested default", () => {
-        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(() => {});
+        const loggerWarnSpy = spyOn(Logger, "warn").mockImplementation(
+          () => {},
+        );
         try {
           class SettingsDto {
             enabled = true;
@@ -1734,11 +1752,17 @@ describeConformance(
         }
 
         const { schemas } = exploreModel(EnumOneOfDto, explorer);
-        expect(schemas.MyEnum).toEqual({ enum: ["a", "b", "c"], type: "string" });
+        expect(schemas.MyEnum).toEqual({
+          enum: ["a", "b", "c"],
+          type: "string",
+        });
         const prop = schemas.EnumOneOfDto?.properties?.field;
         expect(prop).toEqual(
           expect.objectContaining({
-            oneOf: [{ type: "number" }, { $ref: "#/components/schemas/MyEnum" }],
+            oneOf: [
+              { type: "number" },
+              { $ref: "#/components/schemas/MyEnum" },
+            ],
           }),
         );
         expect(prop).not.toHaveProperty("allOf");
@@ -1765,7 +1789,10 @@ describeConformance(
         const prop = schemas.EnumAnyOfDto?.properties?.field;
         expect(prop).toEqual(
           expect.objectContaining({
-            anyOf: [{ type: "number" }, { $ref: "#/components/schemas/MyEnum" }],
+            anyOf: [
+              { type: "number" },
+              { $ref: "#/components/schemas/MyEnum" },
+            ],
           }),
         );
         expect(prop).not.toHaveProperty("allOf");
@@ -2632,7 +2659,10 @@ describeConformance(
         }
 
         expect(() => exploreModel(SwcNumericEnumDto, explorer)).not.toThrow();
-        const { schemas } = exploreModel(SwcNumericEnumDto, new SchemaExplorer());
+        const { schemas } = exploreModel(
+          SwcNumericEnumDto,
+          new SchemaExplorer(),
+        );
         expect(schemas.SwcNumericEnumDto?.properties?.rank).toBeDefined();
       });
     });
@@ -2767,7 +2797,10 @@ describeConformance(
         expect(schemas.UpdateTagsDto).toEqual({
           type: "object",
           properties: {
-            tags: { type: "array", items: { $ref: "#/components/schemas/Tag" } },
+            tags: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Tag" },
+            },
             count: { type: "integer" },
           },
         });
@@ -3191,7 +3224,7 @@ describeConformance(
           ["DeepPartialType", () => DeepPartialType(BaseDto)],
         ];
 
-        // BUNEST_BUG: Mapped types (packages/common/src/mapped-types/mapped-types.utils.ts, deep-partial-type.helper.ts) lose/mis-infer lazy numeric enum type as "string" instead of "number"
+        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts, deep-partial-type.helper.ts) lose/mis-infer lazy numeric enum type as "string" instead of "number"
         it.skip.each(mappedTypes)(
           "should keep resolving the enums lazily with %s",
           (_name, createMappedType) => {
@@ -3221,7 +3254,7 @@ describeConformance(
           },
         );
 
-        // BUNEST_BUG: Mapped types (packages/common/src/mapped-types/mapped-types.utils.ts) infer lazy numeric enum type as "string" instead of "number" in mapped query DTOs
+        // BUNEST_BUG: Mapped types (packages/core/src/common/mapped-types/mapped-types.utils.ts) infer lazy numeric enum type as "string" instead of "number" in mapped query DTOs
         it.skip("should keep resolving the enums lazily in a mapped query DTO", async () => {
           class MappedQueryDto extends PartialType(BaseDto) {}
 

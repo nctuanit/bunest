@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   MetadataRegistry,
   Module,
   type HeaderMetadata,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { NestFactory } from "../../../../../packages/core/src";
 import {
   HEALTH_CHECK_METADATA,
@@ -18,10 +17,7 @@ import {
   SwaggerModule,
   type OpenAPIObject,
 } from "../../../../../packages/swagger/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers/index";
+import { describeConformance, itAdapted } from "../../../_helpers/index";
 
 @Controller("health")
 class TestController {
@@ -155,18 +151,19 @@ describeConformance(
 
     // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 does not emit 200 (["ok", "degraded"]) and 503 (["error", "shutting_down"]) response status enum schemas in OpenAPI output (received undefined).
     it.skip("keeps the ok/error status enums distinct per response", () => {
-      expect(responseSchema("/health", "200")?.properties?.status?.enum).toEqual(
-        ["ok", "degraded"],
-      );
-      expect(responseSchema("/health", "503")?.properties?.status?.enum).toEqual(
-        ["error", "shutting_down"],
-      );
+      expect(
+        responseSchema("/health", "200")?.properties?.status?.enum,
+      ).toEqual(["ok", "degraded"]);
+      expect(
+        responseSchema("/health", "503")?.properties?.status?.enum,
+      ).toEqual(["error", "shutting_down"]);
     });
 
     // An indicator can add its own data to its result (#2516)
     // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 does not register TerminusHealthCheckResult / TerminusHealthIndicatorResult schemas with additionalProperties: true (received undefined).
     it.skip("allows additional properties on an indicator result", () => {
-      const result: any = document.components?.schemas?.TerminusHealthCheckResult;
+      const result: any =
+        document.components?.schemas?.TerminusHealthCheckResult;
 
       expect(result?.properties?.details?.additionalProperties).toEqual({
         allOf: [

@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
 import {
   Inject,
   Injectable,
   type BeforeApplicationShutdown,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { ResultOutcome } from "../core/interfaces/result-waiter-options.interface";
 import { ResultWaiter } from "../core/results/result-waiter";
 import { systemClock } from "../core/time/clock";
@@ -68,12 +67,11 @@ import { WorkflowRegistry } from "./workflow-registry.service";
 import { WorkflowSchedules } from "./workflow-schedules.service";
 import { WorkflowWorker } from "./workflow-worker.service";
 
-type EventBody =
-  WorkflowEvent extends infer E
-    ? E extends WorkflowEventBase
-      ? Omit<E, keyof WorkflowEventBase>
-      : never
-    : never;
+type EventBody = WorkflowEvent extends infer E
+  ? E extends WorkflowEventBase
+    ? Omit<E, keyof WorkflowEventBase>
+    : never
+  : never;
 
 const FINISHED: WorkflowStatus[] = [
   "completed",
@@ -143,7 +141,7 @@ export class WorkflowClient implements BeforeApplicationShutdown {
     const resolved = this.registry.resolve(workflow, options.version);
     const derived =
       options.id === undefined ? stepStartId(resolved.name) : undefined;
-    const id = options.id ?? derived ?? randomUUID();
+    const id = options.id ?? derived ?? crypto.randomUUID();
     const data = newInstance(resolved, id, input, {
       caller: "start()",
       now: this.clock.now(),

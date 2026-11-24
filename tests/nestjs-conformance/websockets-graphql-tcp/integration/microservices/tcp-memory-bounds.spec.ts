@@ -1,7 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as net from "node:net";
-import { Controller, Module } from "../../../../../packages/common/src";
+import { Controller, Module } from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestMicroserviceApplication,
@@ -78,6 +76,131 @@ function buildLengthHeader(declaredBytes: number): Buffer {
   return header;
 }
 
+interface BunTestClientSocket {
+  destroyed: boolean;
+  write(data: Uint8Array | string): void;
+  end(data?: Uint8Array | string): void;
+  destroy(): void;
+  pause(): void;
+  resume(): void;
+  onData(listener: (chunk: Buffer) => void): void;
+  onceClose(listener: () => void): void;
+}
+
+async function openBunTcpSocket(port: number): Promise<BunTestClientSocket> {
+  const pendingWrites: Uint8Array[] = [];
+  const dataListeners: Array<(chunk: Buffer) => void> = [];
+  const closeListeners: Array<() => void> = [];
+  let rawSocket: Bun.Socket<unknown> | undefined;
+  let destroyed = false;
+  let endAfterDrain = false;
+
+  const flushWrites = () => {
+    if (!rawSocket || destroyed) {
+      return;
+    }
+    while (pendingWrites.length > 0) {
+      const head = pendingWrites[0]!;
+      const written = rawSocket.write(head);
+      if (written < head.byteLength) {
+        if (written > 0) {
+          pendingWrites[0] = head.subarray(written);
+        }
+        return;
+      }
+      pendingWrites.shift();
+    }
+    if (endAfterDrain) {
+      endAfterDrain = false;
+      rawSocket.end();
+    }
+  };
+
+  const markClosed = () => {
+    if (destroyed) {
+      return;
+    }
+    destroyed = true;
+    pendingWrites.length = 0;
+    for (const fn of closeListeners.splice(0)) {
+      fn();
+    }
+  };
+
+  rawSocket = await Bun.connect({
+    hostname: "127.0.0.1",
+    port,
+    socket: {
+      data(_socket, chunk) {
+        const buf = Buffer.from(chunk);
+        for (const fn of dataListeners) {
+          fn(buf);
+        }
+      },
+      drain() {
+        flushWrites();
+      },
+      end() {
+        markClosed();
+      },
+      close() {
+        markClosed();
+      },
+      error() {
+        markClosed();
+      },
+    },
+  });
+
+  const toBytes = (data: Uint8Array | string): Uint8Array =>
+    typeof data === "string" ? Buffer.from(data) : data;
+
+  return {
+    get destroyed() {
+      return destroyed;
+    },
+    write(data: Uint8Array | string) {
+      if (destroyed) {
+        return;
+      }
+      pendingWrites.push(toBytes(data));
+      flushWrites();
+    },
+    end(data?: Uint8Array | string) {
+      if (destroyed) {
+        return;
+      }
+      if (data !== undefined) {
+        pendingWrites.push(toBytes(data));
+      }
+      endAfterDrain = true;
+      flushWrites();
+    },
+    destroy() {
+      if (!destroyed) {
+        try {
+          rawSocket?.terminate();
+        } catch {
+          // ignore
+        }
+        markClosed();
+      }
+    },
+    pause() {},
+    resume() {},
+    onData(listener: (chunk: Buffer) => void) {
+      dataListeners.push(listener);
+    },
+    onceClose(listener: () => void) {
+      if (destroyed) {
+        listener();
+      } else {
+        closeListeners.push(listener);
+      }
+    },
+  };
+}
+
 describeConformance(
   "TCP transport memory bounds",
   {
@@ -91,7 +214,7 @@ describeConformance(
     let app: BunestMicroserviceApplication<MicroserviceHost> | undefined;
     let tcpServer: TcpServer | undefined;
     let port = 0;
-    let clientSockets: net.Socket[] = [];
+    let clientSockets: BunTestClientSocket[] = [];
 
     async function start(options: Record<string, unknown> = {}) {
       clientSockets = [];
@@ -117,11 +240,9 @@ describeConformance(
       expect(port).toBeGreaterThan(0);
     }
 
-    async function connect(): Promise<net.Socket> {
-      const socket = net.createConnection(port, "127.0.0.1");
+    async function connect(): Promise<BunTestClientSocket> {
+      const socket = await openBunTcpSocket(port);
       clientSockets.push(socket);
-      socket.on("error", () => {});
-      await new Promise<void>((resolve) => socket.once("connect", resolve));
       return socket;
     }
 
@@ -142,7 +263,7 @@ describeConformance(
         await start({ incompleteMessageTimeout: 300 });
         const socket = await connect();
         const closed = new Promise<void>((resolve) =>
-          socket.once("close", () => resolve()),
+          socket.onceClose(() => resolve()),
         );
 
         // Declare a packet far larger than what is actually sent, then stall.
@@ -160,13 +281,13 @@ describeConformance(
           await start({ incompleteMessageTimeout: 300 });
           const socket = await connect();
           let closed = false;
-          socket.once("close", () => {
+          socket.onceClose(() => {
             closed = true;
           });
 
           const decoder = new FrameDecoder();
           const replies: RpcResponseEnvelope[] = [];
-          socket.on("data", (chunk: Buffer) => {
+          socket.onData((chunk: Buffer) => {
             replies.push(...decoder.push<RpcResponseEnvelope>(chunk));
           });
 
@@ -202,7 +323,7 @@ describeConformance(
           await start({ incompleteMessageTimeout: 300 });
           const socket = await connect();
           let closed = false;
-          socket.once("close", () => {
+          socket.onceClose(() => {
             closed = true;
           });
 
@@ -232,7 +353,7 @@ describeConformance(
         });
         const socket = await connect();
         let closed = false;
-        socket.once("close", () => {
+        socket.onceClose(() => {
           closed = true;
         });
 
@@ -256,12 +377,12 @@ describeConformance(
           await start({ maxFrameBytes: 1024 });
           const socket = await connect();
           const closed = new Promise<void>((resolve) =>
-            socket.once("close", () => resolve()),
+            socket.onceClose(() => resolve()),
           );
 
           const decoder = new FrameDecoder();
           const responses: RpcResponseEnvelope[] = [];
-          socket.on("data", (chunk: Buffer) => {
+          socket.onData((chunk: Buffer) => {
             try {
               responses.push(...decoder.push<RpcResponseEnvelope>(chunk));
             } catch {
@@ -317,14 +438,14 @@ describeConformance(
           const socket = await connect();
 
           let closed = false;
-          socket.once("close", () => {
+          socket.onceClose(() => {
             closed = true;
           });
 
           let receivedBytes = 0;
           const decoder = new FrameDecoder();
           const responses: RpcResponseEnvelope[] = [];
-          socket.on("data", (chunk: Buffer) => {
+          socket.onData((chunk: Buffer) => {
             receivedBytes += chunk.byteLength;
             responses.push(...decoder.push<RpcResponseEnvelope>(chunk));
           });
@@ -435,7 +556,10 @@ describeConformance(
         socket.destroy();
 
         const startedAt = Date.now();
-        while (SlowController.openStreams > 0 && Date.now() - startedAt < 5000) {
+        while (
+          SlowController.openStreams > 0 &&
+          Date.now() - startedAt < 5000
+        ) {
           await sleep(20);
         }
         expect(SlowController.openStreams).toBe(0);

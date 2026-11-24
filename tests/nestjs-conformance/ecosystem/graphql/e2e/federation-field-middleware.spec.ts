@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { Module } from "../../../../../packages/common/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Field,
@@ -97,16 +96,15 @@ describeConformance(
       "Adapts ApolloFederationDriver field middleware E2E to native @bunest/graphql Federation Subgraph (ADR-001, ADR-013) via zero-socket request(app).",
   },
   () => {
-    const cases: Array<
-      [string, FieldMiddleware[], (value: string) => string]
-    > = [
-      ["without global middleware", [], (value: string) => value],
+    const cases: Array<[string, FieldMiddleware[], (value: string) => string]> =
       [
-        "with global middleware",
-        [wrap("global")],
-        (value: string) => `global(${value})`,
-      ],
-    ];
+        ["without global middleware", [], (value: string) => value],
+        [
+          "with global middleware",
+          [wrap("global")],
+          (value: string) => `global(${value})`,
+        ],
+      ];
 
     for (const [label, fieldMiddleware, globalWrap] of cases) {
       describe(label, () => {

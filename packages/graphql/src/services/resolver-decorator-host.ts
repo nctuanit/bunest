@@ -1,5 +1,5 @@
-import { Injectable, Logger } from "@bunest/common";
-import type { GraphQLError } from "graphql";
+import { Injectable, Logger } from "@bunest/core";
+import type { GraphQLError } from "../engine";
 
 /**
  * Context passed to the "request start" hook.

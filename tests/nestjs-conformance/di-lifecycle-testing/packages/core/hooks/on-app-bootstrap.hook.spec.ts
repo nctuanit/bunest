@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, spyOn } from "bun:test";
-import type { OnApplicationBootstrap } from "../../../../../../packages/common/src";
+import type { OnApplicationBootstrap } from "../../../../../../packages/core/src/common";
 import { LifecycleManager } from "../../../../../../packages/core/src";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
@@ -45,7 +44,11 @@ describeConformance(
           await lifecycle.callApplicationBootstrap([
             {
               module: { id: "sample", name: "SampleModule" },
-              instances: [sampleModule, sampleProvider, new WithoutHookProvider()],
+              instances: [
+                sampleModule,
+                sampleProvider,
+                new WithoutHookProvider(),
+              ],
             },
           ]);
 

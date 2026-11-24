@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Transform } from "class-transformer";
-import { MinLength } from "class-validator";
+import { Transform } from "../../../../../../packages/validation/src/transformer";
+import { MinLength } from "../../../../../../packages/validation/src/validator";
 import {
   ApiProperty,
   PickType,
@@ -47,7 +46,7 @@ describeConformance(
     ]) {}
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: PickType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata ("firstName" missing)
+      // BUNEST_BUG: PickType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata ("firstName" missing)
       it.skip('should pick "login" property', () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(UpdateUserDto);

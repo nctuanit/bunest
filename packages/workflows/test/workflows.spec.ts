@@ -1,7 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { channel } from "node:diagnostics_channel";
-import { Injectable, Module } from "@bunest/common";
+import { channel, Injectable, Module } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   AesGcmPayloadCodec,
@@ -45,13 +43,10 @@ describe("@bunest/workflows runtime engine", () => {
     }
 
     @Workflow("order-flow")
-    class OrderWorkflow
-      implements
-        WorkflowRunner<
-          { orderId: string },
-          { total: number; ts: number; rand: number; uid: string }
-        >
-    {
+    class OrderWorkflow implements WorkflowRunner<
+      { orderId: string },
+      { total: number; ts: number; rand: number; uid: string }
+    > {
       async run(ctx: WorkflowContext, input: { orderId: string }) {
         const ts = ctx.now();
         const rand = ctx.random();
@@ -158,9 +153,10 @@ describe("@bunest/workflows runtime engine", () => {
     const rejected = new WorkflowSignal<{ reason: string }>("order.rejected");
 
     @Workflow("approval-flow")
-    class ApprovalWorkflow
-      implements WorkflowRunner<{ key: string }, { outcome: string; detail: unknown }>
-    {
+    class ApprovalWorkflow implements WorkflowRunner<
+      { key: string },
+      { outcome: string; detail: unknown }
+    > {
       async run(ctx: WorkflowContext, input: { key: string }) {
         const res = await ctx.waitForAny("decision", {
           approved: ctx.signalWait(approved, {
@@ -214,7 +210,11 @@ describe("@bunest/workflows runtime engine", () => {
 
     // Duplicate signal id with different key throws WorkflowIdConflictError
     await expect(
-      client.signal(approved, { by: "bot", ok: true }, { key: "k2", id: "sig-1" }),
+      client.signal(
+        approved,
+        { by: "bot", ok: true },
+        { key: "k2", id: "sig-1" },
+      ),
     ).rejects.toBeInstanceOf(WorkflowIdConflictError);
 
     // Matching approval wakes wf-1
@@ -246,9 +246,10 @@ describe("@bunest/workflows runtime engine", () => {
     const log: string[] = [];
 
     @Workflow("saga-flow")
-    class SagaWorkflow
-      implements WorkflowRunner<{ failAt?: string; withCommit?: boolean }, string>
-    {
+    class SagaWorkflow implements WorkflowRunner<
+      { failAt?: string; withCommit?: boolean },
+      string
+    > {
       async run(
         ctx: WorkflowContext,
         input: { failAt?: string; withCommit?: boolean },
@@ -287,7 +288,9 @@ describe("@bunest/workflows runtime engine", () => {
     await client.start(SagaWorkflow, { failAt: "after-charge" }, { id: "s1" });
     await worker.drain();
     expect(log).toEqual(["undo-charge:charge-1", "undo-stock:stock-1"]);
-    await expect(client.result("s1")).rejects.toBeInstanceOf(WorkflowFailedError);
+    await expect(client.result("s1")).rejects.toBeInstanceOf(
+      WorkflowFailedError,
+    );
 
     // 2. ctx.commit() discards earlier compensations
     log.length = 0;
@@ -330,7 +333,10 @@ describe("@bunest/workflows runtime engine", () => {
     let shouldFail = true;
 
     @Workflow("retry-flow")
-    class RetryWorkflow implements WorkflowRunner<void, { progressSeen: number; attempts: number }> {
+    class RetryWorkflow implements WorkflowRunner<
+      void,
+      { progressSeen: number; attempts: number }
+    > {
       async run(ctx: WorkflowContext) {
         return ctx.step<
           { progressSeen: number; attempts: number },
@@ -415,9 +421,10 @@ describe("@bunest/workflows runtime engine", () => {
     const clock = new ManualWorkflowClock(1_700_000_000_000);
 
     @Workflow("child-wf")
-    class ChildWorkflow
-      implements WorkflowRunner<{ value: number; fail?: boolean; hang?: boolean }, number>
-    {
+    class ChildWorkflow implements WorkflowRunner<
+      { value: number; fail?: boolean; hang?: boolean },
+      number
+    > {
       async run(
         ctx: WorkflowContext,
         input: { value: number; fail?: boolean; hang?: boolean },
@@ -433,9 +440,10 @@ describe("@bunest/workflows runtime engine", () => {
     }
 
     @Workflow("parent-wf")
-    class ParentWorkflow
-      implements WorkflowRunner<{ mode: "ok" | "fail" | "cancel-child" }, unknown>
-    {
+    class ParentWorkflow implements WorkflowRunner<
+      { mode: "ok" | "fail" | "cancel-child" },
+      unknown
+    > {
       async run(
         ctx: WorkflowContext,
         input: { mode: "ok" | "fail" | "cancel-child" },
@@ -500,7 +508,10 @@ describe("@bunest/workflows runtime engine", () => {
     const clock = new ManualWorkflowClock(1_700_000_000_000);
     const key1 = Buffer.alloc(32, 1);
     const key2 = Buffer.alloc(32, 2);
-    const codec1 = new AesGcmPayloadCodec({ keys: { k1: key1 }, current: "k1" });
+    const codec1 = new AesGcmPayloadCodec({
+      keys: { k1: key1 },
+      current: "k1",
+    });
     const codec2 = new AesGcmPayloadCodec({
       keys: { k1: key1, k2: key2 },
       current: "k2",
@@ -514,7 +525,10 @@ describe("@bunest/workflows runtime engine", () => {
     }
 
     @Workflow("secret-wf")
-    class SecretWorkflow implements WorkflowRunner<{ ssn: string }, { masked: string }> {
+    class SecretWorkflow implements WorkflowRunner<
+      { ssn: string },
+      { masked: string }
+    > {
       async run(ctx: WorkflowContext, input: { ssn: string }) {
         const res = await ctx.step("mask", () => `***-${input.ssn.slice(-4)}`);
         return { masked: res };
@@ -532,7 +546,11 @@ describe("@bunest/workflows runtime engine", () => {
     const client1 = mod1.get(WorkflowClient);
     const worker1 = mod1.get(WorkflowWorker);
 
-    await client1.start(SecretWorkflow, { ssn: "123-45-6789" }, { id: "sec-1" });
+    await client1.start(
+      SecretWorkflow,
+      { ssn: "123-45-6789" },
+      { id: "sec-1" },
+    );
     await worker1.drain();
 
     // Raw store holds encrypted ciphertext, NOT plaintext
@@ -580,11 +598,15 @@ describe("@bunest/workflows runtime engine", () => {
         },
       ],
     })
-    class ScheduledWorkflow
-      implements WorkflowRunner<{ tenant: string; at?: number }, string>
-    {
+    class ScheduledWorkflow implements WorkflowRunner<
+      { tenant: string; at?: number },
+      string
+    > {
       async run(ctx: WorkflowContext, input: { tenant: string }) {
-        return ctx.step("work", () => `ok:${input.tenant}:${ctx.schedule?.id ?? "manual"}`);
+        return ctx.step(
+          "work",
+          () => `ok:${input.tenant}:${ctx.schedule?.id ?? "manual"}`,
+        );
       }
     }
 

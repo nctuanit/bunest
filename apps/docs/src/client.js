@@ -12,7 +12,9 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
   // Base path support for GitHub Pages project sites (e.g. "/bunest")
-  const BASE_PATH = (document.body.getAttribute("data-base-path") || "").replace(/\/+$/, "");
+  const BASE_PATH = (
+    document.body.getAttribute("data-base-path") || ""
+  ).replace(/\/+$/, "");
 
   function withBase(path) {
     if (!BASE_PATH) return path;
@@ -22,7 +24,9 @@
   }
 
   // Platform shortcut hint
-  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+  const isMac = /Mac|iPhone|iPad|iPod/i.test(
+    navigator.platform || navigator.userAgent,
+  );
   const kbdEl = $("#bn-search-kbd");
   if (kbdEl) kbdEl.textContent = isMac ? "⌘K" : "Ctrl K";
 
@@ -31,7 +35,8 @@
   // -------------------------------------------------------------------------
   function toggleTheme() {
     const html = document.documentElement;
-    const current = html.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    const current =
+      html.getAttribute("data-theme") === "dark" ? "dark" : "light";
     const next = current === "dark" ? "light" : "dark";
     html.setAttribute("data-theme", next);
     try {
@@ -88,7 +93,9 @@
         const group = el.closest(".bn-nav-group");
         if (group && !group.classList.contains("is-open")) {
           group.classList.add("is-open");
-          group.querySelector(".bn-nav-group-btn")?.setAttribute("aria-expanded", "true");
+          group
+            .querySelector(".bn-nav-group-btn")
+            ?.setAttribute("aria-expanded", "true");
         }
         el.scrollIntoView({ block: "nearest" });
       }
@@ -173,7 +180,9 @@
             n.setAttribute("aria-pressed", active ? "true" : "false");
           });
 
-          if (badgeEl) badgeEl.textContent = stage.num === "EX" ? "EXCEPTION BOUNDARY" : `STAGE ${stage.num}`;
+          if (badgeEl)
+            badgeEl.textContent =
+              stage.num === "EX" ? "EXCEPTION BOUNDARY" : `STAGE ${stage.num}`;
           if (nameEl) nameEl.textContent = stage.name;
           if (hookEl) hookEl.textContent = stage.hook;
           if (orderEl) orderEl.textContent = stage.order;
@@ -197,14 +206,19 @@
     if (tocLinks.length === 0) return;
 
     const headings = tocLinks
-      .map((link) => document.getElementById(link.getAttribute("data-toc-id") || ""))
+      .map((link) =>
+        document.getElementById(link.getAttribute("data-toc-id") || ""),
+      )
       .filter(Boolean);
 
     if (headings.length === 0) return;
 
     const setActive = (id) => {
       tocLinks.forEach((link) => {
-        link.classList.toggle("is-active", link.getAttribute("data-toc-id") === id);
+        link.classList.toggle(
+          "is-active",
+          link.getAttribute("data-toc-id") === id,
+        );
       });
     };
 
@@ -243,11 +257,15 @@
   // -------------------------------------------------------------------------
   function pathnameToSlug(pathname) {
     let stripped = pathname;
-    if (BASE_PATH && (stripped === BASE_PATH || stripped.startsWith(`${BASE_PATH}/`))) {
+    if (
+      BASE_PATH &&
+      (stripped === BASE_PATH || stripped.startsWith(`${BASE_PATH}/`))
+    ) {
       stripped = stripped.slice(BASE_PATH.length);
     }
     const cleaned = stripped.replace(/\/+$/, "").replace(/^\/+/, "");
-    if (!cleaned || cleaned === "index.html" || cleaned === "introduction") return "";
+    if (!cleaned || cleaned === "index.html" || cleaned === "introduction")
+      return "";
     return cleaned.replace(/\.html$/, "");
   }
 
@@ -283,7 +301,9 @@
 
   async function fetchPageData(slug) {
     if (pageCache.has(slug)) return pageCache.get(slug);
-    const dataUrl = withBase(slug === "" ? "/data/index.json" : `/data/${slug}.json`);
+    const dataUrl = withBase(
+      slug === "" ? "/data/index.json" : `/data/${slug}.json`,
+    );
     const res = await fetch(dataUrl);
     if (!res.ok) return null;
     const json = await res.json();
@@ -362,10 +382,20 @@
   }
 
   document.addEventListener("click", (ev) => {
-    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+    if (
+      ev.defaultPrevented ||
+      ev.button !== 0 ||
+      ev.metaKey ||
+      ev.ctrlKey ||
+      ev.shiftKey ||
+      ev.altKey
+    ) {
       return;
     }
-    const anchor = ev.target instanceof Element ? ev.target.closest("a[data-spa-link]") : null;
+    const anchor =
+      ev.target instanceof Element
+        ? ev.target.closest("a[data-spa-link]")
+        : null;
     if (!anchor) return;
     const href = anchor.getAttribute("href");
     if (!href || href.startsWith("#")) return;
@@ -411,12 +441,54 @@
 
     if (!q) {
       const suggested = [
-        { title: "First steps", categoryTitle: "OVERVIEW", href: withBase("/overview/first-steps"), headingText: "Setup tsconfig.json & BunestFactory", snippet: "Install Bunest, configure legacy decorators, and boot your first app." },
-        { title: "Controllers", categoryTitle: "OVERVIEW", href: withBase("/overview/controllers"), headingText: "@Controller, @Get, @Post & parameter decorators", snippet: "Compile-at-bootstrap routing with @Body, @Param, @Query, @Res." },
-        { title: "Validation", categoryTitle: "TECHNIQUES", href: withBase("/techniques/validation"), headingText: "ValidationPipe & SchemaValidationPipe", snippet: "Secure defaults (whitelist, forbidNonWhitelisted), Zod adapter, HTTP 400 format." },
-        { title: "11-Stage Execution Pipeline", categoryTitle: "ARCHITECTURE & ADRs", href: withBase("/architecture/execution-pipeline"), headingText: "Interactive ADR-008 Pipeline Explorer", snippet: "Exact order: CORS -> Middleware -> Guards -> Interceptors -> Pipes -> Handler." },
-        { title: "Injection scopes", categoryTitle: "FUNDAMENTALS", href: withBase("/fundamentals/injection-scopes"), headingText: "Scope.REQUEST & ScopeLeakException", snippet: "AsyncLocalStorage propagation with fail-fast bootstrap scope-leak detection." },
-        { title: "Hybrid Bun.serve Router", categoryTitle: "ARCHITECTURE & ADRs", href: withBase("/architecture/hybrid-router"), headingText: "Native Zig routes + Fallback Radix Router", snippet: "Verified Bun 1.4.3 routes matrix, O(1) 405 + Allow, and CORS preflight." },
+        {
+          title: "First steps",
+          categoryTitle: "OVERVIEW",
+          href: withBase("/overview/first-steps"),
+          headingText: "Setup tsconfig.json & BunestFactory",
+          snippet:
+            "Install Bunest, configure legacy decorators, and boot your first app.",
+        },
+        {
+          title: "Controllers",
+          categoryTitle: "OVERVIEW",
+          href: withBase("/overview/controllers"),
+          headingText: "@Controller, @Get, @Post & parameter decorators",
+          snippet:
+            "Compile-at-bootstrap routing with @Body, @Param, @Query, @Res.",
+        },
+        {
+          title: "Validation",
+          categoryTitle: "TECHNIQUES",
+          href: withBase("/techniques/validation"),
+          headingText: "ValidationPipe & SchemaValidationPipe",
+          snippet:
+            "Secure defaults (whitelist, forbidNonWhitelisted), Zod adapter, HTTP 400 format.",
+        },
+        {
+          title: "11-Stage Execution Pipeline",
+          categoryTitle: "ARCHITECTURE & ADRs",
+          href: withBase("/architecture/execution-pipeline"),
+          headingText: "Interactive ADR-008 Pipeline Explorer",
+          snippet:
+            "Exact order: CORS -> Middleware -> Guards -> Interceptors -> Pipes -> Handler.",
+        },
+        {
+          title: "Injection scopes",
+          categoryTitle: "FUNDAMENTALS",
+          href: withBase("/fundamentals/injection-scopes"),
+          headingText: "Scope.REQUEST & ScopeLeakException",
+          snippet:
+            "AsyncLocalStorage propagation with fail-fast bootstrap scope-leak detection.",
+        },
+        {
+          title: "Hybrid Bun.serve Router",
+          categoryTitle: "ARCHITECTURE & ADRs",
+          href: withBase("/architecture/hybrid-router"),
+          headingText: "Native Zig routes + Fallback Radix Router",
+          snippet:
+            "Verified Bun 1.4.3 routes matrix, O(1) 405 + Allow, and CORS preflight.",
+        },
       ];
       currentSearchMatches = suggested;
       searchSelectedIndex = 0;
@@ -493,7 +565,8 @@
     searchSelectedIndex =
       (newIdx + currentSearchMatches.length) % currentSearchMatches.length;
     $$("[data-search-idx]", searchResults).forEach((el) => {
-      const active = Number(el.getAttribute("data-search-idx")) === searchSelectedIndex;
+      const active =
+        Number(el.getAttribute("data-search-idx")) === searchSelectedIndex;
       el.classList.toggle("is-selected", active);
       el.setAttribute("aria-selected", active ? "true" : "false");
       if (active) el.scrollIntoView({ block: "nearest" });
@@ -517,14 +590,19 @@
   }
 
   $("#bn-search-trigger")?.addEventListener("click", openSearch);
-  $$("[data-close-search]").forEach((el) => el.addEventListener("click", closeSearch));
+  $$("[data-close-search]").forEach((el) =>
+    el.addEventListener("click", closeSearch),
+  );
 
   searchInput?.addEventListener("input", (e) => {
     runSearch(e.target.value);
   });
 
   searchResults?.addEventListener("click", (e) => {
-    const item = e.target instanceof Element ? e.target.closest("[data-search-idx]") : null;
+    const item =
+      e.target instanceof Element
+        ? e.target.closest("[data-search-idx]")
+        : null;
     if (!item) return;
     e.preventDefault();
     const href = item.getAttribute("href");

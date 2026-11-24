@@ -1,5 +1,10 @@
-import type { BackoffSettings, ResolvedBackoff, ResolvedRetry, RetrySettings } from '../interfaces/retry-settings.interface';
-import { parseDuration } from '../time/duration';
+import type {
+  BackoffSettings,
+  ResolvedBackoff,
+  ResolvedRetry,
+  RetrySettings,
+} from "../interfaces/retry-settings.interface";
+import { parseDuration } from "../time/duration";
 
 /**
  * What `nextRetry()` decided after a failed attempt: retry after `delay` milliseconds, or give up because the
@@ -17,14 +22,14 @@ import { parseDuration } from '../time/duration';
  */
 export type RetryDecision =
   | { retry: true; delay: number }
-  | { retry: false; reason: 'exhausted' | 'refused' }
-  | { retry: false; reason: 'threw'; error: unknown };
+  | { retry: false; reason: "exhausted" | "refused" }
+  | { retry: false; reason: "threw"; error: unknown };
 
 const DEFAULT_BACKOFF: ResolvedBackoff = {
   delay: 1_000,
   factor: 2,
   maxDelay: 300_000,
-  jitter: 'none',
+  jitter: "none",
 };
 
 /** The family's default: 3 attempts, 1s doubling up to 5m, no jitter. */
@@ -44,24 +49,33 @@ const DEFAULT_RETRY: ResolvedRetry = {
  * const policy = resolveRetry(jobOptions.retry, defaults);
  * ```
  */
-export function resolveRetry(retry: number | false | RetrySettings | undefined, base: ResolvedRetry = DEFAULT_RETRY): ResolvedRetry {
+export function resolveRetry(
+  retry: number | false | RetrySettings | undefined,
+  base: ResolvedRetry = DEFAULT_RETRY,
+): ResolvedRetry {
   if (retry === undefined) {
     return base;
   }
   if (retry === false) {
     return { ...base, attempts: 1 };
   }
-  if (typeof retry === 'number') {
+  if (typeof retry === "number") {
     return { ...base, attempts: attempts(retry) };
   }
   const { backoff } = retry;
   return {
-    attempts: retry.attempts === undefined ? base.attempts : attempts(retry.attempts),
+    attempts:
+      retry.attempts === undefined ? base.attempts : attempts(retry.attempts),
     backoff:
-      typeof backoff === 'function'
+      typeof backoff === "function"
         ? (attempt, error) => parseDuration(backoff(attempt, error))
         : backoff
-          ? resolveBackoff(backoff, typeof base.backoff === 'function' ? DEFAULT_BACKOFF : base.backoff)
+          ? resolveBackoff(
+              backoff,
+              typeof base.backoff === "function"
+                ? DEFAULT_BACKOFF
+                : base.backoff,
+            )
           : base.backoff,
     retryIf: retry.retryIf ?? base.retryIf,
   };
@@ -76,12 +90,19 @@ export function resolveRetry(retry: number | false | RetrySettings | undefined, 
  * backoffDelay({ delay: 1_000, factor: 2, maxDelay: 60_000, jitter: 'none' }, 4); // 8_000
  * ```
  */
-export function backoffDelay(backoff: ResolvedBackoff, attempt: number, random: () => number = Math.random): number {
-  const wait = Math.min(backoff.maxDelay, backoff.delay * backoff.factor ** (attempt - 1));
+export function backoffDelay(
+  backoff: ResolvedBackoff,
+  attempt: number,
+  random: () => number = Math.random,
+): number {
+  const wait = Math.min(
+    backoff.maxDelay,
+    backoff.delay * backoff.factor ** (attempt - 1),
+  );
   switch (backoff.jitter) {
-    case 'full':
+    case "full":
       return Math.floor(random() * wait);
-    case 'equal':
+    case "equal":
       return Math.floor(wait / 2 + random() * (wait / 2));
     default:
       return wait;
@@ -99,41 +120,64 @@ export function backoffDelay(backoff: ResolvedBackoff, attempt: number, random: 
  * // { retry: true, delay: 1_000 }
  * ```
  */
-export function nextRetry(policy: ResolvedRetry, attempt: number, error: unknown): RetryDecision {
+export function nextRetry(
+  policy: ResolvedRetry,
+  attempt: number,
+  error: unknown,
+): RetryDecision {
   if (attempt >= policy.attempts) {
-    return { retry: false, reason: 'exhausted' };
+    return { retry: false, reason: "exhausted" };
   }
   try {
     if (!(policy.retryIf?.(error, attempt) ?? true)) {
-      return { retry: false, reason: 'refused' };
+      return { retry: false, reason: "refused" };
     }
     const { backoff } = policy;
-    return { retry: true, delay: typeof backoff === 'function' ? backoff(attempt, error) : backoffDelay(backoff, attempt) };
+    return {
+      retry: true,
+      delay:
+        typeof backoff === "function"
+          ? backoff(attempt, error)
+          : backoffDelay(backoff, attempt),
+    };
   } catch (thrown) {
-    return { retry: false, reason: 'threw', error: thrown };
+    return { retry: false, reason: "threw", error: thrown };
   }
 }
 
-function resolveBackoff(backoff: BackoffSettings, base: ResolvedBackoff): ResolvedBackoff {
+function resolveBackoff(
+  backoff: BackoffSettings,
+  base: ResolvedBackoff,
+): ResolvedBackoff {
   const factor = backoff.factor ?? base.factor;
   if (!(factor > 0)) {
-    throw new TypeError(`Invalid backoff factor ${factor}. Use a positive number (1 = constant).`);
+    throw new TypeError(
+      `Invalid backoff factor ${factor}. Use a positive number (1 = constant).`,
+    );
   }
   const jitter = backoff.jitter ?? base.jitter;
-  if (!(['full', 'equal', 'none'] as const).includes(jitter)) {
-    throw new TypeError(`Invalid backoff jitter "${jitter}". Use "full", "equal" or "none".`);
+  if (!(["full", "equal", "none"] as const).includes(jitter)) {
+    throw new TypeError(
+      `Invalid backoff jitter "${jitter}". Use "full", "equal" or "none".`,
+    );
   }
   return {
-    delay: backoff.delay === undefined ? base.delay : parseDuration(backoff.delay),
+    delay:
+      backoff.delay === undefined ? base.delay : parseDuration(backoff.delay),
     factor,
-    maxDelay: backoff.maxDelay === undefined ? base.maxDelay : parseDuration(backoff.maxDelay),
+    maxDelay:
+      backoff.maxDelay === undefined
+        ? base.maxDelay
+        : parseDuration(backoff.maxDelay),
     jitter,
   };
 }
 
 function attempts(value: number): number {
   if (!Number.isInteger(value) || value < 0) {
-    throw new TypeError(`Invalid retry attempts ${value}. Use a whole number of attempts, including the first.`);
+    throw new TypeError(
+      `Invalid retry attempts ${value}. Use a whole number of attempts, including the first.`,
+    );
   }
   return Math.max(1, value);
 }

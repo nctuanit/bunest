@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   RequestMethod,
   forwardRef,
   type DynamicModule,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   AmbiguousProviderException,
   CircularDependencyException,
@@ -79,7 +78,10 @@ describe("ModuleScanner & Module Visibility (ADR-007)", () => {
     @Injectable()
     class PublicHelper {}
 
-    @Module({ providers: [SecretHelper, PublicHelper], exports: [PublicHelper] })
+    @Module({
+      providers: [SecretHelper, PublicHelper],
+      exports: [PublicHelper],
+    })
     class ModA {}
 
     // Private provider cannot be injected by importer
@@ -121,7 +123,9 @@ describe("ModuleScanner & Module Visibility (ADR-007)", () => {
     const allowedGraph = await new ModuleScanner().scan(ModCAllowed);
     const container = new DIContainer(allowedGraph);
     await container.initialize();
-    const consumer = container.getModuleRef(allowedGraph.root.id).get(ConsumerC);
+    const consumer = container
+      .getModuleRef(allowedGraph.root.id)
+      .get(ConsumerC);
     expect(consumer.p).toBeInstanceOf(PublicHelper);
   });
 
@@ -188,9 +192,7 @@ describe("ModuleScanner & Module Visibility (ADR-007)", () => {
     const container = new DIContainer(graph);
     await container.initialize();
 
-    const consumer = container
-      .getModuleRef(graph.root.id)
-      .get(FeatureConsumer);
+    const consumer = container.getModuleRef(graph.root.id).get(FeatureConsumer);
     expect(consumer.a).toBe("shared-a");
     expect(consumer.b).toBe("distinct-b");
     expect(consumer.direct).toBe("exported-direct");
@@ -306,9 +308,9 @@ describe("ModuleScanner & Module Visibility (ADR-007)", () => {
     const UNKNOWN = Symbol("UNKNOWN");
     @Module({ exports: [UNKNOWN] })
     class BadExportTokenModule {}
-    await expect(new ModuleScanner().scan(BadExportTokenModule)).rejects.toThrow(
-      InvalidExportException,
-    );
+    await expect(
+      new ModuleScanner().scan(BadExportTokenModule),
+    ).rejects.toThrow(InvalidExportException);
 
     @Module({})
     class UnimportedMod {}

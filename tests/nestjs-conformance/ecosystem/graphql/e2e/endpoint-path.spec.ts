@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, it } from "bun:test";
 import {
   type CanActivate,
@@ -11,7 +10,7 @@ import {
   RequestMethod,
   UnauthorizedException,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GqlExecutionContext,
@@ -142,9 +141,7 @@ describeConformance(
     });
 
     const query = (path: string) =>
-      request(app)
-        .post(path)
-        .send({ query: "{ getCats { id } }" });
+      request(app).post(path).send({ query: "{ getCats { id } }" });
 
     itAdapted(
       "ADR-011",

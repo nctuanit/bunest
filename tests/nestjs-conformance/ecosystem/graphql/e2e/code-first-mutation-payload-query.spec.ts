@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { printSchema } from "../../../../../packages/graphql/node_modules/graphql";
-import { Module } from "../../../../../packages/common/src";
+import { printSchema } from "../../../../../packages/graphql/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -14,11 +13,7 @@ import {
   Resolver,
   type ReturnTypeFunc,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @ObjectType()
 class Todo {

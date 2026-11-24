@@ -1,6 +1,4 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import type { AddressInfo } from "node:net";
 import {
   BadRequestException,
   Body,
@@ -38,10 +36,10 @@ import {
   type SseMessageEvent,
   type UploadedFileInfo,
   type ValidationErrorResponse,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ClassSerializerInterceptor, ValidationPipe } from "@bunest/core";
-import { Exclude, Expose } from "class-transformer";
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { Exclude, Expose } from "../../../validation/src/transformer";
+import { IsEmail, IsString, MinLength } from "../../../validation/src/validator";
 import {
   Test,
   TestClient,
@@ -435,7 +433,11 @@ describe("E2E: Pipeline Order, Validation, Multipart, SSE, Cookie Agent, Superte
         data: JSON.stringify({ n: 1 }),
       });
       expect(parseSseJson<{ n: number }>(memEvents[1]!)).toEqual({ n: 2 });
-      expect(memEvents[2]).toEqual({ id: "3", event: "done", data: "finished" });
+      expect(memEvents[2]).toEqual({
+        id: "3",
+        event: "done",
+        data: "finished",
+      });
 
       // 2. In-memory infinite SSE stopped at maxEvents -> generator finally runs
       const memInfRes = await memClient.get("/events/infinite");
@@ -550,9 +552,7 @@ describe("E2E: Pipeline Order, Validation, Multipart, SSE, Cookie Agent, Superte
       // 2. TestClient stateful client.agent()
       const clientAgent = TestClient.fromApp(app).agent();
       (await clientAgent.get("/session/me")).expectStatus(401);
-      (
-        await clientAgent.post("/session/login", { json: { user: "bob" } })
-      )
+      (await clientAgent.post("/session/login", { json: { user: "bob" } }))
         .expectStatus(201)
         .expectCookie("sid", "sess_bob");
 
@@ -683,7 +683,7 @@ describe("E2E: Pipeline Order, Validation, Multipart, SSE, Cookie Agent, Superte
     });
 
     try {
-      const addr = nodeServer.address() as AddressInfo;
+      const addr = nodeServer.address() as { port: number };
       const baseUrl = `http://127.0.0.1:${addr.port}`;
 
       // GET with multi Set-Cookie

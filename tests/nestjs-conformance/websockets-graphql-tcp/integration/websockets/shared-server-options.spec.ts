@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
@@ -6,7 +5,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsResponse,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 // Bunest native equivalent of WsAdapter's `verifyClient: () => false` is `authenticate: () => false`,
@@ -72,7 +71,7 @@ describeConformance(
       "native Bun WS pre-upgrade authenticate hook",
     );
 
-    // BUNEST_BUG: BunWebSocketAdapter throws "Duplicate @WebSocketGateway() path" when two gateways share the same path instead of sharing one server configured with the first gateway's authenticate/verifyClient options (packages/websockets/src/adapter/bun-ws.adapter.ts#L259-L263).
+    // BUNEST_BUG: BunWebSocketAdapter throws "Duplicate @WebSocketGateway() path" when two gateways share the same path instead of sharing one server configured with the first gateway's authenticate/verifyClient options (packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
     it.skip("should create the server with the options of the gateway declared first [ADR-001]", async () => {
       const testingModule = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],

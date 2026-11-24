@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, it } from "bun:test";
 import {
   Controller,
@@ -11,7 +10,7 @@ import {
   type MiddlewareConsumer,
   type NextFunction,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -96,12 +95,12 @@ describeConformance(
       await request(app!).get("/test").expect(200, WILDCARD_VALUE);
     });
 
-    // BUNEST_BUG: Expected GET /tests/included (no controller route) to be handled by wildcard Middleware ("test_wildcard"), got 404. packages/http/src/router/route-compiler.ts binds module middlewares only to scanned controller routes and packages/http/src/adapter/bun-http.adapter.ts (dispatchFallback) does not run module middlewares on unmatched paths.
+    // BUNEST_BUG: Expected GET /tests/included (no controller route) to be handled by wildcard Middleware ("test_wildcard"), got 404. packages/core/src/http/router/route-compiler.ts binds module middlewares only to scanned controller routes and packages/core/src/http/adapter/bun-http.adapter.ts (dispatchFallback) does not run module middlewares on unmatched paths.
     it.skip(`GET forRoutes(POST tests/included)`, async () => {
       await request(app!).get("/tests/included").expect(200, WILDCARD_VALUE);
     });
 
-    // BUNEST_BUG: Expected POST /tests/included (no controller route) to be handled by middleware bound via forRoutes({ path: 'tests/included', method: RequestMethod.POST }) returning 201 "test_included", got 404. packages/http/src/router/route-compiler.ts and packages/http/src/adapter/bun-http.adapter.ts do not run module middlewares on unmatched paths without a controller handler.
+    // BUNEST_BUG: Expected POST /tests/included (no controller route) to be handled by middleware bound via forRoutes({ path: 'tests/included', method: RequestMethod.POST }) returning 201 "test_included", got 404. packages/core/src/http/router/route-compiler.ts and packages/core/src/http/adapter/bun-http.adapter.ts do not run module middlewares on unmatched paths without a controller handler.
     it.skip(`POST forRoutes(POST tests/included)`, async () => {
       await request(app!).post("/tests/included").expect(201, INCLUDED_VALUE);
     });

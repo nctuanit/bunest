@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -26,16 +26,22 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./analyzer": {
+      "types": "./src/analyzer/index.ts",
+      "bun": "./src/analyzer/index.ts",
+      "import": "./dist/analyzer.js",
+      "default": "./dist/analyzer.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/cli.ts --outfile ./dist/cli.js --target bun --format esm --external @bunest/common && bun build ./src/index.ts --outfile ./dist/index.js --target bun --format esm --external @bunest/common",
+    "build": "bun build ./src/cli.ts --outfile ./dist/cli.js --target bun --format esm --external @bunest/core --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n && bun build ./src/index.ts --outfile ./dist/index.js --target bun --format esm --external @bunest/core --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n && bun build ./src/analyzer/index.ts --outfile ./dist/analyzer.js --target bun --format esm --external @bunest/core --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*"
+    "@bunest/core": "workspace:*"
   }
 }

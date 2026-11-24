@@ -1,4 +1,4 @@
-import { keyColumn, type StoreMigration } from "@bunest/store-kit/mysql";
+import { keyColumn, type StoreMigration } from "@bunest/orm/mysql";
 import { MYSQL_KEY_LIMITS as L } from "../key-limits";
 
 /**

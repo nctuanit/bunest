@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
   Injectable,
   Module as NestModule,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   DiscoveryService,
   type DiscoveryHost,

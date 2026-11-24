@@ -1,7 +1,12 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
-import { deflateRawSync, inflateRawSync } from 'node:zlib';
-import type { PayloadCodec, PayloadContext } from '../interfaces/payload-codec.interface';
-import { describePlace, otherPlaces, WORKFLOW_PLACES } from '../utils/payload-place.util';
+import type {
+  PayloadCodec,
+  PayloadContext,
+} from "../interfaces/payload-codec.interface";
+import {
+  describePlace,
+  otherPlaces,
+  WORKFLOW_PLACES,
+} from "../utils/payload-place.util";
 
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
@@ -9,6 +14,10 @@ const TAG_BYTES = 16;
 const HEADER_BYTES = SALT_BYTES + IV_BYTES;
 /** The first byte of every plaintext: its format. Bit 0: deflated. */
 const DEFLATED = 1;
+const HKDF_INFO = new TextEncoder().encode("nestjs-workflows payload");
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 /**
  * What `AesGcmPayloadCodec` takes.
@@ -30,7 +39,7 @@ export interface AesGcmPayloadCodecOptions {
 }
 
 /**
- * Encrypts payloads with AES-256-GCM (`node:crypto`), under a key derived for each payload from the configured one
+ * Encrypts payloads with AES-256-GCM (WebCrypto `crypto.subtle`), under a key derived for each payload from the configured one
  * (HKDF-SHA256 with a random salt) and a random IV, so no key nears the 2^32 encryptions random IVs allow, and with
  * the payload's context as additional authenticated data, so a payload that was changed, or moved to another place
  * (another instance, journal entry, job or field), fails to decrypt instead of being read. The key's id is stored with
@@ -44,109 +53,197 @@ export interface AesGcmPayloadCodecOptions {
  * ```
  */
 export class AesGcmPayloadCodec implements PayloadCodec {
-  readonly id = 'aes-256-gcm';
-  private readonly keys = new Map<string, Buffer>();
+  readonly id = "aes-256-gcm";
+  private readonly keys = new Map<string, Uint8Array<ArrayBuffer>>();
+  private readonly hkdfKeys = new Map<string, Promise<CryptoKey>>();
   private readonly current: string;
   private readonly threshold: number;
 
   constructor(options: AesGcmPayloadCodecOptions) {
-    if (options === null || typeof options !== 'object' || options.keys === null || typeof options.keys !== 'object') {
-      throw new TypeError('AesGcmPayloadCodec: pass { keys: { [keyId]: key }, current: keyId }.');
+    if (
+      options === null ||
+      typeof options !== "object" ||
+      options.keys === null ||
+      typeof options.keys !== "object"
+    ) {
+      throw new TypeError(
+        "AesGcmPayloadCodec: pass { keys: { [keyId]: key }, current: keyId }.",
+      );
     }
     for (const [id, key] of Object.entries(options.keys)) {
       if (!/^[\w-]+$/.test(id)) {
-        throw new TypeError(`AesGcmPayloadCodec: invalid key id ${JSON.stringify(id)}. Use letters, digits, "_" and "-".`);
+        throw new TypeError(
+          `AesGcmPayloadCodec: invalid key id ${JSON.stringify(id)}. Use letters, digits, "_" and "-".`,
+        );
       }
       this.keys.set(id, keyBytes(id, key));
     }
     if (!this.keys.has(options.current)) {
       throw new TypeError(
-        `AesGcmPayloadCodec: current (${JSON.stringify(options.current)}) must be one of the keys' ids (${[...this.keys.keys()].join(', ') || 'none'}).`,
+        `AesGcmPayloadCodec: current (${JSON.stringify(options.current)}) must be one of the keys' ids (${[...this.keys.keys()].join(", ") || "none"}).`,
       );
     }
     this.current = options.current;
     const compress = options.compress ?? 1_024;
-    if (compress !== false && (!Number.isSafeInteger(compress) || compress < 0)) {
-      throw new TypeError(`AesGcmPayloadCodec: compress (${JSON.stringify(compress)}) must be a number of bytes, or false.`);
+    if (
+      compress !== false &&
+      (!Number.isSafeInteger(compress) || compress < 0)
+    ) {
+      throw new TypeError(
+        `AesGcmPayloadCodec: compress (${JSON.stringify(compress)}) must be a number of bytes, or false.`,
+      );
     }
     this.threshold = compress === false ? Infinity : compress;
   }
 
-  encode(value: unknown, context: PayloadContext): string {
-    const json = Buffer.from(JSON.stringify(value), 'utf8');
-    const deflated = json.length >= this.threshold;
-    const plaintext = Buffer.concat([Buffer.of(deflated ? DEFLATED : 0), deflated ? deflateRawSync(json) : json]);
-    const header = randomBytes(HEADER_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', derived(this.keys.get(this.current)!, header), header.subarray(SALT_BYTES));
-    cipher.setAAD(associated(this.current, context));
-    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-    return `${this.current}.${Buffer.concat([header, ciphertext, cipher.getAuthTag()]).toString('base64url')}`;
+  private getHkdfKey(id: string): Promise<CryptoKey> {
+    let cached = this.hkdfKeys.get(id);
+    if (!cached) {
+      const raw = this.keys.get(id)!;
+      cached = crypto.subtle.importKey("raw", raw, "HKDF", false, [
+        "deriveKey",
+      ]);
+      this.hkdfKeys.set(id, cached);
+    }
+    return cached;
   }
 
-  decode(data: string, context: PayloadContext): unknown {
-    const dot = data.indexOf('.');
+  async encode(value: unknown, context: PayloadContext): Promise<string> {
+    const json = textEncoder.encode(JSON.stringify(value));
+    const deflated = json.byteLength >= this.threshold;
+    const body = deflated ? Bun.deflateSync(json) : json;
+    const plaintext = new Uint8Array(1 + body.byteLength);
+    plaintext[0] = deflated ? DEFLATED : 0;
+    plaintext.set(body, 1);
+
+    const header = crypto.getRandomValues(new Uint8Array(HEADER_BYTES));
+    const payloadKey = await derivePayloadKey(
+      await this.getHkdfKey(this.current),
+      header.subarray(0, SALT_BYTES),
+      "encrypt",
+    );
+    const encrypted = new Uint8Array(
+      await crypto.subtle.encrypt(
+        {
+          name: "AES-GCM",
+          iv: header.subarray(SALT_BYTES),
+          additionalData: associated(this.current, context),
+          tagLength: TAG_BYTES * 8,
+        },
+        payloadKey,
+        plaintext,
+      ),
+    );
+    const out = new Uint8Array(header.byteLength + encrypted.byteLength);
+    out.set(header, 0);
+    out.set(encrypted, header.byteLength);
+    return `${this.current}.${Buffer.from(out.buffer, out.byteOffset, out.byteLength).toString("base64url")}`;
+  }
+
+  async decode(data: string, context: PayloadContext): Promise<unknown> {
+    const dot = data.indexOf(".");
     const id = data.slice(0, dot);
-    const key = this.keys.get(id);
-    if (dot < 0 || !key) {
+    if (dot < 0 || !this.keys.has(id)) {
       throw new Error(
         `AesGcmPayloadCodec: a payload of ${describePlace(context)} was encrypted with key ${JSON.stringify(id)}, which isn't in keys. ` +
-          'Keep a key in keys while payloads it encrypted may still be read.',
+          "Keep a key in keys while payloads it encrypted may still be read.",
       );
     }
-    const bytes = Buffer.from(data.slice(dot + 1), 'base64url');
-    let plaintext: Buffer;
+    const bytes = new Uint8Array(Buffer.from(data.slice(dot + 1), "base64url"));
+    let plaintext: Uint8Array;
     try {
-      const decipher = createDecipheriv('aes-256-gcm', derived(key, bytes), bytes.subarray(SALT_BYTES, HEADER_BYTES));
-      decipher.setAAD(associated(id, context));
-      decipher.setAuthTag(bytes.subarray(bytes.length - TAG_BYTES));
-      plaintext = Buffer.concat([decipher.update(bytes.subarray(HEADER_BYTES, bytes.length - TAG_BYTES)), decipher.final()]);
+      if (bytes.byteLength < HEADER_BYTES + TAG_BYTES) {
+        throw new Error("Payload too short");
+      }
+      const payloadKey = await derivePayloadKey(
+        await this.getHkdfKey(id),
+        bytes.subarray(0, SALT_BYTES),
+        "decrypt",
+      );
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: bytes.subarray(SALT_BYTES, HEADER_BYTES),
+          additionalData: associated(id, context),
+          tagLength: TAG_BYTES * 8,
+        },
+        payloadKey,
+        bytes.subarray(HEADER_BYTES),
+      );
+      plaintext = new Uint8Array(decrypted);
     } catch {
       throw new Error(
         `AesGcmPayloadCodec: a payload of ${describePlace(context)} failed authentication: it was changed, or encrypted for another place.`,
       );
     }
     const body = plaintext.subarray(1);
-    return JSON.parse((((plaintext[0] ?? 0) & DEFLATED) === DEFLATED ? inflateRawSync(body) : body).toString('utf8'));
+    const rawJson =
+      ((plaintext[0] ?? 0) & DEFLATED) === DEFLATED
+        ? Bun.inflateSync(new Uint8Array(body))
+        : body;
+    return JSON.parse(textDecoder.decode(rawJson));
   }
 }
 
-function keyBytes(id: string, key: unknown): Buffer {
-  const advice = 'Give it 32 random bytes, as a Buffer, a Uint8Array, or base64 (`openssl rand -base64 32`).';
-  let bytes: Buffer;
+function keyBytes(id: string, key: unknown): Uint8Array<ArrayBuffer> {
+  const advice =
+    "Give it 32 random bytes, as a Buffer, a Uint8Array, or base64 (`openssl rand -base64 32`).";
+  let bytes: Uint8Array<ArrayBuffer>;
   if (key instanceof Uint8Array) {
-    bytes = Buffer.from(key);
-  } else if (typeof key === 'string') {
+    bytes = new Uint8Array(key);
+  } else if (typeof key === "string") {
     // Buffer.from() skips what isn't base64, so a key with a typo would decode to other bytes instead of failing.
     const text = key.trim();
     if (text.length === 0) {
-      throw new TypeError(`AesGcmPayloadCodec: key "${id}" is an empty string. ${advice}`);
+      throw new TypeError(
+        `AesGcmPayloadCodec: key "${id}" is an empty string. ${advice}`,
+      );
     }
     if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(text)) {
-      throw new TypeError(`AesGcmPayloadCodec: key "${id}" isn't base64. ${advice}`);
+      throw new TypeError(
+        `AesGcmPayloadCodec: key "${id}" isn't base64. ${advice}`,
+      );
     }
-    bytes = Buffer.from(text, 'base64');
+    bytes = new Uint8Array(Buffer.from(text, "base64"));
   } else {
     const what =
       key === undefined
         ? "undefined (an environment variable that isn't set?)"
         : key === null
-          ? 'null'
-          : typeof key === 'object'
-            ? 'an object'
+          ? "null"
+          : typeof key === "object"
+            ? "an object"
             : `a ${typeof key}`;
-    throw new TypeError(`AesGcmPayloadCodec: key "${id}" is ${what}. ${advice}`);
-  }
-  if (bytes.length !== 32) {
     throw new TypeError(
-      `AesGcmPayloadCodec: key "${id}" is ${bytes.length} bytes; AES-256 takes 32 (as a Buffer, or base64: \`openssl rand -base64 32\`).`,
+      `AesGcmPayloadCodec: key "${id}" is ${what}. ${advice}`,
+    );
+  }
+  if (bytes.byteLength !== 32) {
+    throw new TypeError(
+      `AesGcmPayloadCodec: key "${id}" is ${bytes.byteLength} bytes; AES-256 takes 32 (as a Buffer, or base64: \`openssl rand -base64 32\`).`,
     );
   }
   return bytes;
 }
 
 /** The payload's own key: HKDF-SHA256 of the configured key, with the salt that starts the payload's bytes. */
-function derived(key: Buffer, bytes: Buffer): Buffer {
-  return Buffer.from(hkdfSync('sha256', key, bytes.subarray(0, SALT_BYTES), 'nestjs-workflows payload', 32));
+async function derivePayloadKey(
+  hkdfKey: CryptoKey,
+  salt: Uint8Array<ArrayBuffer>,
+  usage: "encrypt" | "decrypt",
+): Promise<CryptoKey> {
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt,
+      info: HKDF_INFO,
+    },
+    hkdfKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    [usage],
+  );
 }
 
 /**
@@ -154,8 +251,16 @@ function derived(key: Buffer, bytes: Buffer): Buffer {
  * absent) first, in the order this codec was built with, so what it encrypted then still decrypts, then any other
  * key, by name, with its value.
  */
-function associated(key: string, context: PayloadContext): Buffer {
+function associated(
+  key: string,
+  context: PayloadContext,
+): Uint8Array<ArrayBuffer> {
   const places = WORKFLOW_PLACES.map((place) => context[place] ?? null);
-  const others = otherPlaces(context).flatMap((place) => [place, context[place]]);
-  return Buffer.from(JSON.stringify([key, context.field, ...places, ...others]), 'utf8');
+  const others = otherPlaces(context).flatMap((place) => [
+    place,
+    context[place],
+  ]);
+  return textEncoder.encode(
+    JSON.stringify([key, context.field, ...places, ...others]),
+  );
 }

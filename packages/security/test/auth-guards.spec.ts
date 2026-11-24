@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -12,7 +11,7 @@ import {
   UseGuards,
   type ExecutionContext,
   type ResponseContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   CheckPolicies,
@@ -35,7 +34,10 @@ import {
 describe("Auth Guards, PasswordService, SessionCookieService & CsrfGuard", () => {
   it("enforces JwtAuthGuard, @Public(), RolesGuard, PoliciesGuard, and @CurrentUser() end-to-end", async () => {
     @Injectable()
-    class OwnerPolicy implements IPolicyHandler<{ sub: string; roles: string[] }> {
+    class OwnerPolicy implements IPolicyHandler<{
+      sub: string;
+      roles: string[];
+    }> {
       handle(user: { sub: string; roles: string[] }, ctx: ExecutionContext) {
         const req = ctx.switchToHttp().getRequest<Request>();
         const pathId = new URL(req.url).pathname.split("/").pop();
@@ -117,11 +119,12 @@ describe("Auth Guards, PasswordService, SessionCookieService & CsrfGuard", () =>
       expect((await client.get("/secure/me")).status).toBe(401);
 
       // 3. Bearer token works and populates @CurrentUser() & @CurrentUser("sub")
-      const meRes = await client
-        .withBearerToken(userToken)
-        .get("/secure/me");
+      const meRes = await client.withBearerToken(userToken).get("/secure/me");
       expect(meRes.status).toBe(200);
-      const meBody = await meRes.json<{ sub: string; user: { roles: string[] } }>();
+      const meBody = await meRes.json<{
+        sub: string;
+        user: { roles: string[] };
+      }>();
       expect(meBody.sub).toBe("u_1");
       expect(meBody.user.roles).toEqual(["member"]);
 
@@ -175,7 +178,9 @@ describe("Auth Guards, PasswordService, SessionCookieService & CsrfGuard", () =>
 
     const argonHash = await svc.hash("CorrectHorseBatteryStaple!");
     expect(argonHash).toContain("$argon2id$");
-    expect(await svc.verify("CorrectHorseBatteryStaple!", argonHash)).toBe(true);
+    expect(await svc.verify("CorrectHorseBatteryStaple!", argonHash)).toBe(
+      true,
+    );
     expect(await svc.verify("wrong-password", argonHash)).toBe(false);
     expect(await svc.verify("anything", "not-a-valid-hash")).toBe(false);
 
@@ -240,7 +245,11 @@ describe("Auth Guards, PasswordService, SessionCookieService & CsrfGuard", () =>
       expect(loginRes.status).toBe(201);
       const { csrf } = await loginRes.json<{ csrf: string }>();
       const setCookies = loginRes.setCookies();
-      expect(setCookies.some((c) => c.includes("bunest_session=") && c.includes("HttpOnly"))).toBe(true);
+      expect(
+        setCookies.some(
+          (c) => c.includes("bunest_session=") && c.includes("HttpOnly"),
+        ),
+      ).toBe(true);
 
       const cookies = loginRes.cookies();
       expect(cookies.csrf_token).toBe(csrf);

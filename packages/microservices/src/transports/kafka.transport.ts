@@ -195,7 +195,9 @@ export class KafkaContext
           } catch {
             nextOffset = offset;
           }
-          await consumer.commitOffsets([{ topic, partition, offset: nextOffset }]);
+          await consumer.commitOffsets([
+            { topic, partition, offset: nextOffset },
+          ]);
         }
       };
       this.metadata = {
@@ -371,7 +373,9 @@ export class KafkaServer extends MicroserviceTransportServer {
     }
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;
@@ -712,7 +716,9 @@ export class KafkaClientProxy extends ClientProxy {
       throw new Error("Kafka consumer is not initialized.");
     }
     if (typeof this._consumer.commitOffsets !== "function") {
-      throw new Error("Configured Kafka consumer does not support commitOffsets().");
+      throw new Error(
+        "Configured Kafka consumer does not support commitOffsets().",
+      );
     }
     await this._consumer.commitOffsets(topicPartitions);
   }
@@ -946,11 +952,10 @@ export class KafkaClientProxy extends ClientProxy {
     if (!this.subscribedReplyTopics.has(replyTopic)) {
       let pendingSub = this.pendingReplySubscribes.get(replyTopic);
       if (!pendingSub) {
-        pendingSub = this._consumer!
-          .subscribe({
-            topic: replyTopic,
-            fromBeginning: this.fromBeginning,
-          })
+        pendingSub = this._consumer!.subscribe({
+          topic: replyTopic,
+          fromBeginning: this.fromBeginning,
+        })
           .then(() => {
             this.subscribedReplyTopics.add(replyTopic);
           })
@@ -977,13 +982,12 @@ export class KafkaClientProxy extends ClientProxy {
       await this.consumerRunPromise;
       return;
     }
-    this.consumerRunPromise = this._consumer!
-      .run({
-        autoCommit: true,
-        eachMessage: async (payload) => {
-          this.handleReplyMessage(payload);
-        },
-      })
+    this.consumerRunPromise = this._consumer!.run({
+      autoCommit: true,
+      eachMessage: async (payload) => {
+        this.handleReplyMessage(payload);
+      },
+    })
       .then(() => {
         this.consumerRunning = true;
       })

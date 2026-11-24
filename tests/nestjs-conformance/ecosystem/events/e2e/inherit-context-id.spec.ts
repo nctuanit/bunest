@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it, mock, spyOn } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Injectable,
   REQUEST,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   createContextId,
@@ -16,12 +15,8 @@ import {
   EventEmitter2,
   EventEmitterModule,
   OnEvent,
-} from "../../../../../packages/events/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers";
+} from "../../../../../packages/messaging/src/events";
+import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 @Injectable({ scope: Scope.REQUEST })
 class RequestScopedListener {

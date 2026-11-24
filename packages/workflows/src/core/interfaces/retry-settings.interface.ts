@@ -1,4 +1,4 @@
-import type { Duration } from '../time/duration';
+import type { Duration } from "../time/duration";
 
 /**
  * The wait between attempts, in the family's retry vocabulary: `delay`, growing by `factor` per retry up to
@@ -17,7 +17,7 @@ export interface BackoffSettings {
   /** Cap for a single wait. Default `'5m'`. */
   maxDelay?: Duration;
   /** Randomize each wait: `'full'` (0 to the wait), `'equal'` (half to all of it) or `'none'`. Default `'none'`. */
-  jitter?: 'full' | 'equal' | 'none';
+  jitter?: "full" | "equal" | "none";
 }
 
 /**
@@ -57,7 +57,7 @@ export interface ResolvedBackoff {
   delay: number;
   factor: number;
   maxDelay: number;
-  jitter: 'full' | 'equal' | 'none';
+  jitter: "full" | "equal" | "none";
 }
 
 /**

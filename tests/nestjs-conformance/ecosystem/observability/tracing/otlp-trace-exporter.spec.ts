@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   ConsoleSpanExporter,
@@ -183,18 +182,18 @@ describeConformance(
       }
 
       expect(received).toHaveLength(1);
-      expect(received[0]!.body.resourceSpans[0]!.scopeSpans[0]!.spans).toHaveLength(
-        3,
-      );
+      expect(
+        received[0]!.body.resourceSpans[0]!.scopeSpans[0]!.spans,
+      ).toHaveLength(3);
 
       // Additional span sent on final shutdown flush
       exporter.export([makeSpanData("s4")]);
       await exporter.shutdown();
 
       expect(received).toHaveLength(2);
-      expect(received[1]!.body.resourceSpans[0]!.scopeSpans[0]!.spans).toHaveLength(
-        1,
-      );
+      expect(
+        received[1]!.body.resourceSpans[0]!.scopeSpans[0]!.spans,
+      ).toHaveLength(1);
     });
 
     it("automatically flushes queued spans on the periodic flushIntervalMs timer", async () => {
@@ -239,9 +238,10 @@ describeConformance(
       await exporter.flush();
 
       expect(received).toHaveLength(1);
-      const names = received[0]!.body.resourceSpans[0]!.scopeSpans[0]!.spans.map(
-        (s) => s.name,
-      );
+      const names =
+        received[0]!.body.resourceSpans[0]!.scopeSpans[0]!.spans.map(
+          (s) => s.name,
+        );
       expect(names).toEqual(["before-shutdown"]);
     });
 
@@ -270,7 +270,10 @@ describeConformance(
           },
         },
         async () => {
-          await tracer.startActiveSpan("unsampled-child", async () => undefined);
+          await tracer.startActiveSpan(
+            "unsampled-child",
+            async () => undefined,
+          );
         },
       );
 

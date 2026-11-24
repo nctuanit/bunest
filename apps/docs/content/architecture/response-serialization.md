@@ -19,18 +19,18 @@ Evaluated from highest to lowest priority:
 
 Evaluated in strict top-to-bottom priority after all interceptors unwind:
 
-| Priority | Returned Value Type | HTTP Body | Default `Content-Type` | Notes |
-|---|---|---|---|---|
-| 1 | `value instanceof Response` | **Passthrough** (unmodified) | Preserved from `Response` | Merges CORS, `Set-Cookie`, and missing `@Header()` headers without clobbering explicit headers |
-| 2 | `@Redirect()` route | Empty (`null`) | None | Sets `Location` header from dynamic return or decorator URL |
-| 3 | `@Sse()` route (`AsyncIterable` / `ReadableStream`) | SSE UTF-8 stream | `text/event-stream; charset=utf-8` | Sets `Cache-Control: no-cache, no-transform`; cancels iterator on abort |
-| 4 | `value instanceof ReadableStream` | Streamed directly | `application/octet-stream` | Zero-buffering native Web stream passthrough |
-| 5 | `value instanceof Blob` (incl. `Bun.file()`) | `new Response(blob)` | `blob.type \|\| "application/octet-stream"` | Preserves Bun's zero-copy `sendfile` optimization |
-| 6 | `Uint8Array` / `ArrayBuffer` / `ArrayBufferView` | Raw binary bytes | `application/octet-stream` | Direct binary response without JSON encoding |
-| 7 | `null` or `undefined` | Empty (`null`) | None | Returns `new Response(null, { status, headers })` |
-| 8 | `string` | UTF-8 text | `text/plain; charset=utf-8` | Override via `@Header("Content-Type", "text/html; charset=utf-8")` |
-| 9 | `number` or `boolean` | `JSON.stringify(value)` | `application/json; charset=utf-8` | Valid JSON primitive round-trippable with `res.json()` |
-| 10 | Plain object / Array / Class instance | `JSON.stringify(value)` | `application/json; charset=utf-8` | Respects `toJSON()`; circular structures throw `500` caught by Exception Filters |
+| Priority | Returned Value Type                                 | HTTP Body                    | Default `Content-Type`                      | Notes                                                                                          |
+| -------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1        | `value instanceof Response`                         | **Passthrough** (unmodified) | Preserved from `Response`                   | Merges CORS, `Set-Cookie`, and missing `@Header()` headers without clobbering explicit headers |
+| 2        | `@Redirect()` route                                 | Empty (`null`)               | None                                        | Sets `Location` header from dynamic return or decorator URL                                    |
+| 3        | `@Sse()` route (`AsyncIterable` / `ReadableStream`) | SSE UTF-8 stream             | `text/event-stream; charset=utf-8`          | Sets `Cache-Control: no-cache, no-transform`; cancels iterator on abort                        |
+| 4        | `value instanceof ReadableStream`                   | Streamed directly            | `application/octet-stream`                  | Zero-buffering native Web stream passthrough                                                   |
+| 5        | `value instanceof Blob` (incl. `Bun.file()`)        | `new Response(blob)`         | `blob.type \|\| "application/octet-stream"` | Preserves Bun's zero-copy `sendfile` optimization                                              |
+| 6        | `Uint8Array` / `ArrayBuffer` / `ArrayBufferView`    | Raw binary bytes             | `application/octet-stream`                  | Direct binary response without JSON encoding                                                   |
+| 7        | `null` or `undefined`                               | Empty (`null`)               | None                                        | Returns `new Response(null, { status, headers })`                                              |
+| 8        | `string`                                            | UTF-8 text                   | `text/plain; charset=utf-8`                 | Override via `@Header("Content-Type", "text/html; charset=utf-8")`                             |
+| 9        | `number` or `boolean`                               | `JSON.stringify(value)`      | `application/json; charset=utf-8`           | Valid JSON primitive round-trippable with `res.json()`                                         |
+| 10       | Plain object / Array / Class instance               | `JSON.stringify(value)`      | `application/json; charset=utf-8`           | Respects `toJSON()`; circular structures throw `500` caught by Exception Filters               |
 
 ## RFC 9110 Empty-Body Enforcement
 

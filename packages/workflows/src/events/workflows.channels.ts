@@ -1,9 +1,9 @@
-import { channel, type Channel } from "node:diagnostics_channel";
+import { channel, type DiagnosticChannel } from "@bunest/core";
 import type { WorkflowEvent } from "./workflow-events.interface";
 
-const channels = new Map<WorkflowEvent["type"], Channel>();
+const channels = new Map<WorkflowEvent["type"], DiagnosticChannel>();
 
-export const channelFor = (type: WorkflowEvent["type"]): Channel => {
+export const channelFor = (type: WorkflowEvent["type"]): DiagnosticChannel => {
   let target = channels.get(type);
   if (!target) {
     target = channel(`nestjs:workflows:${type}`);

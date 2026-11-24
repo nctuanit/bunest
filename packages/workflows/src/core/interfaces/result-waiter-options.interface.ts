@@ -1,4 +1,4 @@
-import type { Duration } from '../time/duration';
+import type { Duration } from "../time/duration";
 
 /**
  * How something ended, for `ResultWaiter`: its value, or the error its waits reject with (a failure, or "not

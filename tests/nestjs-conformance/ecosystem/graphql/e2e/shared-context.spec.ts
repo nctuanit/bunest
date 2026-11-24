@@ -1,9 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-  type DynamicModule,
-  Module,
-} from "../../../../../packages/common/src";
+import { type DynamicModule, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Context,
@@ -13,11 +9,7 @@ import {
   Query,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 function readRequestId(req: unknown): string | undefined {
   if (!req || typeof req !== "object") return undefined;
@@ -37,7 +29,9 @@ class SharedContextResolver {
   static BARRIER: Promise<void> | undefined;
 
   @Query(() => String)
-  async requestId(@Context() context: Record<string, unknown>): Promise<string> {
+  async requestId(
+    @Context() context: Record<string, unknown>,
+  ): Promise<string> {
     SharedContextResolver.CONTEXTS.push(context);
     // Lets a test hold concurrent requests here until all of them arrived
     await SharedContextResolver.BARRIER;

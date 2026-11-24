@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   describeConformance,
@@ -6,7 +5,7 @@ import {
   createSpy,
   createStub,
 } from "../../../../_helpers";
-import { HttpException } from "../../../../../../packages/common/src";
+import { HttpException } from "../../../../../../packages/core/src/common";
 import {
   KAFKA_CORRELATION_ID_HEADER,
   KAFKA_REPLY_PARTITION_HEADER,
@@ -333,9 +332,7 @@ describeConformance(
         ["ADR-001", "ADR-008"],
         "supports directly injected consumer (with or without producer) without options.client",
         async () => {
-          const server = track(
-            new KafkaServer({ consumer: harness.consumer }),
-          );
+          const server = track(new KafkaServer({ consumer: harness.consumer }));
           const received: unknown[] = [];
           server.addEventHandler("ev.only", (data) => {
             received.push(data);
@@ -760,9 +757,7 @@ describeConformance(
         ["ADR-001", "ADR-008"],
         "executes request handler cleanly without throwing when server has no producer configured",
         async () => {
-          const server = track(
-            new KafkaServer({ consumer: harness.consumer }),
-          );
+          const server = track(new KafkaServer({ consumer: harness.consumer }));
           const handler = createSpy(() => "result");
           server.addMessageHandler("no.prod", handler);
           await server.listen();

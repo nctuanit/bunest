@@ -1,16 +1,17 @@
+import type { Type } from "@bunest/core";
 import type {
   AiResilienceSettings,
   EmbeddingModel,
   EmbeddingModelLike,
   LanguageModel,
   LanguageModelLike,
-} from './ai-types.interface';
-import type { AiUsageEvent } from './ai-usage.interface';
+} from "./ai-types.interface";
+import type { AiUsageEvent } from "./ai-usage.interface";
 import type {
   AiEmbeddingModelDefinition,
   AiEmbeddingSettings,
   AiEmbeddingUsageEvent,
-} from './ai-embedding.interface';
+} from "./ai-embedding.interface";
 
 export type {
   AiResilienceSettings,
@@ -42,7 +43,7 @@ export interface AiCallSettings extends AiResilienceSettings {
   maxOutputTokens?: number;
   temperature?: number;
   /** Provider-specific options. */
-  providerOptions?: Record<string, Record<string, any>>;
+  providerOptions?: Record<string, Record<string, unknown>>;
   /** HTTP headers sent to the provider. */
   headers?: Record<string, string | undefined>;
 }
@@ -75,7 +76,7 @@ export interface AiModuleOptions {
   /** Called once after a successful embedding operation. */
   onEmbeddingUsage?: (event: AiEmbeddingUsageEvent) => void | Promise<void>;
   /** The modules whose providers are searched for agent functions. */
-  include?: Function[];
+  include?: Type<unknown>[];
 }
 
 /** What only the top level of `forRoot()` and `forRootAsync()` takes. */

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   GrpcException,
@@ -6,15 +5,13 @@ import {
   GrpcStatus,
   RpcException,
 } from "../../../../../../packages/microservices/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "GrpcException",
   {
-    upstreamPath: "packages/microservices/test/exceptions/grpc-exception.spec.ts",
+    upstreamPath:
+      "packages/microservices/test/exceptions/grpc-exception.spec.ts",
     category: "DIRECT_PORT",
     notes:
       "Bunest GrpcException uses constructor(code, message, metadata?) with .code/.details/.metadata/.isRetryable; NestJS status-specific subclasses (e.g. GrpcAlreadyExistsException) and getCode() are verified as parity gaps.",
@@ -64,7 +61,8 @@ describeConformance(
         new GrpcException(GrpcStatus.UNAVAILABLE, "service down").isRetryable,
       ).toBe(true);
       expect(
-        new GrpcException(GrpcStatus.DEADLINE_EXCEEDED, "timed out").isRetryable,
+        new GrpcException(GrpcStatus.DEADLINE_EXCEEDED, "timed out")
+          .isRetryable,
       ).toBe(true);
 
       const nonRetryable: GrpcStatus[] = [
@@ -126,12 +124,13 @@ describeConformance(
 
     // BUNEST_BUG: GrpcAlreadyExistsException.getError() in packages/microservices/src/exceptions.ts:167 includes an extra `status` property (`{ code, status, message }`) whereas NestJS returns `{ code, message }`.
     it.skip("should use status-specific exception defaults (GrpcAlreadyExistsException)", async () => {
-      const mod = (await import(
-        "../../../../../../packages/microservices/src"
-      )) as Record<string, unknown>;
+      const mod =
+        (await import("../../../../../../packages/microservices/src")) as Record<
+          string,
+          unknown
+        >;
       const GrpcAlreadyExistsException = mod.GrpcAlreadyExistsException as
-        | (new () => GrpcException)
-        | undefined;
+        (new () => GrpcException) | undefined;
       expect(GrpcAlreadyExistsException).toBeDefined();
       const exception = new GrpcAlreadyExistsException!();
       expect(exception.getError() as unknown).toEqual({

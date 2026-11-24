@@ -1,4 +1,4 @@
-import { Inject, SetMetadata } from "@bunest/common";
+import { Inject, SetMetadata } from "@bunest/core";
 import {
   SKIP_THROTTLE_METADATA,
   THROTTLE_METADATA,

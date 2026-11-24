@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -19,9 +17,9 @@ import {
   type NextFunction,
   type ResponseContext,
   type SseMessageEvent,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { signCookieValue } from "../../../../../packages/http/src";
+import { signCookieValue } from "../../../../../packages/core/src/http";
 import {
   Test,
   describeConformance,
@@ -40,7 +38,7 @@ function referenceCookieSignatureUnsign(
   const idx = signed.lastIndexOf(".");
   if (idx < 0) return false;
   const val = signed.slice(0, idx);
-  const expected = createHmac("sha256", secret)
+  const expected = new Bun.CryptoHasher("sha256", secret)
     .update(val)
     .digest("base64")
     .replace(/=+$/, "");
@@ -211,9 +209,7 @@ describeConformance(
             .get("/cookies/theme")
             .set("Cookie", "lang=en; theme=dark")
             .expect(200, { theme: "dark" });
-          await request(app)
-            .get("/cookies/theme")
-            .expect(200, { theme: null });
+          await request(app).get("/cookies/theme").expect(200, { theme: null });
         });
 
         it("should apply pipes", async () => {
@@ -409,9 +405,12 @@ describeConformance(
           expect(res.headers["x-injected"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: serializeCookie only checks CR/LF on path/domain and does not reject ";" (enabling Set-Cookie attribute injection) (packages/http/src/security/cookie.ts:227-239).
+        // BUNEST_BUG: serializeCookie only checks CR/LF on path/domain and does not reject ";" (enabling Set-Cookie attribute injection) (packages/core/src/http/security/cookie.ts:227-239).
         it.skip.each([
-          ['a path with ";"', { name: "a", value: "v", path: "/; Domain=evil" }],
+          [
+            'a path with ";"',
+            { name: "a", value: "v", path: "/; Domain=evil" },
+          ],
           [
             "an invalid domain",
             { name: "a", value: "v", domain: "x.com; Secure" },
@@ -425,7 +424,7 @@ describeConformance(
           expect(res.headers["x-injected"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: When a middleware returns `next()` (Promise<Response>), executeMiddlewareChain checks `result instanceof Response` even when `nextCalled === true` and calls finalizeShortCircuitResponse -> mergeHeadersOntoNativeResponse, re-appending every Set-Cookie header once per middleware (packages/http/src/pipeline/execution-pipeline.ts:482-486).
+        // BUNEST_BUG: When a middleware returns `next()` (Promise<Response>), executeMiddlewareChain checks `result instanceof Response` even when `nextCalled === true` and calls finalizeShortCircuitResponse -> mergeHeadersOntoNativeResponse, re-appending every Set-Cookie header once per middleware (packages/core/src/http/pipeline/execution-pipeline.ts:482-486).
         it.skip("should not duplicate Set-Cookie headers when a middleware returns next()", async () => {
           const modRef = await Test.createTestingModule({
             imports: [AppModule],
@@ -479,7 +478,7 @@ describeConformance(
           .expect(200, { theme: "dark" });
       });
 
-      // BUNEST_BUG: RequestContext.signedCookies silently returns {} instead of throwing when no cookie secret is configured (packages/http/src/context/request-context.ts:237-245).
+      // BUNEST_BUG: RequestContext.signedCookies silently returns {} instead of throwing when no cookie secret is configured (packages/core/src/http/context/request-context.ts:237-245).
       it.skip("should fail loudly when reading signed cookies", async () => {
         await request(app)
           .get("/signed/uid")

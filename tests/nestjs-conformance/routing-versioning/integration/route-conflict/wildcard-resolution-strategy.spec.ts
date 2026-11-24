@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { NestApplicationOptions } from "../../../../../packages/common/src";
+import type { NestApplicationOptions } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,

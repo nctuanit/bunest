@@ -1,127 +1,285 @@
-# ORM & ODM Adapters
+# Bunest ORM (`@bunest/orm`)
 
-Bunest provides 5 official, zero-external-runtime-dependency ORM and ODM integration packages with 100% NestJS v12 DI ergonomics:
-
-| Package | Integration | Key Exports |
-|---|---|---|
-| **`@bunest/prisma`** | Prisma Client + ALS transactions + HTTP exception filter | `PrismaModule`, `PrismaService`, `PrismaClientExceptionFilter`, `@InjectPrisma()` |
-| **`@bunest/drizzle`** | Drizzle ORM + `@bunest/sql` ALS transactions | `DrizzleModule`, `@InjectDrizzle()`, `BunSqliteDrizzleDatabase` |
-| **`@bunest/typeorm`** | `@nestjs/typeorm` v12 parity (multi-DataSource + SQLite/in-memory adapter) | `TypeOrmModule`, `@InjectRepository()`, `@InjectDataSource()`, `@InjectEntityManager()` |
-| **`@bunest/mongoose`** | `@nestjs/mongoose` v12 parity (`@Schema`, `@Prop`, `SchemaFactory`, `IsObjectIdPipe`) | `MongooseModule`, `@InjectModel()`, `@InjectConnection()`, `Schema`, `Prop`, `SchemaFactory` |
-| **`@bunest/sequelize`** | `@nestjs/sequelize` v12 parity (multi-connection + SQLite/in-memory adapter) | `SequelizeModule`, `@InjectModel()`, `@InjectConnection()`, `Model` |
-
-## Prisma (`@bunest/prisma`)
+Bunest ships a single, unified, zero-dependency, Bun-native ORM and SQL persistence toolkit — **`@bunest/orm`** — combining TypeORM-style entity/relation ergonomics, Spring Data-style compiled-once declarative repositories (`@OrmRepository` + `CrudRepository`), `AsyncLocalStorage` nested `SAVEPOINT` transactions (`@Transactional`), versioned migrations (`OrmMigrationRunner`), SQL Store Kit subpaths (`./store`, `./postgres`, `./mysql`, `./testing`), and multi-database support over Bun native APIs (`bun:sqlite`, `Bun.SQL`, `fetch()`, and `Bun.connect()`).
 
 ```bash
-bun add @bunest/prisma
+bun add @bunest/orm
 ```
 
-@@filename(app.module.ts)
-```ts
-import { Module } from "@bunest/core";
-import { PrismaClientExceptionFilter, PrismaModule, PrismaService } from "@bunest/prisma";
+## Supported Databases (100% Bun Native APIs)
 
-@Module({
-  imports: [
-    PrismaModule.forRoot({
-      clientFactory: () => new PrismaClient(),
-    }),
-  ],
-  providers: [PrismaClientExceptionFilter],
-})
-export class AppModule {}
-```
+| Database `type` | Bun Native Transport | Key Capabilities |
+| --- | --- | --- |
+| `sqlite`, `bun-sqlite`, `better-sqlite3`, `sqljs`, `expo`, `capacitor` | `bun:sqlite` (`SqliteOrmDriver`) or `Bun.SQL` (`useBunSql: true`) | WAL mode, `PRAGMA foreign_keys`, ALS savepoints, FIFO tx lock |
+| `postgres`, `postgresql`, `aurora-postgres`, `cockroachdb` | **`Bun.SQL`** (`BunSqlOrmDriver`, `adapter: "postgres"`) | Native pool, TLS, `$1..$n`, `RETURNING *`, `JSONB`, `ILIKE`, `search_path` |
+| `mysql`, `mysql2`, `aurora-mysql`, `mariadb` | **`Bun.SQL`** (`BunSqlOrmDriver`, `adapter: "mysql"` / `"mariadb"`) | Native pool, TLS, `AUTO_INCREMENT`, MariaDB `RETURNING *` |
+| `libsql`, `turso` | **Bun `fetch()`** (`LibSqlOrmDriver`, Hrana HTTP v2 `/v2/pipeline`) | Bearer auth, typed Hrana args/rows, interactive baton transactions |
+| `d1` | **Bun `fetch()`** (`D1OrmDriver`, D1 REST API) or `d1Binding` | Edge & remote Cloudflare D1 |
+| `mongodb`, `mongo` | **Bun `Bun.connect()`** (`MongoOrmDriver`, TCP/TLS `OP_MSG` + BSON + SCRAM-SHA-256) or embedded local store | `MongoRepository<Entity>`, `@ObjectIdColumn()`, aggregation pipelines |
+| `mssql`, `oracle`, `sap`, `spanner` | Full SQL dialect compiler + `OrmDriverRegistry` | Exact native DDL, quoting, placeholders, pagination, and upsert SQL |
 
-`PrismaService` manages `$connect()`/`$disconnect()` lifecycle hooks, provides `transactionalClient` via `AsyncLocalStorage`, and pairs with `PrismaClientExceptionFilter` to map `P2002` / `P2025` Prisma errors to clean HTTP `409` / `404` responses.
-
-## Drizzle (`@bunest/drizzle`)
-
-```bash
-bun add @bunest/drizzle
-```
-
-@@filename(app.module.ts)
-```ts
-import { Injectable, Module } from "@bunest/core";
-import { DrizzleModule, InjectDrizzle } from "@bunest/drizzle";
-
-@Module({
-  imports: [
-    DrizzleModule.forRoot({
-      useFactory: () => createDrizzleInstance(),
-    }),
-  ],
-})
-export class AppModule {}
-
-@Injectable()
-export class UsersRepository {
-  constructor(@InjectDrizzle() private readonly db: unknown) {}
-}
-```
-
-## TypeORM (`@bunest/typeorm`)
-
-```bash
-bun add @bunest/typeorm
-```
+## Quick Start (Entities, Relations & `Repository<T>`)
 
 @@filename(users.module.ts)
+
 ```ts
 import { Injectable, Module } from "@bunest/core";
-import { InjectRepository, TypeOrmModule, type Repository } from "@bunest/typeorm";
+import {
+  Column,
+  Embedded,
+  Entity,
+  InjectRepository,
+  ManyToOne,
+  OneToMany,
+  OrmModule,
+  PrimaryGeneratedColumn,
+  Transactional,
+  type Nested,
+  type Relation,
+  type Repository,
+} from "@bunest/orm";
 
-class UserEntity {
+export class Address {
+  @Column()
+  city!: string;
+}
+
+@Entity("users")
+export class User {
+  @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ unique: true })
   email!: string;
+
+  @Embedded(() => Address)
+  address?: Nested<Address>;
+
+  @OneToMany(() => Post, (post) => post.author, { cascade: true })
+  posts!: Relation<Post[]>;
+}
+
+@Entity("posts")
+export class Post {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  title!: string;
+
+  @ManyToOne(() => User, (user) => user.posts, { onDelete: "CASCADE" })
+  author!: Relation<User>;
 }
 
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly users: Repository<UserEntity>,
+    @InjectRepository(User)
+    private readonly users: Repository<User>,
   ) {}
+
+  @Transactional()
+  createWithPosts(email: string, titles: string[]) {
+    return this.users.save({
+      email,
+      posts: titles.map((title) => ({ title })),
+    });
+  }
 }
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({ type: "sqlite", database: ":memory:", entities: [UserEntity] }),
-    TypeOrmModule.forFeature([UserEntity]),
+    OrmModule.forRoot({
+      type: "sqlite",
+      database: ":memory:",
+      synchronize: true,
+    }),
+    OrmModule.forFeature([User, Post]),
   ],
   providers: [UsersService],
 })
 export class UsersModule {}
 ```
 
-## Mongoose (`@bunest/mongoose`)
+## Spring Data-Style Declarative Repositories (`@OrmRepository` + `CrudRepository`)
 
-```bash
-bun add @bunest/mongoose
-```
+In addition to `Repository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` includes a compiled-once declarative repository engine working across all SQL dialects (`sqlite`, `postgres`, `mysql`, `mariadb`, `libsql`, `d1`):
 
-@@filename(cats.schema.ts)
+@@filename(user.repository.ts)
+
 ```ts
-import { InjectModel, MongooseModule, Prop, Schema, SchemaFactory } from "@bunest/mongoose";
+import {
+  CrudRepository,
+  Modifying,
+  OrmRepository,
+  Query,
+  SqlParam,
+} from "@bunest/orm";
+import { User } from "./user.entity";
 
-@Schema({ timestamps: true })
-export class Cat {
-  @Prop({ required: true })
-  name!: string;
+@OrmRepository(User)
+export abstract class UserRepository extends CrudRepository<User, number> {
+  abstract findByEmail(email: string): Promise<User | null>;
+  abstract existsByEmail(email: string): Promise<boolean>;
 
-  @Prop()
-  age?: number;
+  @Modifying()
+  @Query("UPDATE users SET email = :email WHERE id = :id")
+  abstract updateEmail(
+    @SqlParam("id") id: number,
+    @SqlParam("email") email: string,
+  ): Promise<number>;
 }
-
-export const CatSchema = SchemaFactory.createForClass(Cat);
 ```
 
-Register with `MongooseModule.forRoot(uri)` and `MongooseModule.forFeature([{ name: Cat.name, schema: CatSchema }])`, and validate MongoDB ObjectIds with `IsObjectIdPipe`.
+Pass `OrmModule.forFeature([UserRepository])` (or enable `autoRegisterRepositories: true` on `OrmModule.forRoot()`) and inject `UserRepository` directly by class type (`constructor(private readonly users: UserRepository)`).
 
-## Sequelize (`@bunest/sequelize`)
+## Custom Derived Query Operators (`registerQueryOperator`)
 
-```bash
-bun add @bunest/sequelize
+Extend the Spring Data-style derived query parser with domain- or dialect-specific operators via `registerQueryOperator()` ([ADR-018](/architecture/adrs)). Operators live on the single-realm global registry `globalThis[Symbol.for("bunest:orm:custom_query_operators")]`, so `@bunest/cli` diagnostics, SQL previews, and VS Code completions automatically recognize custom suffixes:
+
+@@filename(custom-operators.ts)
+
+```ts
+import { registerQueryOperator } from "@bunest/orm";
+
+registerQueryOperator({
+  suffix: "Matches",
+  arity: 1,
+  description: "Full-text match predicate",
+  toSql: ({ quotedColumn, nextPlaceholder, args }) => ({
+    sql: `${quotedColumn} LIKE ${nextPlaceholder()}`,
+    params: [`%${String(args[0])}%`],
+  }),
+});
+
+// Now usable in any @OrmRepository with longest-suffix matching:
+// abstract findAllByBioMatchesAndActiveIsTrue(term: string): Promise<User[]>;
 ```
 
-Register connections with `SequelizeModule.forRoot(...)` and models with `SequelizeModule.forFeature([UserModel])`, then inject via `@InjectModel(UserModel)` or `@InjectConnection()`.
+Additional registry helpers: `unregisterQueryOperator(suffix)`, `getRegisteredQueryOperator(suffix)`, `listRegisteredQueryOperators()`, and `clearRegisteredQueryOperators()`.
+
+## Implicit Repository Scopes (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`, `@IgnoreScope`)
+
+Attach reusable, cross-cutting query filters and write interceptors directly onto `@OrmRepository` classes:
+
+| Decorator | Purpose |
+| --- | --- |
+| `@RepositoryScope<TEntity>({ name, where?, beforeSave?, onDeleteById? })` | Repeatable custom scope injecting `WHERE` clauses (with `OR`-safe parenthesization), `beforeSave` mutations, or `deleteById` interceptors |
+| `@SoftDelete({ column?, property?, name?, now? })` | Defaults to `deleted_at` / `deletedAt` / `"softDelete"`: adds `<col> IS NULL` to reads/counts/exists/deletes, converts `deleteById(id)` to soft-delete `UPDATE`, and exposes `softDeleteById`, `restoreById`, and `hardDeleteById` |
+| `@TenantScoped({ column?, property?, name?, resolveTenant?, required? })` | Resolves tenant from `resolveTenant()`, `ClsService`, or `getCurrentRequestContext()`, isolates reads/deletes by `tenant_id`, and auto-populates `tenantId` on `save()`/`saveMany()` |
+| `@IgnoreScope(...scopeNames)` | Method decorator disabling named scopes — or ALL scopes when called with no arguments (`@IgnoreScope()`) |
+
+You can also disable scopes dynamically across async boundaries using `runWithIgnoredScopes(["softDelete"], () => repo.findAll())`.
+
+## Selective Column Projection (`@Projection`)
+
+Avoid fetching full rows (`SELECT *`) on hot read endpoints by annotating derived finders (`findBy*`, `findAllBy*`, `findOneBy*`, `findPageBy*`, `findCursorBy*`, `findAll`, `findById`) with **`@Projection(...fields)`**:
+
+@@filename(document.repository.ts)
+
+```ts
+import {
+  CrudRepository,
+  IgnoreScope,
+  OrmRepository,
+  Projection,
+  SoftDelete,
+  TenantScoped,
+  type CursorPage,
+  type CursorPageable,
+  type Page,
+  type Pageable,
+} from "@bunest/orm";
+import { DocumentEntity } from "./document.entity";
+
+@SoftDelete()
+@TenantScoped({ resolveTenant: () => getCurrentTenantId() })
+@OrmRepository(DocumentEntity)
+export abstract class DocumentRepository extends CrudRepository<
+  DocumentEntity,
+  number
+> {
+  // Compiles `SELECT "id", "title" FROM "documents" WHERE ... AND "deleted_at" IS NULL AND "tenant_id" = ?`
+  @Projection("id", "title")
+  abstract findAllByPublished(
+    published: boolean,
+  ): Promise<Array<{ id: number; title: string }>>;
+
+  // First-class offset pagination (SELECT ... LIMIT/OFFSET + scoped COUNT(*))
+  abstract findPageByPublished(
+    published: boolean,
+    pageable: Pageable,
+  ): Promise<Page<DocumentEntity>>;
+
+  // First-class keyset cursor pagination (LIMIT + 1 -> nextCursor & hasMore)
+  abstract findCursorByPublished(
+    published: boolean,
+    pageable: CursorPageable,
+  ): Promise<CursorPage<DocumentEntity>>;
+
+  // Opt out of soft-delete filtering for admin/audit queries
+  @IgnoreScope("softDelete")
+  abstract findById(id: number): Promise<DocumentEntity | null>;
+}
+```
+
+## First-Class Pagination (`Page<T>` & `CursorPage<T>`)
+
+- **Offset pagination (`Pageable` → `Page<T>`):** Use `findPageBy*` (or pass a trailing `Pageable` to `findAllBy*`/`findBy*`). Returns `{ items, total, page, size, totalPages, hasNext, hasPrevious }` honoring active scopes and optional `sort: [{ property, direction }]`.
+- **Keyset cursor pagination (`CursorPageable` → `CursorPage<T>`):** Use `findCursorBy*` (or pass a trailing `CursorPageable`). Compiles `WHERE <cursorCol> >/< <cursor> ORDER BY <cursorCol> <dir> LIMIT (limit + 1)` and returns `{ items, nextCursor, hasMore, limit }`.
+- Helpers: `createPageable(...)`, `createCursorPageable(...)`, `isPageable(v)`, and `isCursorPageable(v)`.
+
+## Composable Repository Fragments (`composeRepository`)
+
+Mix reusable repository methods and scopes across any `@OrmRepository` without single-inheritance limits using **`defineRepositoryFragment()`**, **`composeRepository()`**, or **`@UseRepositoryFragments(...)`** — alongside built-in **`withSoftDelete()`** and **`withCursorPagination()`** traits:
+
+@@filename(invoice.repository.ts)
+
+```ts
+import {
+  CrudRepository,
+  OrmRepository,
+  composeRepository,
+  defineRepositoryFragment,
+  withCursorPagination,
+  withSoftDelete,
+} from "@bunest/orm";
+import { Invoice } from "./invoice.entity";
+
+const withTableStats = defineRepositoryFragment<{ countRaw(): Promise<number> }>({
+  name: "tableStats",
+  createMethods: (ctx) => ({
+    async countRaw() {
+      const res = await ctx.driver.query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM ${ctx.tableRef}`,
+      );
+      return Number(res.rows[0]?.cnt ?? 0);
+    },
+  }),
+});
+
+@OrmRepository(Invoice)
+export abstract class InvoiceRepository extends composeRepository(
+  CrudRepository<Invoice, number>,
+  withSoftDelete<Invoice, number>(),
+  withCursorPagination<Invoice>({ defaultLimit: 25 }),
+  withTableStats,
+) {
+  abstract findAllByStatus(status: string): Promise<Invoice[]>;
+}
+// InvoiceRepository exposes: softDeleteById, restoreById, hardDeleteById,
+// findCursorPage, countRaw, plus all CrudRepository & derived finder methods!
+```
+
+## Subpath Exports
+
+| Subpath | Purpose |
+| --- | --- |
+| `@bunest/orm` | Core ORM (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@OrmRepository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, drivers, query builders) |
+| `@bunest/orm/plugin` | Bun TDZ-safe circular-entity preload plugin |
+| `@bunest/orm/store` | Foundational SQL store kit (`runStoreCli`, `SqlExecutor`, `SqlTransaction`, value coercers) |
+| `@bunest/orm/postgres` | PostgreSQL store migration & dialect helpers over native `Bun.SQL` |
+| `@bunest/orm/mysql` | MySQL / MariaDB store migration & dialect helpers over native `Bun.SQL` |
+| `@bunest/orm/testing` | Reusable SQL store contract test harnesses |
+
+See also: [SQLite (`bun:sqlite`)](/data/sqlite), [SQL (`Bun.SQL`)](/data/sql), and [Store Kit (`@bunest/orm/store`)](/data/store-kit).

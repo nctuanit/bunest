@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -22,7 +21,7 @@ describe("Bunest Playground App", () => {
       // 1. Seeded Todo list + CRUD create/update/delete
       const listRes = await client.get("/todos");
       expect(listRes.status).toBe(200);
-      expect((await listRes.json() as TodoItem[])).toHaveLength(1);
+      expect((await listRes.json()) as TodoItem[]).toHaveLength(1);
 
       const createRes = await client.post("/todos", {
         json: { title: "Benchmark Bun.serve" },
@@ -36,7 +35,7 @@ describe("Bunest Playground App", () => {
         json: { completed: true },
       });
       expect(patchRes.status).toBe(200);
-      expect((await patchRes.json() as TodoItem).completed).toBe(true);
+      expect(((await patchRes.json()) as TodoItem).completed).toBe(true);
 
       const delRes = await client.delete(`/todos/${created.id}`);
       expect(delRes.status).toBe(204);
@@ -90,7 +89,9 @@ describe("Bunest Playground App", () => {
       // 3. Health & Readiness
       const healthRes = await client.get("/health");
       expect(healthRes.status).toBe(200);
-      expect((await healthRes.json() as { status: string }).status).toBe("ok");
+      expect(((await healthRes.json()) as { status: string }).status).toBe(
+        "ok",
+      );
 
       // 4. Prometheus Metrics
       const metricsRes = await client.get("/metrics");

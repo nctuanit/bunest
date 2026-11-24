@@ -6,8 +6,8 @@ import type {
   RpcArgumentsHost,
   Type,
   WsArgumentsHost,
-} from "@bunest/common";
-import type { GraphQLResolveInfo } from "graphql";
+} from "@bunest/core";
+import type { GraphQLResolveInfo } from "../engine";
 
 export type GqlContextType = "graphql" | ContextType;
 
@@ -111,13 +111,13 @@ export class GraphQLExecutionContextHost implements ExecutionContext {
  */
 export class GqlArgumentsHost implements GraphQLArgumentsHost {
   private contextType: string = "graphql";
-  protected readonly args: any[];
-  protected readonly constructorRef?: Type<any> | null;
+  protected readonly args: unknown[];
+  protected readonly constructorRef?: Type<unknown> | null;
   protected readonly handler?: Function | null;
 
   constructor(
-    args: any[],
-    constructorRef: Type<any> | null = null,
+    args: unknown[],
+    constructorRef: Type<unknown> | null = null,
     handler: Function | null = null,
   ) {
     this.args = args;

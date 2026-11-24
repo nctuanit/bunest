@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   UsePipes,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class Pipe {
@@ -16,8 +15,7 @@ class Pipe {
 describeConformance(
   "@UsePipes",
   {
-    upstreamPath:
-      "packages/common/test/decorators/use-pipes.decorator.spec.ts",
+    upstreamPath: "packages/common/test/decorators/use-pipes.decorator.spec.ts",
     category: "DIRECT_PORT",
     adrs: ["ADR-002"],
   },
@@ -45,7 +43,7 @@ describeConformance(
       expect(metadata).toEqual(pipes);
     });
 
-    // BUNEST_BUG: UsePipes() in packages/common/src/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
+    // BUNEST_BUG: UsePipes() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
     it.skip("when object is invalid should throw exception", () => {
       let errorClass: unknown = undefined;
       try {

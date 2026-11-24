@@ -5,7 +5,7 @@ import {
   type OnApplicationShutdown,
   type OnModuleDestroy,
   type OnModuleInit,
-} from "@bunest/common";
+} from "../common/index";
 import type {
   LifecycleManagerLike,
   LifecycleModuleGroupLike,

@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, jest, mock, spyOn } from "bun:test";
-import { Injectable, Logger } from "../../../../../packages/common/src";
+import { Injectable, Logger } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Interval,
   ScheduleModule,
   SchedulerRegistry,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance } from "../../../_helpers";
 import {
   DUPLICATE_SCHEDULER,
@@ -60,7 +59,7 @@ describeConformance(
       expect(registry.getInterval("test")).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getInterval<T = any>(name: string): T to accept a generic type parameter, but packages/scheduler/src/scheduler.registry.ts declares getInterval(name: string) with 0 type parameters.
+    // BUNEST_BUG: Expected SchedulerRegistry.getInterval<T = any>(name: string): T to accept a generic type parameter, but packages/jobs/src/scheduler/scheduler.registry.ts declares getInterval(name: string) with 0 type parameters.
     it.skip(`should support generic type parameter for getInterval`, async () => {
       await app!.init();
       const registry = app!.get(SchedulerRegistry);
@@ -90,7 +89,7 @@ describeConformance(
       expect(interval).toBeDefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getInterval() missing-interval error message to match NestJS NO_SCHEDULER_FOUND ("No Interval was found with the given name (dynamic)..."), but packages/scheduler/src/scheduler.registry.ts throws 'No interval found with name "dynamic".'.
+    // BUNEST_BUG: Expected SchedulerRegistry.getInterval() missing-interval error message to match NestJS NO_SCHEDULER_FOUND ("No Interval was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No interval found with name "dynamic".'.
     it.skip(`should delete dynamic interval`, async () => {
       const service = app!.get(IntervalService);
       await app!.init();
@@ -250,7 +249,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate interval error message to match NestJS DUPLICATE_SCHEDULER ("Interval with the given name (<name>) already exists. Ignored."), but packages/scheduler/src/scheduler.registry.ts throws 'Interval with name "<name>" already exists.'.
+    // BUNEST_BUG: Expected duplicate interval error message to match NestJS DUPLICATE_SCHEDULER ("Interval with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Interval with name "<name>" already exists.'.
     it.skip.each(["shared", "__proto__"])(
       "should reject duplicate interval name %s",
       async (name) => {
@@ -310,7 +309,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/common/src/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/scheduler/src/scheduler.explorer.ts uses context "SchedulerExplorer".
+    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/core/src/common/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/jobs/src/scheduler/scheduler.explorer.ts uses context "SchedulerExplorer".
     it.skip(`should log a warning when trying to register an interval in a request scoped provider`, async () => {
       const logger = {
         log: mock(() => {}),

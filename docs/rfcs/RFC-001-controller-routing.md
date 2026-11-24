@@ -40,13 +40,13 @@ Routing uses **one controller class per resource with multiple HTTP-decorated me
 
 ## 2. Public Routing Syntax
 
-| Element | Decorator | Semantics |
-|---|---|---|
-| Controller class | `@Controller(prefix \| options)` | Marks a class as an HTTP controller with optional route prefix (`string \| string[]`), `host`, and DI `scope`. |
-| Route methods | `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@All`, `@Sse` | Method decorators binding an HTTP verb + relative path (`""` default) to a controller method. |
-| Parameter binding | `@Body`, `@Query`, `@Param`, `@Headers`, `@Req`, `@Res`, `@Ip`, `@HostParam`, `@Cookies`, `@UploadedFile`, `@UploadedFiles`, `createParamDecorator` | Legacy parameter decorators recording source, optional key, pipes, and parameter index. |
-| Response metadata | `@HttpCode(code)`, `@Header(name, value)`, `@Redirect(url?, code?)` | Declares static status code, response headers, or redirect target. |
-| Enhancers | `@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters` | Attaches pipeline enhancers at controller or method scope. |
+| Element           | Decorator                                                                                                                                           | Semantics                                                                                                      |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Controller class  | `@Controller(prefix \| options)`                                                                                                                    | Marks a class as an HTTP controller with optional route prefix (`string \| string[]`), `host`, and DI `scope`. |
+| Route methods     | `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@All`, `@Sse`                                                                   | Method decorators binding an HTTP verb + relative path (`""` default) to a controller method.                  |
+| Parameter binding | `@Body`, `@Query`, `@Param`, `@Headers`, `@Req`, `@Res`, `@Ip`, `@HostParam`, `@Cookies`, `@UploadedFile`, `@UploadedFiles`, `createParamDecorator` | Legacy parameter decorators recording source, optional key, pipes, and parameter index.                        |
+| Response metadata | `@HttpCode(code)`, `@Header(name, value)`, `@Redirect(url?, code?)`                                                                                 | Declares static status code, response headers, or redirect target.                                             |
+| Enhancers         | `@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters`                                                                                        | Attaches pipeline enhancers at controller or method scope.                                                     |
 
 - **Rejected APIs:** Class-per-endpoint inheritance (`BaseMethod`, `PostMethod`) and `static parameters = [...]` are NOT part of the public routing API.
 - **Controller registration:** Controllers MUST be listed in `@Module({ controllers: [...] })` AND decorated with `@Controller()`. Undecorated classes in `controllers` fail fast at bootstrap.

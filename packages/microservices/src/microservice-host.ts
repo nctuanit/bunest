@@ -22,7 +22,7 @@ import {
   type PreRequestHook,
   type Type,
   type WebSocketAdapter,
-} from "@bunest/common";
+} from "@bunest/core";
 import { DiscoveryService, MetadataScanner, ModuleRef } from "@bunest/core";
 import type { ClientProxy } from "./client-proxy";
 import { ClientProxyFactory } from "./client-proxy-factory";
@@ -47,7 +47,10 @@ import {
   RPC_PARAM_METADATA,
 } from "./tokens";
 
-function collectMergedClassArray<T>(key: symbol | string, target: Function): T[] {
+function collectMergedClassArray<T>(
+  key: symbol | string,
+  target: Function,
+): T[] {
   const chain: Function[] = [];
   let cursor: Function | null = target;
   while (cursor && cursor !== Function.prototype && cursor !== Object) {
@@ -191,23 +194,39 @@ export class MicroserviceHost
     return this;
   }
 
-  get<TInput = any, TResult = TInput>(
+  get<TInput = unknown, TResult = TInput>(
     typeOrToken: InjectionToken<TInput>,
     options?: { strict?: boolean; each?: boolean },
   ): TResult {
-    return this.moduleRef.get(typeOrToken, options as any) as unknown as TResult;
+    if (options?.each === true) {
+      return this.moduleRef.get<TInput, TResult>(typeOrToken, {
+        strict: options.strict,
+        each: true,
+      }) as unknown as TResult;
+    }
+    return this.moduleRef.get<TInput, TResult>(typeOrToken, {
+      strict: options?.strict,
+      each: false,
+    });
   }
 
-  async resolve<TInput = any, TResult = TInput>(
+  async resolve<TInput = unknown, TResult = TInput>(
     typeOrToken: InjectionToken<TInput>,
     contextId?: ContextId,
     options?: { strict?: boolean; each?: boolean },
   ): Promise<TResult> {
-    return (await this.moduleRef.resolve(
+    if (options?.each === true) {
+      return (await this.moduleRef.resolve<TInput, TResult>(
+        typeOrToken,
+        contextId,
+        { strict: options.strict, each: true },
+      )) as unknown as TResult;
+    }
+    return await this.moduleRef.resolve<TInput, TResult>(
       typeOrToken,
       contextId,
-      options as any,
-    )) as unknown as TResult;
+      { strict: options?.strict, each: false },
+    );
   }
 
   select(_moduleType: Type<unknown>): this {
@@ -218,10 +237,7 @@ export class MicroserviceHost
     // Handled by ModuleRef container in Bunest
   }
 
-  registerRequestByContextId<T = any>(
-    request: T,
-    contextId: ContextId,
-  ): void {
+  registerRequestByContextId<T = any>(request: T, contextId: ContextId): void {
     this.moduleRef.registerRequestByContextId(request, contextId);
   }
 
@@ -354,11 +370,11 @@ export class MicroserviceHost
       if (currentVal !== null && currentVal !== undefined) {
         continue;
       }
-      const clientOpts = Reflect.getMetadata(
+      const clientOpts = MetadataRegistry.get<ClientOptions>(
         CLIENT_CONFIGURATION_METADATA,
         ctor.prototype as object,
         key,
-      ) as ClientOptions | undefined;
+      );
       const proxy = ClientProxyFactory.create(clientOpts as ClientOptions);
       this.managedClients.push(proxy);
       Reflect.set(instance, key, proxy);
@@ -382,7 +398,9 @@ export class MicroserviceHost
     );
 
     for (const meta of [...messageMetas, ...eventMetas]) {
-      const fn = (instance as Record<string | symbol, unknown>)[meta.methodName];
+      const fn = (instance as Record<string | symbol, unknown>)[
+        meta.methodName
+      ];
       if (typeof fn !== "function") continue;
 
       const compiled = this.compileHandler(
@@ -402,7 +420,9 @@ export class MicroserviceHost
     }
 
     for (const meta of grpcMetas) {
-      const fn = (instance as Record<string | symbol, unknown>)[meta.methodName];
+      const fn = (instance as Record<string | symbol, unknown>)[
+        meta.methodName
+      ];
       if (typeof fn !== "function") continue;
 
       const compiled = this.compileHandler(

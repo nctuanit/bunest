@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   createSandbox,
@@ -96,7 +95,8 @@ function createMockChannel(options?: {
       queue: string,
       onMessage: (msg: RabbitMqMessageLike) => Promise<void> | void,
       opts?: Record<string, unknown>,
-    ) => Promise<{ consumerTag?: string } | void> | { consumerTag?: string } | void
+    ) =>
+      Promise<{ consumerTag?: string } | void> | { consumerTag?: string } | void
   >((queue, onMessage, opts) => {
     const tag = `amq.ctag-${++tagSeq}`;
     const list = consumers.get(queue) ?? [];
@@ -139,9 +139,10 @@ function createMockChannel(options?: {
   });
 
   const ack = createStub<(msg: RabbitMqMessageLike) => void>();
-  const nack = createStub<
-    (msg: RabbitMqMessageLike, allUpTo?: boolean, requeue?: boolean) => void
-  >();
+  const nack =
+    createStub<
+      (msg: RabbitMqMessageLike, allUpTo?: boolean, requeue?: boolean) => void
+    >();
   const cancel = createStub<(consumerTag: string) => Promise<void> | void>(
     (consumerTag) => {
       for (const list of consumers.values()) {
@@ -186,7 +187,9 @@ function parseEnvelope<T = Record<string, unknown>>(
   content: Uint8Array | string,
 ): T {
   const text =
-    typeof content === "string" ? content : Buffer.from(content).toString("utf8");
+    typeof content === "string"
+      ? content
+      : Buffer.from(content).toString("utf8");
   return JSON.parse(text) as T;
 }
 
@@ -211,7 +214,9 @@ describeConformance(
       return c;
     };
 
-    const trackServer = (s: RabbitMqTransportServer): RabbitMqTransportServer => {
+    const trackServer = (
+      s: RabbitMqTransportServer,
+    ): RabbitMqTransportServer => {
       activeServers.push(s);
       return s;
     };
@@ -579,7 +584,14 @@ describeConformance(
       });
 
       it("should resolve falsy, null, undefined, and nested responses accurately", async () => {
-        const values: unknown[] = [0, false, "", null, undefined, [1, { a: 2 }]];
+        const values: unknown[] = [
+          0,
+          false,
+          "",
+          null,
+          undefined,
+          [1, { a: 2 }],
+        ];
         let idx = 0;
         harness.sendToQueue.callsFake(async (_queue, content, opts) => {
           const req = parseEnvelope<RpcRequestEnvelope>(content);
@@ -627,7 +639,9 @@ describeConformance(
         );
         const resRegex = await client.send(/^orders\.\d+$/i, "data");
 
-        expect(resA).toBe('{"cmd":"create","meta":{"a":1,"z":2},"role":"user"}');
+        expect(resA).toBe(
+          '{"cmd":"create","meta":{"a":1,"z":2},"role":"user"}',
+        );
         expect(resB).toBe(resA);
         expect(resRegex).toBe("/^orders\\.\\d+$/i");
         expect(capturedPatterns).toEqual([resA, resA, "/^orders\\.\\d+$/i"]);
@@ -831,8 +845,9 @@ describeConformance(
           "channel write failed",
         );
 
-        const pendingMap = (client as unknown as { pending: Map<string, unknown> })
-          .pending;
+        const pendingMap = (
+          client as unknown as { pending: Map<string, unknown> }
+        ).pending;
         expect(pendingMap.size).toBe(0);
       });
 
@@ -844,8 +859,9 @@ describeConformance(
           "Publish error",
         );
 
-        const pendingMap = (client as unknown as { pending: Map<string, unknown> })
-          .pending;
+        const pendingMap = (
+          client as unknown as { pending: Map<string, unknown> }
+        ).pending;
         expect(pendingMap.size).toBe(0);
       });
 
@@ -869,8 +885,9 @@ describeConformance(
         // Allow sendOnce's inner timeout timer (scheduled 1 microtask after ClientProxy.runWithTimeout) to fire and clean up
         await new Promise((resolve) => setTimeout(resolve, 25));
 
-        const pendingMap = (client as unknown as { pending: Map<string, unknown> })
-          .pending;
+        const pendingMap = (
+          client as unknown as { pending: Map<string, unknown> }
+        ).pending;
         expect(pendingMap.size).toBe(0);
 
         // Late reply arriving after timeout must be silently ignored
@@ -1050,10 +1067,13 @@ describeConformance(
 
       // BUNEST_BUG: RabbitMqClientProxy.dispatchEvent() does not detect or unwrap RmqRecord / RmqRecordBuilder instances and passes no options argument to `channel.sendToQueue`, dropping RmqRecordOptions (headers, persistent, priority, etc.) on emit() (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
       it.skip("should unwrap RmqRecord data and forward RmqRecordOptions to sendToQueue on emit()", async () => {
-        const record = new RmqRecord({ event: "paid" }, {
-          persistent: true,
-          headers: { "x-source": "billing" },
-        });
+        const record = new RmqRecord(
+          { event: "paid" },
+          {
+            persistent: true,
+            headers: { "x-source": "billing" },
+          },
+        );
 
         await client.emit("invoice.paid", record);
 
@@ -1075,8 +1095,12 @@ describeConformance(
       it("should reject all pending requests, clear timers, and cancel reply consumer", async () => {
         await client.connect();
 
-        const p1 = client.send("p1", 1, { timeoutMs: 10_000 }).catch((e: unknown) => e);
-        const p2 = client.send("p2", 2, { timeoutMs: 10_000 }).catch((e: unknown) => e);
+        const p1 = client
+          .send("p1", 1, { timeoutMs: 10_000 })
+          .catch((e: unknown) => e);
+        const p2 = client
+          .send("p2", 2, { timeoutMs: 10_000 })
+          .catch((e: unknown) => e);
         await Promise.resolve();
         await Promise.resolve();
 
@@ -1089,8 +1113,9 @@ describeConformance(
         expect((e2 as Error).message).toBe("RabbitMqClientProxy closed.");
         expect(harness.cancel.calledOnceWith("amq.ctag-1")).toBe(true);
 
-        const pendingMap = (client as unknown as { pending: Map<string, unknown> })
-          .pending;
+        const pendingMap = (
+          client as unknown as { pending: Map<string, unknown> }
+        ).pending;
         expect(pendingMap.size).toBe(0);
       });
 
@@ -1159,7 +1184,9 @@ describeConformance(
         await expect(client.close()).rejects.toThrow("Cancel failed");
         const pendingErr = await pending;
         expect(pendingErr).toBeInstanceOf(Error);
-        expect((pendingErr as Error).message).toBe("RabbitMqClientProxy closed.");
+        expect((pendingErr as Error).message).toBe(
+          "RabbitMqClientProxy closed.",
+        );
       });
 
       // BUNEST_BUG: RabbitMqClientProxy.close() assigns `this.replyConsumerTag = undefined` and `this.replyInitialized = false` AFTER `await this.channel.cancel(...)` with no `try/finally`, so a rejecting `cancel()` leaves the client stuck with stale consumer state and unable to reconnect (packages/microservices/src/transports/broker.transports.ts).
@@ -1199,15 +1226,20 @@ describeConformance(
 
         const pendingErr = await pending;
         expect(pendingErr).toBeInstanceOf(Error);
-        expect((pendingErr as Error).message).toBe("RabbitMqClientProxy closed.");
+        expect((pendingErr as Error).message).toBe(
+          "RabbitMqClientProxy closed.",
+        );
         expect(harness.cancel.calledOnceWith("amq.ctag-1")).toBe(true);
       });
     });
 
     describe("setPreRequestHook, unwrap & end-to-end round-trip", () => {
       it("should invoke setPreRequestHook before send() and emit() and allow clearing", async () => {
-        const seen: Array<{ pattern: string; data: unknown; transport: Transport }> =
-          [];
+        const seen: Array<{
+          pattern: string;
+          data: unknown;
+          transport: Transport;
+        }> = [];
 
         const returned = client.setPreRequestHook((ctx) => {
           seen.push(ctx);
@@ -1215,7 +1247,9 @@ describeConformance(
         expect(returned).toBe(client);
 
         harness.sendToQueue.callsFake(async (_queue, content, opts) => {
-          const env = parseEnvelope<RpcRequestEnvelope | RpcEventEnvelope>(content);
+          const env = parseEnvelope<RpcRequestEnvelope | RpcEventEnvelope>(
+            content,
+          );
           if (env.type === "request") {
             await harness.deliver("jobs.rpc.reply", {
               content: JSON.stringify({
@@ -1230,7 +1264,9 @@ describeConformance(
           return true;
         });
 
-        expect(await client.send({ b: 2, a: 1 }, { payload: 10 })).toBe("hooked");
+        expect(await client.send({ b: 2, a: 1 }, { payload: 10 })).toBe(
+          "hooked",
+        );
         await client.emit("audit.event", { ok: true });
 
         expect(seen).toEqual([
@@ -1257,8 +1293,12 @@ describeConformance(
           throw new Error("unauthorized");
         });
 
-        await expect(client.send("secret.op", {})).rejects.toThrow("unauthorized");
-        await expect(client.emit("secret.evt", {})).rejects.toThrow("unauthorized");
+        await expect(client.send("secret.op", {})).rejects.toThrow(
+          "unauthorized",
+        );
+        await expect(client.emit("secret.evt", {})).rejects.toThrow(
+          "unauthorized",
+        );
         expect(harness.sendToQueue.notCalled).toBe(true);
       });
 

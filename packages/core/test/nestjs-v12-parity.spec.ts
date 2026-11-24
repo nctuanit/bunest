@@ -1,18 +1,17 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   APP_GUARD,
   Body,
   ConfigurableModuleBuilder as CommonConfigurableModuleBuilder,
   Controller,
+  ensureDir,
   Get,
   Inject,
   Injectable,
+  join,
   Module,
   Post,
+  removePath,
   REQUEST,
   Scope,
   ShutdownSignal as CommonShutdownSignal,
@@ -23,7 +22,7 @@ import {
   type HostComponentInfo,
   type MiddlewareFunction,
   type StandardSchemaV1,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   AbstractHttpAdapter,
   ApplicationConfig,
@@ -53,7 +52,7 @@ describe("@bunest/core NestJS v12 Parity Suite", () => {
     InitializeOnPreviewAllowlist.clear();
     while (tmpDirs.length > 0) {
       const dir = tmpDirs.pop()!;
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      await removePath(dir, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -139,7 +138,14 @@ describe("@bunest/core NestJS v12 Parity Suite", () => {
 
     @Module({
       controllers: [DurableController, RequestToDurableController],
-      providers: [{ provide: TENANT_SERVICE, useClass: TenantService, scope: Scope.REQUEST, durable: true }],
+      providers: [
+        {
+          provide: TENANT_SERVICE,
+          useClass: TenantService,
+          scope: Scope.REQUEST,
+          durable: true,
+        },
+      ],
     })
     class DurableModule {}
 
@@ -296,9 +302,11 @@ describe("@bunest/core NestJS v12 Parity Suite", () => {
       // ModulesContainer RPC target registry
       const observedRpc: string[] = [];
       modulesContainer.addRpcTarget("tcp-1");
-      const rpcSub = modulesContainer.getRpcTargetRegistry<string>().subscribe((t) => {
-        observedRpc.push(t);
-      });
+      const rpcSub = modulesContainer
+        .getRpcTargetRegistry<string>()
+        .subscribe((t) => {
+          observedRpc.push(t);
+        });
       modulesContainer.addRpcTarget("grpc-2");
       rpcSub.unsubscribe();
       modulesContainer.addRpcTarget("kafka-3");
@@ -430,25 +438,33 @@ describe("@bunest/core NestJS v12 Parity Suite", () => {
           id.includes("ExternalHandler"),
         ),
       ).toBe(true);
-      expect(graphJson.extras.orphanedEnhancers.length).toBeGreaterThanOrEqual(1);
+      expect(graphJson.extras.orphanedEnhancers.length).toBeGreaterThanOrEqual(
+        1,
+      );
 
       // NestContainer compatibility facade
       expect(container).toBeInstanceOf(NestContainer);
-      expect(container.applicationConfig).toBe(container.getApplicationConfig());
+      expect(container.applicationConfig).toBe(
+        container.getApplicationConfig(),
+      );
       expect(container.serializedGraph).toBe(container.getSerializedGraph());
       expect(container.contextOptions).toBeDefined();
       expect(container.getModules().size).toBeGreaterThan(0);
       expect(container.getModuleByKey(extModNode.id)).toBe(extModNode);
       container.setHttpAdapter(adapter);
       expect(container.getHttpAdapterRef()).toBe(adapter);
-      expect(container.getHttpAdapterHostRef()).toBe(container.getHttpAdapterHost());
+      expect(container.getHttpAdapterHostRef()).toBe(
+        container.getHttpAdapterHost(),
+      );
       container.registerCoreModuleRef(extModNode);
       expect(container.getInternalCoreModuleRef()).toBe(extModNode);
       expect(container.isGlobalModule(ExtModule)).toBe(false);
       expect(container.isGlobalModule(ExtModule, { global: true })).toBe(true);
 
       await container.addDynamicMetadata("dyn-tok", { exports: ["A"] });
-      expect(container.getDynamicMetadataByToken("dyn-tok", "exports")).toEqual(["A"]);
+      expect(container.getDynamicMetadataByToken("dyn-tok", "exports")).toEqual(
+        ["A"],
+      );
       const compiled = await container.getModuleCompiler().compile(ExtModule);
       expect(compiled.type).toBe(ExtModule);
     } finally {
@@ -457,10 +473,14 @@ describe("@bunest/core NestJS v12 Parity Suite", () => {
   });
 
   it("integrates ServeStaticModule.forRoot() and forRootAsync() with BunestFactory + globalPrefix + StandardSchemaValidationPipe", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "bunest-core-static-"));
+    const dir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-core-static-${crypto.randomUUID()}`,
+    );
+    await ensureDir(dir);
     tmpDirs.push(dir);
-    await writeFile(join(dir, "index.html"), "<title>Bunest App</title>");
-    await writeFile(join(dir, "hello.txt"), "hello-from-serve-static");
+    await Bun.write(join(dir, "index.html"), "<title>Bunest App</title>");
+    await Bun.write(join(dir, "hello.txt"), "hello-from-serve-static");
 
     const nameSchema: StandardSchemaV1<unknown, { name: string }> = {
       "~standard": {

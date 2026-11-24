@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Controller,
   METADATA_KEYS,
   MetadataRegistry,
   type ControllerMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
@@ -108,7 +107,7 @@ describeConformance(
       expect(host4).toEqual(reflectedHost);
     });
 
-    // BUNEST_BUG: Controller({ version: ['1','2','2','1','2','1'] }) in packages/common/src/decorators/http.decorators.ts:35 clones `[...version]` without deduplicating entries, whereas NestJS deduplicates to `['1', '2']`.
+    // BUNEST_BUG: Controller({ version: ['1','2','2','1','2','1'] }) in packages/core/src/common/decorators/http.decorators.ts:35 clones `[...version]` without deduplicating entries, whereas NestJS deduplicates to `['1', '2']`.
     it.skip("should enhance controller with expected version metadata (deduplicating version arrays)", () => {
       const version = MetadataRegistry.get(
         METADATA_KEYS.VERSION,

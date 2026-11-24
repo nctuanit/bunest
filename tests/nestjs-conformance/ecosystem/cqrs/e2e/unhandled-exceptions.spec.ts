@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { Logger } from "../../../../../packages/common/src";
+import { Logger } from "../../../../../packages/core/src/common";
 import {
   CommandBus,
   CqrsModule,
   UnhandledExceptionBus,
   type UnhandledExceptionInfo,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 import {
   Test,
   describeConformance,
@@ -80,7 +79,7 @@ describeConformance(
     });
 
     describe("when exception is thrown from event handler", () => {
-      // BUNEST_BUG: Expected EventBus.publish() with default options (rethrowUnhandled omitted -> false) to forward event handler exceptions to UnhandledExceptionBus without rejecting publish(), but packages/cqrs/src/event-bus.ts:614 checks `rethrowUnhandled !== false` (defaulting to true, inconsistent with line 724 for sagas), producing an unhandled promise rejection when publish() is fire-and-forget.
+      // BUNEST_BUG: Expected EventBus.publish() with default options (rethrowUnhandled omitted -> false) to forward event handler exceptions to UnhandledExceptionBus without rejecting publish(), but packages/messaging/src/cqrs/event-bus.ts:614 checks `rethrowUnhandled !== false` (defaulting to true, inconsistent with line 724 for sagas), producing an unhandled promise rejection when publish() is fire-and-forget.
       it.skip("should forward exception to UnhandledExceptionBus [ADR-008: SubscribableStream.subscribe() instead of RxJS pipe(take(1))]", async () => {
         const command = new UnhandledExceptionCommand("event");
         const commandBus = moduleRef.get(CommandBus);
@@ -95,7 +94,7 @@ describeConformance(
         expect(exceptionInfo.cause).toBeInstanceOf(UnhandledExceptionEvent);
       });
 
-      // BUNEST_BUG: Expected EventBus to log unhandled event handler exceptions with class name ('"UnhandledExceptionEventHandler" has thrown an unhandled exception.', error) via Logger.prototype.error (and not reject publish() by default), but packages/cqrs/src/event-bus.ts never logs handler errors to Logger.
+      // BUNEST_BUG: Expected EventBus to log unhandled event handler exceptions with class name ('"UnhandledExceptionEventHandler" has thrown an unhandled exception.', error) via Logger.prototype.error (and not reject publish() by default), but packages/messaging/src/cqrs/event-bus.ts never logs handler errors to Logger.
       it.skip("should log the event handler class name", async () => {
         const loggerSpy = spyOn(Logger.prototype, "error").mockImplementation(
           () => {},
@@ -119,7 +118,7 @@ describeConformance(
     });
 
     describe("when exception is thrown from saga", () => {
-      // BUNEST_BUG: Expected UnhandledExceptionInfo.cause for a throwing @Saga() to be the saga method/property name ("onError"), but packages/cqrs/src/event-bus.ts handleSagaFailure() passes the triggering event instance (UnhandledExceptionEvent) as cause.
+      // BUNEST_BUG: Expected UnhandledExceptionInfo.cause for a throwing @Saga() to be the saga method/property name ("onError"), but packages/messaging/src/cqrs/event-bus.ts handleSagaFailure() passes the triggering event instance (UnhandledExceptionEvent) as cause.
       it.skip("should forward exception to UnhandledExceptionBus [ADR-008: SubscribableStream.subscribe() instead of RxJS pipe(take(1))]", async () => {
         const command = new UnhandledExceptionCommand("saga");
         const commandBus = moduleRef.get(CommandBus);

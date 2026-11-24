@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import { MetadataScanner } from "../../../../packages/core/src";
 import {
@@ -16,7 +15,7 @@ import {
   getFlowProducerToken,
   getQueueToken,
   type Job,
-} from "../../../../packages/queues/src";
+} from "../../../../packages/jobs/src/queues";
 import {
   Test,
   TestingModule,
@@ -421,7 +420,7 @@ describeConformance(
     describe("registerFlowProducerAsync", () => {
       describe("single configuration", () => {
         describe("useFactory", () => {
-          // BUNEST_BUG: Expected flowProducer.opts.name to equal "test" when name is configured on registerFlowProducerAsync({ name, useFactory }), actual is undefined because packages/queues/src/adapters/bullmq.adapter.ts (registerFlowProducerAsync) merges `{ ...sharedConfig, ...resolvedOpts }` without preserving `name: resolvedOpts?.name ?? name`.
+          // BUNEST_BUG: Expected flowProducer.opts.name to equal "test" when name is configured on registerFlowProducerAsync({ name, useFactory }), actual is undefined because packages/jobs/src/queues/adapters/bullmq.adapter.ts (registerFlowProducerAsync) merges `{ ...sharedConfig, ...resolvedOpts }` without preserving `name: resolvedOpts?.name ?? name`.
           it.skip("should inject the flowProducer with the given name", async () => {
             const moduleRef = await Test.createTestingModule({
               imports: [
@@ -453,7 +452,7 @@ describeConformance(
 
       describe("multiple configurations", () => {
         describe("useFactory", () => {
-          // BUNEST_BUG: Expected flowProducer.opts.name to equal "test1"/"test2" when name is configured on registerFlowProducerAsync({ name, useFactory }), actual is undefined because packages/queues/src/adapters/bullmq.adapter.ts (registerFlowProducerAsync) omits `name: resolvedOpts?.name ?? name` when merging options.
+          // BUNEST_BUG: Expected flowProducer.opts.name to equal "test1"/"test2" when name is configured on registerFlowProducerAsync({ name, useFactory }), actual is undefined because packages/jobs/src/queues/adapters/bullmq.adapter.ts (registerFlowProducerAsync) omits `name: resolvedOpts?.name ?? name` when merging options.
           it.skip('should inject the flowProducer with name "test1" and "test2"', async () => {
             const moduleRef = await Test.createTestingModule({
               imports: [
@@ -563,7 +562,7 @@ describeConformance(
 
       describe("multiple configurations", () => {
         describe("useFactory", () => {
-          // BUNEST_BUG: Expected BullModule.registerQueueAsync({ name: "test1" }) without useFactory/useClass/useExisting to fall back to sync queue option providers inheriting shared forRootAsync config (as in @nestjs/bullmq), actual throws `BullModule.registerQueueAsync("test1") requires useFactory, useClass, or useExisting.` in packages/queues/src/adapters/bullmq.adapter.ts.
+          // BUNEST_BUG: Expected BullModule.registerQueueAsync({ name: "test1" }) without useFactory/useClass/useExisting to fall back to sync queue option providers inheriting shared forRootAsync config (as in @nestjs/bullmq), actual throws `BullModule.registerQueueAsync("test1") requires useFactory, useClass, or useExisting.` in packages/jobs/src/queues/adapters/bullmq.adapter.ts.
           it.skip('should inject the queues "test1" (registerQueueAsync without factory) and "test2" (registerQueue)', async () => {
             const moduleRef = await Test.createTestingModule({
               imports: [
@@ -637,7 +636,7 @@ describeConformance(
 
       describe("multiple shared configurations", () => {
         describe("useFactory", () => {
-          // BUNEST_BUG: Expected BullModule.registerQueueAsync({ name: "test1" }) without useFactory/useClass/useExisting to fall back to sync queue option providers inheriting shared forRootAsync config (as in @nestjs/bullmq), actual throws `BullModule.registerQueueAsync("test1") requires useFactory, useClass, or useExisting.` in packages/queues/src/adapters/bullmq.adapter.ts.
+          // BUNEST_BUG: Expected BullModule.registerQueueAsync({ name: "test1" }) without useFactory/useClass/useExisting to fall back to sync queue option providers inheriting shared forRootAsync config (as in @nestjs/bullmq), actual throws `BullModule.registerQueueAsync("test1") requires useFactory, useClass, or useExisting.` in packages/jobs/src/queues/adapters/bullmq.adapter.ts.
           it.skip('should inject shared-config queues "test1" and "test2"', async () => {
             const moduleRef = await Test.createTestingModule({
               imports: [

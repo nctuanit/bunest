@@ -1,10 +1,10 @@
-import "reflect-metadata";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   Directive,
@@ -212,7 +212,7 @@ describeConformance(
     beforeEach(async () => {
       writeFileMock.mockClear();
       schemaPath = join(
-        tmpdir(),
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
         `bunest-fed-auto-schema-${crypto.randomUUID()}.graphql`,
       );
 
@@ -251,7 +251,7 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      rmSync(schemaPath, { force: true });
+      await removePath(schemaPath, { force: true });
     });
 
     // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) writes autoSchemaFile directly via `node:fs` `writeFileSync` instead of injecting/calling DI `FileSystemHelper.writeFile()`, so writeFileMock receives 0 calls instead of 1.

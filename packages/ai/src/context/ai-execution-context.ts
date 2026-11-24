@@ -5,11 +5,11 @@ import type {
   RpcArgumentsHost,
   Type,
   WsArgumentsHost,
-} from '@bunest/common';
-import type { AgentFunctionContext } from '../interfaces/agent-function.interface';
+} from "@bunest/core";
+import type { AgentFunctionContext } from "../interfaces/agent-function.interface";
 
 /** `context.getType<AiContextType>() === 'ai'` in an enhancer tells an agent function call from an HTTP request. */
-export type AiContextType = 'ai';
+export type AiContextType = "ai";
 
 /**
  * The execution context of an agent function call, for guards, interceptors and exception filters.
@@ -18,14 +18,14 @@ export type AiContextType = 'ai';
  * `getContext()`.
  */
 export class AiExecutionContext implements ExecutionContext {
-  private readonly args: any[];
-  private readonly constructorRef: Type<any> | null;
+  private readonly args: unknown[];
+  private readonly constructorRef: Type<unknown> | null;
   private readonly handler: Function | null;
-  private contextType: string = 'ai';
+  private contextType: string = "ai";
 
   constructor(
-    args: any[],
-    constructorRef: Type<any> | null = null,
+    args: unknown[],
+    constructorRef: Type<unknown> | null = null,
     handler: Function | null = null,
   ) {
     this.args = args;
@@ -35,7 +35,7 @@ export class AiExecutionContext implements ExecutionContext {
 
   static create(context: ExecutionContext): AiExecutionContext {
     const host = context as ExecutionContext & {
-      getClass?: () => Type<any>;
+      getClass?: () => Type<unknown>;
       getHandler?: () => Function;
     };
     const ai = new AiExecutionContext(
@@ -52,7 +52,10 @@ export class AiExecutionContext implements ExecutionContext {
     return this.getArgByIndex<T>(0);
   }
 
-  getContext<TRequest = any, TUser = any>(): AgentFunctionContext<TRequest, TUser> {
+  getContext<TRequest = any, TUser = any>(): AgentFunctionContext<
+    TRequest,
+    TUser
+  > {
     return this.getArgByIndex<AgentFunctionContext<TRequest, TUser>>(1);
   }
 

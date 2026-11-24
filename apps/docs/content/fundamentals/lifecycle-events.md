@@ -1,6 +1,6 @@
 # Lifecycle events
 
-Bunest manages startup and graceful shutdown in **deterministic topological order** via `LifecycleManager` (`@bunest/core`, [ADR-007](/architecture/adrs)). Dependencies always initialize *before* their dependents and shut down *after* their dependents.
+Bunest manages startup and graceful shutdown in **deterministic topological order** via `LifecycleManager` (`@bunest/core`, [ADR-007](/architecture/adrs)). Dependencies always initialize _before_ their dependents and shut down _after_ their dependents.
 
 ## Lifecycle Hooks Sequence
 
@@ -25,6 +25,7 @@ Bunest manages startup and graceful shutdown in **deterministic topological orde
 ## Implementing Lifecycle Interfaces
 
 @@filename(database.service.ts)
+
 ```ts
 import {
   Injectable,
@@ -79,6 +80,7 @@ export class DatabaseService
 Call `app.enableShutdownHooks()` during bootstrap to hook `SIGINT` and `SIGTERM` into `LifecycleManager` automatically:
 
 @@filename(main.ts)
+
 ```ts
 const app = await BunestFactory.create(AppModule);
 app.enableShutdownHooks();

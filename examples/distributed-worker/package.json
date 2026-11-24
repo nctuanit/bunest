@@ -3,21 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
   "description": "Distributed order processing with CQRS, SQLite, Queues with retries, Events, and end-to-end W3C tracing, metrics, and health checks",
   "scripts": {
     "start": "bun run src/main.ts",
     "dev": "bun --watch src/main.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*",
-    "@bunest/cqrs": "workspace:*",
-    "@bunest/events": "workspace:*",
+    "@bunest/messaging": "workspace:*",
     "@bunest/observability": "workspace:*",
-    "@bunest/queues": "workspace:*",
-    "@bunest/sqlite": "workspace:*",
-    "reflect-metadata": "^0.2.2"
+    "@bunest/orm": "workspace:*",
+    "@bunest/jobs": "workspace:*"
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Module,
   type CorsOptions,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -123,7 +122,7 @@ describeConformance(
       });
 
       describe("CorsOptionsDelegate callback parity (enableCors(fn) / { cors: fn })", () => {
-        // BUNEST_BUG: BunHttpAdapter.enableCors() does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/http/src/security/cors.ts, packages/http/src/adapter/bun-http.adapter.ts).
+        // BUNEST_BUG: BunHttpAdapter.enableCors() does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/core/src/http/security/cors.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
         it.skip("should support NestJS CorsOptionsDelegate callback in enableCors()", async () => {
           const moduleRef = await Test.createTestingModule({
             imports: [AppModule],
@@ -162,7 +161,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: BunestApplicationOptions.cors does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/http/src/security/cors.ts, packages/core/src/application/bunest-application.ts).
+        // BUNEST_BUG: BunestApplicationOptions.cors does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/core/src/http/security/cors.ts, packages/core/src/application/bunest-application.ts).
         it.skip("should support NestJS CorsOptionsDelegate callback in Application Options", async () => {
           const moduleRef = await Test.createTestingModule({
             imports: [AppModule],

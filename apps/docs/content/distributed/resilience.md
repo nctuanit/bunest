@@ -11,6 +11,7 @@ bun add @bunest/resilience
 ## Module Setup
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { ResilienceModule } from "@bunest/resilience";
@@ -26,6 +27,7 @@ export class AppModule {}
 Stack resilience decorators directly on `@Injectable()` service methods:
 
 @@filename(payment-gateway.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import {

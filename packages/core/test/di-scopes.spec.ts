@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -14,7 +13,7 @@ import {
   forwardRef,
   type OnRequestDestroy,
   type ResponseContext,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   CircularDependencyException,
   DIContainer,
@@ -171,8 +170,16 @@ describe("DIContainer, Scopes, forwardRef, ScopeLeakException & ModuleRef", () =
     const F_B = Symbol("F_B");
     @Module({
       providers: [
-        { provide: F_A, inject: [forwardRef(() => F_B)], useFactory: (b: unknown) => ({ b }) },
-        { provide: F_B, inject: [forwardRef(() => F_A)], useFactory: (a: unknown) => ({ a }) },
+        {
+          provide: F_A,
+          inject: [forwardRef(() => F_B)],
+          useFactory: (b: unknown) => ({ b }),
+        },
+        {
+          provide: F_B,
+          inject: [forwardRef(() => F_A)],
+          useFactory: (a: unknown) => ({ a }),
+        },
       ],
     })
     class BadFactoryCycleMod {}
@@ -190,9 +197,7 @@ describe("DIContainer, Scopes, forwardRef, ScopeLeakException & ModuleRef", () =
 
     @Injectable()
     class PeerA {
-      constructor(
-        @Inject(forwardRef(() => PeerB)) public readonly b: IPeerB,
-      ) {}
+      constructor(@Inject(forwardRef(() => PeerB)) public readonly b: IPeerB) {}
       whoami() {
         return "A";
       }
@@ -203,9 +208,7 @@ describe("DIContainer, Scopes, forwardRef, ScopeLeakException & ModuleRef", () =
 
     @Injectable()
     class PeerB implements IPeerB {
-      constructor(
-        @Inject(forwardRef(() => PeerA)) public readonly a: PeerA,
-      ) {}
+      constructor(@Inject(forwardRef(() => PeerA)) public readonly a: PeerA) {}
       whoami() {
         return "B";
       }
@@ -356,9 +359,9 @@ describe("DIContainer, Scopes, forwardRef, ScopeLeakException & ModuleRef", () =
     // Static requiresRequestScope fast path
     expect(container.requiresRequestScope(FastController)).toBe(false);
     expect(container.requiresRequestScope(ScopedController)).toBe(true);
-    expect(container.requiresRequestScope(FastController, [TenantContext])).toBe(
-      true,
-    );
+    expect(
+      container.requiresRequestScope(FastController, [TenantContext]),
+    ).toBe(true);
 
     // TRANSIENT resolves a fresh instance every call
     const ref = container.getModuleRef(graph.root.id);
@@ -470,7 +473,10 @@ describe("DIContainer, Scopes, forwardRef, ScopeLeakException & ModuleRef", () =
     const container = new DIContainer(graph);
     container.applyOverrides({
       providers: new Map([
-        [RealEmailService, { provide: RealEmailService, useValue: { send: () => "mocked" } }],
+        [
+          RealEmailService,
+          { provide: RealEmailService, useValue: { send: () => "mocked" } },
+        ],
       ]),
     });
     await container.initialize();

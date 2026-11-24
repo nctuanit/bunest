@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const expectedGuardSource = (pascal: string): string =>
   "import {\n" +
@@ -38,11 +50,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-guard-"));
+      tempDir = makeTempDir("bunest-cli-conf-guard-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -69,7 +81,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.guard.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(tempDir, "foo.guard.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "foo.guard.ts"))).toEqual(
           expectedGuardSource("Foo"),
         );
       },
@@ -91,7 +103,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "bar/foo.guard.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(tempDir, "bar/foo.guard.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "bar/foo.guard.ts"))).toEqual(
           expectedGuardSource("Foo"),
         );
       },
@@ -113,7 +125,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.guard.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(tempDir, "baz/foo.guard.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "baz/foo.guard.ts"))).toEqual(
           expectedGuardSource("Foo"),
         );
       },
@@ -135,7 +147,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo-bar.guard.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(tempDir, "foo-bar.guard.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "foo-bar.guard.ts"))).toEqual(
           expectedGuardSource("FooBar"),
         );
       },
@@ -158,7 +170,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "bar-baz/foo.guard.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo.guard.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo.guard.ts")),
         ).toEqual(expectedGuardSource("Foo"));
       },
       "Normalizes camelCase directory segment to kebab-case",
@@ -177,9 +189,9 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "_foo/_bar.guard.ts"),
       ).toBeDefined();
-      expect(
-        readFileSync(join(tempDir, "_foo/_bar.guard.ts"), "utf8"),
-      ).toEqual(expectedGuardSource("Bar"));
+      expect(readTextSync(join(tempDir, "_foo/_bar.guard.ts"))).toEqual(
+        expectedGuardSource("Bar"),
+      );
     });
 
     itAdapted(
@@ -219,7 +231,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.guard.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.guard.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.guard.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -239,8 +251,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.guard.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.guard.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.guard.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.guard.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.guard.test.ts"))).toBe(true);
     });
 
     itAdapted(
@@ -262,11 +274,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "src/foo.guard.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "src/foo.guard.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );

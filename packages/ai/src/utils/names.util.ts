@@ -1,4 +1,4 @@
-import { AiConfigurationError } from '../errors/ai.errors';
+import { AiConfigurationError } from "../errors/ai.errors";
 
 /** Throws for an agent function name model providers refuse. */
 export function assertProviderToolName(name: string, where: string): void {

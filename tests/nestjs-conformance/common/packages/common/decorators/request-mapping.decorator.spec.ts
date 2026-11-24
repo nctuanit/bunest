@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   RequestMapping,
   RequestMethod,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -69,7 +68,7 @@ describeConformance(
       expect(method).toEqual(RequestMethod.GET);
     });
 
-    // BUNEST_BUG: RequestMapping({ path: [] }) in packages/common/src/decorators/http.decorators.ts:154 stores empty array `[]` instead of normalizing empty array to `"/"` as NestJS does.
+    // BUNEST_BUG: RequestMapping({ path: [] }) in packages/core/src/common/decorators/http.decorators.ts:154 stores empty array `[]` instead of normalizing empty array to `"/"` as NestJS does.
     it.skip('should set path on "/" by default (for both {} and { path: [] })', () => {
       class Test {
         @RequestMapping({})

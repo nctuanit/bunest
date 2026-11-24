@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { VersioningType } from "../../../../../packages/common/src";
+import { VersioningType } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 import { AppModule } from "./fixtures/app.module";

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   AutoModule,
@@ -15,7 +14,7 @@ import {
   type DecoratorRegistrySnapshot,
   type MethodAspectContext,
   type MethodAspectHandler,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   BunestFactory,
   ContextIdFactory,
@@ -230,9 +229,13 @@ describe("Proxy-Safe & Factory-Safe MethodAspectWeaver", () => {
       if (token === SPAN_TOKEN) {
         return {
           intercept(ctx: MethodAspectContext<{ name: string }>) {
-            trace.push(`span:start:${ctx.options.name}:${String(ctx.methodName)}`);
+            trace.push(
+              `span:start:${ctx.options.name}:${String(ctx.methodName)}`,
+            );
             const out = ctx.proceed();
-            trace.push(`span:end:${ctx.options.name}:${String(ctx.methodName)}`);
+            trace.push(
+              `span:end:${ctx.options.name}:${String(ctx.methodName)}`,
+            );
             return out;
           },
         };
@@ -293,7 +296,8 @@ describe("Proxy-Safe & Factory-Safe MethodAspectWeaver", () => {
     const TX_TOKEN = Symbol("TX_TOKEN");
     const CACHE_TOKEN = Symbol("CACHE_TOKEN");
 
-    const Transactional = () => createMethodAspectDecorator(TX_TOKEN, undefined, -10);
+    const Transactional = () =>
+      createMethodAspectDecorator(TX_TOKEN, undefined, -10);
     const Cacheable = (key: string) =>
       createMethodAspectDecorator(CACHE_TOKEN, { key }, 5);
 
@@ -307,7 +311,9 @@ describe("Proxy-Safe & Factory-Safe MethodAspectWeaver", () => {
       email: string;
     }> {
       @Cacheable("by-email")
-      findByEmail(_email: string): Promise<{ id: number; email: string } | null> {
+      findByEmail(
+        _email: string,
+      ): Promise<{ id: number; email: string } | null> {
         throw new Error("abstract stub");
       }
 
@@ -401,7 +407,9 @@ describe("Proxy-Safe & Factory-Safe MethodAspectWeaver", () => {
     const woven = weaveProxyMethodAspects(rawProxy, UserRepository, resolver);
 
     // Double-wrapping prevention + Promise assimilation safety + instanceof preservation
-    expect(weaveProxyMethodAspects(woven, UserRepository, resolver)).toBe(woven);
+    expect(weaveProxyMethodAspects(woven, UserRepository, resolver)).toBe(
+      woven,
+    );
     expect(await Promise.resolve(woven)).toBe(woven);
     expect(woven instanceof UserRepository).toBe(true);
     expect(woven instanceof BaseFakeJpaRepo).toBe(true);

@@ -4,7 +4,7 @@ import {
   createMethodAspectDecorator,
   type MethodAspectContext,
   type MethodAspectHandler,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   Counter,
   Histogram,
@@ -133,9 +133,7 @@ function deriveErrorCounterName(invocationMetricName: string): string {
  * synchronous execution for synchronous service methods.
  */
 @Injectable()
-export class SpanAspectHandler
-  implements MethodAspectHandler<SpanDecoratorOptions>
-{
+export class SpanAspectHandler implements MethodAspectHandler<SpanDecoratorOptions> {
   constructor(@Optional() private readonly tracer?: Tracer) {}
 
   intercept(ctx: MethodAspectContext<SpanDecoratorOptions>): unknown {
@@ -169,7 +167,10 @@ export class SpanAspectHandler
       if (shouldRecordException) {
         span.recordException(err);
       } else {
-        span.setStatus("ERROR", err instanceof Error ? err.message : String(err));
+        span.setStatus(
+          "ERROR",
+          err instanceof Error ? err.message : String(err),
+        );
       }
       span.end();
       throw err;
@@ -207,9 +208,7 @@ export class SpanAspectHandler
  * Records method execution latency in seconds onto a Prometheus `Histogram`.
  */
 @Injectable()
-export class TimedAspectHandler
-  implements MethodAspectHandler<TimedDecoratorOptions>
-{
+export class TimedAspectHandler implements MethodAspectHandler<TimedDecoratorOptions> {
   constructor(@Optional() private readonly registry?: MetricsRegistry) {}
 
   intercept(ctx: MethodAspectContext<TimedDecoratorOptions>): unknown {
@@ -272,9 +271,7 @@ export class TimedAspectHandler
  * Increments invocation and error Prometheus `Counter` metrics.
  */
 @Injectable()
-export class CountedAspectHandler
-  implements MethodAspectHandler<CountedDecoratorOptions>
-{
+export class CountedAspectHandler implements MethodAspectHandler<CountedDecoratorOptions> {
   constructor(@Optional() private readonly registry?: MetricsRegistry) {}
 
   intercept(ctx: MethodAspectContext<CountedDecoratorOptions>): unknown {
@@ -380,7 +377,10 @@ export const Span: SpanConstructorAndDecorator = new Proxy(TraceSpan, {
   apply(
     _target,
     _thisArg,
-    argArray: [string | SpanDecoratorOptions | undefined, SpanDecoratorOptions?],
+    argArray: [
+      string | SpanDecoratorOptions | undefined,
+      SpanDecoratorOptions?,
+    ],
   ) {
     return createSpanDecorator(argArray[0], argArray[1]);
   },

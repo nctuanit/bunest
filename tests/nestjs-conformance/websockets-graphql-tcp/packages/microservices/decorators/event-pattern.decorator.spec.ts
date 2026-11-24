@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Controller, MetadataRegistry } from "../../../../../../packages/common/src";
+import {
+  Controller,
+  MetadataRegistry,
+} from "../../../../../../packages/core/src/common";
 import {
   EVENT_PATTERN_METADATA,
   EventPattern,

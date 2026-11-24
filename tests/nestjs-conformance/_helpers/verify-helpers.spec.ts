@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { IsEmail, IsString } from "class-validator";
+import { IsEmail, IsString } from "../../../packages/validation/src/validator";
 import {
   Body,
   Controller,
@@ -227,7 +226,9 @@ describe("Conformance Test Harness (_helpers)", () => {
         {
           silentLogger: true,
           configureApp: (app) => {
-            app.useGlobalPipes(nestCompatibleValidationPipe({ whitelist: true }));
+            app.useGlobalPipes(
+              nestCompatibleValidationPipe({ whitelist: true }),
+            );
           },
         },
       );

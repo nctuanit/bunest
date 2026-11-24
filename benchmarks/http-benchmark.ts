@@ -1,22 +1,21 @@
-import "reflect-metadata";
-import os from "node:os";
-import { resolve } from "node:path";
 import {
   IsEmail,
   IsInt,
   IsString,
   Min,
   MinLength,
-} from "class-validator";
+} from "../packages/validation/src/validator";
 import {
   Body,
   BunestFactory,
   Controller,
   Get,
+  getCpuCount,
   Injectable,
   Module,
   Param,
   Post,
+  resolve,
   Scope,
   ValidationPipe,
 } from "../packages/core/src";
@@ -255,26 +254,110 @@ async function readPkgVersion(relPath: string): Promise<string> {
   }
 }
 
-export async function collectEnvironment(): Promise<BenchmarkEnvironment> {
-  const cpus = os.cpus();
-  const [bunestCoreVersion, classValidatorVersion, classTransformerVersion] =
-    await Promise.all([
-      readPkgVersion("packages/core/package.json"),
-      readPkgVersion("node_modules/class-validator/package.json"),
-      readPkgVersion("node_modules/class-transformer/package.json"),
+function spawnTrim(cmd: string[]): string | undefined {
+  try {
+    const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore" });
+    if (proc.exitCode === 0) {
+      const text = proc.stdout.toString("utf8").trim();
+      if (text.length > 0) return text;
+    }
+  } catch {
+    // Fall through to safe default
+  }
+  return undefined;
+}
+
+function getOsRelease(): string {
+  if (process.platform === "win32") {
+    return spawnTrim(["cmd", "/c", "ver"]) ?? "unknown";
+  }
+  return spawnTrim(["uname", "-r"]) ?? "unknown";
+}
+
+async function getCpuModel(): Promise<string> {
+  if (process.platform === "darwin") {
+    return spawnTrim(["sysctl", "-n", "machdep.cpu.brand_string"]) ?? "unknown";
+  }
+  if (process.platform === "linux") {
+    try {
+      const info = await Bun.file("/proc/cpuinfo").text();
+      const match = info.match(/^model name\s*:\s*(.+)$/m);
+      if (match?.[1]) return match[1].trim();
+    } catch {
+      // Fall through
+    }
+    return "unknown";
+  }
+  if (process.platform === "win32") {
+    return (
+      Bun.env.PROCESSOR_IDENTIFIER?.trim() ||
+      spawnTrim([
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)",
+      ]) ||
+      "unknown"
+    );
+  }
+  return "unknown";
+}
+
+async function getTotalRamBytes(): Promise<number> {
+  if (process.platform === "darwin") {
+    const raw = spawnTrim(["sysctl", "-n", "hw.memsize"]);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+  if (process.platform === "linux") {
+    try {
+      const info = await Bun.file("/proc/meminfo").text();
+      const match = info.match(/^MemTotal:\s+(\d+)\s+kB$/m);
+      if (match?.[1]) return Number(match[1]) * 1024;
+    } catch {
+      // Fall through
+    }
+    return 0;
+  }
+  if (process.platform === "win32") {
+    const raw = spawnTrim([
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
     ]);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
+export async function collectEnvironment(): Promise<BenchmarkEnvironment> {
+  const [
+    cpuModel,
+    totalMemBytes,
+    bunestCoreVersion,
+    classValidatorVersion,
+    classTransformerVersion,
+  ] = await Promise.all([
+    getCpuModel(),
+    getTotalRamBytes(),
+    readPkgVersion("packages/core/package.json"),
+    readPkgVersion("node_modules/class-validator/package.json"),
+    readPkgVersion("node_modules/class-transformer/package.json"),
+  ]);
 
   return {
     timestamp: new Date().toISOString(),
     bunVersion: Bun.version,
     bunRevision: Bun.revision,
-    osPlatform: os.platform(),
-    osRelease: os.release(),
+    osPlatform: process.platform,
+    osRelease: getOsRelease(),
     arch: process.arch,
-    cpuModel: cpus[0]?.model?.trim() || "unknown",
-    cpuCores: cpus.length,
+    cpuModel,
+    cpuCores: getCpuCount(),
     totalRamGb:
-      Math.round((os.totalmem() / (1024 * 1024 * 1024)) * 100) / 100,
+      Math.round((totalMemBytes / (1024 * 1024 * 1024)) * 100) / 100,
     bunestCoreVersion,
     classValidatorVersion,
     classTransformerVersion,

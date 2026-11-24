@@ -1,11 +1,15 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Type } from "class-transformer";
-import { Length, Max, MaxLength, Min } from "class-validator";
+import { Type } from "../../../../../packages/validation/src/transformer";
+import {
+  Length,
+  Max,
+  MaxLength,
+  Min,
+} from "../../../../../packages/validation/src/validator";
 import {
   Kind,
   type ValueNode,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import {
   APP_FILTER,
   type ArgumentsHost,
@@ -17,7 +21,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -45,11 +49,7 @@ import {
   createUnionType,
   registerEnumType,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 const METADATA_FACTORY_NAME = "_GRAPHQL_METADATA_FACTORY";
 

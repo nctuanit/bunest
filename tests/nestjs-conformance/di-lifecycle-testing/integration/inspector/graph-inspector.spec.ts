@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect } from "bun:test";
 import {
   Catch,
@@ -14,7 +13,7 @@ import {
   type CallHandler,
   type ExceptionFilter,
   type ExecutionContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   GraphInspector,
   SerializedGraph,

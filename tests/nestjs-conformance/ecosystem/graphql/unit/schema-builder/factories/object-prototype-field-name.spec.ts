@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
-import { type GraphQLSchema, printSchema } from "../../../../../../../packages/graphql/node_modules/graphql";
+import {
+  type GraphQLSchema,
+  printSchema,
+} from "../../../../../../../packages/graphql/src";
 import {
   Args,
   ArgsType,
@@ -96,7 +98,9 @@ describeConformance(
 
     it("should not infer a default value for args type fields", () => {
       const printed = printSchema(schema);
-      expect(printed).toContain("args(label: String, valueOf: String): String!");
+      expect(printed).toContain(
+        "args(label: String, valueOf: String): String!",
+      );
     });
 
     // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInputType (packages/graphql/src/schema/graphql-schema.factory.ts:1163-1174) does not instantiate input classes to infer default values from prototype getters (expected `computed: String = "from-getter"`, actual `computed: String`).

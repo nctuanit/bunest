@@ -115,10 +115,7 @@ export class StorageServiceError extends StorageError {
 
 /** Why an app-served signed URL was refused. */
 export type StorageSignedUrlFailure =
-  | "missing"
-  | "invalid"
-  | "expired"
-  | "method";
+  "missing" | "invalid" | "expired" | "method";
 
 /**
  * An app-served signed URL that is missing its parameters, was tampered with, has expired,

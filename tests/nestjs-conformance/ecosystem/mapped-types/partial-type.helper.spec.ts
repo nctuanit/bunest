@@ -1,13 +1,16 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Expose,
   Transform,
   Type,
   instanceToInstance,
-} from "class-transformer";
-import { IsString, getMetadataStorage, validate } from "class-validator";
-import { PartialType } from "../../../../packages/mapped-types/src";
+} from "../../../../packages/validation/src/transformer";
+import {
+  IsString,
+  getMetadataStorage,
+  validate,
+} from "../../../../packages/validation/src/validator";
+import { PartialType } from "../../../../packages/validation/src";
 import { describeConformance } from "../../_helpers/index";
 
 function getValidationMetadataByTarget(target: Function) {

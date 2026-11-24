@@ -1,4 +1,4 @@
-import { Injectable, Module } from "@bunest/common";
+import { Injectable, Module } from "@bunest/core";
 import {
   AggregateRoot,
   CqrsModule,
@@ -10,7 +10,7 @@ import {
   type IEventHandler,
   type IEventPublisher,
   type UnhandledExceptionInfo,
-} from "@bunest/cqrs";
+} from "@bunest/messaging/cqrs";
 import { Test } from "@bunest/testing";
 import { describe, expect, it } from "bun:test";
 import { InMemoryScheduleStore } from "../src/core/index";
@@ -266,8 +266,15 @@ const shipmentDelivered = new WorkflowSignal<{
 }>("shipment.delivered");
 
 @Workflow("order-fulfilment", {
-  concurrency: { limit: 2, key: (input: { customerId: string }) => input.customerId },
-  rateLimit: { max: 10, duration: "1m", key: (input: { customerId: string }) => input.customerId },
+  concurrency: {
+    limit: 2,
+    key: (input: { customerId: string }) => input.customerId,
+  },
+  rateLimit: {
+    max: 10,
+    duration: "1m",
+    key: (input: { customerId: string }) => input.customerId,
+  },
 })
 @StartOn(OrderPlacedEvent, {
   id: (event) => `order-${event.orderId}`,
@@ -289,13 +296,10 @@ const shipmentDelivered = new WorkflowSignal<{
     deliveryId: event.deliveryId,
   }),
 })
-class OrderFulfilmentWorkflow
-  implements
-    WorkflowRunner<
-      { orderId: string; customerId: string; amount: number },
-      { orderId: string; carrier: string; deliveryId: string }
-    >
-{
+class OrderFulfilmentWorkflow implements WorkflowRunner<
+  { orderId: string; customerId: string; amount: number },
+  { orderId: string; carrier: string; deliveryId: string }
+> {
   async run(
     ctx: WorkflowContext,
     input: { orderId: string; customerId: string; amount: number },
@@ -317,9 +321,10 @@ class OrderFulfilmentWorkflow
 @StartOn(SimplePingEvent, {
   id: (event) => `ping-${event.message}`,
 })
-class PingEchoWorkflow
-  implements WorkflowRunner<SimplePingEvent, { echoed: string }>
-{
+class PingEchoWorkflow implements WorkflowRunner<
+  SimplePingEvent,
+  { echoed: string }
+> {
   async run(ctx: WorkflowContext, input: SimplePingEvent) {
     const echoed = await ctx.step("echo", () => input.message.toUpperCase());
     return { echoed };
@@ -380,7 +385,9 @@ describe("cqrs/WorkflowsCqrsModule end-to-end", () => {
 
       // Idempotent duplicate publish of same event does not fail or create a second instance
       await eventBus.publish(placed);
-      expect((await client.list({ workflow: "order-fulfilment" })).length).toBe(1);
+      expect((await client.list({ workflow: "order-fulfilment" })).length).toBe(
+        1,
+      );
 
       // Drain so the workflow parks on waitForSignal
       await worker.drain();
@@ -442,8 +449,11 @@ describe("cqrs/WorkflowsCqrsModule end-to-end", () => {
   it("passes dispatcherContext.transaction to createInTransaction() and signalInTransaction(), and does not forward when writes fail", async () => {
     const txToken = { txId: "tx-abc" };
     const seenCreates: Array<{ tx: unknown; id: string }> = [];
-    const seenSignals: Array<{ tx: unknown; name: string; key: string | null }> =
-      [];
+    const seenSignals: Array<{
+      tx: unknown;
+      name: string;
+      key: string | null;
+    }> = [];
     let failNextCreate = false;
     const baseStore = new InMemoryWorkflowStore();
 
@@ -851,7 +861,9 @@ describe("cqrs/WorkflowsCqrsModule end-to-end", () => {
       ],
       providers: [DupStartWorkflow],
     }).compile();
-    await expect(m1.init()).rejects.toThrow(/has @StartOn\(SimplePingEvent\) twice/);
+    await expect(m1.init()).rejects.toThrow(
+      /has @StartOn\(SimplePingEvent\) twice/,
+    );
     await m1.close();
 
     @Workflow("no-per-key")
@@ -923,9 +935,9 @@ describe("cqrs/WorkflowsCqrsModule end-to-end", () => {
     expect(() =>
       SignalOn("bad" as unknown as new () => object, { signal: "ok" }),
     ).toThrow(TypeError);
-    expect(() =>
-      SignalOn(SimplePingEvent, { signal: "$reserved" }),
-    ).toThrow(TypeError);
+    expect(() => SignalOn(SimplePingEvent, { signal: "$reserved" })).toThrow(
+      TypeError,
+    );
     expect(() =>
       SignalOn(SimplePingEvent, {
         signal: "ok",
@@ -943,9 +955,10 @@ describe("cqrs/WorkflowsCqrsModule end-to-end", () => {
       signal: "sig.bad",
       id: () => "",
     })
-    class BadRuntimeMapperWorkflow
-      implements WorkflowRunner<SimplePingEvent, void>
-    {
+    class BadRuntimeMapperWorkflow implements WorkflowRunner<
+      SimplePingEvent,
+      void
+    > {
       async run() {}
     }
 

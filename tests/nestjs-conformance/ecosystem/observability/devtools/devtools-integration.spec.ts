@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import { inflateSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -24,7 +22,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestFactory,
   DIContainer,
@@ -353,9 +351,9 @@ describeConformance(
         // Edges: import, re-export, provider-dependency
         expect(graph.edges.some((e) => e.type === "import")).toBe(true);
         expect(graph.edges.some((e) => e.type === "re-export")).toBe(true);
-        expect(
-          graph.edges.some((e) => e.type === "provider-dependency"),
-        ).toBe(true);
+        expect(graph.edges.some((e) => e.type === "provider-dependency")).toBe(
+          true,
+        );
 
         // Providers: class, existing, factory, scopes, dependencies
         const usersSvc = graph.providers.find(
@@ -445,7 +443,9 @@ describeConformance(
 
       it("supports custom base path and disabling endpoints via exposeEndpoints: false or http: false", async () => {
         const customPath = await createTestApp(
-          { imports: [DevtoolsModule.register({ path: "/internal/devtools" })] },
+          {
+            imports: [DevtoolsModule.register({ path: "/internal/devtools" })],
+          },
           { silentLogger: true },
         );
         contexts.push(customPath);
@@ -576,11 +576,11 @@ describeConformance(
         );
 
         expect(
-          standalone.getGraph(container).modules.some((m) => m.name === "AppMod"),
+          standalone
+            .getGraph(container)
+            .modules.some((m) => m.name === "AppMod"),
         ).toBe(true);
-        expect(
-          standalone.getSerializedGraph(container)?.nodes,
-        ).toBeDefined();
+        expect(standalone.getSerializedGraph(container)?.nodes).toBeDefined();
 
         standalone.attachContainer(container);
         expect(standalone.toMermaidGraph()).toContain("PingService");
@@ -805,10 +805,16 @@ describeConformance(
         expect(capturedBody.target).toBe("staging");
         expect(capturedBody.targetBranch).toBe("main");
 
-        // Decompress deflated base64 snapshot and verify valid SerializedGraph JSON
-        const inflated = inflateSync(
-          Buffer.from(String(capturedBody.snapshot), "base64"),
-        ).toString("utf8");
+        // Decompress RFC 1950 zlib-deflated base64 snapshot and verify valid SerializedGraph JSON
+        const compressed = Buffer.from(String(capturedBody.snapshot), "base64");
+        expect(compressed[0]).toBe(0x78);
+        const inflatedBytes = Bun.inflateSync(
+          compressed.subarray(2, compressed.length - 4),
+        );
+        expect(compressed.readUInt32BE(compressed.length - 4)).toBe(
+          Bun.hash.adler32(inflatedBytes) >>> 0,
+        );
+        const inflated = new TextDecoder().decode(inflatedBytes);
         const parsedSnapshot = JSON.parse(inflated) as {
           nodes: Record<string, unknown>;
           edges: Record<string, unknown>;
@@ -859,7 +865,9 @@ describeConformance(
         };
 
         await runWithStatus(401, "invalid key");
-        expect(String(logStub.firstCall?.args[0])).toContain("401 Unauthorized");
+        expect(String(logStub.firstCall?.args[0])).toContain(
+          "401 Unauthorized",
+        );
         expect(errStub.calledOnce).toBe(true);
         expect(errStub.firstCall?.args).toEqual(["Error:", "invalid key", 401]);
 

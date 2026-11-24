@@ -146,60 +146,8 @@ export function buildTestRequest(
 }
 
 /**
- * Zero-dependency recursive deep equality helper for JSON/body assertions.
+ * Bun-native Zig structural deep equality helper for JSON/body assertions.
  */
 export function deepEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) {
-    return true;
-  }
-  if (
-    typeof a !== typeof b ||
-    a === null ||
-    b === null ||
-    typeof a !== "object"
-  ) {
-    return false;
-  }
-
-  if (a instanceof Date && b instanceof Date) {
-    return a.getTime() === b.getTime();
-  }
-  if (a instanceof RegExp && b instanceof RegExp) {
-    return a.source === b.source && a.flags === b.flags;
-  }
-  if (a instanceof Uint8Array && b instanceof Uint8Array) {
-    if (a.byteLength !== b.byteLength) return false;
-    for (let i = 0; i < a.byteLength; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
-      return false;
-    }
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  const recA = a as Record<string, unknown>;
-  const recB = b as Record<string, unknown>;
-  const keysA = Object.keys(recA);
-  const keysB = Object.keys(recB);
-  if (keysA.length !== keysB.length) {
-    return false;
-  }
-  for (const key of keysA) {
-    if (
-      !Object.prototype.hasOwnProperty.call(recB, key) ||
-      !deepEqual(recA[key], recB[key])
-    ) {
-      return false;
-    }
-  }
-  return true;
+  return Bun.deepEquals(a, b, true);
 }

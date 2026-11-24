@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, it } from "bun:test";
 import {
   All,
@@ -8,7 +7,7 @@ import {
   Version,
   VersioningType,
   type VersioningOptions,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,

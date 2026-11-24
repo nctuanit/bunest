@@ -1,110 +1,66 @@
 # Packages & Monorepo
 
-Bunest is organized as a **53-package Bun workspace monorepo** with **0 circular imports**, **0 RxJS**, and **48/53 packages having zero external npm runtime dependencies**.
+Bunest is organized as a **19-package, 6-domain Bun workspace monorepo** (`Bun >= 1.4.5`) with **0 circular imports**, **0 RxJS**, **19/19 packages (100%) having zero external npm runtime dependencies**, and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core` ([ADR-017](/architecture/adrs)).
 
-> info **100% ADR-Adjusted NestJS v12 Parity** Every package below is implemented, tested, and verified in the monorepo. Drop-in `@nestjs/*` facade packages let teams keep familiar package names while running Bunest's native zero-dependency implementations underneath.
+> info **Consolidated Subpath Architecture (ADR-016)** Related capabilities live together inside cohesive domain packages and expose tree-shakeable ESM subpaths (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, etc.).
 
-## Core, HTTP & Validation (6 Packages)
+## 1. Core & Validation (2 Packages)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/common`** | Shared decorators, `MetadataRegistry`, `Reflector`, `createMethodAspectDecorator`, `@UseMiddleware`, `HttpException` (23 subclasses), built-in `Parse*` pipes, `ConsoleLogger`, `StreamableFile`, `ConfigurableModuleBuilder` | [Controllers](/overview/controllers), [Service-Layer AOP](/techniques/service-aop) |
-| **`@bunest/core`** | `ModuleScanner`, strict `DIContainer`, `MethodAspectWeaver`, `RequestContainer`, `ModuleRef`, `LifecycleManager`, `RouterModule`, `LazyModuleLoader`, `ClsModule`/`@WithCls`, `DiscoveryService`, `GraphInspector`, `repl()` | [Modules](/overview/modules), [Providers](/overview/providers), [Service-Layer AOP](/techniques/service-aop) |
-| **`@bunest/http`** | Bun-native `AbstractHttpAdapter` & `BunHttpAdapter`, `ControllerScanner`, hybrid `Bun.serve({ routes })` + `FallbackRadixRouter`, Fetch-Metadata CSRF, Helmet-8 headers, signed cookies, `@Render`, API Versioning, `CompressionMiddleware`, `useStaticAssets` | [Hybrid Router](/architecture/hybrid-router), [Execution Pipeline](/architecture/execution-pipeline) |
-| **`@bunest/validation`** | Secure-by-default `ValidationPipe` (`class-validator` + `class-transformer`), `StandardSchemaValidationPipe`, `SchemaValidationPipe`, `ClassSerializerInterceptor`, `StandardSchemaSerializerInterceptor` | [Validation](/techniques/validation), [Serialization](/techniques/serialization) |
-| **`@bunest/mapped-types`** | `PartialType`, `PickType`, `OmitType`, variadic `IntersectionType`, `CompositionType`, and metadata inheritance helpers | [Mapped Types](/techniques/mapped-types) |
-| **`@bunest/testing`** | `Test.createTestingModule`, overrides, `ModuleMocker`, zero-socket `request(app)` & `TestClient`, `app.inject()`, `readSseEvents`, `CapturingLogger`, `ContextIdFactory` | [Testing](/fundamentals/testing) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/core`** | `.`, `./common`, `./http`, `./config`, `./client`, `./ws`, `./i18n` | Unified core runtime: decorators, `MetadataRegistry`, `Reflector`, `DIContainer`, `MethodAspectWeaver`, hybrid `Bun.serve({ routes, fetch, websocket })` + `FallbackRadixRouter`, `Bun.Cookie`, Helmet-8 headers, `ServeStaticModule`, `ConfigModule` (`.env` + `Bun.YAML`/`TOML`/`JSONC`), zero-dep `fetch()` HTTP client (`./client`), native WebSocket gateways (`./ws`), ALS `I18nModule` (`./i18n`), `ClsModule`, `GraphInspector`, `repl()` | [Controllers](/overview/controllers), [Modules](/overview/modules), [Configuration](/techniques/configuration), [WebSockets](/apis/websockets) |
+| **`@bunest/validation`** | `.`, `./validator`, `./transformer`, `./standard-schema` | Zero-external-dep compile-once Bun-native DTO validator (**336/336** `class-validator` API) & transformer (**21/21** `class-transformer` API), `ValidationPipe`, `StandardSchemaValidationPipe`, `SchemaValidationPipe`, `ClassSerializerInterceptor`, mapped DTO helpers, and seamless dual-engine coexistence | [Validation](/techniques/validation), [Mapped Types](/techniques/mapped-types) |
 
-## Techniques, DX & Utilities (12 Packages)
+## 2. Security (1 Package)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/config`** | `ConfigModule`, `ConfigService`, `.env` loader with `${VAR}` expansion, `registerAs`, DTO & Standard Schema validation, `@InjectConfig`, `@ConfigValue`, secret redactor | [Configuration](/techniques/configuration) |
-| **`@bunest/cache`** | `CacheModule`, `CacheService`, `CacheInterceptor`, `@Cacheable`/`@CacheEvict`/`@CachePut`, single-flight deduplication, `MemoryCacheStore`, `RedisCacheStore` | [Caching](/techniques/caching) |
-| **`@bunest/scheduler`** | `ScheduleModule`, pure-TS 5/6-field DST-aware cron parser, `@Cron`, `CronExpression` (83 presets), `@Interval`, `@Timeout`, overlap protection | [Task Scheduling](/techniques/task-scheduling) |
-| **`@bunest/events`** | `EventEmitterModule`, `EventEmitter2`, `@OnEvent`, `@EmitEvent`, `@EventPayload`, wildcard `*`/`**` matching, sync & async dispatch | [Events](/techniques/events) |
-| **`@bunest/queues`** | `QueueModule`, `@Processor`/`@Process`, retries/backoff/DLQ, `MemoryQueueDriver`, atomic Lua `RedisQueueDriver`, `BullMQModule` | [Queues & Bull](/techniques/queues) |
-| **`@bunest/bull`** | Classic `@nestjs/bull`-compatible `BullModule`, `@Processor`/`@Process`/`@OnQueue*` & `BullExplorer` backed by `@bunest/queues` | [Queues & Bull](/techniques/queues) |
-| **`@bunest/bullmq`** | Drop-in `@nestjs/bullmq` migration facade backed natively by `@bunest/queues` | [Queues & Bull](/techniques/queues) |
-| **`@bunest/http-client`** | Zero-dep native `fetch()` HTTP client with named clients, retries, timeouts, interceptors, and typed errors | [HTTP Client & Axios](/techniques/http-client) |
-| **`@bunest/axios`** | Drop-in `@nestjs/axios`-compatible `HttpModule` & `HttpService` on native `fetch()` (zero external deps, zero RxJS) | [HTTP Client & Axios](/techniques/http-client) |
-| **`@bunest/i18n`** | Per-request `AsyncLocalStorage` locale resolution, typed translations, `Intl` formatting, and localized validation messages | [Internationalization (i18n)](/techniques/i18n) |
-| **`@bunest/mail`** | Typed mail classes, auto-escaped HTML templates, and native SMTP, Resend, Postmark, SendGrid & Amazon SES transports | [Mail](/techniques/mail) |
-| **`@bunest/storage`** | Unified storage API for local disks, in-memory disks, and S3/R2/MinIO with native WebCrypto SigV4 `fetch()` and signed URLs | [Storage & Static Files](/techniques/storage) |
-| **`@bunest/serve-static`** | Drop-in `@nestjs/serve-static` migration facade backed natively by `@bunest/http` (`Bun.file()`) | [Storage & Static Files](/techniques/storage) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/security`** | `.`, `./auth`, `./authz`, `./jwt`, `./throttler`, `./testing` | `SecurityModule.forRoot()`, `@Auth()`, `@Protected()`, WebCrypto `JwtModule`/`JwksModule`/`OAuth2`/`Oidc` (PKCE), `PassportModule`, sessions, refresh-token families, TOTP MFA, magic links, API keys, `Bun.password` (`argon2id`), `Bun.CSRF`, policy-based `@Policy()`/`@Can()` authorization (`./authz`), `ThrottlerModule` (`./throttler`), and `SecurityHeadersMiddleware` | [Security, JWT & Throttler](/security/security-module), [Authentication](/security/authentication), [Authorization](/security/authorization) |
 
-## Data & Persistence (9 Packages)
+## 3. API & AI (3 Packages)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/sqlite`** | Bun-native `bun:sqlite`: `SqliteModule`, `SqliteService`, `@Transactional`, `@SqliteRepository`/`JpaRepository`/`@Query`/`@Modifying`/`@SqlParam` + compiled-once derived finders, migrations | [SQLite](/data/sqlite) |
-| **`@bunest/sql`** | Bun-native `Bun.SQL` (Postgres/MySQL/SQLite): `SqlModule`, `SqlService`, `@Transactional`, dialect-aware `@SqlRepository`/`SqlCrudRepository`/`@SqlQuery`, migrations | [SQL (Bun.SQL)](/data/sql) |
-| **`@bunest/prisma`** | Drop-in Prisma integration: `PrismaModule`, `PrismaService`, `PrismaClientExceptionFilter`, `@InjectPrisma`, ALS transactions | [ORM & ODM Adapters](/data/orm-adapters) |
-| **`@bunest/drizzle`** | `DrizzleModule`, `@InjectDrizzle`, automatic client shutdown & `@bunest/sql` ALS transaction integration | [ORM & ODM Adapters](/data/orm-adapters) |
-| **`@bunest/typeorm`** | `@nestjs/typeorm` v12 parity: `TypeOrmModule`, `@InjectRepository`/`@InjectDataSource`/`@InjectEntityManager`, multi-DataSource DI lifecycle | [ORM & ODM Adapters](/data/orm-adapters) |
-| **`@bunest/mongoose`** | `@nestjs/mongoose` v12 parity: `MongooseModule`, `@Schema`/`@Prop`/`@InjectModel`/`@InjectConnection`, `SchemaFactory`, `IsObjectIdPipe` | [ORM & ODM Adapters](/data/orm-adapters) |
-| **`@bunest/sequelize`** | `@nestjs/sequelize` v12 parity: `SequelizeModule`, `@InjectModel`/`@InjectConnection`, multi-connection DI lifecycle | [ORM & ODM Adapters](/data/orm-adapters) |
-| **`@bunest/elasticsearch`** | `@nestjs/elasticsearch` v12 parity: `ElasticsearchModule` + full native Bun `fetch()` REST client | [Elasticsearch](/data/elasticsearch) |
-| **`@bunest/store-kit`** | Foundational `Bun.SQL` store kit (`.`, `./postgres`, `./mysql`, `./testing`) with versioned migrations, CLI, and contract testing | [Store Kit](/data/store-kit) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/swagger`** | `.` | OpenAPI 3.1 generator, `DocumentBuilder`, `SwaggerModule`, `@Api*` decorators, Interactive Try-It-Out UI + Scalar/Swagger-UI presets | [OpenAPI (Swagger)](/apis/openapi) |
+| **`@bunest/graphql`** | `.`, `./apollo` | Code-first & schema-first GraphQL, `ApolloDriver`, Federation v2 Subgraph & Gateway (`./apollo`), `@UseFilters`, `BunestDataLoader`, SSE & `graphql-ws` subscriptions | [GraphQL & Apollo](/apis/graphql) |
+| **`@bunest/ai`** | `.`, `./mcp`, `./mcp/testing`, `./workflows`, `./testing` | Native `fetch()` SSE clients for OpenAI, Anthropic & Google Gemini (`generateText`, `generateObject`, `streamText`, `@AgentFunction`, durable agent workflows) + Model Context Protocol server (`./mcp`: `@Tool`, `@Resource`, `@ResourceTemplate`, `@Prompt` over Streamable HTTP, SSE & stdio JSON-RPC 2.0) | [AI SDK](/ai/ai-sdk), [Model Context Protocol (MCP)](/ai/mcp) |
 
-## Security & Identity (6 Packages)
+## 4. Data & Integrations (5 Packages)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/security`** | `SecurityModule.forRoot()`, `@Auth()`, `@Protected()`, WebCrypto `JwtModule`, `JwksModule`, `OAuth2Module`/`OidcModule` (PKCE), `PasswordService` (`argon2id`), RBAC/Policies, CSRF, `ThrottlerModule`, security headers | [Security, JWT & Throttler](/security/security-module) |
-| **`@bunest/jwt`** | Drop-in `@nestjs/jwt` v12 migration facade backed natively by `@bunest/security` (WebCrypto) | [Security, JWT & Throttler](/security/security-module) |
-| **`@bunest/passport`** | Drop-in `@nestjs/passport` v12 migration facade (`PassportModule`, `AuthGuard`, `PassportStrategy`) backed by `@bunest/security` | [Security, JWT & Throttler](/security/security-module) |
-| **`@bunest/throttler`** | Drop-in `@nestjs/throttler` v6.8 migration facade (`ThrottlerModule`, `ThrottlerGuard`, `@Throttle`, `@SkipThrottle`) backed by `@bunest/security` | [Security, JWT & Throttler](/security/security-module) |
-| **`@bunest/authentication`** | Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, magic links, OIDC/OAuth2, API keys, Argon2id, `./testing` | [Authentication](/security/authentication) |
-| **`@bunest/authorization`** | Policy-based authorization with `@Policy()` classes, `@Can()` / `@Can.Anyone()`, `AuthorizationService`, and audit events | [Authorization](/security/authorization) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/orm`** | `.`, `./plugin`, `./store`, `./postgres`, `./mysql`, `./testing` | Zero-dep Bun-native ORM & SQL toolkit covering 12 dialects via `bun:sqlite`, `Bun.SQL`, `fetch()`, & `Bun.connect()`, with `@OrmRepository`/`CrudRepository`/`@Query`/`@Modifying`, `@Transactional`, `OrmMigrationRunner`, and SQL Store Kit (`createBunSqlExecutor`) | [Bunest ORM](/data/orm-adapters), [SQLite](/data/sqlite), [SQL (Bun.SQL)](/data/sql), [Store Kit](/data/store-kit) |
+| **`@bunest/cache`** | `.`, `./redis` | `CacheModule`, `CacheService`, `CacheInterceptor`, `@Cacheable`/`@CacheEvict`/`@CachePut`, single-flight deduplication, `MemoryCacheStore`, and native `Bun.RedisClient` `RedisCacheStore` (`./redis`) | [Caching](/techniques/caching) |
+| **`@bunest/storage`** | `.`, `./s3`, `./local`, `./memory` | Unified storage API: `LocalDisk` (`Bun.file().slice().stream()`), `InMemoryDisk`, native `BunS3Disk` (`Bun.S3Client`/`Bun.s3`), and SigV4 `S3Disk` (`Bun.CryptoHasher` + `Bun.XML.parse`) | [Storage & Static Files](/techniques/storage) |
+| **`@bunest/mail`** | `.`, `./smtp`, `./templates` | Typed mail classes, `Bun.escapeHTML` templates (`./templates`), native SMTP (`./smtp`), Resend, Postmark, SendGrid & Amazon SES transports | [Mail](/techniques/mail) |
+| **`@bunest/elasticsearch`** | `.` | `@nestjs/elasticsearch` v12 parity: `ElasticsearchModule` + zero-dep native Bun `fetch()` REST client | [Elasticsearch](/data/elasticsearch) |
 
-## API, GraphQL & Realtime (4 Packages)
+## 5. Distributed & Async (5 Packages)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/swagger`** | OpenAPI 3.1 generator, `DocumentBuilder`, `SwaggerModule`, `@Api*` decorators, Interactive Try-It-Out UI + Scalar/Swagger-UI presets | [OpenAPI (Swagger)](/apis/openapi) |
-| **`@bunest/graphql`** | Code-first & schema-first GraphQL, Federation v2 Subgraph, `@UseFilters`, `BunestDataLoader`, SSE & `graphql-ws` subscriptions | [GraphQL & Apollo](/apis/graphql) |
-| **`@bunest/apollo`** | Bun-native `ApolloDriver`, `ApolloFederationDriver` (Federation v2 Subgraph), and `ApolloGatewayDriver` (multi-subgraph gateway) | [GraphQL & Apollo](/apis/graphql) |
-| **`@bunest/websockets`** | Native `Bun.serve({ websocket })` gateways: `@WebSocketGateway`, `@SubscribeMessage`, `@Ack()`, rooms/pub-sub, handshake auth, WS enhancers | [WebSockets](/apis/websockets) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/messaging`** | `.`, `./events`, `./cqrs`, `./outbox/*`, `./webhooks/*` | EventEmitter2 (`./events`), CQRS (`./cqrs`), transactional outbox & consumer inbox (`./outbox`, Postgres/MySQL/testing + `nest-outbox` CLI), and outbound/inbound webhooks (`./webhooks`, `Bun.dns.lookup`, HMAC-SHA256, SSRF `AddressPolicy`, AES-256-GCM sealing + `nest-webhooks` CLI) | [Events](/techniques/events), [CQRS](/distributed/cqrs), [Outbox & Webhooks](/distributed/outbox-webhooks) |
+| **`@bunest/jobs`** | `.`, `./queues`, `./scheduler`, `./redis` | `QueueModule`, `BullModule`/`BullMQModule`, `@Processor`/`@Process`, `WorkerHost`, `FlowProducer`, retries/backoff/DLQ, `MemoryQueueDriver`, atomic Lua `RedisQueueDriver` backed by `Bun.RedisClient` (`./queues`, `./redis`), and `ScheduleModule`/`@Cron` with `Bun.cron.parse` fast-path (`./scheduler`) | [Queues](/techniques/queues), [Task Scheduling](/techniques/task-scheduling) |
+| **`@bunest/resilience`** | `.`, `./locks/*`, `./idempotency/*` | `@Retry`, `@Timeout`, `@CircuitBreaker`, `@Bulkhead`, `@RateLimit`, `@Fallback` (entrypoint + service-layer AOP), distributed leased locks with fencing tokens & `@WithLock()`/`@OnOneInstance()` (`./locks`), and `@Idempotent()` safe retry deduplication (`./idempotency`) | [Resilience](/distributed/resilience), [Locks & Idempotency](/distributed/locks-idempotency) |
+| **`@bunest/microservices`** | `.` | `@MessagePattern`, `@EventPattern`, `@GrpcMethod`, `ClientProxy`, hybrid `connectMicroservice()`, TCP, InMemory, gRPC, Kafka, MQTT, native `Bun.RedisClient` Redis, NATS & RabbitMQ | [Microservices](/distributed/microservices) |
+| **`@bunest/workflows`** | `.`, `./core`, `./cqrs`, `./postgres`, `./mysql`, `./testing` | Durable workflows written as plain async code with deterministic replay, signals, timers, sagas, schedules, `Bun.deflateSync` AES-GCM codec, SQL stores & CLI | [Durable Workflows](/distributed/workflows) |
 
-## Distributed Systems & Reliability (8 Packages)
+## 6. DX & Ops (3 Packages)
 
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/microservices`** | `@MessagePattern`, `@EventPattern`, `@GrpcMethod`, `ClientProxy`, hybrid `connectMicroservice()`, TCP, InMemory, gRPC, Kafka, MQTT, Redis, NATS & RabbitMQ | [Microservices](/distributed/microservices) |
-| **`@bunest/cqrs`** | `CqrsModule`, `CommandBus`, `QueryBus`, `EventBus`, `AggregateRoot`, `EventPublisher`, `@Saga` | [CQRS](/distributed/cqrs) |
-| **`@bunest/resilience`** | `@Retry`, `@Timeout`, `@CircuitBreaker`, `@Bulkhead`, `@RateLimit`, `@Fallback` on both transport entrypoints AND `@Injectable()` service methods | [Resilience](/distributed/resilience) |
-| **`@bunest/locks`** | Distributed leased locks with fencing tokens, `@WithLock()`, `@OnOneInstance()`, `@WithoutOverlapping()`, and leader election | [Locks & Idempotency](/distributed/locks-idempotency) |
-| **`@bunest/idempotency`** | `@Idempotent()` safe retry deduplication for HTTP routes, GraphQL mutations, and microservice handlers | [Locks & Idempotency](/distributed/locks-idempotency) |
-| **`@bunest/outbox`** | Transactional outbox, consumer inbox deduplication, leased relay, dead-letter management, Postgres/MySQL/testing subpaths + CLI | [Outbox & Webhooks](/distributed/outbox-webhooks) |
-| **`@bunest/webhooks`** | Outbound webhook delivery (HMAC-SHA256, SSRF `AddressPolicy`, AES-256-GCM sealing, backoff) & inbound verification (Standard Webhooks, Stripe, GitHub) | [Outbox & Webhooks](/distributed/outbox-webhooks) |
-| **`@bunest/workflows`** | Durable workflows written as plain async code with deterministic replay, signals, timers, sagas, schedules, CQRS/Postgres/MySQL/testing subpaths + CLI | [Durable Workflows](/distributed/workflows) |
-
-## AI & Agents (2 Packages)
-
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/ai`** | Native `fetch()` SSE clients for OpenAI, Anthropic & Google Gemini; `generateText`, `generateObject`, `streamText`, embeddings, `@AgentFunction`, `./testing`, `./workflows` | [AI SDK](/ai/ai-sdk) |
-| **`@bunest/mcp`** | Model Context Protocol server exposing `@Tool`, `@Resource`, `@ResourceTemplate`, and `@Prompt` over Streamable HTTP, SSE, and stdio JSON-RPC 2.0 | [Model Context Protocol (MCP)](/ai/mcp) |
-
-## Observability & Developer CLI (5 Packages)
-
-| Package | Responsibility | Documentation |
-|---|---|---|
-| **`@bunest/observability`** | `ObservabilityModule.forRoot()`, `@Span`/`@Trace`/`@Timed`/`@Counted`, W3C Trace Context, OTLP HTTP export, Prometheus metrics, health checks, Devtools graph | [Observability, Terminus & Devtools](/observability/observability) |
-| **`@bunest/terminus`** | Drop-in `@nestjs/terminus` v12 migration facade (`TerminusModule`, `HealthCheckService`, built-in health indicators) backed by `@bunest/observability` | [Observability, Terminus & Devtools](/observability/observability) |
-| **`@bunest/devtools-integration`** | Drop-in `@nestjs/devtools-integration` v12 migration facade (`DevtoolsModule`, `GraphPublisher`) backed by `@bunest/observability` | [Observability, Terminus & Devtools](/observability/observability) |
-| **`@bunest/observe`** | Full APM agent with distributed tracing, runtime/custom metrics, SLO objectives, PII redaction, OTLP export, and CLI | [Observe APM](/observability/observe) |
-| **`@bunest/cli`** | `bunest new`, `generate`/`g` (11 schematics), `dev`, `build`, `repl`, `info`, and `bunestMetadataPlugin()` for `Bun.build()` | [CLI](/observability/cli) |
+| Package | Subpaths | Responsibility | Documentation |
+| --- | --- | --- | --- |
+| **`@bunest/observability`** | `.`, `./tracing`, `./metrics`, `./health`, `./devtools` | `ObservabilityModule.forRoot()`, `@Span`/`@Trace`/`@Timed`/`@Counted`, W3C Trace Context + OTLP (`./tracing`), Prometheus metrics (`./metrics`), `TerminusModule`/`HealthModule` with `Bun.connect()` TCP probes (`./health`), and `DevtoolsModule` graph (`./devtools`) | [Observability, Health & Devtools](/observability/observability) |
+| **`@bunest/testing`** | `.` | `Test.createTestingModule`, overrides, `ModuleMocker`, zero-socket `request(app)` & `TestClient`, `app.inject()`, `readSseEvents`, `CapturingLogger`, `ContextIdFactory` | [Testing](/fundamentals/testing) |
+| **`@bunest/cli`** | `.`, `./analyzer` | `bunest new`, `generate`/`g`, `dev`, `start`, `build`, `check`/`doctor`, `typegen`, `delombok`, `codemod`, `add`, `upgrade`, `deploy`, `repl`, `info`, and `bunestMetadataPlugin()` for `Bun.build()` | [CLI](/observability/cli) |
 
 ## Workspace Commands
 
 ```bash
-bun install             # Install & link all 53 workspace packages
+bun install             # Install & link all 19 workspace packages
 bun test                # Run full test suite via bun:test
 bun run typecheck       # Multi-threaded typecheck (`bun check`)
-bun run build           # Build all 53 packages + docs site
+bun run build           # Build all 19 packages + docs site
 bun run docs:dev        # Start this documentation site locally
 bun run docs:build      # Build static documentation bundle to apps/docs/dist
-bun run verify:release  # Validate publish metadata, DAG, cycles & CLI smoke tests
+bun run verify:release  # Validate publish metadata, subpath exports, DAG, cycles & CLI smoke tests
 ```

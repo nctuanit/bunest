@@ -15,8 +15,8 @@ import {
   type ResponseContext,
   Scope,
   type Type,
-} from "@bunest/common";
-import { normalizePath } from "@bunest/http";
+} from "@bunest/core";
+import { normalizePath } from "@bunest/core/http";
 import { GRAPHQL_MODULE_OPTIONS, GRAPHQL_SCHEMA_TOKEN } from "./constants";
 import { AbstractGraphQLDriver } from "./driver/abstract-graphql.driver";
 import { GraphQLService } from "./driver/graphql-http.handler";
@@ -106,7 +106,8 @@ const SHARED_EXPORTS = [
 @Module({})
 export class GraphQLModule<
   TAdapter extends AbstractGraphQLDriver = AbstractGraphQLDriver,
-> implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
+>
+  implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
 {
   public completeOptions: GqlModuleOptions | undefined;
   private stopPromise?: Promise<void>;

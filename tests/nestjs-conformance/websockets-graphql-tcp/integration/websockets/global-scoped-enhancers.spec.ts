@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -20,7 +19,7 @@ import {
   Scope,
   type Type,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type BunWsClient,
@@ -34,7 +33,7 @@ import {
   WebSocketModule,
   WebSocketServer,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   describeConformance,
@@ -201,7 +200,11 @@ class LocallyGuardedGateway extends SingletonGateway {}
 
 interface TestWsSocket {
   ws: WebSocket;
-  sendAndWait(event: string, data: unknown, id: string): Promise<WsMessageFrame>;
+  sendAndWait(
+    event: string,
+    data: unknown,
+    id: string,
+  ): Promise<WsMessageFrame>;
   close(): void;
 }
 
@@ -306,7 +309,10 @@ describeConformance(
       return s;
     }
 
-    async function ping(socket: TestWsSocket, data = "hello"): Promise<unknown> {
+    async function ping(
+      socket: TestWsSocket,
+      data = "hello",
+    ): Promise<unknown> {
       const reply = await socket.sendAndWait("ping", data, `p-${++reqSeq}`);
       return reply.data;
     }
@@ -355,7 +361,7 @@ describeConformance(
 
     for (const scope of [Scope.REQUEST, Scope.TRANSIENT] as const) {
       for (const gateway of [SingletonGateway, ScopedGateway] as const) {
-        // BUNEST_BUG: BunWebSocketAdapter does not wire global APP_GUARD/APP_PIPE/APP_INTERCEPTOR multi-providers into WebSocket handlers and does not resolve Scope.REQUEST gateways or enhancers per connection (packages/websockets/src/adapter/bun-ws.adapter.ts#L282-L368, packages/core/src/application/bunest-application.ts#L726-L731).
+        // BUNEST_BUG: BunWebSocketAdapter does not wire global APP_GUARD/APP_PIPE/APP_INTERCEPTOR multi-providers into WebSocket handlers and does not resolve Scope.REQUEST gateways or enhancers per connection (packages/core/src/ws/adapter/bun-ws.adapter.ts#L282-L368, packages/core/src/application/bunest-application.ts#L726-L731).
         it.skip(`should run a denying global ${scope} guard on ${gateway.name}`, async () => {
           await start(gateway, [
             { provide: APP_GUARD, useClass: GlobalGuard, scope },
@@ -381,7 +387,7 @@ describeConformance(
         });
       }
 
-      // BUNEST_BUG: BunWebSocketAdapter does not execute APP_GUARD/APP_PIPE/APP_INTERCEPTOR or reuse Scope.REQUEST/TRANSIENT enhancers per WebSocket connection (packages/websockets/src/adapter/bun-ws.adapter.ts#L282-L368).
+      // BUNEST_BUG: BunWebSocketAdapter does not execute APP_GUARD/APP_PIPE/APP_INTERCEPTOR or reuse Scope.REQUEST/TRANSIENT enhancers per WebSocket connection (packages/core/src/ws/adapter/bun-ws.adapter.ts#L282-L368).
       it.skip(`should reuse ${scope} enhancers per connection and preserve singleton hooks and state`, async () => {
         await start(SingletonGateway, [
           { provide: APP_GUARD, useClass: GlobalGuard, scope },
@@ -429,9 +435,13 @@ describeConformance(
 
     for (const [token, enhancer, expected] of [
       [APP_PIPE, GlobalPipe, { data: "hello:pipe" }],
-      [APP_INTERCEPTOR, GlobalInterceptor, { data: "hello", intercepted: true }],
+      [
+        APP_INTERCEPTOR,
+        GlobalInterceptor,
+        { data: "hello", intercepted: true },
+      ],
     ] as const) {
-      // BUNEST_BUG: BunWebSocketAdapter does not apply global APP_PIPE / APP_INTERCEPTOR providers to WebSocket message handlers (packages/websockets/src/adapter/bun-ws.adapter.ts#L282-L368).
+      // BUNEST_BUG: BunWebSocketAdapter does not apply global APP_PIPE / APP_INTERCEPTOR providers to WebSocket message handlers (packages/core/src/ws/adapter/bun-ws.adapter.ts#L282-L368).
       it.skip(`should resolve ${String(token)} without a global guard`, async () => {
         await start(SingletonGateway, [
           { provide: token, useClass: enhancer, scope: Scope.REQUEST },
@@ -440,7 +450,7 @@ describeConformance(
       });
     }
 
-    // BUNEST_BUG: BunWebSocketAdapter does not apply global Scope.REQUEST APP_PIPE alongside local transient @UseGuards on WebSocket gateways (packages/websockets/src/adapter/bun-ws.adapter.ts#L282-L368).
+    // BUNEST_BUG: BunWebSocketAdapter does not apply global Scope.REQUEST APP_PIPE alongside local transient @UseGuards on WebSocket gateways (packages/core/src/ws/adapter/bun-ws.adapter.ts#L282-L368).
     it.skip("should construct local transient enhancers when global scoped enhancers require a connection context", async () => {
       await start(LocallyGuardedGateway, [
         { provide: APP_PIPE, useClass: GlobalPipe, scope: Scope.REQUEST },

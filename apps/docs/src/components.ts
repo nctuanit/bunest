@@ -8,7 +8,8 @@ import { withBasePath } from "./navigation";
 export interface PipelineStageInfo {
   num: string;
   name: string;
-  phase: "routing" | "security" | "enhancer" | "onion" | "serialization" | "error";
+  phase:
+    "routing" | "security" | "enhancer" | "onion" | "serialization" | "error";
   order: string;
   summary: string;
   detail: string;
@@ -21,7 +22,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Route Match",
     phase: "routing",
     order: "Bun.serve native Zig router -> Fallback Radix Router",
-    summary: "O(1)/radix route matching with static > :param > * > fetch precedence.",
+    summary:
+      "O(1)/radix route matching with static > :param > * > fetch precedence.",
     detail:
       "95%+ of REST routes run directly in Bun.serve({ routes }) with precomputed per-path dispatchers. Unmatched HTTP verbs return 405 + Allow immediately without re-matching.",
     hook: "ADR-011 • ControllerScanner & RouteCompiler",
@@ -31,7 +33,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "RequestContext Init",
     phase: "routing",
     order: "Per-request context (+ AsyncLocalStorage only if Scope.REQUEST)",
-    summary: "Allocates lightweight RequestContext holding params, lazy body cache, and ResponseContext.",
+    summary:
+      "Allocates lightweight RequestContext holding params, lazy body cache, and ResponseContext.",
     detail:
       "Pure-singleton routes skip RequestContainer creation entirely (zero DI lookups per request). Routes marked Scope.REQUEST enter AsyncLocalStorage.run() with an isolated RequestContainer.",
     hook: "ADR-012 • RequestContext & RequestContainer",
@@ -41,7 +44,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Security & CORS",
     phase: "security",
     order: "Preflight short-circuit -> Body size limit -> Trust-proxy IP",
-    summary: "Handles OPTIONS preflight (204), enforces bodyLimit (413), and guarantees CORS headers on errors.",
+    summary:
+      "Handles OPTIONS preflight (204), enforces bodyLimit (413), and guarantees CORS headers on errors.",
     detail:
       "Runs inside the Exception Filter boundary so even 400/401/403/413/500 responses preserve configured Access-Control-* headers.",
     hook: "CorsOptions • PayloadTooLargeException (413)",
@@ -51,7 +55,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Middleware",
     phase: "enhancer",
     order: "Global (app.use) -> Module (MiddlewareConsumer topological order)",
-    summary: "Pre-bound at bootstrap into each route closure — zero per-request path regex matching.",
+    summary:
+      "Pre-bound at bootstrap into each route closure — zero per-request path regex matching.",
     detail:
       "Supports class-based BunestMiddleware (with DI) and plain functions. Returning a Web Response short-circuits downstream stages while retaining CORS headers.",
     hook: "BunestMiddleware • MiddlewareConsumer.apply().forRoutes()",
@@ -60,7 +65,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     num: "05",
     name: "Guards",
     phase: "enhancer",
-    order: "Global (APP_GUARD) -> Controller (@UseGuards) -> Method (@UseGuards)",
+    order:
+      "Global (APP_GUARD) -> Controller (@UseGuards) -> Method (@UseGuards)",
     summary: "Authorization gate running BEFORE body parsing and validation.",
     detail:
       "Returning false throws ForbiddenException (403); throwing UnauthorizedException (401) propagates directly. Unauthorized requests never pay JSON parsing or DTO validation costs.",
@@ -71,7 +77,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Interceptors [Before]",
     phase: "onion",
     order: "Global -> Controller -> Method (outer wraps inner)",
-    summary: "Native Promise-based onion model — zero mandatory RxJS dependency.",
+    summary:
+      "Native Promise-based onion model — zero mandatory RxJS dependency.",
     detail:
       "Interceptors can inspect ExecutionContext, start timers, or short-circuit early (e.g. cache hits) by returning a value without invoking next.handle().",
     hook: "BunestInterceptor • CallHandler.handle(): Promise<T>",
@@ -81,7 +88,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Parameter Extraction",
     phase: "onion",
     order: "Ascending ParameterMetadata.index (cached single-read body)",
-    summary: "Extracts @Param, @Query, @Body, @Headers, @Cookies, @Req, @Res, @Ip, and custom decorators.",
+    summary:
+      "Extracts @Param, @Query, @Body, @Headers, @Cookies, @Req, @Res, @Ip, and custom decorators.",
     detail:
       "Request body stream is read at most once and cached in RequestContext. Malformed JSON throws BadRequestException (400) here before pipes execute.",
     hook: "ADR-004 • ParameterMetadata (zero Reflect.getMetadata at runtime)",
@@ -91,7 +99,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Pipes & Validation",
     phase: "onion",
     order: "Global -> Controller -> Method -> Parameter",
-    summary: "Transforms primitives (ParseIntPipe) and validates DTOs (ValidationPipe / SchemaValidationPipe).",
+    summary:
+      "Transforms primitives (ParseIntPipe) and validates DTOs (ValidationPipe / SchemaValidationPipe).",
     detail:
       "Runs sequentially per parameter. Prototype pollution keys (__proto__, constructor, prototype) are rejected; invalid payloads throw ADR-009 normalized 400 JSON and never call the handler.",
     hook: "ADR-005 / ADR-009 • ValidationPipe & Built-in Parse Pipes",
@@ -111,7 +120,8 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     name: "Interceptors [After]",
     phase: "onion",
     order: "Method -> Controller -> Global (inner unwinds to outer)",
-    summary: "Post-processes handler output (e.g., ClassSerializerInterceptor, response wrapping, timing logs).",
+    summary:
+      "Post-processes handler output (e.g., ClassSerializerInterceptor, response wrapping, timing logs).",
     detail:
       "Awaits next.handle(), transforms or inspects the resolved return value, or catches and remaps errors thrown by stages 7–9.",
     hook: "ClassSerializerInterceptor • @SerializeOptions()",
@@ -120,8 +130,10 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     num: "11",
     name: "Response Serialization",
     phase: "serialization",
-    order: "Response passthrough -> @Redirect -> @Sse -> Stream/Blob -> Text/JSON",
-    summary: "Converts final value into a native Web Response with RFC 9110 empty-body enforcement.",
+    order:
+      "Response passthrough -> @Redirect -> @Sse -> Stream/Blob -> Text/JSON",
+    summary:
+      "Converts final value into a native Web Response with RFC 9110 empty-body enforcement.",
     detail:
       "Applies POST -> 201 Created default, merges @Header and ResponseContext headers/cookies (always appending Set-Cookie), and enforces empty bodies on 204/304/HEAD.",
     hook: "ADR-010 • ResponseSerializer & ResponseContext",
@@ -130,8 +142,10 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
     num: "EX",
     name: "Exception Filters",
     phase: "error",
-    order: "Method -> Controller -> Global -> DefaultExceptionFilter (most specific first)",
-    summary: "Catches throws from stages 3–11 plus 404/405 with zero stack-trace leaks in production.",
+    order:
+      "Method -> Controller -> Global -> DefaultExceptionFilter (most specific first)",
+    summary:
+      "Catches throws from stages 3–11 plus 404/405 with zero stack-trace leaks in production.",
     detail:
       "Matches @Catch(...ExceptionTypes) via instanceof. DefaultExceptionFilter emits the uniform { statusCode, error, message, details?, timestamp, path } JSON envelope while preserving CORS headers.",
     hook: "ADR-008 • @Catch() & DefaultExceptionFilter",
@@ -139,11 +153,7 @@ const PIPELINE_STAGES: readonly PipelineStageInfo[] = [
 ];
 
 function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return Bun.escapeHTML(input);
 }
 
 function renderHeroCards(basePath = ""): string {

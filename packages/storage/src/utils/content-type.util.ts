@@ -49,7 +49,9 @@ export function contentTypeFromKey(key: string): string {
   if (dot <= 0) {
     return DEFAULT_CONTENT_TYPE;
   }
-  return BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? DEFAULT_CONTENT_TYPE;
+  return (
+    BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? DEFAULT_CONTENT_TYPE
+  );
 }
 
 /** The usual extension for a detected type, for keys built from uploads. */

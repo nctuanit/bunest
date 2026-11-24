@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Catch,
@@ -16,7 +15,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   ClientsModule,
@@ -94,17 +93,18 @@ describe("TcpServer & TcpClientProxy (Real Bun.listen / Bun.connect E2E)", () =>
 
     server.addMessageHandler("echo-large", (data: unknown) => data);
 
-    server.addMessageHandler(
-      "delayed",
-      async (data: unknown) => {
-        const { id, ms } = data as { id: string; ms: number };
-        await Bun.sleep(ms);
-        return `done:${id}`;
-      },
-    );
+    server.addMessageHandler("delayed", async (data: unknown) => {
+      const { id, ms } = data as { id: string; ms: number };
+      await Bun.sleep(ms);
+      return `done:${id}`;
+    });
 
     server.addMessageHandler("fail-rpc", () => {
-      throw new RpcException({ status: 422, message: "Invalid input", field: "email" });
+      throw new RpcException({
+        status: 422,
+        message: "Invalid input",
+        field: "email",
+      });
     });
 
     server.addEventHandler("user.created", (data) => {
@@ -130,7 +130,10 @@ describe("TcpServer & TcpClientProxy (Real Bun.listen / Bun.connect E2E)", () =>
       blob: "Bunest-TCP-Fragment-".repeat(13_000),
       checksum: 256_000,
     };
-    const echoed = await client.send<typeof largePayload>("echo-large", largePayload);
+    const echoed = await client.send<typeof largePayload>(
+      "echo-large",
+      largePayload,
+    );
     expect(echoed.blob.length).toBe(largePayload.blob.length);
     expect(echoed.checksum).toBe(256_000);
 
@@ -140,7 +143,11 @@ describe("TcpServer & TcpClientProxy (Real Bun.listen / Bun.connect E2E)", () =>
       client.send<string>("delayed", { id: "fast", ms: 5 }),
       client.send<string>("delayed", { id: "mid", ms: 20 }),
     ]);
-    expect([rSlow, rFast, rMid]).toEqual(["done:slow", "done:fast", "done:mid"]);
+    expect([rSlow, rFast, rMid]).toEqual([
+      "done:slow",
+      "done:fast",
+      "done:mid",
+    ]);
 
     // Fire-and-forget event
     await client.emit("user.created", { id: "u_1", email: "ada@bunest.dev" });
@@ -203,7 +210,10 @@ describe("TcpServer & TcpClientProxy (Real Bun.listen / Bun.connect E2E)", () =>
     // Server restart -> client auto-reconnects on retry and succeeds
     const boundPort = server.port!;
     await server.close();
-    const restartedServer = new TcpServer({ host: "127.0.0.1", port: boundPort });
+    const restartedServer = new TcpServer({
+      host: "127.0.0.1",
+      port: boundPort,
+    });
     servers.push(restartedServer);
     restartedServer.addMessageHandler("ping-after-restart", () => "alive");
     await restartedServer.listen();
@@ -255,10 +265,7 @@ describe("TcpServer & TcpClientProxy (Real Bun.listen / Bun.connect E2E)", () =>
       @UseGuards(RpcAuthGuard)
       @UseInterceptors(WrapInterceptor)
       @MessagePattern({ cmd: "greet" })
-      greet(
-        @Payload("name", TrimPipe) name: string,
-        @Ctx() ctx: RpcContext,
-      ) {
+      greet(@Payload("name", TrimPipe) name: string, @Ctx() ctx: RpcContext) {
         return `HELLO ${name} via ${ctx.transport}`;
       }
 

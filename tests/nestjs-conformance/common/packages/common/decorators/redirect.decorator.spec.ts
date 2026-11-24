@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   HttpStatus,
@@ -6,7 +5,7 @@ import {
   MetadataRegistry,
   Redirect,
   type RedirectMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(

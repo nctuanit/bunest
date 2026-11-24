@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 import {
   Inject,
@@ -6,7 +5,7 @@ import {
   Module,
   type MicroserviceInstance,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestFactory,
   type BunestMicroserviceApplication,
@@ -20,7 +19,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { describeConformance, itAdapted } from "../../../_helpers";
 
 class NoopTransport implements MicroserviceInstance {
@@ -118,7 +117,7 @@ describeConformance(
       "native BunWsServerImpl non-listening server",
     );
 
-    // BUNEST_BUG: BunestMicroserviceApplication does not implement useWebSocketAdapter() (declared optional on INestMicroservice) and WsGatewayExplorer hardcodes `new BunWebSocketAdapter()` instead of accepting an application-supplied adapter (packages/core/src/application/bunest-factory.ts#L44-L80, packages/websockets/src/explorer/ws-gateway.explorer.ts#L66).
+    // BUNEST_BUG: BunestMicroserviceApplication does not implement useWebSocketAdapter() (declared optional on INestMicroservice) and WsGatewayExplorer hardcodes `new BunWebSocketAdapter()` instead of accepting an application-supplied adapter (packages/core/src/application/bunest-factory.ts#L44-L80, packages/core/src/ws/explorer/ws-gateway.explorer.ts#L66).
     it.skip("should set up such a server through the adapter of the application", async () => {
       @Module({
         imports: [WebSocketModule.forRoot()],

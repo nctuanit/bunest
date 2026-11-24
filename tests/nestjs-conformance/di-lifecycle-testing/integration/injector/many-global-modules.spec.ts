@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect } from "bun:test";
 import {
   Global,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   Test,
   describeConformance,

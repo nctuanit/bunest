@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { MinLength } from "class-validator";
+import { MinLength } from "../../../../../packages/validation/src/validator";
 import {
   type ExecutionResult,
   parse,
   subscribe,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,

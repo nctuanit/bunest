@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -8,16 +7,12 @@ import {
   Module,
   UnauthorizedException,
   type CanActivate,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   APP_GUARD,
   type BunestApplication,
 } from "../../../../../packages/core/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers";
+import { Test, describeConformance, request } from "../../../_helpers";
 
 @Injectable()
 class HelloService {

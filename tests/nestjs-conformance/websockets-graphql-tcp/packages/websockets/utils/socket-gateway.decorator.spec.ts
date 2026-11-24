@@ -1,16 +1,15 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Injectable,
   METADATA_KEYS,
   MetadataRegistry,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   WS_METADATA_KEYS,
   WebSocketGateway,
   type WebSocketGatewayOptions,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import { describeConformance, itAdapted } from "../../../../_helpers/index";
 
 describeConformance(
@@ -51,9 +50,9 @@ describeConformance(
       );
 
       expect(options).toEqual({});
-      expect(MetadataRegistry.has(WS_METADATA_KEYS.GATEWAY, DefaultGateway)).toBe(
-        true,
-      );
+      expect(
+        MetadataRegistry.has(WS_METADATA_KEYS.GATEWAY, DefaultGateway),
+      ).toBe(true);
     });
 
     @WebSocketGateway({ namespace: "/" })

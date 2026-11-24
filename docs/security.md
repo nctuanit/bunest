@@ -10,7 +10,7 @@ Bunest ships secure-by-default HTTP, validation, authentication, rate-limiting, 
 
 Enabling `app.useGlobalPipes(new ValidationPipe())` automatically enforces:
 
-- **`whitelist: true`**: Strips any property lacking a `class-validator` decorator (mass-assignment defense).
+- **`whitelist: true`**: Strips any property lacking a validation decorator (`@bunest/validation/validator` or compatible `class-validator`) for mass-assignment defense.
 - **`forbidNonWhitelisted: true`**: Rejects requests containing unknown properties with HTTP `400`.
 - **`forbidUnknownValues: true`**: Prevents non-object or malformed payloads from passing validation as empty valid DTOs.
 - **`transformOptions.enableImplicitConversion: false`**: Blocks silent JavaScript type-coercion bugs (e.g., `"false"` turning into `true`).
@@ -48,7 +48,11 @@ const app = await BunestFactory.create(AppModule);
 
 app.use(
   createSecurityHeadersMiddleware({
-    strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
     contentSecurityPolicy: {
       "default-src": ["'self'"],
       "object-src": ["'none'"],
@@ -158,7 +162,12 @@ Protect endpoints from brute-force and DoS traffic using sliding-window rate lim
 
 ```ts
 import { APP_GUARD, Module } from "@bunest/core";
-import { SkipThrottle, Throttle, ThrottlerGuard, ThrottlerModule } from "@bunest/security";
+import {
+  SkipThrottle,
+  Throttle,
+  ThrottlerGuard,
+  ThrottlerModule,
+} from "@bunest/security";
 
 @Module({
   imports: [
@@ -180,6 +189,7 @@ export class AppModule {}
 ## 6. Safe File Storage (`StorageModule` & `LocalStorageAdapter`)
 
 `StorageModule.forRoot({ driver: "local", rootDir: "./uploads" })` enforces `assertSafeStorageKey()` on every put/get/delete/stat call, blocking:
+
 - Path traversal (`../`, `..\\`, absolute paths)
 - Null bytes (`\0`) and control characters
 - Windows drive letters and NTFS Alternate Data Streams (`:` in any path segment, e.g., `file.txt:hidden`)

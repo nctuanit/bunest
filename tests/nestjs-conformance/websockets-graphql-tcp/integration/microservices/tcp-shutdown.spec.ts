@@ -1,12 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as net from "node:net";
 import {
   Controller,
   Injectable,
   Module,
   type OnApplicationShutdown,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestMicroserviceApplication,
@@ -38,6 +36,91 @@ class PingController {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+interface BunTestClientSocket {
+  write(data: Uint8Array | string): void;
+  destroy(): void;
+  closed: Promise<void>;
+}
+
+async function openBunTcpSocket(
+  port: number,
+  onData?: (chunk: Buffer) => void,
+): Promise<BunTestClientSocket> {
+  let resolveClosed!: () => void;
+  let closedDone = false;
+  const closed = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
+  const markClosed = () => {
+    if (!closedDone) {
+      closedDone = true;
+      resolveClosed();
+    }
+  };
+  const pendingWrites: Uint8Array[] = [];
+  let rawSocket: Bun.Socket<unknown> | undefined;
+
+  const flushWrites = () => {
+    if (!rawSocket || closedDone) {
+      return;
+    }
+    while (pendingWrites.length > 0) {
+      const head = pendingWrites[0]!;
+      const written = rawSocket.write(head);
+      if (written < head.byteLength) {
+        if (written > 0) {
+          pendingWrites[0] = head.subarray(written);
+        }
+        return;
+      }
+      pendingWrites.shift();
+    }
+  };
+
+  rawSocket = await Bun.connect({
+    hostname: "127.0.0.1",
+    port,
+    socket: {
+      data(_socket, chunk) {
+        onData?.(Buffer.from(chunk));
+      },
+      drain() {
+        flushWrites();
+      },
+      end() {
+        markClosed();
+      },
+      close() {
+        markClosed();
+      },
+      error() {
+        markClosed();
+      },
+    },
+  });
+
+  return {
+    closed,
+    write(data: Uint8Array | string) {
+      if (closedDone) {
+        return;
+      }
+      pendingWrites.push(typeof data === "string" ? Buffer.from(data) : data);
+      flushWrites();
+    },
+    destroy() {
+      if (!closedDone) {
+        try {
+          rawSocket?.terminate();
+        } catch {
+          // ignore
+        }
+        markClosed();
+      }
+    },
+  };
+}
+
 describeConformance(
   "TCP transport shutdown",
   {
@@ -52,7 +135,7 @@ describeConformance(
       let app: BunestMicroserviceApplication<MicroserviceHost> | undefined;
       let tcpServer: TcpServer | undefined;
       let port = 0;
-      let sockets: net.Socket[] = [];
+      let sockets: BunTestClientSocket[] = [];
 
       beforeEach(async () => {
         handlerCalls = 0;
@@ -93,12 +176,10 @@ describeConformance(
         return (tcpServer as unknown as { clients: Set<unknown> }).clients;
       }
 
-      async function connect(): Promise<net.Socket> {
+      async function connect(): Promise<BunTestClientSocket> {
         const beforeCount = openSockets().size;
-        const socket = net.createConnection(port, "127.0.0.1");
+        const socket = await openBunTcpSocket(port);
         sockets.push(socket);
-        socket.on("error", () => {});
-        await new Promise<void>((resolve) => socket.once("connect", resolve));
 
         const deadline = Date.now() + 2000;
         while (openSockets().size <= beforeCount && Date.now() < deadline) {
@@ -109,16 +190,13 @@ describeConformance(
 
       it("should have destroyed pre-existing connections by the time close() resolves", async () => {
         const clientSocket = await connect();
-        const closed = new Promise<void>((resolve) =>
-          clientSocket.once("close", () => resolve()),
-        );
 
         expect(openSockets().size).toBe(1);
 
         await app!.close();
 
         expect(openSockets().size).toBe(0);
-        await closed;
+        await clientSocket.closed;
       });
 
       itAdapted(
@@ -172,7 +250,7 @@ describeConformance(
       let tcpServer: TcpServer | undefined;
       let port = 0;
       let events: string[] = [];
-      let sockets: net.Socket[] = [];
+      let sockets: BunTestClientSocket[] = [];
 
       @Injectable()
       class Resources implements OnApplicationShutdown {
@@ -222,24 +300,17 @@ describeConformance(
         const clientsSet = (tcpServer as unknown as { clients: Set<unknown> })
           .clients;
         const beforeCount = clientsSet.size;
-        const socket = net.createConnection(port, "127.0.0.1");
-        sockets.push(socket);
-        socket.on("error", () => {});
-
         const replies: RpcResponseEnvelope[] = [];
         const decoder = new FrameDecoder();
-        socket.on("data", (chunk: Buffer) => {
+        const socket = await openBunTcpSocket(port, (chunk) => {
           try {
             replies.push(...decoder.push<RpcResponseEnvelope>(chunk));
           } catch {
             // ignore partial frame on abrupt close
           }
         });
-        const closed = new Promise<void>((resolve) =>
-          socket.once("close", () => resolve()),
-        );
+        sockets.push(socket);
 
-        await new Promise<void>((resolve) => socket.once("connect", resolve));
         const deadline = Date.now() + 2000;
         while (clientsSet.size <= beforeCount && Date.now() < deadline) {
           await sleep(5);
@@ -255,7 +326,7 @@ describeConformance(
             } satisfies RpcRequestEnvelope),
           );
         };
-        return { socket, replies, closed, request: sendRequest };
+        return { socket, replies, closed: socket.closed, request: sendRequest };
       }
 
       async function handlerStarted(id: number) {
@@ -423,14 +494,21 @@ describeConformance(
         await handlerStarted(1);
 
         const closing = server.close();
-        const late = net.createConnection(port, "127.0.0.1");
-        const outcome = await new Promise<string>((resolve) => {
-          late.once("connect", () => resolve("connected"));
-          late.once("error", (err: NodeJS.ErrnoException) =>
-            resolve(err.code ?? "ERROR"),
-          );
-        });
-        late.destroy();
+        let outcome = "ERROR";
+        try {
+          const late = await Bun.connect({
+            hostname: "127.0.0.1",
+            port,
+            socket: {
+              data() {},
+              error() {},
+            },
+          });
+          outcome = "connected";
+          late.terminate();
+        } catch (err) {
+          outcome = (err as { code?: string }).code ?? "ERROR";
+        }
         await closing;
 
         expect(outcome).toBe("ECONNREFUSED");

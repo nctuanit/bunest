@@ -9,23 +9,24 @@ A pipe is a class implementing the `PipeTransform` interface. Pipes execute at *
 
 ## Built-in Parse Pipes
 
-`@bunest/common` (re-exported by `@bunest/core`) ships 7 ready-to-use pipes:
+`@bunest/core` (re-exported by `@bunest/core`) ships 7 ready-to-use pipes:
 
-| Pipe | Purpose | Example Input &rarr; Output |
-|---|---|---|
-| `ParseIntPipe` | Strict base-10 integer parsing | `"42"` &rarr; `42` (rejects `"42px"`, `"3.14"`) |
-| `ParseFloatPipe` | Strict finite float parsing | `"3.14"` &rarr; `3.14` (rejects `NaN`, `Infinity`) |
-| `ParseBoolPipe` | Strict boolean string parsing | `"true"` / `"false"` &rarr; `true` / `false` |
-| `ParseUUIDPipe` | RFC 4122 UUID validation (`version?: "3"\|"4"\|"5"\|"7"\|"all"`) | `"550e8400-..."` &rarr; validated string |
-| `ParseEnumPipe` | Validates membership in a TS `enum` / object | `"ADMIN"` &rarr; `Role.ADMIN` |
-| `ParseArrayPipe` | Splits & parses CSV / repeated values | `"1,2,3"` &rarr; `[1, 2, 3]` |
-| `DefaultValuePipe` | Supplies fallback when `undefined` / `null` / `""` | `undefined` &rarr; `1` |
+| Pipe               | Purpose                                                          | Example Input &rarr; Output                        |
+| ------------------ | ---------------------------------------------------------------- | -------------------------------------------------- |
+| `ParseIntPipe`     | Strict base-10 integer parsing                                   | `"42"` &rarr; `42` (rejects `"42px"`, `"3.14"`)    |
+| `ParseFloatPipe`   | Strict finite float parsing                                      | `"3.14"` &rarr; `3.14` (rejects `NaN`, `Infinity`) |
+| `ParseBoolPipe`    | Strict boolean string parsing                                    | `"true"` / `"false"` &rarr; `true` / `false`       |
+| `ParseUUIDPipe`    | RFC 4122 UUID validation (`version?: "3"\|"4"\|"5"\|"7"\|"all"`) | `"550e8400-..."` &rarr; validated string           |
+| `ParseEnumPipe`    | Validates membership in a TS `enum` / object                     | `"ADMIN"` &rarr; `Role.ADMIN`                      |
+| `ParseArrayPipe`   | Splits & parses CSV / repeated values                            | `"1,2,3"` &rarr; `[1, 2, 3]`                       |
+| `DefaultValuePipe` | Supplies fallback when `undefined` / `null` / `""`               | `undefined` &rarr; `1`                             |
 
 ## Binding Parameter Pipes
 
 Pass pipe classes or configured instances directly to `@Param()`, `@Query()`, `@Body()`, or `@Headers()`:
 
 @@filename(items.controller.ts)
+
 ```ts
 import {
   Controller,
@@ -58,7 +59,10 @@ export class ItemsController {
       new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
     )
     page: number,
-    @Query("tags", new ParseArrayPipe({ items: String, separator: ",", optional: true }))
+    @Query(
+      "tags",
+      new ParseArrayPipe({ items: String, separator: ",", optional: true }),
+    )
     tags?: string[],
   ) {
     return { page, tags: tags ?? [] };
@@ -81,6 +85,7 @@ Global, controller, and method validation pipes automatically skip raw framework
 Implement `PipeTransform<T, R>` to build your own transformation or validation logic:
 
 @@filename(trim.pipe.ts)
+
 ```ts
 import {
   BadRequestException,

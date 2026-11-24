@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Req,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -125,7 +124,7 @@ describeConformance(
         await request(app).get("/exclude").expect(200, EXCLUDE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /api/hello to return "test" and GET /api (prefix root) to return "test", got "test_scoped" on /api/hello and 404 on /api. packages/core/src/module/middleware-consumer.ts expands `@Controller()` TestController into `/*` (leaking onto HelloController), and packages/http/src/router/route-compiler.ts does not execute middleware on unmatched prefix root `/api`.
+      // BUNEST_BUG: Expected GET /api/hello to return "test" and GET /api (prefix root) to return "test", got "test_scoped" on /api/hello and 404 on /api. packages/core/src/module/middleware-consumer.ts expands `@Controller()` TestController into `/*` (leaking onto HelloController), and packages/core/src/http/router/route-compiler.ts does not execute middleware on unmatched prefix root `/api`.
       it.skip(`forRoutes(*) with global prefix`, async () => {
         app = await createApp((instance) => instance.setGlobalPrefix("api"));
         await request(app).get("/api/hello").expect(200, RETURN_VALUE);
@@ -139,7 +138,7 @@ describeConformance(
         await request(app).get("/exclude").expect(200, EXCLUDE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /tests/wildcard (no matching controller handler; only /tests/wildcard_nested exists) to run middleware ("test_wildcard"), got 404. packages/http/src/router/route-compiler.ts does not run module middleware on unmatched routes, and packages/http/src/scanner/path-normalizer.ts does not recognize named wildcard `*path` in `tests/*path`.
+      // BUNEST_BUG: Expected GET /tests/wildcard (no matching controller handler; only /tests/wildcard_nested exists) to run middleware ("test_wildcard"), got 404. packages/core/src/http/router/route-compiler.ts does not run module middleware on unmatched routes, and packages/core/src/http/scanner/path-normalizer.ts does not recognize named wildcard `*path` in `tests/*path`.
       it.skip(`forRoutes(tests/*)`, async () => {
         app = await createApp();
         await request(app).get("/tests/wildcard").expect(200, WILDCARD_VALUE);
@@ -196,7 +195,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Expected GET /api and GET /api/ to run middleware once ("1") for path-to-regexp v8 catch-all wildcards `{*path}`, `*path`, and `/*splat`, got "0". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) only recognizes `*`, `/*`, `(.*)`, and `/(.*)`.
+      // BUNEST_BUG: Expected GET /api and GET /api/ to run middleware once ("1") for path-to-regexp v8 catch-all wildcards `{*path}`, `*path`, and `/*splat`, got "0". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) only recognizes `*`, `/*`, `(.*)`, and `/(.*)`.
       it.skip.each(["{*path}", "*path", "/*splat"])(
         'should run the middleware once for "/api" and "/api/" (%s)',
         async (wildcard) => {

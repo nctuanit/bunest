@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   APP_INTERCEPTOR,
@@ -8,7 +7,7 @@ import {
   Reflector,
   UseInterceptors,
   type StandardSchemaV1,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   SerializeOptions,
   StandardSchemaSerializerInterceptor,

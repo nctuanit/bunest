@@ -1,27 +1,18 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   type ArgumentsHost,
   type CanActivate,
   Catch,
+  ensureDir,
   type ExecutionContext,
   Injectable,
+  join,
   Module,
+  removePath,
   UseFilters,
   UseGuards,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
-import {
-  GraphQLObjectType,
-  GraphQLString,
-  Kind,
-  isObjectType,
-  parse,
-  printSchema,
-} from "graphql";
 import {
   ARGS_TYPE_METADATA,
   AbstractGraphQLDriver,
@@ -58,9 +49,11 @@ import {
   GraphQLFederationFactory,
   GraphQLISODateTime,
   GraphQLModule,
+  GraphQLObjectType,
   GraphQLSchemaBuilderModule,
   GraphQLSchemaFactory,
   GraphQLService,
+  GraphQLString,
   GraphQLTimestamp,
   GraphQLTypesLoader,
   HIDE_FIELD_METADATA,
@@ -69,6 +62,7 @@ import {
   Int,
   InterfaceType,
   IntersectionType,
+  Kind,
   Mutation,
   ObjectType,
   OmitType,
@@ -100,6 +94,9 @@ import {
   createUnionType,
   extend,
   getFieldsAndDecoratorForType,
+  isObjectType,
+  parse,
+  printSchema,
   registerEnumType,
   transformSchema,
 } from "../src/index";
@@ -117,14 +114,22 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     expect(ARGS_TYPE_METADATA).toBe("graphql:args_type");
     expect(CLASS_TYPE_METADATA).toBe("graphql:class_type");
     expect(CONTEXT).toBe("REQUEST");
-    expect(DEFINITIONS_FILE_HEADER).toContain("THIS FILE WAS AUTOMATICALLY GENERATED");
+    expect(DEFINITIONS_FILE_HEADER).toContain(
+      "THIS FILE WAS AUTOMATICALLY GENERATED",
+    );
     expect(FIELD_MIDDLEWARE_METADATA).toBe("graphql:field_middleware");
-    expect(FIELD_RESOLVER_COMPOSITION_METADATA).toBe("graphql:field_resolver_composition");
-    expect(FIELD_RESOLVER_MIDDLEWARE_METADATA).toBe("graphql:field_resolver_middleware");
+    expect(FIELD_RESOLVER_COMPOSITION_METADATA).toBe(
+      "graphql:field_resolver_composition",
+    );
+    expect(FIELD_RESOLVER_MIDDLEWARE_METADATA).toBe(
+      "graphql:field_resolver_middleware",
+    );
     expect(FIELD_TYPENAME).toBe("__resolveType");
     expect(GRAPHQL_MODULE_ID).toBe("GqlModuleId");
     expect(GRAPHQL_SDL_FILE_END).toBe("\n");
-    expect(GRAPHQL_SDL_FILE_HEADER).toContain("THIS FILE WAS AUTOMATICALLY GENERATED");
+    expect(GRAPHQL_SDL_FILE_HEADER).toContain(
+      "THIS FILE WAS AUTOMATICALLY GENERATED",
+    );
     expect(HIDE_FIELD_METADATA).toBe("graphql:hide_field");
     expect(PARAM_ARGS_METADATA).toBe("__routeArguments__");
     expect(RESOLVER_DELEGATE_METADATA).toBe("graphql:delegate_property");
@@ -144,8 +149,12 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     const sampleDate = new Date("2026-05-01T12:30:00.000Z");
 
     expect(GraphQLISODateTime.name).toBe("DateTime");
-    expect(GraphQLISODateTime.serialize(sampleDate)).toBe("2026-05-01T12:30:00.000Z");
-    expect(GraphQLISODateTime.parseValue("2026-05-01T12:30:00.000Z")).toEqual(sampleDate);
+    expect(GraphQLISODateTime.serialize(sampleDate)).toBe(
+      "2026-05-01T12:30:00.000Z",
+    );
+    expect(GraphQLISODateTime.parseValue("2026-05-01T12:30:00.000Z")).toEqual(
+      sampleDate,
+    );
     expect(
       GraphQLISODateTime.parseLiteral({
         kind: Kind.STRING,
@@ -160,7 +169,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
 
     expect(GraphQLTimestamp.name).toBe("Timestamp");
     expect(GraphQLTimestamp.serialize(sampleDate)).toBe(sampleDate.getTime());
-    expect(GraphQLTimestamp.parseValue(sampleDate.getTime())).toEqual(sampleDate);
+    expect(GraphQLTimestamp.parseValue(sampleDate.getTime())).toEqual(
+      sampleDate,
+    );
     expect(
       GraphQLTimestamp.parseLiteral({
         kind: Kind.INT,
@@ -196,7 +207,10 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       return typeof val === "string" ? val.trim() : val;
     };
 
-    @ObjectType({ description: "Inherited base description", inheritDescription: true })
+    @ObjectType({
+      description: "Inherited base description",
+      inheritDescription: true,
+    })
     class BaseDoc {
       @Field(() => ID)
       id!: string;
@@ -317,7 +331,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
         const gqlCtx = GqlExecutionContext.create(ctx);
         expect(gqlCtx.getArgByIndex(3)).toBe(gqlCtx.getInfo());
         expect(gqlCtx.switchToHttp().getRequest()).toBeDefined();
-        expect(gqlCtx.switchToWs().getPattern()).toBe(gqlCtx.getInfo().fieldName);
+        expect(gqlCtx.switchToWs().getPattern()).toBe(
+          gqlCtx.getInfo().fieldName,
+        );
         expect(gqlCtx.switchToRpc().getData()).toBe(gqlCtx.getArgs());
         gqlCtx.setType("custom-gql");
         expect(gqlCtx.getType<string>()).toBe("custom-gql");
@@ -418,7 +434,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     })
     class UseClassAppModule {}
 
-    const app1 = await BunestFactory.create(UseClassAppModule, { logger: false });
+    const app1 = await BunestFactory.create(UseClassAppModule, {
+      logger: false,
+    });
     cleanups.push(() => app1.close());
     await app1.init();
 
@@ -511,8 +529,12 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
   });
 
   test("transformSchema utility & GraphQLModuleOptions.transformSchema / transformAutoSchemaFile / include allowlist / CustomScalar(specifiedByURL, extensions)", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "bunest-gql-parity-"));
-    cleanups.push(() => rmSync(tmpDir, { recursive: true, force: true }));
+    const tmpDir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-gql-parity-${crypto.randomUUID()}`,
+    );
+    await ensureDir(tmpDir);
+    cleanups.push(() => removePath(tmpDir, { recursive: true, force: true }));
     const autoSchemaPath = join(tmpDir, "schema.gql");
 
     @Scalar("EmailScalar")
@@ -584,7 +606,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     })
     class TransformAppModule {}
 
-    const app = await BunestFactory.create(TransformAppModule, { logger: false });
+    const app = await BunestFactory.create(TransformAppModule, {
+      logger: false,
+    });
     cleanups.push(() => app.close());
     await app.init();
 
@@ -596,7 +620,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     );
     expect(emailType?.extensions).toEqual({ category: "contact" });
 
-    const writtenSdl = readFileSync(autoSchemaPath, "utf8");
+    const writtenSdl = await Bun.file(autoSchemaPath).text();
     expect(writtenSdl).toContain("kept: String!");
     expect(writtenSdl).toContain("injected: String");
     expect(writtenSdl).not.toContain("excluded");
@@ -627,7 +651,12 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       email!: string;
     }
 
-    addFieldMetadata(() => String, { description: "Added dynamically" }, StoredUser.prototype, "nickname");
+    addFieldMetadata(
+      () => String,
+      { description: "Added dynamically" },
+      StoredUser.prototype,
+      "nickname",
+    );
 
     @ObjectType({ registerIn: FeatureModB })
     class OtherModel {
@@ -642,9 +671,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     });
     expect(StoredUnion.name).toBe("StoredUnion");
 
-    expect(TypeMetadataStorage.getObjectTypeMetadataByTarget(StoredUser)?.name).toBe(
-      "StoredUser",
-    );
+    expect(
+      TypeMetadataStorage.getObjectTypeMetadataByTarget(StoredUser)?.name,
+    ).toBe("StoredUser");
     expect(
       TypeMetadataStorage.getObjectTypesMetadataByModules([FeatureModA]).some(
         (m) => m.target === StoredUser,
@@ -661,7 +690,8 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       ),
     ).toBe(true);
 
-    const { fields, decoratorFactory } = getFieldsAndDecoratorForType(StoredUser);
+    const { fields, decoratorFactory } =
+      getFieldsAndDecoratorForType(StoredUser);
     expect(decoratorFactory).toBe(ObjectType);
     expect(fields.map((f) => f.name)).toEqual(["id", "email", "nickname"]);
 
@@ -676,10 +706,18 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     const OmittedUser = OmitType(StoredUser, ["email"], ObjectType);
     const MergedType = IntersectionType(PickedUser, OmittedUser, ObjectType);
 
-    expect(getFieldsAndDecoratorForType(UpdateUserInput).decoratorFactory).toBe(InputType);
-    expect(getFieldsAndDecoratorForType(PickedUser).fields.map((f) => f.name)).toEqual(["id"]);
-    expect(getFieldsAndDecoratorForType(OmittedUser).fields.map((f) => f.name)).not.toContain("email");
-    expect(getFieldsAndDecoratorForType(MergedType).fields.length).toBeGreaterThanOrEqual(2);
+    expect(getFieldsAndDecoratorForType(UpdateUserInput).decoratorFactory).toBe(
+      InputType,
+    );
+    expect(
+      getFieldsAndDecoratorForType(PickedUser).fields.map((f) => f.name),
+    ).toEqual(["id"]);
+    expect(
+      getFieldsAndDecoratorForType(OmittedUser).fields.map((f) => f.name),
+    ).not.toContain("email");
+    expect(
+      getFieldsAndDecoratorForType(MergedType).fields.length,
+    ).toBeGreaterThanOrEqual(2);
 
     // extend() helper
     expect(extend("type A { id: ID }", "type B { name: String }")).toEqual([
@@ -691,15 +729,19 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
   });
 
   test("GraphQLTypesLoader, GraphQLAstExplorer, GraphQLDefinitionsFactory, GraphQLFederationDefinitionsFactory, FileSystemHelper, GraphQLFactory, GraphQLFederationFactory, GraphQLSchemaBuilderModule, AbstractGraphQLDriver, BaseExplorerService, and GqlSubscriptionService", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "bunest-gql-codegen-"));
-    cleanups.push(() => rmSync(tmpDir, { recursive: true, force: true }));
+    const tmpDir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-gql-codegen-${crypto.randomUUID()}`,
+    );
+    await ensureDir(tmpDir);
+    cleanups.push(() => removePath(tmpDir, { recursive: true, force: true }));
 
     const sdlFile = join(tmpDir, "users.graphql");
     const outInterfaceFile = join(tmpDir, "generated", "graphql.interfaces.ts");
     const outClassFile = join(tmpDir, "generated", "graphql.classes.ts");
     const outFedFile = join(tmpDir, "generated", "federation.ts");
 
-    writeFileSync(
+    await Bun.write(
       sdlFile,
       `
       scalar DateTime
@@ -717,12 +759,13 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
         user(id: ID!): User
       }
       `,
-      "utf8",
     );
 
     // 1. GraphQLTypesLoader with glob
     const loader = new GraphQLTypesLoader();
-    const mergedSdl = await loader.mergeTypesByPaths([join(tmpDir, "*.graphql")]);
+    const mergedSdl = await loader.mergeTypesByPaths([
+      join(tmpDir, "*.graphql"),
+    ]);
     expect(mergedSdl).toContain("type User implements Node");
 
     // 2. GraphQLDefinitionsFactory (interface & class modes)
@@ -736,7 +779,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       enumsAsTypes: true,
       customScalarTypeMapping: { DateTime: "Date" },
     });
-    const ifaceCode = readFileSync(outInterfaceFile, "utf8");
+    const ifaceCode = await Bun.file(outInterfaceFile).text();
     expect(ifaceCode).toContain("export type DateTime = Date;");
     expect(ifaceCode).toContain("export type Role = 'ADMIN' | 'USER';");
     expect(ifaceCode).toContain("export interface User extends Node");
@@ -749,7 +792,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       path: outClassFile,
       outputAs: "class",
     });
-    const classCode = readFileSync(outClassFile, "utf8");
+    const classCode = await Bun.file(outClassFile).text();
     expect(classCode).toContain("export enum Role");
     expect(classCode).toContain("export class User implements Node");
     expect(classCode).toContain("export abstract class IQuery");
@@ -766,7 +809,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       path: outFedFile,
       outputAs: "interface",
     });
-    const fedCode = readFileSync(outFedFile, "utf8");
+    const fedCode = await Bun.file(outFedFile).text();
     expect(fedCode).toContain("export interface Product");
     expect(fedCode).not.toContain("_Service");
     expect(fedCode).not.toContain("_Any");
@@ -784,7 +827,9 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     const schemaFromFactory = await gqlFactory.generateSchema({
       typePaths: [join(tmpDir, "*.graphql")],
     });
-    expect(printSchema(schemaFromFactory)).toContain("type User implements Node");
+    expect(printSchema(schemaFromFactory)).toContain(
+      "type User implements Node",
+    );
 
     @Directive('@key(fields: "id")')
     @ObjectType()

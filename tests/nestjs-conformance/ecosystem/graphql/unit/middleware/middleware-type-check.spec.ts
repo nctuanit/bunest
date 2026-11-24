@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
-import type { GraphQLResolveInfo } from "../../../../../../packages/graphql/node_modules/graphql";
+import type { GraphQLResolveInfo } from "../../../../../../packages/graphql/src";
 import type {
   MiddlewareContext,
   NextFn,

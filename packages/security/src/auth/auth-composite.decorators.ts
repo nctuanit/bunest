@@ -3,12 +3,8 @@ import {
   applyDecorators,
   type ComposedDecorator,
   type GuardLike,
-} from "@bunest/common";
-import {
-  CheckPolicies,
-  Roles,
-  type PolicyHandler,
-} from "./auth.decorators";
+} from "@bunest/core";
+import { CheckPolicies, Roles, type PolicyHandler } from "./auth.decorators";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { PoliciesGuard } from "./policies.guard";
 import { RolesGuard } from "./roles.guard";

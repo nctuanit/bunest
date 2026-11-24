@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   type CanActivate,
@@ -7,7 +6,7 @@ import {
   Injectable,
   Module,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -146,7 +145,9 @@ describeConformance(
                   if (!authorization) {
                     const extraSocket = (
                       context.extra as {
-                        socket?: { close: (code: number, reason: string) => void };
+                        socket?: {
+                          close: (code: number, reason: string) => void;
+                        };
                       }
                     ).socket;
                     if (extraSocket) {

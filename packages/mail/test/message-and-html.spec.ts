@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Readable } from "node:stream";
+import { ensureDir, join, removePath } from "@bunest/core";
 import {
   html,
   InMemoryMailTransport,
@@ -32,11 +29,11 @@ async function createMailer(defaults: Record<string, unknown> = {}) {
 
 describe("html tagged template & unsafeHtml", () => {
   it("auto-escapes interpolated values and preserves nested SafeHtml", () => {
-    const user = '<script>alert("xss")</script> & \'quotes\'';
+    const user = "<script>alert(\"xss\")</script> & 'quotes'";
     const items = ["A & B", "<b>bold</b>"];
     const rendered = html`<p>Hi ${user}</p><ul>${items.map((item) => html`<li>${item}</li>`)}</ul>${false}${null}${undefined}${unsafeHtml("<em>ok</em>")}`;
     expect(rendered.value).toBe(
-      "<p>Hi &lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; &#39;quotes&#39;</p>" +
+      "<p>Hi &lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; &#x27;quotes&#x27;</p>" +
         "<ul><li>A &amp; B</li><li>&lt;b&gt;bold&lt;/b&gt;</li></ul><em>ok</em>",
     );
     expect(String(rendered)).toBe(rendered.value);
@@ -46,7 +43,9 @@ describe("html tagged template & unsafeHtml", () => {
   it("allows quoted attributes and rejects unquoted or raw tag interpolations", () => {
     const url = "https://example.com/?a=1&b=2";
     const ok = html`<a href="${url}">Link</a>`;
-    expect(ok.value).toBe('<a href="https://example.com/?a=1&amp;b=2">Link</a>');
+    expect(ok.value).toBe(
+      '<a href="https://example.com/?a=1&amp;b=2">Link</a>',
+    );
 
     expect(() => html`<a href=${url}>Link</a>`).toThrow(TypeError);
     expect(() => html`<a ${"onclick=evil()"}>Link</a>`).toThrow(TypeError);
@@ -80,19 +79,32 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
     });
 
     const msg1 = await mailer.render({
-      to: ["Ada Lovelace <ada@münchen.de>", { name: "Bob, Jr.", address: "bob@example.com" }],
+      to: [
+        "Ada Lovelace <ada@münchen.de>",
+        { name: "Bob, Jr.", address: "bob@example.com" },
+      ],
       cc: "ADA@xn--mnchen-3ya.de",
       bcc: "secret@example.com",
       subject: "Hello Café — Order #42",
-      html: html`<h1>Order #42</h1><p>Track <a href="https://shop.example.com/o/42?a=1&b=2">here</a>.</p>`,
+      html: html`<h1>Order #42</h1>
+        <p>Track <a href="https://shop.example.com/o/42?a=1&b=2">here</a>.</p>`,
       headers: { "x-override": "custom" },
       locale: "en-US",
     });
 
     expect(Object.isFrozen(msg1)).toBe(true);
-    expect(msg1.from).toEqual({ name: "Orders", address: "orders@example.com" });
-    expect(msg1.to[0]).toEqual({ name: "Ada Lovelace", address: "ada@xn--mnchen-3ya.de" });
-    expect(msg1.to[1]).toEqual({ name: "Bob, Jr.", address: "bob@example.com" });
+    expect(msg1.from).toEqual({
+      name: "Orders",
+      address: "orders@example.com",
+    });
+    expect(msg1.to[0]).toEqual({
+      name: "Ada Lovelace",
+      address: "ada@xn--mnchen-3ya.de",
+    });
+    expect(msg1.to[1]).toEqual({
+      name: "Bob, Jr.",
+      address: "bob@example.com",
+    });
     expect(msg1.envelope).toEqual({
       from: "orders@example.com",
       to: ["ada@xn--mnchen-3ya.de", "bob@example.com", "secret@example.com"],
@@ -105,7 +117,9 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
     const mime = msg1.toMime().toString("utf8");
     expect(mime).toContain("From: Orders <orders@example.com>\r\n");
     expect(mime).toContain("Reply-To: Support <support@example.com>\r\n");
-    expect(mime).toContain('To: Ada Lovelace <ada@xn--mnchen-3ya.de>, "Bob, Jr." <bob@example.com>');
+    expect(mime).toContain(
+      'To: Ada Lovelace <ada@xn--mnchen-3ya.de>, "Bob, Jr." <bob@example.com>',
+    );
     expect(mime).not.toContain("secret@example.com");
     expect(mime).toContain("MIME-Version: 1.0\r\n");
     expect(mime).toContain("multipart/alternative");
@@ -147,12 +161,19 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
   });
 
   it("builds multipart/mixed + multipart/alternative + multipart/related with inline and regular attachments from strings, streams, and files", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "bunest-mail-att-"));
+    const dir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-mail-att-${crypto.randomUUID()}`,
+    );
+    await ensureDir(dir);
     try {
       const filePath = join(dir, "report.pdf");
-      await writeFile(filePath, Buffer.from("%PDF-1.7 sample"));
+      await Bun.write(filePath, Buffer.from("%PDF-1.7 sample"));
 
-      const nodeStream = Readable.from([Buffer.from("csv,"), Buffer.from("data")]);
+      const asyncStream = (async function* () {
+        yield Buffer.from("csv,");
+        yield Buffer.from("data");
+      })();
       const webStream = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode("web-bytes"));
@@ -173,8 +194,12 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
             contentType: "image/png",
           },
           { path: filePath },
-          { filename: "data.csv", content: nodeStream },
-          { filename: "ümlaut-long-file-name-for-rfc2231-encoding-verification.txt", content: webStream },
+          { filename: "data.csv", content: asyncStream },
+          {
+            filename:
+              "ümlaut-long-file-name-for-rfc2231-encoding-verification.txt",
+            content: webStream,
+          },
         ],
       });
 
@@ -198,7 +223,7 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
 
       await mod.close();
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      await removePath(dir, { recursive: true, force: true });
     }
   });
 
@@ -206,7 +231,11 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
     const { mod, mailer } = await createMailer();
 
     await expect(
-      mailer.render({ to: "a@b.com", subject: "Line\r\nBcc: evil@x.com", text: "hi" }),
+      mailer.render({
+        to: "a@b.com",
+        subject: "Line\r\nBcc: evil@x.com",
+        text: "hi",
+      }),
     ).rejects.toThrow(MailMessageError);
 
     await expect(
@@ -214,15 +243,29 @@ describe("MailMessage validation, normalization & RFC 5322 / MIME", () => {
     ).rejects.toThrow(MailMessageError);
 
     await expect(
-      mailer.render({ to: "Doe, Jane <jane@example.com>", subject: "hi", text: "hi" }),
+      mailer.render({
+        to: "Doe, Jane <jane@example.com>",
+        subject: "hi",
+        text: "hi",
+      }),
     ).rejects.toThrow(MailMessageError);
 
     await expect(
-      mailer.render({ to: "a@b.com", subject: "hi", text: "hi", headers: { From: "spoof@x.com" } }),
+      mailer.render({
+        to: "a@b.com",
+        subject: "hi",
+        text: "hi",
+        headers: { From: "spoof@x.com" },
+      }),
     ).rejects.toThrow(MailMessageError);
 
     await expect(
-      mailer.render({ to: "a@b.com", subject: "hi", text: "hi", headers: { "X-Tag": "1", "x-tag": "2" } }),
+      mailer.render({
+        to: "a@b.com",
+        subject: "hi",
+        text: "hi",
+        headers: { "X-Tag": "1", "x-tag": "2" },
+      }),
     ).rejects.toThrow(MailMessageError);
 
     await expect(

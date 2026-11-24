@@ -1,10 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import {
-  Controller,
-  Get,
-  Module,
-} from "../../../../../packages/common/src";
+import { Controller, Get, Module } from "../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../packages/core/src";
 import {
   ApiProperty,
@@ -197,7 +192,9 @@ describeConformance(
       it("rejects malformed versions and keeps the default", () => {
         const defaultVersion = new DocumentBuilder().build().openapi;
 
-        const builder = new DocumentBuilder().setOpenAPIVersion("not-a-version");
+        const builder = new DocumentBuilder().setOpenAPIVersion(
+          "not-a-version",
+        );
         expect(builder.build().openapi).toBe(defaultVersion);
 
         const builder2 = new DocumentBuilder().setOpenAPIVersion("3.0");

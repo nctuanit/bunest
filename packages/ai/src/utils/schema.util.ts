@@ -1,8 +1,8 @@
-import type { AiSchema } from '../interfaces/ai-schema.interface';
-import { AiConfigurationError } from '../errors/ai.errors';
+import type { AiSchema } from "../interfaces/ai-schema.interface";
+import { AiConfigurationError } from "../errors/ai.errors";
 
 /** JSON Schema drafts, in order of preference. */
-const TARGETS = ['draft-07', 'draft-2020-12'] as const;
+const TARGETS = ["draft-07", "draft-2020-12"] as const;
 
 export interface ModelSchemaValidationSuccess<T = unknown> {
   success: true;
@@ -15,12 +15,13 @@ export interface ModelSchemaValidationFailure {
 }
 
 export type ModelSchemaValidationResult<T = unknown> =
-  | ModelSchemaValidationSuccess<T>
-  | ModelSchemaValidationFailure;
+  ModelSchemaValidationSuccess<T> | ModelSchemaValidationFailure;
 
 export interface ModelSchema<T = unknown> {
   readonly jsonSchema: Record<string, unknown>;
-  readonly validate?: (value: unknown) => Promise<ModelSchemaValidationResult<T>>;
+  readonly validate?: (
+    value: unknown,
+  ) => Promise<ModelSchemaValidationResult<T>>;
 }
 
 const converted = new WeakMap<AiSchema, ModelSchema<any>>();
@@ -28,7 +29,7 @@ const converted = new WeakMap<AiSchema, ModelSchema<any>>();
 /** The schema of a tool without arguments. */
 export const EMPTY_OBJECT_SCHEMA: ModelSchema<Record<string, never>> = {
   jsonSchema: {
-    type: 'object',
+    type: "object",
     properties: {},
     additionalProperties: false,
   },
@@ -42,10 +43,14 @@ export function toModelSchema<T = unknown>(
   where: string,
   { object = false }: { object?: boolean } = {},
 ): ModelSchema<T> {
-  if (schema && typeof schema === 'object') {
+  if (schema && typeof schema === "object") {
     const cached = converted.get(schema);
     if (cached) {
-      if (object && cached.jsonSchema.type !== undefined && cached.jsonSchema.type !== 'object') {
+      if (
+        object &&
+        cached.jsonSchema.type !== undefined &&
+        cached.jsonSchema.type !== "object"
+      ) {
         throw new AiConfigurationError(
           `${where}: arguments are an object, and this schema describes ${JSON.stringify(cached.jsonSchema.type)}. Wrap it in an object schema.`,
         );
@@ -54,14 +59,14 @@ export function toModelSchema<T = unknown>(
     }
   }
 
-  const standard = schema?.['~standard'];
-  if (!standard || typeof standard.validate !== 'function') {
+  const standard = schema?.["~standard"];
+  if (!standard || typeof standard.validate !== "function") {
     throw new AiConfigurationError(
       `${where}: not a Standard Schema. Pass a Zod 4.2+ schema, an ArkType type, a Valibot schema wrapped with toStandardJsonSchema(), or any Standard Schema v1 with ~standard.jsonSchema.`,
     );
   }
 
-  if (typeof standard.jsonSchema?.input !== 'function') {
+  if (typeof standard.jsonSchema?.input !== "function") {
     throw new AiConfigurationError(
       `${where}: the "${standard.vendor}" schema cannot produce JSON Schema (no ~standard.jsonSchema), which the model needs.`,
     );
@@ -84,7 +89,7 @@ export function toModelSchema<T = unknown>(
     );
   }
 
-  if (object && root.type !== undefined && root.type !== 'object') {
+  if (object && root.type !== undefined && root.type !== "object") {
     throw new AiConfigurationError(
       `${where}: arguments are an object, and this schema describes ${JSON.stringify(root.type)}. Wrap it in an object schema.`,
     );
@@ -94,7 +99,7 @@ export function toModelSchema<T = unknown>(
     jsonSchema: root,
     async validate(value: unknown): Promise<ModelSchemaValidationResult<T>> {
       const outcome = await standard.validate(value);
-      if ('issues' in outcome && outcome.issues) {
+      if ("issues" in outcome && outcome.issues) {
         return {
           success: false,
           error: new TypeError(formatIssues(outcome.issues)),
@@ -115,7 +120,8 @@ export function toModelSchema<T = unknown>(
 export function formatIssues(
   issues: ReadonlyArray<{
     readonly message: string;
-    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined;
+    readonly path?:
+      ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined;
   }>,
 ): string {
   return issues
@@ -123,13 +129,13 @@ export function formatIssues(
       const path = (issue.path ?? [])
         .map((segment) =>
           String(
-            typeof segment === 'object' && segment !== null && 'key' in segment
+            typeof segment === "object" && segment !== null && "key" in segment
               ? segment.key
               : segment,
           ),
         )
-        .join('.');
+        .join(".");
       return path ? `${path}: ${issue.message}` : issue.message;
     })
-    .join('\n');
+    .join("\n");
 }

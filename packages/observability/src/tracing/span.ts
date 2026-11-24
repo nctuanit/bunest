@@ -1,6 +1,7 @@
 import type { SpanContext } from "./trace-context";
 
-export type SpanKind = "INTERNAL" | "SERVER" | "CLIENT" | "PRODUCER" | "CONSUMER";
+export type SpanKind =
+  "INTERNAL" | "SERVER" | "CLIENT" | "PRODUCER" | "CONSUMER";
 export type SpanStatusCode = "UNSET" | "OK" | "ERROR";
 
 export type SpanAttributeValue =

@@ -15,12 +15,15 @@ import {
   type ExceptionFilterLike,
   type ExecutionContext,
   type GuardLike,
+  type HttpArgumentsHost,
   type InterceptorLike,
   type ParamData,
   type PipeLike,
   type PipeTransform,
+  type RpcArgumentsHost,
   type Type,
-} from "@bunest/common";
+  type WsArgumentsHost,
+} from "../common/index";
 import type { ModulesContainer } from "../di/modules-container";
 import type { ContextId } from "../interfaces/core-types.interface";
 
@@ -40,7 +43,10 @@ export interface ExternalContextOptions {
   callback?: (result: unknown, ...args: unknown[]) => unknown;
 }
 
-export interface ParamProperties<T = any, IExtractor extends Function = any> {
+export interface ParamProperties<
+  T = unknown,
+  IExtractor extends (...args: unknown[]) => unknown = (...args: unknown[]) => unknown,
+> {
   index: number;
   type: T | string;
   data: ParamData;
@@ -51,13 +57,13 @@ export interface ParamProperties<T = any, IExtractor extends Function = any> {
 
 export interface ExternalHandlerMetadata {
   argsLength: number;
-  paramtypes: any[];
+  paramtypes: unknown[];
   getParamsMetadata: (
     moduleKey: string,
     contextId?: ContextId,
     inquirerId?: string,
-  ) => (ParamProperties & { metatype?: any })[];
-  fnHandleResponse?: (...args: any[]) => any;
+  ) => (ParamProperties & { metatype?: unknown })[];
+  fnHandleResponse?: (...args: any[]) => unknown;
 }
 
 /**
@@ -72,55 +78,52 @@ export interface ExternalContextContainerLike {
     request: T,
     contextId: ContextId,
   ): void;
-  registerRequestProvider?<T = unknown>(
-    request: T,
-    contextId: ContextId,
-  ): void;
+  registerRequestProvider?<T = unknown>(request: T, contextId: ContextId): void;
 }
 
 class GenericExternalExecutionContext implements ExecutionContext {
   constructor(
     private readonly args: unknown[],
-    private readonly constructorRef: Type<any>,
+    private readonly constructorRef: Type<unknown>,
     private readonly handler: Function,
     private readonly contextType: string,
   ) {}
 
-  getClass<T = any>(): Type<T> {
-    return this.constructorRef;
+  getClass<T = unknown>(): Type<T> {
+    return this.constructorRef as Type<T>;
   }
 
   getHandler(): Function {
     return this.handler;
   }
 
-  getArgs<T extends Array<any> = any[]>(): T {
+  getArgs<T extends Array<unknown> = unknown[]>(): T {
     return this.args as T;
   }
 
-  getArgByIndex<T = any>(index: number): T {
+  getArgByIndex<T = unknown>(index: number): T {
     return this.args[index] as T;
   }
 
-  switchToHttp(): any {
+  switchToHttp(): HttpArgumentsHost {
     return {
-      getRequest: () => this.args[0],
-      getResponse: () => this.args[1],
-      getNext: () => this.args[2],
+      getRequest: <T = unknown>() => this.args[0] as T,
+      getResponse: <T = unknown>() => this.args[1] as T,
+      getNext: <T = unknown>() => this.args[2] as T,
     };
   }
 
-  switchToRpc(): any {
+  switchToRpc(): RpcArgumentsHost {
     return {
-      getData: () => this.args[0],
-      getContext: () => this.args[1],
+      getData: <T = unknown>() => this.args[0] as T,
+      getContext: <T = unknown>() => this.args[1] as T,
     };
   }
 
-  switchToWs(): any {
+  switchToWs(): WsArgumentsHost {
     return {
-      getClient: () => this.args[0],
-      getData: () => this.args[1],
+      getClient: <T = unknown>() => this.args[0] as T,
+      getData: <T = unknown>() => this.args[1] as T,
       getPattern: () => String(this.args[2] ?? ""),
     };
   }
@@ -138,9 +141,7 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function isSubscribableLike(
-  value: unknown,
-): value is {
+function isSubscribableLike(value: unknown): value is {
   subscribe: (observer: {
     next?: (v: unknown) => void;
     error?: (e: unknown) => void;
@@ -214,7 +215,7 @@ export class ExternalContextCreator {
     return "";
   }
 
-  registerRequestProvider<T = any>(request: T, contextId: ContextId): void {
+  registerRequestProvider<T = unknown>(request: T, contextId: ContextId): void {
     if (this.container?.registerRequestByContextId) {
       this.container.registerRequestByContextId(request, contextId);
     } else if (this.container?.registerRequestProvider) {
@@ -222,7 +223,7 @@ export class ExternalContextCreator {
     }
   }
 
-  async transformToResult(resultOrDeferred: any): Promise<any> {
+  async transformToResult(resultOrDeferred: unknown): Promise<unknown> {
     if (isThenable(resultOrDeferred)) {
       return await resultOrDeferred;
     }
@@ -247,7 +248,7 @@ export class ExternalContextCreator {
     value: T,
     metadata: ArgumentMetadata,
     pipes: ReadonlyArray<PipeTransform | Type<PipeTransform>>,
-  ): Promise<any> {
+  ): Promise<unknown> {
     let current: unknown = value;
     for (let i = 0; i < pipes.length; i++) {
       const rawPipe = pipes[i];
@@ -262,7 +263,9 @@ export class ExternalContextCreator {
     return current;
   }
 
-  exchangeKeysForValues<TMetadata extends Record<string, any> = Record<string, any>>(
+  exchangeKeysForValues<
+    TMetadata extends Record<string, unknown> = Record<string, unknown>,
+  >(
     keys: string[],
     metadata: TMetadata,
     _moduleContext: string,
@@ -272,20 +275,27 @@ export class ExternalContextCreator {
     contextFactory: (args: unknown[]) => ExecutionContext = (args) =>
       new GenericExternalExecutionContext(
         args,
-        Object as unknown as Type<any>,
+        Object as unknown as Type<unknown>,
         () => undefined,
         "http",
       ),
   ): ParamProperties[] {
     return keys.map((key) => {
-      const entry = metadata[key] ?? {};
+      const entry = (metadata[key] ?? {}) as {
+        type?: number | string;
+        source?: number | string;
+        data?: ParamData;
+        pipes?: PipeLike[];
+        factory?: (data: ParamData, ctx: ExecutionContext) => unknown;
+        index?: number;
+      };
       const rawType =
         entry.type !== undefined
           ? entry.type
           : entry.source !== undefined
             ? entry.source
             : (key.split(":")[0] ?? key);
-      let resolvedType: any = rawType;
+      let resolvedType: number | string = rawType;
       if (typeof rawType === "string") {
         const numericType = Number(rawType);
         resolvedType =
@@ -326,7 +336,7 @@ export class ExternalContextCreator {
   }
 
   getMetadata<
-    TMetadata extends Record<string, any> = Record<string, any>,
+    TMetadata extends Record<string, unknown> = Record<string, unknown>,
     TContext extends string = ContextType,
   >(
     instance: object,
@@ -335,11 +345,11 @@ export class ExternalContextCreator {
     paramsFactory?: ParamsFactory,
     contextType: TContext = "http" as TContext,
   ): ExternalHandlerMetadata {
-    const ctor = instance.constructor as Type<any>;
+    const ctor = instance.constructor as Type<unknown>;
     const proto = Object.getPrototypeOf(instance) as object | null;
-    const paramtypes: any[] =
+    const paramtypes: unknown[] =
       (proto
-        ? MetadataRegistry.get<any[]>(
+        ? MetadataRegistry.get<unknown[]>(
             DESIGN_METADATA_KEYS.PARAMTYPES,
             proto,
             methodName,
@@ -347,10 +357,10 @@ export class ExternalContextCreator {
         : undefined) ?? [];
 
     const rawMetadata = metadataKey
-      ? (proto
+      ? ((proto
           ? MetadataRegistry.get<TMetadata>(metadataKey, proto, methodName)
           : undefined) ??
-        MetadataRegistry.get<TMetadata>(metadataKey, ctor, methodName)
+        MetadataRegistry.get<TMetadata>(metadataKey, ctor, methodName))
       : undefined;
 
     const keys = rawMetadata ? Object.keys(rawMetadata) : [];
@@ -400,16 +410,16 @@ export class ExternalContextCreator {
   }
 
   createGuardsFn<TContext extends string = ContextType>(
-    guards: any[],
+    guards: readonly GuardLike[],
     instance: object,
-    callback: (...args: any[]) => any,
+    callback: (...args: any[]) => unknown,
     contextType: TContext = "http" as TContext,
-  ): ((args: any[]) => Promise<void>) | null {
+  ): ((args: unknown[]) => Promise<void>) | null {
     if (!guards || guards.length === 0) {
       return null;
     }
-    const ctor = instance.constructor as Type<any>;
-    return async (args: any[]) => {
+    const ctor = instance.constructor as Type<unknown>;
+    return async (args: unknown[]) => {
       const ctx = new GenericExternalExecutionContext(
         args,
         ctor,
@@ -417,7 +427,7 @@ export class ExternalContextCreator {
         contextType,
       );
       for (let i = 0; i < guards.length; i++) {
-        const guard = await this.resolve<CanActivate>(guards[i]);
+        const guard = await this.resolve<CanActivate>(guards[i]!);
         const allowed = await guard.canActivate(ctx);
         if (!allowed) {
           throw new ForbiddenException("Forbidden resource");
@@ -441,7 +451,7 @@ export class ExternalContextCreator {
         const combinedPipes = [...pipes, ...(param.pipes ?? [])];
         const metadata: ArgumentMetadata = {
           type: "custom",
-          metatype: param.metatype as Type<any> | Function | undefined,
+          metatype: param.metatype as Type<unknown> | Function | undefined,
           data: typeof param.data === "string" ? param.data : undefined,
         };
         args[param.index] = await this.getParamValue(
@@ -454,7 +464,7 @@ export class ExternalContextCreator {
   }
 
   create<
-    TParamsMetadata extends Record<string, any> = Record<string, any>,
+    TParamsMetadata extends Record<string, unknown> = Record<string, unknown>,
     TContext extends string = ContextType,
   >(
     instance: object,
@@ -472,7 +482,7 @@ export class ExternalContextCreator {
     },
     contextType: TContext = "http" as TContext,
   ): (...args: unknown[]) => Promise<unknown> {
-    const ctor = instance.constructor as Type<any>;
+    const ctor = instance.constructor as Type<unknown>;
     const guardSpecs =
       options.guards !== false
         ? [
@@ -586,7 +596,10 @@ export class ExternalContextCreator {
                 finalArgs[i],
                 {
                   type: "custom",
-                  metatype: handlerMetadata?.paramtypes[i],
+                  metatype: handlerMetadata?.paramtypes[i] as
+                    | Function
+                    | Type<unknown>
+                    | undefined,
                 },
                 pipes,
               );
@@ -611,8 +624,7 @@ export class ExternalContextCreator {
           const ic = interceptors[i]!;
           const currNext = nextHandler;
           nextHandler = {
-            handle: () =>
-              this.transformToResult(ic.intercept(ctx, currNext)),
+            handle: () => this.transformToResult(ic.intercept(ctx, currNext)),
           };
         }
         return await nextHandler.handle();
@@ -623,7 +635,7 @@ export class ExternalContextCreator {
             typeof spec === "function" ? spec : (filter as object).constructor;
           const catchTypes =
             (typeof ctorRef === "function"
-              ? MetadataRegistry.get<readonly Type<any>[]>(
+              ? MetadataRegistry.get<readonly Type<unknown>[]>(
                   METADATA_KEYS.CATCH_EXCEPTIONS,
                   ctorRef,
                 )

@@ -1,11 +1,16 @@
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, statPath } from "@bunest/core";
+import {
+  loadCliConfiguration,
+  resolveEntryFile,
+} from "../config/configuration.loader";
+import { startTypegenWatcher, type TypegenWatcherHandle } from "../typegen";
 import type {
   CliIO,
   DevServerOptions,
   DevServerResult,
   SpawnFn,
 } from "../types";
+import { resolveTypegenConfig } from "./typegen";
 
 const defaultSpawn: SpawnFn = async (cmd, options) => {
   const proc = Bun.spawn(cmd, {
@@ -21,14 +26,14 @@ const defaultSpawn: SpawnFn = async (cmd, options) => {
 
 /**
  * Starts the Bunest development server in Bun's native watch mode
- * (`bun --watch <entry>`).
+ * (`bun --watch <entry>`) with built-in live global type generation powered by
+ * the Bunest native TypeScript AST engine (`.bunest/types/bunest.d.ts`).
  */
 export async function runDevServer(
   options: DevServerOptions = {},
   io?: CliIO,
 ): Promise<DevServerResult> {
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
-  const entry = resolve(cwd, options.entry ?? "src/main.ts");
   const port = options.port;
 
   if (
@@ -40,8 +45,15 @@ export async function runDevServer(
     );
   }
 
+  const { config } = await loadCliConfiguration(cwd, options.config);
+  const entry = options.entry
+    ? resolve(cwd, options.entry)
+    : await resolveEntryFile(cwd, config, {
+        sourceRoot: options.sourceRoot,
+      });
+
   try {
-    const info = await stat(entry);
+    const info = await statPath(entry);
     if (!info.isFile()) {
       throw new Error(`Dev entry path is not a file: ${entry}`);
     }
@@ -52,25 +64,54 @@ export async function runDevServer(
     throw new Error(`Dev entry file not found: ${entry}`);
   }
 
+  const { enabled: configTypegenEnabled, config: typegenCfg } =
+    resolveTypegenConfig(config.typegen);
+  const typegenEnabled =
+    options.typegen !== undefined ? options.typegen : configTypegenEnabled;
+
+  let watcher: TypegenWatcherHandle | undefined;
+  if (typegenEnabled) {
+    watcher = await startTypegenWatcher(
+      {
+        cwd,
+        sourceRoot: options.sourceRoot ?? config.sourceRoot ?? "src",
+        outDir: options.typegenOutDir ?? typegenCfg.outDir ?? ".bunest/types",
+        fileName: typegenCfg.fileName ?? "bunest.d.ts",
+        tsconfigPath:
+          typegenCfg.tsconfigPath ?? config.compilerOptions?.tsConfigPath,
+        envFiles: typegenCfg.envFiles,
+        include: typegenCfg.include,
+        includeGlobalNamespace: typegenCfg.includeGlobalNamespace,
+        debounceMs: typegenCfg.debounceMs,
+        silent: options.silent,
+      },
+      io,
+    );
+  }
+
   const command = ["bun", "--watch", entry];
   const env: Record<string, string | undefined> = {
-    ...process.env,
+    ...Bun.env,
     ...(port !== undefined ? { PORT: String(port) } : {}),
   };
 
-  if (io) {
+  if (io && !options.silent) {
     const portMsg = port !== undefined ? ` (PORT=${port})` : "";
     io.stdout(`Starting Bunest dev server: bun --watch ${entry}${portMsg}`);
   }
 
   const spawn = options.spawn ?? defaultSpawn;
   const spawnCmd = [process.execPath, "--watch", entry];
-  const { exitCode } = await spawn(spawnCmd, { cwd, env });
-
-  return {
-    exitCode,
-    command,
-    entry,
-    port,
-  };
+  try {
+    const { exitCode } = await spawn(spawnCmd, { cwd, env });
+    return {
+      exitCode,
+      command,
+      entry,
+      port,
+      ...(watcher ? { typegen: watcher.initialResult } : {}),
+    };
+  } finally {
+    await watcher?.close();
+  }
 }

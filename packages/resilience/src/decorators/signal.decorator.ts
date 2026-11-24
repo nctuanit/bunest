@@ -1,4 +1,4 @@
-import { createParamDecorator } from "@bunest/common";
+import { createParamDecorator } from "@bunest/core";
 import { signalOfAttempt } from "../context/attempt-scope.context";
 
 /**

@@ -1,5 +1,13 @@
-import { mkdir, rm, stat } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import {
+  basename,
+  ensureDir,
+  getPlatform,
+  join,
+  relative,
+  removePath,
+  resolve,
+  statPath,
+} from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveEntryFile,
@@ -89,7 +97,7 @@ export async function buildProject(
   }
 
   try {
-    const info = await stat(entry);
+    const info = await statPath(entry);
     if (!info.isFile()) {
       throw new Error(`Build entry path is not a file: ${entry}`);
     }
@@ -101,15 +109,15 @@ export async function buildProject(
   }
 
   if (deleteOutDir) {
-    await rm(outdir, { recursive: true, force: true });
+    await removePath(outdir, { recursive: true, force: true });
   }
 
   // Standalone single-file executable via `bun build --compile`
   if (options.compile) {
     const startMs = performance.now();
-    await mkdir(outdir, { recursive: true });
+    await ensureDir(outdir);
     const baseName = basename(entry).replace(/\.[cm]?[jt]sx?$/i, "");
-    const ext = process.platform === "win32" ? ".exe" : "";
+    const ext = getPlatform() === "win32" ? ".exe" : "";
     const outfile = join(outdir, `${baseName}${ext}`);
     const compileArgs = [
       process.execPath,
@@ -121,7 +129,7 @@ export async function buildProject(
       outfile,
     ];
     const spawn = options.spawn ?? defaultSpawn;
-    const { exitCode } = await spawn(compileArgs, { cwd, env: process.env });
+    const { exitCode } = await spawn(compileArgs, { cwd, env: Bun.env });
     const durationMs = Math.round((performance.now() - startMs) * 100) / 100;
 
     if (exitCode !== 0) {
@@ -141,7 +149,7 @@ export async function buildProject(
 
     let size = 0;
     try {
-      size = (await stat(outfile)).size;
+      size = (await statPath(outfile)).size;
     } catch {
       // May be a mocked spawn in unit tests
     }
@@ -253,7 +261,9 @@ export async function buildProject(
       `Built ${outputs.length} artifact(s) in ${durationMs.toFixed(1)}ms (target=${target}, minify=${minify}, sourcemap=${sourcemap}):`,
     );
     for (const out of outputs) {
-      io.stdout(`  ${out.relativePath}  ${formatBytes(out.size)} (${out.kind})`);
+      io.stdout(
+        `  ${out.relativePath}  ${formatBytes(out.size)} (${out.kind})`,
+      );
     }
   }
 
@@ -269,7 +279,7 @@ export async function buildProject(
         "--target",
         target,
       ],
-      { cwd, env: process.env },
+      { cwd, env: Bun.env },
     );
   }
 

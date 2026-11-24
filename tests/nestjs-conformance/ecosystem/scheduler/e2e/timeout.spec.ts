@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, jest, mock, spyOn } from "bun:test";
-import { Injectable, Logger } from "../../../../../packages/common/src";
+import { Injectable, Logger } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   ScheduleModule,
   SchedulerRegistry,
   Timeout,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance } from "../../../_helpers";
 import {
   DUPLICATE_SCHEDULER,
@@ -60,7 +59,7 @@ describeConformance(
       expect(registry.getTimeout("test")).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout<T = any>(name: string): T to accept a generic type parameter, but packages/scheduler/src/scheduler.registry.ts declares getTimeout(name: string) with 0 type parameters.
+    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout<T = any>(name: string): T to accept a generic type parameter, but packages/jobs/src/scheduler/scheduler.registry.ts declares getTimeout(name: string) with 0 type parameters.
     it.skip(`should support generic type parameter for getTimeout`, async () => {
       await app!.init();
       const registry = app!.get(SchedulerRegistry);
@@ -91,7 +90,7 @@ describeConformance(
       expect(timeout).toBeDefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout() missing-timeout error message to match NestJS NO_SCHEDULER_FOUND ("No Timeout was found with the given name (dynamic)..."), but packages/scheduler/src/scheduler.registry.ts throws 'No timeout found with name "dynamic".'.
+    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout() missing-timeout error message to match NestJS NO_SCHEDULER_FOUND ("No Timeout was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No timeout found with name "dynamic".'.
     it.skip(`should delete dynamic timeout`, async () => {
       const service = app!.get(TimeoutService);
       await app!.init();
@@ -202,7 +201,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate timeout error message to match NestJS DUPLICATE_SCHEDULER ("Timeout with the given name (<name>) already exists. Ignored."), but packages/scheduler/src/scheduler.registry.ts throws 'Timeout with name "<name>" already exists.'.
+    // BUNEST_BUG: Expected duplicate timeout error message to match NestJS DUPLICATE_SCHEDULER ("Timeout with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Timeout with name "<name>" already exists.'.
     it.skip.each(["shared", "__proto__"])(
       "should reject duplicate timeout name %s",
       async (name) => {
@@ -262,7 +261,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/common/src/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/scheduler/src/scheduler.explorer.ts uses context "SchedulerExplorer".
+    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/core/src/common/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/jobs/src/scheduler/scheduler.explorer.ts uses context "SchedulerExplorer".
     it.skip(`should log a warning when trying to register an timeout in a request scoped provider`, async () => {
       const logger = {
         log: mock(() => {}),

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   normalizePattern,
@@ -150,9 +149,9 @@ describeConformance(
 
       describe("with primitive/null values inside object patterns", () => {
         it("should preserve null, booleans, and numbers", () => {
-          expect(
-            normalizePattern({ flag: true, empty: null, count: 0 }),
-          ).toBe('{"count":0,"empty":null,"flag":true}');
+          expect(normalizePattern({ flag: true, empty: null, count: 0 })).toBe(
+            '{"count":0,"empty":null,"flag":true}',
+          );
         });
       });
     });
@@ -241,9 +240,9 @@ describeConformance(
         expect(normalizePattern({ [`${longestKey}k`]: "value" })).toBe(
           "[KEY_TOO_LONG]",
         );
-        expect(
-          normalizePattern({ cmd: { [`${longestKey}k`]: "value" } }),
-        ).toBe('{"cmd":[KEY_TOO_LONG]}');
+        expect(normalizePattern({ cmd: { [`${longestKey}k`]: "value" } })).toBe(
+          '{"cmd":[KEY_TOO_LONG]}',
+        );
       });
 
       // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max array length (20 items) limit.

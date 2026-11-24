@@ -1,5 +1,11 @@
-import "reflect-metadata";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import {
   Controller,
   Get,
@@ -7,7 +13,7 @@ import {
   RequestMethod,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestFactory,
   type BunestApplication,

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { AsyncContext } from "../../../../../packages/cqrs/src";
+import { AsyncContext } from "../../../../../packages/messaging/src/cqrs";
 import { describeConformance } from "../../../_helpers";
 
 class MyRequest extends AsyncContext {

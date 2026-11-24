@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   FileCollisionError,
   createProject,
@@ -11,6 +14,15 @@ import {
   type CliIO,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -44,7 +56,7 @@ describeConformance(
     let appPath: string;
 
     beforeEach(async () => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-gen-"));
+      tmpDir = makeTempDir("bunest-cli-conf-gen-");
       const created = await createProject({
         projectName: "gen-app",
         cwd: tmpDir,
@@ -54,14 +66,18 @@ describeConformance(
       appPath = created.targetDir;
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     const runGen = async (args: string[]) => {
       const cap = createCapturedIO(appPath);
       const res = await runCli(args, cap.io);
-      return { ...res, stdout: cap.stdout.join("\n"), stderr: cap.stderr.join("\n") };
+      return {
+        ...res,
+        stdout: cap.stdout.join("\n"),
+        stderr: cap.stderr.join("\n"),
+      };
     };
 
     describe("controller", () => {
@@ -70,26 +86,20 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "users", "users.controller.ts")),
+          existsSyncPath(join(appPath, "src", "users", "users.controller.ts")),
         ).toBe(true);
         expect(
-          existsSync(join(appPath, "src", "users", "users.controller.spec.ts")),
+          existsSyncPath(join(appPath, "src", "users", "users.controller.spec.ts")),
         ).toBe(true);
         expect(
-          readFileSync(
-            join(appPath, "src", "users", "users.controller.ts"),
-            "utf8",
-          ),
+          readTextSync(join(appPath, "src", "users", "users.controller.ts")),
         ).toContain("export class UsersController");
       });
 
       // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated controllers (packages/cli/src/commands/generate.ts)
       it.skip("should update app.module.ts to import the generated controller", async () => {
         await runGen(["generate", "controller", "users"]);
-        const appModule = readFileSync(
-          join(appPath, "src", "app.module.ts"),
-          "utf8",
-        );
+        const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("UsersController");
       });
 
@@ -102,13 +112,11 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
 
-        expect(existsSync(join(appPath, "src", "products.controller.ts"))).toBe(
+        expect(existsSyncPath(join(appPath, "src", "products.controller.ts"))).toBe(
           true,
         );
         expect(
-          existsSync(
-            join(appPath, "src", "products", "products.controller.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "products", "products.controller.ts")),
         ).toBe(false);
       });
 
@@ -122,12 +130,10 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "orders", "orders.controller.ts")),
+          existsSyncPath(join(appPath, "src", "orders", "orders.controller.ts")),
         ).toBe(true);
         expect(
-          existsSync(
-            join(appPath, "src", "orders", "orders.controller.spec.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "orders", "orders.controller.spec.ts")),
         ).toBe(false);
       });
 
@@ -140,10 +146,7 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
 
-        const appModule = readFileSync(
-          join(appPath, "src", "app.module.ts"),
-          "utf8",
-        );
+        const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).not.toContain("NoImportController");
       });
     });
@@ -153,21 +156,18 @@ describeConformance(
         const res = await runGen(["generate", "service", "auth"]);
         expect(res.exitCode).toBe(0);
 
-        expect(existsSync(join(appPath, "src", "auth", "auth.service.ts"))).toBe(
-          true,
-        );
         expect(
-          existsSync(join(appPath, "src", "auth", "auth.service.spec.ts")),
+          existsSyncPath(join(appPath, "src", "auth", "auth.service.ts")),
+        ).toBe(true);
+        expect(
+          existsSyncPath(join(appPath, "src", "auth", "auth.service.spec.ts")),
         ).toBe(true);
       });
 
       // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated services (packages/cli/src/commands/generate.ts)
       it.skip("should update app.module.ts to import the generated service", async () => {
         await runGen(["generate", "service", "auth"]);
-        const appModule = readFileSync(
-          join(appPath, "src", "app.module.ts"),
-          "utf8",
-        );
+        const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("AuthService");
       });
 
@@ -181,10 +181,10 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
 
-        expect(existsSync(join(appPath, "src", "logger.service.ts"))).toBe(
+        expect(existsSyncPath(join(appPath, "src", "logger.service.ts"))).toBe(
           true,
         );
-        expect(existsSync(join(appPath, "src", "logger.service.spec.ts"))).toBe(
+        expect(existsSyncPath(join(appPath, "src", "logger.service.spec.ts"))).toBe(
           false,
         );
       });
@@ -196,17 +196,14 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "payments", "payments.module.ts")),
+          existsSyncPath(join(appPath, "src", "payments", "payments.module.ts")),
         ).toBe(true);
       });
 
       // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to import generated modules (packages/cli/src/commands/generate.ts)
       it.skip("should update app.module.ts to import the generated module", async () => {
         await runGen(["generate", "module", "payments"]);
-        const appModule = readFileSync(
-          join(appPath, "src", "app.module.ts"),
-          "utf8",
-        );
+        const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("PaymentsModule");
       });
     });
@@ -216,11 +213,11 @@ describeConformance(
         const res = await runGen(["generate", "guard", "auth"]);
         expect(res.exitCode).toBe(0);
 
-        expect(existsSync(join(appPath, "src", "auth", "auth.guard.ts"))).toBe(
+        expect(existsSyncPath(join(appPath, "src", "auth", "auth.guard.ts"))).toBe(
           true,
         );
         expect(
-          existsSync(join(appPath, "src", "auth", "auth.guard.spec.ts")),
+          existsSyncPath(join(appPath, "src", "auth", "auth.guard.spec.ts")),
         ).toBe(true);
       });
     });
@@ -231,9 +228,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(
-            join(appPath, "src", "logging", "logging.interceptor.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "logging", "logging.interceptor.ts")),
         ).toBe(true);
       });
     });
@@ -244,9 +239,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(
-            join(appPath, "src", "validation", "validation.pipe.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "validation", "validation.pipe.ts")),
         ).toBe(true);
       });
     });
@@ -257,14 +250,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(
-            join(
-              appPath,
-              "src",
-              "http-exception",
-              "http-exception.filter.ts",
-            ),
-          ),
+          existsSyncPath(join(appPath, "src", "http-exception", "http-exception.filter.ts")),
         ).toBe(true);
       });
     });
@@ -275,7 +261,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "logger", "logger.middleware.ts")),
+          existsSyncPath(join(appPath, "src", "logger", "logger.middleware.ts")),
         ).toBe(true);
       });
     });
@@ -286,7 +272,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "events", "events.gateway.ts")),
+          existsSyncPath(join(appPath, "src", "events", "events.gateway.ts")),
         ).toBe(true);
       });
     });
@@ -297,7 +283,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "roles", "roles.decorator.ts")),
+          existsSyncPath(join(appPath, "src", "roles", "roles.decorator.ts")),
         ).toBe(true);
       });
     });
@@ -308,7 +294,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "user", "user.interface.ts")),
+          existsSyncPath(join(appPath, "src", "user", "user.interface.ts")),
         ).toBe(true);
       });
     });
@@ -319,9 +305,7 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(
-            join(appPath, "src", "dto", "create-user", "create-user.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "dto", "create-user", "create-user.ts")),
         ).toBe(true);
       });
     });
@@ -335,14 +319,14 @@ describeConformance(
           expect(res.exitCode).toBe(0);
 
           const catsDir = join(appPath, "src", "cats");
-          expect(existsSync(join(catsDir, "cats.controller.ts"))).toBe(true);
-          expect(existsSync(join(catsDir, "cats.service.ts"))).toBe(true);
-          expect(existsSync(join(catsDir, "cats.module.ts"))).toBe(true);
-          expect(existsSync(join(catsDir, "cats.spec.ts"))).toBe(true);
-          expect(existsSync(join(catsDir, "dto", "create-cats.dto.ts"))).toBe(
+          expect(existsSyncPath(join(catsDir, "cats.controller.ts"))).toBe(true);
+          expect(existsSyncPath(join(catsDir, "cats.service.ts"))).toBe(true);
+          expect(existsSyncPath(join(catsDir, "cats.module.ts"))).toBe(true);
+          expect(existsSyncPath(join(catsDir, "cats.spec.ts"))).toBe(true);
+          expect(existsSyncPath(join(catsDir, "dto", "create-cats.dto.ts"))).toBe(
             true,
           );
-          expect(existsSync(join(catsDir, "dto", "update-cats.dto.ts"))).toBe(
+          expect(existsSyncPath(join(catsDir, "dto", "update-cats.dto.ts"))).toBe(
             true,
           );
         },
@@ -352,10 +336,10 @@ describeConformance(
       it.skip("should generate singularized DTOs and entities/<name>.entity.ts for resource", async () => {
         await runGen(["generate", "resource", "cats"]);
         const catsDir = join(appPath, "src", "cats");
-        expect(existsSync(join(catsDir, "dto", "create-cat.dto.ts"))).toBe(
+        expect(existsSyncPath(join(catsDir, "dto", "create-cat.dto.ts"))).toBe(
           true,
         );
-        expect(existsSync(join(catsDir, "entities", "cat.entity.ts"))).toBe(
+        expect(existsSyncPath(join(catsDir, "entities", "cat.entity.ts"))).toBe(
           true,
         );
       });
@@ -375,7 +359,7 @@ describeConformance(
           expect(res.exitCode).toBe(0);
           expect(res.stdout).toContain("cats.controller.ts");
           expect(
-            existsSync(join(appPath, "src", "cats", "cats.controller.ts")),
+            existsSyncPath(join(appPath, "src", "cats", "cats.controller.ts")),
           ).toBe(false);
         },
       );
@@ -416,9 +400,7 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(
-            join(appPath, "src", "phantom", "phantom.controller.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "phantom", "phantom.controller.ts")),
         ).toBe(false);
         expect(res.stdout).toContain("DRY-RUN");
       });
@@ -436,12 +418,10 @@ describeConformance(
         expect(res.exitCode).toBe(0);
 
         expect(
-          existsSync(join(appPath, "src", "custom", "custom.controller.ts")),
+          existsSyncPath(join(appPath, "src", "custom", "custom.controller.ts")),
         ).toBe(true);
         expect(
-          existsSync(
-            join(appPath, "src", "custom", "custom.controller.test.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "custom", "custom.controller.test.ts")),
         ).toBe(true);
       });
     });
@@ -457,15 +437,7 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(
-            join(
-              appPath,
-              "src",
-              "modules",
-              "health",
-              "health.controller.ts",
-            ),
-          ),
+          existsSyncPath(join(appPath, "src", "modules", "health", "health.controller.ts")),
         ).toBe(true);
       });
 
@@ -479,31 +451,24 @@ describeConformance(
         ]);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(
-            join(
+          existsSyncPath(join(
               appPath,
               "src",
               "modules",
               "health",
               "health",
               "health.controller.ts",
-            ),
-          ),
+            )),
         ).toBe(true);
       });
     });
 
     describe("format flag & collision safety", () => {
       it("should accept --format and still generate the file", async () => {
-        const res = await runGen([
-          "generate",
-          "controller",
-          "fmt",
-          "--format",
-        ]);
+        const res = await runGen(["generate", "controller", "fmt", "--format"]);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(join(appPath, "src", "fmt", "fmt.controller.ts")),
+          existsSyncPath(join(appPath, "src", "fmt", "fmt.controller.ts")),
         ).toBe(true);
       });
 
@@ -511,9 +476,7 @@ describeConformance(
         const res = await runGen(["generate", "controller", "fmt-default"]);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(
-            join(appPath, "src", "fmt-default", "fmt-default.controller.ts"),
-          ),
+          existsSyncPath(join(appPath, "src", "fmt-default", "fmt-default.controller.ts")),
         ).toBe(true);
       });
 

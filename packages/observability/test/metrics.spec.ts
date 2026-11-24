@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -113,11 +112,21 @@ describe("MetricsRegistry, HttpMetricsInterceptor & MetricsModule", () => {
 
     const app = await BunestFactory.create(AppModule, { logger: false });
     try {
-      expect((await app.fetch(new Request("http://localhost/items/42"))).status).toBe(200);
-      expect((await app.fetch(new Request("http://localhost/items/99"))).status).toBe(200);
-      expect((await app.fetch(new Request("http://localhost/items/bad"))).status).toBe(400);
       expect(
-        (await app.fetch(new Request("http://localhost/items", { method: "POST" }))).status,
+        (await app.fetch(new Request("http://localhost/items/42"))).status,
+      ).toBe(200);
+      expect(
+        (await app.fetch(new Request("http://localhost/items/99"))).status,
+      ).toBe(200);
+      expect(
+        (await app.fetch(new Request("http://localhost/items/bad"))).status,
+      ).toBe(400);
+      expect(
+        (
+          await app.fetch(
+            new Request("http://localhost/items", { method: "POST" }),
+          )
+        ).status,
       ).toBe(201);
 
       const scrape = await app.fetch(new Request("http://localhost/metrics"));
@@ -162,7 +171,9 @@ describe("MetricsRegistry, HttpMetricsInterceptor & MetricsModule", () => {
       logger: false,
     });
     try {
-      expect((await guarded.fetch(new Request("http://localhost/metrics"))).status).toBe(403);
+      expect(
+        (await guarded.fetch(new Request("http://localhost/metrics"))).status,
+      ).toBe(403);
       expect(
         (
           await guarded.fetch(

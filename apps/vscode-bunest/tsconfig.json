@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
+    "types": ["vscode", "bun"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "@bunest/cli": ["./../../packages/cli/src/index.ts"],
+      "@bunest/cli/analyzer": ["./../../packages/cli/src/analyzer/index.ts"],
+      "@bunest/core": ["./../../packages/core/src/common/index.ts"]
+    }
+  },
+  "include": ["build.ts", "src/**/*.ts", "test/**/*.ts"]
+}

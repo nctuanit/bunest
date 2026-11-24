@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
-import { Body, Controller, Get, Module, Param, Post } from "@bunest/common";
+import { Body, Controller, Get, Module, Param, Post } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   ApiAmbiguousResponse,
@@ -62,9 +61,15 @@ enum OrderState {
   CLOSED = "closed",
 }
 
-@ApiSchema({ name: "CustomOrderModel", description: "Represents a customer order" })
+@ApiSchema({
+  name: "CustomOrderModel",
+  description: "Represents a customer order",
+})
 class OrderDto {
-  @ApiResponseProperty({ format: "uuid", example: "550e8400-e29b-41d4-a716-446655440000" })
+  @ApiResponseProperty({
+    format: "uuid",
+    example: "550e8400-e29b-41d4-a716-446655440000",
+  })
   id!: string;
 
   @ApiProperty({
@@ -207,14 +212,40 @@ describe("@bunest/swagger v12 API Parity", () => {
         app,
         new DocumentBuilder().setTitle("Statuses").build(),
       );
-      expect(Object.keys(doc.paths["/statuses/1xx"]?.get?.responses ?? {})).toEqual(
-        expect.arrayContaining(["100", "101", "102", "103"]),
+      expect(
+        Object.keys(doc.paths["/statuses/1xx"]?.get?.responses ?? {}),
+      ).toEqual(expect.arrayContaining(["100", "101", "102", "103"]));
+      expect(
+        Object.keys(doc.paths["/statuses/2xx-3xx"]?.get?.responses ?? {}),
+      ).toEqual(
+        expect.arrayContaining([
+          "203",
+          "205",
+          "206",
+          "300",
+          "302",
+          "303",
+          "304",
+          "307",
+          "308",
+        ]),
       );
-      expect(Object.keys(doc.paths["/statuses/2xx-3xx"]?.get?.responses ?? {})).toEqual(
-        expect.arrayContaining(["203", "205", "206", "300", "302", "303", "304", "307", "308"]),
-      );
-      expect(Object.keys(doc.paths["/statuses/4xx-5xx"]?.get?.responses ?? {})).toEqual(
-        expect.arrayContaining(["402", "407", "411", "414", "416", "417", "418", "421", "424", "428", "505"]),
+      expect(
+        Object.keys(doc.paths["/statuses/4xx-5xx"]?.get?.responses ?? {}),
+      ).toEqual(
+        expect.arrayContaining([
+          "402",
+          "407",
+          "411",
+          "414",
+          "416",
+          "417",
+          "418",
+          "421",
+          "424",
+          "428",
+          "505",
+        ]),
       );
     } finally {
       await app.close();
@@ -222,7 +253,9 @@ describe("@bunest/swagger v12 API Parity", () => {
   });
 
   test("supports @ApiSchema, @ApiResponseProperty, @ApiWebhook, @ApiCallbacks, @ApiLink, @ApiDefaultGetter, @ApiTags(options), and expanded DocumentBuilder", async () => {
-    expect(getSchemaPath(OrderDto)).toBe("#/components/schemas/CustomOrderModel");
+    expect(getSchemaPath(OrderDto)).toBe(
+      "#/components/schemas/CustomOrderModel",
+    );
 
     @ApiTags({ name: "Orders", parent: "Commerce", kind: "nav" })
     @Controller("/orders")
@@ -332,7 +365,9 @@ describe("@bunest/swagger v12 API Parity", () => {
 
       expect(doc.openapi).toBe("3.1.0");
       expect(doc["x-api-tier"]).toBe("enterprise");
-      expect(doc.info["x-logo"]).toEqual({ url: "https://bunest.dev/logo.png" });
+      expect(doc.info["x-logo"]).toEqual({
+        url: "https://bunest.dev/logo.png",
+      });
       expect(doc.security).toEqual([{ oauth2: ["orders:read"] }]);
       expect(doc.components?.securitySchemes?.cookie).toMatchObject({
         type: "apiKey",
@@ -367,28 +402,44 @@ describe("@bunest/swagger v12 API Parity", () => {
         description: "Lifecycle state of an order",
       });
       expect(orderSchema?.properties?.createdAt).not.toHaveProperty("default");
-      expect((orderSchema?.properties?.createdAt as { example?: unknown })?.example).toEqual({
+      expect(
+        (orderSchema?.properties?.createdAt as { example?: unknown })?.example,
+      ).toEqual({
         a: {},
       });
 
       // @ApiWebhook moves route to document.webhooks instead of document.paths
       expect(doc.paths["/orders/hooks/created"]).toBeUndefined();
-      expect(doc.webhooks?.orderCreated?.post?.requestBody?.content["application/json"]?.encoding).toEqual({
+      expect(
+        doc.webhooks?.orderCreated?.post?.requestBody?.content[
+          "application/json"
+        ]?.encoding,
+      ).toEqual({
         eventId: { contentType: "text/plain" },
       });
 
       // Global params, global response, @ApiCallbacks, @ApiLink + @ApiDefaultGetter
       const getOrderOp = doc.paths["/orders/{id}"]?.get;
-      expect(getOrderOp?.servers).toEqual([{ url: "https://orders.example.com" }]);
-      expect(getOrderOp?.parameters?.some((p) => p.name === "X-Global-Region")).toBe(true);
-      expect(getOrderOp?.parameters?.some((p) => p.name === "q" && p.in === "query")).toBe(true);
-      expect(getOrderOp?.parameters?.find((p) => p.name === "sort")?.schema).toMatchObject({
+      expect(getOrderOp?.servers).toEqual([
+        { url: "https://orders.example.com" },
+      ]);
+      expect(
+        getOrderOp?.parameters?.some((p) => p.name === "X-Global-Region"),
+      ).toBe(true);
+      expect(
+        getOrderOp?.parameters?.some((p) => p.name === "q" && p.in === "query"),
+      ).toBe(true);
+      expect(
+        getOrderOp?.parameters?.find((p) => p.name === "sort")?.schema,
+      ).toMatchObject({
         minLength: 2,
         maxLength: 30,
         pattern: "^[a-z]+$",
       });
       expect(getOrderOp?.callbacks?.onOrderUpdated).toBeDefined();
-      expect(getOrderOp?.responses["500"]?.description).toBe("Unexpected server error");
+      expect(getOrderOp?.responses["500"]?.description).toBe(
+        "Unexpected server error",
+      );
       expect(getOrderOp?.responses["200"]?.summary).toBe("Order found");
       expect(getOrderOp?.responses["200"]?.links).toEqual({
         CustomersController_getCustomer_from_id: {
@@ -419,8 +470,12 @@ describe("@bunest/swagger v12 API Parity", () => {
       type: "array",
       items: { $ref: "#/components/schemas/DeepPartialNestedAddressDto" },
     });
-    expect(generated.schemas.DeepPartialNestedAddressDto?.required).toBeUndefined();
-    expect(generated.schemas.DeepPartialNestedAddressDto?.properties?.city).toMatchObject({
+    expect(
+      generated.schemas.DeepPartialNestedAddressDto?.required,
+    ).toBeUndefined();
+    expect(
+      generated.schemas.DeepPartialNestedAddressDto?.properties?.city,
+    ).toMatchObject({
       type: "string",
     });
 
@@ -469,7 +524,11 @@ describe("@bunest/swagger v12 API Parity", () => {
     class PluginDemoController {
       @Get("included")
       @ApiIncludeEndpoint()
-      @ApiResponse({ status: 200, standardSchema: stdUserSchema, description: "Standard schema user" })
+      @ApiResponse({
+        status: 200,
+        standardSchema: stdUserSchema,
+        description: "Standard schema user",
+      })
       includedHandler() {
         return {};
       }
@@ -493,7 +552,11 @@ describe("@bunest/swagger v12 API Parity", () => {
             Promise.resolve({ PluginHydratedDto }),
             {
               PluginHydratedDto: {
-                title: { type: String, required: true, description: "Hydrated title" },
+                title: {
+                  type: String,
+                  required: true,
+                  description: "Hydrated title",
+                },
                 count: { type: Number, required: false },
               },
             },
@@ -562,7 +625,9 @@ describe("@bunest/swagger v12 API Parity", () => {
       expect(doc.paths["/plugin-demo/hydrated"]?.get?.summary).toBe(
         "Hydrated summary from metadata.ts",
       );
-      expect(doc.components?.schemas?.PluginHydratedDto?.properties?.title).toMatchObject({
+      expect(
+        doc.components?.schemas?.PluginHydratedDto?.properties?.title,
+      ).toMatchObject({
         type: "string",
         description: "Hydrated title",
       });
@@ -606,7 +671,9 @@ describe("@bunest/swagger v12 API Parity", () => {
           },
         },
       },
-      tags: [{ name: "Items", description: "\n  indented-after-blank\nnormal" }],
+      tags: [
+        { name: "Items", description: "\n  indented-after-blank\nnormal" },
+      ],
       "x-notes": ["  array-leading-space\nline2", "plain\n\n"],
     };
     const yamlStr = serializeToYaml(yamlInput);
@@ -617,8 +684,13 @@ describe("@bunest/swagger v12 API Parity", () => {
     expect(yamlStr).toContain("description: |-\n    Line 1\n    Line 2");
     expect(yamlStr).toContain("|2-");
     expect(yamlStr).toContain("|+");
-    if (typeof (Bun as unknown as { YAML?: { parse?: (s: string) => unknown } }).YAML?.parse === "function") {
-      const roundTripped = (Bun as unknown as { YAML: { parse: (s: string) => unknown } }).YAML.parse(yamlStr);
+    if (
+      typeof (Bun as unknown as { YAML?: { parse?: (s: string) => unknown } })
+        .YAML?.parse === "function"
+    ) {
+      const roundTripped = (
+        Bun as unknown as { YAML: { parse: (s: string) => unknown } }
+      ).YAML.parse(yamlStr);
       expect(roundTripped).toEqual(yamlInput);
     }
 
@@ -689,9 +761,16 @@ describe("@bunest/swagger v12 API Parity", () => {
         raw: ["yaml"],
       });
 
-      expect((await appYamlOnly.fetch(new Request("http://localhost/docs"))).status).toBe(404);
-      expect((await appYamlOnly.fetch(new Request("http://localhost/docs-json"))).status).toBe(404);
-      const yamlRes = await appYamlOnly.fetch(new Request("http://localhost/docs-yaml"));
+      expect(
+        (await appYamlOnly.fetch(new Request("http://localhost/docs"))).status,
+      ).toBe(404);
+      expect(
+        (await appYamlOnly.fetch(new Request("http://localhost/docs-json")))
+          .status,
+      ).toBe(404);
+      const yamlRes = await appYamlOnly.fetch(
+        new Request("http://localhost/docs-yaml"),
+      );
       expect(yamlRes.status).toBe(200);
       expect(await yamlRes.text()).toContain("title: YAML Only");
 

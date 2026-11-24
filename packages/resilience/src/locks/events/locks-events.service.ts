@@ -1,0 +1,264 @@
+import { Injectable, Logger, type OnApplicationShutdown } from "@bunest/core";
+import type {
+  DiagnosticChannel,
+  Subscribable,
+  SubscribableObserver,
+  Unsubscribable,
+} from "@bunest/core";
+import { channels, jobSkippedChannel } from "./locks.channels";
+import type {
+  LocksEvent,
+  LocksJobSkippedEvent,
+} from "./locks-events.interface";
+
+interface SubscriberEntry<T> {
+  next?: (value: T) => void;
+  complete?: () => void;
+}
+
+interface AsyncQueueState<T> {
+  readonly buffer: T[];
+  readonly waiters: Array<(result: IteratorResult<T, undefined>) => void>;
+  closed: boolean;
+}
+
+/**
+ * Internal zero-RxJS push stream (ADR-008) exposing both `Subscribable<T>`
+ * (`.subscribe(...)`) and `AsyncIterable<T>` (`for await (...)`).
+ */
+class LockEventSubject<T extends { readonly type: string }> {
+  private readonly subscribers = new Set<SubscriberEntry<T>>();
+  private readonly iterators = new Set<AsyncQueueState<T>>();
+  private completed = false;
+
+  constructor(private readonly logger: Logger) {}
+
+  next(value: T): void {
+    if (this.completed) {
+      return;
+    }
+    for (const entry of [...this.subscribers]) {
+      try {
+        entry.next?.(value);
+      } catch (error) {
+        this.logger.error(
+          `A subscriber to the "${value.type}" events threw`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+    for (const state of [...this.iterators]) {
+      if (state.closed) {
+        continue;
+      }
+      const waiter = state.waiters.shift();
+      if (waiter) {
+        waiter({ value, done: false });
+      } else {
+        state.buffer.push(value);
+      }
+    }
+  }
+
+  complete(): void {
+    if (this.completed) {
+      return;
+    }
+    this.completed = true;
+    const active = [...this.subscribers];
+    this.subscribers.clear();
+    for (const entry of active) {
+      try {
+        entry.complete?.();
+      } catch (error) {
+        this.logger.error(
+          "A subscriber completion handler threw",
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+    const openIterators = [...this.iterators];
+    this.iterators.clear();
+    for (const state of openIterators) {
+      state.closed = true;
+      while (state.waiters.length > 0) {
+        state.waiters.shift()!({
+          value: undefined,
+          done: true,
+        });
+      }
+    }
+  }
+
+  asSubscribable(): Subscribable<T> & AsyncIterable<T> {
+    return {
+      subscribe: (
+        observerOrNext?: SubscribableObserver<T> | ((value: T) => void),
+        _error?: (err: unknown) => void,
+        complete?: () => void,
+      ): Unsubscribable => {
+        const nextFn =
+          typeof observerOrNext === "function"
+            ? observerOrNext
+            : observerOrNext?.next?.bind(observerOrNext);
+        const completeFn =
+          typeof observerOrNext === "function"
+            ? complete
+            : (observerOrNext?.complete?.bind(observerOrNext) ?? complete);
+
+        if (this.completed) {
+          try {
+            completeFn?.();
+          } catch (error) {
+            this.logger.error(
+              "A subscriber completion handler threw",
+              error instanceof Error ? error.stack : String(error),
+            );
+          }
+          return { unsubscribe() {} };
+        }
+
+        const entry: SubscriberEntry<T> = {
+          next: nextFn,
+          complete: completeFn,
+        };
+        this.subscribers.add(entry);
+
+        let active = true;
+        return {
+          unsubscribe: () => {
+            if (!active) {
+              return;
+            }
+            active = false;
+            this.subscribers.delete(entry);
+          },
+        };
+      },
+      [Symbol.asyncIterator]: (): AsyncIterableIterator<T, undefined> => {
+        const state: AsyncQueueState<T> = {
+          buffer: [],
+          waiters: [],
+          closed: this.completed,
+        };
+
+        if (!this.completed) {
+          this.iterators.add(state);
+        }
+
+        const closeState = () => {
+          if (state.closed) {
+            return;
+          }
+          state.closed = true;
+          this.iterators.delete(state);
+          while (state.waiters.length > 0) {
+            state.waiters.shift()!({
+              value: undefined,
+              done: true,
+            });
+          }
+        };
+
+        const iterator: AsyncIterableIterator<T, undefined> = {
+          [Symbol.asyncIterator]() {
+            return iterator;
+          },
+          next(): Promise<IteratorResult<T, undefined>> {
+            if (state.buffer.length > 0) {
+              return Promise.resolve({
+                value: state.buffer.shift()!,
+                done: false,
+              });
+            }
+            if (state.closed) {
+              return Promise.resolve({
+                value: undefined,
+                done: true,
+              });
+            }
+            return new Promise<IteratorResult<T, undefined>>((resolve) => {
+              state.waiters.push(resolve);
+            });
+          },
+          return(): Promise<IteratorResult<T, undefined>> {
+            closeState();
+            return Promise.resolve({
+              value: undefined,
+              done: true,
+            });
+          },
+          throw(err?: unknown): Promise<IteratorResult<T, undefined>> {
+            closeState();
+            return Promise.reject(err);
+          },
+        };
+
+        return iterator;
+      },
+    };
+  }
+}
+
+/**
+ * The lock events of this application, for metrics and alerts. Each event is also
+ * published on its `node:diagnostics_channel` channel (`nestjs:locks:<type>`), where
+ * instrumentation can subscribe without depending on Bunest.
+ *
+ * Exposes zero-RxJS `Subscribable<T> & AsyncIterable<T>` streams (`events$` and
+ * `jobSkips$`) per ADR-008.
+ */
+@Injectable()
+export class LocksEvents implements OnApplicationShutdown {
+  private readonly logger = new Logger("Locks");
+  private closed = false;
+  private readonly subject = new LockEventSubject<LocksEvent>(this.logger);
+  readonly events$: Subscribable<LocksEvent> & AsyncIterable<LocksEvent> =
+    this.subject.asSubscribable();
+  private readonly skips = new LockEventSubject<LocksJobSkippedEvent>(
+    this.logger,
+  );
+
+  /**
+   * Each call to an `@OnOneInstance()` or `@WithoutOverlapping()` job that didn't run, and why:
+   * to count them by job and reason. Apart from `events$`: every instance but the owner skips
+   * each tick, so these are routine, not alerts.
+   */
+  readonly jobSkips$: Subscribable<LocksJobSkippedEvent> &
+    AsyncIterable<LocksJobSkippedEvent> = this.skips.asSubscribable();
+
+  /** Called by the package. */
+  emit(event: LocksEvent): void {
+    this.publish(channels[event.type], this.subject, event);
+  }
+
+  /** Called by the package. */
+  emitJobSkipped(event: LocksJobSkippedEvent): void {
+    this.publish(jobSkippedChannel, this.skips, event);
+  }
+
+  // After onModuleDestroy, where elections step down and jobs skip, and may still emit.
+  onApplicationShutdown(): void {
+    this.closed = true;
+    this.subject.complete();
+    this.skips.complete();
+  }
+
+  /**
+   * On the channel, then the stream; neither once shut down, so the two carry the same events.
+   * A subscriber's error never reaches the code that emitted.
+   */
+  private publish<T extends { readonly type: string }>(
+    target: DiagnosticChannel,
+    subject: LockEventSubject<T>,
+    event: T,
+  ): void {
+    if (this.closed) {
+      return;
+    }
+    if (target.hasSubscribers) {
+      target.publish(event);
+    }
+    subject.next(event);
+  }
+}

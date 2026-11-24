@@ -1,6 +1,4 @@
-import "reflect-metadata";
-import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join } from "../../../../../packages/core/src";
 import {
   Inject,
   Module,
@@ -8,14 +6,14 @@ import {
   type DynamicModule,
   type StandardSchemaV1,
   type StandardSchemaV1Options,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ConfigModule,
   ConfigService,
   type ConfigFactory,
   type ConfigModuleOptions,
   type ConfigType,
-} from "../../../../../packages/config/src";
+} from "../../../../../packages/core/src/config";
 import databaseConfig from "./database.config";
 import nestedDatabaseConfig from "./nested-database.config";
 import symbolDatabaseConfig, {
@@ -26,7 +24,7 @@ import {
   createZodLikePortDbSchema,
 } from "./schema-helpers";
 
-export const fixturesDir = fileURLToPath(new URL(".", import.meta.url));
+export const fixturesDir = Bun.fileURLToPath(new URL(".", import.meta.url));
 
 type Config = {
   database: ConfigType<typeof databaseConfig> & {

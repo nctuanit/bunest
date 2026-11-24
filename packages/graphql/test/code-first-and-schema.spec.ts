@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   type BunestInterceptor,
@@ -10,9 +9,15 @@ import {
   ParseIntPipe,
   UseGuards,
   UseInterceptors,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory, ValidationPipe } from "@bunest/core";
-import { IsEmail, IsInt, IsOptional, IsString, MinLength } from "class-validator";
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "../../validation/src/validator";
 import {
   Args,
   ArgsType,
@@ -341,11 +346,15 @@ describe("Code-First & Schema-First GraphQL Execution", () => {
         }),
       );
       const badJson = (await mBad.json()) as {
-        errors?: Array<{ extensions?: { statusCode?: number; details?: unknown[] } }>;
+        errors?: Array<{
+          extensions?: { statusCode?: number; details?: unknown[] };
+        }>;
       };
       expect(badJson.errors?.length).toBe(1);
       expect(badJson.errors?.[0]?.extensions?.statusCode).toBe(400);
-      expect(badJson.errors?.[0]?.extensions?.details?.length).toBeGreaterThanOrEqual(2);
+      expect(
+        badJson.errors?.[0]?.extensions?.details?.length,
+      ).toBeGreaterThanOrEqual(2);
 
       // Guard (GqlExecutionContext) denies guest & allows admin (Interceptor multiplies result by 10)
       const denied = await app.fetch(
@@ -431,7 +440,9 @@ describe("Code-First & Schema-First GraphQL Execution", () => {
     })
     class SchemaFirstModule {}
 
-    const app = await BunestFactory.create(SchemaFirstModule, { logger: false });
+    const app = await BunestFactory.create(SchemaFirstModule, {
+      logger: false,
+    });
     try {
       const res = await app.fetch(
         new Request("http://localhost/gql", {

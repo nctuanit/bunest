@@ -82,7 +82,9 @@ export class TcpServer extends MicroserviceTransportServer {
     return this.listener?.port;
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening && this.listener) {
       callback?.();
       return;

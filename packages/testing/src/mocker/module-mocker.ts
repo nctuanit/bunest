@@ -1,4 +1,4 @@
-import type { InjectionToken } from "@bunest/common";
+import type { InjectionToken } from "@bunest/core";
 import type { MockFactory } from "@bunest/core";
 
 export interface MockCallResult {
@@ -10,10 +10,7 @@ export interface MockCallResult {
  * Lightweight zero-dependency callable spy function compatible with `bun:test`
  * and standalone auto-mocking (no `jest-mock` dependency required).
  */
-export interface MockFunction<
-  TArgs extends unknown[] = any[],
-  TReturn = any,
-> {
+export interface MockFunction<TArgs extends unknown[] = any[], TReturn = any> {
   (...args: TArgs): TReturn;
   readonly calls: TArgs[];
   readonly results: MockCallResult[];
@@ -40,10 +37,7 @@ type OnceAction<TArgs extends unknown[], TReturn> =
 /**
  * Creates a standalone callable `MockFunction` spy.
  */
-export function createMockFn<
-  TArgs extends unknown[] = any[],
-  TReturn = any,
->(
+export function createMockFn<TArgs extends unknown[] = any[], TReturn = any>(
   initialImpl?: (...args: TArgs) => TReturn,
   name = "bunest.fn()",
 ): MockFunction<TArgs, TReturn> {
@@ -398,9 +392,10 @@ export class ModuleMocker {
   mockClass<T extends object>(
     cls: abstract new (...args: any[]) => T,
   ): T & Record<string, MockFunction> {
-    const instance = Object.create(
-      cls.prototype as object,
-    ) as Record<string, unknown>;
+    const instance = Object.create(cls.prototype as object) as Record<
+      string,
+      unknown
+    >;
     const className = cls.name || "AnonymousClass";
 
     for (const methodName of collectPrototypeMethodNames(cls)) {
@@ -567,7 +562,7 @@ export function createAutoMocker(options: AutoMockerOptions = {}): MockFactory {
   const overridesMap = new Map<InjectionToken, unknown>(
     options.overrides instanceof Map
       ? options.overrides.entries()
-      : options.overrides ?? [],
+      : (options.overrides ?? []),
   );
 
   return (token: InjectionToken): unknown => {

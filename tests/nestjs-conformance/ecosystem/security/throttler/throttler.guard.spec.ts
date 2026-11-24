@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   afterEach,
   beforeEach,
@@ -12,7 +11,7 @@ import {
   Logger,
   Reflector,
   type ExecutionContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   THROTTLER_OPTIONS,
   ThrottlerException,
@@ -82,7 +81,8 @@ class ThrottlerStorageServiceMock implements ThrottlerStorage {
     }
 
     if (!entry.isBlocked) {
-      entry.totalHits[throttlerName] = (entry.totalHits[throttlerName] ?? 0) + 1;
+      entry.totalHits[throttlerName] =
+        (entry.totalHits[throttlerName] ?? 0) + 1;
     }
 
     if ((entry.totalHits[throttlerName] ?? 0) > limit && !entry.isBlocked) {
@@ -92,7 +92,8 @@ class ThrottlerStorageServiceMock implements ThrottlerStorage {
 
     const timeToBlockExpire = this.getBlockExpirationTime(key);
     if (timeToBlockExpire <= 0 && entry.isBlocked) {
-      entry.totalHits[throttlerName] = (entry.totalHits[throttlerName] ?? 0) + 1;
+      entry.totalHits[throttlerName] =
+        (entry.totalHits[throttlerName] ?? 0) + 1;
     }
 
     return {
@@ -634,7 +635,10 @@ describeConformance(
           providers: [
             ThrottlerGuard,
             { provide: THROTTLER_OPTIONS, useValue: options },
-            { provide: ThrottlerStorage, useClass: ThrottlerStorageServiceMock },
+            {
+              provide: ThrottlerStorage,
+              useClass: ThrottlerStorageServiceMock,
+            },
             {
               provide: Reflector,
               useValue: { getAllAndOverride: mock(() => undefined) },
@@ -645,9 +649,11 @@ describeConformance(
         await localGuard.onModuleInit();
         return {
           getTracker: (req: Record<string, unknown>) =>
-            (localGuard as unknown as {
-              getTracker: (r: Record<string, unknown>) => Promise<string>;
-            }).getTracker(req),
+            (
+              localGuard as unknown as {
+                getTracker: (r: Record<string, unknown>) => Promise<string>;
+              }
+            ).getTracker(req),
           close: () => localMod.close(),
         };
       };
@@ -711,7 +717,10 @@ describeConformance(
           providers: [
             ThrottlerGuard,
             { provide: THROTTLER_OPTIONS, useValue: options },
-            { provide: ThrottlerStorage, useClass: ThrottlerStorageServiceMock },
+            {
+              provide: ThrottlerStorage,
+              useClass: ThrottlerStorageServiceMock,
+            },
             {
               provide: Reflector,
               useValue: { getAllAndOverride: mock(() => undefined) },
@@ -796,7 +805,10 @@ describeConformance(
           const storage = new ThrottlerStorageService();
           try {
             const localGuard = new ThrottlerGuard(
-              { throttlers: [{ limit: 1, ttl: 60000 }], ignoreUserAgents: [pattern] },
+              {
+                throttlers: [{ limit: 1, ttl: 60000 }],
+                ignoreUserAgents: [pattern],
+              },
               storage,
               new Reflector(),
             );

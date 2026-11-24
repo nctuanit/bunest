@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Logger,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   REQUEST,
   ScopeLeakException,
@@ -151,56 +150,45 @@ describeConformance(
       expect(request3.request).toBe(requestProvider);
     });
 
-    it(
-      "should isolate request-scoped providers across parallel context resolutions",
-      async () => {
-        const contexts = Array.from(
-          { length: OVERLAP_REQUEST_COUNT },
-          (_, index) => {
-            const contextId = createContextId();
-            const requestProvider = { host: `parallel-host-${index}` };
+    it("should isolate request-scoped providers across parallel context resolutions", async () => {
+      const contexts = Array.from(
+        { length: OVERLAP_REQUEST_COUNT },
+        (_, index) => {
+          const contextId = createContextId();
+          const requestProvider = { host: `parallel-host-${index}` };
 
-            testingModule.registerRequestByContextId(
-              requestProvider,
-              contextId,
-            );
-            return { contextId, requestProvider };
-          },
-        );
+          testingModule.registerRequestByContextId(requestProvider, contextId);
+          return { contextId, requestProvider };
+        },
+      );
 
-        const providers = await Promise.all(
-          contexts.map(({ contextId }) =>
-            testingModule.resolve(ScopedService, contextId),
-          ),
-        );
+      const providers = await Promise.all(
+        contexts.map(({ contextId }) =>
+          testingModule.resolve(ScopedService, contextId),
+        ),
+      );
 
-        expect(new Set(providers).size).toBe(contexts.length);
-        expect(providers.map((provider) => provider.request)).toEqual(
-          contexts.map(({ requestProvider }) => requestProvider),
-        );
-      },
-      20000,
-    );
+      expect(new Set(providers).size).toBe(contexts.length);
+      expect(providers.map((provider) => provider.request)).toEqual(
+        contexts.map(({ requestProvider }) => requestProvider),
+      );
+    }, 20000);
 
-    it(
-      "should reuse request-scoped providers for parallel resolutions in the same context",
-      async () => {
-        const contextId = createContextId();
-        const requestProvider = { host: "shared-host" };
+    it("should reuse request-scoped providers for parallel resolutions in the same context", async () => {
+      const contextId = createContextId();
+      const requestProvider = { host: "shared-host" };
 
-        testingModule.registerRequestByContextId(requestProvider, contextId);
+      testingModule.registerRequestByContextId(requestProvider, contextId);
 
-        const providers = await Promise.all(
-          Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
-            testingModule.resolve(ScopedService, contextId),
-          ),
-        );
+      const providers = await Promise.all(
+        Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
+          testingModule.resolve(ScopedService, contextId),
+        ),
+      );
 
-        expect(new Set(providers).size).toBe(1);
-        expect(providers[0]!.request).toBe(requestProvider);
-      },
-      20000,
-    );
+      expect(new Set(providers).size).toBe(1);
+      expect(providers[0]!.request).toBe(requestProvider);
+    }, 20000);
 
     it("should dynamically resolve request-scoped controller", async () => {
       const request1 = await testingModule.resolve(ScopedController);
@@ -212,23 +200,19 @@ describeConformance(
       expect(request3).not.toBe(request2);
     });
 
-    it(
-      "should isolate request-scoped controllers across parallel context resolutions",
-      async () => {
-        const contexts = Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
-          createContextId(),
-        );
+    it("should isolate request-scoped controllers across parallel context resolutions", async () => {
+      const contexts = Array.from({ length: OVERLAP_REQUEST_COUNT }, () =>
+        createContextId(),
+      );
 
-        const controllers = await Promise.all(
-          contexts.map((contextId) =>
-            testingModule.resolve(ScopedController, contextId),
-          ),
-        );
+      const controllers = await Promise.all(
+        contexts.map((contextId) =>
+          testingModule.resolve(ScopedController, contextId),
+        ),
+      );
 
-        expect(new Set(controllers).size).toBe(contexts.length);
-      },
-      20000,
-    );
+      expect(new Set(controllers).size).toBe(contexts.length);
+    }, 20000);
 
     // BUNEST_BUG: DIContainer.getSync() does not recognize request-scoped controllers via controllerOwner and throws UnknownDependencyException ("Cannot resolve dependency") instead of an invalid-scope error (packages/core/src/di/di-container.ts:2295-2315)
     it.skip('should throw an exception when "get()" method is used for scoped providers', () => {

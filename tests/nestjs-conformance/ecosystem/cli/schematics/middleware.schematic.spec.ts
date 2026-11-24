@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function expectedMiddlewareSource(pascal: string): string {
   return `import {
@@ -52,16 +63,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -90,7 +101,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.middleware.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(cwd, "src/foo/foo.middleware.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo/foo.middleware.ts")),
         ).toEqual(expectedMiddlewareSource("Foo"));
       },
       "emits BunestMiddleware with import type under verbatimModuleSyntax",
@@ -122,7 +133,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(cwd, "src/bar/foo/foo.middleware.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar/foo/foo.middleware.ts")),
         ).toEqual(expectedMiddlewareSource("Foo"));
       },
       "emits BunestMiddleware under nested folder path",
@@ -144,7 +155,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.middleware.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(cwd, "baz/foo/foo.middleware.ts"), "utf8"),
+          readTextSync(join(cwd, "baz/foo/foo.middleware.ts")),
         ).toEqual(expectedMiddlewareSource("Foo"));
       },
       "writes middleware into custom target dir",
@@ -171,10 +182,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(
-            join(cwd, "src/foo-bar/foo-bar.middleware.ts"),
-            "utf8",
-          ),
+          readTextSync(join(cwd, "src/foo-bar/foo-bar.middleware.ts")),
         ).toEqual(expectedMiddlewareSource("FooBar"));
       },
       "normalizes camelCase name to kebab-case file and PascalCase class",
@@ -201,10 +209,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(
-            join(cwd, "src/bar-baz/foo/foo.middleware.ts"),
-            "utf8",
-          ),
+          readTextSync(join(cwd, "src/bar-baz/foo/foo.middleware.ts")),
         ).toEqual(expectedMiddlewareSource("Foo"));
       },
       "normalizes camelCase directory segment to kebab-case",
@@ -231,12 +236,10 @@ describeConformance(
           parseSchematicName("foo"),
           { flat: false, spec: true },
         );
-        expect(
-          planned.every((file) => file.relativePath.endsWith(".ts")),
-        ).toBe(true);
-        expect(
-          findFile(planned, "foo/foo.middleware.js"),
-        ).toBeUndefined();
+        expect(planned.every((file) => file.relativePath.endsWith(".ts"))).toBe(
+          true,
+        );
+        expect(findFile(planned, "foo/foo.middleware.js")).toBeUndefined();
         expect(findFile(planned, "foo/foo.middleware.ts")?.content).toEqual(
           expectedMiddlewareSource("Foo"),
         );
@@ -298,10 +301,9 @@ describeConformance(
         });
 
         expect(
-          readFileSync(join(cwd, "src/foo.middleware.spec.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo.middleware.spec.ts")),
         ).toEqual(
-          `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+          `import { describe, expect, it } from "bun:test";
 import { HttpResponseContext } from "@bunest/core";
 import { createMockRequest } from "@bunest/testing";
 import { FooMiddleware } from "./foo.middleware";

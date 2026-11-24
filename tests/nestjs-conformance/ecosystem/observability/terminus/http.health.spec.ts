@@ -1,6 +1,4 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { HttpError } from "../../../../../packages/axios/src";
 import {
   HealthIndicatorService,
   HttpHealthIndicator,
@@ -13,6 +11,19 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+class MockHttpError extends Error {
+  readonly isAxiosError = true;
+  constructor(
+    message: string,
+    public readonly config?: Record<string, unknown>,
+    public readonly code?: string,
+    public readonly response?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
 
 describeConformance(
   "Http Response Health Indicator",
@@ -29,7 +40,9 @@ describeConformance(
 
     const httpClientMock = {
       request: mock(
-        async (_config: Record<string, unknown>): Promise<HttpHealthResponse> => ({
+        async (
+          _config: Record<string, unknown>,
+        ): Promise<HttpHealthResponse> => ({
           status: 200,
           statusText: "OK",
           headers: {},
@@ -112,10 +125,16 @@ describeConformance(
         ["ADR-001"],
         "should use native fetch by default without resolving an app HttpService",
         async () => {
-          const fetchMock = mock(async () => new Response("ok", { status: 200 }));
-          const result = await httpHealthIndicator.pingCheck("key", "https://example.test", {
-            fetch: fetchMock,
-          });
+          const fetchMock = mock(
+            async () => new Response("ok", { status: 200 }),
+          );
+          const result = await httpHealthIndicator.pingCheck(
+            "key",
+            "https://example.test",
+            {
+              fetch: fetchMock,
+            },
+          );
           expect(result.key?.status).toBe("up");
           expect(fetchMock).toHaveBeenCalledTimes(1);
           expect(httpClientMock.request).not.toHaveBeenCalled();
@@ -179,7 +198,7 @@ describeConformance(
         ["ADR-001", "ADR-008"],
         "should return a down result if an HttpError has no response",
         async () => {
-          httpClientMock.request.mockRejectedValue(new HttpError("Error", {}));
+          httpClientMock.request.mockRejectedValue(new MockHttpError("Error", {}));
           const result = await httpHealthIndicator.pingCheck("key", "url", {
             httpClient: httpClientMock,
           });
@@ -194,7 +213,7 @@ describeConformance(
             headers: undefined,
           });
         },
-        "Uses @bunest/axios HttpError instead of AxiosError",
+        "Uses structural MockHttpError instead of AxiosError",
       );
     });
 
@@ -284,7 +303,7 @@ describeConformance(
         ["ADR-001", "ADR-008"],
         "should return down if an HttpError has no response",
         async () => {
-          httpClientMock.request.mockRejectedValue(new HttpError("Error", {}));
+          httpClientMock.request.mockRejectedValue(new MockHttpError("Error", {}));
           const result = await httpHealthIndicator.responseCheck(
             "key",
             "url",
@@ -310,7 +329,7 @@ describeConformance(
           (res: HttpHealthResponse) => res.statusText === "No",
         );
         httpClientMock.request.mockRejectedValue(
-          new HttpError("Error", {}, undefined, {
+          new MockHttpError("Error", {}, undefined, {
             data: "",
             status: 200,
             headers: {},
@@ -342,7 +361,7 @@ describeConformance(
       // BUNEST_BUG: HttpHealthIndicator.responseCheck() does not extract err.response when httpClient.request() rejects with an HttpError carrying status 500, returning "down" instead of evaluating callback(res => res.status === 500) to "up" (packages/observability/src/health/health.indicators.ts:608-649).
       it.skip("should be healthy if the response is status code 500 and the condition says that the status code needs to be 500", async () => {
         httpClientMock.request.mockRejectedValue(
-          new HttpError("Error", {}, undefined, {
+          new MockHttpError("Error", {}, undefined, {
             data: "",
             status: 500,
             headers: {},

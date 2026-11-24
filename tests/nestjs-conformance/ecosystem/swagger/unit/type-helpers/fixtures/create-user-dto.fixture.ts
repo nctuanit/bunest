@@ -1,6 +1,11 @@
-import "reflect-metadata";
-import { Expose, Transform } from "class-transformer";
-import { IsEnum, IsString } from "class-validator";
+import {
+  Expose,
+  Transform,
+} from "../../../../../../../packages/validation/src/transformer";
+import {
+  IsEnum,
+  IsString,
+} from "../../../../../../../packages/validation/src/validator";
 import { ApiProperty } from "../../../../../../../packages/swagger/src";
 
 export const METADATA_FACTORY_NAME = "_OPENAPI_METADATA_FACTORY" as const;

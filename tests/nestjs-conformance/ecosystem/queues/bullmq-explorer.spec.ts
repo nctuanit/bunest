@@ -1,12 +1,4 @@
-import "reflect-metadata";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   BullMQExplorer,
   BullModule,
@@ -20,7 +12,7 @@ import {
   getQueueToken,
   type Job,
   type NestWorkerOptions,
-} from "../../../../packages/queues/src";
+} from "../../../../packages/jobs/src/queues";
 import { Test, describeConformance } from "../../_helpers/index";
 
 const workerCtorSpy = mock((..._args: unknown[]) => {});
@@ -68,9 +60,7 @@ describeConformance(
 
       it("should instantiate Bull worker based on the processor class", async () => {
         const moduleRef = await Test.createTestingModule({
-          imports: [
-            BullModule.registerQueue({ name: queueName, connection }),
-          ],
+          imports: [BullModule.registerQueue({ name: queueName, connection })],
           providers: [FixtureProcessor],
         }).compile({ logger: false });
 
@@ -98,9 +88,7 @@ describeConformance(
         }
 
         const moduleRef = await Test.createTestingModule({
-          imports: [
-            BullModule.registerQueue({ name: queueName, connection }),
-          ],
+          imports: [BullModule.registerQueue({ name: queueName, connection })],
           providers: [ProcessorWithConcurrency],
         }).compile({ logger: false });
 
@@ -120,7 +108,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected BullMQExplorer to forward queue `telemetry` option to the Worker constructor, actual drops `telemetry` because packages/queues/src/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor) only copies `connection`, `prefix`, and `concurrency` from queueOpts into mergedWorkerOpts.
+      // BUNEST_BUG: Expected BullMQExplorer to forward queue `telemetry` option to the Worker constructor, actual drops `telemetry` because packages/jobs/src/queues/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor) only copies `connection`, `prefix`, and `concurrency` from queueOpts into mergedWorkerOpts.
       it.skip("should pass telemetry option to the worker constructor", async () => {
         const mockTelemetry = {
           instrumentJob: mock(() => {}),
@@ -167,7 +155,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected BullMQExplorer to forward queue `skipVersionCheck` option to the Worker constructor, actual drops `skipVersionCheck` because packages/queues/src/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor) only copies `connection`, `prefix`, and `concurrency` from queueOpts into mergedWorkerOpts.
+      // BUNEST_BUG: Expected BullMQExplorer to forward queue `skipVersionCheck` option to the Worker constructor, actual drops `skipVersionCheck` because packages/jobs/src/queues/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor) only copies `connection`, `prefix`, and `concurrency` from queueOpts into mergedWorkerOpts.
       it.skip("should pass skipVersionCheck option to the worker constructor", async () => {
         const moduleRef = await Test.createTestingModule({
           imports: [
@@ -226,7 +214,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected BullMQExplorer to pass `backendFactory` from worker options as the 4th argument to Worker constructor, actual constructs `new WorkerCtor(queueName, processor, mergedWorkerOpts)` with only 3 args in packages/queues/src/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor).
+      // BUNEST_BUG: Expected BullMQExplorer to pass `backendFactory` from worker options as the 4th argument to Worker constructor, actual constructs `new WorkerCtor(queueName, processor, mergedWorkerOpts)` with only 3 args in packages/jobs/src/queues/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor).
       it.skip("should pass backendFactory to the worker constructor when provided in worker options", async () => {
         const mockBackendFactory = mock(() => ({}));
         const workerOptions: NestWorkerOptions = {
@@ -239,9 +227,7 @@ describeConformance(
         }
 
         const moduleRef = await Test.createTestingModule({
-          imports: [
-            BullModule.registerQueue({ name: queueName, connection }),
-          ],
+          imports: [BullModule.registerQueue({ name: queueName, connection })],
           providers: [ProcessorWithBackendFactory],
         }).compile({ logger: false });
 
@@ -259,7 +245,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected BullMQExplorer to inherit `backendFactory` from queue options and pass it as the 4th argument to Worker constructor, actual drops `queueOpts.backendFactory` and passes only 3 args in packages/queues/src/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor).
+      // BUNEST_BUG: Expected BullMQExplorer to inherit `backendFactory` from queue options and pass it as the 4th argument to Worker constructor, actual drops `queueOpts.backendFactory` and passes only 3 args in packages/jobs/src/queues/adapters/bullmq.adapter.ts (BullMQExplorer.registerProcessor).
       it.skip("should inherit backendFactory from queue options when not provided in worker options", async () => {
         const mockBackendFactory = mock(() => ({}));
 
@@ -324,7 +310,7 @@ describeConformance(
         onCompleted() {}
       }
 
-      // BUNEST_BUG: Expected a single Worker (and single @OnWorkerEvent binding) when a @Processor class is also registered via a `useExisting` alias, actual creates 2 workers because BullMQExplorer.register() (packages/queues/src/adapters/bullmq.adapter.ts) does not filter out `useExisting` alias wrappers or deduplicate by provider instance.
+      // BUNEST_BUG: Expected a single Worker (and single @OnWorkerEvent binding) when a @Processor class is also registered via a `useExisting` alias, actual creates 2 workers because BullMQExplorer.register() (packages/jobs/src/queues/adapters/bullmq.adapter.ts) does not filter out `useExisting` alias wrappers or deduplicate by provider instance.
       it.skip("should create a single worker for a processor registered with useExisting", async () => {
         const testingModule = await Test.createTestingModule({
           imports: [
@@ -359,9 +345,7 @@ describeConformance(
 
       it("should instantiate Bull queue events classes", async () => {
         const moduleRef = await Test.createTestingModule({
-          imports: [
-            BullModule.registerQueue({ name: queueName, connection }),
-          ],
+          imports: [BullModule.registerQueue({ name: queueName, connection })],
           providers: [EventsListener],
         }).compile({ logger: false });
 
@@ -376,12 +360,10 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected a single QueueEvents instance when a @QueueEventsListener class is also registered via a `useExisting` alias, actual instantiates 2 QueueEvents instances because BullMQExplorer.register() (packages/queues/src/adapters/bullmq.adapter.ts) does not filter out `useExisting` alias wrappers or deduplicate by provider instance.
+      // BUNEST_BUG: Expected a single QueueEvents instance when a @QueueEventsListener class is also registered via a `useExisting` alias, actual instantiates 2 QueueEvents instances because BullMQExplorer.register() (packages/jobs/src/queues/adapters/bullmq.adapter.ts) does not filter out `useExisting` alias wrappers or deduplicate by provider instance.
       it.skip("should instantiate queue events once for a listener registered with useExisting", async () => {
         const testingModule = await Test.createTestingModule({
-          imports: [
-            BullModule.registerQueue({ name: queueName, connection }),
-          ],
+          imports: [BullModule.registerQueue({ name: queueName, connection })],
           providers: [
             EventsListener,
             { provide: "LISTENER_ALIAS", useExisting: EventsListener },
@@ -400,7 +382,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected QueueEvents to receive queue `connection` and `telemetry` options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/queues/src/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without options and QueueEvents (packages/queues/src/hosts/queue-events-host.class.ts) accepts only `name: string`.
+      // BUNEST_BUG: Expected QueueEvents to receive queue `connection` and `telemetry` options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without options and QueueEvents (packages/jobs/src/queues/hosts/queue-events-host.class.ts) accepts only `name: string`.
       it.skip("should pass telemetry option to queue events constructor", async () => {
         const mockTelemetry = {
           instrumentJob: mock(() => {}),
@@ -434,7 +416,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected QueueEvents to receive queue `connection` and `skipVersionCheck` options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/queues/src/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without options and QueueEvents (packages/queues/src/hosts/queue-events-host.class.ts) accepts only `name: string`.
+      // BUNEST_BUG: Expected QueueEvents to receive queue `connection` and `skipVersionCheck` options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without options and QueueEvents (packages/jobs/src/queues/hosts/queue-events-host.class.ts) accepts only `name: string`.
       it.skip("should pass skipVersionCheck option to queue events constructor", async () => {
         const moduleRef = await Test.createTestingModule({
           imports: [
@@ -462,7 +444,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected QueueEvents to receive `backendFactory` from queue options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/queues/src/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without backendFactory and QueueEvents (packages/queues/src/hosts/queue-events-host.class.ts) accepts only `name: string`.
+      // BUNEST_BUG: Expected QueueEvents to receive `backendFactory` from queue options, actual is undefined because BullMQExplorer.registerQueueEventsListener (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `new QueueEvents(listenerMeta.queueName)` without backendFactory and QueueEvents (packages/jobs/src/queues/hosts/queue-events-host.class.ts) accepts only `name: string`.
       it.skip("should pass backendFactory to queue events constructor", async () => {
         const mockBackendFactory = mock(() => ({}));
 
@@ -491,7 +473,7 @@ describeConformance(
     });
 
     describe("getQueueOptions", () => {
-      // BUNEST_BUG: Expected public BullMQExplorer.getQueueOptions(queueToken, queueName) to read options from the resolved queue provider (`queueRef.opts`), actual method in packages/queues/src/adapters/bullmq.adapter.ts is private with signature `(queueName, configKey?)` and returns `{}` when passed `(queueToken, "test")`.
+      // BUNEST_BUG: Expected public BullMQExplorer.getQueueOptions(queueToken, queueName) to read options from the resolved queue provider (`queueRef.opts`), actual method in packages/jobs/src/queues/adapters/bullmq.adapter.ts is private with signature `(queueName, configKey?)` and returns `{}` when passed `(queueToken, "test")`.
       it.skip("should return options associated with the given queue", async () => {
         const queueToken = getQueueToken("test");
         const queueOptions = {
@@ -521,7 +503,7 @@ describeConformance(
     });
 
     describe("getFlowProducerOptions", () => {
-      // BUNEST_BUG: Expected public BullMQExplorer.getFlowProducerOptions(flowProducerToken, name) to return options associated with the given FlowProducer, actual method does not exist on BullMQExplorer in packages/queues/src/adapters/bullmq.adapter.ts.
+      // BUNEST_BUG: Expected public BullMQExplorer.getFlowProducerOptions(flowProducerToken, name) to return options associated with the given FlowProducer, actual method does not exist on BullMQExplorer in packages/jobs/src/queues/adapters/bullmq.adapter.ts.
       it.skip("should return options associated with the given flowProducer", async () => {
         const flowProducerToken = getFlowProducerToken("test");
         const flowProducerOptions = {

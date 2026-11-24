@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { parse } from "../../../../../packages/graphql/node_modules/graphql";
+import { parse } from "../../../../../packages/graphql/src";
 import { GraphQLAstExplorer } from "../../../../../packages/graphql/src";
 import { describeConformance } from "../../../_helpers/index";
 

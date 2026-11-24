@@ -1,4 +1,3 @@
-import { createHash, createHmac } from "node:crypto";
 import type { AwsCredentials } from "../interfaces/provider-transport-options.interface";
 
 export interface SigV4Request {
@@ -69,8 +68,8 @@ export function signV4(
     (k, part) => hmac(k, part),
     `AWS4${credentials.secretAccessKey}`,
   );
-  const signature = createHmac("sha256", key)
-    .update(stringToSign, "utf8")
+  const signature = new Bun.CryptoHasher("sha256", key)
+    .update(stringToSign)
     .digest("hex");
   return {
     canonicalRequest,
@@ -80,12 +79,13 @@ export function signV4(
   };
 }
 
-function hmac(key: string | Buffer, data: string): Buffer {
-  return createHmac("sha256", key).update(data, "utf8").digest();
+function hmac(key: string | Uint8Array, data: string): Buffer {
+  const digest = new Bun.CryptoHasher("sha256", key).update(data).digest();
+  return Buffer.from(digest.buffer, digest.byteOffset, digest.byteLength);
 }
 
-function sha256Hex(data: string | Buffer): string {
-  return createHash("sha256").update(data).digest("hex");
+function sha256Hex(data: string | Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(data).digest("hex");
 }
 
 /** RFC 3986 unreserved characters stay; everything else is `%XX` of its UTF-8 bytes. */
@@ -156,8 +156,6 @@ function canonicalHeaders(
     merged.set(key, list);
   }
   return new Map(
-    [...merged.keys()]
-      .sort()
-      .map((key) => [key, merged.get(key)!.join(",")]),
+    [...merged.keys()].sort().map((key) => [key, merged.get(key)!.join(",")]),
   );
 }

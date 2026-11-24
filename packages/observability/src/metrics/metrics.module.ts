@@ -18,7 +18,7 @@ import {
   type GuardLike,
   type ResponseContext,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   CountedAspectHandler,
   TimedAspectHandler,

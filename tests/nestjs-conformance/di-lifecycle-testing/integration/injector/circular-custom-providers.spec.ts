@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Controller,
   Inject,
   Injectable,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { CircularDependencyException } from "../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../_helpers";
 

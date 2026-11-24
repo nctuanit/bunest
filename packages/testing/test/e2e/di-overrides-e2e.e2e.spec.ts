@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -26,7 +25,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test, createAutoMocker, request, type MockFunction } from "../../src";
 
 describe("E2E: DI Overrides (overrideModule, useMocker, decorator / APP_* / useGlobal* enhancers)", () => {
@@ -129,7 +128,10 @@ describe("E2E: DI Overrides (overrideModule, useMocker, decorator / APP_* / useG
   it("runs full HTTP controller E2E with useMocker(createAutoMocker()) spying on unregistered downstream services", async () => {
     @Injectable()
     class InventoryClient {
-      async reserve(_sku: string, _qty: number): Promise<{ reserved: boolean }> {
+      async reserve(
+        _sku: string,
+        _qty: number,
+      ): Promise<{ reserved: boolean }> {
         throw new Error("Should never hit real inventory network");
       }
     }
@@ -352,7 +354,10 @@ describe("E2E: DI Overrides (overrideModule, useMocker, decorator / APP_* / useG
       .overrideFilter(RealAppFilter)
       .useValue({
         catch: (e: AppErr) =>
-          Response.json({ layer: "app-filter", msg: e.message }, { status: 418 }),
+          Response.json(
+            { layer: "app-filter", msg: e.message },
+            { status: 418 },
+          ),
       })
       // Imperative useGlobal* overrides
       .overrideGuard(ImperativeGuard)
@@ -381,7 +386,10 @@ describe("E2E: DI Overrides (overrideModule, useMocker, decorator / APP_* / useG
       .overrideFilter(ImperativeFilter)
       .useValue({
         catch: (e: ImpErr) =>
-          Response.json({ layer: "imp-filter", msg: e.message }, { status: 419 }),
+          Response.json(
+            { layer: "imp-filter", msg: e.message },
+            { status: 419 },
+          ),
       })
       // Decorator-level overrides
       .overrideGuard(RouteGuard)
@@ -410,7 +418,10 @@ describe("E2E: DI Overrides (overrideModule, useMocker, decorator / APP_* / useG
       .overrideFilter(RouteFilter)
       .useValue({
         catch: (e: RouteErr) =>
-          Response.json({ layer: "route-filter", msg: e.message }, { status: 420 }),
+          Response.json(
+            { layer: "route-filter", msg: e.message },
+            { status: 420 },
+          ),
       })
       .compile();
 

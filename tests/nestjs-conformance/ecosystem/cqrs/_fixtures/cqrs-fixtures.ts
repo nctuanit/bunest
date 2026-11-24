@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Inject,
   Injectable,
@@ -7,7 +6,7 @@ import {
   REQUEST,
   Scope,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   AggregateRoot,
   AsyncContext,
@@ -26,7 +25,7 @@ import {
   type IEventHandler,
   type IEventPublisher,
   type IQueryHandler,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 
 export const waitImmediate = () =>
   new Promise<void>((resolve) => setImmediate(resolve));
@@ -50,9 +49,7 @@ export class UnhandledExceptionEvent {
 }
 
 @CommandHandler(UnhandledExceptionCommand)
-export class UnhandledExceptionCommandHandler
-  implements ICommandHandler<UnhandledExceptionCommand>
-{
+export class UnhandledExceptionCommandHandler implements ICommandHandler<UnhandledExceptionCommand> {
   constructor(private readonly eventBus: EventBus) {}
 
   async execute(command: UnhandledExceptionCommand) {
@@ -65,9 +62,7 @@ export class UnhandledExceptionCommandHandler
 }
 
 @EventsHandler(UnhandledExceptionEvent)
-export class UnhandledExceptionEventHandler
-  implements IEventHandler<UnhandledExceptionEvent>
-{
+export class UnhandledExceptionEventHandler implements IEventHandler<UnhandledExceptionEvent> {
   async handle(event: UnhandledExceptionEvent) {
     if (event.failAt === "event") {
       throw new Error(`Unhandled exception in ${event.failAt}`);
@@ -212,9 +207,7 @@ export class KillDragonHandler implements ICommandHandler<KillDragonCommand> {
 }
 
 @CommandHandler(DropAncientItemCommand)
-export class DropAncientItemHandler
-  implements ICommandHandler<DropAncientItemCommand>
-{
+export class DropAncientItemHandler implements ICommandHandler<DropAncientItemCommand> {
   constructor(
     private readonly repository: HeroRepository,
     private readonly publisher: EventPublisher,
@@ -231,9 +224,7 @@ export class DropAncientItemHandler
 }
 
 @EventsHandler(HeroKilledDragonEvent)
-export class HeroKilledDragonHandler
-  implements IEventHandler<HeroKilledDragonEvent>
-{
+export class HeroKilledDragonHandler implements IEventHandler<HeroKilledDragonEvent> {
   constructor(
     private readonly repository: EnemyRepository,
     private readonly publisher: EventPublisher,
@@ -393,9 +384,7 @@ export class ScopedHeroRepository {
 }
 
 @CommandHandler(ScopedKillDragonCommand, { scope: Scope.REQUEST })
-export class ScopedKillDragonHandler
-  implements ICommandHandler<ScopedKillDragonCommand>
-{
+export class ScopedKillDragonHandler implements ICommandHandler<ScopedKillDragonCommand> {
   constructor(
     private readonly repository: ScopedHeroRepository,
     private readonly publisher: EventPublisher,
@@ -416,9 +405,7 @@ export class ScopedKillDragonHandler
 }
 
 @CommandHandler(ScopedDropAncientItemCommand, { scope: Scope.REQUEST })
-export class ScopedDropAncientItemHandler
-  implements ICommandHandler<ScopedDropAncientItemCommand>
-{
+export class ScopedDropAncientItemHandler implements ICommandHandler<ScopedDropAncientItemCommand> {
   constructor(
     private readonly repository: ScopedHeroRepository,
     private readonly publisher: EventPublisher,
@@ -437,27 +424,21 @@ export class ScopedDropAncientItemHandler
 }
 
 @EventsHandler(ScopedHeroKilledDragonEvent, { scope: Scope.REQUEST })
-export class ScopedHeroKilledDragonHandler
-  implements IEventHandler<ScopedHeroKilledDragonEvent>
-{
+export class ScopedHeroKilledDragonHandler implements IEventHandler<ScopedHeroKilledDragonEvent> {
   constructor(@Inject(REQUEST) public readonly context: AsyncContext) {}
 
   handle(_event: ScopedHeroKilledDragonEvent) {}
 }
 
 @EventsHandler(ScopedHeroFoundItemEvent, { scope: Scope.REQUEST })
-export class ScopedHeroFoundItemHandler
-  implements IEventHandler<ScopedHeroFoundItemEvent>
-{
+export class ScopedHeroFoundItemHandler implements IEventHandler<ScopedHeroFoundItemEvent> {
   constructor(@Inject(REQUEST) public readonly context: AsyncContext) {}
 
   handle(_event: ScopedHeroFoundItemEvent) {}
 }
 
 @QueryHandler(ScopedGetHeroesQuery, { scope: Scope.REQUEST })
-export class ScopedGetHeroesHandler
-  implements IQueryHandler<ScopedGetHeroesQuery>
-{
+export class ScopedGetHeroesHandler implements IQueryHandler<ScopedGetHeroesQuery> {
   constructor(
     private readonly repository: ScopedHeroRepository,
     @Inject(REQUEST) public readonly context: AsyncContext,
@@ -514,9 +495,7 @@ export class CqrsAppModule {}
 // ============================================================================
 
 @EventsHandler(HeroFoundItemEvent)
-export class HeroFoundItemSlowHandler
-  implements IEventHandler<HeroFoundItemEvent>
-{
+export class HeroFoundItemSlowHandler implements IEventHandler<HeroFoundItemEvent> {
   async handle(_event: HeroFoundItemEvent) {
     await waitImmediate();
     this.end();
@@ -526,9 +505,7 @@ export class HeroFoundItemSlowHandler
 }
 
 @EventsHandler(HeroKilledDragonEvent)
-export class HeroKilledDragonSlowHandler
-  implements IEventHandler<HeroKilledDragonEvent>
-{
+export class HeroKilledDragonSlowHandler implements IEventHandler<HeroKilledDragonEvent> {
   async handle(_event: HeroKilledDragonEvent) {
     await waitImmediate();
     this.end();
@@ -538,9 +515,7 @@ export class HeroKilledDragonSlowHandler
 }
 
 @EventsHandler(HeroKilledDragonEvent)
-export class HeroKilledDragon2SlowHandler
-  implements IEventHandler<HeroKilledDragonEvent>
-{
+export class HeroKilledDragon2SlowHandler implements IEventHandler<HeroKilledDragonEvent> {
   async handle(_event: HeroKilledDragonEvent) {
     await waitImmediate();
     this.end();
@@ -559,9 +534,9 @@ const SlowEventHandlers = [
  * Fire-and-forget publisher bridging to EventBus.subject$ without awaiting
  * async event handlers (mirrors upstream NestJS default Subject push behavior).
  */
-export class FireAndForgetPublisher<EventBase extends IEvent = IEvent>
-  implements IEventPublisher<EventBase>
-{
+export class FireAndForgetPublisher<
+  EventBase extends IEvent = IEvent,
+> implements IEventPublisher<EventBase> {
   private inner?: DefaultPubSub<EventBase>;
 
   bindTo(eventBus: EventBus<EventBase>): void {

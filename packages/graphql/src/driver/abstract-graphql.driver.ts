@@ -1,7 +1,7 @@
-import { Optional } from "@bunest/common";
+import { Optional } from "@bunest/core";
 import { ApplicationConfig, HttpAdapterHost } from "@bunest/core";
-import { normalizePath } from "@bunest/http";
-import type { GraphQLSchema } from "graphql";
+import { normalizePath } from "@bunest/core/http";
+import type { GraphQLSchema } from "../engine";
 import type {
   GqlModuleOptions,
   GraphQLDriver,
@@ -14,14 +14,14 @@ import { ResolverDecoratorHost } from "../services/resolver-decorator-host";
  * Abstract base GraphQL driver mirroring `@nestjs/graphql` `AbstractGraphQLDriver`.
  */
 export abstract class AbstractGraphQLDriver<
-  TOptions extends Record<string, any> = GqlModuleOptions,
-> implements GraphQLDriver<TOptions>
-{
+  TOptions extends GqlModuleOptions = GqlModuleOptions,
+> implements GraphQLDriver<TOptions> {
   constructor(
     @Optional() protected readonly httpAdapterHost?: HttpAdapterHost,
     @Optional() protected readonly applicationConfig?: ApplicationConfig,
     @Optional() protected readonly graphQlFactory?: GraphQLFactory,
-    @Optional() protected readonly resolverDecoratorHost?: ResolverDecoratorHost,
+    @Optional()
+    protected readonly resolverDecoratorHost?: ResolverDecoratorHost,
   ) {}
 
   abstract start(options: TOptions): Promise<unknown>;
@@ -29,7 +29,7 @@ export abstract class AbstractGraphQLDriver<
 
   async mergeDefaultOptions(
     options: TOptions,
-    defaults: Record<string, any> = {
+    defaults: Record<string, unknown> = {
       path: "/graphql",
       fieldResolverEnhancers: [],
       stopOnApplicationShutdown: false,
@@ -54,8 +54,8 @@ export abstract class AbstractGraphQLDriver<
       context: any,
     ) => boolean | Promise<boolean>,
     createSubscribeContext: Function,
-  ): any {
-    return async (...args: any[]) => {
+  ): (...args: unknown[]) => Promise<AsyncIterable<unknown>> {
+    return async (...args: unknown[]) => {
       const subscribeFn = await createSubscribeContext();
       return withFilter(
         () => subscribeFn.apply(instanceRef, args),

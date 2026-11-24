@@ -17,21 +17,26 @@ export function unregisterServer(instance: object, storage: Storage): void {
   }
 }
 
-export function storageForRequest(req: any): Storage | undefined {
+export function storageForRequest(req: unknown): Storage | undefined {
   if (req && typeof req === "object") {
-    let app = req.app;
+    const r = req as {
+      app?: { parent?: unknown } & object;
+      server?: { parent?: unknown } & object;
+      socket?: { server?: unknown };
+    };
+    let app: unknown = r.app;
     while (app && typeof app === "object") {
       const found = serverRegistry.get(app);
       if (found) return found;
-      app = app.parent;
+      app = (app as { parent?: unknown }).parent;
     }
-    let server = req.server;
+    let server: unknown = r.server;
     while (server && typeof server === "object") {
       const found = serverRegistry.get(server);
       if (found) return found;
-      server = server.parent;
+      server = (server as { parent?: unknown }).parent;
     }
-    const socketServer = req.socket?.server;
+    const socketServer = r.socket?.server;
     if (socketServer && typeof socketServer === "object") {
       const found = serverRegistry.get(socketServer);
       if (found) return found;

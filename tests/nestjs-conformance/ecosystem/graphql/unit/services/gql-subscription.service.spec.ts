@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { buildSchema } from "../../../../../../packages/graphql/node_modules/graphql";
+import { buildSchema } from "../../../../../../packages/graphql/src";
 import {
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
   GRAPHQL_WS_CLOSE_CODES,
@@ -12,7 +11,7 @@ import {
 import {
   type BunServerLike,
   type WebSocketUpgradeHandler,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import {
   createSpy,
   describeConformance,
@@ -399,8 +398,8 @@ describeConformance(
         const setupMultiHandlerAdapter = (
           graphqlWsConfig: GqlSubscriptionServiceOptions["graphql-ws"] = true,
         ) => {
-          const otherUpgrade = createSpy((_req: Request, _srv: BunServerLike) =>
-            undefined,
+          const otherUpgrade = createSpy(
+            (_req: Request, _srv: BunServerLike) => undefined,
           );
           mockAdapter.registerWebsocketHandler("/another", otherUpgrade, {});
           const service = new GqlSubscriptionService(

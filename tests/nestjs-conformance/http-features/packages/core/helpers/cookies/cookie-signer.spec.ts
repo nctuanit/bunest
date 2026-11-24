@@ -1,18 +1,16 @@
-import "reflect-metadata";
-import { createHmac } from "node:crypto";
 import { expect, it } from "bun:test";
 import {
   normalizeCookieSecrets,
   signCookieValue,
   unsignCookieValue,
-} from "../../../../../../../packages/http/src";
+} from "../../../../../../../packages/core/src/http";
 import { describeConformance, itAdapted } from "../../../../../_helpers";
 
 /**
  * Reference cookie-signature HMAC-SHA256 implementation (standard base64 without `=` padding).
  */
 function referenceCookieSignatureSign(value: string, secret: string): string {
-  const sig = createHmac("sha256", secret)
+  const sig = new Bun.CryptoHasher("sha256", secret)
     .update(value)
     .digest("base64")
     .replace(/=+$/, "");
@@ -47,8 +45,8 @@ describeConformance(
       expect(normalizeCookieSecrets(undefined)).toBeUndefined();
     });
 
-    // BUNEST_BUG: signCookieValue uses base64url (-/_) via hmacSignBase64Url instead of standard unpadded base64 (+//) used by cookie-signature/NestJS (packages/http/src/security/cookie.ts:12-30).
-    it.skip("should produce the cookie-signature format with the \"s:\" prefix", () => {
+    // BUNEST_BUG: signCookieValue uses base64url (-/_) via hmacSignBase64Url instead of standard unpadded base64 (+//) used by cookie-signature/NestJS (packages/core/src/http/security/cookie.ts:12-30).
+    it.skip('should produce the cookie-signature format with the "s:" prefix', () => {
       const signed = signCookieValue("value", "secret");
       expect(signed).toBe(
         `s:${referenceCookieSignatureSign("value", "secret")}`,
@@ -58,27 +56,27 @@ describeConformance(
 
     it("should round-trip non-empty values, including dots and non-ASCII", () => {
       for (const value of ["a.b.c", "h\u00e9llo", "s:nested"]) {
-        expect(unsignCookieValue(signCookieValue(value, "secret"), ["secret"])).toBe(
-          value,
-        );
+        expect(
+          unsignCookieValue(signCookieValue(value, "secret"), ["secret"]),
+        ).toBe(value);
       }
     });
 
-    // BUNEST_BUG: unsignCookieValue checks `if (dotIdx <= 0) return false` (packages/http/src/security/cookie.ts:60), rejecting valid signed empty string "" (body is ".<sig>", dotIdx === 0).
+    // BUNEST_BUG: unsignCookieValue checks `if (dotIdx <= 0) return false` (packages/core/src/http/security/cookie.ts:60), rejecting valid signed empty string "" (body is ".<sig>", dotIdx === 0).
     it.skip("should round-trip empty string values", () => {
       expect(unsignCookieValue(signCookieValue("", "secret"), ["secret"])).toBe(
         "",
       );
     });
 
-    // BUNEST_BUG: unsignCookieValue uses base64url (-/_) instead of standard base64 (+//) and requires the "s:" prefix, rejecting cookie-signature payloads (packages/http/src/security/cookie.ts:51-69).
+    // BUNEST_BUG: unsignCookieValue uses base64url (-/_) instead of standard base64 (+//) and requires the "s:" prefix, rejecting cookie-signature payloads (packages/core/src/http/security/cookie.ts:51-69).
     it.skip("should verify values signed by cookie-signature, with or without the prefix", () => {
       const signed = referenceCookieSignatureSign("user-42", "secret");
       expect(unsignCookieValue(`s:${signed}`, ["secret"])).toBe("user-42");
       expect(unsignCookieValue(signed, ["secret"])).toBe("user-42");
     });
 
-    // BUNEST_BUG: signCookieValue uses base64url (-/_) instead of standard unpadded base64 (+//), so cookie-signature cannot verify outputs containing - or _ (packages/http/src/security/cookie.ts:12-30).
+    // BUNEST_BUG: signCookieValue uses base64url (-/_) instead of standard unpadded base64 (+//), so cookie-signature cannot verify outputs containing - or _ (packages/core/src/http/security/cookie.ts:12-30).
     it.skip("should produce values that cookie-signature verifies", () => {
       const signed = signCookieValue("user-42", "secret");
       expect(referenceCookieSignatureUnsign(signed.slice(2), "secret")).toBe(
@@ -103,7 +101,7 @@ describeConformance(
       "unsignCookieValue returns false on invalid signature",
     );
 
-    // BUNEST_BUG: unsignCookieValue throws TypeError when given undefined input instead of returning false (packages/http/src/security/cookie.ts:51).
+    // BUNEST_BUG: unsignCookieValue throws TypeError when given undefined input instead of returning false (packages/core/src/http/security/cookie.ts:51).
     it.skip("should return false rather than throwing for undefined input", () => {
       expect(unsignCookieValue(undefined as any, ["secret"])).toBe(false);
     });

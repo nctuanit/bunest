@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, expect, spyOn } from "bun:test";
 import {
   Controller,
   Get,
   ShutdownSignal,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   HealthCheck,
   HealthCheckService,
@@ -37,9 +36,7 @@ function createHealthEndpointApp(
 
   return createTestApp(
     {
-      imports: [
-        TerminusModule.forRoot({ logger: false, ...terminusOptions }),
-      ],
+      imports: [TerminusModule.forRoot({ logger: false, ...terminusOptions })],
       controllers: [HealthController],
     },
     { silentLogger: true },

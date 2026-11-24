@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, it } from "bun:test";
 import {
   All,
@@ -8,7 +7,7 @@ import {
   type BunestModule,
   type MiddlewareConsumer,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -100,7 +99,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected GET /files/ (for "@Controller('files/{*path}')") and GET /items/ (for "@Controller('items/{:id}')") to return 200 "middleware", got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) only supports `*` and `:id?`, not path-to-regexp v8 brace optional-tail syntax `{*path}` or `{:id}`.
+    // BUNEST_BUG: Expected GET /files/ (for "@Controller('files/{*path}')") and GET /items/ (for "@Controller('items/{:id}')") to return 200 "middleware", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) only supports `*` and `:id?`, not path-to-regexp v8 brace optional-tail syntax `{*path}` or `{:id}`.
     it.skip.each(
       braceOptionalTailCases.map(
         ([controller, base, urls]) => [base, controller, urls] as const,

@@ -2,7 +2,7 @@ import {
   ConfigurableModuleBuilder,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type {
   MailModuleOptions,
   MailModuleStructure,
@@ -27,7 +27,9 @@ export const {
     (definition, { isGlobal, transport, templates, imports }) => ({
       ...definition,
       global: isGlobal,
-      imports: [...new Set([...(definition.imports ?? []), ...(imports ?? [])])],
+      imports: [
+        ...new Set([...(definition.imports ?? []), ...(imports ?? [])]),
+      ],
       providers: [
         ...(definition.providers ?? []),
         transportProvider(transport),

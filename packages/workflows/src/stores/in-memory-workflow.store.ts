@@ -1,4 +1,4 @@
-import { Logger } from "@bunest/common";
+import { Logger } from "@bunest/core";
 import type { RateWindowState } from "../core/interfaces/limits.interface";
 import { rateWindowRoom, takeRateWindow } from "../core/limits/limits";
 import { InMemoryScheduleStore } from "../core/scheduling/in-memory-schedule.store";
@@ -447,9 +447,7 @@ export class InMemoryWorkflowStore implements WorkflowStore {
           limit?.perKey != null && i.concurrencyKey !== null
             ? limit.perKey - heldBy(slot(i.workflow, i.concurrencyKey))
             : Infinity,
-        rate: rule?.limit
-          ? roomIn(slot(i.workflow), rule.limit.max)
-          : Infinity,
+        rate: rule?.limit ? roomIn(slot(i.workflow), rule.limit.max) : Infinity,
         rateKey:
           rule?.perKey && i.rateLimitKey !== null
             ? roomIn(slot(i.workflow, i.rateLimitKey), rule.perKey.max)
@@ -477,7 +475,8 @@ export class InMemoryWorkflowStore implements WorkflowStore {
     );
     const byWorkflow = firsts(
       byRateKey,
-      (i) => (limits.has(i.workflow) || rules.has(i.workflow) ? i.workflow : null),
+      (i) =>
+        limits.has(i.workflow) || rules.has(i.workflow) ? i.workflow : null,
       (i) => Math.min(free(i).total, free(i).rate),
     );
     return byWorkflow.slice(0, request.limit);

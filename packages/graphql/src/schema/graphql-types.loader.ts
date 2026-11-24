@@ -1,6 +1,4 @@
-import { existsSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
-import { Injectable } from "@bunest/common";
+import { Injectable, isAbsolute, resolve } from "@bunest/core";
 
 /**
  * Loads and merges `.graphql` / `.gql` SDL files matching glob patterns using
@@ -33,7 +31,7 @@ export class GraphQLTypesLoader {
 
       if (!hasGlob) {
         const abs = resolve(rawPattern);
-        if (existsSync(abs) && statSync(abs).isFile()) {
+        if (await Bun.file(abs).exists()) {
           matched.add(abs);
         }
         continue;

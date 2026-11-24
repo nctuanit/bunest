@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   type BunestInterceptor,
   type CallHandler,
   type ExecutionContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   APP_INTERCEPTOR,
   type BunestApplication,

@@ -1,10 +1,5 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import {
-  Inject,
-  Injectable,
-  Scope,
-} from "../../../../../packages/common/src";
+import { Inject, Injectable, Scope } from "../../../../../packages/core/src/common";
 import {
   type BunestApplication,
   ContextIdFactory,
@@ -17,7 +12,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   describeConformance,
@@ -153,7 +148,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways, BunWebSocketAdapter disallows multiple gateways sharing the same path ("/ws"), and no per-connection ContextId is bound to BunWsClient for handleDisconnect resolution (packages/websockets/src/explorer/ws-gateway.explorer.ts#L122, packages/websockets/src/adapter/bun-ws.adapter.ts#L259-L263, #L691-L716).
+    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways, BunWebSocketAdapter disallows multiple gateways sharing the same path ("/ws"), and no per-connection ContextId is bound to BunWsClient for handleDisconnect resolution (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263, #L691-L716).
     it.skip("should keep request-scoped dependencies shared while another gateway disconnects [ADR-001, ADR-012]", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],
@@ -169,7 +164,8 @@ describeConformance(
       const seenEvents = new Set<string>();
       const ready = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(
-          () => reject(new Error("Timed out waiting for fastReady and slowReady")),
+          () =>
+            reject(new Error("Timed out waiting for fastReady and slowReady")),
           2000,
         );
         client!.addEventListener("message", (evt) => {

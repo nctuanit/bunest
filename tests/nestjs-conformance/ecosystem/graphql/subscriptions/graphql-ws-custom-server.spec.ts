@@ -1,9 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import {
-  type DynamicModule,
-  Module,
-} from "../../../../../packages/common/src";
+import { type DynamicModule, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Field,
@@ -192,79 +188,82 @@ describeConformance(
       ],
     ];
 
-    describe.each(cases)("graphql-ws custom server (%s)", (_name, moduleFactory) => {
-      let app: BunestApplication;
-      let server: MockCustomWsServer;
-      let port: number;
-      let socket: WebSocket | undefined;
-      let closing: Promise<void> | undefined;
-      const onConnection = mock(() => {});
+    describe.each(cases)(
+      "graphql-ws custom server (%s)",
+      (_name, moduleFactory) => {
+        let app: BunestApplication;
+        let server: MockCustomWsServer;
+        let port: number;
+        let socket: WebSocket | undefined;
+        let closing: Promise<void> | undefined;
+        const onConnection = mock(() => {});
 
-      beforeEach(async () => {
-        onConnection.mockClear();
-        server = createMockWsServer({
-          noServer: true,
-          path: "/subscriptions",
-          maxPayload: 1024,
+        beforeEach(async () => {
+          onConnection.mockClear();
+          server = createMockWsServer({
+            noServer: true,
+            path: "/subscriptions",
+            maxPayload: 1024,
+          });
+          server.on("connection", onConnection);
+
+          const moduleRef = await Test.createTestingModule({
+            imports: [moduleFactory(server)],
+          }).compile({ logger: false });
+          app = moduleRef.createNestApplication({ logger: false });
+          await app.init();
+          app.get(GraphQLService).attachWebSocket(app);
+          const info = await app.listen({ port: 0, hostname: "127.0.0.1" });
+          port = info.port;
         });
-        server.on("connection", onConnection);
 
-        const moduleRef = await Test.createTestingModule({
-          imports: [moduleFactory(server)],
-        }).compile({ logger: false });
-        app = moduleRef.createNestApplication({ logger: false });
-        await app.init();
-        app.get(GraphQLService).attachWebSocket(app);
-        const info = await app.listen({ port: 0, hostname: "127.0.0.1" });
-        port = info.port;
-      });
+        afterEach(async () => {
+          if (socket && socket.readyState < WebSocket.CLOSING) {
+            socket.close();
+          }
+          socket = undefined;
+          await (closing ?? app.close());
+          closing = undefined;
+        });
 
-      afterEach(async () => {
-        if (socket && socket.readyState < WebSocket.CLOSING) {
-          socket.close();
-        }
-        socket = undefined;
-        await (closing ?? app.close());
-        closing = undefined;
-      });
+        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` (`GraphQLWsServer` option in graphql.interface.ts:486) and never delegates upgrades or emits `"connection"` on a custom WS server (packages/graphql/src/subscriptions/graphql-ws.handler.ts).
+        it.skip("routes connections on its own path to the custom server", async () => {
+          const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
+          socket = client.socket;
 
-      // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` (`GraphQLWsServer` option in graphql.interface.ts:486) and never delegates upgrades or emits `"connection"` on a custom WS server (packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-      it.skip("routes connections on its own path to the custom server", async () => {
-        const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
-        socket = client.socket;
+          expect(await withTimeout(client.acked.then(() => "acked"))).toBe(
+            "acked",
+          );
+          expect(onConnection).toHaveBeenCalledTimes(1);
+          expect(server.clients.size).toBe(1);
+        });
 
-        expect(await withTimeout(client.acked.then(() => "acked"))).toBe(
-          "acked",
-        );
-        expect(onConnection).toHaveBeenCalledTimes(1);
-        expect(server.clients.size).toBe(1);
-      });
+        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` options such as `maxPayload` (closed with 4400 invalid JSON instead of 1009 message too big; packages/graphql/src/subscriptions/graphql-ws.handler.ts).
+        it.skip("applies the options of the custom server", async () => {
+          const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
+          socket = client.socket;
+          await client.acked;
 
-      // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` options such as `maxPayload` (closed with 4400 invalid JSON instead of 1009 message too big; packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-      it.skip("applies the options of the custom server", async () => {
-        const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
-        socket = client.socket;
-        await client.acked;
+          client.socket.send("x".repeat(2048));
 
-        client.socket.send("x".repeat(2048));
+          // 1009: message too big, enforced by the custom server's maxPayload
+          expect(await withTimeout(client.closed)).toBe(1009);
+        });
 
-        // 1009: message too big, enforced by the custom server's maxPayload
-        expect(await withTimeout(client.closed)).toBe(1009);
-      });
+        // BUNEST_BUG: GraphQLWsHandler neither attaches/disposes custom `options.server` listeners nor closes WS sockets with 1001 before BunHttpAdapter stops the server (received 1006 abnormal closure; packages/graphql/src/subscriptions/graphql-ws.handler.ts & packages/core/src/application/bunest-application.ts).
+        it.skip("closes the custom server when the application closes", async () => {
+          const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
+          socket = client.socket;
+          await client.acked;
 
-      // BUNEST_BUG: GraphQLWsHandler neither attaches/disposes custom `options.server` listeners nor closes WS sockets with 1001 before BunHttpAdapter stops the server (received 1006 abnormal closure; packages/graphql/src/subscriptions/graphql-ws.handler.ts & packages/core/src/application/bunest-application.ts).
-      it.skip("closes the custom server when the application closes", async () => {
-        const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
-        socket = client.socket;
-        await client.acked;
+          closing = app.close();
 
-        closing = app.close();
-
-        expect(await withTimeout(client.closed)).toBe(1001);
-        expect(server.listenerCount("connection")).toBe(0);
-        expect(server.clients.size).toBe(0);
-      });
-    });
+          expect(await withTimeout(client.closed)).toBe(1001);
+          expect(server.listenerCount("connection")).toBe(0);
+          expect(server.clients.size).toBe(0);
+        });
+      },
+    );
 
     describe("graphql-ws custom server validation", () => {
       // BUNEST_BUG: GraphQLService / GraphQLWsHandler does not validate that a custom `subscriptions["graphql-ws"].server` has `options.noServer === true` at init (packages/graphql/src/driver/graphql-http.handler.ts & packages/graphql/src/subscriptions/graphql-ws.handler.ts).
@@ -316,9 +315,7 @@ describeConformance(
         socket = client.socket;
 
         const outcome = await withTimeout(
-          client.acked
-            .then(() => "acked")
-            .catch((err: Error) => err.message),
+          client.acked.then(() => "acked").catch((err: Error) => err.message),
         );
         expect(outcome).not.toBe("acked");
         expect(outcome).not.toBe("timeout");

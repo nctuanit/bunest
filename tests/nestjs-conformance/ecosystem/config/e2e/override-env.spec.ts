@@ -1,9 +1,18 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ConfigModule } from "../../../../../packages/config/src";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+} from "bun:test";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
+import { ConfigModule } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 
 describeConformance(
@@ -18,13 +27,17 @@ describeConformance(
     let originalEnv: NodeJS.ProcessEnv;
 
     beforeAll(() => {
-      tmpDir = fs.mkdtempSync(join(tmpdir(), "bunest-config-override-"));
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-config-override-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(tmpDir);
       envFilePath = join(tmpDir, ".env.override-test");
-      fs.writeFileSync(envFilePath, "EXISTING_VAR=new_value");
+      writeTextSync(envFilePath, "EXISTING_VAR=new_value");
     });
 
-    afterAll(() => {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(() => {

@@ -1,16 +1,11 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   Module,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
-import {
-  Test,
-  createSpy,
-  describeConformance,
-} from "../../../_helpers";
+} from "../../../../../packages/core/src/common";
+import { Test, createSpy, describeConformance } from "../../../_helpers";
 
 @Injectable()
 class TestInjectable implements OnModuleInit {

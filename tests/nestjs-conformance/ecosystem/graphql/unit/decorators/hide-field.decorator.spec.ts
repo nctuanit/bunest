@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   type GraphQLObjectType,
   printType,
-} from "../../../../../../packages/graphql/node_modules/graphql";
-import { applyDecorators } from "../../../../../../packages/common/src";
+} from "../../../../../../packages/graphql/src";
+import { applyDecorators } from "../../../../../../packages/core/src/common";
 import {
   Field,
   GraphQLSchemaBuilderModule,
@@ -50,7 +49,8 @@ class AccountResolver {
 describeConformance(
   "HideField",
   {
-    upstreamPath: "packages/graphql/tests/decorators/hide-field.decorator.spec.ts",
+    upstreamPath:
+      "packages/graphql/tests/decorators/hide-field.decorator.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:

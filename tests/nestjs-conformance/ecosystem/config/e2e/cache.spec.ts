@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigService } from "../../../../../packages/config/src";
+import { ConfigService } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { AppModule } from "../_fixtures/app.module";
 
@@ -35,7 +34,7 @@ describeConformance(
         expect(configService.get("NAME")).toEqual("TEST");
       });
 
-      // BUNEST_BUG: ConfigModule copies runtime process.env into CONFIG_STORE_TOKEN at bootstrap and ConfigService.get() reads this.store before live process.env even when cache is false (expected "CHANGED", received "TEST"; packages/config/src/config.module.ts:130, packages/config/src/config.service.ts:278-286)
+      // BUNEST_BUG: ConfigModule copies runtime process.env into CONFIG_STORE_TOKEN at bootstrap and ConfigService.get() reads this.store before live process.env even when cache is false (expected "CHANGED", received "TEST"; packages/core/src/config/config.module.ts:130, packages/core/src/config/config.service.ts:278-286)
       it.skip("should return new vars", () => {
         process.env["NAME"] = "CHANGED";
         const configService = app.get(ConfigService);

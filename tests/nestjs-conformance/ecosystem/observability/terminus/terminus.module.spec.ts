@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   Global,
@@ -7,7 +6,7 @@ import {
   Logger,
   Module,
   type LoggerService,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   HealthCheckException,
   HealthCheckService,

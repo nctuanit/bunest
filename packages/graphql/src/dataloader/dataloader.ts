@@ -61,8 +61,7 @@ export class BunestDataLoader<K, V, C = K> {
         ? Math.floor(options.maxBatchSize)
         : Number.POSITIVE_INFINITY;
     this.cacheEnabled = options.cache ?? true;
-    this.cacheKeyFn =
-      options.cacheKeyFn ?? ((key: K) => key as unknown as C);
+    this.cacheKeyFn = options.cacheKeyFn ?? ((key: K) => key as unknown as C);
     this.batchScheduleFn = options.batchScheduleFn ?? queueMicrotask;
   }
 
@@ -137,9 +136,7 @@ export class BunestDataLoader<K, V, C = K> {
     const cacheKey = this.cacheKeyFn(key);
     if (this.cacheEnabled && !this.cacheMap.has(cacheKey)) {
       const promise =
-        value instanceof Error
-          ? Promise.reject(value)
-          : Promise.resolve(value);
+        value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
       if (value instanceof Error) {
         // Prevent unhandled rejection before consumer calls load(key)
         promise.catch(() => {});

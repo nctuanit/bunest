@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import { signalName } from "../../signals/workflow.signal";
 import type { SignalOnOptions } from "../interfaces/signal-on-options.interface";
 import {

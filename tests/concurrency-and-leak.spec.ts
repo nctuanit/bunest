@@ -1,8 +1,4 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   Body,
   BunestFactory,
@@ -15,13 +11,16 @@ import {
   Post,
   REQUEST,
   Scope,
+  ensureDir,
+  join,
+  removePath,
   type OnRequestDestroy,
 } from "../packages/core/src";
 import {
   EventEmitterModule,
   EventEmitterService,
   OnEvent,
-} from "../packages/events/src";
+} from "../packages/messaging/src/events";
 import {
   MessagePattern,
   Payload,
@@ -34,27 +33,27 @@ import {
   Processor,
   Queue,
   QueueModule,
-} from "../packages/queues/src";
+} from "../packages/jobs/src/queues";
 import {
   Cron,
   CronExpression,
   Interval,
   ScheduleModule,
   SchedulerRegistry,
-} from "../packages/scheduler/src";
-import { SqliteModule, SqliteService } from "../packages/sqlite/src";
+} from "../packages/jobs/src/scheduler";
+import { DataSource, OrmModule } from "../packages/orm/src";
 import {
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketModule,
-} from "../packages/websockets/src";
+} from "../packages/core/src/ws";
 
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   while (tempDirs.length > 0) {
-    await rm(tempDirs.pop()!, { recursive: true, force: true });
+    await removePath(tempDirs.pop()!, { recursive: true, force: true });
   }
 });
 
@@ -68,7 +67,7 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
 
       constructor(
         @Inject(REQUEST) private readonly req: Request,
-        private readonly db: SqliteService,
+        private readonly db: DataSource,
       ) {
         this.reqTag = this.req.headers.get("x-req-tag") ?? "missing";
       }
@@ -80,8 +79,8 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
       ): Promise<{ key: string; reqTag: string; committed: boolean }> {
         if (shouldFail) {
           try {
-            await this.db.transaction(async () => {
-              this.db.run(
+            await this.db.transaction(async (em) => {
+              await em.query(
                 "INSERT INTO ledger (entry_key, req_tag, amount) VALUES (?, ?, ?)",
                 [key, this.reqTag, amount],
               );
@@ -94,8 +93,8 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
           return { key, reqTag: this.reqTag, committed: false };
         }
 
-        await this.db.transaction(async () => {
-          this.db.run(
+        await this.db.transaction(async (em) => {
+          await em.query(
             "INSERT INTO ledger (entry_key, req_tag, amount) VALUES (?, ?, ?)",
             [key, this.reqTag, amount],
           );
@@ -104,16 +103,18 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
         return { key, reqTag: this.reqTag, committed: true };
       }
 
-      readEntry(key: string) {
+      async readEntry(key: string) {
+        const rows = await this.db.query<{
+          entry_key: string;
+          req_tag: string;
+          amount: number;
+        }>(
+          "SELECT entry_key, req_tag, amount FROM ledger WHERE entry_key = ?",
+          [key],
+        );
         return {
           reqTag: this.reqTag,
-          row: this.db.queryOne<{
-            entry_key: string;
-            req_tag: string;
-            amount: number;
-          }>("SELECT entry_key, req_tag, amount FROM ledger WHERE entry_key = ?", [
-            key,
-          ]),
+          row: rows[0] ?? null,
         };
       }
 
@@ -127,9 +128,7 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
       constructor(private readonly ledger: RequestLedgerService) {}
 
       @Post()
-      create(
-        @Body() body: { key: string; amount: number; fail?: boolean },
-      ) {
+      create(@Body() body: { key: string; amount: number; fail?: boolean }) {
         return this.ledger.recordEntry(
           body.key,
           body.amount,
@@ -145,14 +144,14 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
 
     @Module({
       imports: [
-        SqliteModule.forRoot({
-          filename: ":memory:",
-          global: true,
+        OrmModule.forRoot({
+          type: "sqlite",
+          database: ":memory:",
           migrations: [
             {
               id: "001_ledger",
-              up(db) {
-                db.exec(`
+              async up(runner) {
+                await runner.execute(`
                   CREATE TABLE ledger (
                     entry_key TEXT PRIMARY KEY,
                     req_tag TEXT NOT NULL,
@@ -162,7 +161,7 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
               },
             },
           ],
-          autoMigrate: true,
+          migrationsRun: true,
         }),
       ],
       controllers: [LedgerController],
@@ -209,14 +208,14 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
 
       await Promise.all(tasks);
 
-      const db = app.get(SqliteService);
-      const countRow = db.queryOne<{ total: number }>(
+      const db = app.get(DataSource);
+      const countRows = await db.query<{ total: number }>(
         "SELECT COUNT(*) as total FROM ledger",
       );
-      expect(countRow?.total).toBe(60);
+      expect(countRows[0]?.total).toBe(60);
 
       // Verify every single committed row matches its exact request tag
-      const rows = db.query<{
+      const rows = await db.query<{
         entry_key: string;
         req_tag: string;
         amount: number;
@@ -236,7 +235,11 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
   });
 
   it("tears down ALL 7 subsystems cleanly (HTTP + SQLite WAL + Scheduler + Queue + EventEmitter + TCP Microservice + WebSocket)", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "bunest-teardown-"));
+    const dir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-teardown-${crypto.randomUUID()}`,
+    );
+    await ensureDir(dir);
     tempDirs.push(dir);
     const dbPath = join(dir, "teardown.sqlite");
 
@@ -282,14 +285,14 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
     @Controller("/full")
     class FullController {
       constructor(
-        private readonly db: SqliteService,
+        private readonly db: DataSource,
         private readonly events: EventEmitterService,
         @InjectQueue("tasks") private readonly queue: Queue<{ label: string }>,
       ) {}
 
       @Get("status")
       async status() {
-        const ok = this.db.healthCheck();
+        const ok = await this.db.ping();
         this.events.emit("subsystem.ping", "from-http");
         const job = await this.queue.add("run", { label: "job-1" });
         return { dbOk: ok, jobId: job.id };
@@ -306,7 +309,11 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
 
     @Module({
       imports: [
-        SqliteModule.forRoot({ filename: dbPath, wal: true, global: true }),
+        OrmModule.forRoot({
+          type: "sqlite",
+          database: dbPath,
+          enableWAL: true,
+        }),
         EventEmitterModule.forRoot({ global: true }),
         ScheduleModule.forRoot({ global: true }),
         QueueModule.forRoot({ global: true }),
@@ -406,10 +413,13 @@ describe("High-Concurrency Stress & Multi-Subsystem Teardown Suite (Phase 6)", (
       await Bun.sleep(70);
       expect(intervalTicks).toBe(ticksAtClose);
 
-      // Verify Windows SQLite file handle was cleanly released (unlink succeeds without EBUSY!)
-      await unlink(dbPath);
+      // Verify Windows SQLite file handle was cleanly released (delete succeeds without EBUSY!)
+      await Bun.file(dbPath).delete();
     } finally {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
         ws.close();
       }
       await app.close().catch(() => {});

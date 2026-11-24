@@ -6,15 +6,11 @@ import {
   type DynamicModule,
   type FactoryDependency,
   type ModuleMetadata,
-} from "@bunest/common";
+} from "@bunest/core";
 import { JwtInvalidException } from "../jwt/jwt.errors";
 import type { JwtPayload } from "../jwt/jwt.interface";
 import { timingSafeEqualString } from "../utils/crypto.util";
-import {
-  JwksClient,
-  type FetchLike,
-  type JwksAlgorithm,
-} from "./jwks.client";
+import { JwksClient, type FetchLike, type JwksAlgorithm } from "./jwks.client";
 import {
   OAuth2Exception,
   OAuth2Service,
@@ -23,10 +19,7 @@ import {
   type OAuth2TokenResponse,
   type OAuth2UserInfo,
 } from "./oauth2.service";
-import {
-  generateNonce,
-  type PkceCodeChallengeMethod,
-} from "./pkce";
+import { generateNonce, type PkceCodeChallengeMethod } from "./pkce";
 
 export const OIDC_MODULE_OPTIONS = Symbol.for(
   "bunest:security:oidc_module_options",
@@ -272,7 +265,10 @@ export class OidcService {
       }
 
       // Strict OIDC Discovery 1.0 §4.3 issuer match check
-      if (typeof raw.issuer !== "string" || raw.issuer !== this.options.issuer) {
+      if (
+        typeof raw.issuer !== "string" ||
+        raw.issuer !== this.options.issuer
+      ) {
         throw new OAuth2Exception(
           `OIDC discovery issuer mismatch: expected "${this.options.issuer}", received "${String(raw.issuer)}"`,
         );
@@ -338,7 +334,9 @@ export class OidcService {
     const extraParams: Record<string, string> = {
       ...(params.extraParams ?? {}),
       nonce,
-      ...(params.maxAge !== undefined ? { max_age: String(params.maxAge) } : {}),
+      ...(params.maxAge !== undefined
+        ? { max_age: String(params.maxAge) }
+        : {}),
     };
 
     const result = await oauth2.buildAuthorizationUrl({

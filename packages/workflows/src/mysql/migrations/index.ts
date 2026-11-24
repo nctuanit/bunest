@@ -1,4 +1,4 @@
-import { StoreSchema } from "@bunest/store-kit/mysql";
+import { StoreSchema } from "@bunest/orm/mysql";
 import { WorkflowSchemaError } from "../../sql/workflow-schema.error";
 import { initialMigration } from "./initial.migration";
 

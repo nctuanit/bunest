@@ -1,67 +1,72 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { Injectable } from "../../../../../packages/common/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import {
-  BaseSqliteRepository,
-  InjectSqliteRepository,
-  SqliteEntity,
-  getSqliteRepositoryToken,
-} from "../../../../../packages/sqlite/src";
+  Column,
+  Entity,
+  InjectRepository,
+  PrimaryGeneratedColumn,
+  entityRef,
+  getOrmRepositoryToken,
+  type Repository,
+} from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
-interface PhotoRow extends Record<string, unknown> {
-  id: number;
-  name: string;
+@Entity("photos")
+class Photo {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  name!: string;
 }
 
-@SqliteEntity("photos")
-class Photo {}
+const PhotoRef = entityRef<Photo>("Photo");
 
 @Injectable()
 class ByNamedConnection {
   constructor(
-    @InjectSqliteRepository(Photo, "foo")
-    readonly repository: BaseSqliteRepository<PhotoRow, number>,
+    @InjectRepository(Photo, "foo")
+    readonly repository: Repository<Photo>,
   ) {}
 }
 
 @Injectable()
 class ByDefaultConnection {
   constructor(
-    @InjectSqliteRepository(Photo)
-    readonly repository: BaseSqliteRepository<PhotoRow, number>,
+    @InjectRepository(Photo)
+    readonly repository: Repository<Photo>,
   ) {}
 }
 
 @Injectable()
-class ByTableNameOnNamedConnection {
+class ByEntityRefAndLazyThunk {
   constructor(
-    @InjectSqliteRepository("photos", "foo")
-    readonly repository: BaseSqliteRepository<PhotoRow, number>,
+    @InjectRepository(PhotoRef, "foo")
+    readonly byRef: Repository<Photo>,
+    @InjectRepository(() => Photo)
+    readonly byThunk: Repository<Photo>,
   ) {}
 }
 
 describeConformance(
-  "Persistence (typeorm-patterns) - @InjectSqliteRepository decorator",
+  "Persistence (typeorm-patterns) - @InjectRepository decorator",
   {
     upstreamPath: "typeorm/tests/unit/inject-repository.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:
-      "Adapts @InjectRepository + getRepositoryToken unit tests to @InjectSqliteRepository + getSqliteRepositoryToken for default and named connections.",
+      "Adapts @InjectRepository + getRepositoryToken unit tests to @bunest/orm @InjectRepository + getOrmRepositoryToken for default, named, entityRef, and lazy thunk targets.",
   },
   () => {
-    const fooRepository = {} as BaseSqliteRepository<PhotoRow, number>;
-    const defaultRepository = {} as BaseSqliteRepository<PhotoRow, number>;
-    const tableRepository = {} as BaseSqliteRepository<PhotoRow, number>;
+    const fooRepository = {} as Repository<Photo>;
+    const defaultRepository = {} as Repository<Photo>;
 
     async function resolve<T>(
       target: new (...args: any[]) => T,
-      token: string,
-      value: BaseSqliteRepository<PhotoRow, number>,
+      providers: Array<{ provide: string; useValue: Repository<Photo> }>,
     ): Promise<T> {
       const moduleRef = await Test.createTestingModule({
-        providers: [target, { provide: token, useValue: value }],
+        providers: [target, ...providers],
       }).compile({ logger: false });
       try {
         return moduleRef.get(target);
@@ -71,35 +76,35 @@ describeConformance(
     }
 
     it("resolves repository token for a named connection", async () => {
-      const instance = await resolve(
-        ByNamedConnection,
-        getSqliteRepositoryToken(Photo, "foo"),
-        fooRepository,
-      );
+      const instance = await resolve(ByNamedConnection, [
+        { provide: getOrmRepositoryToken(Photo, "foo"), useValue: fooRepository },
+      ]);
       expect(instance.repository).toBe(fooRepository);
     });
 
-    it("resolves default connection and table-string targets to distinct tokens", async () => {
-      expect(getSqliteRepositoryToken(Photo)).toBe(
-        getSqliteRepositoryToken(Photo, "default"),
+    it("normalizes class, string name, EntityRef, and lazy thunk to identical tokens per connection", async () => {
+      expect(getOrmRepositoryToken(Photo)).toBe(
+        getOrmRepositoryToken(Photo, "default"),
       );
-      expect(getSqliteRepositoryToken(Photo, "foo")).not.toBe(
-        getSqliteRepositoryToken(Photo, "default"),
+      expect(getOrmRepositoryToken(Photo)).toBe(getOrmRepositoryToken("Photo"));
+      expect(getOrmRepositoryToken(Photo)).toBe(
+        getOrmRepositoryToken(PhotoRef),
       );
-
-      const defaultInstance = await resolve(
-        ByDefaultConnection,
-        getSqliteRepositoryToken(Photo),
-        defaultRepository,
-      );
-      const tableInstance = await resolve(
-        ByTableNameOnNamedConnection,
-        getSqliteRepositoryToken("photos", "foo"),
-        tableRepository,
+      expect(getOrmRepositoryToken(Photo, "foo")).not.toBe(
+        getOrmRepositoryToken(Photo, "default"),
       );
 
+      const defaultInstance = await resolve(ByDefaultConnection, [
+        { provide: getOrmRepositoryToken(Photo), useValue: defaultRepository },
+      ]);
       expect(defaultInstance.repository).toBe(defaultRepository);
-      expect(tableInstance.repository).toBe(tableRepository);
+
+      const refAndThunk = await resolve(ByEntityRefAndLazyThunk, [
+        { provide: getOrmRepositoryToken(Photo, "foo"), useValue: fooRepository },
+        { provide: getOrmRepositoryToken(Photo), useValue: defaultRepository },
+      ]);
+      expect(refAndThunk.byRef).toBe(fooRepository);
+      expect(refAndThunk.byThunk).toBe(defaultRepository);
     });
   },
 );

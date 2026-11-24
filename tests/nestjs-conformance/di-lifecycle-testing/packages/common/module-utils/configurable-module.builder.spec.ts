@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import type { Provider } from "../../../../../../packages/common/src";
+import type { Provider } from "../../../../../../packages/core/src/common";
 import { ConfigurableModuleBuilder } from "../../../../../../packages/core/src";
 import { describeConformance } from "../../../../_helpers";
 
@@ -14,7 +13,9 @@ describeConformance(
   () => {
     describe("setExtras", () => {
       it("should apply module definition transformer function and return typed builder", () => {
-        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<Record<string, unknown>>()
+        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<
+          Record<string, unknown>
+        >()
           .setExtras(
             { isGlobal: false },
             (definition, extras: { isGlobal: boolean }) => ({
@@ -36,7 +37,9 @@ describeConformance(
       it("should preserve extras in registerAsync transformation", () => {
         let capturedExtras: unknown;
 
-        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<Record<string, unknown>>()
+        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<
+          Record<string, unknown>
+        >()
           .setExtras(
             { folder: "default" },
             (definition, extras: { folder: string }) => {
@@ -88,13 +91,18 @@ describeConformance(
 
     describe("setClassMethodName", () => {
       it("should set static class method name and return typed builder", () => {
-        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<Record<string, unknown>>()
+        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<
+          Record<string, unknown>
+        >()
           .setClassMethodName("forRoot")
           .build();
 
         expect(ConfigurableModuleClass.forRoot).not.toBeUndefined();
         expect(ConfigurableModuleClass.forRootAsync).not.toBeUndefined();
-        expect((ConfigurableModuleClass as unknown as Record<string, unknown>).register).toBeUndefined();
+        expect(
+          (ConfigurableModuleClass as unknown as Record<string, unknown>)
+            .register,
+        ).toBeUndefined();
       });
     });
 
@@ -102,7 +110,9 @@ describeConformance(
       it("should set configuration factory class method name and return typed builder", () => {
         // Note: Passing setExtras({}, d => d) works around Bunest ConfigurableModuleBuilder's
         // default ExtraModuleDefinitionOptions = Record<string, never> TS type bug.
-        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<Record<string, unknown>>()
+        const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<
+          Record<string, unknown>
+        >()
           .setFactoryMethodName("createOptions")
           .setExtras({}, (d) => d)
           .build();
@@ -123,23 +133,21 @@ describeConformance(
       it("should return a configured ConfigurableModuleClass with extras and custom method names", () => {
         type ExtraConfig = { isGlobal?: boolean; extraProviders: Provider[] };
 
-        const {
-          ConfigurableModuleClass,
-          MODULE_OPTIONS_TOKEN,
-        } = new ConfigurableModuleBuilder<Record<string, unknown>>({
-          moduleName: "RandomTest",
-        })
-          .setFactoryMethodName("createOptions")
-          .setClassMethodName("forFeature")
-          .setExtras<ExtraConfig>(
-            { isGlobal: false, extraProviders: [] },
-            (definition, extras) => ({
-              ...definition,
-              global: extras.isGlobal,
-              providers: definition.providers?.concat(extras.extraProviders),
-            }),
-          )
-          .build();
+        const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+          new ConfigurableModuleBuilder<Record<string, unknown>>({
+            moduleName: "RandomTest",
+          })
+            .setFactoryMethodName("createOptions")
+            .setClassMethodName("forFeature")
+            .setExtras<ExtraConfig>(
+              { isGlobal: false, extraProviders: [] },
+              (definition, extras) => ({
+                ...definition,
+                global: extras.isGlobal,
+                providers: definition.providers?.concat(extras.extraProviders),
+              }),
+            )
+            .build();
 
         const extraProvider: Provider = { provide: "EXTRA", useValue: "test" };
         const definition = ConfigurableModuleClass.forFeatureAsync({
@@ -163,12 +171,14 @@ describeConformance(
             moduleName: "RandomTest",
           }).build();
 
-        expect(() => (ASYNC_OPTIONS_TYPE as unknown as { imports: unknown }).imports).toThrow(
+        expect(
+          () => (ASYNC_OPTIONS_TYPE as unknown as { imports: unknown }).imports,
+        ).toThrow(
           '"ASYNC_OPTIONS_TYPE" is not supposed to be used as a value.',
         );
-        expect(() => (OPTIONS_TYPE as unknown as { isGlobal: unknown }).isGlobal).toThrow(
-          '"OPTIONS_TYPE" is not supposed to be used as a value.',
-        );
+        expect(
+          () => (OPTIONS_TYPE as unknown as { isGlobal: unknown }).isGlobal,
+        ).toThrow('"OPTIONS_TYPE" is not supposed to be used as a value.');
       });
 
       it("should not mutate the options passed to the builder", () => {
@@ -181,7 +191,9 @@ describeConformance(
         const options = {};
         const first = new ConfigurableModuleBuilder(options).build();
         const second = new ConfigurableModuleBuilder(options).build();
-        expect(first.MODULE_OPTIONS_TOKEN).not.toBe(second.MODULE_OPTIONS_TOKEN);
+        expect(first.MODULE_OPTIONS_TOKEN).not.toBe(
+          second.MODULE_OPTIONS_TOKEN,
+        );
       });
 
       // BUNEST_BUG: ConfigurableModuleBuilder.build() generates a fresh Symbol on each build() call instead of sharing one token per builder instance (packages/core/src/module/configurable-module.builder.ts:189)

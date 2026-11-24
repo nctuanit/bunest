@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -17,7 +16,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Ctx,
   EventPattern,
@@ -131,9 +130,9 @@ describeConformance(
       it("should throw when registering a duplicate message handler for the same normalized pattern", () => {
         server.addMessageHandler({ b: 2, a: 1 }, () => 1);
 
-        expect(() =>
-          server.addMessageHandler({ a: 1, b: 2 }, () => 2),
-        ).toThrow(/Duplicate @MessagePattern/);
+        expect(() => server.addMessageHandler({ a: 1, b: 2 }, () => 2)).toThrow(
+          /Duplicate @MessagePattern/,
+        );
       });
 
       it("should find exact string handlers for string patterns that read as JSON", () => {
@@ -258,7 +257,8 @@ describeConformance(
         expect(outcome.error).toEqual({
           status: 404,
           name: "RpcException",
-          message: 'No @MessagePattern() handler found for pattern "missing.cmd".',
+          message:
+            'No @MessagePattern() handler found for pattern "missing.cmd".',
           details: {
             status: 404,
             message:

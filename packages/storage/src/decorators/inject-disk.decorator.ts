@@ -1,4 +1,4 @@
-import { Inject, type InjectionToken } from "@bunest/common";
+import { Inject, type InjectionToken } from "@bunest/core";
 import { StorageDisk } from "../disks/storage.disk";
 import { getDiskToken, requestDiskName } from "../storage.module-definition";
 

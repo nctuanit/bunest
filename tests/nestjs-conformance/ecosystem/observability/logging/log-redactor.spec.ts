@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   DEFAULT_REDACT_KEYS,
   Logger,
   type LogLevel,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   OBSERVABILITY_LOGGER_OPTIONS,
   ObservabilityLogger,
@@ -55,14 +54,17 @@ describeConformance(
         "sessionId",
         "session_id",
         "SESSIONID",
-      ])("masks sensitive key %s while preserving ordinary sibling fields", (key) => {
-        const input = { userId: "u-1", [key]: "super-secret-value" };
-        const output = logger.redact(input);
+      ])(
+        "masks sensitive key %s while preserving ordinary sibling fields",
+        (key) => {
+          const input = { userId: "u-1", [key]: "super-secret-value" };
+          const output = logger.redact(input);
 
-        expect(output).toEqual({ userId: "u-1", [key]: "[REDACTED]" });
-        // Original object must not be mutated
-        expect(input[key]).toBe("super-secret-value");
-      });
+          expect(output).toEqual({ userId: "u-1", [key]: "[REDACTED]" });
+          // Original object must not be mutated
+          expect(input[key]).toBe("super-secret-value");
+        },
+      );
 
       it("exposes all canonical DEFAULT_REDACT_KEYS", () => {
         for (const expected of [
@@ -428,7 +430,10 @@ describeConformance(
         traceContextStorage.run(
           { traceId, spanId, traceFlags: 1, sampled: true, requestId: "r-1" },
           () => {
-            child.error("worker failed", { password: "pw", customSecret: "cs" });
+            child.error("worker failed", {
+              password: "pw",
+              customSecret: "cs",
+            });
           },
         );
         expect(lines[1]).toContain("[ChildWorker]");

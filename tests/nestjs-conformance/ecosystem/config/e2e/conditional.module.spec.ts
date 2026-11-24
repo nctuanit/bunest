@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { join } from "node:path";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import { ConditionalModule, ConfigModule } from "../../../../../packages/config/src";
+import { join } from "../../../../../packages/core/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  ConditionalModule,
+  ConfigModule,
+} from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { fixturesDir } from "../_fixtures/app.module";
 

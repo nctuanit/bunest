@@ -1,18 +1,18 @@
-import { Module, type DynamicModule } from '@bunest/common';
-import { DiscoveryModule } from '@bunest/core';
+import { Module, type DynamicModule } from "@bunest/core";
+import { DiscoveryModule } from "@bunest/core";
 import {
   AI_EMBEDDING_MODEL_OVERRIDES,
   AI_MODEL_OVERRIDES,
-} from './ai.constants';
+} from "./ai.constants";
 import {
   ConfigurableModuleClass,
   type AiModuleAsyncOptions,
   type AiModuleRootOptions,
-} from './ai.module-definition';
-import { AiEmbeddingModels } from './models/ai-embedding-models.service';
-import { AiModels } from './models/ai-models.service';
-import { AiService } from './services/ai.service';
-import { AiTools } from './tools/ai-tools.service';
+} from "./ai.module-definition";
+import { AiEmbeddingModels } from "./models/ai-embedding-models.service";
+import { AiModels } from "./models/ai-models.service";
+import { AiService } from "./services/ai.service";
+import { AiTools } from "./tools/ai-tools.service";
 
 /**
  * `AiModule.forRoot({ models: { default: ... } })`, or `forRootAsync({ imports, inject, useFactory })`:

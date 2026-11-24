@@ -8,20 +8,20 @@
 
 Native matching precedence inside `Bun.serve({ routes })` is strictly **`static > :param > * > fetch`**.
 
-| Routing Feature | Bun 1.4.3 Native Behavior | Bunest Strategy |
-|---|---|---|
-| Static paths (`/`, `/users`, `/api/health`) | Supported natively | Compile into `Bun.serve({ routes })` |
-| Named params (`/users/:id`, `/:org/repos/:id`) | Supported natively; `req.params` URL-decoded | Compile into `Bun.serve({ routes })` |
-| Trailing wildcard (`/files/*`) | Supported natively (misses bare `/files`) | Compile into `Bun.serve({ routes })` |
-| `req.cookies` (`CookieMap`) & `server.requestIP(req)` | Supported natively | Used directly by `@Cookies()` & `@Ip()` |
-| WebSocket upgrade (`server.upgrade`) | Supported from `routes` and `fetch()` | Dispatched cleanly for WS gateways |
-| **Unmatched verb &rarr; `405` + `Allow`** | Falls through to `fetch()` natively | Handled in **O(1)** inside per-path `routes[path]` dispatcher |
-| **CORS `OPTIONS` preflight** | Unmatched `OPTIONS` falls through | Handled in per-path dispatcher & `fetch()` fallback |
-| **Trailing slash (`/users/` vs `/users`)** | Strict miss natively | Strict by default; opt-in `ignoreTrailingSlash: true` in `fetch()` |
-| **Mid-path wildcard (`/files/*/meta`)** | Not native | Compiled into **Fallback Radix Router** |
-| **Optional params (`/users/:id?`)** | Treated literally natively | Compiled into **Fallback Radix Router** |
-| **Regex params (`/users/:id(\\d+)`)** | Treated literally natively | Compiled into **Fallback Radix Router** |
-| **Host constraints (`@Controller({ host })`)** | Not native | Compiled into **Fallback Radix Router** |
+| Routing Feature                                       | Bun 1.4.3 Native Behavior                    | Bunest Strategy                                                    |
+| ----------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| Static paths (`/`, `/users`, `/api/health`)           | Supported natively                           | Compile into `Bun.serve({ routes })`                               |
+| Named params (`/users/:id`, `/:org/repos/:id`)        | Supported natively; `req.params` URL-decoded | Compile into `Bun.serve({ routes })`                               |
+| Trailing wildcard (`/files/*`)                        | Supported natively (misses bare `/files`)    | Compile into `Bun.serve({ routes })`                               |
+| `req.cookies` (`CookieMap`) & `server.requestIP(req)` | Supported natively                           | Used directly by `@Cookies()` & `@Ip()`                            |
+| WebSocket upgrade (`server.upgrade`)                  | Supported from `routes` and `fetch()`        | Dispatched cleanly for WS gateways                                 |
+| **Unmatched verb &rarr; `405` + `Allow`**             | Falls through to `fetch()` natively          | Handled in **O(1)** inside per-path `routes[path]` dispatcher      |
+| **CORS `OPTIONS` preflight**                          | Unmatched `OPTIONS` falls through            | Handled in per-path dispatcher & `fetch()` fallback                |
+| **Trailing slash (`/users/` vs `/users`)**            | Strict miss natively                         | Strict by default; opt-in `ignoreTrailingSlash: true` in `fetch()` |
+| **Mid-path wildcard (`/files/*/meta`)**               | Not native                                   | Compiled into **Fallback Radix Router**                            |
+| **Optional params (`/users/:id?`)**                   | Treated literally natively                   | Compiled into **Fallback Radix Router**                            |
+| **Regex params (`/users/:id(\\d+)`)**                 | Treated literally natively                   | Compiled into **Fallback Radix Router**                            |
+| **Host constraints (`@Controller({ host })`)**        | Not native                                   | Compiled into **Fallback Radix Router**                            |
 
 ## Why One Per-Path Dispatcher Closure?
 
@@ -50,4 +50,4 @@ fetch(req, server)
        -> routed through Global Exception Filters with CORS headers
 ```
 
-> tip **Parallel E2E Testing** `@bunest/http` supports `app.listen(0)` (ephemeral OS-assigned port) and exposes `app.getUrl()`, making parallel `bun test` suites completely port-conflict-free—or use `@bunest/testing`'s zero-socket `request(app)` / `TestClient` / `app.inject()` (see the [Testing guide](/fundamentals/testing)).
+> tip **Parallel E2E Testing** `@bunest/core/http` supports `app.listen(0)` (ephemeral OS-assigned port) and exposes `app.getUrl()`, making parallel `bun test` suites completely port-conflict-free—or use `@bunest/testing`'s zero-socket `request(app)` / `TestClient` / `app.inject()` (see the [Testing guide](/fundamentals/testing)).

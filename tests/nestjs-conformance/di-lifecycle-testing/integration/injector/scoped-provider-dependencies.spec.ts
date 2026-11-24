@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Controller,
@@ -10,7 +9,7 @@ import {
   forwardRef,
   type Provider,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   INQUIRER,
   NestFactory,

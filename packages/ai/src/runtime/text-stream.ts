@@ -1,13 +1,13 @@
-import type { Duration } from '@bunest/resilience';
-import type { AiStep, AiTextResult } from '../interfaces/ai-result.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import type { AiUsage } from '../interfaces/ai-usage.interface';
-import { withKeepAlive } from '../http/keep-alive.util';
-import { toNodeResponse, writeWebResponse } from '../http/node-response.util';
-import { toMilliseconds } from '../utils/duration.util';
+import type { Duration } from "@bunest/resilience";
+import type { AiStep, AiTextResult } from "../interfaces/ai-result.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
+import type { AiUsage } from "../interfaces/ai-usage.interface";
+import { withKeepAlive } from "../http/keep-alive.util";
+import { toNodeResponse, writeWebResponse } from "../http/node-response.util";
+import { toMilliseconds } from "../utils/duration.util";
 
 const DEFAULT_KEEP_ALIVE_MS = 15_000;
-const DEFAULT_ERROR_TEXT = 'An error occurred.';
+const DEFAULT_ERROR_TEXT = "An error occurred.";
 
 /** What the browser is told about a failure. */
 export interface AiUIMessageStreamOptions {
@@ -22,9 +22,7 @@ export interface AiStreamResponseOptions extends AiUIMessageStreamOptions {
   keepAlive?: Duration | false;
 }
 
-type StreamEntry =
-  | { chunk: Record<string, unknown> }
-  | { error: unknown };
+type StreamEntry = { chunk: Record<string, unknown> } | { error: unknown };
 
 /**
  * A streamed answer: `streamText()`'s result. The call runs once, from the moment it is made, whatever reads it:
@@ -119,12 +117,12 @@ export class AiTextStream {
     return {
       [Symbol.asyncIterator]: async function* () {
         for await (const entry of entries) {
-          if ('error' in entry) {
+          if ("error" in entry) {
             throw entry.error;
           }
-          if (entry.chunk['type'] === 'text-delta') {
-            const delta = entry.chunk['delta'] ?? entry.chunk['textDelta'];
-            if (typeof delta === 'string') {
+          if (entry.chunk["type"] === "text-delta") {
+            const delta = entry.chunk["delta"] ?? entry.chunk["textDelta"];
+            if (typeof delta === "string") {
               yield delta;
             }
           }
@@ -143,9 +141,9 @@ export class AiTextStream {
         const next = await entries.next();
         if (next.done) {
           controller.close();
-        } else if ('error' in next.value) {
+        } else if ("error" in next.value) {
           controller.enqueue({
-            type: 'error',
+            type: "error",
             errorText: safely(errorText, next.value.error),
           });
         } else {
@@ -171,7 +169,7 @@ export class AiTextStream {
       async pull(controller) {
         const next = await reader.read();
         if (next.done) {
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
@@ -185,7 +183,7 @@ export class AiTextStream {
     const interval =
       keepAlive === false
         ? undefined
-        : toMilliseconds(keepAlive ?? DEFAULT_KEEP_ALIVE_MS, 'keepAlive');
+        : toMilliseconds(keepAlive ?? DEFAULT_KEEP_ALIVE_MS, "keepAlive");
     if (interval && interval > 0) {
       sseBody = withKeepAlive(sseBody, interval);
     }
@@ -193,10 +191,10 @@ export class AiTextStream {
     return new Response(sseBody, {
       status: status ?? 200,
       headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-        connection: 'keep-alive',
-        'x-vercel-ai-ui-message-stream': 'v1',
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+        "x-vercel-ai-ui-message-stream": "v1",
         ...headers,
       },
     });
@@ -219,7 +217,7 @@ export class AiTextStream {
     {
       status,
       headers,
-    }: Omit<AiStreamResponseOptions, 'errorText' | 'keepAlive'> = {},
+    }: Omit<AiStreamResponseOptions, "errorText" | "keepAlive"> = {},
   ): Promise<void> {
     const encoder = new TextEncoder();
     const text = this.textStream[Symbol.asyncIterator]();
@@ -241,7 +239,7 @@ export class AiTextStream {
           {
             status: status ?? 200,
             headers: {
-              'content-type': 'text/plain; charset=utf-8',
+              "content-type": "text/plain; charset=utf-8",
               ...headers,
             },
           },
@@ -252,7 +250,7 @@ export class AiTextStream {
   /** Aborts the call: the model call in flight and the tools running. */
   abort(reason?: unknown): void {
     this.controller.abort(
-      reason ?? new DOMException('The stream was cancelled', 'AbortError'),
+      reason ?? new DOMException("The stream was cancelled", "AbortError"),
     );
   }
 
@@ -266,11 +264,11 @@ export class AiTextStream {
         this.abort();
       }
     };
-    node.res.once('close', gone);
+    node.res.once("close", gone);
     try {
       await this.opened;
     } catch (error) {
-      node.res.off('close', gone);
+      node.res.off("close", gone);
       throw error;
     }
     node.open();

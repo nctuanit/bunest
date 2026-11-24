@@ -1,5 +1,4 @@
-import "reflect-metadata";
-import { Controller, Get, Injectable, Module, Query } from "@bunest/common";
+import { Controller, Get, Injectable, Module, Query } from "@bunest/core";
 
 @Injectable()
 export class AppService {

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../packages/core/src/common";
 import {
   InMemorySpanExporter,
   Tracer,
@@ -230,7 +229,8 @@ describeConformance(
 
         let observedSampled: boolean | undefined;
         const result = await tracer.startActiveSpan("dropped.ok", async () => {
-          observedSampled = traceContextStorage.getCurrentSpanContext()?.sampled;
+          observedSampled =
+            traceContextStorage.getCurrentSpanContext()?.sampled;
           return "computed";
         });
         expect(result).toBe("computed");
@@ -271,8 +271,14 @@ describeConformance(
             sampled: false,
           };
 
-          tracer.startSpan("debug.forced", { parentContext: forceDebugParent }).end();
-          tracer.startSpan("normal.dropped", { parentContext: normalUnsampledParent }).end();
+          tracer
+            .startSpan("debug.forced", { parentContext: forceDebugParent })
+            .end();
+          tracer
+            .startSpan("normal.dropped", {
+              parentContext: normalUnsampledParent,
+            })
+            .end();
 
           expect(exporter.getFinishedSpans().map((s) => s.name)).toEqual([
             "debug.forced",

@@ -1,5 +1,5 @@
-import { Injectable } from "@bunest/common";
-import type { GraphQLSchema } from "graphql";
+import { Injectable } from "@bunest/core";
+import type { GraphQLSchema } from "./engine";
 import { GraphQLService } from "./driver/graphql-http.handler";
 
 /**

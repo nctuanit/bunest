@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -9,13 +8,9 @@ import {
   Param,
   type ArgumentMetadata,
   type PipeTransform,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers";
+import { Test, describeConformance, request } from "../../../_helpers";
 
 @Injectable()
 class HelloUsersService {
@@ -111,12 +106,9 @@ describeConformance(
     });
 
     it("host=example.com should execute locally injected pipe by HelloController", async () => {
-      await request(app)
-        .get("/hello/local-pipe/1")
-        .expect(200)
-        .expect({
-          id: "1",
-        });
+      await request(app).get("/hello/local-pipe/1").expect(200).expect({
+        id: "1",
+      });
     });
 
     it("host=host.example.com should execute locally injected pipe by HostController", async () => {

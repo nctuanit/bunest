@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it, mock } from "bun:test";
-import { Scope } from "../../../../packages/common/src";
+import { Scope } from "../../../../packages/core/src/common";
 import { DiscoveryModule } from "../../../../packages/core/src";
 import {
   BullMQExplorer,
@@ -9,12 +8,8 @@ import {
   ProcessorDecoratorService,
   WorkerHost,
   type Job,
-} from "../../../../packages/queues/src";
-import {
-  Test,
-  TestingModule,
-  describeConformance,
-} from "../../_helpers/index";
+} from "../../../../packages/jobs/src/queues";
+import { Test, TestingModule, describeConformance } from "../../_helpers/index";
 
 const workerInstances: unknown[] = [];
 const workerCtorSpy = mock((..._args: unknown[]) => {});
@@ -75,15 +70,18 @@ describeConformance(
       await moduleRef?.close();
     });
 
-    // BUNEST_BUG: Expected `this.worker` inside `process()` of a Scope.REQUEST WorkerHost processor to return the instantiated worker, actual throws `"Worker" has not yet been initialized...` because BullMQExplorer.registerProcessor (packages/queues/src/adapters/bullmq.adapter.ts) never assigns `_worker = worker` on per-job resolved request-scoped instances.
+    // BUNEST_BUG: Expected `this.worker` inside `process()` of a Scope.REQUEST WorkerHost processor to return the instantiated worker, actual throws `"Worker" has not yet been initialized...` because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) never assigns `_worker = worker` on per-job resolved request-scoped instances.
     it.skip('should expose the worker inside "process" of a request-scoped processor', async () => {
       bullExplorer.register();
       const processorFunction = workerCtorSpy.mock.calls[0]?.[1] as
-        | ((job: unknown) => Promise<unknown>)
-        | undefined;
+        ((job: unknown) => Promise<unknown>) | undefined;
       expect(processorFunction).toBeDefined();
 
-      const worker = await processorFunction!({ id: "1", name: "job", data: {} });
+      const worker = await processorFunction!({
+        id: "1",
+        name: "job",
+        data: {},
+      });
 
       expect(worker).toBe(workerInstances[0]);
     });

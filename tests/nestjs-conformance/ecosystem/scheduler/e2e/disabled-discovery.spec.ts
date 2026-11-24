@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { SchedulerRegistry } from "../../../../../packages/scheduler/src";
+import { SchedulerRegistry } from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance } from "../../../_helpers";
 import { SchedulerAppModule } from "../_fixtures/scheduler-fixtures";
 

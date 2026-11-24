@@ -1,4 +1,3 @@
-import type { Readable } from "node:stream";
 import type { SafeHtml } from "../message/html.util";
 
 /** An address as the app passes it: `'ada@example.com'`, `'Ada Lovelace <ada@example.com>'` or an object. */
@@ -29,8 +28,12 @@ export interface MailAttachment {
 export interface MailAttachmentInput {
   /** The name the recipient sees. Required for attachments; optional for inline images. */
   filename?: string;
-  /** The bytes: a string (UTF-8), a Buffer, or a Node or web stream (read fully before sending). */
-  content?: string | Uint8Array | Readable | ReadableStream<Uint8Array>;
+  /** The bytes: a string (UTF-8), a Uint8Array/Buffer, a Web ReadableStream, or any async iterable byte stream (read fully before sending). */
+  content?:
+    | string
+    | Uint8Array
+    | ReadableStream<Uint8Array>
+    | AsyncIterable<Uint8Array | string>;
   /**
    * A local file, read when the mail is sent. Never pass a path built from user input:
    * the file is attached whatever it is.
@@ -75,8 +78,10 @@ export interface MailContent {
  * A message whose body is rendered from a template by the module's `templates` engine,
  * whether passed to `send()` or returned from a mail class.
  */
-export interface MailTemplateContent
-  extends Omit<MailContent, "html" | "text" | "template" | "context"> {
+export interface MailTemplateContent extends Omit<
+  MailContent,
+  "html" | "text" | "template" | "context"
+> {
   /**
    * The template's name, such as `order-confirmation`: with `FileTemplateEngine`, the file
    * `order-confirmation.html` (and `order-confirmation.txt` for the text part, if it

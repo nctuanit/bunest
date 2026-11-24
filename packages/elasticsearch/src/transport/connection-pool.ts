@@ -125,7 +125,10 @@ export class ElasticsearchConnectionPool {
     }
     connection.status = "dead";
     connection.deadCount += 1;
-    const backoffMs = Math.min(60_000 * Math.pow(2, connection.deadCount - 1), 1_800_000);
+    const backoffMs = Math.min(
+      60_000 * Math.pow(2, connection.deadCount - 1),
+      1_800_000,
+    );
     connection.resurrectAt = Date.now() + backoffMs;
   }
 

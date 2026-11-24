@@ -1,10 +1,21 @@
+import type { EmbeddingModelResult } from "../interfaces/ai-types.interface";
+
+/** Options passed to `FakeEmbeddingModel.doEmbed()`. */
+export interface FakeEmbeddingCallOptions {
+  values: string[];
+  abortSignal?: AbortSignal;
+  headers?: Record<string, string | undefined>;
+  providerOptions?: Record<string, Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
 /** One provider response of a fake embedding model. */
 export interface FakeEmbeddingTurn {
   embeddings: number[][];
   usage?: { tokens: number };
   delay?: number;
-  warnings?: any[];
-  providerMetadata?: Record<string, Record<string, any>>;
+  warnings?: unknown[];
+  providerMetadata?: Record<string, Record<string, unknown>>;
   response?: {
     headers?: Record<string, string>;
     body?: unknown;
@@ -14,7 +25,7 @@ export interface FakeEmbeddingTurn {
 /** A provider call the fake received. */
 export interface FakeEmbeddingModelCall {
   values: string[];
-  options: any;
+  options: FakeEmbeddingCallOptions;
 }
 
 /** An embedding response, provider error, or function. */
@@ -38,13 +49,13 @@ export interface FakeEmbeddingModelOptions {
  * batching. A function answers every call; `reply()` appends scripted responses.
  */
 export class FakeEmbeddingModel {
-  readonly specificationVersion = 'v4';
+  readonly specificationVersion = "v4";
   readonly provider: string;
   readonly modelId: string;
   readonly maxEmbeddingsPerCall: number | null;
   readonly supportsParallelCalls: boolean;
   readonly calls: FakeEmbeddingModelCall[] = [];
-  readonly doEmbedCalls: any[] = [];
+  readonly doEmbedCalls: FakeEmbeddingCallOptions[] = [];
   private readonly answers: FakeEmbeddingAnswer[];
   private readonly answerAll?: (
     call: FakeEmbeddingModelCall,
@@ -57,8 +68,8 @@ export class FakeEmbeddingModel {
           call: FakeEmbeddingModelCall,
         ) => FakeEmbeddingAnswer | Promise<FakeEmbeddingAnswer>) = [],
     {
-      provider = 'fake',
-      modelId = 'fake-embedding-model',
+      provider = "fake",
+      modelId = "fake-embedding-model",
       maxEmbeddingsPerCall,
       supportsParallelCalls = true,
     }: FakeEmbeddingModelOptions = {},
@@ -68,7 +79,7 @@ export class FakeEmbeddingModel {
     this.maxEmbeddingsPerCall = maxEmbeddingsPerCall ?? null;
     this.supportsParallelCalls = supportsParallelCalls;
     this.answers = Array.isArray(answers) ? [...answers] : [];
-    this.answerAll = typeof answers === 'function' ? answers : undefined;
+    this.answerAll = typeof answers === "function" ? answers : undefined;
   }
 
   /** Adds responses after the unused scripted responses. */
@@ -82,7 +93,9 @@ export class FakeEmbeddingModel {
     return this.calls[this.calls.length - 1];
   }
 
-  async doEmbed(options: any): Promise<any> {
+  async doEmbed(
+    options: FakeEmbeddingCallOptions,
+  ): Promise<EmbeddingModelResult> {
     this.doEmbedCalls.push(options);
     const call: FakeEmbeddingModelCall = {
       values: [...(options.values ?? [])],
@@ -98,7 +111,7 @@ export class FakeEmbeddingModel {
         `FakeEmbeddingModel: no answer left for call ${this.calls.length}. Give it more answers.`,
       );
     }
-    while (typeof answer === 'function') {
+    while (typeof answer === "function") {
       answer = await answer(call);
     }
     if (answer instanceof Error) {
@@ -134,13 +147,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       return;
     }
     const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
+      signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
       reject(signal?.reason);
     };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

@@ -1,13 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+  join,
+  mkdirSyncPath,
+  removePath,
+  resolve,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   DEFAULT_CONFIGURATION,
   loadCliConfiguration,
@@ -15,6 +13,15 @@ import {
   resolveProjectConfiguration,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "CLI Configuration Loader (bunest.json / nest-cli.json)",
@@ -30,32 +37,24 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-loader-"));
+      tmpDir = makeTempDir("bunest-cli-conf-loader-");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     itAdapted(
       ["ADR-001"],
       "should prefer bunest.json over .bunestrc.json, nest-cli.json, and .nestcli.json when auto-discovering",
       async () => {
-        writeFileSync(
-          join(tmpDir, "nest-cli.json"),
-          JSON.stringify({ sourceRoot: "from-nest" }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "nest-cli.json"), JSON.stringify({ sourceRoot: "from-nest" }));
         const fromNest = await loadCliConfiguration(tmpDir);
         expect(fromNest.found).toBe(true);
         expect(fromNest.configPath).toBe(join(tmpDir, "nest-cli.json"));
         expect(fromNest.config.sourceRoot).toBe("from-nest");
 
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ sourceRoot: "from-bunest" }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ sourceRoot: "from-bunest" }));
         const fromBunest = await loadCliConfiguration(tmpDir);
         expect(fromBunest.found).toBe(true);
         expect(fromBunest.configPath).toBe(join(tmpDir, "bunest.json"));
@@ -64,54 +63,38 @@ describeConformance(
     );
 
     it("should also discover .bunestrc.json and .nestcli.json fallbacks", async () => {
-      const dirA = mkdtempSync(join(tmpdir(), "bunest-cli-conf-rc-"));
-      const dirB = mkdtempSync(join(tmpdir(), "bunest-cli-conf-nestcli-"));
+      const dirA = makeTempDir("bunest-cli-conf-rc-");
+      const dirB = makeTempDir("bunest-cli-conf-nestcli-");
       try {
-        writeFileSync(
-          join(dirA, ".bunestrc.json"),
-          JSON.stringify({ entryFile: "rc-entry" }),
-          "utf8",
-        );
+        writeTextSync(join(dirA, ".bunestrc.json"), JSON.stringify({ entryFile: "rc-entry" }));
         const resA = await loadCliConfiguration(dirA);
         expect(resA.found).toBe(true);
         expect(resA.config.entryFile).toBe("rc-entry");
 
-        writeFileSync(
-          join(dirB, ".nestcli.json"),
-          JSON.stringify({ entryFile: "legacy-entry" }),
-          "utf8",
-        );
+        writeTextSync(join(dirB, ".nestcli.json"), JSON.stringify({ entryFile: "legacy-entry" }));
         const resB = await loadCliConfiguration(dirB);
         expect(resB.found).toBe(true);
         expect(resB.config.entryFile).toBe("legacy-entry");
       } finally {
-        rmSync(dirA, { recursive: true, force: true });
-        rmSync(dirB, { recursive: true, force: true });
+        await removePath(dirA, { recursive: true, force: true });
+        await removePath(dirB, { recursive: true, force: true });
       }
     });
 
     // BUNEST_BUG: DEFAULT_CONFIG_FILENAMES checks `.nestcli.json` (no hyphen) instead of NestJS's `.nest-cli.json` (with hyphen), so `.nest-cli.json` is ignored during auto-discovery (packages/cli/src/config/configuration.loader.ts:166-171)
     it.skip("should auto-discover hyphenated .nest-cli.json fallback", async () => {
-      writeFileSync(
-        join(tmpDir, ".nest-cli.json"),
-        JSON.stringify({ entryFile: "hyphen-entry" }),
-        "utf8",
-      );
+      writeTextSync(join(tmpDir, ".nest-cli.json"), JSON.stringify({ entryFile: "hyphen-entry" }));
       const loaded = await loadCliConfiguration(tmpDir);
       expect(loaded.found).toBe(true);
       expect(loaded.config.entryFile).toBe("hyphen-entry");
     });
 
     it("should load an explicit configuration filename when provided and throw when missing", async () => {
-      writeFileSync(
-        join(tmpDir, "nest-cli.secondary.config.json"),
-        JSON.stringify({
+      writeTextSync(join(tmpDir, "nest-cli.secondary.config.json"), JSON.stringify({
           language: "ts",
           collection: "@bunest/schematics",
           entryFile: "secondary",
-        }),
-        "utf8",
-      );
+        }));
 
       const loaded = await loadCliConfiguration(
         tmpDir,
@@ -157,15 +140,11 @@ describeConformance(
     });
 
     it("should deep-merge compilerOptions with defaults", async () => {
-      writeFileSync(
-        join(tmpDir, "compiler-opts-test.json"),
-        JSON.stringify({
+      writeTextSync(join(tmpDir, "compiler-opts-test.json"), JSON.stringify({
           compilerOptions: {
             plugins: ["my-plugin"],
           },
-        }),
-        "utf8",
-      );
+        }));
 
       const { config } = await loadCliConfiguration(
         tmpDir,
@@ -179,15 +158,11 @@ describeConformance(
     });
 
     it("should deep-merge generateOptions with defaults", async () => {
-      writeFileSync(
-        join(tmpDir, "generate-opts-test.json"),
-        JSON.stringify({
+      writeTextSync(join(tmpDir, "generate-opts-test.json"), JSON.stringify({
           generateOptions: {
             spec: false,
           },
-        }),
-        "utf8",
-      );
+        }));
 
       const { config } = await loadCliConfiguration(
         tmpDir,
@@ -201,18 +176,14 @@ describeConformance(
     });
 
     it("should preserve all generateOptions fields when merging", async () => {
-      writeFileSync(
-        join(tmpDir, "all-generate-opts-test.json"),
-        JSON.stringify({
+      writeTextSync(join(tmpDir, "all-generate-opts-test.json"), JSON.stringify({
           generateOptions: {
             spec: false,
             flat: true,
             specFileSuffix: "test",
             baseDir: "src",
           },
-        }),
-        "utf8",
-      );
+        }));
 
       const { config } = await loadCliConfiguration(
         tmpDir,
@@ -227,14 +198,10 @@ describeConformance(
     });
 
     it("should deep-merge both compilerOptions and generateOptions simultaneously", async () => {
-      writeFileSync(
-        join(tmpDir, "both-opts-test.json"),
-        JSON.stringify({
+      writeTextSync(join(tmpDir, "both-opts-test.json"), JSON.stringify({
           compilerOptions: { deleteOutDir: true },
           generateOptions: { flat: true },
-        }),
-        "utf8",
-      );
+        }));
 
       const { config } = await loadCliConfiguration(
         tmpDir,
@@ -253,12 +220,12 @@ describeConformance(
     });
 
     it("should reject invalid JSON and non-object JSON config files", async () => {
-      writeFileSync(join(tmpDir, "broken.json"), "{ invalid json", "utf8");
-      await expect(
-        loadCliConfiguration(tmpDir, "broken.json"),
-      ).rejects.toThrow(/Invalid JSON/);
+      writeTextSync(join(tmpDir, "broken.json"), "{ invalid json");
+      await expect(loadCliConfiguration(tmpDir, "broken.json")).rejects.toThrow(
+        /Invalid JSON/,
+      );
 
-      writeFileSync(join(tmpDir, "array.json"), "[1, 2, 3]", "utf8");
+      writeTextSync(join(tmpDir, "array.json"), "[1, 2, 3]");
       await expect(loadCliConfiguration(tmpDir, "array.json")).rejects.toThrow(
         /must export a JSON object/,
       );
@@ -282,9 +249,9 @@ describeConformance(
         /Unknown project "unknown".*Available projects: api, worker/,
       );
 
-      mkdirSync(join(tmpDir, "server"), { recursive: true });
-      writeFileSync(join(tmpDir, "server", "boot.ts"), "", "utf8");
-      writeFileSync(join(tmpDir, "server", "alt.ts"), "", "utf8");
+      mkdirSyncPath(join(tmpDir, "server"), { recursive: true });
+      writeTextSync(join(tmpDir, "server", "boot.ts"), "");
+      writeTextSync(join(tmpDir, "server", "alt.ts"), "");
 
       expect(await resolveEntryFile(tmpDir, cfg)).toBe(
         resolve(tmpDir, "server", "boot.ts"),
@@ -292,9 +259,9 @@ describeConformance(
       expect(await resolveEntryFile(tmpDir, cfg, { entryFile: "alt" })).toBe(
         resolve(tmpDir, "server", "alt.ts"),
       );
-      expect(
-        await resolveEntryFile(tmpDir, cfg, { entry: "server/alt" }),
-      ).toBe(resolve(tmpDir, "server", "alt.ts"));
+      expect(await resolveEntryFile(tmpDir, cfg, { entry: "server/alt" })).toBe(
+        resolve(tmpDir, "server", "alt.ts"),
+      );
     });
   },
 );

@@ -3,8 +3,8 @@
 ## Supported Versions
 
 | Version | Runtime Requirement | Supported |
-|---|---|---|
-| `0.1.x` | Bun `>= 1.4.3` | Yes |
+| ------- | ------------------- | --------- |
+| `0.1.x` | Bun `>= 1.4.3`      | Yes       |
 
 ## Reporting a Vulnerability
 

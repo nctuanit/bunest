@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -137,10 +136,18 @@ describe("Redis RPC Per-Client Reply Inbox Isolation", () => {
     // Crucial isolation check: clientA NEVER saw clientB's replies and vice versa!
     expect(clientADeliveries).toHaveLength(2);
     expect(clientBDeliveries).toHaveLength(2);
-    expect(clientADeliveries.every((d) => d.channel === "iso:reply:client-a")).toBe(true);
-    expect(clientBDeliveries.every((d) => d.channel === "iso:reply:client-b")).toBe(true);
-    expect(clientADeliveries.some((d) => d.message.includes("secret-for-B"))).toBe(false);
-    expect(clientBDeliveries.some((d) => d.message.includes("secret-for-A"))).toBe(false);
+    expect(
+      clientADeliveries.every((d) => d.channel === "iso:reply:client-a"),
+    ).toBe(true);
+    expect(
+      clientBDeliveries.every((d) => d.channel === "iso:reply:client-b"),
+    ).toBe(true);
+    expect(
+      clientADeliveries.some((d) => d.message.includes("secret-for-B")),
+    ).toBe(false);
+    expect(
+      clientBDeliveries.some((d) => d.message.includes("secret-for-A")),
+    ).toBe(false);
 
     // Closing clientA unsubscribes ONLY clientA's inbox — clientB keeps working cleanly!
     await clientA.close();
@@ -234,8 +241,7 @@ class MockKafkaBroker {
           groupId: config.groupId,
           subscriptions: [] as Array<string | RegExp>,
           eachMessage: undefined as
-            | ((payload: KafkaEachMessagePayload) => Promise<void>)
-            | undefined,
+            ((payload: KafkaEachMessagePayload) => Promise<void>) | undefined,
           disconnected: false,
         };
         return {
@@ -295,7 +301,10 @@ describe("KafkaServer & KafkaClientProxy", () => {
       await kCtx.commitOffset();
       const input = data as { sku: string; qty: number };
       if (input.qty <= 0) {
-        throw new RpcException({ status: 400, message: "qty must be positive" });
+        throw new RpcException({
+          status: 400,
+          message: "qty must be positive",
+        });
       }
       return {
         orderId: `ord_${input.sku}`,
@@ -359,8 +368,12 @@ describe("KafkaServer & KafkaClientProxy", () => {
     expect(broker.committedOffsets[0]!.topic).toBe("orders.create");
 
     // Verify kafka_correlationId and kafka_replyTopic headers were transmitted
-    const reqRecord = broker.sentRecords.find((r) => r.topic === "orders.create");
-    expect(reqRecord?.messages[0]?.headers?.[KAFKA_CORRELATION_ID_HEADER]).toBeTruthy();
+    const reqRecord = broker.sentRecords.find(
+      (r) => r.topic === "orders.create",
+    );
+    expect(
+      reqRecord?.messages[0]?.headers?.[KAFKA_CORRELATION_ID_HEADER],
+    ).toBeTruthy();
     expect(reqRecord?.messages[0]?.headers?.[KAFKA_REPLY_TOPIC_HEADER]).toBe(
       "orders.create.reply",
     );
@@ -577,8 +590,12 @@ describe("MQTT Topic Wildcard Matcher & MqttServer / MqttClientProxy", () => {
   it("implements full MQTT 3.1.1/5.0 wildcard matching (+, #, parent #, invalid syntax, $SYS protection)", () => {
     // Single-level '+'
     expect(matchMqttTopic("sensors/+/temp", "sensors/room1/temp")).toBe(true);
-    expect(matchMqttTopic("sensors/+/temp", "sensors/room1/humidity")).toBe(false);
-    expect(matchMqttTopic("sensors/+/temp", "sensors/floor1/room1/temp")).toBe(false);
+    expect(matchMqttTopic("sensors/+/temp", "sensors/room1/humidity")).toBe(
+      false,
+    );
+    expect(matchMqttTopic("sensors/+/temp", "sensors/floor1/room1/temp")).toBe(
+      false,
+    );
     expect(matchMqttTopic("+/+", "a/b")).toBe(true);
     expect(matchMqttTopic("a/+/c", "a//c")).toBe(true);
 
@@ -590,8 +607,12 @@ describe("MQTT Topic Wildcard Matcher & MqttServer / MqttClientProxy", () => {
     expect(matchMqttTopic("#", "any/topic/here")).toBe(true);
 
     // Combined '+' and '#'
-    expect(matchMqttTopic("tenants/+/devices/#", "tenants/acme/devices/s1/status")).toBe(true);
-    expect(matchMqttTopic("tenants/+/devices/#", "tenants/acme/devices")).toBe(true);
+    expect(
+      matchMqttTopic("tenants/+/devices/#", "tenants/acme/devices/s1/status"),
+    ).toBe(true);
+    expect(matchMqttTopic("tenants/+/devices/#", "tenants/acme/devices")).toBe(
+      true,
+    );
 
     // Invalid wildcard placements must return false
     expect(matchMqttTopic("a/#/b", "a/x/b")).toBe(false);
@@ -600,7 +621,9 @@ describe("MQTT Topic Wildcard Matcher & MqttServer / MqttClientProxy", () => {
 
     // MQTT 4.7.2: root wildcards must NOT match $SYS system topics
     expect(matchMqttTopic("#", "$SYS/broker/clients")).toBe(false);
-    expect(matchMqttTopic("+/broker/clients", "$SYS/broker/clients")).toBe(false);
+    expect(matchMqttTopic("+/broker/clients", "$SYS/broker/clients")).toBe(
+      false,
+    );
     expect(matchMqttTopic("$SYS/#", "$SYS/broker/clients")).toBe(true);
   });
 
@@ -683,14 +706,18 @@ describe("MQTT Topic Wildcard Matcher & MqttServer / MqttClientProxy", () => {
     // Concurrent calls on the SAME topic route to '+' (more specific than '#')
     // and each client receives only its own reply topic!
     const [r1, r2, rDeep] = await Promise.all([
-      client1.send<{ matched: string; topic: string; qos: number; payload: unknown }>(
-        "devices/d1/command",
-        { action: "reboot" },
-      ),
-      client2.send<{ matched: string; topic: string; qos: number; payload: unknown }>(
-        "devices/d1/command",
-        { action: "ping" },
-      ),
+      client1.send<{
+        matched: string;
+        topic: string;
+        qos: number;
+        payload: unknown;
+      }>("devices/d1/command", { action: "reboot" }),
+      client2.send<{
+        matched: string;
+        topic: string;
+        qos: number;
+        payload: unknown;
+      }>("devices/d1/command", { action: "ping" }),
       client1.send<{ matched: string; topic: string }>(
         "devices/d1/sub/deep/info",
         { full: true },
@@ -782,9 +809,14 @@ describe("MQTT Topic Wildcard Matcher & MqttServer / MqttClientProxy", () => {
       },
     };
 
-    const client = new MqttClientProxy({ client: brokerClient, clientId: "sf-mqtt" });
+    const client = new MqttClientProxy({
+      client: brokerClient,
+      clientId: "sf-mqtt",
+    });
     // First subscribe rejects -> MUST NOT poison subscribedReplyTopics
-    await expect(client.send("t/op", { n: 0 })).rejects.toThrow("temporary-sub-failure");
+    await expect(client.send("t/op", { n: 0 })).rejects.toThrow(
+      "temporary-sub-failure",
+    );
 
     // Next 2 concurrent sends single-flight onto ONE subscribe call and both succeed!
     const [a, b] = await Promise.all([

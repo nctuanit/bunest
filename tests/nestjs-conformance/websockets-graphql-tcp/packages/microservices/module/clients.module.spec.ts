@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Inject,
@@ -7,7 +6,7 @@ import {
   type ClassProvider,
   type DynamicModule,
   type FactoryProvider,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ClientProxy,
   ClientsModule,
@@ -275,9 +274,10 @@ describeConformance(
               p.provide === "classClient",
           )!;
 
-          const createClientOptions = createSpy(
-            (): TransportConfig => ({ transport: Transport.TCP, options: {} }),
-          );
+          const createClientOptions = createSpy((): TransportConfig => ({
+            transport: Transport.TCP,
+            options: {},
+          }));
           const proxy = await factoryProvider.useFactory({
             createClientOptions,
           });
@@ -340,9 +340,10 @@ describeConformance(
           expect(provider.inject).toEqual([EXISTING_TOKEN]);
           expect(provider.useFactory).toBeInstanceOf(Function);
 
-          const createClientOptions = createSpy(
-            (): TransportConfig => ({ transport: Transport.TCP, options: {} }),
-          );
+          const createClientOptions = createSpy((): TransportConfig => ({
+            transport: Transport.TCP,
+            options: {},
+          }));
           const proxy = await provider.useFactory({ createClientOptions });
           expectCalledOnce(createClientOptions);
           expect(proxy).toBeInstanceOf(TcpClientProxy);

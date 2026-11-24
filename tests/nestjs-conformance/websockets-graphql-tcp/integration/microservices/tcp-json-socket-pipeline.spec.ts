@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect } from "bun:test";
 import type { Socket } from "bun";
-import { Controller, Module } from "../../../../../packages/common/src";
+import { Controller, Module } from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestMicroserviceApplication,

@@ -1,16 +1,13 @@
-import { isIP, connect as netConnect, type Socket } from "node:net";
-import { hostname as osHostname } from "node:os";
-import { StringDecoder } from "node:string_decoder";
-import {
-  connect as tlsConnect,
-  type ConnectionOptions,
-  type TLSSocket,
-} from "node:tls";
+import { getHostname, isIp } from "@bunest/core";
 import { MailConnectionError } from "../errors/mail-connection.error";
 import { MailRecipientsRejectedError } from "../errors/mail-recipients-rejected.error";
 import { MailSmtpError } from "../errors/mail-smtp.error";
 import { MailTimeoutError } from "../errors/mail-timeout.error";
-import type { SmtpAuth } from "../interfaces/smtp-transport-options.interface";
+import type {
+  SmtpAuth,
+  SmtpTlsOptions,
+  TlsVersion,
+} from "../interfaces/smtp-transport-options.interface";
 
 export type { SmtpAuth };
 
@@ -35,7 +32,7 @@ export interface SmtpConnectOptions {
   port: number;
   secure: boolean;
   startTls: "required" | "opportunistic" | "never";
-  tls: Omit<ConnectionOptions, "socket" | "host" | "port">;
+  tls: SmtpTlsOptions;
   name?: string;
   auth?: SmtpAuth;
   authMethod?: "PLAIN" | "LOGIN" | "XOAUTH2";
@@ -56,12 +53,28 @@ const MAX_REPLY_LINES = 512;
 const MAX_QUEUED = 4;
 const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|::1|\[::1\])$|\.localhost$/i;
 
+const TLS_VERSION_ORDER: Record<string, number> = {
+  SSLv3: 0,
+  TLSv1: 1,
+  "TLSv1.1": 2,
+  "TLSv1.2": 3,
+  "TLSv1.3": 4,
+};
+
+interface PendingWrite {
+  data: Uint8Array;
+  offset: number;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
 export function isLoopback(host: string): boolean {
   return LOOPBACK.test(host);
 }
 
 /**
- * One SMTP session (RFC 5321): greeting, EHLO, STARTTLS, AUTH, then any number of
+ * One SMTP session (RFC 5321) over Bun native TCP/TLS sockets (`Bun.connect` +
+ * `socket.upgradeTLS`): greeting, EHLO, STARTTLS, AUTH, then any number of
  * transactions. Commands run one at a time; replies are matched to them in order.
  */
 export class SmtpConnection {
@@ -73,15 +86,17 @@ export class SmtpConnection {
   /** Whether the server accepted MAIL FROM in the last transaction: from then on, a retry could duplicate. */
   transactionStarted = false;
 
-  private socket!: Socket | TLSSocket;
-  private decoder = new StringDecoder("utf8");
+  private socket?: Bun.Socket<unknown>;
+  private decoder = new TextDecoder("utf-8");
   private buffer = "";
   private lines: string[] = [];
   private queued: SmtpReply[] = [];
+  private writeQueue: PendingWrite[] = [];
   private waiter?: {
     resolve: (reply: SmtpReply) => void;
     reject: (error: unknown) => void;
   };
+  private connectReject?: (error: unknown) => void;
   private failure?: unknown;
   private secure = false;
 
@@ -113,37 +128,11 @@ export class SmtpConnection {
 
   private async handshake(): Promise<void> {
     const { host, port, secure, timeouts } = this.options;
-    const socket = await this.withTimeout(
+    await this.withTimeout(
       "connect",
       timeouts.connect,
-      new Promise<Socket | TLSSocket>((resolve, reject) => {
-        const s = secure
-          ? tlsConnect({ ...this.tlsOptions(), host, port })
-          : netConnect({ host, port });
-        this.socket = s;
-        s.once(secure ? "secureConnect" : "connect", () => resolve(s));
-        s.once("error", (error) =>
-          reject(
-            new MailConnectionError(connectionMessage(this.options, error), {
-              permanent: false,
-              cause: error,
-            }),
-          ),
-        );
-        // `destroy()` (an abort) closes the socket without an error: settle at once, not at the timeout
-        s.once("close", () =>
-          reject(
-            this.failure ??
-              new MailConnectionError(
-                connectionMessage(this.options, undefined),
-                { permanent: false },
-              ),
-          ),
-        );
-      }),
+      this.openSocket(host, port, secure),
     );
-    this.secure = secure;
-    this.attach(socket);
     const greeting = await this.read("greeting", timeouts.greeting);
     if (greeting.code !== 220) {
       throw new MailSmtpError("greeting", greeting);
@@ -166,48 +155,220 @@ export class SmtpConnection {
     }
   }
 
-  private tlsOptions(): Omit<ConnectionOptions, "socket" | "host" | "port"> {
-    const { host } = this.options;
+  private openSocket(
+    host: string,
+    port: number,
+    secure: boolean,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.connectReject = undefined;
+        fn();
+      };
+      this.connectReject = (error) => settle(() => reject(error));
+
+      const handlers: Bun.SocketHandler<unknown> = {
+        open: (socket) => {
+          if (this.closed) {
+            socket.terminate();
+            settle(() => reject(this.failure));
+            return;
+          }
+          this.socket = socket;
+          socket.setNoDelay(true);
+          if (!secure) {
+            settle(() => resolve());
+          }
+        },
+        ...(secure && {
+          handshake: (
+            socket: Bun.Socket<unknown>,
+            authorized: boolean,
+            authError: Error | null,
+          ) => {
+            if (this.closed) {
+              socket.terminate();
+              settle(() => reject(this.failure));
+              return;
+            }
+            const tlsError = this.validateTlsHandshake(
+              socket,
+              authorized,
+              authError,
+            );
+            if (tlsError) {
+              socket.terminate();
+              this.fail(tlsError);
+              settle(() => reject(tlsError));
+              return;
+            }
+            this.secure = true;
+            settle(() => resolve());
+          },
+        }),
+        data: (socket, chunk) => {
+          if (socket === this.socket) {
+            this.onData(chunk);
+          }
+        },
+        drain: (socket) => {
+          if (socket === this.socket) {
+            this.onDrain();
+          }
+        },
+        error: (socket, error) => {
+          const mailErr = new MailConnectionError(
+            connectionMessage(this.options, error),
+            { permanent: false, cause: error },
+          );
+          if (socket === this.socket || !settled) {
+            this.fail(mailErr);
+          }
+          settle(() => reject(mailErr));
+        },
+        connectError: (_socket, error) => {
+          const mailErr = new MailConnectionError(
+            connectionMessage(this.options, error),
+            { permanent: false, cause: error },
+          );
+          this.fail(mailErr);
+          settle(() => reject(mailErr));
+        },
+        close: (socket, error) => {
+          if (socket === this.socket || !settled) {
+            const mailErr =
+              this.failure ??
+              new MailConnectionError(
+                settled
+                  ? `The SMTP server ${this.options.host} closed the connection`
+                  : connectionMessage(this.options, error),
+                { permanent: false, ...(error ? { cause: error } : {}) },
+              );
+            this.fail(mailErr);
+            settle(() => reject(mailErr));
+          }
+        },
+        end: (socket) => {
+          if (socket === this.socket || !settled) {
+            const mailErr =
+              this.failure ??
+              new MailConnectionError(
+                settled
+                  ? `The SMTP server ${this.options.host} closed the connection`
+                  : connectionMessage(this.options, undefined),
+                { permanent: false },
+              );
+            this.fail(mailErr);
+            settle(() => reject(mailErr));
+          }
+        },
+      };
+
+      const connectOptions = secure
+        ? {
+            hostname: host,
+            port,
+            tls: this.bunTlsOptions(),
+            socket: handlers,
+          }
+        : {
+            hostname: host,
+            port,
+            socket: handlers,
+          };
+
+      Bun.connect(connectOptions).catch((error) => {
+        const mailErr = new MailConnectionError(
+          connectionMessage(this.options, error),
+          { permanent: false, cause: error },
+        );
+        this.fail(mailErr);
+        settle(() => reject(mailErr));
+      });
+    });
+  }
+
+  private bunTlsOptions(): Bun.TLSOptions {
+    const { host, tls } = this.options;
+    const {
+      minVersion: _minVersion,
+      maxVersion: _maxVersion,
+      servername,
+      serverName,
+      ...rest
+    } = tls;
+    const cleanHost = host.replace(/^\[(.*)\]$/, "$1");
+    // SNI takes a hostname, never an IP; identity is still verified against `host`
+    const resolvedServerName =
+      serverName ?? servername ?? (isIp(cleanHost) === 0 ? host : undefined);
     return {
-      minVersion: "TLSv1.2",
-      ...this.options.tls,
-      // SNI takes a name, never an IP; identity is still checked against `host`
-      ...(isIP(host) === 0 && {
-        servername: this.options.tls.servername ?? host,
-      }),
+      ...(rest as Bun.TLSOptions),
+      ...(resolvedServerName !== undefined
+        ? { serverName: resolvedServerName }
+        : {}),
     };
   }
 
-  private attach(socket: Socket | TLSSocket): void {
-    this.socket = socket;
-    socket.setNoDelay(true);
-    socket.on("data", (chunk: Buffer) => this.onData(chunk));
-    socket.on("error", (error) =>
-      this.fail(
-        new MailConnectionError(connectionMessage(this.options, error), {
+  private validateTlsHandshake(
+    socket: Bun.Socket<unknown>,
+    authorized: boolean,
+    authError: Error | null,
+  ): MailConnectionError | undefined {
+    const rejectUnauthorized = this.options.tls.rejectUnauthorized ?? true;
+    if (!authorized && rejectUnauthorized) {
+      const error =
+        authError ??
+        socket.getAuthorizationError() ??
+        new Error("TLS certificate verification failed");
+      return new MailConnectionError(connectionMessage(this.options, error), {
+        permanent: false,
+        cause: error,
+      });
+    }
+    const minVersion: TlsVersion = this.options.tls.minVersion ?? "TLSv1.2";
+    const maxVersion = this.options.tls.maxVersion;
+    const negotiated = socket.getTLSVersion();
+    const negotiatedRank = TLS_VERSION_ORDER[negotiated];
+    const minRank = TLS_VERSION_ORDER[minVersion];
+    if (
+      negotiatedRank !== undefined &&
+      minRank !== undefined &&
+      negotiatedRank < minRank
+    ) {
+      const error = new Error(
+        `TLS version ${negotiated} is below minimum required ${minVersion}`,
+      );
+      return new MailConnectionError(connectionMessage(this.options, error), {
+        permanent: false,
+        cause: error,
+      });
+    }
+    if (maxVersion) {
+      const maxRank = TLS_VERSION_ORDER[maxVersion];
+      if (
+        negotiatedRank !== undefined &&
+        maxRank !== undefined &&
+        negotiatedRank > maxRank
+      ) {
+        const error = new Error(
+          `TLS version ${negotiated} exceeds maximum allowed ${maxVersion}`,
+        );
+        return new MailConnectionError(connectionMessage(this.options, error), {
           permanent: false,
           cause: error,
-        }),
-      ),
-    );
-    socket.on("close", () =>
-      this.fail(
-        new MailConnectionError(
-          `The SMTP server ${this.options.host} closed the connection`,
-          { permanent: false },
-        ),
-      ),
-    );
+        });
+      }
+    }
+    return undefined;
   }
 
-  private detach(socket: Socket | TLSSocket): void {
-    socket.removeAllListeners("data");
-    socket.removeAllListeners("error");
-    socket.removeAllListeners("close");
-  }
-
-  private onData(chunk: Buffer): void {
-    this.buffer += this.decoder.write(chunk);
+  private onData(chunk: Buffer | Uint8Array): void {
+    this.buffer += this.decoder.decode(chunk, { stream: true });
     let index: number;
     while ((index = this.buffer.indexOf("\n")) !== -1) {
       const line = this.buffer.slice(0, index).replace(/\r$/, "");
@@ -270,10 +431,21 @@ export class SmtpConnection {
   private fail(error: unknown): void {
     this.closed = true;
     this.failure ??= error;
+    if (this.connectReject) {
+      const rejectConnect = this.connectReject;
+      this.connectReject = undefined;
+      rejectConnect(this.failure);
+    }
     if (this.waiter) {
       const { reject } = this.waiter;
       this.waiter = undefined;
       reject(this.failure);
+    }
+    if (this.writeQueue.length > 0) {
+      const pending = this.writeQueue.splice(0);
+      for (const item of pending) {
+        item.reject(this.failure);
+      }
     }
   }
 
@@ -285,7 +457,7 @@ export class SmtpConnection {
           permanent: false,
         }),
     );
-    this.socket?.destroy();
+    this.socket?.terminate();
   }
 
   /** Reads the next reply, or fails when `timeout` elapses first (and closes the connection). */
@@ -343,12 +515,12 @@ export class SmtpConnection {
     if (/[\r\n]/.test(line)) {
       throw new TypeError("SMTP command with a line break");
     }
-    this.socket.write(`${line}\r\n`);
+    await this.write(Buffer.from(`${line}\r\n`, "utf8"));
     return this.read(phase, timeout);
   }
 
   private async ehlo(): Promise<void> {
-    const name = this.options.name ?? defaultName(this.socket.localAddress);
+    const name = this.options.name ?? defaultName(this.socket?.localAddress);
     let reply = await this.command(`EHLO ${name}`);
     if (reply.code === 500 || reply.code === 502) {
       // A server from before ESMTP: no extensions
@@ -390,43 +562,111 @@ export class SmtpConnection {
         { permanent: false },
       );
     }
-    const plain = this.socket;
-    this.detach(plain);
-    // Errors now surface on the TLS socket; this keeps one on the raw socket from being unhandled
-    plain.on("error", () => {});
-    const secured = await this.withTimeout(
+    const plain = this.socket!;
+    await this.withTimeout(
       "tls",
       this.options.timeouts.connect,
-      new Promise<TLSSocket>((resolve, reject) => {
-        const s = tlsConnect({
-          ...this.tlsOptions(),
-          socket: plain,
-          host: this.options.host,
-        });
-        this.socket = s;
-        s.once("secureConnect", () => resolve(s));
-        s.once("error", (error) =>
-          reject(
-            new MailConnectionError(connectionMessage(this.options, error), {
-              permanent: false,
-              cause: error,
-            }),
-          ),
-        );
-        s.once("close", () =>
-          reject(
-            this.failure ??
-              new MailConnectionError(
-                connectionMessage(this.options, undefined),
-                { permanent: false },
-              ),
-          ),
-        );
+      new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const settle = (fn: () => void) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          this.connectReject = undefined;
+          fn();
+        };
+        this.connectReject = (error) => settle(() => reject(error));
+
+        let tlsSocket: Bun.Socket<unknown>;
+        try {
+          [, tlsSocket] = plain.upgradeTLS({
+            tls: this.bunTlsOptions(),
+            socket: {
+              handshake: (s, authorized, authError) => {
+                if (this.closed) {
+                  s.terminate();
+                  settle(() => reject(this.failure));
+                  return;
+                }
+                const tlsError = this.validateTlsHandshake(
+                  s,
+                  authorized,
+                  authError,
+                );
+                if (tlsError) {
+                  s.terminate();
+                  this.fail(tlsError);
+                  settle(() => reject(tlsError));
+                  return;
+                }
+                settle(() => resolve());
+              },
+              data: (s, chunk) => {
+                if (s === this.socket) {
+                  this.onData(chunk);
+                }
+              },
+              drain: (s) => {
+                if (s === this.socket) {
+                  this.onDrain();
+                }
+              },
+              error: (s, error) => {
+                const mailErr = new MailConnectionError(
+                  connectionMessage(this.options, error),
+                  { permanent: false, cause: error },
+                );
+                if (s === this.socket || !settled) {
+                  this.fail(mailErr);
+                }
+                settle(() => reject(mailErr));
+              },
+              close: (s, error) => {
+                if (s === this.socket || !settled) {
+                  const mailErr =
+                    this.failure ??
+                    new MailConnectionError(
+                      settled
+                        ? `The SMTP server ${this.options.host} closed the connection`
+                        : connectionMessage(this.options, error),
+                      { permanent: false, ...(error ? { cause: error } : {}) },
+                    );
+                  this.fail(mailErr);
+                  settle(() => reject(mailErr));
+                }
+              },
+              end: (s) => {
+                if (s === this.socket || !settled) {
+                  const mailErr =
+                    this.failure ??
+                    new MailConnectionError(
+                      settled
+                        ? `The SMTP server ${this.options.host} closed the connection`
+                        : connectionMessage(this.options, undefined),
+                      { permanent: false },
+                    );
+                  this.fail(mailErr);
+                  settle(() => reject(mailErr));
+                }
+              },
+            },
+          });
+        } catch (error) {
+          const mailErr = new MailConnectionError(
+            connectionMessage(this.options, error),
+            { permanent: false, cause: error },
+          );
+          this.fail(mailErr);
+          settle(() => reject(mailErr));
+          return;
+        }
+        this.socket = tlsSocket;
+        tlsSocket.setNoDelay(true);
       }),
     );
-    this.decoder = new StringDecoder("utf8");
+    this.decoder = new TextDecoder("utf-8");
     this.secure = true;
-    this.attach(secured);
   }
 
   private async authenticate(auth: SmtpAuth): Promise<void> {
@@ -443,7 +683,10 @@ export class SmtpConnection {
       .split(/\s+/)
       .filter(Boolean);
     const method = this.options.authMethod ?? pickMethod(auth, offered);
-    if (!method || (this.capabilities.has("AUTH") && !offered.includes(method))) {
+    if (
+      !method ||
+      (this.capabilities.has("AUTH") && !offered.includes(method))
+    ) {
       throw new MailConnectionError(
         `The SMTP server ${host} doesn't offer ${method ? `AUTH ${method}` : "a supported AUTH mechanism"} ` +
           `(it offers: ${offered.join(" ") || "none"})`,
@@ -609,16 +852,55 @@ export class SmtpConnection {
     return reply;
   }
 
-  private write(data: Buffer): Promise<void> {
+  private write(data: Uint8Array): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (this.failure) {
         reject(this.failure);
         return;
       }
-      this.socket.write(data, (error) =>
-        error ? reject(this.failure ?? error) : resolve(),
-      );
+      if (!this.socket) {
+        reject(
+          new MailConnectionError("The SMTP connection was closed", {
+            permanent: false,
+          }),
+        );
+        return;
+      }
+      if (this.writeQueue.length === 0) {
+        const written = this.socket.write(data);
+        if (written >= data.byteLength) {
+          resolve();
+          return;
+        }
+        this.writeQueue.push({
+          data,
+          offset: Math.max(0, written),
+          resolve,
+          reject,
+        });
+        return;
+      }
+      this.writeQueue.push({ data, offset: 0, resolve, reject });
     });
+  }
+
+  private onDrain(): void {
+    while (this.writeQueue.length > 0 && this.socket && !this.failure) {
+      const head = this.writeQueue[0]!;
+      const remaining =
+        head.offset === 0 ? head.data : head.data.subarray(head.offset);
+      const written = this.socket.write(remaining);
+      if (written <= 0) {
+        return;
+      }
+      head.offset += written;
+      if (head.offset >= head.data.byteLength) {
+        this.writeQueue.shift();
+        head.resolve();
+      } else {
+        return;
+      }
+    }
   }
 
   /** Resets a transaction that failed, so the connection can be reused. False when that failed too. */
@@ -642,8 +924,10 @@ export class SmtpConnection {
     } finally {
       this.closed = true;
       const socket = this.socket;
-      socket.end();
-      setTimeout(() => socket.destroy(), 2_000).unref();
+      if (socket) {
+        socket.end();
+        setTimeout(() => socket.terminate(), 2_000).unref();
+      }
     }
   }
 }
@@ -686,7 +970,7 @@ function pickMethod(
 
 /** The EHLO name: the host's name when it is fully qualified, else an address literal. */
 function defaultName(localAddress?: string): string {
-  const name = osHostname();
+  const name = getHostname();
   if (
     /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i.test(
       name,
@@ -698,10 +982,13 @@ function defaultName(localAddress?: string): string {
     return "[127.0.0.1]";
   }
   const v4 = localAddress.replace(/^::ffff:/, "");
-  return isIP(v4) === 4 ? `[${v4}]` : `[IPv6:${localAddress}]`;
+  return isIp(v4) === 4 ? `[${v4}]` : `[IPv6:${localAddress}]`;
 }
 
-function connectionMessage(options: SmtpConnectOptions, error: unknown): string {
+function connectionMessage(
+  options: SmtpConnectOptions,
+  error: unknown,
+): string {
   const detail = error as { code?: string; message?: string } | undefined;
   return `SMTP connection to ${options.host}:${options.port} failed: ${detail?.code ?? detail?.message ?? "unknown error"}`;
 }

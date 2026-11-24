@@ -1,12 +1,4 @@
-import "reflect-metadata";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
   Controller,
@@ -24,7 +16,7 @@ import {
   type InjectionToken,
   type Provider,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   CircularDependencyException,
   ContextIdFactory,
@@ -37,7 +29,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   WsException,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   describeConformance,
@@ -49,10 +41,7 @@ import {
 type MockRequest = { headers: Record<string, string | undefined> };
 type AnyRequest = MockRequest | Request;
 
-const readHeader = (
-  request: AnyRequest,
-  name: string,
-): string | undefined => {
+const readHeader = (request: AnyRequest, name: string): string | undefined => {
   if (request.headers instanceof Headers) {
     return request.headers.get(name) ?? undefined;
   }
@@ -215,10 +204,7 @@ describeConformance(
         },
       };
 
-      async function compileCycleFixture(
-        bothSides: boolean,
-        conn?: Provider,
-      ) {
+      async function compileCycleFixture(bothSides: boolean, conn?: Provider) {
         @Injectable({ scope: Scope.REQUEST })
         class UpdateUsecase {
           constructor(
@@ -242,11 +228,7 @@ describeConformance(
         }
 
         return Test.createTestingModule({
-          providers: [
-            UpdateUsecase,
-            CreateUsecase,
-            ...(conn ? [conn] : []),
-          ],
+          providers: [UpdateUsecase, CreateUsecase, ...(conn ? [conn] : [])],
         }).compile();
       }
 
@@ -673,7 +655,7 @@ describeConformance(
         }
       };
 
-      // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter does not wire DI APP_GUARD multi-providers (including request-scoped guards) to @WebSocketGateway() handlers, so ClientGuard never runs and unauthorized messages still invoke the handler (packages/websockets/src/explorer/ws-gateway.explorer.ts, packages/websockets/src/adapter/bun-ws.adapter.ts)
+      // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter does not wire DI APP_GUARD multi-providers (including request-scoped guards) to @WebSocketGateway() handlers, so ClientGuard never runs and unauthorized messages still invoke the handler (packages/core/src/ws/explorer/ws-gateway.explorer.ts, packages/core/src/ws/adapter/bun-ws.adapter.ts)
       it.skip("should not run the handler when its constructor throws", async () => {
         ClientContext.isAuthorized = false;
 

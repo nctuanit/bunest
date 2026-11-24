@@ -9,7 +9,8 @@ export interface MailRetryOptions {
    * provider's `Retry-After` lengthens the wait either way, up to `maxDelay` (`'30s'` with a
    * function).
    */
-  backoff?: MailBackoffOptions | ((attempt: number, error: unknown) => Duration);
+  backoff?:
+    MailBackoffOptions | ((attempt: number, error: unknown) => Duration);
   /**
    * Asked about every failure the mailer would retry (errors that aren't `permanent`),
    * so it can only narrow the default. Return `false` to stop retrying.

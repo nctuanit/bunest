@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -10,7 +9,7 @@ import {
   type ContextId,
   type ContextIdStrategy,
   type HostComponentInfo,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   type BunestApplication,
@@ -143,10 +142,7 @@ describeConformance(
       });
 
       const get = (path: string, tenantId: string, user: string) =>
-        request(app)
-          .get(path)
-          .set("x-tenant-id", tenantId)
-          .set("x-user", user);
+        request(app).get(path).set("x-tenant-id", tenantId).set("x-user", user);
 
       it("should build them with the payload of the strategy", async () => {
         for (const tenantId of ["acme", "globex"]) {

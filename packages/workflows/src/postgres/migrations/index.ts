@@ -1,4 +1,4 @@
-import { StoreSchema } from "@bunest/store-kit/postgres";
+import { StoreSchema } from "@bunest/orm/postgres";
 import { WorkflowSchemaError } from "../../sql/workflow-schema.error";
 import { initialMigration } from "./initial.migration";
 

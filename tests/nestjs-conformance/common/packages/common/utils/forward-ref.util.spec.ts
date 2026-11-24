@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { forwardRef } from "../../../../../../packages/common/src";
+import { forwardRef } from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(

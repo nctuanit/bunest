@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import type {
   StandardSchemaV1,
   StandardSchemaV1Issue,
   StandardSchemaV1Options,
   StandardSchemaV1Result,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 
 export function createStandardSchema<
   TOutput extends object = Record<string, unknown>,
@@ -12,7 +11,8 @@ export function createStandardSchema<
   validate: (
     value: unknown,
     options?: StandardSchemaV1Options,
-  ) => StandardSchemaV1Result<TOutput> | Promise<StandardSchemaV1Result<TOutput>>,
+  ) =>
+    StandardSchemaV1Result<TOutput> | Promise<StandardSchemaV1Result<TOutput>>,
   vendor = "test",
 ): StandardSchemaV1<Record<string, unknown>, TOutput> {
   return {
@@ -110,7 +110,10 @@ export function createJoiLikePortDbSchema(): StandardSchemaV1<
  */
 export function createZodLikePortDbSchema(
   variant: "zod-v3" | "zod-v4" | "zod-v4-mini",
-): StandardSchemaV1<Record<string, unknown>, { PORT: number; DATABASE_NAME: string }> {
+): StandardSchemaV1<
+  Record<string, unknown>,
+  { PORT: number; DATABASE_NAME: string }
+> {
   const schema = createStandardSchema<{ PORT: number; DATABASE_NAME: string }>(
     (raw: unknown) => {
       const rec =

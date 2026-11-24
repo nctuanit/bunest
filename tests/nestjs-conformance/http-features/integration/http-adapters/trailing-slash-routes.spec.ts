@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -8,7 +7,7 @@ import {
   type MiddlewareConsumer,
   type NextFunction,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -79,27 +78,24 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: matchesPathPattern treats target ":id" segments as matching literal exclude patterns like "files/public", erroneously excluding /files/:id from middleware (packages/http/src/scanner/path-normalizer.ts:151).
-      it.skip(
-        "should run the middleware for every path except the exact excluded route",
-        async () => {
-          const excluded = ["/files/public"];
-          for (const path of [
-            "/files/public",
-            "/files/public/",
-            "/files/42",
-            "/files/42/",
-            "/files/a/b",
-            "/files/a/b/",
-          ]) {
-            const res = await request(app).get(path);
-            expect(res.status).toBe(200);
-            expect(res.headers["x-middleware"]).toBe(
-              excluded.includes(path) ? undefined : "ran",
-            );
-          }
-        },
-      );
+      // BUNEST_BUG: matchesPathPattern treats target ":id" segments as matching literal exclude patterns like "files/public", erroneously excluding /files/:id from middleware (packages/core/src/http/scanner/path-normalizer.ts:151).
+      it.skip("should run the middleware for every path except the exact excluded route", async () => {
+        const excluded = ["/files/public"];
+        for (const path of [
+          "/files/public",
+          "/files/public/",
+          "/files/42",
+          "/files/42/",
+          "/files/a/b",
+          "/files/a/b/",
+        ]) {
+          const res = await request(app).get(path);
+          expect(res.status).toBe(200);
+          expect(res.headers["x-middleware"]).toBe(
+            excluded.includes(path) ? undefined : "ran",
+          );
+        }
+      });
 
       it("should give the more specific routes their paths regardless of registration order", async () => {
         const handlers = await Promise.all(
@@ -129,7 +125,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunHttpAdapter.fetch() runs nativeMatcher.match(pathname) before dispatchFallback() checks ignoreTrailingSlash, so sibling wildcard /files/* intercepts /files/public/ and /files/42/ instead of stripping the trailing slash (packages/http/src/adapter/bun-http.adapter.ts:657-732).
+      // BUNEST_BUG: BunHttpAdapter.fetch() runs nativeMatcher.match(pathname) before dispatchFallback() checks ignoreTrailingSlash, so sibling wildcard /files/* intercepts /files/public/ and /files/42/ instead of stripping the trailing slash (packages/core/src/http/adapter/bun-http.adapter.ts:657-732).
       it.skip("should send a path ending with '/' to the route it would go to without it", async () => {
         for (const path of ["/files/public", "/files/42", "/files/a/b"]) {
           const [res, withSlash] = await Promise.all([

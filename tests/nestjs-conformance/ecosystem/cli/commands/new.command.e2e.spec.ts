@@ -1,15 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   FileCollisionError,
   createProject,
@@ -23,6 +20,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -55,11 +61,11 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-new-"));
+      tmpDir = makeTempDir("bunest-cli-conf-new-");
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -74,21 +80,21 @@ describeConformance(
         expect(res.exitCode).toBe(0);
         const appPath = join(tmpDir, "my-app");
 
-        expect(existsSync(join(appPath, "package.json"))).toBe(true);
-        expect(existsSync(join(appPath, "tsconfig.json"))).toBe(true);
-        expect(existsSync(join(appPath, ".gitignore"))).toBe(true);
-        expect(existsSync(join(appPath, "README.md"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "package.json"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "tsconfig.json"))).toBe(true);
+        expect(existsSyncPath(join(appPath, ".gitignore"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "README.md"))).toBe(true);
 
-        expect(existsSync(join(appPath, "src", "main.ts"))).toBe(true);
-        expect(existsSync(join(appPath, "src", "app.module.ts"))).toBe(true);
-        expect(existsSync(join(appPath, "src", "app.controller.ts"))).toBe(
+        expect(existsSyncPath(join(appPath, "src", "main.ts"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "src", "app.module.ts"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "src", "app.controller.ts"))).toBe(
           true,
         );
-        expect(existsSync(join(appPath, "src", "app.service.ts"))).toBe(true);
-        expect(existsSync(join(appPath, "test", "app.spec.ts"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "src", "app.service.ts"))).toBe(true);
+        expect(existsSyncPath(join(appPath, "test", "app.spec.ts"))).toBe(true);
 
         const pkg = JSON.parse(
-          readFileSync(join(appPath, "package.json"), "utf8"),
+          readTextSync(join(appPath, "package.json")),
         ) as {
           name: string;
           type: string;
@@ -98,11 +104,11 @@ describeConformance(
         expect(pkg.name).toBe("my-app");
         expect(pkg.type).toBe("module");
         expect(pkg.dependencies["@bunest/core"]).toBeDefined();
-        expect(pkg.dependencies["reflect-metadata"]).toBeDefined();
+        expect(pkg.dependencies["reflect-metadata"]).toBeUndefined();
         expect(pkg.devDependencies["@bunest/testing"]).toBeDefined();
 
         const tsconfig = JSON.parse(
-          readFileSync(join(appPath, "tsconfig.json"), "utf8"),
+          readTextSync(join(appPath, "tsconfig.json")),
         ) as { compilerOptions: Record<string, unknown> };
         expect(tsconfig.compilerOptions.verbatimModuleSyntax).toBe(true);
         expect(tsconfig.compilerOptions.experimentalDecorators).toBe(true);
@@ -129,10 +135,10 @@ describeConformance(
       expect(res.exitCode).toBe(0);
       const appPath = join(tmpDir, "custom-dir");
 
-      expect(existsSync(join(appPath, "package.json"))).toBe(true);
-      expect(existsSync(join(appPath, "src", "main.ts"))).toBe(true);
+      expect(existsSyncPath(join(appPath, "package.json"))).toBe(true);
+      expect(existsSyncPath(join(appPath, "src", "main.ts"))).toBe(true);
       const pkg = JSON.parse(
-        readFileSync(join(appPath, "package.json"), "utf8"),
+        readTextSync(join(appPath, "package.json")),
       ) as { name: string };
       expect(pkg.name).toBe("my-app");
     });
@@ -152,7 +158,7 @@ describeConformance(
         cap.io,
       );
       expect(res.exitCode).toBe(0);
-      expect(existsSync(join(tmpDir, "custom-dir", "package.json"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "custom-dir", "package.json"))).toBe(true);
     });
 
     itAdapted(
@@ -165,11 +171,11 @@ describeConformance(
           skipInstall: true,
           skipGit: true,
         });
-        expect(existsSync(join(created.targetDir, "tsconfig.json"))).toBe(true);
-        expect(existsSync(join(created.targetDir, "src", "main.ts"))).toBe(
+        expect(existsSyncPath(join(created.targetDir, "tsconfig.json"))).toBe(true);
+        expect(existsSyncPath(join(created.targetDir, "src", "main.ts"))).toBe(
           true,
         );
-        expect(existsSync(join(created.targetDir, "jsconfig.json"))).toBe(
+        expect(existsSyncPath(join(created.targetDir, "jsconfig.json"))).toBe(
           false,
         );
       },
@@ -183,7 +189,7 @@ describeConformance(
       );
       expect(strictRes.exitCode).toBe(0);
       const strictTs = JSON.parse(
-        readFileSync(join(tmpDir, "strict-app", "tsconfig.json"), "utf8"),
+        readTextSync(join(tmpDir, "strict-app", "tsconfig.json")),
       ) as {
         compilerOptions: {
           strict: boolean;
@@ -202,7 +208,7 @@ describeConformance(
       );
       expect(looseRes.exitCode).toBe(0);
       const looseTs = JSON.parse(
-        readFileSync(join(tmpDir, "loose-app", "tsconfig.json"), "utf8"),
+        readTextSync(join(tmpDir, "loose-app", "tsconfig.json")),
       ) as { compilerOptions: { strict: boolean } };
       expect(looseTs.compilerOptions.strict).toBe(false);
     });
@@ -215,7 +221,7 @@ describeConformance(
       );
 
       expect(res.exitCode).toBe(0);
-      expect(existsSync(join(tmpDir, "dry-app"))).toBe(false);
+      expect(existsSyncPath(join(tmpDir, "dry-app"))).toBe(false);
       expect(cap.stdout.join("\n")).toContain("DRY-RUN");
       expect(cap.stdout.join("\n")).toContain("[dry-run] Planned");
     });
@@ -228,7 +234,7 @@ describeConformance(
         skipGit: true,
       });
       expect(noGit.gitInitialized).toBe(false);
-      expect(existsSync(join(noGit.targetDir, ".git"))).toBe(false);
+      expect(existsSyncPath(join(noGit.targetDir, ".git"))).toBe(false);
 
       const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
       const withGit = await createProject({
@@ -252,8 +258,8 @@ describeConformance(
         skipGit: true,
       });
       const cfgPath = join(created.targetDir, "bunest.json");
-      expect(existsSync(cfgPath)).toBe(true);
-      const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as {
+      expect(existsSyncPath(cfgPath)).toBe(true);
+      const cfg = JSON.parse(readTextSync(cfgPath)) as {
         collection: string;
         sourceRoot: string;
       };
@@ -277,7 +283,7 @@ describeConformance(
       expect(spawnSpy.firstCall?.args[0]).toEqual(["pnpm", "install"]);
 
       const pkg = JSON.parse(
-        readFileSync(join(created.targetDir, "package.json"), "utf8"),
+        readTextSync(join(created.targetDir, "package.json")),
       ) as { scripts: Record<string, string> };
       expect(pkg.scripts.build).toBeDefined();
       expect(pkg.scripts.start).toBeDefined();
@@ -297,9 +303,9 @@ describeConformance(
 
     describe("in a directory that already has files", () => {
       it("should generate around files the project does not include when targeting --dir .", async () => {
-        writeFileSync(join(tmpDir, "SPEC.md"), "# What to build", "utf8");
-        mkdirSync(join(tmpDir, "notes"), { recursive: true });
-        writeFileSync(join(tmpDir, "notes", "todo.md"), "- ship", "utf8");
+        writeTextSync(join(tmpDir, "SPEC.md"), "# What to build");
+        mkdirSyncPath(join(tmpDir, "notes"), { recursive: true });
+        writeTextSync(join(tmpDir, "notes", "todo.md"), "- ship");
 
         const res = await createProject({
           projectName: "existing-app",
@@ -310,14 +316,14 @@ describeConformance(
         });
 
         expect(res.targetDir).toBe(tmpDir);
-        expect(readFileSync(join(tmpDir, "SPEC.md"), "utf8")).toBe(
+        expect(readTextSync(join(tmpDir, "SPEC.md"))).toBe(
           "# What to build",
         );
-        expect(readFileSync(join(tmpDir, "notes", "todo.md"), "utf8")).toBe(
+        expect(readTextSync(join(tmpDir, "notes", "todo.md"))).toBe(
           "- ship",
         );
-        expect(existsSync(join(tmpDir, "package.json"))).toBe(true);
-        expect(existsSync(join(tmpDir, "src", "main.ts"))).toBe(true);
+        expect(existsSyncPath(join(tmpDir, "package.json"))).toBe(true);
+        expect(existsSyncPath(join(tmpDir, "src", "main.ts"))).toBe(true);
       });
 
       // BUNEST_BUG: validateProjectName(".") rejects "." so `bunest new .` cannot scaffold directly into the current directory (packages/cli/src/utils/naming.ts)
@@ -328,15 +334,11 @@ describeConformance(
           cap.io,
         );
         expect(res.exitCode).toBe(0);
-        expect(existsSync(join(tmpDir, "package.json"))).toBe(true);
+        expect(existsSyncPath(join(tmpDir, "package.json"))).toBe(true);
       });
 
       it("should atomically refuse to overwrite a file the project includes", async () => {
-        writeFileSync(
-          join(tmpDir, "package.json"),
-          '{ "name": "mine" }',
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "package.json"), '{ "name": "mine" }');
 
         await expect(
           createProject({
@@ -348,10 +350,10 @@ describeConformance(
           }),
         ).rejects.toBeInstanceOf(FileCollisionError);
 
-        expect(readFileSync(join(tmpDir, "package.json"), "utf8")).toBe(
+        expect(readTextSync(join(tmpDir, "package.json"))).toBe(
           '{ "name": "mine" }',
         );
-        expect(existsSync(join(tmpDir, "src", "main.ts"))).toBe(false);
+        expect(existsSyncPath(join(tmpDir, "src", "main.ts"))).toBe(false);
       });
     });
 
@@ -383,12 +385,9 @@ describeConformance(
             skipInstall: true,
             skipGit: true,
           });
-          const specText = readFileSync(
-            join(created.targetDir, "test", "app.spec.ts"),
-            "utf8",
-          );
+          const specText = readTextSync(join(created.targetDir, "test", "app.spec.ts"));
           expect(specText).toContain('from "bun:test"');
-          expect(existsSync(join(created.targetDir, "jest.config.ts"))).toBe(
+          expect(existsSyncPath(join(created.targetDir, "jest.config.ts"))).toBe(
             false,
           );
         },

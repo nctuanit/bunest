@@ -4,7 +4,7 @@ import {
   type ModuleExport,
   type ModuleImport,
   type Provider,
-} from "@bunest/common";
+} from "@bunest/core";
 import type {
   ClientProvider,
   ClientProviderOptions,
@@ -21,11 +21,7 @@ import {
   MicroserviceTransportServer,
   type CustomTransportStrategy,
 } from "./server";
-import {
-  MICROSERVICE_OPTIONS,
-  MICROSERVICE_SERVER,
-  Transport,
-} from "./tokens";
+import { MICROSERVICE_OPTIONS, MICROSERVICE_SERVER, Transport } from "./tokens";
 import {
   NatsTransportServer,
   RabbitMqTransportServer,
@@ -81,7 +77,9 @@ class CustomStrategyServerAdapter extends MicroserviceTransportServer {
     return this.strategy as unknown as T;
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     if (this.listening) {
       callback?.();
       return;

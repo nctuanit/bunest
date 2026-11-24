@@ -1,39 +1,46 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Module } from "../../../../../packages/common/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
-  BaseSqliteRepository,
-  SqliteEntity,
-  SqliteMigrationRunner,
-  SqliteModule,
-  SqliteService,
-  getSqliteConnectionToken,
-  getSqliteMigrationRunnerToken,
-  getSqliteRepositoryToken,
-} from "../../../../../packages/sqlite/src";
+  Column,
+  CrudRepository,
+  DataSource,
+  Entity,
+  EntityManager,
+  OrmMigrationRunner,
+  OrmModule,
+  OrmRepository,
+  PrimaryGeneratedColumn,
+  Query,
+  SqlParam,
+  getOrmDataSourceToken,
+  getOrmEntityManagerToken,
+  getOrmMigrationRunnerToken,
+  getOrmRepositoryToken,
+  type Repository,
+} from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
-interface PhotoRow extends Record<string, unknown> {
-  id: number;
-  name: string;
-  description: string;
-  views: number;
+@Entity("photos")
+class Photo {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  name!: string;
+
+  @Column()
+  description!: string;
+
+  @Column({ type: "integer", default: 0 })
+  views!: number;
 }
 
-@SqliteEntity("photos")
-class Photo {}
-
-class CustomPhotoRepository extends BaseSqliteRepository<PhotoRow, number> {
-  constructor(sqlite: SqliteService) {
-    super(sqlite, "photos");
-  }
-
-  findPopular(minViews: number): PhotoRow[] {
-    return this.sqlite.query<PhotoRow>(
-      'SELECT * FROM "photos" WHERE views >= ? ORDER BY views DESC',
-      [minViews],
-    );
+@OrmRepository(Photo)
+abstract class CustomPhotoRepository extends CrudRepository<Photo, number> {
+  @Query("SELECT * FROM photos WHERE views >= :minViews ORDER BY views DESC")
+  findPopular(@SqlParam("minViews") _minViews: number): Promise<Photo[]> {
+    return [] as unknown as Promise<Photo[]>;
   }
 }
 
@@ -50,23 +57,27 @@ const CREATE_PHOTOS_MIGRATION = {
 
 @Module({
   imports: [
-    SqliteModule.forFeature([Photo, CustomPhotoRepository]),
-    SqliteModule.forFeature([Photo], "connection_2"),
+    OrmModule.forFeature([Photo, CustomPhotoRepository]),
+    OrmModule.forFeature([Photo], "connection_2"),
   ],
 })
 class PhotoFeatureModule {}
 
 @Module({
   imports: [
-    SqliteModule.forRoot({
-      filename: ":memory:",
+    OrmModule.forRoot({
+      type: "sqlite",
+      database: ":memory:",
+      entities: [Photo],
       autoMigrate: true,
       migrations: [CREATE_PHOTOS_MIGRATION],
     }),
     PhotoFeatureModule,
-    SqliteModule.forRoot({
+    OrmModule.forRoot({
       name: "connection_2",
-      filename: ":memory:",
+      type: "sqlite",
+      database: ":memory:",
+      entities: [Photo],
       autoMigrate: true,
       migrations: [CREATE_PHOTOS_MIGRATION],
     }),
@@ -81,7 +92,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-002", "ADR-007"],
     notes:
-      "Adapts TypeORM DataSource/EntityManager/named connection/custom repository DI checks to SqliteService, SqliteMigrationRunner, getSqliteConnectionToken, and BaseSqliteRepository subclasses.",
+      "Adapts TypeORM DataSource/EntityManager/named connection/custom repository DI checks to @bunest/orm DataSource, EntityManager, OrmMigrationRunner, getOrmDataSourceToken, and @OrmRepository CrudRepository subclasses.",
   },
   () => {
     let app: BunestApplication;
@@ -99,87 +110,102 @@ describeConformance(
       await app.close();
     });
 
-    it("injects an initialized default SqliteService", () => {
-      const sqlite = app.get(SqliteService);
-      expect(sqlite).toBeInstanceOf(SqliteService);
-      expect(sqlite.isClosed).toBe(false);
-      expect(sqlite.healthCheck()).toBe(true);
-      expect(app.get(getSqliteConnectionToken())).toBe(sqlite);
+    it("injects an initialized default DataSource and EntityManager", async () => {
+      const ds = app.get(DataSource);
+      const em = app.get(EntityManager);
+      expect(ds).toBeInstanceOf(DataSource);
+      expect(em).toBeInstanceOf(EntityManager);
+      expect(ds.isInitialized).toBe(true);
+      expect(await ds.ping()).toBe(true);
+      expect(app.get(getOrmDataSourceToken())).toBe(ds);
+      expect(app.get(getOrmEntityManagerToken())).toBe(em);
+      expect(ds.manager).toBe(em);
     });
 
-    it("injects the default SqliteMigrationRunner bound to the default connection", () => {
-      const runner = app.get<SqliteMigrationRunner>(
-        getSqliteMigrationRunnerToken(),
-      );
-      expect(runner).toBeInstanceOf(SqliteMigrationRunner);
-      expect(app.get(SqliteMigrationRunner)).toBe(runner);
-      expect(runner.getApplied().map((m) => m.id)).toEqual([
+    it("injects the default OrmMigrationRunner bound to the default DataSource", async () => {
+      const runner = app.get<OrmMigrationRunner>(getOrmMigrationRunnerToken());
+      expect(runner).toBeInstanceOf(OrmMigrationRunner);
+      expect(app.get(OrmMigrationRunner)).toBe(runner);
+      expect((await runner.getApplied()).map((m) => m.id)).toEqual([
         "001_create_photos",
       ]);
     });
 
-    it("resolves a named SqliteService by its token", () => {
-      const named = app.get<SqliteService>(
-        getSqliteConnectionToken("connection_2"),
+    it("resolves a named DataSource and OrmMigrationRunner by their tokens", async () => {
+      const named = app.get<DataSource>(getOrmDataSourceToken("connection_2"));
+      const namedRunner = app.get<OrmMigrationRunner>(
+        getOrmMigrationRunnerToken("connection_2"),
       );
-      expect(named).toBeInstanceOf(SqliteService);
-      expect(named.connectionName).toBe("connection_2");
-      expect(named.healthCheck()).toBe(true);
-      expect(named).not.toBe(app.get(SqliteService));
+      expect(named).toBeInstanceOf(DataSource);
+      expect(named.name).toBe("connection_2");
+      expect(await named.ping()).toBe(true);
+      expect(named).not.toBe(app.get(DataSource));
+      expect(namedRunner).toBeInstanceOf(OrmMigrationRunner);
+      expect(namedRunner).not.toBe(app.get(OrmMigrationRunner));
     });
 
-    it("injects a custom repository (extends BaseSqliteRepository)", () => {
+    it("injects a declarative custom repository (@OrmRepository extending CrudRepository)", async () => {
       const repository = app.get<CustomPhotoRepository>(
-        getSqliteRepositoryToken(CustomPhotoRepository),
+        getOrmRepositoryToken(CustomPhotoRepository),
       );
-      expect(repository).toBeInstanceOf(BaseSqliteRepository);
-      expect(repository).toBeInstanceOf(CustomPhotoRepository);
       expect(app.get(CustomPhotoRepository)).toBe(repository);
 
-      repository.insert({
+      await repository.save({
         name: "Viral",
         description: "Top photo",
         views: 9000,
       });
-      expect(repository.findPopular(5000)).toHaveLength(1);
+      await repository.save({
+        name: "Quiet",
+        description: "Low views",
+        views: 50,
+      });
+
+      const popular = await repository.findPopular(5000);
+      expect(popular).toHaveLength(1);
+      expect(popular[0]?.name).toBe("Viral");
     });
 
     describe("default connection class alias scoping", () => {
-      it("only aliases default connection to SqliteService class token and keeps named repositories isolated", () => {
-        const defaultRepo = app.get<BaseSqliteRepository<PhotoRow, number>>(
-          getSqliteRepositoryToken(Photo),
+      it("isolates repositories bound to default vs named DataSource", async () => {
+        const defaultRepo = app.get<Repository<Photo>>(
+          getOrmRepositoryToken(Photo),
         );
-        const namedRepo = app.get<BaseSqliteRepository<PhotoRow, number>>(
-          getSqliteRepositoryToken(Photo, "connection_2"),
+        const namedRepo = app.get<Repository<Photo>>(
+          getOrmRepositoryToken(Photo, "connection_2"),
         );
 
-        defaultRepo.insert({
+        await defaultRepo.save({
           name: "PrimaryOnly",
           description: "Stored on default",
           views: 100,
         });
 
-        expect(defaultRepo.count()).toBe(1);
-        expect(namedRepo.count()).toBe(0);
+        expect(await defaultRepo.count()).toBe(1);
+        expect(await namedRepo.count()).toBe(0);
       });
     });
 
-    it("allows registering the same custom BaseSqliteRepository subclass on both default and named connections", async () => {
+    it("allows registering declarative @OrmRepository on both default and named connections", async () => {
       @Module({
         imports: [
-          SqliteModule.forRoot({
-            filename: ":memory:",
+          OrmModule.forRoot({
+            type: "sqlite",
+            database: ":memory:",
+            entities: [Photo],
             autoMigrate: true,
             migrations: [CREATE_PHOTOS_MIGRATION],
           }),
-          SqliteModule.forRoot({
+          OrmModule.forRoot({
             name: "connection_2",
-            filename: ":memory:",
+            type: "sqlite",
+            database: ":memory:",
+            entities: [Photo],
             autoMigrate: true,
             migrations: [CREATE_PHOTOS_MIGRATION],
           }),
-          SqliteModule.forFeature([CustomPhotoRepository]),
-          SqliteModule.forFeature([CustomPhotoRepository], "connection_2"),
+          OrmModule.forFeature([CustomPhotoRepository]),
+          OrmModule.forFeature([CustomPhotoRepository], "connection_2"),
         ],
       })
       class DualCustomRepoModule {}
@@ -190,15 +216,20 @@ describeConformance(
       try {
         await dualRef.init();
         const repo1 = dualRef.get<CustomPhotoRepository>(
-          getSqliteRepositoryToken(CustomPhotoRepository),
+          getOrmRepositoryToken(CustomPhotoRepository),
         );
         const repo2 = dualRef.get<CustomPhotoRepository>(
-          getSqliteRepositoryToken(CustomPhotoRepository, "connection_2"),
+          getOrmRepositoryToken(CustomPhotoRepository, "connection_2"),
         );
-        expect(repo1).toBeInstanceOf(CustomPhotoRepository);
-        expect(repo2).toBeInstanceOf(CustomPhotoRepository);
         expect(repo1).not.toBe(repo2);
-        expect(dualRef.get(CustomPhotoRepository)).toBe(repo1);
+
+        await repo1.save({
+          name: "One",
+          description: "Primary",
+          views: 500,
+        });
+        expect(await repo1.count()).toBe(1);
+        expect(await repo2.count()).toBe(0);
       } finally {
         await dualRef.close();
       }

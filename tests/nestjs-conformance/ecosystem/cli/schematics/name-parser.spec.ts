@@ -1,14 +1,26 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  removePath,
+  resolve,
+} from "../../../../../packages/core/src";
 import {
   generateSchematic,
   parseSchematicName,
   resolveSafeChildPath,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Name Parser",
@@ -23,16 +35,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -68,7 +80,7 @@ describeConformance(
           cwd,
         });
         expect(result.targetDir).toBe(resolve(cwd, "baz"));
-        expect(existsSync(join(cwd, "baz/foo.module.ts"))).toBe(true);
+        expect(existsSyncPath(join(cwd, "baz/foo.module.ts"))).toBe(true);
       },
       "combines parseSchematicName leaf with generateSchematic dir option",
     );
@@ -91,7 +103,7 @@ describeConformance(
           cwd,
         });
         expect(result.targetDir).toBe(resolve(cwd, "baz"));
-        expect(existsSync(join(cwd, "baz/bar/foo.module.ts"))).toBe(true);
+        expect(existsSyncPath(join(cwd, "baz/bar/foo.module.ts"))).toBe(true);
       },
       "splits nested path into subDir ('bar') and leaf name ('foo') under target dir ('baz')",
     );
@@ -100,7 +112,9 @@ describeConformance(
       ["ADR-001", "ADR-002"],
       "should reject relative parent path traversal ('../foo') instead of resolving upward",
       () => {
-        expect(() => parseSchematicName("../foo")).toThrow(/path-traversal|\.\./);
+        expect(() => parseSchematicName("../foo")).toThrow(
+          /path-traversal|\.\./,
+        );
       },
       "Bunest security hardening forbids '..' traversal segments in schematic names",
     );
@@ -109,7 +123,7 @@ describeConformance(
       expect(() => parseSchematicName("../../../foo")).toThrow(
         /path-traversal|\.\./,
       );
-      const baseDir = resolve(tmpdir(), "bunest-root-check", "baz");
+      const baseDir = resolve((Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp"), "bunest-root-check", "baz");
       expect(() => resolveSafeChildPath(baseDir, "../../../foo")).toThrow(
         /Unsafe target path/,
       );

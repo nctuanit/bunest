@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Inject,
@@ -6,7 +5,7 @@ import {
   Logger,
   Module,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { ModuleRef, REQUEST } from "../../../../../packages/core/src";
 import {
   Test,

@@ -1,14 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import {
-  bunestMetadataPlugin,
-  transformDtoMetadataSource,
-} from "../src";
+import { ensureDir, join, removePath } from "@bunest/core";
+import { bunestMetadataPlugin, transformDtoMetadataSource } from "../src";
 
+const TMP_DIR = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
 const SWAGGER_API_PROPERTIES = Symbol.for("bunest:swagger:api_properties");
 const GRAPHQL_FIELDS = Symbol.for("bunest:graphql:fields");
 
@@ -165,19 +159,25 @@ export class CreateOrderDto {
     expect(result.code).not.toContain("() => InternalShape");
     expect(result.code).not.toContain("CommentedOutDto,");
     expect(result.code).not.toContain("StringTemplateDto,");
-    expect(result.code).toContain('Symbol.for("bunest:swagger:api_properties")');
+    expect(result.code).toContain(
+      'Symbol.for("bunest:swagger:api_properties")',
+    );
     expect(result.code).toContain('Symbol.for("bunest:graphql:fields")');
   });
 
   it("integrates with real Bun.build({ plugins: [bunestMetadataPlugin()] }) and populates runtime Swagger & GraphQL metadata without overwriting explicit decorators", async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), "bunest-meta-plugin-"));
+    const tmpDir = join(
+      TMP_DIR,
+      `bunest-meta-plugin-${crypto.randomUUID().slice(0, 8)}`,
+    );
+    await ensureDir(tmpDir);
     try {
       const addressFile = join(tmpDir, "address.dto.ts");
       const userFile = join(tmpDir, "user.dto.ts");
       const entryFile = join(tmpDir, "index.ts");
       const outDir = join(tmpDir, "dist");
 
-      await writeFile(
+      await Bun.write(
         join(tmpDir, "tsconfig.json"),
         JSON.stringify(
           {
@@ -191,7 +191,7 @@ export class CreateOrderDto {
         ),
       );
 
-      await writeFile(
+      await Bun.write(
         addressFile,
         `
 export class AddressDto {
@@ -202,7 +202,7 @@ export class AddressDto {
 `,
       );
 
-      await writeFile(
+      await Bun.write(
         userFile,
         `
 import { AddressDto } from "./address.dto";
@@ -243,7 +243,7 @@ export class CreateUserDto {
 `,
       );
 
-      await writeFile(
+      await Bun.write(
         entryFile,
         `
 export { AddressDto } from "./address.dto";
@@ -268,7 +268,7 @@ export { CreateUserDto, UserRole } from "./user.dto";
       expect(buildResult.success).toBe(true);
       expect(buildResult.outputs).toHaveLength(1);
 
-      const builtModuleUrl = `${pathToFileURL(buildResult.outputs[0]!.path).href}?t=${Date.now()}`;
+      const builtModuleUrl = `${Bun.pathToFileURL(buildResult.outputs[0]!.path).href}?t=${Date.now()}`;
       const built = (await import(builtModuleUrl)) as {
         AddressDto: Function;
         CreateUserDto: Function;
@@ -353,7 +353,7 @@ export { CreateUserDto, UserRole } from "./user.dto";
       expect(gqlMap.get("scores")?.typeFn()).toEqual([Number]);
       expect(gqlMap.get("address")?.typeFn()).toBe(built.AddressDto);
     } finally {
-      await rm(tmpDir, { recursive: true, force: true });
+      await removePath(tmpDir, { recursive: true, force: true });
     }
   });
 
@@ -392,9 +392,13 @@ export class UrlDto {
 
     // Runtime check with real Bun.build(): explicit @Field({ nullable: true }) with `typeFn: undefined`
     // MUST NOT clobber plugin-inferred `typeFn: () => [String]`!
-    const tmpDir = await mkdtemp(join(tmpdir(), "bunest-meta-reg114-"));
+    const tmpDir = join(
+      TMP_DIR,
+      `bunest-meta-reg114-${crypto.randomUUID().slice(0, 8)}`,
+    );
+    await ensureDir(tmpDir);
     try {
-      await writeFile(
+      await Bun.write(
         join(tmpDir, "tsconfig.json"),
         JSON.stringify({
           compilerOptions: {
@@ -403,7 +407,7 @@ export class UrlDto {
           },
         }),
       );
-      await writeFile(
+      await Bun.write(
         join(tmpDir, "tags.model.ts"),
         `
 const GQL_FIELDS = Symbol.for("bunest:graphql:fields");
@@ -447,7 +451,7 @@ export class TaggedModel {
       });
       expect(buildRes.success).toBe(true);
       const mod = (await import(
-        `${pathToFileURL(buildRes.outputs[0]!.path).href}?t=${Date.now()}`
+        `${Bun.pathToFileURL(buildRes.outputs[0]!.path).href}?t=${Date.now()}`
       )) as { TaggedModel: Function };
 
       const gqlFields = Reflect.getOwnMetadata(
@@ -472,7 +476,7 @@ export class TaggedModel {
         "safe",
       ]);
     } finally {
-      await rm(tmpDir, { recursive: true, force: true });
+      await removePath(tmpDir, { recursive: true, force: true });
     }
   });
 });

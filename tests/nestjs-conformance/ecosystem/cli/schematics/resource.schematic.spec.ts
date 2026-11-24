@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -11,6 +14,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 type ExtendedResourceOptions = GenerateSchematicOptions & {
   readonly crud?: boolean;
@@ -36,22 +48,22 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Adapts @nestjs/schematics resource factory tests to Bunest CLI REST CRUD templates (class-validator DTOs, verbatimModuleSyntax value/type imports, bun:test CRUD spec). Missing non-REST transports, crud: false, entity generation, and plural singularization are documented via BUNEST_BUG skips.",
+      "Adapts @nestjs/schematics resource factory tests to Bunest CLI REST CRUD templates (@bunest/validation/validator DTOs, verbatimModuleSyntax value/type imports, bun:test CRUD spec). Missing non-REST transports, crud: false, entity generation, and plural singularization are documented via BUNEST_BUG skips.",
   },
   () => {
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -144,10 +156,7 @@ describeConformance(
             "admin/user-profile.module.ts",
             "admin/user-profile.spec.ts",
           ]);
-          const ctrl = readFileSync(
-            join(cwd, "src/admin/user-profile.controller.ts"),
-            "utf8",
-          );
+          const ctrl = readTextSync(join(cwd, "src/admin/user-profile.controller.ts"));
           expect(ctrl).toContain('from "./create-user-profile.dto"');
           expect(ctrl).toContain('from "./update-user-profile.dto"');
         },
@@ -190,7 +199,7 @@ describeConformance(
             "users/users.controller.ts",
             "users/users.module.ts",
           ]);
-          expect(existsSync(join(cwd, "src/users/users.spec.ts"))).toBe(false);
+          expect(existsSyncPath(join(cwd, "src/users/users.spec.ts"))).toBe(false);
         });
 
         // BUNEST_BUG: GenerateSchematicOptions and buildSchematicFiles("resource") do not support crud: false combined with spec: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
@@ -217,7 +226,7 @@ describeConformance(
       let suiteDir: string;
 
       beforeAll(async () => {
-        suiteDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+        suiteDir = makeTempDir("bunest-cli-conf-");
         await generateSchematic({
           schematic: "resource",
           name: "users",
@@ -225,9 +234,9 @@ describeConformance(
         });
       });
 
-      afterAll(() => {
+      afterAll(async () => {
         if (suiteDir) {
-          rmSync(suiteDir, { recursive: true, force: true });
+          await removePath(suiteDir, { recursive: true, force: true });
         }
       });
 
@@ -235,10 +244,7 @@ describeConformance(
         ["ADR-001", "ADR-002"],
         'should generate "UsersController" class',
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/users.controller.ts"),
-            "utf8",
-          );
+          const content = readTextSync(join(suiteDir, "src/users/users.controller.ts"));
           expect(content).toEqual(`import {
   Body,
   Controller,
@@ -295,10 +301,7 @@ export class UsersController {
         ["ADR-001", "ADR-002"],
         'should generate "UsersService" class',
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/users.service.ts"),
-            "utf8",
-          );
+          const content = readTextSync(join(suiteDir, "src/users/users.service.ts"));
           expect(content)
             .toEqual(`import { Injectable, NotFoundException } from "@bunest/core";
 import type { CreateUsersDto } from "./dto/create-users.dto";
@@ -363,10 +366,7 @@ export class UsersService {
         ["ADR-001", "ADR-002"],
         'should generate "UsersModule" class',
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/users.module.ts"),
-            "utf8",
-          );
+          const content = readTextSync(join(suiteDir, "src/users/users.module.ts"));
           expect(content).toEqual(`import { Module } from "@bunest/core";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
@@ -385,20 +385,19 @@ export class UsersModule {}
       // BUNEST_BUG: resource schematic does not generate entities/<singular>.entity.ts (packages/cli/src/templates/schematic.templates.ts:875-1094)
       it.skip('should generate "User" entity class', () => {
         const entityPath = join(suiteDir, "src/users/entities/user.entity.ts");
-        expect(existsSync(entityPath)).toBe(true);
-        expect(readFileSync(entityPath, "utf8")).toEqual("export class User {}\n");
+        expect(existsSyncPath(entityPath)).toBe(true);
+        expect(readTextSync(entityPath)).toEqual(
+          "export class User {}\n",
+        );
       });
 
       itAdapted(
         ["ADR-001", "ADR-002"],
         'should generate "CreateUsersDto" class',
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/dto/create-users.dto.ts"),
-            "utf8",
-          );
+          const content = readTextSync(join(suiteDir, "src/users/dto/create-users.dto.ts"));
           expect(content)
-            .toEqual(`import { IsOptional, IsString, MinLength } from "class-validator";
+            .toEqual(`import { IsOptional, IsString, MinLength } from "@bunest/validation/validator";
 
 export class CreateUsersDto {
   @IsString()
@@ -411,19 +410,16 @@ export class CreateUsersDto {
 }
 `);
         },
-        "generates class-validator decorated DTO compatible with Bunest ValidationPipe",
+        "generates @bunest/validation/validator decorated DTO compatible with Bunest ValidationPipe",
       );
 
       itAdapted(
         ["ADR-001", "ADR-002"],
         'should generate "UpdateUsersDto" class',
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/dto/update-users.dto.ts"),
-            "utf8",
-          );
+          const content = readTextSync(join(suiteDir, "src/users/dto/update-users.dto.ts"));
           expect(content)
-            .toEqual(`import { IsOptional, IsString, MinLength } from "class-validator";
+            .toEqual(`import { IsOptional, IsString, MinLength } from "@bunest/validation/validator";
 
 export class UpdateUsersDto {
   @IsOptional()
@@ -437,18 +433,15 @@ export class UpdateUsersDto {
 }
 `);
         },
-        "generates standalone optional class-validator UpdateDto without @nestjs/swagger or @nestjs/mapped-types",
+        "generates standalone optional @bunest/validation/validator UpdateDto without @nestjs/swagger or @nestjs/mapped-types",
       );
 
       itAdapted(
         ["ADR-001", "ADR-002"],
         "should generate CRUD integration spec file using bun:test and @bunest/testing",
         () => {
-          const content = readFileSync(
-            join(suiteDir, "src/users/users.spec.ts"),
-            "utf8",
-          );
-          expect(content).toContain('import "reflect-metadata";');
+          const content = readTextSync(join(suiteDir, "src/users/users.spec.ts"));
+          expect(content).not.toContain('import "reflect-metadata";');
           expect(content).toContain(
             'import { describe, expect, it } from "bun:test";',
           );
@@ -485,18 +478,15 @@ export class UpdateUsersDto {
         };
         await generateSchematic(options);
 
-        const controller = readFileSync(
-          join(cwd, "src/users/users.controller.ts"),
-          "utf8",
-        );
+        const controller = readTextSync(join(cwd, "src/users/users.controller.ts"));
         expect(controller).not.toContain("@Post()");
         expect(controller).not.toContain("CreateUserDto");
-        expect(
-          existsSync(join(cwd, "src/users/dto/create-user.dto.ts")),
-        ).toBe(false);
-        expect(
-          existsSync(join(cwd, "src/users/entities/user.entity.ts")),
-        ).toBe(false);
+        expect(existsSyncPath(join(cwd, "src/users/dto/create-user.dto.ts"))).toBe(
+          false,
+        );
+        expect(existsSyncPath(join(cwd, "src/users/entities/user.entity.ts"))).toBe(
+          false,
+        );
       });
     });
 
@@ -725,13 +715,10 @@ export class UpdateUsersDto {
           cwd,
         });
 
-        const controller = readFileSync(
-          join(cwd, "src/users.controller.ts"),
-          "utf8",
-        );
-        const service = readFileSync(join(cwd, "src/users.service.ts"), "utf8");
-        const mod = readFileSync(join(cwd, "src/users.module.ts"), "utf8");
-        const spec = readFileSync(join(cwd, "src/users.spec.ts"), "utf8");
+        const controller = readTextSync(join(cwd, "src/users.controller.ts"));
+        const service = readTextSync(join(cwd, "src/users.service.ts"));
+        const mod = readTextSync(join(cwd, "src/users.module.ts"));
+        const spec = readTextSync(join(cwd, "src/users.spec.ts"));
 
         for (const content of [controller, service, mod, spec]) {
           expect(content).not.toMatch(/\.js["']/);
@@ -754,12 +741,8 @@ export class UpdateUsersDto {
         expect(mod).toContain(
           'import { UsersController } from "./users.controller"',
         );
-        expect(mod).toContain(
-          'import { UsersService } from "./users.service"',
-        );
-        expect(spec).toContain(
-          'import { UsersModule } from "./users.module"',
-        );
+        expect(mod).toContain('import { UsersService } from "./users.service"');
+        expect(spec).toContain('import { UsersModule } from "./users.module"');
       },
       "Bun moduleResolution: 'bundler' uses extensionless TS imports across all generated ESM files",
     );
@@ -777,9 +760,9 @@ export class UpdateUsersDto {
         expect(updateDto).toBeDefined();
         expect(updateDto?.content).not.toContain("@nestjs/mapped-types");
         expect(updateDto?.content).not.toContain("@nestjs/swagger");
-        expect(updateDto?.content).toContain('from "class-validator"');
+        expect(updateDto?.content).toContain('from "@bunest/validation/validator"');
       },
-      "Bunest resource UpdateDto uses class-validator directly without spawning package-manager install tasks",
+      "Bunest resource UpdateDto uses @bunest/validation/validator directly without spawning package-manager install tasks",
     );
   },
 );

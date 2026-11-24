@@ -6,7 +6,7 @@ import {
   RequestMethod,
   type OnModuleInit,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   DiscoveryService,
   MetadataScanner,
@@ -95,10 +95,10 @@ export class ResilienceExplorer implements OnModuleInit {
           if (usesSignal(cls, method)) {
             signalUsers.push({ handler, name: `${cls.name}.${method}` });
           }
-          const scheduled = Reflect.getMetadata(
+          const scheduled = MetadataRegistry.get<{ timeout?: unknown }>(
             SCHEDULE_TIMEOUT_OPTIONS,
             handler,
-          ) as { timeout?: unknown } | undefined;
+          );
           if (scheduled) {
             this.logger.warn(
               `${cls.name}.${method}() has @nestjs/schedule's @Timeout(${scheduled.timeout ?? ""}), which calls it ` +
@@ -149,7 +149,10 @@ export class ResilienceExplorer implements OnModuleInit {
         const handler = proto[method];
         if (isHandler(handler)) {
           entrypoints.push({ cls, handler, isStatic });
-        } else if (decorated.includes(method) && typeof handler === "function") {
+        } else if (
+          decorated.includes(method) &&
+          typeof handler === "function"
+        ) {
           entrypoints.push({ cls, handler, isStatic, isService: true });
         }
       }
@@ -189,11 +192,13 @@ export class ResilienceExplorer implements OnModuleInit {
         continue;
       }
       const httpMethod =
-        Reflect.getMetadata(METADATA_KEYS.ROUTE_METHOD, handler) ??
-        Reflect.getMetadata(NEST_METHOD_METADATA, handler);
+        MetadataRegistry.get<string | number>(
+          METADATA_KEYS.ROUTE_METHOD,
+          handler,
+        ) ?? MetadataRegistry.get<string | number>(NEST_METHOD_METADATA, handler);
       const unsafe =
         (httpMethod !== undefined && UNSAFE_HTTP_METHODS.has(httpMethod)) ||
-        Reflect.getMetadata("graphql:resolver_type", handler) === "Mutation";
+        MetadataRegistry.get("graphql:resolver_type", handler) === "Mutation";
       if (unsafe) {
         this.logger.warn(
           `@Retry() on ${plan.source}() is inactive: it only re-runs safe operations ` +
@@ -225,9 +230,11 @@ function usesSignal(cls: Type, method: string): boolean {
   ) {
     return true;
   }
-  const args = Reflect.getMetadata(NEST_ROUTE_ARGS_METADATA, cls, method) as
-    | Record<string, { factory?: unknown }>
-    | undefined;
+  const args = MetadataRegistry.get<Record<string, { factory?: unknown }>>(
+    NEST_ROUTE_ARGS_METADATA,
+    cls,
+    method,
+  );
   return (
     !!args && Object.values(args).some((arg) => arg.factory === signalOfAttempt)
   );

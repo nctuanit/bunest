@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { describeConformance, Test } from "../../../_helpers/index";
@@ -7,7 +6,8 @@ import { AppModule } from "../_fixtures/app.module";
 describeConformance(
   "Environment variables (expanded ignore process env)",
   {
-    upstreamPath: "config/tests/e2e/load-env-expanded-ignore-process-env.spec.ts",
+    upstreamPath:
+      "config/tests/e2e/load-env-expanded-ignore-process-env.spec.ts",
     category: "DIRECT_PORT",
   },
   () => {

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import type {
   LoggerService,
   NestApplicationOptions,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -105,7 +104,10 @@ describeConformance(
 
     it("with shadow=warn, emits one warning per overlapping pair", async () => {
       const capture = createCaptureLogger();
-      app = await buildApp({ routeConflictPolicy: { shadow: "warn" } }, capture);
+      app = await buildApp(
+        { routeConflictPolicy: { shadow: "warn" } },
+        capture,
+      );
       await app.init();
 
       expect(capture.warnings).toHaveLength(WILDCARD_SHADOW_PAIRS);
@@ -113,7 +115,10 @@ describeConformance(
 
     it("with shadow=warn, the warnings name the wildcard, param and literal routes", async () => {
       const capture = createCaptureLogger();
-      app = await buildApp({ routeConflictPolicy: { shadow: "warn" } }, capture);
+      app = await buildApp(
+        { routeConflictPolicy: { shadow: "warn" } },
+        capture,
+      );
       await app.init();
 
       const joined = capture.warnings.join("\n");

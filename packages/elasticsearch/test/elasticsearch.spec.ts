@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { Inject, Injectable, Module } from "@bunest/common";
+import { Inject, Injectable, Module } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   ELASTICSEARCH_MODULE_OPTIONS,
@@ -25,7 +24,10 @@ interface StoredIndex {
 function createMockEsServer() {
   const indices = new Map<string, StoredIndex>();
   const pipelines = new Map<string, Record<string, any>>();
-  const scrolls = new Map<string, { docs: any[]; offset: number; size: number }>();
+  const scrolls = new Map<
+    string,
+    { docs: any[]; offset: number; size: number }
+  >();
   const receivedRequests: Array<{
     method: string;
     path: string;
@@ -35,7 +37,11 @@ function createMockEsServer() {
   }> = [];
   let seq = 0;
 
-  const json = (data: unknown, status = 200, extraHeaders?: Record<string, string>) =>
+  const json = (
+    data: unknown,
+    status = 200,
+    extraHeaders?: Record<string, string>,
+  ) =>
     new Response(JSON.stringify(data), {
       status,
       headers: {
@@ -116,14 +122,25 @@ function createMockEsServer() {
 
       // Ingest pipeline CRUD
       if (pathname.startsWith("/_ingest/pipeline/")) {
-        const id = decodeURIComponent(pathname.slice("/_ingest/pipeline/".length));
+        const id = decodeURIComponent(
+          pathname.slice("/_ingest/pipeline/".length),
+        );
         if (method === "PUT") {
           pipelines.set(id, JSON.parse(rawBody || "{}"));
           return json({ acknowledged: true });
         }
         if (method === "GET") {
           const p = pipelines.get(id);
-          if (!p) return json({ error: { type: "resource_not_found_exception", reason: "pipeline not found" } }, 404);
+          if (!p)
+            return json(
+              {
+                error: {
+                  type: "resource_not_found_exception",
+                  reason: "pipeline not found",
+                },
+              },
+              404,
+            );
           return json({ [id]: p });
         }
         if (method === "DELETE") {
@@ -137,7 +154,9 @@ function createMockEsServer() {
         const defaultIdx =
           pathname === "/_bulk"
             ? undefined
-            : decodeURIComponent(pathname.slice(1, pathname.length - "/_bulk".length));
+            : decodeURIComponent(
+                pathname.slice(1, pathname.length - "/_bulk".length),
+              );
         const lines = rawBody.split("\n").filter((l) => l.trim().length > 0);
         const items: any[] = [];
         for (let i = 0; i < lines.length; i++) {
@@ -147,28 +166,52 @@ function createMockEsServer() {
           const idxName = meta._index ?? defaultIdx ?? "default";
           let idx = indices.get(idxName);
           if (!idx) {
-            idx = { settings: {}, mappings: {}, aliases: new Set(), docs: new Map() };
+            idx = {
+              settings: {},
+              mappings: {},
+              aliases: new Set(),
+              docs: new Map(),
+            };
             indices.set(idxName, idx);
           }
           if (action === "index" || action === "create") {
             const doc = JSON.parse(lines[++i]!);
             const id = meta._id ?? `auto-${++seq}`;
             idx.docs.set(id, doc);
-            items.push({ [action]: { _index: idxName, _id: id, status: 201, result: "created" } });
+            items.push({
+              [action]: {
+                _index: idxName,
+                _id: id,
+                status: 201,
+                result: "created",
+              },
+            });
           } else if (action === "delete") {
             idx.docs.delete(meta._id);
-            items.push({ delete: { _index: idxName, _id: meta._id, status: 200, result: "deleted" } });
+            items.push({
+              delete: {
+                _index: idxName,
+                _id: meta._id,
+                status: 200,
+                result: "deleted",
+              },
+            });
           }
         }
         return json({ took: 2, errors: false, items });
       }
 
       // Scroll continuation / clear
-      if (pathname === "/_search/scroll" || pathname === "/_search/scroll/_all") {
+      if (
+        pathname === "/_search/scroll" ||
+        pathname === "/_search/scroll/_all"
+      ) {
         if (method === "DELETE") {
           const body = rawBody ? JSON.parse(rawBody) : {};
           if (body.scroll_id) {
-            const ids = Array.isArray(body.scroll_id) ? body.scroll_id : [body.scroll_id];
+            const ids = Array.isArray(body.scroll_id)
+              ? body.scroll_id
+              : [body.scroll_id];
             for (const sid of ids) scrolls.delete(sid);
             return json({ succeeded: true, num_freed: ids.length });
           }
@@ -180,9 +223,20 @@ function createMockEsServer() {
           const body = JSON.parse(rawBody);
           const state = scrolls.get(body.scroll_id);
           if (!state) {
-            return json({ error: { type: "search_context_missing_exception", reason: "No search context" } }, 404);
+            return json(
+              {
+                error: {
+                  type: "search_context_missing_exception",
+                  reason: "No search context",
+                },
+              },
+              404,
+            );
           }
-          const slice = state.docs.slice(state.offset, state.offset + state.size);
+          const slice = state.docs.slice(
+            state.offset,
+            state.offset + state.size,
+          );
           state.offset += slice.length;
           return json({
             _scroll_id: body.scroll_id,
@@ -207,11 +261,19 @@ function createMockEsServer() {
         const defaultIdx =
           pathname === "/_mget"
             ? undefined
-            : decodeURIComponent(pathname.slice(1, pathname.length - "/_mget".length));
+            : decodeURIComponent(
+                pathname.slice(1, pathname.length - "/_mget".length),
+              );
         const body = JSON.parse(rawBody || "{}");
         const requests: Array<{ _index: string; _id: string }> = body.docs
-          ? body.docs.map((d: any) => ({ _index: d._index ?? defaultIdx!, _id: d._id }))
-          : (body.ids ?? []).map((id: string) => ({ _index: defaultIdx!, _id: id }));
+          ? body.docs.map((d: any) => ({
+              _index: d._index ?? defaultIdx!,
+              _id: d._id,
+            }))
+          : (body.ids ?? []).map((id: string) => ({
+              _index: defaultIdx!,
+              _id: id,
+            }));
         const docs = requests.map(({ _index, _id }) => {
           const doc = indices.get(_index)?.docs.get(_id);
           return doc
@@ -226,7 +288,9 @@ function createMockEsServer() {
         const defaultIdx =
           pathname === "/_msearch"
             ? undefined
-            : decodeURIComponent(pathname.slice(1, pathname.length - "/_msearch".length));
+            : decodeURIComponent(
+                pathname.slice(1, pathname.length - "/_msearch".length),
+              );
         const lines = rawBody.split("\n").filter((l) => l.trim().length > 0);
         const responses: any[] = [];
         for (let i = 0; i < lines.length; i += 2) {
@@ -260,7 +324,9 @@ function createMockEsServer() {
       // Index management: /<index>
       if (parts.length === 1 && indexName && !indexName.startsWith("_")) {
         if (method === "HEAD") {
-          return new Response(null, { status: indices.has(indexName) ? 200 : 404 });
+          return new Response(null, {
+            status: indices.has(indexName) ? 200 : 404,
+          });
         }
         if (method === "PUT") {
           const body = rawBody ? JSON.parse(rawBody) : {};
@@ -270,16 +336,40 @@ function createMockEsServer() {
             aliases: new Set(Object.keys(body.aliases ?? {})),
             docs: new Map(),
           });
-          return json({ acknowledged: true, shards_acknowledged: true, index: indexName });
+          return json({
+            acknowledged: true,
+            shards_acknowledged: true,
+            index: indexName,
+          });
         }
         if (method === "GET") {
           const idx = indices.get(indexName);
-          if (!idx) return json({ error: { type: "index_not_found_exception", reason: "no such index" } }, 404);
-          return json({ [indexName]: { settings: idx.settings, mappings: idx.mappings } });
+          if (!idx)
+            return json(
+              {
+                error: {
+                  type: "index_not_found_exception",
+                  reason: "no such index",
+                },
+              },
+              404,
+            );
+          return json({
+            [indexName]: { settings: idx.settings, mappings: idx.mappings },
+          });
         }
         if (method === "DELETE") {
           const existed = indices.delete(indexName);
-          if (!existed) return json({ error: { type: "index_not_found_exception", reason: "no such index" } }, 404);
+          if (!existed)
+            return json(
+              {
+                error: {
+                  type: "index_not_found_exception",
+                  reason: "no such index",
+                },
+              },
+              404,
+            );
           return json({ acknowledged: true });
         }
       }
@@ -314,7 +404,9 @@ function createMockEsServer() {
           return json({ acknowledged: true });
         }
         if (method === "HEAD") {
-          return new Response(null, { status: idx.aliases.has(docId) ? 200 : 404 });
+          return new Response(null, {
+            status: idx.aliases.has(docId) ? 200 : 404,
+          });
         }
         if (method === "DELETE") {
           idx.aliases.delete(docId);
@@ -326,29 +418,58 @@ function createMockEsServer() {
       if (op === "_doc" || op === "_create") {
         let idx = indices.get(indexName);
         if (!idx && (method === "PUT" || method === "POST")) {
-          idx = { settings: {}, mappings: {}, aliases: new Set(), docs: new Map() };
+          idx = {
+            settings: {},
+            mappings: {},
+            aliases: new Set(),
+            docs: new Map(),
+          };
           indices.set(indexName, idx);
         }
         if (!idx) {
           return method === "HEAD"
             ? new Response(null, { status: 404 })
-            : json({ error: { type: "index_not_found_exception", reason: "no such index" } }, 404);
+            : json(
+                {
+                  error: {
+                    type: "index_not_found_exception",
+                    reason: "no such index",
+                  },
+                },
+                404,
+              );
         }
         if (method === "HEAD" && docId) {
-          return new Response(null, { status: idx.docs.has(docId) ? 200 : 404 });
+          return new Response(null, {
+            status: idx.docs.has(docId) ? 200 : 404,
+          });
         }
         if (method === "GET" && docId) {
           const doc = idx.docs.get(docId);
           if (!doc) {
             return json({ _index: indexName, _id: docId, found: false }, 404);
           }
-          return json({ _index: indexName, _id: docId, _version: 1, found: true, _source: doc });
+          return json({
+            _index: indexName,
+            _id: docId,
+            _version: 1,
+            found: true,
+            _source: doc,
+          });
         }
         if (method === "PUT" || method === "POST") {
           const id = docId ?? `doc-${++seq}`;
           const existed = idx.docs.has(id);
           if (op === "_create" && existed) {
-            return json({ error: { type: "version_conflict_engine_exception", reason: "document already exists" } }, 409);
+            return json(
+              {
+                error: {
+                  type: "version_conflict_engine_exception",
+                  reason: "document already exists",
+                },
+              },
+              409,
+            );
           }
           idx.docs.set(id, JSON.parse(rawBody || "{}"));
           return json(
@@ -367,7 +488,10 @@ function createMockEsServer() {
         if (method === "DELETE" && docId) {
           const existed = idx.docs.delete(docId);
           if (!existed) {
-            return json({ _index: indexName, _id: docId, result: "not_found" }, 404);
+            return json(
+              { _index: indexName, _id: docId, result: "not_found" },
+              404,
+            );
           }
           return json({
             _index: indexName,
@@ -410,7 +534,15 @@ function createMockEsServer() {
               _primary_term: 1,
             });
           }
-          return json({ error: { type: "document_missing_exception", reason: "document missing" } }, 404);
+          return json(
+            {
+              error: {
+                type: "document_missing_exception",
+                reason: "document missing",
+              },
+            },
+            404,
+          );
         }
         idx.docs.set(docId, { ...existing, ...(body.doc ?? {}) });
         return json({
@@ -481,10 +613,16 @@ function createMockEsServer() {
       // SQL / ESQL
       if (pathname === "/_sql" || pathname === "/_query") {
         const body = JSON.parse(rawBody || "{}");
-        return json({ columns: [{ name: "q", type: "text" }], rows: [[body.query]] });
+        return json({
+          columns: [{ name: "q", type: "text" }],
+          rows: [[body.query]],
+        });
       }
 
-      return json({ error: { type: "unknown_route", reason: `${method} ${pathname}` } }, 404);
+      return json(
+        { error: { type: "unknown_route", reason: `${method} ${pathname}` } },
+        404,
+      );
     },
   });
 
@@ -527,7 +665,8 @@ describe("@bunest/elasticsearch", () => {
       expect(info.version.number).toBe("9.0.0");
 
       // Verify ApiKey auth header & opaque-id & meta header
-      const lastReq = mockEs.receivedRequests[mockEs.receivedRequests.length - 1]!;
+      const lastReq =
+        mockEs.receivedRequests[mockEs.receivedRequests.length - 1]!;
       expect(lastReq.headers.authorization).toBe(
         `ApiKey ${Buffer.from("key-1:secret-1").toString("base64")}`,
       );
@@ -538,7 +677,9 @@ describe("@bunest/elasticsearch", () => {
       expect(await es.indices.exists({ index: "books" })).toBe(false);
       await es.indices.create({
         index: "books",
-        mappings: { properties: { title: { type: "text" }, genre: { type: "keyword" } } },
+        mappings: {
+          properties: { title: { type: "text" }, genre: { type: "keyword" } },
+        },
       });
       expect(await es.indices.exists({ index: "books" })).toBe(true);
       await es.indices.putMapping({
@@ -546,12 +687,16 @@ describe("@bunest/elasticsearch", () => {
         properties: { pages: { type: "integer" } },
       });
       const mapping = await es.indices.getMapping({ index: "books" });
-      expect(mapping.books.mappings.properties.pages.type).toBe("integer");
+      expect(mapping.books?.mappings.properties?.pages?.type).toBe("integer");
 
       await es.indices.putAlias({ index: "books", name: "books-read" });
-      expect(await es.indices.existsAlias({ index: "books", name: "books-read" })).toBe(true);
+      expect(
+        await es.indices.existsAlias({ index: "books", name: "books-read" }),
+      ).toBe(true);
       await es.indices.deleteAlias({ index: "books", name: "books-read" });
-      expect(await es.indices.existsAlias({ index: "books", name: "books-read" })).toBe(false);
+      expect(
+        await es.indices.existsAlias({ index: "books", name: "books-read" }),
+      ).toBe(false);
 
       // Document CRUD
       const idxRes = await es.index({
@@ -565,14 +710,19 @@ describe("@bunest/elasticsearch", () => {
       expect(await es.exists({ index: "books", id: "missing" })).toBe(false);
       expect(await es.existsSource({ index: "books", id: "b1" })).toBe(true);
 
-      const got = await es.get<{ title: string; genre: string; pages: number }>({
-        index: "books",
-        id: "b1",
-      });
+      const got = await es.get<{ title: string; genre: string; pages: number }>(
+        {
+          index: "books",
+          id: "b1",
+        },
+      );
       expect(got.found).toBe(true);
       expect(got._source?.title).toBe("Bunest Deep Dive");
 
-      const source = await es.getSource<{ title: string }>({ index: "books", id: "b1" });
+      const source = await es.getSource<{ title: string }>({
+        index: "books",
+        id: "b1",
+      });
       expect(source.title).toBe("Bunest Deep Dive");
 
       await es.update({
@@ -580,7 +730,10 @@ describe("@bunest/elasticsearch", () => {
         id: "b1",
         doc: { pages: 350 },
       });
-      expect((await es.getSource<{ pages: number }>({ index: "books", id: "b1" })).pages).toBe(350);
+      expect(
+        (await es.getSource<{ pages: number }>({ index: "books", id: "b1" }))
+          .pages,
+      ).toBe(350);
 
       // Bulk NDJSON
       const bulkRes = await es.bulk({
@@ -610,10 +763,9 @@ describe("@bunest/elasticsearch", () => {
       );
       expect(searchWithMeta.statusCode).toBe(200);
       expect(searchWithMeta.warnings.length).toBe(1);
-      expect(searchWithMeta.body.hits.hits.map((h) => h._source?.title)).toEqual([
-        "Dune",
-        "Neuromancer",
-      ]);
+      expect(
+        searchWithMeta.body.hits.hits.map((h) => h._source?.title),
+      ).toEqual(["Dune", "Neuromancer"]);
 
       const msearchRes = await es.msearch<{ title: string }>({
         index: "books",
@@ -631,7 +783,11 @@ describe("@bunest/elasticsearch", () => {
       })) {
         scrolledTitles.push(doc.title);
       }
-      expect(scrolledTitles).toEqual(["Bunest Deep Dive", "Dune", "Neuromancer"]);
+      expect(scrolledTitles).toEqual([
+        "Bunest Deep Dive",
+        "Dune",
+        "Neuromancer",
+      ]);
 
       // helpers.bulk & helpers.search
       const bulkHelperRes = await es.helpers.bulk({
@@ -648,24 +804,37 @@ describe("@bunest/elasticsearch", () => {
         index: "books",
         query: { term: { genre: "tech" } },
       });
-      expect(helperSearchDocs.map((d) => d.title)).toEqual(["Bunest Deep Dive"]);
+      expect(helperSearchDocs.map((d) => d.title)).toEqual([
+        "Bunest Deep Dive",
+      ]);
 
       // Point in time, Cluster, Cat, Ingest, SQL, ESQL
-      const pit = await es.openPointInTime({ index: "books", keep_alive: "1m" });
+      const pit = await es.openPointInTime({
+        index: "books",
+        keep_alive: "1m",
+      });
       expect(pit.id).toContain("pit-books");
       expect((await es.closePointInTime({ id: pit.id })).succeeded).toBe(true);
 
       expect((await es.cluster.health()).status).toBe("green");
-      expect((await es.cat.indices()).some((i: any) => i.index === "books")).toBe(true);
+      expect(
+        (await es.cat.indices()).some((i: any) => i.index === "books"),
+      ).toBe(true);
 
-      await es.ingest.putPipeline({ id: "my-pipe", description: "test", processors: [] });
-      expect((await es.ingest.getPipeline({ id: "my-pipe" }))["my-pipe"].description).toBe("test");
+      await es.ingest.putPipeline({
+        id: "my-pipe",
+        description: "test",
+        processors: [],
+      });
+      expect(
+        (await es.ingest.getPipeline({ id: "my-pipe" }))["my-pipe"]?.description,
+      ).toBe("test");
       await es.ingest.deletePipeline({ id: "my-pipe" });
 
       const sqlRes = await es.sql.query({ query: "SELECT * FROM books" });
-      expect(sqlRes.rows[0][0]).toBe("SELECT * FROM books");
+      expect(sqlRes.rows[0]?.[0]).toBe("SELECT * FROM books");
       const esqlRes = await es.esql.query({ query: "FROM books | LIMIT 5" });
-      expect(esqlRes.rows[0][0]).toBe("FROM books | LIMIT 5");
+      expect(esqlRes.rows[0]?.[0]).toBe("FROM books | LIMIT 5");
 
       // Delete doc & index
       const del = await es.delete({ index: "books", id: "b1" });
@@ -725,7 +894,8 @@ describe("@bunest/elasticsearch", () => {
       });
       expect(child.connectionPool).toBe(es.connectionPool);
       await child.info();
-      const childReq = mockEs.receivedRequests[mockEs.receivedRequests.length - 1]!;
+      const childReq =
+        mockEs.receivedRequests[mockEs.receivedRequests.length - 1]!;
       expect(childReq.headers.authorization).toBe("Bearer jwt-token-xyz");
       expect(childReq.headers["x-tenant"]).toBe("acme");
 
@@ -759,11 +929,17 @@ describe("@bunest/elasticsearch", () => {
       );
       expect(poisoned.ok).toBe(true);
       expect(poisoned.nested.safe).toBe(42);
-      expect(Object.prototype.hasOwnProperty.call(poisoned, "__proto__")).toBe(false);
-      expect(Object.prototype.hasOwnProperty.call(poisoned.nested, "constructor")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(poisoned, "__proto__")).toBe(
+        false,
+      );
+      expect(
+        Object.prototype.hasOwnProperty.call(poisoned.nested, "constructor"),
+      ).toBe(false);
 
       // Cloud ID decoding
-      const encoded = Buffer.from("es.us-east-1.aws.found.io$abc123$kib456").toString("base64");
+      const encoded = Buffer.from(
+        "es.us-east-1.aws.found.io$abc123$kib456",
+      ).toString("base64");
       expect(parseCloudId(`my-deployment:${encoded}`)).toBe(
         "https://abc123.es.us-east-1.aws.found.io",
       );
@@ -795,7 +971,8 @@ describe("@bunest/elasticsearch", () => {
       })
       class SyncAppModule {}
 
-      const syncApp = await BunestFactory.createApplicationContext(SyncAppModule);
+      const syncApp =
+        await BunestFactory.createApplicationContext(SyncAppModule);
       const consumer = syncApp.get(SearchConsumer);
       expect(consumer.es.name).toBe("sync-client");
       expect(await consumer.es.ping()).toBe(true);
@@ -823,7 +1000,8 @@ describe("@bunest/elasticsearch", () => {
       })
       class FactoryAppModule {}
 
-      const factoryApp = await BunestFactory.createApplicationContext(FactoryAppModule);
+      const factoryApp =
+        await BunestFactory.createApplicationContext(FactoryAppModule);
       const factoryEs = factoryApp.get(ElasticsearchService);
       expect(factoryEs.name).toBe("factory-client");
       expect((await factoryEs.info()).tagline).toBe("You Know, for Search");
@@ -846,7 +1024,8 @@ describe("@bunest/elasticsearch", () => {
       })
       class ClassAppModule {}
 
-      const classApp = await BunestFactory.createApplicationContext(ClassAppModule);
+      const classApp =
+        await BunestFactory.createApplicationContext(ClassAppModule);
       expect(classApp.get(ElasticsearchService).name).toBe("class-client");
       await classApp.close();
 
@@ -867,7 +1046,8 @@ describe("@bunest/elasticsearch", () => {
       })
       class ExistingAppModule {}
 
-      const existingApp = await BunestFactory.createApplicationContext(ExistingAppModule);
+      const existingApp =
+        await BunestFactory.createApplicationContext(ExistingAppModule);
       expect(existingApp.get(ElasticsearchService).name).toBe("class-client");
       await existingApp.close();
     });

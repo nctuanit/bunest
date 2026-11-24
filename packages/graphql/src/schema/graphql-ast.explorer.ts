@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 import {
   type DocumentNode,
   type EnumTypeDefinitionNode,
@@ -20,7 +20,7 @@ import {
   type TypeSystemExtensionNode,
   type UnionTypeDefinitionNode,
   type UnionTypeExtensionNode,
-} from "graphql";
+} from "../engine";
 import { DEFINITIONS_FILE_HEADER } from "../constants";
 import type { DefinitionsGeneratorOptions } from "../interfaces/graphql.interface";
 import { FileSystemHelper } from "./file-system.helper";
@@ -134,9 +134,11 @@ export class GraphQLAstExplorer {
     mode: "class" | "interface",
   ): GeneratedDefinitionStructure {
     const members = operationTypes.map(
-      (op) => `    ${op.operation}: ${this.addSymbolIfRoot(op.type.name.value)};`,
+      (op) =>
+        `    ${op.operation}: ${this.addSymbolIfRoot(op.type.name.value)};`,
     );
-    const decl = mode === "class" ? "export abstract class" : "export interface";
+    const decl =
+      mode === "class" ? "export abstract class" : "export interface";
     return {
       kind: mode,
       name: "ISchema",
@@ -235,7 +237,11 @@ export class GraphQLAstExplorer {
     const typeStr = fieldDef.required
       ? fieldDef.name
       : `Nullable<${fieldDef.name}>`;
-    const doc = this.getDescriptionDocs(item.description?.value, options, "    ");
+    const doc = this.getDescriptionDocs(
+      item.description?.value,
+      options,
+      "    ",
+    );
     const propLine = `    ${item.name.value}${hasQuestionToken ? "?" : ""}: ${typeStr};`;
     return {
       name: item.name.value,
@@ -262,7 +268,11 @@ export class GraphQLAstExplorer {
     const paramsStr = params
       .map((p) => `${p.name}${p.hasQuestionToken ? "?" : ""}: ${p.type}`)
       .join(", ");
-    const doc = this.getDescriptionDocs(item.description?.value, options, "    ");
+    const doc = this.getDescriptionDocs(
+      item.description?.value,
+      options,
+      "    ",
+    );
     const prefix = mode === "class" ? "    abstract " : "    ";
     const line = `${prefix}${item.name.value}(${paramsStr}): ${returnType};`;
     return {
@@ -350,7 +360,7 @@ export class GraphQLAstExplorer {
     const mapped =
       typeof custom === "string"
         ? custom
-        : custom?.name ?? options.defaultScalarType ?? "any";
+        : (custom?.name ?? options.defaultScalarType ?? "any");
     return {
       kind: "type",
       name,

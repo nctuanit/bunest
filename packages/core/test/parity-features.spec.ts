@@ -1,19 +1,23 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
 import {
   Controller,
+  dirname,
   Get,
   Global,
   Inject,
   Injectable,
+  join,
   METADATA_KEYS,
   MetadataRegistry,
   Module,
+  readDirSyncNames,
+  readTextSync,
+  relative,
   REQUEST,
+  resolve,
   Scope,
   SetMetadata,
+  statSyncPath,
   VersioningType,
   type BeforeApplicationShutdown,
   type ContextId,
@@ -24,7 +28,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
   type OnRequestDestroy,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   BunestFactory,
   ConfigurableModuleBuilder,
@@ -116,7 +120,9 @@ describe("DiscoveryService & MetadataScanner", () => {
         include: [AlphaModule],
       });
       const alphaWrapper = alphaProviders.find((w) => w.token === AlphaService);
-      const reqWrapper = alphaProviders.find((w) => w.token === ReqScopedHelper);
+      const reqWrapper = alphaProviders.find(
+        (w) => w.token === ReqScopedHelper,
+      );
       expect(alphaWrapper).toBeDefined();
       expect(alphaWrapper?.instance).toBeInstanceOf(AlphaService);
       expect(alphaWrapper?.metatype).toBe(AlphaService);
@@ -440,7 +446,9 @@ describe("Durable DI Sub-Trees (ContextIdFactory.apply)", () => {
       ) {}
 
       onRequestDestroy() {
-        destroyedLog.push(`durable:${this.payload.tenantId}#${this.instanceId}`);
+        destroyedLog.push(
+          `durable:${this.payload.tenantId}#${this.instanceId}`,
+        );
       }
     }
 
@@ -657,7 +665,11 @@ describe("LazyModuleLoader", () => {
 
     @Injectable()
     class HeavyService
-      implements OnModuleInit, OnModuleDestroy, BeforeApplicationShutdown, OnApplicationShutdown
+      implements
+        OnModuleInit,
+        OnModuleDestroy,
+        BeforeApplicationShutdown,
+        OnApplicationShutdown
     {
       constructor(public readonly config: SharedConfigService) {}
 
@@ -845,9 +857,9 @@ describe("Hybrid BunestApplication (enableVersioning, useStaticAssets, connectMi
 describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
   function walkTs(dir: string): string[] {
     const out: string[] = [];
-    for (const entry of readdirSync(dir)) {
+    for (const entry of readDirSyncNames(dir)) {
       const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
+      if (statSyncPath(full).isDirectory()) {
         out.push(...walkTs(full));
       } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
         out.push(full);
@@ -861,7 +873,7 @@ describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
     const graph = new Map<string, string[]>();
 
     for (const file of files) {
-      const src = readFileSync(file, "utf8")
+      const src = readTextSync(file)
         .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
         .replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
       const edges: string[] = [];
@@ -872,7 +884,7 @@ describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
         const base = resolve(dirname(file), spec);
         for (const candidate of [base, `${base}.ts`, join(base, "index.ts")]) {
           try {
-            if (statSync(candidate).isFile()) {
+            if (statSyncPath(candidate).isFile()) {
               edges.push(relative(pkgSrcDir, candidate));
               break;
             }
@@ -908,9 +920,9 @@ describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
     return cycles;
   }
 
-  it("has ZERO runtime AND ZERO type-only circular imports in packages/common/src and packages/core/src", () => {
+  it("has ZERO runtime AND ZERO type-only circular imports in packages/core/src/common and packages/core/src", () => {
     const repoRoot = resolve(import.meta.dir, "../../..");
-    const commonCycles = findAllCycles(join(repoRoot, "packages/common/src"));
+    const commonCycles = findAllCycles(join(repoRoot, "packages/core/src/common"));
     const coreCycles = findAllCycles(join(repoRoot, "packages/core/src"));
     expect(commonCycles).toEqual([]);
     expect(coreCycles).toEqual([]);

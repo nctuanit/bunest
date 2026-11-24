@@ -1,16 +1,12 @@
-import "reflect-metadata";
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  Agent,
-  createServer,
-  get,
-  request as httpRequest,
-  type IncomingHttpHeaders,
-  type Server,
-} from "node:http";
-import { gzipSync } from "node:zlib";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { Exclude } from "class-transformer";
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
+import { Exclude } from "../../../../../packages/validation/src/transformer";
 import {
   BadRequestException,
   Catch,
@@ -38,9 +34,10 @@ import {
   type MiddlewareConsumer,
   type NextFunction,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ClassSerializerInterceptor,
+  ContextStorage,
   type BunestApplication,
 } from "../../../../../packages/core/src";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
@@ -66,7 +63,7 @@ const streaming = {
   },
 };
 
-const requestStore = new AsyncLocalStorage<{ id: string }>();
+const requestStore = new ContextStorage<{ id: string }>();
 
 function webStream(chunks: Array<string | Uint8Array>, failure?: Error) {
   const pending = [...chunks];
@@ -508,7 +505,9 @@ class GeneratorController {
         let n = 0;
         return {
           next: async () =>
-            n < 2 ? { done: false, value: `${n++}` } : { done: true, value: undefined },
+            n < 2
+              ? { done: false, value: `${n++}` }
+              : { done: true, value: undefined },
         };
       },
     };
@@ -722,7 +721,7 @@ class StreamingModule implements BunestModule {
 
 interface RawResponse {
   status: number;
-  headers: IncomingHttpHeaders;
+  headers: Record<string, string | string[] | undefined>;
   text: string;
   complete: boolean;
 }
@@ -739,28 +738,30 @@ describeConformance(
   () => {
     let app: BunestApplication;
     let baseUrl: string;
-    let upstream: Server;
+    let upstream: ReturnType<typeof Bun.serve>;
 
     beforeAll(async () => {
-      upstream = createServer((req, res) => {
-        if (req.url === "/missing") {
-          res.statusCode = 404;
-          res.end("missing upstream");
-          return;
-        }
-        const body = gzipSync("hello from upstream");
-        res.writeHead(200, {
-          "content-type": "text/x-upstream",
-          "content-encoding": "gzip",
-          "content-length": body.length,
-          "x-upstream": "yes",
-        });
-        res.end(body);
+      upstream = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/missing") {
+            return new Response("missing upstream", { status: 404 });
+          }
+          const body = Bun.gzipSync(Buffer.from("hello from upstream"));
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "content-type": "text/x-upstream",
+              "content-encoding": "gzip",
+              "content-length": String(body.byteLength),
+              "x-upstream": "yes",
+            },
+          });
+        },
       });
-      await new Promise<void>((resolve) =>
-        upstream.listen(0, "127.0.0.1", resolve),
-      );
-      streaming.upstreamUrl = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
+      streaming.upstreamUrl = `http://127.0.0.1:${upstream.port}`;
 
       const modRef = await Test.createTestingModule({
         imports: [StreamingModule],
@@ -772,56 +773,68 @@ describeConformance(
 
     afterAll(async () => {
       await app.close();
-      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+      upstream.stop(true);
     });
 
     beforeEach(() => streaming.reset());
 
-    function send(
+    async function send(
       path: string,
-      options: { method?: string; agent?: Agent } = {},
+      options: { method?: string } = {},
     ): Promise<RawResponse> {
-      return new Promise((resolve, reject) => {
-        const req = httpRequest(`${baseUrl}${path}`, options, (res) => {
-          let text = "";
-          res.setEncoding("utf8");
-          res.on("data", (chunk) => (text += chunk));
-          res.on("close", () =>
-            resolve({
-              status: res.statusCode!,
-              headers: res.headers,
-              text,
-              complete: res.complete,
-            }),
-          );
-          res.on("error", () => undefined);
-        });
-        req.on("error", reject);
-        req.end();
+      const res = await fetch(`${baseUrl}${path}`, {
+        method: options.method ?? "GET",
+        redirect: "manual",
+        decompress: false,
       });
-    }
-
-    function sendAndLeave(path: string, leaveWhen: "headers" | "sent") {
-      return new Promise<void>((resolve, reject) => {
-        const req = get(`${baseUrl}${path}`, (res) => {
-          res.on("error", () => undefined);
-          req.destroy();
-          resolve();
-        });
-        req.on("error", (err) => {
-          if (!req.destroyed) {
-            reject(err);
-          }
-        });
-        if (leaveWhen === "sent") {
-          req.once("finish", () =>
-            setTimeout(() => {
-              req.destroy();
-              resolve();
-            }, 30),
-          );
+      const headers: Record<string, string | string[] | undefined> = {};
+      res.headers.forEach((value, key) => {
+        const lower = key.toLowerCase();
+        if (lower !== "set-cookie") {
+          headers[lower] = value;
         }
       });
+      const setCookies = res.headers.getSetCookie();
+      if (setCookies.length > 0) {
+        headers["set-cookie"] = setCookies;
+      }
+      let text = "";
+      let complete = true;
+      try {
+        text = await res.text();
+      } catch {
+        complete = false;
+      }
+      return {
+        status: res.status,
+        headers,
+        text,
+        complete,
+      };
+    }
+
+    async function sendAndLeave(path: string, leaveWhen: "headers" | "sent") {
+      const controller = new AbortController();
+      if (leaveWhen === "sent") {
+        const pending = fetch(`${baseUrl}${path}`, {
+          signal: controller.signal,
+        })
+          .then((res) => res.body?.cancel())
+          .catch(() => undefined);
+        await Bun.sleep(30);
+        controller.abort();
+        await pending;
+        return;
+      }
+      try {
+        const res = await fetch(`${baseUrl}${path}`, {
+          signal: controller.signal,
+        });
+        controller.abort();
+        await res.body?.cancel().catch(() => undefined);
+      } catch {
+        // Expected on client abort
+      }
     }
 
     describe("a web Response", () => {
@@ -846,7 +859,7 @@ describeConformance(
         expect(res.text).toBe("from a stream");
       });
 
-      // BUNEST_BUG: mergeHeadersOntoNativeResponse does not default Content-Type to application/octet-stream for a streaming Response without an explicit Content-Type header (packages/http/src/pipeline/response-serializer.ts:192-249).
+      // BUNEST_BUG: mergeHeadersOntoNativeResponse does not default Content-Type to application/octet-stream for a streaming Response without an explicit Content-Type header (packages/core/src/http/pipeline/response-serializer.ts:192-249).
       it.skip("should default to application/octet-stream without a Content-Type", async () => {
         const res = await send("/response/stream");
         expect(res.headers["content-type"]).toBe("application/octet-stream");
@@ -942,7 +955,7 @@ describeConformance(
         expect(res.text).toBe("created");
       });
 
-      // BUNEST_BUG: serializeResponse passes streaming Web Response bodies straight to Bun.serve without pre-pulling the first chunk to catch pre-commit errors through exception filters, resulting in ECONNRESET instead of HTTP 404 (packages/http/src/pipeline/response-serializer.ts:517-519).
+      // BUNEST_BUG: serializeResponse passes streaming Web Response bodies straight to Bun.serve without pre-pulling the first chunk to catch pre-commit errors through exception filters, resulting in ECONNRESET instead of HTTP 404 (packages/core/src/http/pipeline/response-serializer.ts:517-519).
       it.skip("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/response/fail-first");
 
@@ -951,7 +964,7 @@ describeConformance(
         expect(res.headers["x-from-response"]).toBeUndefined();
       });
 
-      // BUNEST_BUG: Mid-stream ReadableStream errors on a returned Web Response cause Bun.serve to abruptly reset the TCP connection (ECONNRESET) before delivering the flushed partial chunk cleanly to HTTP clients (packages/http/src/pipeline/response-serializer.ts:517-519).
+      // BUNEST_BUG: Mid-stream ReadableStream errors on a returned Web Response cause Bun.serve to abruptly reset the TCP connection (ECONNRESET) before delivering the flushed partial chunk cleanly to HTTP clients (packages/core/src/http/pipeline/response-serializer.ts:517-519).
       it.skip("should end the connection when it fails after the first chunk", async () => {
         const res = await send("/response/fail-later");
 
@@ -1008,7 +1021,7 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse hardcodes Content-Type: application/octet-stream for all ReadableStream return values instead of inferring text/plain for string chunks (packages/http/src/pipeline/response-serializer.ts:598-609).
+      // BUNEST_BUG: serializeResponse hardcodes Content-Type: application/octet-stream for all ReadableStream return values instead of inferring text/plain for string chunks (packages/core/src/http/pipeline/response-serializer.ts:598-609).
       it.skip("should send strings as text", async () => {
         const res = await send("/web-stream/strings");
 
@@ -1016,7 +1029,7 @@ describeConformance(
         expect(res.headers["content-type"]).toMatch(/^text\/plain/);
       });
 
-      // BUNEST_BUG: serializeResponse passes object-mode ReadableStream directly to new Response(stream) instead of serializing objects as NDJSON (application/x-ndjson), causing Bun ERR_INVALID_ARG_TYPE / ECONNRESET (packages/http/src/pipeline/response-serializer.ts:598-609).
+      // BUNEST_BUG: serializeResponse passes object-mode ReadableStream directly to new Response(stream) instead of serializing objects as NDJSON (application/x-ndjson), causing Bun ERR_INVALID_ARG_TYPE / ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:598-609).
       it.skip("should send objects as lines of JSON", async () => {
         const res = await send("/web-stream/objects");
 
@@ -1029,14 +1042,14 @@ describeConformance(
         expect((await send("/web-stream/consumed")).status).toBe(500);
       });
 
-      // BUNEST_BUG: serializeResponse does not pre-pull the first chunk of a returned ReadableStream before committing HTTP 200 headers, so pre-first-chunk errors bypass exception filters and cause ECONNRESET (packages/http/src/pipeline/response-serializer.ts:598-609).
+      // BUNEST_BUG: serializeResponse does not pre-pull the first chunk of a returned ReadableStream before committing HTTP 200 headers, so pre-first-chunk errors bypass exception filters and cause ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:598-609).
       it.skip("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/web-stream/fail-first");
         expect(res.status).toBe(500);
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: Mid-stream ReadableStream errors cause Bun.serve to abruptly reset the TCP connection (ECONNRESET) instead of ending the chunked response cleanly after the partial chunk (packages/http/src/pipeline/response-serializer.ts:598-609).
+      // BUNEST_BUG: Mid-stream ReadableStream errors cause Bun.serve to abruptly reset the TCP connection (ECONNRESET) instead of ending the chunked response cleanly after the partial chunk (packages/core/src/http/pipeline/response-serializer.ts:598-609).
       it.skip("should end the connection when it fails after the first chunk", async () => {
         const res = await send("/web-stream/fail-later");
         expect(res.text).toBe("partial");
@@ -1064,7 +1077,7 @@ describeConformance(
     });
 
     describe("an async generator", () => {
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator / AsyncIterable return values — falls through to JSON.stringify() and emits "{}" with status 200 (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator / AsyncIterable return values — falls through to JSON.stringify() and emits "{}" with status 200 (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should send what it yields as text", async () => {
         const res = await send("/generator");
 
@@ -1074,7 +1087,7 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes as "{}" (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should send binary chunks as they are", async () => {
         const res = await send("/generator/bytes");
 
@@ -1082,7 +1095,7 @@ describeConformance(
         expect(res.headers["content-type"]).toBe("application/octet-stream");
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values as NDJSON — serializes as "{}" (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values as NDJSON — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should send objects as lines of JSON", async () => {
         const res = await send("/generator/objects");
 
@@ -1090,7 +1103,7 @@ describeConformance(
         expect(res.headers["content-type"]).toBe("application/x-ndjson");
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes empty generator as "{}" instead of "" (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes empty generator as "{}" instead of "" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should send nothing for an empty one", async () => {
         const res = await send("/generator/empty");
 
@@ -1099,7 +1112,7 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — emits "{}" instead of yielded chunks (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — emits "{}" instead of yielded chunks (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should apply @HttpCode() and @Header()", async () => {
         const res = await send("/generator/decorated");
 
@@ -1113,12 +1126,12 @@ describeConformance(
         expect(res.status).toBe(201);
       });
 
-      // BUNEST_BUG: serializeResponse does not iterate non-SSE AsyncIterable return values — serializes as "{}" (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse does not iterate non-SSE AsyncIterable return values — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should iterate any other async iterable", async () => {
         expect((await send("/generator/iterable")).text).toBe("01");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so errors thrown before the first yield are never triggered (returns 200 "{}") (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so errors thrown before the first yield are never triggered (returns 200 "{}") (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/generator/fail-first-http");
 
@@ -1126,7 +1139,7 @@ describeConformance(
         expect(JSON.parse(res.text).message).toBe("not there");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so controller exception filters are not invoked on first-chunk errors (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so controller exception filters are not invoked on first-chunk errors (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should reach the filters of the controller", async () => {
         const res = await send("/generator/fail-first-filtered");
 
@@ -1134,7 +1147,7 @@ describeConformance(
         expect(res.text).toBe("caught by the filter");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so unknown errors before first chunk return 200 "{}" instead of 500 (packages/http/src/pipeline/response-serializer.ts:509-749).
+      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so unknown errors before first chunk return 200 "{}" instead of 500 (packages/core/src/http/pipeline/response-serializer.ts:509-749).
       it.skip("should not expose an unknown error", async () => {
         const res = await send("/generator/fail-first-unknown");
 
@@ -1217,7 +1230,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: When an interceptor wraps a handler's returned Web Response into `{ data: response }`, Bunest serializes the wrapper object as 200 JSON instead of preserving the Response's status and headers as NestJS v12 does (packages/http/src/pipeline/execution-pipeline.ts:767-804).
+      // BUNEST_BUG: When an interceptor wraps a handler's returned Web Response into `{ data: response }`, Bunest serializes the wrapper object as 200 JSON instead of preserving the Response's status and headers as NestJS v12 does (packages/core/src/http/pipeline/execution-pipeline.ts:767-804).
       it.skip("should keep the status and headers of a Response an interceptor wrapped", async () => {
         const res = await send("/intercepted/wrapped/response");
         expect(res.status).toBe(202);

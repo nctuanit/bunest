@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect } from "bun:test";
 import {
   Controller,
   Injectable,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   DiscoveryService,
   MetadataScanner,

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { ConfigService } from "../../../../../packages/config/src";
+import type { ConfigService } from "../../../../../packages/core/src/config";
 import { describeConformance } from "../../../_helpers/index";
 
 /**

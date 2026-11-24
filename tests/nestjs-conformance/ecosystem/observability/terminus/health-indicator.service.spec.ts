@@ -1,10 +1,17 @@
-import "reflect-metadata";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import {
   Injectable,
   Logger,
   type LoggerService,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   HealthIndicatorService,
   TERMINUS_LOGGER,
@@ -129,7 +136,9 @@ describeConformance(
     it("should log no warning with logger: false from forRootAsync", async () => {
       const module = await compile({
         imports: [
-          TerminusModule.forRootAsync({ useFactory: () => ({ logger: false }) }),
+          TerminusModule.forRootAsync({
+            useFactory: () => ({ logger: false }),
+          }),
         ],
       });
 

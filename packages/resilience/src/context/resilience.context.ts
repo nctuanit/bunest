@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 import { currentAttempt, runInAttempt } from "./attempt-scope.context";
 
 /**

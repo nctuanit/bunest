@@ -8,7 +8,7 @@ import {
   type DynamicModule,
   type FactoryDependency,
   type ModuleMetadata,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { FetchLike } from "./jwks.client";
 import {
   computePkceChallenge,
@@ -22,9 +22,7 @@ export const OAUTH2_MODULE_OPTIONS = Symbol.for(
 );
 
 export type OAuth2ClientAuthMethod =
-  | "client_secret_post"
-  | "client_secret_basic"
-  | "none";
+  "client_secret_post" | "client_secret_basic" | "none";
 
 export interface OAuth2ModuleOptions {
   clientId: string;
@@ -141,7 +139,12 @@ export class OAuth2Service {
     @Inject(OAUTH2_MODULE_OPTIONS)
     options?: OAuth2ModuleOptions,
   ) {
-    if (!options || !options.clientId || !options.authorizationUrl || !options.tokenUrl) {
+    if (
+      !options ||
+      !options.clientId ||
+      !options.authorizationUrl ||
+      !options.tokenUrl
+    ) {
       throw new Error(
         "OAuth2Service requires clientId, authorizationUrl, and tokenUrl options",
       );
@@ -236,9 +239,12 @@ export class OAuth2Service {
     params: OAuth2ExchangeCodeParams,
   ): Promise<OAuth2TokenResponse> {
     if (!params.code || params.code.trim().length === 0) {
-      throw new OAuth2Exception("Authorization code must be a non-empty string", {
-        status: HttpStatus.BAD_REQUEST,
-      });
+      throw new OAuth2Exception(
+        "Authorization code must be a non-empty string",
+        {
+          status: HttpStatus.BAD_REQUEST,
+        },
+      );
     }
 
     const body = new URLSearchParams();
@@ -326,11 +332,15 @@ export class OAuth2Service {
     try {
       data = await response.json();
     } catch {
-      throw new OAuth2Exception("OAuth2 UserInfo endpoint returned invalid JSON");
+      throw new OAuth2Exception(
+        "OAuth2 UserInfo endpoint returned invalid JSON",
+      );
     }
 
     if (!isPlainRecord(data)) {
-      throw new OAuth2Exception("OAuth2 UserInfo payload must be a JSON object");
+      throw new OAuth2Exception(
+        "OAuth2 UserInfo payload must be a JSON object",
+      );
     }
 
     return data as T;
@@ -353,10 +363,7 @@ export class OAuth2Service {
       headers.Authorization = `Basic ${Buffer.from(credentials, "utf8").toString("base64")}`;
     } else {
       body.set("client_id", this.options.clientId);
-      if (
-        authMethod === "client_secret_post" &&
-        this.options.clientSecret
-      ) {
+      if (authMethod === "client_secret_post" && this.options.clientSecret) {
         body.set("client_secret", this.options.clientSecret);
       }
     }

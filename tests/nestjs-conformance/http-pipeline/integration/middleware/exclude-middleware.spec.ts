@@ -1,6 +1,4 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { connect } from "node:net";
 import {
   Controller,
   Delete,
@@ -10,7 +8,7 @@ import {
   RequestMethod,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -261,23 +259,52 @@ describeConformance(
 
       const sendRawRequest = (requestTarget: string) =>
         new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
-          let response = "";
-          const socket = connect(port, "127.0.0.1", () => {
-            socket.write(
-              `GET ${requestTarget} HTTP/1.1\r\n` +
-                `Host: 127.0.0.1:${port}\r\n` +
-                `Connection: close\r\n\r\n`,
-            );
-          });
-          socket.setEncoding("utf8");
-          socket.on("data", (chunk) => {
-            response += chunk;
-          });
-          socket.on("error", reject);
-          socket.on("end", () => {
+          const chunks: Uint8Array[] = [];
+          let settled = false;
+          const finish = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            const response = Buffer.concat(chunks).toString("utf8");
             const [head = "", body = ""] = response.split("\r\n\r\n");
             resolve({ statusCode: Number(head.split(" ")[1]), body });
-          });
+          };
+          const fail = (err: unknown) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            reject(err);
+          };
+          void Bun.connect({
+            hostname: "127.0.0.1",
+            port,
+            socket: {
+              open(socket) {
+                socket.write(
+                  `GET ${requestTarget} HTTP/1.1\r\n` +
+                    `Host: 127.0.0.1:${port}\r\n` +
+                    `Connection: close\r\n\r\n`,
+                );
+              },
+              data(_socket, chunk) {
+                chunks.push(new Uint8Array(chunk));
+              },
+              end() {
+                finish();
+              },
+              close() {
+                finish();
+              },
+              error(_socket, err) {
+                fail(err);
+              },
+              connectError(_socket, err) {
+                fail(err);
+              },
+            },
+          }).catch(fail);
         });
 
       beforeEach(async () => {
@@ -299,7 +326,7 @@ describeConformance(
         expect(response.body).toBe(RETURN_VALUE);
       });
 
-      // BUNEST_BUG: Expected raw request target "/profiles/1#/avatar" to route to "/profiles/:id" and run middleware ("middleware"), got "test". Native Bun.serve({ routes }) in packages/http/src/router/route-compiler.ts matches "/profiles/1#/avatar" against "/profiles/:id/avatar" (excluded) instead of stripping the "#" fragment before matching.
+      // BUNEST_BUG: Expected raw request target "/profiles/1#/avatar" to route to "/profiles/:id" and run middleware ("middleware"), got "test". Native Bun.serve({ routes }) in packages/core/src/http/router/route-compiler.ts matches "/profiles/1#/avatar" against "/profiles/:id/avatar" (excluded) instead of stripping the "#" fragment before matching.
       it.skip(`should not exclude "/profiles/1#/avatar", which the router serves with "/profiles/:id"`, async () => {
         const response = await sendRawRequest("/profiles/1#/avatar");
         expect(response.body).toBe(MIDDLEWARE_VALUE);
@@ -329,7 +356,7 @@ describeConformance(
         await request(app!).get("/invoices/abc").expect(200, RETURN_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /invoices/ to run middleware ("middleware"), got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern lines 160-167) matches trailing wildcard "invoices/*" against the bare parent path "/invoices", erroneously excluding InvoicesController.findAll.
+      // BUNEST_BUG: Expected GET /invoices/ to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 160-167) matches trailing wildcard "invoices/*" against the bare parent path "/invoices", erroneously excluding InvoicesController.findAll.
       it.skip(`should not exclude "/invoices/", which the router serves with "/invoices"`, async () => {
         await request(app!).get("/invoices/").expect(200, MIDDLEWARE_VALUE);
       });
@@ -357,14 +384,14 @@ describeConformance(
         await request(app!).get("/exports").expect(200, RETURN_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /reports/ to match "/reports/{*path}" and run middleware ("middleware"), got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) and packages/http/src/scanner/path-normalizer.ts do not support path-to-regexp v8 optional wildcard syntax `{*path}`.
+      // BUNEST_BUG: Expected GET /reports/ to match "/reports/{*path}" and run middleware ("middleware"), got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) and packages/core/src/http/scanner/path-normalizer.ts do not support path-to-regexp v8 optional wildcard syntax `{*path}`.
       it.skip(`should not exclude "/reports/", which the router serves with "/reports/{*path}"`, async () => {
         await createApp("reports", "exports");
         await request(app!).get("/reports/").expect(200, MIDDLEWARE_VALUE);
         await request(app!).delete("/exports/").expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /reports/ and /reports/a to match "/reports/{*path}" and return "read", got 404. packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) and packages/http/src/scanner/path-normalizer.ts do not support `{*path}` syntax.
+      // BUNEST_BUG: Expected GET /reports/ and /reports/a to match "/reports/{*path}" and return "read", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) and packages/core/src/http/scanner/path-normalizer.ts do not support `{*path}` syntax.
       it.skip(`should exclude "/reports/" when "/reports/{*path}" is excluded too`, async () => {
         await createApp("reports", "reports/{*path}");
         await request(app!).get("/reports/").expect(200, "read");
@@ -388,12 +415,12 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /statements/1.pdf to match "@Get(':id.pdf')" and return "published", got "test" (routed to ":name"). packages/http/src/router/fallback-radix-router.ts (parseRouteSegments) does not support mixed param+literal segments like `:id.pdf`.
+      // BUNEST_BUG: Expected GET /statements/1.pdf to match "@Get(':id.pdf')" and return "published", got "test" (routed to ":name"). packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) does not support mixed param+literal segments like `:id.pdf`.
       it.skip(`should exclude "/statements/1.pdf" endpoint`, async () => {
         await request(app!).get("/statements/1.pdf").expect(200, "published");
       });
 
-      // BUNEST_BUG: Expected GET /statements/drafts to run middleware ("middleware"), got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern line 151) treats any `tSeg.startsWith(":")` as matching any pattern segment, so exclude("statements/:id.pdf") erroneously excludes "/statements/:name".
+      // BUNEST_BUG: Expected GET /statements/drafts to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) treats any `tSeg.startsWith(":")` as matching any pattern segment, so exclude("statements/:id.pdf") erroneously excludes "/statements/:name".
       it.skip(`should not exclude "/statements/drafts" endpoint`, async () => {
         await request(app!)
           .get("/statements/drafts")
@@ -445,11 +472,9 @@ describeConformance(
           await request(app!).get("/users/login").expect(200, RETURN_VALUE);
         });
 
-        // BUNEST_BUG: Expected GET /users/LOGIN (served by "/users/:id") to run middleware ("middleware"), got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern line 151) treats `tSeg.startsWith(":")` as matching static pattern segment "login", so exclude("users/login") erroneously excludes "/users/:id".
+        // BUNEST_BUG: Expected GET /users/LOGIN (served by "/users/:id") to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) treats `tSeg.startsWith(":")` as matching static pattern segment "login", so exclude("users/login") erroneously excludes "/users/:id".
         it.skip(`should not exclude "/users/LOGIN", which the router serves with "/users/:id"`, async () => {
-          await request(app!)
-            .get("/users/LOGIN")
-            .expect(200, MIDDLEWARE_VALUE);
+          await request(app!).get("/users/LOGIN").expect(200, MIDDLEWARE_VALUE);
         });
       });
     });
@@ -474,12 +499,12 @@ describeConformance(
         await request(app!).get("/test").expect(200, RETURN_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /test2 to run middleware ("middleware"), got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize named wildcard syntax `*path` in `.forRoutes('*path')`, so the middleware is never attached to any route.
+      // BUNEST_BUG: Expected GET /test2 to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize named wildcard syntax `*path` in `.forRoutes('*path')`, so the middleware is never attached to any route.
       it.skip(`should not exclude "/test2" endpoint`, async () => {
         await request(app!).get("/test2").expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /middleware to run middleware ("middleware"), got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize named wildcard syntax `*path` in `.forRoutes('*path')`.
+      // BUNEST_BUG: Expected GET /middleware to run middleware ("middleware"), got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern lines 109-116) does not recognize named wildcard syntax `*path` in `.forRoutes('*path')`.
       it.skip(`should run middleware for "/middleware" endpoint`, async () => {
         await request(app!).get("/middleware").expect(200, MIDDLEWARE_VALUE);
       });
@@ -493,9 +518,7 @@ describeConformance(
       });
 
       it(`should exclude "/wildcard/overview" endpoint (by wildcard)`, async () => {
-        await request(app!)
-          .get("/wildcard/overview")
-          .expect(200, RETURN_VALUE);
+        await request(app!).get("/wildcard/overview").expect(200, RETURN_VALUE);
       });
 
       it(`should exclude "/legacy-wildcard/overview" endpoint (by wildcard, legacy syntax)`, async () => {
@@ -511,9 +534,7 @@ describeConformance(
       });
 
       it(`should exclude "/multiple/exclude" endpoint`, async () => {
-        await request(app!)
-          .get("/multiple/exclude")
-          .expect(200, RETURN_VALUE);
+        await request(app!).get("/multiple/exclude").expect(200, RETURN_VALUE);
       });
     });
   },

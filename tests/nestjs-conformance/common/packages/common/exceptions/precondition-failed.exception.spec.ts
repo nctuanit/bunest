@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   HttpException,
   PreconditionFailedException,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -19,7 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(412);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Precondition Failed", 412) in packages/common/src/exceptions/http.exception.ts:189 includes `error: "Precondition Failed"` in getResponse(), whereas NestJS returns `{ message: "Precondition Failed", statusCode: 412 }`.
+    // BUNEST_BUG: HttpException.createBody(undefined, "Precondition Failed", 412) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Precondition Failed"` in getResponse(), whereas NestJS returns `{ message: "Precondition Failed", statusCode: 412 }`.
     it.skip('should return "Precondition Failed" as default message', () => {
       const exc = new PreconditionFailedException();
       expect(exc.getResponse()).toEqual({
@@ -37,7 +36,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/common/src/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
+    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
     it.skip("should accept a custom object", () => {
       const exc = new PreconditionFailedException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });

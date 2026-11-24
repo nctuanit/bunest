@@ -7,6 +7,7 @@ Controllers are responsible for handling incoming **HTTP requests** and returnin
 Apply the `@Controller()` class decorator to define an optional route prefix, and attach HTTP verb decorators (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@All`, `@Sse`) to handler methods:
 
 @@filename(cats.controller.ts)
+
 ```ts
 import {
   Body,
@@ -61,6 +62,7 @@ export class CatsController {
 `@Controller()` accepts a string, an array of route prefixes, or a full `ControllerOptions` object:
 
 @@filename(versioned.controller.ts)
+
 ```ts
 import { Controller, Get, HostParam, Scope } from "@bunest/core";
 
@@ -91,19 +93,19 @@ export class TenantAccountsController {
 
 Bunest provides NestJS-compatible legacy parameter decorators indexed by parameter position ([ADR-004](/architecture/adrs)). Parameters can appear in **any order**, and Bunest never parses function source strings.
 
-| Decorator | Extracts | Notes |
-|---|---|---|
-| `@Body(key?, ...pipes)` | Parsed request body or `body[key]` | Lazily parsed and cached once per request |
-| `@Query(key?, ...pipes)` | Query string record or single/array value | Always arrives as `string` / `string[]` |
-| `@Param(key?, ...pipes)` | Route parameters object or `params[key]` | URL-decoded natively by Bun |
-| `@Headers(key?, ...pipes)` | Lowercased header map or specific header | Case-insensitive lookup |
-| `@Cookies(key?, ...pipes)` | Parsed cookies via Bun native `CookieMap` | Falls back to `Cookie` header |
-| `@Req()` | Native Web `Request` | Includes matched `params` |
-| `@Res()` | Mutable `ResponseContext` builder | Set status, headers, cookies while still returning body |
-| `@Ip()` | Client IP via `server.requestIP(req)` | Respects configured `trustProxy` policy |
-| `@HostParam(key?, ...pipes)` | Matched host parameter(s) | For host-constrained controllers |
-| `@UploadedFile(field?, ...pipes)` | Single `UploadedFileInfo` | Parsed from `multipart/form-data` |
-| `@UploadedFiles(field?, ...pipes)` | `UploadedFileInfo[]` | Parsed from `multipart/form-data` |
+| Decorator                          | Extracts                                  | Notes                                                   |
+| ---------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| `@Body(key?, ...pipes)`            | Parsed request body or `body[key]`        | Lazily parsed and cached once per request               |
+| `@Query(key?, ...pipes)`           | Query string record or single/array value | Always arrives as `string` / `string[]`                 |
+| `@Param(key?, ...pipes)`           | Route parameters object or `params[key]`  | URL-decoded natively by Bun                             |
+| `@Headers(key?, ...pipes)`         | Lowercased header map or specific header  | Case-insensitive lookup                                 |
+| `@Cookies(key?, ...pipes)`         | Parsed cookies via Bun native `CookieMap` | Falls back to `Cookie` header                           |
+| `@Req()`                           | Native Web `Request`                      | Includes matched `params`                               |
+| `@Res()`                           | Mutable `ResponseContext` builder         | Set status, headers, cookies while still returning body |
+| `@Ip()`                            | Client IP via `server.requestIP(req)`     | Respects configured `trustProxy` policy                 |
+| `@HostParam(key?, ...pipes)`       | Matched host parameter(s)                 | For host-constrained controllers                        |
+| `@UploadedFile(field?, ...pipes)`  | Single `UploadedFileInfo`                 | Parsed from `multipart/form-data`                       |
+| `@UploadedFiles(field?, ...pipes)` | `UploadedFileInfo[]`                      | Parsed from `multipart/form-data`                       |
 
 > tip **Single-Read Body Cache** Web `Request.body` is a single-use stream. Bunest caches parsed body data per `RequestContext`, so extracting `@Body("email")` and `@Body("name")` in the same handler never throws `Body already used`.
 
@@ -112,8 +114,17 @@ Bunest provides NestJS-compatible legacy parameter decorators indexed by paramet
 By default, **`POST` returns `201 Created`** and all other HTTP verbs return **`200 OK`** ([ADR-010](/architecture/adrs)). Override status codes, static headers, or redirects declaratively:
 
 @@filename(response-meta.controller.ts)
+
 ```ts
-import { Controller, Get, Header, HttpCode, Post, Redirect, Res } from "@bunest/core";
+import {
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Post,
+  Redirect,
+  Res,
+} from "@bunest/core";
 import type { ResponseContext } from "@bunest/core";
 
 @Controller("downloads")
@@ -149,6 +160,7 @@ export class DownloadsController {
 Because Bun runs natively on Web Standards, any handler can directly return a `new Response(...)`, `Bun.file(...)`, or `ReadableStream`:
 
 @@filename(raw.controller.ts)
+
 ```ts
 import { Controller, Get } from "@bunest/core";
 

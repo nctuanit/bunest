@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { Reflector } from "../../../../../../packages/common/src";
+import { Reflector } from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 const transformDecorator = Reflector.createDecorator<string[], number>({
@@ -100,7 +99,7 @@ describeConformance(
         expect(reflectedValue).toBeNull();
       });
 
-      // BUNEST_BUG: Reflector.createDecorator() stores undefined instead of default {} when invoked without arguments (packages/common/src/metadata/reflector.ts).
+      // BUNEST_BUG: Reflector.createDecorator() stores undefined instead of default {} when invoked without arguments (packages/core/src/common/metadata/reflector.ts).
       it.skip("should use an empty object for decorators called without arguments", () => {
         const decorator = Reflector.createDecorator<{ marker?: boolean }>();
         const invokeEmpty = decorator as unknown as () => ClassDecorator;
@@ -112,7 +111,9 @@ describeConformance(
       });
 
       it("should preserve other falsy metadata values", () => {
-        const decorator = Reflector.createDecorator<number | string | boolean>();
+        const decorator = Reflector.createDecorator<
+          number | string | boolean
+        >();
 
         @decorator(0)
         class TestZero {}
@@ -133,10 +134,7 @@ describeConformance(
         const value2 = "value2";
         Reflect.defineMetadata(key, value1, Test1);
         Reflect.defineMetadata(key, value2, Test2);
-        expect(reflector.getAll(key, [Test1, Test2])).toEqual([
-          value1,
-          value2,
-        ]);
+        expect(reflector.getAll(key, [Test1, Test2])).toEqual([value1, value2]);
       });
 
       it("should reflect metadata of all targets by decorator", () => {
@@ -209,7 +207,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Reflector.getAllAndMerge() returns a bare scalar ("value") instead of wrapping single scalar metadata into an array (["value"]) when only one target defines it (packages/common/src/metadata/reflector.ts).
+      // BUNEST_BUG: Reflector.getAllAndMerge() returns a bare scalar ("value") instead of wrapping single scalar metadata into an array (["value"]) when only one target defines it (packages/core/src/common/metadata/reflector.ts).
       it.skip("should reflect metadata of all targets and create an array from a single value", () => {
         const value = "value";
         Reflect.defineMetadata(key, value, Test1);
@@ -243,7 +241,9 @@ describeConformance(
       });
 
       it("should return undefined when no target has metadata", () => {
-        expect(reflector.getAllAndOverride(key, [Test1, Test2])).toBeUndefined();
+        expect(
+          reflector.getAllAndOverride(key, [Test1, Test2]),
+        ).toBeUndefined();
       });
 
       it("should skip undefined and return the first defined value", () => {
@@ -270,7 +270,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: Reflector.getAll() throws TypeError when targets is null instead of returning [] (packages/common/src/metadata/reflector.ts).
+      // BUNEST_BUG: Reflector.getAll() throws TypeError when targets is null instead of returning [] (packages/core/src/common/metadata/reflector.ts).
       it.skip("should handle null targets gracefully", () => {
         expect(reflector.getAll(key, null as any)).toEqual([]);
       });
@@ -283,7 +283,7 @@ describeConformance(
         expect(reflector.getAllAndMerge(key, [Test1, Test2])).toEqual([42, 99]);
       });
 
-      // BUNEST_BUG: Reflector.getAllAndMerge() does not flatten/concat a trailing array following a scalar value (packages/common/src/metadata/reflector.ts); expected ["value1","value2","value3"].
+      // BUNEST_BUG: Reflector.getAllAndMerge() does not flatten/concat a trailing array following a scalar value (packages/core/src/common/metadata/reflector.ts); expected ["value1","value2","value3"].
       it.skip("should concat an array that follows a single value", () => {
         Reflect.defineMetadata(key, "value1", Test1);
         Reflect.defineMetadata(key, ["value2", "value3"], Test2);
@@ -294,7 +294,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: Reflector.getAllAndMerge() does not flatten/concat a trailing array following an object value (packages/common/src/metadata/reflector.ts); expected [value,"value2"].
+      // BUNEST_BUG: Reflector.getAllAndMerge() does not flatten/concat a trailing array following an object value (packages/core/src/common/metadata/reflector.ts); expected [value,"value2"].
       it.skip("should concat an array that follows an object", () => {
         const value = { test: "value" };
         Reflect.defineMetadata(key, value, Test1);

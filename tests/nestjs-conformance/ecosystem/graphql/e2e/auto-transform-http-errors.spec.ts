@@ -1,21 +1,16 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   HttpException,
   Module,
   NotFoundException,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,
   Query,
   Resolver,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Resolver()
 class ErrorsResolver {
@@ -63,7 +58,8 @@ class AppModule {}
 describeConformance(
   "autoTransformHttpErrors",
   {
-    upstreamPath: "packages/apollo/tests/e2e/auto-transform-http-errors.spec.ts",
+    upstreamPath:
+      "packages/apollo/tests/e2e/auto-transform-http-errors.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:

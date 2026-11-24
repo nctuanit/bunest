@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import type { GraphQLObjectType } from "../../../../../packages/graphql/node_modules/graphql";
-import { Module } from "../../../../../packages/common/src";
+import type { GraphQLObjectType } from "../../../../../packages/graphql/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -57,7 +56,8 @@ class ArgsExtensionsFederationModule {}
 describeConformance(
   "Federation - extensions of the fields of an @ArgsType()",
   {
-    upstreamPath: "packages/apollo/tests/e2e/federation-args-extensions.spec.ts",
+    upstreamPath:
+      "packages/apollo/tests/e2e/federation-args-extensions.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:

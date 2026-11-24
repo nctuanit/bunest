@@ -1,7 +1,7 @@
 // What the first-party SQL stores share, free of either dialect: the columns they read, and how a row they read (every
 // column cast to text) becomes an instance or a schedule. PostgresWorkflowStore and MySqlWorkflowStore name the same
 // columns, and the kit's readers (`toText()`, `toInt()`, `toBool()`, `toJson()`) read both dialects' text.
-import { toBool, toInt, toJson } from "@bunest/store-kit";
+import { toBool, toInt, toJson } from "@bunest/orm/store";
 import type { SerializedWorkflowError } from "../interfaces/serialized-workflow-error.interface";
 import type {
   WorkflowInstance,

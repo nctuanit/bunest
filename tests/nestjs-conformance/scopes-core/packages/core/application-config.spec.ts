@@ -1,12 +1,12 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { Logger, RequestMethod, VersioningType } from "../../../../../packages/common/src";
-import { ApplicationConfig } from "../../../../../packages/core/src";
-import type { GlobalPrefixOptions } from "../../../../../packages/http/src";
 import {
-  describeConformance,
-  spyOnMethod,
-} from "../../../_helpers";
+  Logger,
+  RequestMethod,
+  VersioningType,
+} from "../../../../../packages/core/src/common";
+import { ApplicationConfig } from "../../../../../packages/core/src";
+import type { GlobalPrefixOptions } from "../../../../../packages/core/src/http";
+import { describeConformance, spyOnMethod } from "../../../_helpers";
 
 describeConformance(
   "ApplicationConfig",

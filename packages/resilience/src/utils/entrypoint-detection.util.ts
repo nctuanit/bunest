@@ -1,4 +1,4 @@
-import { METADATA_KEYS, type Type } from "@bunest/common";
+import { METADATA_KEYS, MetadataRegistry, type Type } from "@bunest/core";
 import type { FallbackMetadata } from "../interfaces/entrypoint-options.interface";
 import {
   FALLBACK_METADATA,
@@ -25,7 +25,7 @@ export function hasResilienceMetadata(target: unknown): boolean {
     return false;
   }
   return RESILIENCE_METADATA_KEYS.some(
-    (key) => Reflect.getMetadata(key, target) !== undefined,
+    (key) => MetadataRegistry.get(key, target) !== undefined,
   );
 }
 
@@ -35,13 +35,13 @@ export function isEntryClass(cls: Type): boolean {
     NEST_CONTROLLER_WATERMARK,
     NEST_ENTRY_PROVIDER_WATERMARK,
     GATEWAY_METADATA,
-  ].some((key) => Boolean(Reflect.getMetadata(key, cls)));
+  ].some((key) => Boolean(MetadataRegistry.get(key, cls)));
 }
 
 export function isHandler(fn: unknown): fn is Function {
   return (
     typeof fn === "function" &&
-    HANDLER_METADATA.some((key) => Reflect.getMetadata(key, fn) !== undefined)
+    HANDLER_METADATA.some((key) => MetadataRegistry.get(key, fn) !== undefined)
   );
 }
 
@@ -56,9 +56,10 @@ export function isEntrypointMethod(cls: Type, handler: unknown): boolean {
  */
 export function collectFallbackTargetMethods(cls: Type): Set<string> {
   const targets = new Set<string>();
-  const classFallback = Reflect.getMetadata(FALLBACK_METADATA, cls) as
-    | FallbackMetadata
-    | undefined;
+  const classFallback = MetadataRegistry.get<FallbackMetadata>(
+    FALLBACK_METADATA,
+    cls,
+  );
   if (classFallback?.method) {
     targets.add(classFallback.method);
   }
@@ -71,9 +72,10 @@ export function collectFallbackTargetMethods(cls: Type): Set<string> {
       }
       const desc = Object.getOwnPropertyDescriptor(proto, key);
       if (desc && typeof desc.value === "function") {
-        const meta = Reflect.getMetadata(FALLBACK_METADATA, desc.value) as
-          | FallbackMetadata
-          | undefined;
+        const meta = MetadataRegistry.get<FallbackMetadata>(
+          FALLBACK_METADATA,
+          desc.value,
+        );
         if (meta?.method) {
           targets.add(meta.method);
         }

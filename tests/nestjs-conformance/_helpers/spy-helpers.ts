@@ -1,8 +1,6 @@
 import { expect, mock, spyOn, type Mock } from "bun:test";
 
-const MATCH_PREDICATE_SYMBOL = Symbol.for(
-  "bunest:conformance:match_predicate",
-);
+const MATCH_PREDICATE_SYMBOL = Symbol.for("bunest:conformance:match_predicate");
 
 export interface MatchPredicate {
   readonly [MATCH_PREDICATE_SYMBOL]: true;
@@ -57,21 +55,21 @@ export const match = Object.freeze({
   ): MatchPredicate => {
     const hasExpected = rest.length > 0;
     const expectedValue = rest[0];
-    return createMatcher(
-      `match.has(${String(property)})`,
-      (v) => {
-        if ((typeof v !== "object" && typeof v !== "function") || v === null) {
-          return false;
-        }
-        if (!(property in v)) {
-          return false;
-        }
-        if (!hasExpected) {
-          return true;
-        }
-        return deepMatch((v as Record<PropertyKey, unknown>)[property], expectedValue);
-      },
-    );
+    return createMatcher(`match.has(${String(property)})`, (v) => {
+      if ((typeof v !== "object" && typeof v !== "function") || v === null) {
+        return false;
+      }
+      if (!(property in v)) {
+        return false;
+      }
+      if (!hasExpected) {
+        return true;
+      }
+      return deepMatch(
+        (v as Record<PropertyKey, unknown>)[property],
+        expectedValue,
+      );
+    });
   },
   regex: (pattern: RegExp): MatchPredicate =>
     createMatcher(
@@ -122,9 +120,7 @@ export function deepMatch(
     return Object.is(actual.getTime(), expected.getTime());
   }
   if (actual instanceof RegExp && expected instanceof RegExp) {
-    return (
-      actual.source === expected.source && actual.flags === expected.flags
-    );
+    return actual.source === expected.source && actual.flags === expected.flags;
   }
   if (Array.isArray(actual) || Array.isArray(expected)) {
     if (!Array.isArray(actual) || !Array.isArray(expected)) {
@@ -183,10 +179,7 @@ export function deepMatch(
 
 let globalInvocationCounter = 0;
 
-export interface SpyCall<
-  TArgs extends unknown[] = any[],
-  TReturn = any,
-> {
+export interface SpyCall<TArgs extends unknown[] = any[], TReturn = any> {
   readonly args: TArgs;
   readonly returnValue: TReturn | undefined;
   readonly exception: unknown;
@@ -237,11 +230,8 @@ export interface StubCallBehavior<
   callThrough(): SinonLikeStub<TArgs, TReturn>;
 }
 
-export interface SinonLikeStub<
-  TArgs extends unknown[] = any[],
-  TReturn = any,
-> extends SinonLikeSpy<TArgs, TReturn>,
-    StubCallBehavior<TArgs, TReturn> {
+export interface SinonLikeStub<TArgs extends unknown[] = any[], TReturn = any>
+  extends SinonLikeSpy<TArgs, TReturn>, StubCallBehavior<TArgs, TReturn> {
   onCall(index: number): StubCallBehavior<TArgs, TReturn>;
   onFirstCall(): StubCallBehavior<TArgs, TReturn>;
   onSecondCall(): StubCallBehavior<TArgs, TReturn>;
@@ -447,8 +437,7 @@ function augmentBunMock<TArgs extends unknown[], TReturn>(
     },
     returnValues: {
       configurable: true,
-      get: () =>
-        callMetas.map((m) => m.returnValue as TReturn | undefined),
+      get: () => callMetas.map((m) => m.returnValue as TReturn | undefined),
     },
     firstCall: {
       configurable: true,
@@ -479,9 +468,7 @@ function augmentBunMock<TArgs extends unknown[], TReturn>(
     );
 
   enhanced.calledWithExactly = (...expectedArgs: unknown[]) =>
-    bunMock.mock.calls.some((callArgs) =>
-      matchesExact(callArgs, expectedArgs),
-    );
+    bunMock.mock.calls.some((callArgs) => matchesExact(callArgs, expectedArgs));
 
   enhanced.calledOnceWith = (...expectedArgs: unknown[]) =>
     bunMock.mock.calls.length === 1 &&
@@ -800,10 +787,7 @@ export function expectCalledOnceWith(
 
 export async function expectRejectsWith<TError extends Error = Error>(
   action: Promise<unknown> | (() => unknown | Promise<unknown>),
-  expected?:
-    | (abstract new (...args: any[]) => TError)
-    | string
-    | RegExp,
+  expected?: (abstract new (...args: any[]) => TError) | string | RegExp,
 ): Promise<TError> {
   let caught: unknown;
   let didThrow = false;

@@ -2,18 +2,27 @@ import type {
   AiStep,
   AiToolCall,
   AiToolResult,
-} from '../interfaces/ai-result.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import { AiOutputError, AiToolError } from '../errors/ai.errors';
-import { resolveLanguageModel } from '../providers/http-provider';
-import type { ModelSchema } from '../utils/schema.util';
-import { costOf, toUsage } from '../utils/usage.util';
-import type { CallPlan } from './call-plan';
-import type { StepAttempt } from './model-policy';
+} from "../interfaces/ai-result.interface";
+import type {
+  LanguageModelContentPart,
+  LanguageModelGenerateResult,
+  LanguageModelPromptMessage,
+  LanguageModelStreamPart,
+  LanguageModelStreamResult,
+  LanguageModelToolCallInput,
+  LanguageModelToolSpec,
+  ModelMessage,
+} from "../interfaces/ai-types.interface";
+import { AiOutputError, AiToolError } from "../errors/ai.errors";
+import { resolveLanguageModel } from "../providers/http-provider";
+import type { ModelSchema } from "../utils/schema.util";
+import { costOf, toUsage } from "../utils/usage.util";
+import type { CallPlan } from "./call-plan";
+import type { StepAttempt } from "./model-policy";
 
 /** One model call's outcome. */
 export interface StepOutcome {
-  step: Omit<AiStep, 'attempts'>;
+  step: Omit<AiStep, "attempts">;
   responseMessages: ModelMessage[];
   output?: unknown;
   durationMs: number;
@@ -21,7 +30,7 @@ export interface StepOutcome {
 
 /** Structured output: the schema of the answer. */
 export interface StepOutput {
-  schema: ModelSchema<any>;
+  schema: ModelSchema<unknown>;
   name?: string;
   description?: string;
 }
@@ -29,28 +38,32 @@ export interface StepOutput {
 /** Whether the loop goes on after a step: the model asked for tools, and they ran. */
 export function wantsAnotherStep(outcome: StepOutcome): boolean {
   return (
-    outcome.step.finishReason === 'tool-calls' &&
+    outcome.step.finishReason === "tool-calls" &&
     outcome.step.toolResults.length > 0
   );
 }
 
-function buildPrompt(plan: CallPlan, messages: ModelMessage[]): any[] {
-  const prompt: any[] = [];
+function buildPrompt(
+  plan: CallPlan,
+  messages: ModelMessage[],
+): LanguageModelPromptMessage[] {
+  const prompt: LanguageModelPromptMessage[] = [];
   if (plan.instructions !== undefined) {
-    prompt.push({ role: 'system', content: plan.instructions });
+    prompt.push({ role: "system", content: plan.instructions });
   }
   for (const m of messages) {
-    if (m.role === 'system') {
+    if (m.role === "system") {
       prompt.push({
-        role: 'system',
-        content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
-      });
-    } else if (m.role === 'user') {
-      prompt.push({
-        role: 'user',
+        role: "system",
         content:
-          typeof m.content === 'string'
-            ? [{ type: 'text', text: m.content }]
+          typeof m.content === "string" ? m.content : String(m.content ?? ""),
+      });
+    } else if (m.role === "user") {
+      prompt.push({
+        role: "user",
+        content:
+          typeof m.content === "string"
+            ? [{ type: "text", text: m.content }]
             : m.content,
       });
     } else {
@@ -60,19 +73,23 @@ function buildPrompt(plan: CallPlan, messages: ModelMessage[]): any[] {
   return prompt;
 }
 
-function buildToolsSpec(plan: CallPlan): any[] | undefined {
+function buildToolsSpec(
+  plan: CallPlan,
+): Array<LanguageModelToolSpec & { type: "function" }> | undefined {
   if (!plan.tools || Object.keys(plan.tools).length === 0) return undefined;
   return Object.entries(plan.tools).map(([name, tool]) => ({
-    type: 'function' as const,
+    type: "function" as const,
     name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema: tool.inputSchema?.jsonSchema ?? tool.parameters ?? { type: 'object', properties: {} },
-    parameters: tool.inputSchema?.jsonSchema ?? tool.parameters ?? { type: 'object', properties: {} },
+    inputSchema: tool.inputSchema?.jsonSchema ??
+      tool.parameters ?? { type: "object", properties: {} },
+    parameters: tool.inputSchema?.jsonSchema ??
+      tool.parameters ?? { type: "object", properties: {} },
   }));
 }
 
 function parseToolInput(raw: unknown): unknown {
-  if (typeof raw === 'string') {
+  if (typeof raw === "string") {
     const trimmed = raw.trim();
     if (!trimmed) return {};
     try {
@@ -86,17 +103,17 @@ function parseToolInput(raw: unknown): unknown {
 
 function buildToolResultMessage(results: AiToolResult[]): ModelMessage {
   return {
-    role: 'tool',
+    role: "tool",
     content: results.map((result) => ({
-      type: 'tool-result',
+      type: "tool-result",
       toolCallId: result.toolCallId,
       toolName: result.toolName,
       output:
         result.error !== undefined
-          ? { type: 'error-text', value: result.error }
-          : typeof result.output === 'string'
-            ? { type: 'text', value: result.output }
-            : { type: 'json', value: result.output ?? null },
+          ? { type: "error-text", value: result.error }
+          : typeof result.output === "string"
+            ? { type: "text", value: result.output }
+            : { type: "json", value: result.output ?? null },
     })),
   };
 }
@@ -113,7 +130,7 @@ async function executeToolCalls(
 
   for (const tc of toolCalls) {
     emit?.({
-      type: 'tool-input-available',
+      type: "tool-input-available",
       toolCallId: tc.toolCallId,
       toolName: tc.toolName,
       input: tc.input,
@@ -123,13 +140,13 @@ async function executeToolCalls(
       const error = `There is no tool named "${tc.toolName}"`;
       toolResults.push({ ...tc, error });
       emit?.({
-        type: 'tool-output-error',
+        type: "tool-output-error",
         toolCallId: tc.toolCallId,
         errorText: error,
       });
       continue;
     }
-    if (typeof tool.execute !== 'function' && typeof tool !== 'function') {
+    if (typeof tool.execute !== "function" && typeof tool !== "function") {
       // Tool offered without execute (e.g. durable workflow callModel)
       continue;
     }
@@ -145,7 +162,7 @@ async function executeToolCalls(
         }
         validatedInput = validation.value;
       }
-      const output = await (typeof tool === 'function'
+      const output = await (typeof tool === "function"
         ? tool(validatedInput)
         : tool.execute(validatedInput, {
             toolCallId: tc.toolCallId,
@@ -154,7 +171,7 @@ async function executeToolCalls(
           }));
       toolResults.push({ ...tc, output });
       emit?.({
-        type: 'tool-output-available',
+        type: "tool-output-available",
         toolCallId: tc.toolCallId,
         output,
       });
@@ -167,7 +184,7 @@ async function executeToolCalls(
             : String(error);
       toolResults.push({ ...tc, error: message });
       emit?.({
-        type: 'tool-output-error',
+        type: "tool-output-error",
         toolCallId: tc.toolCallId,
         errorText: message,
       });
@@ -176,21 +193,27 @@ async function executeToolCalls(
   return toolResults;
 }
 
-function buildAssistantMessage(text: string, toolCalls: AiToolCall[]): ModelMessage {
-  const parts: any[] = [];
+function buildAssistantMessage(
+  text: string,
+  toolCalls: AiToolCall[],
+): ModelMessage {
+  const parts: Array<
+    | { type: "text"; text: string }
+    | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  > = [];
   if (text) {
-    parts.push({ type: 'text', text });
+    parts.push({ type: "text", text });
   }
   for (const tc of toolCalls) {
     parts.push({
-      type: 'tool-call',
+      type: "tool-call",
       toolCallId: tc.toolCallId,
       toolName: tc.toolName,
       input: tc.input,
     });
   }
   return {
-    role: 'assistant',
+    role: "assistant",
     content: parts.length > 0 ? parts : text,
   };
 }
@@ -210,21 +233,21 @@ export async function generateStep(
   const prompt = buildPrompt(plan, messages);
 
   plan.running = attempt;
-  let result: any;
+  let result: LanguageModelGenerateResult;
   try {
-    result = await modelObj.doGenerate({
-      inputFormat: 'messages',
+    result = (await modelObj.doGenerate({
+      inputFormat: "messages",
       prompt,
       ...(tools && { tools }),
       ...(plan.toolChoice !== undefined && {
         toolChoice:
-          typeof plan.toolChoice === 'string'
+          typeof plan.toolChoice === "string"
             ? { type: plan.toolChoice }
             : plan.toolChoice,
       }),
       ...(output && {
         responseFormat: {
-          type: 'json',
+          type: "json",
           schema: output.schema.jsonSchema,
           ...(output.name !== undefined && { name: output.name }),
           ...(output.description !== undefined && {
@@ -234,17 +257,17 @@ export async function generateStep(
       }),
       mode: output
         ? {
-            type: 'object-json' as const,
+            type: "object-json" as const,
             schema: output.schema.jsonSchema,
             name: output.name,
             description: output.description,
           }
         : {
-            type: 'regular' as const,
+            type: "regular" as const,
             ...(tools && { tools }),
             ...(plan.toolChoice !== undefined && {
               toolChoice:
-                typeof plan.toolChoice === 'string'
+                typeof plan.toolChoice === "string"
                   ? { type: plan.toolChoice }
                   : plan.toolChoice,
             }),
@@ -252,37 +275,46 @@ export async function generateStep(
       ...settings,
       maxRetries: 0,
       abortSignal: attempt.signal,
-    });
+    })) as LanguageModelGenerateResult;
   } finally {
     // Keep plan.running active during tool execution below
   }
 
   let outcome: StepOutcome;
   try {
-    const contentParts: any[] = Array.isArray(result.content)
+    const contentParts: LanguageModelContentPart[] = Array.isArray(
+      result.content,
+    )
       ? result.content
       : [];
     const text: string =
-      typeof result.text === 'string'
+      typeof result.text === "string"
         ? result.text
         : contentParts
-            .filter((c) => c.type === 'text' && typeof c.text === 'string')
+            .filter(
+              (c): c is { type: "text"; text: string } =>
+                c.type === "text" && typeof c.text === "string",
+            )
             .map((c) => c.text)
-            .join('');
+            .join("");
 
-    const rawToolCalls: any[] =
+    const rawToolCalls: LanguageModelToolCallInput[] =
       result.toolCalls ??
-      contentParts.filter((c) => c.type === 'tool-call');
+      contentParts.filter(
+        (c): c is LanguageModelContentPart & LanguageModelToolCallInput =>
+          c.type === "tool-call",
+      );
     const toolCalls: AiToolCall[] = rawToolCalls.map((tc, i) => ({
       toolCallId: tc.toolCallId ?? tc.id ?? `call-${index}-${i + 1}`,
-      toolName: tc.toolName ?? tc.name ?? '',
+      toolName: tc.toolName ?? tc.name ?? "",
       input: parseToolInput(tc.input ?? tc.args),
     }));
 
     const finishReason: string =
-      (typeof result.finishReason === 'object' && result.finishReason !== null
+      (typeof result.finishReason === "object" && result.finishReason !== null
         ? result.finishReason.unified
-        : result.finishReason) ?? (toolCalls.length > 0 ? 'tool-calls' : 'stop');
+        : result.finishReason) ??
+      (toolCalls.length > 0 ? "tool-calls" : "stop");
 
     const toolResults = await executeToolCalls(
       plan,
@@ -375,19 +407,19 @@ async function streamAttempt(
 ): Promise<StepOutcome & { finish?: Record<string, unknown> }> {
   const started = performance.now();
   const modelObj = resolveLanguageModel(attempt.model.model);
-  if (typeof modelObj.doStream !== 'function') {
+  if (typeof modelObj.doStream !== "function") {
     const out = await generateStep(plan, index, messages, attempt);
-    if (index === 0) emit({ type: 'start' });
-    emit({ type: 'start-step' });
+    if (index === 0) emit({ type: "start" });
+    emit({ type: "start-step" });
     if (out.step.text) {
-      emit({ type: 'text-start', id: `text-${index}` });
-      emit({ type: 'text-delta', id: `text-${index}`, delta: out.step.text });
-      emit({ type: 'text-end', id: `text-${index}` });
+      emit({ type: "text-start", id: `text-${index}` });
+      emit({ type: "text-delta", id: `text-${index}`, delta: out.step.text });
+      emit({ type: "text-end", id: `text-${index}` });
     }
-    emit({ type: 'finish-step' });
+    emit({ type: "finish-step" });
     return {
       ...out,
-      finish: { type: 'finish', finishReason: out.step.finishReason },
+      finish: { type: "finish", finishReason: out.step.finishReason },
     };
   }
 
@@ -396,21 +428,21 @@ async function streamAttempt(
   const prompt = buildPrompt(plan, messages);
 
   const streamResult = await modelObj.doStream({
-    inputFormat: 'messages',
+    inputFormat: "messages",
     prompt,
     ...(tools && { tools }),
     ...(plan.toolChoice !== undefined && {
       toolChoice:
-        typeof plan.toolChoice === 'string'
+        typeof plan.toolChoice === "string"
           ? { type: plan.toolChoice }
           : plan.toolChoice,
     }),
     mode: {
-      type: 'regular' as const,
+      type: "regular" as const,
       ...(tools && { tools }),
       ...(plan.toolChoice !== undefined && {
         toolChoice:
-          typeof plan.toolChoice === 'string'
+          typeof plan.toolChoice === "string"
             ? { type: plan.toolChoice }
             : plan.toolChoice,
       }),
@@ -422,9 +454,9 @@ async function streamAttempt(
 
   const held: Array<Record<string, unknown>> = [];
   if (index === 0) {
-    held.push({ type: 'start' });
+    held.push({ type: "start" });
   }
-  held.push({ type: 'start-step' });
+  held.push({ type: "start-step" });
 
   let opened = false;
   const flushHeld = () => {
@@ -438,59 +470,93 @@ async function streamAttempt(
     emit(chunk);
   };
 
-  let text = '';
+  let text = "";
   const toolCalls: AiToolCall[] = [];
-  let rawUsage: any;
-  let finishReason = 'stop';
+  let rawUsage: Record<string, unknown> | undefined;
+  let finishReason = "stop";
   let textStarted = false;
 
-  const stream = streamResult.stream;
-  const consumeChunk = (part: any) => {
-    if (!part || typeof part !== 'object') return;
-    if (part.type === 'error') {
-      throw part.error ?? new Error(part.errorText ?? 'Stream error');
+  const stream = (streamResult as LanguageModelStreamResult).stream;
+  const consumeChunk = (rawPart: unknown) => {
+    if (!rawPart || typeof rawPart !== "object") return;
+    const part = rawPart as Record<string, unknown>;
+    if (part.type === "error") {
+      throw (
+        part.error ??
+        new Error(
+          typeof part.errorText === "string" ? part.errorText : "Stream error",
+        )
+      );
     }
-    if (part.type === 'abort') {
+    if (part.type === "abort") {
       attempt.signal.throwIfAborted();
       return;
     }
-    if (part.type === 'text-start') {
+    if (part.type === "text-start") {
       textStarted = true;
-      emitContent({ type: 'text-start', id: part.id ?? `text-${index}` });
-    } else if (part.type === 'text-delta') {
-      const delta: string = part.delta ?? part.textDelta ?? '';
+      emitContent({
+        type: "text-start",
+        id: typeof part.id === "string" ? part.id : `text-${index}`,
+      });
+    } else if (part.type === "text-delta") {
+      const delta =
+        typeof part.delta === "string"
+          ? part.delta
+          : typeof part.textDelta === "string"
+            ? part.textDelta
+            : "";
+      const id = typeof part.id === "string" ? part.id : `text-${index}`;
       if (!textStarted) {
         textStarted = true;
-        emitContent({ type: 'text-start', id: part.id ?? `text-${index}` });
+        emitContent({ type: "text-start", id });
       }
       text += delta;
       emitContent({
-        type: 'text-delta',
-        id: part.id ?? `text-${index}`,
+        type: "text-delta",
+        id,
         delta,
       });
-    } else if (part.type === 'text-end') {
+    } else if (part.type === "text-end") {
       if (textStarted) {
         textStarted = false;
-        emitContent({ type: 'text-end', id: part.id ?? `text-${index}` });
+        emitContent({
+          type: "text-end",
+          id: typeof part.id === "string" ? part.id : `text-${index}`,
+        });
       }
-    } else if (part.type === 'tool-call') {
+    } else if (part.type === "tool-call") {
       const tc: AiToolCall = {
-        toolCallId: part.toolCallId ?? part.id ?? `call-${index}-${toolCalls.length + 1}`,
-        toolName: part.toolName ?? part.name ?? '',
+        toolCallId:
+          (typeof part.toolCallId === "string"
+            ? part.toolCallId
+            : typeof part.id === "string"
+              ? part.id
+              : undefined) ?? `call-${index}-${toolCalls.length + 1}`,
+        toolName:
+          typeof part.toolName === "string"
+            ? part.toolName
+            : typeof part.name === "string"
+              ? part.name
+              : "",
         input: parseToolInput(part.input ?? part.args),
       };
       toolCalls.push(tc);
-    } else if (part.type === 'finish') {
-      finishReason =
-        (typeof part.finishReason === 'object' && part.finishReason !== null
-          ? part.finishReason.unified
-          : part.finishReason) ?? finishReason;
-      rawUsage = part.usage;
+    } else if (part.type === "finish") {
+      const fr = part.finishReason;
+      const resolvedFinish =
+        typeof fr === "object" && fr !== null && "unified" in fr
+          ? (fr as { unified?: unknown }).unified
+          : fr;
+      if (typeof resolvedFinish === "string") {
+        finishReason = resolvedFinish;
+      }
+      if (part.usage && typeof part.usage === "object") {
+        rawUsage = part.usage as Record<string, unknown>;
+      }
     }
   };
 
-  if (stream && typeof stream.getReader === 'function') {
+  if (stream && "getReader" in stream && typeof stream.getReader === "function") {
     const reader = stream.getReader();
     try {
       for (;;) {
@@ -502,21 +568,21 @@ async function streamAttempt(
       reader.releaseLock();
     }
   } else if (stream && Symbol.asyncIterator in stream) {
-    for await (const part of stream as AsyncIterable<any>) {
+    for await (const part of stream as AsyncIterable<LanguageModelStreamPart>) {
       consumeChunk(part);
     }
   }
 
   attempt.signal.throwIfAborted();
   if (textStarted) {
-    emitContent({ type: 'text-end', id: `text-${index}` });
+    emitContent({ type: "text-end", id: `text-${index}` });
   }
   if (!opened) {
     flushHeld();
   }
 
-  if (toolCalls.length > 0 && finishReason === 'stop') {
-    finishReason = 'tool-calls';
+  if (toolCalls.length > 0 && finishReason === "stop") {
+    finishReason = "tool-calls";
   }
 
   const toolResults = await executeToolCalls(
@@ -526,7 +592,7 @@ async function streamAttempt(
     attempt,
     emitContent,
   );
-  emit({ type: 'finish-step' });
+  emit({ type: "finish-step" });
 
   const usage = toUsage(rawUsage);
   const cost = costOf(usage, attempt.model.pricing);
@@ -548,6 +614,6 @@ async function streamAttempt(
     },
     responseMessages,
     durationMs: performance.now() - started,
-    finish: { type: 'finish', finishReason },
+    finish: { type: "finish", finishReason },
   };
 }

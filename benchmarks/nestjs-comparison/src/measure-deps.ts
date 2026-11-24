@@ -1,11 +1,12 @@
 import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+  dirname,
+  existsSyncPath,
+  join,
+  readDirSyncEntries,
+  readTextSync,
+  realpathSyncOf,
+  statSyncPath,
+} from "../../../packages/core/src/index.ts";
 
 interface PkgJson {
   name?: string;
@@ -30,9 +31,9 @@ function getDirBytes(
   dir: string,
   excludeNames: ReadonlySet<string> = new Set(["node_modules"]),
 ): number {
-  if (!existsSync(dir)) return 0;
+  if (!existsSyncPath(dir)) return 0;
   let total = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of readDirSyncEntries(dir)) {
     if (excludeNames.has(entry.name)) {
       continue;
     }
@@ -40,13 +41,18 @@ function getDirBytes(
     if (entry.isDirectory()) {
       total += getDirBytes(full, excludeNames);
     } else if (entry.isFile()) {
-      total += statSync(full).size;
+      total += statSyncPath(full).size;
     }
   }
   return total;
 }
 
-const WORKSPACE_EXCLUDES = new Set(["node_modules", "test", "tests", "__tests__"]);
+const WORKSPACE_EXCLUDES = new Set([
+  "node_modules",
+  "test",
+  "tests",
+  "__tests__",
+]);
 const NPM_EXCLUDES = new Set(["node_modules"]);
 
 function resolvePackageDir(
@@ -56,7 +62,7 @@ function resolvePackageDir(
   workspaceMap: ReadonlyMap<string, string>,
 ): string | null {
   const ws = workspaceMap.get(pkgName);
-  if (ws && existsSync(join(ws, "package.json"))) {
+  if (ws && existsSyncPath(join(ws, "package.json"))) {
     return ws;
   }
 
@@ -64,7 +70,7 @@ function resolvePackageDir(
   let cur = fromDir;
   for (let depth = 0; depth < 12; depth += 1) {
     const candidate = join(cur, "node_modules", pkgName);
-    if (existsSync(join(candidate, "package.json"))) {
+    if (existsSyncPath(join(candidate, "package.json"))) {
       return candidate;
     }
     const parent = dirname(cur);
@@ -74,7 +80,7 @@ function resolvePackageDir(
 
   for (const nm of rootNodeModulesDirs) {
     const candidate = join(nm, pkgName);
-    if (existsSync(join(candidate, "package.json"))) {
+    if (existsSyncPath(join(candidate, "package.json"))) {
       return candidate;
     }
   }
@@ -103,11 +109,11 @@ function measureClosure(
       workspaceMap,
     );
     if (!pkgDir) continue;
-    const realDir = realpathSync(pkgDir);
+    const realDir = realpathSyncOf(pkgDir);
     if (visitedDirs.has(realDir)) continue;
 
     const pkg = JSON.parse(
-      readFileSync(join(realDir, "package.json"), "utf8"),
+      readTextSync(join(realDir, "package.json")),
     ) as PkgJson;
     const isWorkspace = workspaceMap.has(item.name);
     visitedDirs.set(realDir, { name: pkg.name ?? item.name, isWorkspace });
@@ -162,8 +168,8 @@ export function measureAllStackFootprints(
 
   const bunestWorkspaces = new Map<string, string>([
     ["@bunest/core", join(repoRoot, "packages", "core")],
-    ["@bunest/common", join(repoRoot, "packages", "common")],
-    ["@bunest/http", join(repoRoot, "packages", "http")],
+    ["@bunest/core", join(repoRoot, "packages", "common")],
+    ["@bunest/core/http", join(repoRoot, "packages", "http")],
     ["@bunest/validation", join(repoRoot, "packages", "validation")],
   ]);
 
@@ -227,13 +233,13 @@ export function measureAllStackFootprints(
 
   // Pure core HTTP + DI without class-validator/class-transformer
   const bunestCoreOnlyWs = new Map<string, string>([
-    ["@bunest/common", join(repoRoot, "packages", "common")],
-    ["@bunest/http", join(repoRoot, "packages", "http")],
+    ["@bunest/core", join(repoRoot, "packages", "common")],
+    ["@bunest/core/http", join(repoRoot, "packages", "http")],
   ]);
   // Measure @bunest/core's core-only closure by excluding @bunest/validation's validation libs
   const bunestCoreClosure = measureClosure(
     "Bunest (core HTTP + DI, excl. validation libs)",
-    ["@bunest/common", "@bunest/http", "reflect-metadata"],
+    ["@bunest/core", "@bunest/core/http", "reflect-metadata"],
     repoRoot,
     [rootNodeModules],
     bunestCoreOnlyWs,
@@ -245,7 +251,12 @@ export function measureAllStackFootprints(
   );
   const bunestCoreOnly: StackFootprint = {
     label: "Bunest (core HTTP + DI, excl. validation libs)",
-    seedPackages: ["@bunest/core", "@bunest/common", "@bunest/http", "reflect-metadata"],
+    seedPackages: [
+      "@bunest/core",
+      "@bunest/core",
+      "@bunest/core/http",
+      "reflect-metadata",
+    ],
     totalPackages: bunestCoreClosure.totalPackages + 1,
     externalNpmPackages: bunestCoreClosure.externalNpmPackages,
     totalBytes: bunestCoreClosure.totalBytes + coreOwnBytes,

@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   ScheduleModule,
   SchedulerRegistry,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance } from "../../../_helpers";
 import { CronService } from "../_fixtures/scheduler-fixtures";
 

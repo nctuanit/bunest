@@ -1,14 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -16,6 +14,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const expectedFilterSource = (pascal: string): string =>
   "import {\n" +
@@ -56,11 +63,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-filter-"));
+      tempDir = makeTempDir("bunest-cli-conf-filter-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -86,7 +93,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.filter.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(tempDir, "foo.filter.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(tempDir, "foo.filter.ts"))).toEqual(
           expectedFilterSource("Foo"),
         );
       },
@@ -109,7 +116,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "bar/foo.filter.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo.filter.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo.filter.ts")),
         ).toEqual(expectedFilterSource("Foo"));
       },
       "Bunest filter template uses @bunest/core and Web Standard Request/Response",
@@ -131,7 +138,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo.filter.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "baz/foo.filter.ts"), "utf8"),
+          readTextSync(join(tempDir, "baz/foo.filter.ts")),
         ).toEqual(expectedFilterSource("Foo"));
       },
       "Bunest uses dir option for target base directory",
@@ -153,7 +160,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo-bar.filter.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo-bar.filter.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo-bar.filter.ts")),
         ).toEqual(expectedFilterSource("FooBar"));
       },
       "Normalizes camelCase filter name to kebab-case filename and PascalCase class",
@@ -172,7 +179,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "_foo.filter.ts"),
       ).toBeDefined();
-      expect(readFileSync(join(tempDir, "_foo.filter.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "_foo.filter.ts"))).toEqual(
         expectedFilterSource("Foo"),
       );
     });
@@ -193,7 +200,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "bar-baz/foo.filter.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo.filter.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo.filter.ts")),
         ).toEqual(expectedFilterSource("Foo"));
       },
       "Normalizes camelCase path segment to kebab-case",
@@ -226,10 +233,7 @@ describeConformance(
       ["ADR-001", "ADR-002"],
       "should add source root to path",
       async () => {
-        writeFileSync(
-          join(tempDir, "bunest.json"),
-          JSON.stringify({ sourceRoot: "src" }),
-        );
+        writeTextSync(join(tempDir, "bunest.json"), JSON.stringify({ sourceRoot: "src" }));
 
         await generateSchematic({
           schematic: "filter",
@@ -238,9 +242,9 @@ describeConformance(
           cwd: tempDir,
         });
 
-        expect(existsSync(join(tempDir, "src/foo.filter.ts"))).toBe(true);
+        expect(existsSyncPath(join(tempDir, "src/foo.filter.ts"))).toBe(true);
         expect(
-          readFileSync(join(tempDir, "src/foo.filter.ts"), "utf8"),
+          readTextSync(join(tempDir, "src/foo.filter.ts")),
         ).toEqual(expectedFilterSource("Foo"));
       },
       "Resolves sourceRoot from bunest.json and emits TypeScript filter",
@@ -259,7 +263,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.filter.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.filter.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.filter.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -279,8 +283,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.filter.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.filter.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.filter.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.filter.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.filter.test.ts"))).toBe(true);
     });
 
     itAdapted(
@@ -302,11 +306,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "src/foo.filter.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "src/foo.filter.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );

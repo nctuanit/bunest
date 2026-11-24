@@ -1,4 +1,4 @@
-import { Header, SetMetadata } from "@bunest/common";
+import { Header, SetMetadata } from "@bunest/core";
 import type { HealthCheckOptions } from "./health.interface";
 
 export const HEALTH_CHECK_METADATA = Symbol.for(
@@ -13,30 +13,39 @@ export const HEALTH_CHECK_METADATA = Symbol.for(
 export const HealthCheck = ({
   noCache = true,
   swaggerDocumentation = true,
-}: HealthCheckOptions = {}): ((
-  target: any,
-  key: any,
-  descriptor: PropertyDescriptor,
-) => void) => {
+}: HealthCheckOptions = {}): MethodDecorator => {
   const decorators: Array<
-    (target: any, key: any, descriptor: PropertyDescriptor) => unknown
+    (
+      target: object,
+      key: string | symbol,
+      descriptor: PropertyDescriptor,
+    ) => unknown
   > = [
     SetMetadata(HEALTH_CHECK_METADATA, {
       noCache,
       swaggerDocumentation,
-    }) as (target: any, key: any, descriptor: PropertyDescriptor) => unknown,
+    }) as (
+      target: object,
+      key: string | symbol,
+      descriptor: PropertyDescriptor,
+    ) => unknown,
   ];
 
   if (noCache) {
     decorators.push(
-      Header(
-        "Cache-Control",
-        "no-cache, no-store, must-revalidate",
-      ) as (target: any, key: any, descriptor: PropertyDescriptor) => unknown,
+      Header("Cache-Control", "no-cache, no-store, must-revalidate") as (
+        target: object,
+        key: string | symbol,
+        descriptor: PropertyDescriptor,
+      ) => unknown,
     );
   }
 
-  return (target: any, key: any, descriptor: PropertyDescriptor): void => {
+  return (
+    target: object,
+    key: string | symbol,
+    descriptor: PropertyDescriptor,
+  ): void => {
     for (const decorator of decorators) {
       decorator(target, key, descriptor);
     }

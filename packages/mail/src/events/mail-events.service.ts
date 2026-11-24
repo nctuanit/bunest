@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 import type {
   Subscribable,
   SubscribableObserver,
@@ -48,8 +48,7 @@ class MailEventSubject {
 
   subscribe(
     observerOrNext?:
-      | SubscribableObserver<MailEvent>
-      | ((value: MailEvent) => void),
+      SubscribableObserver<MailEvent> | ((value: MailEvent) => void),
     _error?: (err: unknown) => void,
     complete?: () => void,
   ): Unsubscribable {
@@ -89,8 +88,7 @@ class MailEventSubject {
     return {
       subscribe: (
         observerOrNext?:
-          | SubscribableObserver<MailEvent>
-          | ((value: MailEvent) => void),
+          SubscribableObserver<MailEvent> | ((value: MailEvent) => void),
         error?: (err: unknown) => void,
         complete?: () => void,
       ): Unsubscribable => this.subscribe(observerOrNext, error, complete),

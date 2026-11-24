@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, it } from "bun:test";
 import {
   Global,
   Module,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -144,12 +143,12 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_B", got 404. packages/http/src/router/route-compiler.ts only binds module middlewares to scanned controller routes (never unmatched paths); additionally packages/core/src/application/bunest-application.ts (configureModuleMiddlewares) iterates post-order bottom-up topologicalOrder (child before parent) rather than NestJS top-down importing-module-first order.
+      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_B", got 404. packages/core/src/http/router/route-compiler.ts only binds module middlewares to scanned controller routes (never unmatched paths); additionally packages/core/src/application/bunest-application.ts (configureModuleMiddlewares) iterates post-order bottom-up topologicalOrder (child before parent) rather than NestJS top-down importing-module-first order.
       it.skip(`should execute middleware in topological order`, async () => {
         await request(app!).get("/hello").expect(200, RETURN_VALUE_B);
       });
 
-      // BUNEST_BUG: Expected GET /ping (middleware-only route without controller) to return 200 "test_GLOBAL", got 404. packages/http/src/router/route-compiler.ts and packages/http/src/adapter/bun-http.adapter.ts do not run module middlewares on unmatched routes without a controller handler.
+      // BUNEST_BUG: Expected GET /ping (middleware-only route without controller) to return 200 "test_GLOBAL", got 404. packages/core/src/http/router/route-compiler.ts and packages/core/src/http/adapter/bun-http.adapter.ts do not run module middlewares on unmatched routes without a controller handler.
       it.skip("should execute global middleware first", async () => {
         await request(app!).get("/ping").expect(200, RETURN_VALUE_GLOBAL);
       });
@@ -171,7 +170,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_AUTH", got 404. packages/http/src/router/route-compiler.ts does not execute module middlewares on unmatched routes, and packages/core/src/application/bunest-application.ts registers middlewares in bottom-up post-order DFS (LoggerModule before AuthModule) instead of importing-module-first order.
+      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_AUTH", got 404. packages/core/src/http/router/route-compiler.ts does not execute module middlewares on unmatched routes, and packages/core/src/application/bunest-application.ts registers middlewares in bottom-up post-order DFS (LoggerModule before AuthModule) instead of importing-module-first order.
       it.skip("should execute the middleware of the importing module first", async () => {
         await request(app!).get("/hello").expect(200, RETURN_VALUE_AUTH);
       });
@@ -193,7 +192,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_FIRST", got 404. packages/http/src/router/route-compiler.ts and packages/http/src/adapter/bun-http.adapter.ts do not run module middlewares on unmatched routes without a controller handler.
+      // BUNEST_BUG: Expected GET /hello (middleware-only route without controller) to return 200 "test_FIRST", got 404. packages/core/src/http/router/route-compiler.ts and packages/core/src/http/adapter/bun-http.adapter.ts do not run module middlewares on unmatched routes without a controller handler.
       it.skip('should execute the middleware in the order of the "imports" array', async () => {
         await request(app!).get("/hello").expect(200, RETURN_VALUE_FIRST);
       });

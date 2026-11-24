@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { Injectable } from "../../../../../packages/common/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import { Test, describeConformance } from "../../../_helpers";
 
 @Injectable()

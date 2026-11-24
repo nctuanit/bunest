@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 import type { StorageDisk } from "./disks/storage.disk";
 
 /**

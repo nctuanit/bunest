@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import {
   type GraphQLObjectType,
   type GraphQLResolveInfo,
   GraphQLScalarType,
   GraphQLSchema,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Logger } from "../../../../../packages/common/src";
+} from "../../../../../packages/graphql/src";
+import { Logger } from "../../../../../packages/core/src/common";
 import {
   GraphQLFederationFactory,
   GraphQLSchemaBuilderModule,
@@ -46,7 +45,9 @@ describeConformance(
         const transformedEcho = mock(() => "transformed");
         const resolvers: SchemaFirstResolversMap = { Query: { echo } };
 
-        const transformResolvers = mock(() => [{ Query: { echo: transformedEcho } }]);
+        const transformResolvers = mock(() => [
+          { Query: { echo: transformedEcho } },
+        ]);
 
         const schema = await graphqlFederationFactory.generateSchema({
           resolvers,
@@ -62,12 +63,9 @@ describeConformance(
         expect(schema).toBeInstanceOf(GraphQLSchema);
 
         const queryType = schema.getQueryType() as GraphQLObjectType;
-        queryType.getFields().echo?.resolve?.(
-          null,
-          {},
-          {},
-          null as unknown as GraphQLResolveInfo,
-        );
+        queryType
+          .getFields()
+          .echo?.resolve?.(null, {}, {}, null as unknown as GraphQLResolveInfo);
         expect(transformedEcho).toHaveBeenCalled();
         expect(echo).not.toHaveBeenCalled();
       });
@@ -88,12 +86,9 @@ describeConformance(
         expect(schema).toBeInstanceOf(GraphQLSchema);
 
         const queryType = schema.getQueryType() as GraphQLObjectType;
-        queryType.getFields().echo?.resolve?.(
-          null,
-          {},
-          {},
-          null as unknown as GraphQLResolveInfo,
-        );
+        queryType
+          .getFields()
+          .echo?.resolve?.(null, {}, {}, null as unknown as GraphQLResolveInfo);
         expect(echo).toHaveBeenCalled();
       });
 
@@ -133,18 +128,22 @@ describeConformance(
         );
 
         const userType = schema.getType("User") as GraphQLObjectType;
-        await userType.getFields().email?.resolve?.(
-          null,
-          {},
-          {},
-          null as unknown as GraphQLResolveInfo,
-        );
-        await userType.getFields().displayName?.resolve?.(
-          null,
-          {},
-          {},
-          null as unknown as GraphQLResolveInfo,
-        );
+        await userType
+          .getFields()
+          .email?.resolve?.(
+            null,
+            {},
+            {},
+            null as unknown as GraphQLResolveInfo,
+          );
+        await userType
+          .getFields()
+          .displayName?.resolve?.(
+            null,
+            {},
+            {},
+            null as unknown as GraphQLResolveInfo,
+          );
         expect(email).toHaveBeenCalled();
         expect(displayName).toHaveBeenCalled();
       });
@@ -247,12 +246,14 @@ describeConformance(
             const invoice = schema.getType("Invoice") as GraphQLObjectType;
 
             expect(
-              invoice.getFields().owner?.resolve?.(
-                null,
-                {},
-                null,
-                null as unknown as GraphQLResolveInfo,
-              ),
+              invoice
+                .getFields()
+                .owner?.resolve?.(
+                  null,
+                  {},
+                  null,
+                  null as unknown as GraphQLResolveInfo,
+                ),
             ).toBe("PrivateNode");
           },
         );
@@ -273,12 +274,14 @@ describeConformance(
           const invoice = schema.getType("Invoice") as GraphQLObjectType;
 
           expect(
-            invoice.getFields().owner?.resolve?.(
-              null,
-              {},
-              null,
-              null as unknown as GraphQLResolveInfo,
-            ),
+            invoice
+              .getFields()
+              .owner?.resolve?.(
+                null,
+                {},
+                null,
+                null as unknown as GraphQLResolveInfo,
+              ),
           ).toBe("Invoice");
         });
       });

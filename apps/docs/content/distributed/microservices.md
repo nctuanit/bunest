@@ -10,16 +10,17 @@ bun add @bunest/microservices
 
 ## Supported Transports
 
-| Transport | Enum | Description |
-|---|---|---|
-| **TCP** | `Transport.TCP` | Native Bun TCP socket transport with length-prefixed JSON framing |
-| **InMemory** | `Transport.IN_MEMORY` | Zero-network in-process transport for unit/integration tests and modular monoliths |
-| **gRPC** | `Transport.GRPC` | Unary and streaming gRPC service handlers (`@GrpcMethod`, `@GrpcStreamCall`) |
-| **Redis / NATS / RabbitMQ / Kafka / MQTT** | `Transport.REDIS`, `NATS`, `RMQ`, `KAFKA`, `MQTT` | Pluggable broker transports accepting typed client interfaces |
+| Transport                                  | Enum                                              | Description                                                                        |
+| ------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **TCP**                                    | `Transport.TCP`                                   | Native Bun TCP socket transport with length-prefixed JSON framing                  |
+| **InMemory**                               | `Transport.IN_MEMORY`                             | Zero-network in-process transport for unit/integration tests and modular monoliths |
+| **gRPC**                                   | `Transport.GRPC`                                  | Unary and streaming gRPC service handlers (`@GrpcMethod`, `@GrpcStreamCall`)       |
+| **Redis / NATS / RabbitMQ / Kafka / MQTT** | `Transport.REDIS`, `NATS`, `RMQ`, `KAFKA`, `MQTT` | Pluggable broker transports accepting typed client interfaces                      |
 
 ## Hybrid Application & Message Handlers
 
 @@filename(math.controller.ts)
+
 ```ts
 import { Controller } from "@bunest/core";
 import { EventPattern, MessagePattern, Payload } from "@bunest/microservices";
@@ -39,8 +40,8 @@ export class MathController {
 ```
 
 @@filename(main.ts)
+
 ```ts
-import "reflect-metadata";
 import { BunestFactory } from "@bunest/core";
 import { Transport } from "@bunest/microservices";
 import { AppModule } from "./app.module";

@@ -8,21 +8,30 @@ import {
   type ModuleImport,
   type Provider,
   type Type,
-} from "@bunest/common";
-import { BunHttpAdapter } from "@bunest/http";
+} from "../common/index";
+import {
+  extractCallerDir,
+  type AutoModuleManifestLoader,
+} from "../common/decorators/core.decorators";
+import { BunHttpAdapter } from "../http/index";
 import { DIContainer } from "../di/di-container";
 import type {
   BunestApplicationContextOptions,
   ContainerOverrides,
   IEntryNestModule,
 } from "../interfaces/core-types.interface";
-import { ModuleScanner } from "../module/module-scanner";
+import { expandAutoModules, ModuleScanner } from "../module/module-scanner";
 import { BunestApplication } from "./bunest-application";
 import { BunestApplicationContext } from "./bunest-application-context";
 
 export interface BunestCreateOptions extends BunestApplicationContextOptions {
   overrides?: ContainerOverrides;
   httpAdapter?: BunHttpAdapter;
+  /**
+   * Active runtime profiles for evaluating `@Profile(...)` conditional beans.
+   * Overrides `AutoModuleMetadata.profiles`, `BUNEST_PROFILES`, `BUNEST_PROFILE`, and `NODE_ENV`.
+   */
+  profiles?: readonly string[];
 }
 
 export interface BunestCreateAutoOptions extends BunestCreateOptions {
@@ -31,6 +40,11 @@ export interface BunestCreateAutoOptions extends BunestCreateOptions {
   readonly providers?: Provider[];
   readonly exports?: ModuleExport[];
   readonly autoDiscover?: boolean | AutoDiscoverOptions;
+  readonly scan?: string | readonly string[];
+  readonly exclude?: readonly string[];
+  readonly cwd?: string;
+  readonly manifest?: readonly AutoModuleManifestLoader[];
+  readonly filter?: (target: Type<unknown>) => boolean;
 }
 
 function isHttpAdapterInstance(value: unknown): value is BunHttpAdapter {
@@ -46,9 +60,7 @@ function isHttpAdapterInstance(value: unknown): value is BunHttpAdapter {
 
 export type MicroserviceServerFactory<
   T extends MicroserviceInstance = MicroserviceInstance,
-> =
-  | T
-  | ((context: BunestApplicationContext) => T | Promise<T>);
+> = T | ((context: BunestApplicationContext) => T | Promise<T>);
 
 /**
  * Standalone microservice application created via `BunestFactory.createMicroservice()`,
@@ -147,10 +159,16 @@ export class BunestFactory {
       : (adapterOrOptions ?? {});
 
     try {
+      const expandedAutoModules = await expandAutoModules(
+        rootModule,
+        options.overrides?.modules,
+      );
       const scanner = new ModuleScanner();
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
+        profiles: options.profiles,
+        expandedAutoModules,
       });
       const container = new DIContainer(graph, {
         preview: options.preview,
@@ -180,7 +198,8 @@ export class BunestFactory {
   /**
    * Zero-boilerplate application bootstrap: creates an auto-discovering root
    * `@AutoModule` that wires self-registered `@Controller` and `@Injectable`
-   * classes from `DecoratorRegistry` and returns a ready `BunestApplication`.
+   * classes from `DecoratorRegistry` (or scoped `scan` / `manifest`) and returns
+   * a ready `BunestApplication`.
    */
   static async createAuto(
     options: BunestCreateAutoOptions = {},
@@ -191,14 +210,31 @@ export class BunestFactory {
       providers,
       exports: moduleExports,
       autoDiscover,
+      scan,
+      exclude,
+      cwd,
+      manifest,
+      filter,
       ...createOptions
     } = options;
+
+    const resolvedCwd =
+      cwd !== undefined
+        ? cwd
+        : scan !== undefined
+          ? extractCallerDir()
+          : undefined;
 
     @AutoModule({
       ...(imports !== undefined ? { imports } : {}),
       ...(controllers !== undefined ? { controllers } : {}),
       ...(providers !== undefined ? { providers } : {}),
       ...(moduleExports !== undefined ? { exports: moduleExports } : {}),
+      ...(scan !== undefined ? { scan } : {}),
+      ...(exclude !== undefined ? { exclude } : {}),
+      ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
+      ...(manifest !== undefined ? { manifest } : {}),
+      ...(filter !== undefined ? { filter } : {}),
       autoDiscover: autoDiscover ?? true,
     })
     class AutoRootModule {}
@@ -211,10 +247,16 @@ export class BunestFactory {
     options: Omit<BunestCreateOptions, "httpAdapter"> = {},
   ): Promise<BunestApplicationContext> {
     try {
+      const expandedAutoModules = await expandAutoModules(
+        rootModule,
+        options.overrides?.modules,
+      );
       const scanner = new ModuleScanner();
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
+        profiles: options.profiles,
+        expandedAutoModules,
       });
       const container = new DIContainer(graph, {
         preview: options.preview,
@@ -254,10 +296,16 @@ export class BunestFactory {
     options: Omit<BunestCreateOptions, "httpAdapter"> = {},
   ): Promise<BunestMicroserviceApplication<T>> {
     try {
+      const expandedAutoModules = await expandAutoModules(
+        rootModule,
+        options.overrides?.modules,
+      );
       const scanner = new ModuleScanner();
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
+        profiles: options.profiles,
+        expandedAutoModules,
       });
       const container = new DIContainer(graph, {
         preview: options.preview,

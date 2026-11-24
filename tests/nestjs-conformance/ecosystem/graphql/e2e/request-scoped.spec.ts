@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   type CallHandler,
@@ -13,7 +12,7 @@ import {
   Scope,
   UseGuards,
   UseInterceptors,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CONTEXT,

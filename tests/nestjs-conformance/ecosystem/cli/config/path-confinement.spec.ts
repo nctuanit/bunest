@@ -1,15 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+  join,
+  mkdirSyncPath,
+  removePath,
+  resolve,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   loadCliConfiguration,
   parseSchematicName,
@@ -19,6 +15,22 @@ import {
   writePlannedFiles,
 } from "../../../../../packages/cli/src";
 import { describeConformance } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
+
+function createSymlink(target: string, linkPath: string): void {
+  const res = Bun.spawnSync(["ln", "-s", target, linkPath]);
+  if (res.exitCode !== 0) {
+    throw new Error(`Failed to create symlink ${linkPath} -> ${target}`);
+  }
+}
 
 describeConformance(
   "Path Confinement & Traversal Safety",
@@ -35,23 +47,21 @@ describeConformance(
     const createdLinks: string[] = [];
 
     beforeEach(() => {
-      projectRoot = mkdtempSync(join(tmpdir(), "bunest-cli-conf-confinement-"));
-      outsideDir = mkdtempSync(
-        join(tmpdir(), "bunest-cli-conf-confinement-outside-"),
-      );
+      projectRoot = makeTempDir("bunest-cli-conf-confinement-");
+      outsideDir = makeTempDir("bunest-cli-conf-confinement-outside-");
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       while (createdLinks.length > 0) {
         const link = createdLinks.pop()!;
         try {
-          unlinkSync(link);
+          await removePath(link, { force: true });
         } catch {
           // ignore if already removed
         }
       }
-      rmSync(projectRoot, { recursive: true, force: true });
-      rmSync(outsideDir, { recursive: true, force: true });
+      await removePath(projectRoot, { recursive: true, force: true });
+      await removePath(outsideDir, { recursive: true, force: true });
     });
 
     describe("allowOutsidePaths configuration loading", () => {
@@ -63,27 +73,25 @@ describeConformance(
       });
 
       it("should preserve explicit allowOutsidePaths: false", async () => {
-        writeFileSync(
+        writeTextSync(
           join(projectRoot, "bunest.json"),
           JSON.stringify({ compilerOptions: { allowOutsidePaths: false } }),
-          "utf8",
         );
         const loaded = await loadCliConfiguration(projectRoot);
         expect(loaded.config.compilerOptions?.allowOutsidePaths).toBe(false);
       });
 
       it("should preserve explicit allowOutsidePaths: true", async () => {
-        writeFileSync(
+        writeTextSync(
           join(projectRoot, "bunest.json"),
           JSON.stringify({ compilerOptions: { allowOutsidePaths: true } }),
-          "utf8",
         );
         const loaded = await loadCliConfiguration(projectRoot);
         expect(loaded.config.compilerOptions?.allowOutsidePaths).toBe(true);
       });
 
       it("should read per-project allowOutsidePaths in a monorepo", async () => {
-        writeFileSync(
+        writeTextSync(
           join(projectRoot, "bunest.json"),
           JSON.stringify({
             monorepo: true,
@@ -92,7 +100,6 @@ describeConformance(
               "other-app": { compilerOptions: {} },
             },
           }),
-          "utf8",
         );
         const loaded = await loadCliConfiguration(projectRoot);
         expect(
@@ -122,9 +129,9 @@ describeConformance(
       });
 
       it("should reject a path escaping through '..'", () => {
-        expect(() =>
-          resolveSafeChildPath(projectRoot, "../outside"),
-        ).toThrow(/Unsafe target path|escapes base directory/);
+        expect(() => resolveSafeChildPath(projectRoot, "../outside")).toThrow(
+          /Unsafe target path|escapes base directory/,
+        );
       });
 
       it("should reject an absolute path outside the project", () => {
@@ -153,9 +160,7 @@ describeConformance(
         expect(() => parseSchematicName("../escape")).toThrow(
           /path-traversal segments/,
         );
-        expect(() => parseSchematicName("/abs/path")).toThrow(
-          /absolute paths/,
-        );
+        expect(() => parseSchematicName("/abs/path")).toThrow(/absolute paths/);
       });
 
       // BUNEST_BUG: resolveSafeChildPath() uses `rel.startsWith("..")` instead of checking `rel === ".." || rel.startsWith(".." + sep)`, falsely rejecting legitimate in-project directory names starting with ".." like `"..cache"` (packages/cli/src/utils/naming.ts:146)
@@ -173,13 +178,10 @@ describeConformance(
       });
 
       describe("with symlinks", () => {
-        const linkType: "junction" | "dir" =
-          process.platform === "win32" ? "junction" : "dir";
-
         // BUNEST_BUG: resolveSafeChildPath() performs lexical `path.resolve`/`path.relative` only and does not resolve symlinks via `realpathSync`, allowing symlinked directories pointing outside projectRoot to pass confinement (packages/cli/src/utils/naming.ts:138-152)
         it.skip("should reject a symlink pointing outside the project", () => {
           const linkPath = join(projectRoot, "dist");
-          symlinkSync(outsideDir, linkPath, linkType);
+          createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
 
           expect(() => resolveSafeChildPath(projectRoot, "dist")).toThrow(
@@ -190,7 +192,7 @@ describeConformance(
         // BUNEST_BUG: resolveSafeChildPath() does not resolve ancestor symlinks via `realpathSync`, allowing nested writes through a symlink escaping projectRoot (packages/cli/src/utils/naming.ts:138-152)
         it.skip("should reject a path nested under a symlinked directory pointing outside", () => {
           const linkPath = join(projectRoot, "dist");
-          symlinkSync(outsideDir, linkPath, linkType);
+          createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
 
           expect(() =>
@@ -203,8 +205,8 @@ describeConformance(
         it("should accept a symlink that stays inside the project", () => {
           const buildDir = join(projectRoot, "build");
           const linkPath = join(projectRoot, "dist");
-          mkdirSync(buildDir);
-          symlinkSync(buildDir, linkPath, linkType);
+          mkdirSyncPath(buildDir);
+          createSymlink(buildDir, linkPath);
           createdLinks.push(linkPath);
 
           expect(() =>
@@ -214,9 +216,9 @@ describeConformance(
 
         it("should allow lexical paths inside the project when symlinks are not dereferenced", () => {
           const linkPath = join(projectRoot, "node_modules");
-          symlinkSync(outsideDir, linkPath, linkType);
+          createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
-          writeFileSync(join(outsideDir, "tsconfig.tsbuildinfo"), "", "utf8");
+          writeTextSync(join(outsideDir, "tsconfig.tsbuildinfo"), "");
 
           expect(() =>
             resolveSafeChildPath(

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/common";
+import { Inject, Injectable, Optional } from "@bunest/core";
 import { ResilienceEvents } from "../events/resilience-events.service";
 import type { OutboundRateLimitOptions } from "../interfaces/outbound-rate-limit-options.interface";
 import type { ResilienceModuleOptions } from "../interfaces/resilience-module-options.interface";

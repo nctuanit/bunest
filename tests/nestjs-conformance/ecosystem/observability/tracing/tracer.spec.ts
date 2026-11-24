@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -11,7 +10,7 @@ import {
   Post,
   type MiddlewareConsumer,
   type NestModule,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   InMemorySpanExporter,
   MetricsRegistry,
@@ -79,9 +78,9 @@ describeConformance(
         });
 
         expect(result).toBe("eventually");
-        expect(exporter.findByName("async work")[0]!.durationMs).toBeGreaterThanOrEqual(
-          0,
-        );
+        expect(
+          exporter.findByName("async work")[0]!.durationMs,
+        ).toBeGreaterThanOrEqual(0);
       });
 
       it("records nested child spans under the active parent in the same trace and restores parent after child finishes", async () => {
@@ -397,9 +396,9 @@ describeConformance(
         try {
           const tracer = asyncMod.get(Tracer);
           await tracer.startActiveSpan("boot", () => "ok");
-          expect(memExporter.findByName("boot")[0]!.resource["service.name"]).toBe(
-            "async-traced-service",
-          );
+          expect(
+            memExporter.findByName("boot")[0]!.resource["service.name"],
+          ).toBe("async-traced-service");
         } finally {
           await asyncMod.close();
         }

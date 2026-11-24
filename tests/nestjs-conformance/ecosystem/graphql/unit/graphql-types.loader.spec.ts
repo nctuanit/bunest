@@ -1,8 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  ensureDir,
+  join,
+  removePath,
+} from "../../../../../packages/core/src";
 import { GraphQLTypesLoader } from "../../../../../packages/graphql/src";
 import { describeConformance } from "../../../_helpers/index";
 
@@ -16,19 +17,23 @@ describeConformance(
     let directory: string;
 
     beforeEach(async () => {
-      directory = await mkdtemp(join(tmpdir(), "nestjs-graphql-types-"));
+      directory = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `nestjs-graphql-types-${crypto.randomUUID()}`,
+      );
+      await ensureDir(directory);
     });
 
     afterEach(async () => {
-      await rm(directory, { force: true, recursive: true });
+      await removePath(directory, { force: true, recursive: true });
     });
 
     it("loads type definitions from glob patterns", async () => {
-      await writeFile(
+      await Bun.write(
         join(directory, "cat.graphql"),
         "type Cat { id: ID!, name: String! }",
       );
-      await writeFile(
+      await Bun.write(
         join(directory, "query.graphql"),
         "type Query { cat: Cat }",
       );

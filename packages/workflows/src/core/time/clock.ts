@@ -1,5 +1,5 @@
-import type { Clock } from '../interfaces/clock.interface';
-import { type Duration, parseDuration } from './duration';
+import type { Clock } from "../interfaces/clock.interface";
+import { type Duration, parseDuration } from "./duration";
 
 /**
  * The clock of the real world: `Date.now()`.

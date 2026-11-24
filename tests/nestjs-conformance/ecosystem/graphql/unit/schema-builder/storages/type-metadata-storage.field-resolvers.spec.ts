@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import {
   type GraphQLField,
@@ -8,7 +7,7 @@ import {
   type GraphQLObjectType,
   type GraphQLSchema,
   getNamedType,
-} from "../../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../../packages/graphql/src";
 import {
   Args,
   Directive,

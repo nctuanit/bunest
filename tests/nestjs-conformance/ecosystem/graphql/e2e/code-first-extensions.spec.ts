@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   GraphQLNonNull,
   type GraphQLObjectType,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Injectable, Module } from "../../../../../packages/common/src";
+} from "../../../../../packages/graphql/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,

@@ -6,7 +6,7 @@ import {
   Injectable,
   Module,
   Post,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   Bulkhead,
@@ -125,8 +125,15 @@ describe("@bunest/resilience module & HTTP integration", () => {
           defaults: { timeout: "2s" },
           presets: {
             external: {
-              retry: { attempts: 2, backoff: { delay: 1, factor: 1, jitter: "none" } },
-              circuitBreaker: { minimumCalls: 2, failureRateThreshold: 50, openDuration: "5s" },
+              retry: {
+                attempts: 2,
+                backoff: { delay: 1, factor: 1, jitter: "none" },
+              },
+              circuitBreaker: {
+                minimumCalls: 2,
+                failureRateThreshold: 50,
+                openDuration: "5s",
+              },
               timeout: "500ms",
             },
           },
@@ -172,7 +179,10 @@ describe("@bunest/resilience module & HTTP integration", () => {
     expect(timeoutSignalAborted).toBe(true);
 
     // 5. @Fallback method recovers server error
-    const r5 = await app.inject({ method: "GET", url: "/items/fallback-method" });
+    const r5 = await app.inject({
+      method: "GET",
+      url: "/items/fallback-method",
+    });
     expect(r5.statusCode).toBe(200);
     expect(r5.json()).toEqual({ recovered: "upstream-down" });
 
@@ -184,8 +194,12 @@ describe("@bunest/resilience module & HTTP integration", () => {
     expect(r6.statusCode).toBe(400);
 
     // 7. @CircuitBreaker opens after 2 failures and responds 503 with Retry-After
-    expect((await app.inject({ method: "GET", url: "/items/breaker" })).statusCode).toBe(500);
-    expect((await app.inject({ method: "GET", url: "/items/breaker" })).statusCode).toBe(500);
+    expect(
+      (await app.inject({ method: "GET", url: "/items/breaker" })).statusCode,
+    ).toBe(500);
+    expect(
+      (await app.inject({ method: "GET", url: "/items/breaker" })).statusCode,
+    ).toBe(500);
     const r7 = await app.inject({ method: "GET", url: "/items/breaker" });
     expect(r7.statusCode).toBe(503);
     expect(r7.headers["retry-after"]).toBeDefined();
@@ -198,14 +212,19 @@ describe("@bunest/resilience module & HTTP integration", () => {
     await delay(10);
     const bh2 = await app.inject({ method: "GET", url: "/items/bulkhead" });
     expect(bh2.statusCode).toBe(503);
-    expect(bh2.json()).toMatchObject({ statusCode: 503, code: "BULKHEAD_FULL" });
+    expect(bh2.json()).toMatchObject({
+      statusCode: 503,
+      code: "BULKHEAD_FULL",
+    });
     expect(service.bulkhead("shared-bh").active).toBe(1);
     expect(service.bulkheads().length).toBeGreaterThanOrEqual(1);
     releaseBulkhead();
     expect((await bh1Promise).statusCode).toBe(200);
 
     // 9. Preset route & ResilienceService.preset() share breaker
-    expect((await app.inject({ method: "GET", url: "/items/preset" })).statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: "/items/preset" })).statusCode,
+    ).toBe(200);
     const presetPolicy = service.preset("external");
     expect(await presetPolicy.execute(() => "ok")).toBe("ok");
     expect(service.circuitBreaker("external").state).toBe("closed");
@@ -250,8 +269,12 @@ describe("@bunest/resilience module & HTTP integration", () => {
     await app.init();
     const service = app.get(ResilienceService);
     expect(await service.preset("billing").execute(() => "paid")).toBe("paid");
-    expect(() => service.preset("missing")).toThrow(/Unknown resilience preset/);
-    expect(() => service.circuitBreaker("missing")).toThrow(/Unknown circuit breaker/);
+    expect(() => service.preset("missing")).toThrow(
+      /Unknown resilience preset/,
+    );
+    expect(() => service.circuitBreaker("missing")).toThrow(
+      /Unknown circuit breaker/,
+    );
     expect(() => service.bulkhead("missing")).toThrow(/Unknown bulkhead/);
     await app.close();
 
@@ -268,7 +291,9 @@ describe("@bunest/resilience module & HTTP integration", () => {
     })
     class FactoryAppModule {}
 
-    const factoryApp = await BunestFactory.create(FactoryAppModule, { logger: false });
+    const factoryApp = await BunestFactory.create(FactoryAppModule, {
+      logger: false,
+    });
     await factoryApp.init();
     const factoryEvents = factoryApp.get(ResilienceEvents);
     const factorySvc = factoryApp.get(ResilienceService);
@@ -278,11 +303,21 @@ describe("@bunest/resilience module & HTTP integration", () => {
         iterEvents.push(ev);
       }
     })();
-    const retryP = factorySvc.create({
-      retry: { attempts: 2, backoff: { delay: 1, factor: 1, jitter: "none" } },
-    }, "iter-test");
+    const retryP = factorySvc.create(
+      {
+        retry: {
+          attempts: 2,
+          backoff: { delay: 1, factor: 1, jitter: "none" },
+        },
+      },
+      "iter-test",
+    );
     let n = 0;
-    expect(await retryP.execute(() => (++n === 1 ? Promise.reject(new Error("once")) : "ok"))).toBe("ok");
+    expect(
+      await retryP.execute(() =>
+        ++n === 1 ? Promise.reject(new Error("once")) : "ok",
+      ),
+    ).toBe("ok");
     await factoryApp.close();
     await reader;
     expect(iterEvents.length).toBe(1);
@@ -305,7 +340,9 @@ describe("@bunest/resilience module & HTTP integration", () => {
     })
     class BadFallbackModule {}
 
-    const app1 = await BunestFactory.create(BadFallbackModule, { logger: false });
+    const app1 = await BunestFactory.create(BadFallbackModule, {
+      logger: false,
+    });
     await expect(app1.init()).rejects.toThrow(/has no method "doesNotExist"/);
 
     @Controller("bad-timeout")
@@ -323,7 +360,9 @@ describe("@bunest/resilience module & HTTP integration", () => {
     })
     class BadTimeoutModule {}
 
-    const app2 = await BunestFactory.create(BadTimeoutModule, { logger: false });
+    const app2 = await BunestFactory.create(BadTimeoutModule, {
+      logger: false,
+    });
     await expect(app2.init()).rejects.toThrow(/no defaults\.timeout/);
 
     @Controller("conflict")

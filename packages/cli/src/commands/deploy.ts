@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve } from "@bunest/core";
 import { loadCliConfiguration } from "../config/configuration.loader";
 import type {
   CliIO,
@@ -57,7 +57,7 @@ export async function deployProject(
       io.stdout(`Running deploy command: ${cmd.join(" ")}`);
     }
     const spawn = options.spawn ?? defaultSpawn;
-    const { exitCode } = await spawn(cmd, { cwd, env: process.env });
+    const { exitCode } = await spawn(cmd, { cwd, env: Bun.env });
     return {
       success: exitCode === 0,
       dryRun: false,

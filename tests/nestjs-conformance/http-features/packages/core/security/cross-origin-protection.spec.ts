@@ -1,13 +1,12 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   ForbiddenException,
   RequestMethod,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   compileCsrfProtection,
   type CompiledCsrfProtection,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import {
   createSpy,
   describeConformance,
@@ -26,9 +25,10 @@ function makeReq(
     }
   }
   // Construct a synthetic Request even for non-canonical paths by preserving raw pathname
-  const fullUrl = url.startsWith("http://") || url.startsWith("https://")
-    ? url
-    : `http://app.example${url.startsWith("/") ? url : `/${url}`}`;
+  const fullUrl =
+    url.startsWith("http://") || url.startsWith("https://")
+      ? url
+      : `http://app.example${url.startsWith("/") ? url : `/${url}`}`;
   const req = new Request(fullUrl, { method, headers: cleanHeaders });
   const qIdx = url.indexOf("?");
   const pathname = qIdx === -1 ? url : url.slice(0, qIdx);
@@ -76,18 +76,16 @@ describeConformance(
       ];
 
       const rows: Row[] = [
-        ...(["GET", "HEAD", "OPTIONS"] as const).map(
-          (method): Row => [
-            `${method} cross-site`,
-            method,
-            {
-              "sec-fetch-site": "cross-site",
-              origin: "https://evil.example",
-              host: "app.example",
-            },
-            true,
-          ],
-        ),
+        ...(["GET", "HEAD", "OPTIONS"] as const).map((method): Row => [
+          `${method} cross-site`,
+          method,
+          {
+            "sec-fetch-site": "cross-site",
+            origin: "https://evil.example",
+            host: "app.example",
+          },
+          true,
+        ]),
         [
           "POST same-origin",
           "POST",
@@ -258,7 +256,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: CSRF Origin vs Host comparison fails when Host explicitly includes the scheme's default port (443/80) because URL.host strips default ports (packages/http/src/security/csrf-protection.ts).
+      // BUNEST_BUG: CSRF Origin vs Host comparison fails when Host explicitly includes the scheme's default port (443/80) because URL.host strips default ports (packages/core/src/http/security/csrf-protection.ts).
       it.skip("allows Origin host matching Host with default port of its scheme (443/80/IPv6)", () => {
         expect(
           checkAllowed(protection, "POST", "/items", {
@@ -324,7 +322,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: normalizeOrigin rejects non-http/https schemes such as chrome-extension:// (packages/http/src/security/csrf-protection.ts:15-30).
+      // BUNEST_BUG: normalizeOrigin rejects non-http/https schemes such as chrome-extension:// (packages/core/src/http/security/csrf-protection.ts:15-30).
       it.skip("supports non-http/https serialized origins like chrome-extension://", () => {
         const p = compileCsrfProtection({
           trustedOrigins: ["chrome-extension://abcdef"],
@@ -355,7 +353,7 @@ describeConformance(
         ).toThrow(/Invalid trusted origin/);
       });
 
-      // BUNEST_BUG: normalizeOrigin relies on new URL() which normalizes away credentials, dot-segments, and backslashes instead of rejecting them (packages/http/src/security/csrf-protection.ts:15-30).
+      // BUNEST_BUG: normalizeOrigin relies on new URL() which normalizes away credentials, dot-segments, and backslashes instead of rejecting them (packages/core/src/http/security/csrf-protection.ts:15-30).
       it.skip.each([
         "https://user:pass@example.com",
         "https://example.com/.",
@@ -414,9 +412,7 @@ describeConformance(
 
         it("matches exact RouteInfo entries and ignores the query string", () => {
           const p = compileCsrfProtection({
-            exclude: [
-              { path: "payments/callback", method: RequestMethod.PUT },
-            ],
+            exclude: [{ path: "payments/callback", method: RequestMethod.PUT }],
           });
           expect(isExcluded(p, "/payments/callback", "PUT")).toBe(true);
           expect(isExcluded(p, "/payments/callback?x=1", "PUT")).toBe(true);
@@ -424,7 +420,7 @@ describeConformance(
           expect(isExcluded(p, "/items")).toBe(false);
         });
 
-        // BUNEST_BUG: compileCsrfProtection exclude matching only performs exact pathname equality and does not support wildcard patterns like "webhooks/*path" (packages/http/src/security/csrf-protection.ts).
+        // BUNEST_BUG: compileCsrfProtection exclude matching only performs exact pathname equality and does not support wildcard patterns like "webhooks/*path" (packages/core/src/http/security/csrf-protection.ts).
         it.skip("matches wildcard path exclusions like webhooks/*path", () => {
           const p = compileCsrfProtection({
             exclude: ["webhooks/*path"],
@@ -433,7 +429,7 @@ describeConformance(
           expect(isExcluded(p, "/items")).toBe(false);
         });
 
-        // BUNEST_BUG: compileCsrfProtection pushes BOTH the unprefixed and prefixed exclude paths when globalPrefix is set (packages/http/src/security/csrf-protection.ts:97-101), erroneously excluding unprefixed "/webhooks".
+        // BUNEST_BUG: compileCsrfProtection pushes BOTH the unprefixed and prefixed exclude paths when globalPrefix is set (packages/core/src/http/security/csrf-protection.ts:97-101), erroneously excluding unprefixed "/webhooks".
         it.skip("adds the global prefix and only matches the prefixed path", () => {
           const p = compileCsrfProtection({ exclude: ["webhooks"] }, "/api/");
           expect(isExcluded(p, "/api/webhooks")).toBe(true);

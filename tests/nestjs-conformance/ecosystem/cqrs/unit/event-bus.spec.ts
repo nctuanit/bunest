@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   afterEach,
   beforeEach,
@@ -8,14 +7,14 @@ import {
   jest,
   spyOn,
 } from "bun:test";
-import { Logger } from "../../../../../packages/common/src";
+import { Logger } from "../../../../../packages/core/src/common";
 import {
   CommandBus,
   EventBus,
   UnhandledExceptionBus,
   type CqrsModuleOptions,
   type ISaga,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 import { describeConformance, itAdapted } from "../../../_helpers";
 
 class OrderEvent {
@@ -99,7 +98,7 @@ describeConformance(
       });
 
       describe("by default", () => {
-        // BUNEST_BUG: Expected EventBus default sagaErrorStrategy (when omitted) to behave as "complete" and stop reacting to later events after a saga throws, but packages/cqrs/src/event-bus.ts handleSagaFailure() only disables the saga when sagaErrorStrategy === "complete" explicitly (leaves it active when undefined).
+        // BUNEST_BUG: Expected EventBus default sagaErrorStrategy (when omitted) to behave as "complete" and stop reacting to later events after a saga throws, but packages/messaging/src/cqrs/event-bus.ts handleSagaFailure() only disables the saga when sagaErrorStrategy === "complete" explicitly (leaves it active when undefined).
         it.skip("should stop reacting to later events [ADR-008: zero-RxJS saga function]", async () => {
           createEventBus();
           registerSaga(throwOnInvalid);
@@ -139,7 +138,7 @@ describeConformance(
       describe('with sagaErrorStrategy set to "resubscribe"', () => {
         beforeEach(() => createEventBus({ sagaErrorStrategy: "resubscribe" }));
 
-        // BUNEST_BUG: Expected EventBus.handleSagaFailure() to log unhandled saga exceptions via Logger.prototype.error (12 times), but packages/cqrs/src/event-bus.ts never logs saga errors to Logger (loggerSpy called 0 times; recovery & error count themselves work).
+        // BUNEST_BUG: Expected EventBus.handleSagaFailure() to log unhandled saga exceptions via Logger.prototype.error (12 times), but packages/messaging/src/cqrs/event-bus.ts never logs saga errors to Logger (loggerSpy called 0 times; recovery & error count themselves work).
         it.skip("should keep reacting to events after errors on separate events [ADR-008: zero-RxJS saga resubscribe recovery]", async () => {
           registerSaga(throwOnInvalid);
 
@@ -400,7 +399,7 @@ describeConformance(
       });
 
       describe("with rethrowUnhandled set", () => {
-        // BUNEST_BUG: Expected rethrowUnhandled: true to rethrow without publishing to UnhandledExceptionBus and without continuing to run the saga, but packages/cqrs/src/event-bus.ts handleSagaFailure() publishes to UnhandledExceptionBus before checking rethrowUnhandled and does not disable the saga.
+        // BUNEST_BUG: Expected rethrowUnhandled: true to rethrow without publishing to UnhandledExceptionBus and without continuing to run the saga, but packages/messaging/src/cqrs/event-bus.ts handleSagaFailure() publishes to UnhandledExceptionBus before checking rethrowUnhandled and does not disable the saga.
         it.skip("should rethrow instead of publishing or resubscribing [ADR-008: zero-RxJS rethrowUnhandled rejects publish() directly]", async () => {
           createEventBus({
             rethrowUnhandled: true,
@@ -408,9 +407,9 @@ describeConformance(
           });
           registerSaga(throwOnInvalid);
 
-          await expect(
-            eventBus.publish(new OrderEvent(false)),
-          ).rejects.toThrow("invalid order");
+          await expect(eventBus.publish(new OrderEvent(false))).rejects.toThrow(
+            "invalid order",
+          );
           await advanceTimersByTimeAsync(60_000);
           await eventBus.publish(new OrderEvent(true));
           await advanceTimersByTimeAsync(0);

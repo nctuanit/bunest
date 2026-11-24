@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
 import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
-} from "@bunest/common";
+} from "@bunest/core";
 import { StorageDisk } from "../disks/storage.disk";
 import type { UploadToDiskOptions } from "../interfaces/module-options.interface";
 import type {
@@ -22,9 +21,19 @@ import { storageForRequest } from "./app-registry.util";
 const DEFAULT_SAMPLE_BYTES = 4096;
 const MAX_SAMPLE_BYTES = 65536;
 
+interface UploadFileLike {
+  readonly stream?: AsyncIterable<Uint8Array>;
+  readonly file?: AsyncIterable<Uint8Array>;
+  readonly fieldname?: unknown;
+  readonly originalname?: unknown;
+  readonly mimetype?: unknown;
+  readonly truncated?: unknown;
+  readonly key?: unknown;
+}
+
 function resolveDiskFromOptions(
   diskOption: string | StorageDisk | undefined,
-  req: any,
+  req: unknown,
 ): { disk: StorageDisk; diskName?: string } {
   if (diskOption instanceof StorageDisk) {
     return { disk: diskOption };
@@ -78,8 +87,11 @@ export function uploadToDisk(
       void (async () => {
         try {
           const { disk, diskName } = resolveDiskFromOptions(options.disk, req);
+          const uploadFile = (
+            file && typeof file === "object" ? file : {}
+          ) as UploadFileLike;
           const stream: AsyncIterable<Uint8Array> | undefined =
-            file?.stream ?? file?.file;
+            uploadFile.stream ?? uploadFile.file;
           if (!stream || typeof stream[Symbol.asyncIterator] !== "function") {
             throw new TypeError("Upload file is missing a readable stream");
           }
@@ -109,9 +121,9 @@ export function uploadToDisk(
 
           let detected = detectContentType(sampleSlice);
           const baseInfo: UploadFileInfo = {
-            fieldname: String(file.fieldname ?? ""),
-            originalname: String(file.originalname ?? ""),
-            mimetype: String(file.mimetype ?? ""),
+            fieldname: String(uploadFile.fieldname ?? ""),
+            originalname: String(uploadFile.originalname ?? ""),
+            mimetype: String(uploadFile.mimetype ?? ""),
             contentType: undefined,
             extension: "",
           };
@@ -141,10 +153,12 @@ export function uploadToDisk(
 
           const key = options.key
             ? await options.key(info, req)
-            : `${randomUUID()}${extension}`;
+            : `${crypto.randomUUID()}${extension}`;
 
           const storedContentType = detected ?? DEFAULT_CONTENT_TYPE;
-          const userMeta = options.metadata ? options.metadata(info, req) : undefined;
+          const userMeta = options.metadata
+            ? options.metadata(info, req)
+            : undefined;
 
           const replayStream: AsyncIterable<Buffer> = {
             async *[Symbol.asyncIterator]() {
@@ -163,7 +177,7 @@ export function uploadToDisk(
                   }
                 }
               }
-              if (file?.truncated) {
+              if (uploadFile.truncated) {
                 throw new PayloadTooLargeException("Uploaded file too large");
               }
             },
@@ -194,9 +208,12 @@ export function uploadToDisk(
     _removeFile(req, file, callback) {
       void (async () => {
         try {
-          if (file?.key) {
+          const uploadFile = (
+            file && typeof file === "object" ? file : undefined
+          ) as UploadFileLike | undefined;
+          if (uploadFile?.key) {
             const { disk } = resolveDiskFromOptions(options.disk, req);
-            await disk.delete(String(file.key));
+            await disk.delete(String(uploadFile.key));
           }
           callback(null);
         } catch (err) {

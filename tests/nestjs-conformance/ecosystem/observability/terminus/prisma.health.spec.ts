@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   HealthIndicatorService,
@@ -18,7 +17,8 @@ type AssertEqual<A, B> =
 describeConformance(
   "PrismaHealthIndicator",
   {
-    upstreamPath: "terminus/lib/health-indicator/database/prisma.health.spec.ts",
+    upstreamPath:
+      "terminus/lib/health-indicator/database/prisma.health.spec.ts",
     category: "DIRECT_PORT",
     notes:
       "Direct port of upstream @nestjs/terminus PrismaHealthIndicator unit tests against @bunest/observability.",

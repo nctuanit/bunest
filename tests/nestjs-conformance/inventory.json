@@ -634,8 +634,7 @@
         }
       ],
       "bunestPackages": [
-        "@bunest/sql",
-        "@bunest/sqlite"
+        "@bunest/orm"
       ],
       "stats": {
         "totalFiles": 18,
@@ -648,37 +647,6 @@
         "portedCallSiteTests": 17,
         "portedExpandedTests": 22,
         "totalLines": 1020
-      }
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "githubUrl": "https://github.com/nestjs/drizzle.git",
-      "status": "cloned",
-      "branch": "master",
-      "commitSha": "6bb2f913b65bde32258e1ffca0fa42a4d3ff6f2f",
-      "commitDate": "2026-11-20T09:52:59Z",
-      "commitSubject": "chore(deps): update dependency @electric-sql/pglite to v0.5.17 (#67)",
-      "packages": [
-        {
-          "name": "@nestjs/drizzle",
-          "version": "0.0.2"
-        }
-      ],
-      "bunestPackages": [
-        "@bunest/sql"
-      ],
-      "stats": {
-        "totalFiles": 8,
-        "directPortFiles": 0,
-        "adaptedPortFiles": 5,
-        "portedFiles": 5,
-        "excludedFiles": 3,
-        "totalCallSiteTests": 44,
-        "totalExpandedTests": 62,
-        "portedCallSiteTests": 28,
-        "portedExpandedTests": 42,
-        "totalLines": 1185
       }
     },
     {
@@ -8027,25 +7995,23 @@
     {
       "phase": "phase-2-group-b",
       "id": "eco-bucket-8",
-      "name": "persistence-sql-sqlite-orm",
+      "name": "persistence-orm",
       "targetDirs": [
         "tests/nestjs-conformance/ecosystem/persistence"
       ],
       "bunestPackages": [
-        "@bunest/sql",
-        "@bunest/sqlite"
+        "@bunest/orm"
       ],
       "repos": [
         "typeorm (reference patterns)",
-        "drizzle",
         "bun-native-persistence-plan"
       ],
-      "description": "Persistence: NestJS DI/async/multi-connection/repository/shutdown conformance patterns adapted from @nestjs/typeorm (9 specs) and @nestjs/drizzle (5 specs), plus 8 comprehensive Bun-native persistence specs for @bunest/sql & @bunest/sqlite (forRoot/Async/forFeature, nested SAVEPOINTs, ALS propagation, concurrent FIFO locking, migrations, BaseSqliteRepository CRUD, Drizzle/Prisma lifecycle proxies, and SQL-injection security checks).",
-      "upstreamFileCount": 14,
+      "description": "Persistence: NestJS DI/async/multi-connection/repository/shutdown conformance patterns adapted from @nestjs/typeorm (9 specs) plus 8 comprehensive Bun-native persistence specs for @bunest/orm (forRoot/Async/forFeature, @OrmRepository/CrudRepository, nested SAVEPOINTs, @Transactional ALS propagation, concurrent FIFO locking, OrmMigrationRunner, Repository CRUD, 6 Bun-native drivers, Store Kit subpaths, and SQL-injection security checks).",
+      "upstreamFileCount": 9,
       "directPortFiles": 0,
-      "adaptedPortFiles": 14,
+      "adaptedPortFiles": 9,
       "supplementalSpecFiles": 8,
-      "totalTargetFiles": 22,
+      "totalTargetFiles": 17,
       "upstreamCallSiteTests": 45,
       "upstreamExpandedTests": 64,
       "supplementalEstimatedTests": 154,
@@ -8133,55 +8099,10 @@
           "expandedTests": 7
         },
         {
-          "kind": "upstream",
-          "repo": "drizzle",
-          "upstreamPath": "tests/e2e/drizzle-connection-options.spec.ts",
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-connection-options.spec.ts",
-          "classification": "ADAPTED_PORT",
-          "callSiteTests": 4,
-          "expandedTests": 6
-        },
-        {
-          "kind": "upstream",
-          "repo": "drizzle",
-          "upstreamPath": "tests/e2e/drizzle-multiple-connections.spec.ts",
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-multiple-connections.spec.ts",
-          "classification": "ADAPTED_PORT",
-          "callSiteTests": 2,
-          "expandedTests": 2
-        },
-        {
-          "kind": "upstream",
-          "repo": "drizzle",
-          "upstreamPath": "tests/e2e/drizzle-registration.spec.ts",
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-registration.spec.ts",
-          "classification": "ADAPTED_PORT",
-          "callSiteTests": 7,
-          "expandedTests": 9
-        },
-        {
-          "kind": "upstream",
-          "repo": "drizzle",
-          "upstreamPath": "tests/e2e/drizzle-shutdown.spec.ts",
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-shutdown.spec.ts",
-          "classification": "ADAPTED_PORT",
-          "callSiteTests": 13,
-          "expandedTests": 13
-        },
-        {
-          "kind": "upstream",
-          "repo": "drizzle",
-          "upstreamPath": "tests/e2e/drizzle.spec.ts",
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-module-modes.e2e.spec.ts",
-          "classification": "ADAPTED_PORT",
-          "callSiteTests": 2,
-          "expandedTests": 12
-        },
-        {
           "kind": "bun-native-persistence",
           "repo": "bunest-persistence",
           "upstreamPath": null,
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/sql-module-di-and-multi-connection.spec.ts",
+          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-multi-connection-and-store-kit.spec.ts",
           "classification": "BUN_NATIVE_CONFORMANCE",
           "estimatedTests": 18
         },
@@ -8189,7 +8110,7 @@
           "kind": "bun-native-persistence",
           "repo": "bunest-persistence",
           "upstreamPath": null,
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/sqlite-module-di-and-for-feature.spec.ts",
+          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-module-di-and-declarative-repositories.spec.ts",
           "classification": "BUN_NATIVE_CONFORMANCE",
           "estimatedTests": 22
         },
@@ -8221,7 +8142,7 @@
           "kind": "bun-native-persistence",
           "repo": "bunest-persistence",
           "upstreamPath": null,
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/base-sqlite-repository.spec.ts",
+          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-repository-and-crud.spec.ts",
           "classification": "BUN_NATIVE_CONFORMANCE",
           "estimatedTests": 22
         },
@@ -8229,7 +8150,7 @@
           "kind": "bun-native-persistence",
           "repo": "bunest-persistence",
           "upstreamPath": null,
-          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/drizzle-and-prisma-lifecycle.spec.ts",
+          "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-drivers-and-replication.spec.ts",
           "classification": "BUN_NATIVE_CONFORMANCE",
           "estimatedTests": 20
         },
@@ -8268,20 +8189,20 @@
       "classification": "SUPPLEMENTAL"
     },
     {
-      "id": "persistence-sql-di-multi-conn",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/sql-module-di-and-multi-connection.spec.ts",
-      "bunestPackage": "@bunest/sql",
+      "id": "persistence-orm-multi-conn-store-kit",
+      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-multi-connection-and-store-kit.spec.ts",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sql/src/sql.module.ts",
-        "packages/sql/src/sql.service.ts",
-        "packages/sql/src/tokens.ts"
+        "packages/orm/src/di/orm.module.ts",
+        "packages/orm/src/data-source.ts",
+        "packages/orm/src/store-kit/index.ts"
       ],
       "estimatedTests": 18,
       "scenarios": [
-        "SqlModule.forRoot with URL string, URL instance, options object, and global flag",
-        "SqlModule.forRootAsync with useFactory, useClass (SqlOptionsFactory), useExisting, imports, extraProviders, and missing-strategy error",
-        "Named multi-connections (@InjectSql(), @InjectSql('analytics'), getSqlConnectionToken/OptionsToken/MigrationRunnerToken) with SqlService class alias only for 'default'",
-        "SqlService tagged template sql`...`, unsafe(), simple(), query(), queryOne(), queryScalar(), onQuery telemetry hook, healthCheck()",
+        "OrmModule.forRoot with URL string, URL instance, options object, and global flag",
+        "OrmModule.forRootAsync with useFactory, useClass (OrmOptionsFactory), useExisting, imports, extraProviders, and missing-strategy error",
+        "Named multi-connections (@InjectSql(), @InjectSql('analytics'), getSqlConnectionToken/OptionsToken/MigrationRunnerToken) with DataSource class alias only for 'default'",
+        "DataSource tagged template sql`...`, unsafe(), simple(), query(), queryOne(), queryScalar(), onQuery telemetry hook, healthCheck()",
         "onModuleInit (connectOnInit/autoMigrate) and idempotent onModuleDestroy / Symbol.asyncDispose closing connections and rejecting post-close queries"
       ],
       "bucket": "eco-bucket-8",
@@ -8290,22 +8211,22 @@
       "classification": "SUPPLEMENTAL"
     },
     {
-      "id": "persistence-sqlite-di-for-feature",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/sqlite-module-di-and-for-feature.spec.ts",
-      "bunestPackage": "@bunest/sqlite",
+      "id": "persistence-orm-di-declarative-repos",
+      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-module-di-and-declarative-repositories.spec.ts",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sqlite/src/sqlite.module.ts",
-        "packages/sqlite/src/sqlite.service.ts",
-        "packages/sqlite/src/decorators.ts"
+        "packages/orm/src/di/orm.module.ts",
+        "packages/orm/src/declarative-repository.ts",
+        "packages/orm/src/di/decorators.ts"
       ],
       "estimatedTests": 22,
       "scenarios": [
-        "SqliteModule.forRoot, SqliteModule.forRootMultiple, and DuplicateSqliteConnectionException on duplicate connection names",
-        "SqliteModule.forRootAsync (useFactory/useClass/useExisting) + conflicting async connection name validation",
-        "SqliteModule.forFeature with all 4 target forms: table string, @SqliteEntity() class, BaseSqliteRepository subclass (bound to both token & class), and { table, idColumn, entity, token } config",
-        "Duplicate feature repository token rejection + named connection repository isolation via @InjectSqliteRepository(Entity, 'secondary')",
+        "OrmModule.forRoot, named OrmModule.forRoot, and named DataSource registration on duplicate connection names",
+        "OrmModule.forRootAsync (useFactory/useClass/useExisting) + conflicting async connection name validation",
+        "OrmModule.forFeature with all 4 target forms: table string, @Entity() class, Repository subclass (bound to both token & class), and { table, idColumn, entity, token } config",
+        "Duplicate feature repository token rejection + named connection repository isolation via @InjectRepository(Entity, 'secondary')",
         "PRAGMA application (busyTimeout, foreignKeys, wal on file DB, custom pragmas), readonly + autoMigrate rejection, and leak-free handle close on invalid PRAGMA",
-        "SqliteService.toDatabaseAdapter() structural bridge compatibility & serialize() snapshot export"
+        "DataSource.toDatabaseAdapter() structural bridge compatibility & serialize() snapshot export"
       ],
       "bucket": "eco-bucket-8",
       "category": "bun-native-persistence",
@@ -8315,19 +8236,20 @@
     {
       "id": "persistence-transactions-savepoints-als",
       "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/transactions-savepoints-als.spec.ts",
-      "bunestPackage": "@bunest/sql, @bunest/sqlite",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sql/src/sql.service.ts",
-        "packages/sqlite/src/sqlite.service.ts"
+        "packages/orm/src/driver/sqlite.driver.ts",
+        "packages/orm/src/driver/bun-sql.driver.ts",
+        "packages/orm/src/di/decorators.ts"
       ],
       "estimatedTests": 24,
       "scenarios": [
-        "Top-level transaction() commit and automatic rollback on thrown error (both SqlService and SqliteService)",
+        "Top-level transaction() commit and automatic rollback on thrown error (both DataSource and DataSource)",
         "Nested transaction() creating automatic SQLite SAVEPOINTs (depth 0 -> 1 -> 2), inner rollback restoring only inner state while outer transaction catches & commits",
         "Outer rollback undoing previously released inner savepoints",
-        "AsyncLocalStorage propagation across injected services/repositories without explicit tx parameter (sqlService.sql`...`, query(), sqliteService.run(), BaseSqliteRepository methods)",
+        "AsyncLocalStorage propagation across injected services/repositories without explicit tx parameter (sqlService.sql`...`, query(), sqliteService.run(), Repository methods)",
         "isInTransaction() and getCurrentTransaction() metadata (id, depth, isNested, savepointName, connectionName) across async boundaries",
-        "SqliteService.transactionSync() with DEFERRED/IMMEDIATE/EXCLUSIVE modes, nested sync savepoints, and conflict guard while an async transaction holds the lock"
+        "DataSource.transactionSync() with DEFERRED/IMMEDIATE/EXCLUSIVE modes, nested sync savepoints, and conflict guard while an async transaction holds the lock"
       ],
       "bucket": "eco-bucket-8",
       "category": "bun-native-persistence",
@@ -8337,10 +8259,10 @@
     {
       "id": "persistence-concurrent-isolation",
       "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/concurrent-isolation-and-locking.spec.ts",
-      "bunestPackage": "@bunest/sql, @bunest/sqlite",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sql/src/sql.service.ts",
-        "packages/sqlite/src/sqlite.service.ts"
+        "packages/orm/src/driver/sqlite.driver.ts",
+        "packages/orm/src/driver/bun-sql.driver.ts"
       ],
       "estimatedTests": 14,
       "scenarios": [
@@ -8357,10 +8279,9 @@
     {
       "id": "persistence-migrations-runner",
       "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/migrations-runner.spec.ts",
-      "bunestPackage": "@bunest/sql, @bunest/sqlite",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sql/src/sql-migration-runner.ts",
-        "packages/sqlite/src/migration-runner.ts"
+        "packages/orm/src/migration-runner.ts"
       ],
       "estimatedTests": 18,
       "scenarios": [
@@ -8376,17 +8297,17 @@
       "classification": "SUPPLEMENTAL"
     },
     {
-      "id": "persistence-base-sqlite-repository",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/base-sqlite-repository.spec.ts",
-      "bunestPackage": "@bunest/sqlite",
+      "id": "persistence-orm-repository-crud",
+      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-repository-and-crud.spec.ts",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sqlite/src/base-repository.ts",
-        "packages/sqlite/src/exceptions.ts"
+        "packages/orm/src/repository.ts",
+        "packages/orm/src/query-builder.ts"
       ],
       "estimatedTests": 22,
       "scenarios": [
         "insert(), insertReturning(), insertMany() (atomic rollback on batch unique constraint failure), and upsert() (single/composite conflict columns, custom updateColumns, DO NOTHING)",
-        "findAll(), findById(), findByIdOrFail() (SqliteEntityNotFoundException), findWhere(), findOneWhere(), findOneWhereOrFail(), findAndCount(), iterate() lazy cursor",
+        "findAll(), findById(), findByIdOrFail() (EntityNotFoundError), findWhere(), findOneWhere(), findOneWhereOrFail(), findAndCount(), iterate() lazy cursor",
         "count(), exists(), existsWhere(), updateById(), updateWhere(), deleteById(), deleteWhere()",
         "select column projection, single & multi-column orderBy/order, limit/offset (including offset without limit via LIMIT -1), null -> IS NULL matching",
         "strictWhere: true refusing all-undefined filter objects vs strictWhere: false opt-out; empty insert/update/updateWhere/deleteWhere guardrails"
@@ -8397,12 +8318,16 @@
       "classification": "SUPPLEMENTAL"
     },
     {
-      "id": "persistence-drizzle-prisma-lifecycle",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/drizzle-and-prisma-lifecycle.spec.ts",
-      "bunestPackage": "@bunest/sql",
+      "id": "persistence-orm-drivers-replication",
+      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/orm-drivers-and-replication.spec.ts",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sql/src/orm/drizzle.module.ts",
-        "packages/sql/src/orm/prisma.module.ts"
+        "packages/orm/src/driver/sqlite.driver.ts",
+        "packages/orm/src/driver/bun-sql.driver.ts",
+        "packages/orm/src/driver/libsql.driver.ts",
+        "packages/orm/src/driver/d1.driver.ts",
+        "packages/orm/src/driver/mongodb.driver.ts",
+        "packages/orm/src/driver/replicated.driver.ts"
       ],
       "estimatedTests": 20,
       "scenarios": [
@@ -8420,20 +8345,19 @@
     {
       "id": "persistence-sql-injection-security",
       "targetPath": "tests/nestjs-conformance/ecosystem/persistence/bun-native/sql-injection-and-security.spec.ts",
-      "bunestPackage": "@bunest/sql, @bunest/sqlite",
+      "bunestPackage": "@bunest/orm",
       "bunestModules": [
-        "packages/sqlite/src/identifiers.ts",
-        "packages/sqlite/src/base-repository.ts",
-        "packages/sql/src/sql.service.ts",
-        "packages/sqlite/src/sqlite.service.ts"
+        "packages/orm/src/identifiers.ts",
+        "packages/orm/src/repository.ts",
+        "packages/orm/src/migration-runner.ts"
       ],
       "estimatedTests": 16,
       "scenarios": [
         "assertSafeSqlIdentifier() & quoteSqlIdentifier() rejecting SQL injection payloads, semicolons, quotes, comments (--, /*), spaces, null bytes, and leading digits",
-        "BaseSqliteRepository rejecting malicious tableName, idColumn, select columns, where keys, orderBy columns, invalid sort direction, conflictColumns, and negative/float limit/offset",
-        "Strict value parameterization verifying injection strings (\"'; DROP TABLE users; --\", \"' OR '1'='1\") are stored & queried literally in SqlService (tagged templates + unsafe params) and SqliteService/BaseSqliteRepository",
-        "PRAGMA key/value injection rejection (disallowed characters, NaN/Infinity) and savepointName injection rejection on both SqlService and SqliteService",
-        "migrationsTable identifier injection rejection on SqlMigrationRunner and SqliteMigrationRunner"
+        "Repository rejecting malicious tableName, idColumn, select columns, where keys, orderBy columns, invalid sort direction, conflictColumns, and negative/float limit/offset",
+        "Strict value parameterization verifying injection strings (\"'; DROP TABLE users; --\", \"' OR '1'='1\") are stored & queried literally in DataSource (tagged templates + unsafe params) and DataSource/Repository",
+        "PRAGMA key/value injection rejection (disallowed characters, NaN/Infinity) and savepointName injection rejection on both DataSource and DataSource",
+        "migrationsTable identifier injection rejection on OrmMigrationRunner and OrmMigrationRunner"
       ],
       "bucket": "eco-bucket-8",
       "category": "bun-native-persistence",
@@ -26440,7 +26364,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable async configuration pattern: forRootAsync({ useClass: OptionsFactory }); adapt to SqliteModule.forRootAsync + SqliteOptionsFactory."
+      "reason": "Reusable async configuration pattern: forRootAsync({ useClass: OptionsFactory }); adapt to OrmModule.forRootAsync + OrmOptionsFactory."
     },
     {
       "phase": "phase-2-group-b",
@@ -26455,7 +26379,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26470,7 +26394,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable async configuration pattern: forRootAsync({ imports, useExisting }); adapt to SqliteModule.forRootAsync + SqliteOptionsFactory."
+      "reason": "Reusable async configuration pattern: forRootAsync({ imports, useExisting }); adapt to OrmModule.forRootAsync + OrmOptionsFactory."
     },
     {
       "phase": "phase-2-group-b",
@@ -26485,7 +26409,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable async configuration pattern: forRootAsync({ imports, inject, useFactory }) resolving config from imported module; adapt to SqlModule.forRootAsync."
+      "reason": "Reusable async configuration pattern: forRootAsync({ imports, inject, useFactory }) resolving config from imported module; adapt to OrmModule.forRootAsync."
     },
     {
       "phase": "phase-2-group-b",
@@ -26500,7 +26424,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable async configuration pattern: forRootAsync({ useFactory }) over HTTP CRUD; adapt to SqliteModule.forRootAsync."
+      "reason": "Reusable async configuration pattern: forRootAsync({ useFactory }) over HTTP CRUD; adapt to OrmModule.forRootAsync."
     },
     {
       "phase": "phase-2-group-b",
@@ -26515,7 +26439,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26530,7 +26454,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable DI pattern: default connection, named multi-connection tokens, and custom repository subclass injection; adapt to SqliteModule + getSqliteConnectionToken + BaseSqliteRepository subclass."
+      "reason": "Reusable DI pattern: default connection, named multi-connection tokens, and custom repository subclass injection; adapt to OrmModule + getOrmDataSourceToken + @OrmRepository CrudRepository."
     },
     {
       "phase": "phase-2-group-b",
@@ -26545,7 +26469,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable dynamic module options resolution pattern for default and named connections; adapt to SqliteModule.forRoot & SqlModule.forRoot."
+      "reason": "Reusable dynamic module options resolution pattern for default and named connections; adapt to OrmModule.forRoot."
     },
     {
       "phase": "phase-2-group-b",
@@ -26560,7 +26484,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26575,7 +26499,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26590,7 +26514,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable NestJS module pattern: synchronous forRoot() + forFeature() repository injection wired to HTTP CRUD controller; adapt to SqliteModule.forRoot + BaseSqliteRepository."
+      "reason": "Reusable NestJS module pattern: synchronous forRoot() + forFeature() repository injection wired to HTTP CRUD controller; adapt to OrmModule.forRoot + Repository."
     },
     {
       "phase": "phase-2-group-b",
@@ -26605,7 +26529,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26620,7 +26544,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26635,7 +26559,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26650,7 +26574,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",
@@ -26665,7 +26589,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable repository injection decorator pattern (@InjectSqliteRepository + getSqliteRepositoryToken on default and named connections)."
+      "reason": "Reusable repository injection decorator pattern (@InjectRepository + getOrmRepositoryToken on default and named connections)."
     },
     {
       "phase": "phase-2-group-b",
@@ -26680,7 +26604,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": null,
-      "reason": "Reusable lifecycle pattern: closing default & named connections on moduleRef.close() across sync/async useFactory/useClass registrations; adapt to SqliteModule & SqlModule."
+      "reason": "Reusable lifecycle pattern: closing default & named connections on moduleRef.close() across sync/async useFactory/useClass registrations; adapt to OrmModule."
     },
     {
       "phase": "phase-2-group-b",
@@ -26695,127 +26619,7 @@
       "subPackage": null,
       "adrs": [],
       "excludeCategory": "typeorm-orm-internal",
-      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/sql or @bunest/sqlite."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-client-errors.spec.ts",
-      "classification": "EXCLUDED",
-      "bucket": null,
-      "targetPath": null,
-      "testCount": 13,
-      "expandedTestCount": 13,
-      "lines": 300,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": "external-db-driver",
-      "reason": "Tests external database drivers/daemons (pg.Pool error listener, live Docker PostgreSQL/MySQL/libsql/pglite, or drizzle-orm relational query builder internals) outside zero-dependency @bunest/sql DrizzleModule scope."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-connection-options.spec.ts",
-      "classification": "ADAPTED_PORT",
-      "bucket": "eco-bucket-8",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-connection-options.spec.ts",
-      "testCount": 4,
-      "expandedTestCount": 6,
-      "lines": 118,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": null,
-      "reason": "Tests per-app DrizzleModule isolation, autoClose: false, transactionalProxy ALS routing, and DrizzleService.healthCheck() probes."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-drivers.spec.ts",
-      "classification": "EXCLUDED",
-      "bucket": null,
-      "targetPath": null,
-      "testCount": 2,
-      "expandedTestCount": 6,
-      "lines": 202,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": "external-db-driver",
-      "reason": "Tests external database drivers/daemons (pg.Pool error listener, live Docker PostgreSQL/MySQL/libsql/pglite, or drizzle-orm relational query builder internals) outside zero-dependency @bunest/sql DrizzleModule scope."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-multiple-connections.spec.ts",
-      "classification": "ADAPTED_PORT",
-      "bucket": "eco-bucket-8",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-multiple-connections.spec.ts",
-      "testCount": 2,
-      "expandedTestCount": 2,
-      "lines": 75,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": null,
-      "reason": "Tests @InjectDrizzle() default & named ('analytics') connections, DB isolation, and shared DB under two names against @bunest/sql DrizzleModule."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-registration.spec.ts",
-      "classification": "ADAPTED_PORT",
-      "bucket": "eco-bucket-8",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-registration.spec.ts",
-      "testCount": 7,
-      "expandedTestCount": 9,
-      "lines": 159,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": null,
-      "reason": "Tests getDrizzleToken, non-serialization of DB instance in snapshot/graph, async options validation, and createDrizzleOptions against @bunest/sql DrizzleModule."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-relations.spec.ts",
-      "classification": "EXCLUDED",
-      "bucket": null,
-      "targetPath": null,
-      "testCount": 1,
-      "expandedTestCount": 1,
-      "lines": 86,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": "external-db-driver",
-      "reason": "Tests external database drivers/daemons (pg.Pool error listener, live Docker PostgreSQL/MySQL/libsql/pglite, or drizzle-orm relational query builder internals) outside zero-dependency @bunest/sql DrizzleModule scope."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle-shutdown.spec.ts",
-      "classification": "ADAPTED_PORT",
-      "bucket": "eco-bucket-8",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-shutdown.spec.ts",
-      "testCount": 13,
-      "expandedTestCount": 13,
-      "lines": 186,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": null,
-      "reason": "Tests DrizzleModule/DrizzleService onModuleDestroy closing client.close()/client.end(), autoClose: false, onDestroy hook, and per-app forRootAsync lifecycle."
-    },
-    {
-      "phase": "phase-2-group-b",
-      "repo": "drizzle",
-      "upstreamPath": "tests/e2e/drizzle.spec.ts",
-      "classification": "ADAPTED_PORT",
-      "bucket": "eco-bucket-8",
-      "targetPath": "tests/nestjs-conformance/ecosystem/persistence/drizzle/drizzle-module-modes.e2e.spec.ts",
-      "testCount": 2,
-      "expandedTestCount": 12,
-      "lines": 59,
-      "subPackage": null,
-      "adrs": [],
-      "excludeCategory": null,
-      "reason": "Bunest @bunest/sql ships DrizzleModule.forRoot / forRootAsync (useFactory/useClass/useExisting); adapt pglite/supertest to in-memory bun:sqlite-backed DrizzleDatabaseLike + Bunest HTTP test client."
+      "reason": "TypeORM ORM-specific internal (EntitySchema, EntitiesMetadataStorage, autoLoadEntities, TreeRepository, DataSourceFactory, or RxJS handleRetry) not applicable to Bun-native @bunest/orm."
     },
     {
       "phase": "phase-2-group-b",

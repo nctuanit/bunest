@@ -1,6 +1,10 @@
-import { subscribe, unsubscribe } from "node:diagnostics_channel";
 import { describe, expect, it } from "bun:test";
-import { BadRequestException, InternalServerErrorException } from "@bunest/common";
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  subscribe,
+  unsubscribe,
+} from "@bunest/core";
 import {
   BulkheadFullError,
   BulkheadPolicy,
@@ -25,7 +29,9 @@ describe("@bunest/resilience policies", () => {
   describe("isClientError", () => {
     it("classifies 4xx HttpException and 4xx status errors except 408 and 429", () => {
       expect(isClientError(new BadRequestException("bad"))).toBe(true);
-      expect(isClientError(new InternalServerErrorException("boom"))).toBe(false);
+      expect(isClientError(new InternalServerErrorException("boom"))).toBe(
+        false,
+      );
       expect(isClientError({ status: 422 })).toBe(true);
       expect(isClientError({ statusCode: 404 })).toBe(true);
       expect(isClientError({ status: 408 })).toBe(false);
@@ -69,7 +75,8 @@ describe("@bunest/resilience policies", () => {
       let rateLimitCalls = 0;
       const res = await policy.execute(() => {
         rateLimitCalls++;
-        if (rateLimitCalls < 2) throw Object.assign(new Error("slow down"), { status: 429 });
+        if (rateLimitCalls < 2)
+          throw Object.assign(new Error("slow down"), { status: 429 });
         return "recovered";
       });
       expect(res).toBe("recovered");
@@ -87,7 +94,9 @@ describe("@bunest/resilience policies", () => {
         retryOnResult: (val) => val === "pending",
       });
       let count = 0;
-      const res = await policy.execute(() => (++count < 3 ? "pending" : "ready"));
+      const res = await policy.execute(() =>
+        ++count < 3 ? "pending" : "ready",
+      );
       expect(res).toBe("ready");
       expect(count).toBe(3);
       expect(waits).toEqual([1, 2]);
@@ -148,8 +157,12 @@ describe("@bunest/resilience policies", () => {
 
       expect(observedSignal?.aborted).toBe(true);
       expect(observedSignal?.reason).toBeInstanceOf(ResilienceTimeoutError);
-      expect((observedSignal?.reason as ResilienceTimeoutError).timeoutMs).toBe(25);
-      expect((observedSignal?.reason as ResilienceTimeoutError).policy).toBe("slow-op");
+      expect((observedSignal?.reason as ResilienceTimeoutError).timeoutMs).toBe(
+        25,
+      );
+      expect((observedSignal?.reason as ResilienceTimeoutError).policy).toBe(
+        "slow-op",
+      );
     });
 
     it("rejects zero or negative duration options", () => {
@@ -176,7 +189,11 @@ describe("@bunest/resilience policies", () => {
         }),
       ).rejects.toThrow("err1");
       expect(breaker.state).toBe("closed");
-      expect(breaker.stats).toEqual({ total: 1, failures: 1, failureRate: 100 });
+      expect(breaker.stats).toEqual({
+        total: 1,
+        failures: 1,
+        failureRate: 100,
+      });
 
       await expect(
         breaker.execute(() => {
@@ -195,7 +212,10 @@ describe("@bunest/resilience policies", () => {
       // Concurrent second probe while first probe is running should be rejected
       let releaseProbe!: () => void;
       const probePromise = breaker.execute(
-        () => new Promise<string>((r) => { releaseProbe = () => r("probe-ok"); }),
+        () =>
+          new Promise<string>((r) => {
+            releaseProbe = () => r("probe-ok");
+          }),
       );
       await expect(breaker.execute(() => "extra-probe")).rejects.toThrow(
         CircuitOpenError,
@@ -246,7 +266,10 @@ describe("@bunest/resilience policies", () => {
 
       let finishFirst!: () => void;
       const first = bulkhead.execute(
-        () => new Promise<string>((r) => { finishFirst = () => r("first"); }),
+        () =>
+          new Promise<string>((r) => {
+            finishFirst = () => r("first");
+          }),
       );
       expect(bulkhead.active).toBe(1);
       expect(bulkhead.queued).toBe(0);

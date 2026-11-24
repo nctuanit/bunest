@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import type { LoggerService } from "../../../../../packages/common/src";
+import type { LoggerService } from "../../../../../packages/core/src/common";
 import {
   HealthCheckException,
   HealthCheckService,
@@ -36,7 +35,8 @@ const unhealthyHealthIndicatorSync = (h: HealthIndicatorService) =>
 describeConformance(
   "HealthCheckExecutorService",
   {
-    upstreamPath: "terminus/lib/health-check/health-check-executor.service.spec.ts",
+    upstreamPath:
+      "terminus/lib/health-check/health-check-executor.service.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:
@@ -336,7 +336,11 @@ describeConformance(
 
         const elapsed = performance.now() - start;
         expect(result.status).toBe("ok");
-        expect(Object.keys(result.details)).toEqual(["first", "second", "third"]);
+        expect(Object.keys(result.details)).toEqual([
+          "first",
+          "second",
+          "third",
+        ]);
         expect(elapsed).toBeLessThan(110);
       });
     });

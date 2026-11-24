@@ -1,10 +1,3 @@
-import "reflect-metadata";
-import { createHash } from "node:crypto";
-import { once } from "node:events";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { connect } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -19,10 +12,15 @@ import {
   UploadedFile,
   UploadedFiles,
   type UploadedFileInfo,
-} from "../../../../../packages/common/src";
-import type {
-  BunestApplication,
-  DiskUploadedFileInfo,
+} from "../../../../../packages/core/src/common";
+import {
+  join,
+  mkdirSyncPath,
+  readDirSyncNames,
+  readTextSync,
+  removePath,
+  type BunestApplication,
+  type DiskUploadedFileInfo,
 } from "../../../../../packages/core/src";
 import {
   Test,
@@ -44,7 +42,9 @@ const txt = (filename: string) => ({
 
 const text = (value: string) => Buffer.from(value);
 
-function describeFile(file: UploadedFileInfo | DiskUploadedFileInfo | undefined) {
+function describeFile(
+  file: UploadedFileInfo | DiskUploadedFileInfo | undefined,
+) {
   if (!file) {
     return file;
   }
@@ -70,7 +70,7 @@ function describeFile(file: UploadedFileInfo | DiskUploadedFileInfo | undefined)
 async function hashWebStream(
   stream: ReadableStream<Uint8Array>,
 ): Promise<{ hash: string; size: number }> {
-  const hash = createHash("sha256");
+  const hash = new Bun.CryptoHasher("sha256");
   let size = 0;
   const reader = stream.getReader();
   try {
@@ -264,7 +264,11 @@ describeConformance(
     let diskDir: string;
 
     beforeAll(async () => {
-      diskDir = mkdtempSync(join(tmpdir(), "bunest-upload-disk-"));
+      diskDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-upload-disk-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(diskDir, { recursive: true });
 
       const memMod = await Test.createTestingModule({
         imports: [MemoryUploadModule],
@@ -318,7 +322,7 @@ describeConformance(
       await hashLimitedApp?.close();
       await hashSmallApp?.close();
       await diskApp?.close();
-      rmSync(diskDir, { recursive: true, force: true });
+      await removePath(diskDir, { recursive: true, force: true });
     });
 
     describe("memory storage", () => {
@@ -370,7 +374,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: parseMultipart does not expand bracket notation (user[name], user[roles][], tags[0]) into nested objects/arrays — leaves flat keys (packages/http/src/parsers/body-parser.ts).
+      // BUNEST_BUG: parseMultipart does not expand bracket notation (user[name], user[roles][], tags[0]) into nested objects/arrays — leaves flat keys (packages/core/src/http/parsers/body-parser.ts).
       it.skip("should parse text fields with bracket notation into nested objects/arrays", async () => {
         const res = await request(memApp)
           .post("/single")
@@ -398,7 +402,7 @@ describeConformance(
         expect(res.body.file).toBeUndefined();
       });
 
-      // BUNEST_BUG: parseMultipart returns a 0-byte UploadedFileInfo for empty file inputs (`filename=""`) instead of ignoring empty file inputs (packages/http/src/parsers/body-parser.ts).
+      // BUNEST_BUG: parseMultipart returns a 0-byte UploadedFileInfo for empty file inputs (`filename=""`) instead of ignoring empty file inputs (packages/core/src/http/parsers/body-parser.ts).
       it.skip("should ignore an empty file input (no filename)", async () => {
         const boundary = "----bunestempty";
         const rawBody =
@@ -448,7 +452,7 @@ describeConformance(
           .send(head.replace('"avatar"', '"doc"') + "partial content")
           .expect(400);
         expect(res.body.statusCode).toBe(400);
-        expect(readdirSync(diskDir)).toEqual([]);
+        expect(readDirSyncNames(diskDir)).toEqual([]);
       });
 
       it("should reject a body that ends between parts", async () => {
@@ -465,7 +469,7 @@ describeConformance(
     });
 
     describe("field names", () => {
-      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition field names (packages/http/src/parsers/body-parser.ts).
+      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition field names (packages/core/src/http/parsers/body-parser.ts).
       it.skip("should handle escaped characters in field names", async () => {
         const boundary = "----bunestescaped";
         const res = await request(memApp)
@@ -480,7 +484,7 @@ describeConformance(
         expect(res.body.body).toEqual({ 'a"b\nc': "1" });
       });
 
-      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition filenames (packages/http/src/parsers/body-parser.ts).
+      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition filenames (packages/core/src/http/parsers/body-parser.ts).
       it.skip("should decode escaped characters in file names", async () => {
         const boundary = "----nestboundary";
         const res = await request(memApp)
@@ -711,8 +715,8 @@ describeConformance(
           });
           const savedName: string = res.body.files[0].filename;
           expect(savedName).toMatch(/\.txt$/);
-          expect(readFileSync(join(diskDir, savedName), "utf8")).toBe("on disk");
-          rmSync(join(diskDir, savedName));
+          expect(readTextSync(join(diskDir, savedName))).toBe("on disk");
+          await removePath(join(diskDir, savedName));
         },
         "Bunest streaming disk storage uses UUID + safe extension via Bun.file().writer()",
       );
@@ -725,10 +729,10 @@ describeConformance(
           .attach("docs", text("way past ten bytes"), txt("3.txt"))
           .expect(413);
         expect(res.body.statusCode).toBe(413);
-        expect(readdirSync(diskDir)).toEqual([]);
+        expect(readDirSyncNames(diskDir)).toEqual([]);
       });
 
-      // BUNEST_BUG: Streaming disk storage does not unlink already-stored multipart files when a downstream Nest pipe (e.g. ParseIntPipe) rejects the request (packages/http/src/pipeline/execution-pipeline.ts, packages/http/src/parsers/body-parser.ts).
+      // BUNEST_BUG: Streaming disk storage does not unlink already-stored multipart files when a downstream Nest pipe (e.g. ParseIntPipe) rejects the request (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/parsers/body-parser.ts).
       it.skip("should remove the stored files when a downstream pipe rejects the request", async () => {
         const res = await request(diskApp)
           .post("/disk-validated")
@@ -738,14 +742,20 @@ describeConformance(
           .expect(400);
         expect(res.body.statusCode).toBe(400);
         await waitForCondition(() => {
-          expect(readdirSync(diskDir)).toEqual([]);
+          expect(readDirSyncNames(diskDir)).toEqual([]);
         });
       });
 
       it("should remove partial files when the client disconnects mid-upload", async () => {
         const port = Number(new URL(diskApp.getUrl()!).port);
-        const socket = connect(port, "127.0.0.1");
-        await once(socket, "connect");
+        const socket = await Bun.connect({
+          hostname: "127.0.0.1",
+          port,
+          socket: {
+            data() {},
+            error() {},
+          },
+        });
         const boundary = "----nestboundary";
         socket.write(
           `POST /disk HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
@@ -757,18 +767,22 @@ describeConformance(
         );
         try {
           await waitForCondition(() =>
-            expect(readdirSync(diskDir)).toHaveLength(1),
+            expect(readDirSyncNames(diskDir)).toHaveLength(1),
           );
         } finally {
-          socket.destroy();
+          socket.terminate();
         }
-        await waitForCondition(() => expect(readdirSync(diskDir)).toEqual([]));
+        await waitForCondition(() =>
+          expect(readDirSyncNames(diskDir)).toEqual([]),
+        );
       });
     });
 
     describe("streaming upload hashing (file.stream())", () => {
       const payload = Buffer.alloc(48 * 1024, "nest");
-      const expectedHash = createHash("sha256").update(payload).digest("hex");
+      const expectedHash = new Bun.CryptoHasher("sha256")
+        .update(payload)
+        .digest("hex");
 
       it("should produce the exact SHA-256 hash when streaming uploaded file bytes", async () => {
         const res = await request(hashLimitedApp)

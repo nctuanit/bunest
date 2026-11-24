@@ -1,11 +1,11 @@
 # Configuration
 
-Applications run across development, staging, test, and production environments. **`@bunest/config`** provides a typed, validated configuration layer with `.env` loading, `${VAR}` expansion, namespaced `registerAs()` factories, DTO and Standard Schema v1 validation, and declarative `@InjectConfig()` / `@ConfigValue()` decorators.
+Applications run across development, staging, test, and production environments. **`@bunest/core/config`** provides a typed, validated configuration layer with `.env` loading, `${VAR}` expansion, namespaced `registerAs()` factories, DTO and Standard Schema v1 validation, and declarative `@InjectConfig()` / `@ConfigValue()` decorators.
 
 ## Installation
 
 ```bash
-bun add @bunest/config
+bun add @bunest/core/config
 ```
 
 ## Getting Started
@@ -13,9 +13,10 @@ bun add @bunest/config
 Register `ConfigModule.forRoot()` in your root module. Set `isGlobal: true` so `ConfigService` is available across every feature module without re-importing `ConfigModule`.
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { ConfigModule } from "@bunest/config";
+import { ConfigModule } from "@bunest/core/config";
 
 @Module({
   imports: [
@@ -34,9 +35,10 @@ export class AppModule {}
 Inject `ConfigService` into any provider or controller to read typed values with optional defaults or fail-fast `getOrThrow()`:
 
 @@filename(database.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { ConfigService } from "@bunest/config";
+import { ConfigService } from "@bunest/core/config";
 
 @Injectable()
 export class DatabaseService {
@@ -57,8 +59,9 @@ export class DatabaseService {
 Group related settings into strongly typed namespaces with `registerAs()` and inject them via `@Inject(dbConfig.KEY)` or `@InjectConfig(dbConfig)`:
 
 @@filename(database.config.ts)
+
 ```ts
-import { registerAs } from "@bunest/config";
+import { registerAs } from "@bunest/core/config";
 
 export const databaseConfig = registerAs("database", () => ({
   host: process.env.DB_HOST ?? "localhost",
@@ -68,9 +71,10 @@ export const databaseConfig = registerAs("database", () => ({
 ```
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { ConfigModule } from "@bunest/config";
+import { ConfigModule } from "@bunest/core/config";
 import { databaseConfig } from "./database.config";
 
 @Module({
@@ -89,9 +93,10 @@ export class AppModule {}
 Eliminate manual `ConfigService.get()` boilerplate with declarative parameter and property decorators ([ADR-014](/architecture/adrs)):
 
 @@filename(mail.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { ConfigValue, InjectConfig } from "@bunest/config";
+import { ConfigValue, InjectConfig } from "@bunest/core/config";
 import { databaseConfig } from "./database.config";
 
 @Injectable()
@@ -110,14 +115,15 @@ export class MailService {
 
 ## Validation & Conditional Modules
 
-Validate environment variables at bootstrap using either a `class-validator` DTO (`validate`), a Standard Schema v1 validator (`validationSchema`, e.g. Zod/Valibot), or a custom function. Failed validation throws `ConfigValidationError` before `Bun.serve()` starts.
+Validate environment variables at bootstrap using either a `@bunest/validation` (or `class-validator`) DTO (`validate`), a Standard Schema v1 validator (`validationSchema`, e.g. Zod/Valibot), or a custom function. Failed validation throws `ConfigValidationError` before `Bun.serve()` starts.
 
 You can also conditionally load feature modules based on environment flags using `ConditionalModule.registerWhen()`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { ConditionalModule, ConfigModule } from "@bunest/config";
+import { ConditionalModule, ConfigModule } from "@bunest/core/config";
 import { MetricsModule } from "@bunest/observability";
 
 @Module({
@@ -129,4 +135,4 @@ import { MetricsModule } from "@bunest/observability";
 export class AppModule {}
 ```
 
-> info **Secret Redaction** `@bunest/config` includes a built-in secret redactor so sensitive keys (`SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`) are masked when logging resolved configuration.
+> info **Secret Redaction** `@bunest/core/config` includes a built-in secret redactor so sensitive keys (`SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`) are masked when logging resolved configuration.

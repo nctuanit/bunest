@@ -1,4 +1,4 @@
-import { HttpStatus, MetadataRegistry, type Type } from "@bunest/common";
+import { HttpStatus, MetadataRegistry, type Type } from "@bunest/core";
 import { DECORATORS, SWAGGER_METADATA_KEYS } from "../constants";
 import type {
   ApiBodyOptions,
@@ -27,11 +27,7 @@ function createClassAndMethodArrayDecorator<T>(
     descriptor?: PropertyDescriptor,
   ): void => {
     if (descriptor && descriptor.value !== undefined) {
-      MetadataRegistry.prependOwnArray<T>(
-        metadataKey,
-        items,
-        descriptor.value,
-      );
+      MetadataRegistry.prependOwnArray<T>(metadataKey, items, descriptor.value);
       return;
     }
     MetadataRegistry.prependOwnArray<T>(metadataKey, items, target);
@@ -385,7 +381,9 @@ export function ApiProperty(
 
     const entry: ApiPropertyMetadata = {
       ...options,
-      ...(normalizedPattern !== undefined ? { pattern: normalizedPattern } : {}),
+      ...(normalizedPattern !== undefined
+        ? { pattern: normalizedPattern }
+        : {}),
       propertyKey: key,
       required:
         options.selfRequired !== undefined
@@ -446,7 +444,7 @@ export function ApiSchema(options: ApiSchemaOptions = {}): ClassDecorator {
       { ...options },
       target,
     );
-    Reflect.defineMetadata(DECORATORS.API_SCHEMA, { ...options }, target);
+    MetadataRegistry.define(DECORATORS.API_SCHEMA, { ...options }, target);
   };
 }
 
@@ -465,7 +463,7 @@ export function ApiWebhook(name?: string): MethodDecorator {
       value,
       descriptor.value,
     );
-    Reflect.defineMetadata(DECORATORS.API_WEBHOOK, value, descriptor.value);
+    MetadataRegistry.define(DECORATORS.API_WEBHOOK, value, descriptor.value);
     return descriptor;
   };
 }
@@ -523,7 +521,7 @@ export function ApiDefaultGetter(
       readonly type: Type<unknown> | Function;
       readonly parameter: string;
     }>(SWAGGER_METADATA_KEYS.API_DEFAULT_GETTER, value, descriptor.value);
-    Reflect.defineMetadata(
+    MetadataRegistry.define(
       DECORATORS.API_DEFAULT_GETTER,
       value,
       descriptor.value,
@@ -547,7 +545,7 @@ export function ApiIncludeEndpoint(disable = true): MethodDecorator {
       disable,
       descriptor.value,
     );
-    Reflect.defineMetadata(
+    MetadataRegistry.define(
       DECORATORS.API_INCLUDE_ENDPOINT,
       { disable },
       descriptor.value,
@@ -722,9 +720,7 @@ export function ApiBearerAuth(
   return ApiSecurity(name, []);
 }
 
-export function ApiBasicAuth(
-  name = "basic",
-): ClassDecorator & MethodDecorator {
+export function ApiBasicAuth(name = "basic"): ClassDecorator & MethodDecorator {
   return ApiSecurity(name, []);
 }
 

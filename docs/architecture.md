@@ -2,94 +2,70 @@
 
 Bunest combines NestJS-style modular architecture with a **compile-at-bootstrap, zero-hot-path-reflection** execution engine built directly on Bun's native HTTP, WebSocket, SQL, and `AsyncLocalStorage` primitives.
 
-For the full normative contract behind every design choice, see [RFC-001](./rfcs/RFC-001-controller-routing.md) and [ADR-001 through ADR-012](./adr/README.md).
+For the full normative contract behind every design choice, see [RFC-001](./rfcs/RFC-001-controller-routing.md) and [ADR-001 through ADR-016](./adr/README.md).
 
 ---
 
-## 1. Monorepo Package Dependency DAG
+## 1. Monorepo Package Dependency DAG (19 Packages · 6 Domains)
 
-All 20 workspace packages form a strict Directed Acyclic Graph (DAG) with zero runtime circular dependencies between packages:
+All **19 workspace packages** form a flat, strict Directed Acyclic Graph (DAG) with **zero runtime or type-only circular dependencies** ([ADR-016](./adr/ADR-016.md)):
 
 ```mermaid
 flowchart TD
-  common["@bunest/common"]
-  http["@bunest/http"]
-  validation["@bunest/validation"]
-  core["@bunest/core"]
-  testing["@bunest/testing"]
-  cli["@bunest/cli"]
+  core["@bunest/core\n(., ./common, ./http, ./config, ./client, ./ws, ./i18n)"]
+  validation["@bunest/validation\n(., ./validator, ./transformer, ./standard-schema)"]
+  security["@bunest/security\n(., ./auth, ./authz, ./jwt, ./throttler, ./testing)"]
 
-  config["@bunest/config"]
   swagger["@bunest/swagger"]
-  security["@bunest/security"]
-  sqlite["@bunest/sqlite"]
-  sql["@bunest/sql"]
+  graphql["@bunest/graphql\n(., ./apollo)"]
+  ai["@bunest/ai\n(., ./mcp, ./workflows, ./testing)"]
 
-  events["@bunest/events"]
-  scheduler["@bunest/scheduler"]
-  cache["@bunest/cache"]
-  websockets["@bunest/websockets"]
-  queues["@bunest/queues"]
-  cqrs["@bunest/cqrs"]
+  orm["@bunest/orm\n(., ./plugin, ./store, ./postgres, ./mysql, ./testing)"]
+  cache["@bunest/cache\n(., ./redis)"]
+  storage["@bunest/storage\n(., ./s3, ./local, ./memory)"]
+  mail["@bunest/mail\n(., ./smtp, ./templates)"]
+  elasticsearch["@bunest/elasticsearch"]
+
+  messaging["@bunest/messaging\n(., ./events, ./cqrs, ./outbox/*, ./webhooks/*)"]
+  jobs["@bunest/jobs\n(., ./queues, ./scheduler, ./redis)"]
+  resilience["@bunest/resilience\n(., ./locks/*, ./idempotency/*)"]
   microservices["@bunest/microservices"]
-  observability["@bunest/observability"]
-  graphql["@bunest/graphql"]
+  workflows["@bunest/workflows\n(., ./core, ./cqrs, ./postgres, ./mysql, ./testing)"]
 
-  http --> common
-  validation --> common
-  cli --> common
-  core --> common
-  core --> http
-  core --> validation
+  observability["@bunest/observability\n(., ./tracing, ./metrics, ./health, ./devtools)"]
+  testing["@bunest/testing"]
+  cli["@bunest/cli\n(., ./analyzer)"]
 
-  testing --> common
-  testing --> core
-  testing --> http
-
-  config --> common
-  config --> core
-  config --> validation
-
-  swagger --> common
-  swagger --> core
-  swagger --> http
-
-  security --> common
+  validation --> core
   security --> core
-  security --> http
-
-  sqlite --> common
-  sqlite --> core
-  sql --> common
-  sql --> core
-
-  events --> common
-  events --> core
-  scheduler --> common
-  scheduler --> core
-  queues --> common
-  queues --> core
-  cqrs --> common
-  cqrs --> core
-  microservices --> common
-  microservices --> core
-
-  cache --> common
-  cache --> core
-  cache --> http
-  websockets --> common
-  websockets --> core
-  websockets --> http
-  observability --> common
-  observability --> core
-  observability --> http
-  graphql --> common
+  swagger --> core
   graphql --> core
-  graphql --> http
+  orm --> core
+  cache --> core
+  storage --> core
+  mail --> core
+  elasticsearch --> core
+  messaging --> core
+  jobs --> core
+  resilience --> core
+  microservices --> core
+  observability --> core
+  testing --> core
+  cli --> core
+
+  workflows --> core
+  workflows --> messaging
+  workflows --> orm
+
+  ai --> core
+  ai --> resilience
+  ai --> workflows
+  ai --> testing
 ```
 
-- **`@bunest/common`** is the zero-internal-dependency leaf package holding metadata symbols (`MetadataRegistry`, `Reflector`), legacy decorators, built-in pipes, `HttpException` hierarchy, `Logger`, and shared interfaces.
-- **`@bunest/core`** re-exports `@bunest/common`, `@bunest/http` public adapters, and `@bunest/validation` (`ValidationPipe`, `ClassSerializerInterceptor`, `SchemaValidationPipe`) so typical applications import everything from `@bunest/core`.
+- **`@bunest/core`** is the single zero-internal-dependency foundation package combining common decorators/metadata, DI container & AOP weaver, hybrid `Bun.serve()` HTTP adapter (`./http`), configuration (`./config`), `fetch()` HTTP client (`./client`), WebSocket gateways (`./ws`), and ALS internationalization (`./i18n`).
+- **`@bunest/validation`** depends strictly one-way on `@bunest/core` (zero cycle), exposing `./validator`, `./transformer`, and `./standard-schema` subpaths.
+- **15 of 19 packages have zero external npm runtime dependencies** and **17 of 19 packages depend solely on `@bunest/core`**.
 
 ---
 
@@ -108,6 +84,7 @@ flowchart LR
 ```
 
 Key bootstrap guarantees:
+
 1. **Zero hot-path `Reflect.getMetadata()`:** Parameter extractors (`compileParameters`), enhancer chains, response metadata (`@HttpCode`, `@Header`, `@Redirect`, `@Sse`), and matching middleware lists are baked into immutable `CompiledRoute` closures before `Bun.serve()` starts.
 2. **Fail-fast validation before binding a port:** Missing dependencies (`UnknownDependencyException`), invalid exports (`InvalidExportException`), ambiguous imports (`AmbiguousProviderException`), circular chains (`CircularDependencyException`), scope leaks (`ScopeLeakException`), undecorated controllers (`InvalidControllerException`), duplicate parameter decorators, and canonical route collisions (`DuplicateRouteException`, e.g., `GET /users/:id` vs `GET /users/:userId`) all throw before any listening socket opens.
 
@@ -138,13 +115,13 @@ Incoming Request
 
 ### Enhancer Precedence Rules
 
-| Enhancer | Execution Order | Semantics |
-|---|---|---|
-| **Middleware** | `Global -> Module` (topological, registration order) | Returning `Response` or throwing short-circuits downstream |
-| **Guards** | `Global -> Controller -> Method` | Runs before body parsing/pipes; `false` -> `403 ForbiddenException` |
-| **Interceptors** | Before: `Global -> Controller -> Method` / After: `Method -> Controller -> Global` | Async `Promise` onion (`CallHandler.handle(): Promise<T>`) |
-| **Pipes** | `Global -> Controller -> Method -> Parameter` | Chained per parameter in ascending index order |
-| **Exception Filters** | `Method -> Controller -> Global -> DefaultExceptionFilter` | **Most-specific first**; first `@Catch(...)` match wins |
+| Enhancer              | Execution Order                                                                    | Semantics                                                           |
+| --------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Middleware**        | `Global -> Module` (topological, registration order)                               | Returning `Response` or throwing short-circuits downstream          |
+| **Guards**            | `Global -> Controller -> Method`                                                   | Runs before body parsing/pipes; `false` -> `403 ForbiddenException` |
+| **Interceptors**      | Before: `Global -> Controller -> Method` / After: `Method -> Controller -> Global` | Async `Promise` onion (`CallHandler.handle(): Promise<T>`)          |
+| **Pipes**             | `Global -> Controller -> Method -> Parameter`                                      | Chained per parameter in ascending index order                      |
+| **Exception Filters** | `Method -> Controller -> Global -> DefaultExceptionFilter`                         | **Most-specific first**; first `@Catch(...)` match wins             |
 
 ---
 
@@ -181,11 +158,11 @@ Both native and fallback paths invoke the exact same `executeCompiledRoute()` pi
 
 ### DI Scopes & Fail-Fast Scope-Leak Detection
 
-| Scope | Lifetime | Propagation |
-|---|---|---|
-| `Scope.SINGLETON` *(default)* | App lifetime (eager at bootstrap) | Zero per-request allocation |
-| `Scope.TRANSIENT` | New instance per injection point | Bound at bootstrap (for singletons) or per request (for request-scoped consumers) |
-| `Scope.REQUEST` | Single HTTP request (lazy per request) | Isolated `RequestContainer` inside `AsyncLocalStorage<RequestContext>` (`node:async_hooks`) |
+| Scope                         | Lifetime                               | Propagation                                                                                 |
+| ----------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `Scope.SINGLETON` _(default)_ | App lifetime (eager at bootstrap)      | Zero per-request allocation                                                                 |
+| `Scope.TRANSIENT`             | New instance per injection point       | Bound at bootstrap (for singletons) or per request (for request-scoped consumers)           |
+| `Scope.REQUEST`               | Single HTTP request (lazy per request) | Isolated `RequestContainer` inside `ContextStorage<RequestContext>` (quarantined `AsyncLocalStorage` kernel adapter in `@bunest/core`, [ADR-017](./adr/ADR-017.md)) |
 
 - **Zero-overhead singleton fast path:** `compileRoutes()` statically computes `requiresRequestScope` per route. Pure-singleton routes skip `RequestContainer` allocation completely.
 - **No silent scope bubbling:** If any `Scope.SINGLETON` provider, controller, or enhancer depends (directly or transitively) on a `Scope.REQUEST` provider, bootstrap throws `ScopeLeakException` printing the exact dependency chain.

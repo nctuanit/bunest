@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import { createContextId } from "../../../../../../packages/core/src";
 import { describeConformance } from "../../../../_helpers";

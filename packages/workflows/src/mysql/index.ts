@@ -1,5 +1,5 @@
 // The `@bunest/workflows/mysql` entry: the first-party MySQL store. Nothing here imports a driver or an ORM: the
-// executors (from @bunest/store-kit, which every first-party store builds on) reach the client the application
+// executors (from @bunest/orm/store, which every first-party store builds on) reach the client the application
 // passes them.
 
 // The store, and the error it fails startup with while its schema is behind (the same class as /postgres's)
@@ -15,10 +15,10 @@ export {
   fromPrisma,
   fromTypeOrm,
   type PrismaExecutorOptions,
-} from "@bunest/store-kit/mysql";
+} from "@bunest/orm/mysql";
 export type {
   SqlExecutor,
   SqlIsolationLevel,
   SqlTransaction,
   SqlTransactionOptions,
-} from "@bunest/store-kit/mysql";
+} from "@bunest/orm/mysql";

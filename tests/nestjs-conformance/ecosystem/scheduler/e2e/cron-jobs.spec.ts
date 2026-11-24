@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, jest, mock, spyOn } from "bun:test";
-import { Injectable, Logger } from "../../../../../packages/common/src";
+import { Injectable, Logger } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Cron,
@@ -8,7 +7,7 @@ import {
   CronJob,
   ScheduleModule,
   SchedulerRegistry,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 import {
   CronService,
@@ -117,7 +116,7 @@ describeConformance(
       "native CronJob.isRunning()",
     );
 
-    // BUNEST_BUG: Expected CronJob.lastDate() to update on skipped ticks when waitForCompletion: true (00:02:00.000Z), matching upstream cron/schedule behavior, but packages/scheduler/src/cron/cron-job.ts fireOnce() returns early before setting this.lastRunDate when inFlight is true (remained 00:01:00.000Z).
+    // BUNEST_BUG: Expected CronJob.lastDate() to update on skipped ticks when waitForCompletion: true (00:02:00.000Z), matching upstream cron/schedule behavior, but packages/jobs/src/scheduler/cron/cron-job.ts fireOnce() returns early before setting this.lastRunDate when inFlight is true (remained 00:01:00.000Z).
     it.skip(`should wait for "cron" to complete [ADR-001: native CronJob.isRunning() + Bun fake timers]`, async () => {
       const service = app!.get(CronService);
 
@@ -282,7 +281,7 @@ describeConformance(
       "native CronJob.isRunning()",
     );
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getCronJob() missing-job error message to match NestJS NO_SCHEDULER_FOUND ("No Cron Job was found with the given name (dynamic)..."), but packages/scheduler/src/scheduler.registry.ts throws 'No cron job found with name "dynamic".'.
+    // BUNEST_BUG: Expected SchedulerRegistry.getCronJob() missing-job error message to match NestJS NO_SCHEDULER_FOUND ("No Cron Job was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No cron job found with name "dynamic".'.
     it.skip(`should delete dynamic cron job`, async () => {
       const service = app!.get(CronService);
       await app!.init();
@@ -457,7 +456,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate cron error message to match NestJS DUPLICATE_SCHEDULER ("Cron Job with the given name (<name>) already exists. Ignored."), but packages/scheduler/src/scheduler.registry.ts throws 'Cron job with name "<name>" already exists.'.
+    // BUNEST_BUG: Expected duplicate cron error message to match NestJS DUPLICATE_SCHEDULER ("Cron Job with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Cron job with name "<name>" already exists.'.
     it.skip.each(["shared", "__proto__"])(
       "should reject duplicate cron name %s",
       async (name) => {
@@ -517,7 +516,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/common/src/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/scheduler/src/scheduler.explorer.ts uses context "SchedulerExplorer".
+    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/core/src/common/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/jobs/src/scheduler/scheduler.explorer.ts uses context "SchedulerExplorer".
     it.skip(`should log a warning when trying to register a cron in a request scoped provider`, async () => {
       const logger = {
         log: mock(() => {}),

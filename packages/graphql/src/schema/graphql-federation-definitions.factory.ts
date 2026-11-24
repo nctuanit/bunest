@@ -1,4 +1,4 @@
-import { type DefinitionNode, Kind, parse } from "graphql";
+import { type DefinitionNode, Kind, parse } from "../engine";
 import type { DefinitionsGeneratorOptions } from "../interfaces/graphql.interface";
 import { GraphQLDefinitionsFactory } from "./graphql-definitions.factory";
 
@@ -70,7 +70,6 @@ export class GraphQLFederationDefinitionsFactory extends GraphQLDefinitionsFacto
     if ("name" in def && def.name?.value) {
       return FEDERATION_INTERNAL_TYPES.has(def.name.value);
     }
-    return def.kind === Kind.DIRECTIVE_DEFINITION &&
-      def.name.value === "link";
+    return def.kind === Kind.DIRECTIVE_DEFINITION && def.name.value === "link";
   }
 }

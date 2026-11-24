@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Controller,
   Inject,
@@ -8,7 +7,7 @@ import {
   SetMetadata,
   type OnApplicationBootstrap,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   EVENT_LISTENER_METADATA,
   EVENT_PAYLOAD,
@@ -17,7 +16,7 @@ import {
   OnEvent,
   type OnEventMetadata,
   type OnEventOptions,
-} from "../../../../../packages/events/src";
+} from "../../../../../packages/messaging/src/events";
 
 export const TEST_EVENT_PAYLOAD = {
   test: "event",

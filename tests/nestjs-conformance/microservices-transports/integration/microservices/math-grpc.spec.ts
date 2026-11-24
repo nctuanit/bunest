@@ -1,5 +1,12 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import {
   Body,
   Catch,
@@ -9,7 +16,7 @@ import {
   Query,
   type ArgumentsHost,
   type ExceptionFilter,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GrpcClientProxy,
@@ -72,9 +79,7 @@ class ErrorHandlingProxy extends GrpcClientProxy {
     try {
       return await super.call<TRes, TReq>(service, method, data, options);
     } catch (err) {
-      throw new RpcException(
-        err instanceof Error ? err.message : String(err),
-      );
+      throw new RpcException(err instanceof Error ? err.message : String(err));
     }
   }
 }
@@ -189,10 +194,7 @@ class GrpcController {
 
   @GrpcMethod("Math")
   async alreadyExists(): Promise<never> {
-    throw new GrpcException(
-      GrpcStatus.ALREADY_EXISTS,
-      "email already exists",
-    );
+    throw new GrpcException(GrpcStatus.ALREADY_EXISTS, "email already exists");
   }
 
   @GrpcStreamMethod("Math", "StreamDivide")

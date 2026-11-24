@@ -1,4 +1,4 @@
-import { Logger, type LoggerService } from "@bunest/common";
+import { Logger, type LoggerService } from "@bunest/core";
 import type { LogMailTransportOptions } from "../interfaces/local-transport-options.interface";
 import type { MailTransportResult } from "../interfaces/mail-transport.interface";
 import { LOCAL_TRANSPORT } from "../mail.constants";

@@ -10,8 +10,8 @@ import type {
   NestHybridApplicationOptions,
   Scope,
   Type,
-} from "@bunest/common";
-import type { BunHttpAdapter } from "@bunest/http";
+} from "@bunest/core";
+import type { BunHttpAdapter } from "@bunest/core/http";
 
 export interface OverrideByFactoryOptions<T = unknown> {
   factory: (...args: any[]) => T | Promise<T>;
@@ -62,8 +62,7 @@ export interface TestingModuleCompileOptions extends BunestApplicationOptions {
   autoFlushLogs?: boolean;
 }
 
-export interface CreateTestingMicroserviceOptions
-  extends NestHybridApplicationOptions {
+export interface CreateTestingMicroserviceOptions extends NestHybridApplicationOptions {
   logger?: LoggerService | LogLevel[] | false;
 }
 
@@ -77,9 +76,7 @@ export interface CreateTestingAppOptions extends BunestApplicationOptions {
 
 export type QueryParamPrimitive = string | number | boolean;
 export type QueryParamValue =
-  | QueryParamPrimitive
-  | readonly QueryParamPrimitive[]
-  | undefined;
+  QueryParamPrimitive | readonly QueryParamPrimitive[] | undefined;
 
 export interface TestClientOptions {
   /**

@@ -1,4 +1,4 @@
-import { Module, type DynamicModule, type Provider } from "@bunest/common";
+import { Module, type DynamicModule, type Provider } from "@bunest/core";
 import {
   JWT_MODULE_OPTIONS,
   type JwtModuleAsyncOptions,

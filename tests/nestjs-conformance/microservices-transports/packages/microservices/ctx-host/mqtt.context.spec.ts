@@ -1,14 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   MqttContext,
   Transport,
   type MqttPacketLike,
 } from "../../../../../../packages/microservices/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "MqttContext",
@@ -109,7 +105,9 @@ describeConformance(
           pattern: "test",
           topic: "test",
           packet: { topic: "test", payload: "hi", properties: {} },
-        }) as unknown as { getMetadata?: () => Record<string, string> | undefined };
+        }) as unknown as {
+          getMetadata?: () => Record<string, string> | undefined;
+        };
         expect(mqtt3Ctx.getMetadata!()).toBeUndefined();
       });
     });

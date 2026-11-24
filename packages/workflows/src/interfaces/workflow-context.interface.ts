@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type { ScheduleOccurrence } from "../core/interfaces/schedule.interface";
 import type { Duration } from "../core/time/duration";
 import type { WorkflowSignal } from "../signals/workflow.signal";
@@ -23,6 +23,28 @@ export type WorkflowOutput<W> = W extends {
   ? Awaited<R>
   : unknown;
 
+type JsonPrimitive = string | number | boolean | null | undefined | void;
+type NonJsonValue = bigint | symbol | ((...args: any[]) => unknown);
+
+type JournaledObject<T> = {
+  [
+    K in keyof T as T[K] extends (...args: any[]) => unknown ? never : K
+  ]: Journaled<T[K]>;
+};
+
+type JournaledContainer<T> = T extends
+  ReadonlyMap<unknown, unknown> | ReadonlySet<unknown>
+  ? Record<string, never>
+  : T extends readonly unknown[]
+    ? { [K in keyof T]: JournaledElement<T[K]> }
+    : JournaledObject<T>;
+
+type JournaledNonToJson<T> = T extends JsonPrimitive
+  ? T
+  : T extends NonJsonValue
+    ? never
+    : JournaledContainer<T>;
+
 /**
  * What a journaled value looks like after its JSON round-trip: step results,
  * signal payloads and checkpoints come back this way on the first run and on
@@ -33,26 +55,11 @@ export type Journaled<T> = unknown extends T
   ? T
   : T extends { toJSON(...args: any[]): infer R }
     ? Journaled<R>
-    : T extends string | number | boolean | null | undefined | void
-      ? T
-      : T extends bigint | symbol | ((...args: any[]) => unknown)
-        ? never
-        : T extends ReadonlyMap<unknown, unknown> | ReadonlySet<unknown>
-          ? Record<string, never>
-          : T extends readonly unknown[]
-            ? { [K in keyof T]: JournaledElement<T[K]> }
-            : {
-                [K in keyof T as T[K] extends (...args: any[]) => unknown
-                  ? never
-                  : K]: Journaled<T[K]>;
-              };
+    : JournaledNonToJson<T>;
 
 /** In arrays, `JSON.stringify` writes `undefined`, functions and symbols as `null`. */
 type JournaledElement<T> = T extends
-  | undefined
-  | void
-  | symbol
-  | ((...args: any[]) => unknown)
+  undefined | void | symbol | ((...args: any[]) => unknown)
   ? null
   : Journaled<T>;
 
@@ -162,8 +169,9 @@ export interface StartChildWorkflowOptions {
 }
 
 /** A started child workflow (`ctx.startChild()`). Also a condition for `ctx.waitForAny()`. */
-export interface ChildWorkflowHandle<O = unknown>
-  extends WorkflowCondition<Journaled<O>> {
+export interface ChildWorkflowHandle<O = unknown> extends WorkflowCondition<
+  Journaled<O>
+> {
   readonly id: string;
   readonly workflow: string;
   readonly version: number;

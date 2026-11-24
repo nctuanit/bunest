@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import { AuthGuard } from "../../../../../packages/security/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";

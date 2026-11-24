@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Field,
@@ -28,7 +27,8 @@ class CorrectArray {
 describeConformance(
   "Field decorator (defaultValue)",
   {
-    upstreamPath: "packages/graphql/tests/plugin/decorators/field.decorator.spec.ts",
+    upstreamPath:
+      "packages/graphql/tests/plugin/decorators/field.decorator.spec.ts",
     category: "DIRECT_PORT",
   },
   () => {

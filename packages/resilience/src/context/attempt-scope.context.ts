@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { ContextStorage } from "@bunest/core";
 
 /** The attempt a piece of code runs in: set per attempt by entrypoints and `execute()`. */
 export interface AttemptScope {
@@ -11,7 +11,7 @@ interface StoredAttempt extends AttemptScope {
   ended: boolean;
 }
 
-const storage = new AsyncLocalStorage<StoredAttempt>();
+const storage = new ContextStorage<StoredAttempt>();
 
 function currentScope(): StoredAttempt | undefined {
   let scope = storage.getStore();

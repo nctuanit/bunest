@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { TestingLogger, describeConformance } from "../../../_helpers";
 
@@ -7,7 +6,8 @@ describeConformance(
   {
     upstreamPath: "packages/testing/test/testing-logger.service.spec.ts",
     category: "DIRECT_PORT",
-    notes: "Bunest TestingLogger emits errors via console.error and silences log/warn/debug/verbose by default.",
+    notes:
+      "Bunest TestingLogger emits errors via console.error and silences log/warn/debug/verbose by default.",
   },
   () => {
     let logger: TestingLogger;

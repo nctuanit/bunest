@@ -34,7 +34,10 @@ export class RetryPolicy extends ResiliencePolicy {
   readonly attempts: number;
   private readonly delay: (attempt: number, error: unknown) => number;
   private readonly retryIf: (error: unknown, attempt: number) => boolean;
-  private readonly retryOnResult?: (result: unknown, attempt: number) => boolean;
+  private readonly retryOnResult?: (
+    result: unknown,
+    attempt: number,
+  ) => boolean;
 
   /** `new RetryPolicy(5)` is `{ attempts: 5 }`; `name` labels its events. */
   constructor(

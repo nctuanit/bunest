@@ -1,14 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  resolve,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   parseCliArgs,
   runCli,
@@ -23,6 +21,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -55,22 +62,14 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-start-"));
-      mkdirSync(join(tmpDir, "src"), { recursive: true });
-      writeFileSync(
-        join(tmpDir, "package.json"),
-        JSON.stringify({ name: "start-app", type: "module" }),
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "main.ts"),
-        `export const booted = true;\n`,
-        "utf8",
-      );
+      tmpDir = makeTempDir("bunest-cli-conf-start-");
+      mkdirSyncPath(join(tmpDir, "src"), { recursive: true });
+      writeTextSync(join(tmpDir, "package.json"), JSON.stringify({ name: "start-app", type: "module" }));
+      writeTextSync(join(tmpDir, "src", "main.ts"), `export const booted = true;\n`);
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     describe("CLI command & flag forwarding", () => {
@@ -140,11 +139,7 @@ describeConformance(
         expect(result.command).toContain("--inspect");
         expect(spawnSpy.firstCall?.args[0][0]).toBe("node");
 
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ exec: "custom-runtime" }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ exec: "custom-runtime" }));
         const cfgSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
         const cfgResult = await runStartCommand({
           cwd: tmpDir,
@@ -192,17 +187,9 @@ describeConformance(
       });
 
       it("should respect --entryFile, --sourceRoot, --config, and --port validation", async () => {
-        mkdirSync(join(tmpDir, "server"), { recursive: true });
-        writeFileSync(
-          join(tmpDir, "server", "boot.ts"),
-          `export const ok = 1;\n`,
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "custom.json"),
-          JSON.stringify({ sourceRoot: "server", entryFile: "boot" }),
-          "utf8",
-        );
+        mkdirSyncPath(join(tmpDir, "server"), { recursive: true });
+        writeTextSync(join(tmpDir, "server", "boot.ts"), `export const ok = 1;\n`);
+        writeTextSync(join(tmpDir, "custom.json"), JSON.stringify({ sourceRoot: "server", entryFile: "boot" }));
 
         const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
         const result = await runStartCommand({
@@ -251,9 +238,7 @@ describeConformance(
         async () => {
           const resultFile = join(tmpDir, "probe-result.json");
           const entryPath = join(tmpDir, "src", "main.ts");
-          writeFileSync(
-            entryPath,
-            `const greeting = await Promise.resolve("Hello World!");
+          writeTextSync(entryPath, `const greeting = await Promise.resolve("Hello World!");
 const server = Bun.serve({
   port: 0,
   hostname: "127.0.0.1",
@@ -268,9 +253,7 @@ try {
 } finally {
   server.stop(true);
 }
-`,
-            "utf8",
-          );
+`);
 
           const cap = createCapturedIO(tmpDir);
           const cliRes = await runCli(["start", "--silent"], cap.io);
@@ -279,7 +262,7 @@ try {
           const out = cliRes.output as StartCommandResult;
           expect(out.entry).toBe(entryPath);
 
-          const probe = JSON.parse(readFileSync(resultFile, "utf8")) as {
+          const probe = JSON.parse(readTextSync(resultFile)) as {
             status: number;
             body: string;
           };
@@ -293,9 +276,9 @@ try {
         "handles project and entry paths containing '-no-' without misparsing flags",
         async () => {
           const noDir = join(tmpDir, "bunest-no-test-cli");
-          mkdirSync(join(noDir, "src"), { recursive: true });
+          mkdirSyncPath(join(noDir, "src"), { recursive: true });
           const entryPath = join(noDir, "src", "main-no-flag.ts");
-          writeFileSync(entryPath, `export const ok = true;\n`, "utf8");
+          writeTextSync(entryPath, `export const ok = true;\n`);
 
           const parsed = parseCliArgs([
             "start",
@@ -322,15 +305,9 @@ try {
     describe("monorepo project start", () => {
       // BUNEST_BUG: `runCli(["start", "<projectName>"])` ignores positional project names and runStartCommand() never calls resolveProjectConfiguration() for monorepo sub-apps (packages/cli/src/runner.ts, packages/cli/src/commands/start.ts)
       it.skip("should start a specific sub-app by name in monorepo mode", async () => {
-        mkdirSync(join(tmpDir, "apps", "worker", "src"), { recursive: true });
-        writeFileSync(
-          join(tmpDir, "apps", "worker", "src", "main.ts"),
-          `export const worker = true;\n`,
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({
+        mkdirSyncPath(join(tmpDir, "apps", "worker", "src"), { recursive: true });
+        writeTextSync(join(tmpDir, "apps", "worker", "src", "main.ts"), `export const worker = true;\n`);
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({
             monorepo: true,
             projects: {
               worker: {
@@ -340,9 +317,7 @@ try {
                 sourceRoot: "apps/worker/src",
               },
             },
-          }),
-          "utf8",
-        );
+          }));
 
         const cap = createCapturedIO(tmpDir);
         const res = await runCli(["start", "worker", "--silent"], cap.io);

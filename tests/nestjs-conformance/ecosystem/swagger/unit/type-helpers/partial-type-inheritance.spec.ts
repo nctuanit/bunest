@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   ApiProperty,
   PartialType,
@@ -87,7 +86,7 @@ describeConformance(
         childProp!: string;
       }
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
+      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
       it.skip("should include plugin-based parent properties in the child prototype chain", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(ChildOfPartialPlugin);
@@ -98,7 +97,7 @@ describeConformance(
         expect(properties).toContain("childProp");
       });
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
+      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
       it.skip("should mark plugin parent properties as optional", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(ChildOfPartialPlugin);
@@ -160,7 +159,7 @@ describeConformance(
         childProp!: string;
       }
 
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
+      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
       it.skip("should include parent properties after metadata is loaded", async () => {
         const SERIALIZED_METADATA = {
           "@nestjs/swagger": {
@@ -189,7 +188,7 @@ describeConformance(
         expect(properties).toContain("childProp");
       });
 
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
+      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
       it.skip("should mark parent properties as optional after metadata is loaded", async () => {
         const SERIALIZED_METADATA = {
           "@nestjs/swagger": {

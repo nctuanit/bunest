@@ -1,5 +1,9 @@
-import "reflect-metadata";
-import { IsBoolean, IsOptional, IsString, MinLength } from "class-validator";
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "@bunest/validation/validator";
 import { ApiProperty, ApiPropertyOptional } from "@bunest/swagger";
 
 export class CreateTodoDto {

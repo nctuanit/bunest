@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { MailMessageError } from "../errors/mail-message.error";
 import { MailProviderError } from "../errors/mail-provider.error";
 import type {
@@ -107,8 +106,7 @@ export class ResendTransport extends HttpProviderTransport {
       status,
       providerCode: name,
       detail:
-        field(body, "message") ??
-        (typeof body === "string" ? body : undefined),
+        field(body, "message") ?? (typeof body === "string" ? body : undefined),
       ...(permanent !== undefined && { permanent }),
       retryAfterMs,
     });
@@ -119,5 +117,5 @@ export class ResendTransport extends HttpProviderTransport {
 export function providerKey(key: string): string {
   return key.length <= 256
     ? key
-    : createHash("sha256").update(key).digest("hex");
+    : new Bun.CryptoHasher("sha256").update(key).digest("hex");
 }

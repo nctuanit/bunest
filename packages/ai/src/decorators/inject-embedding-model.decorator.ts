@@ -1,6 +1,6 @@
-import { Inject } from '@bunest/common';
-import { DEFAULT_MODEL_NAME, getEmbeddingModelToken } from '../ai.constants';
-import { recordEmbeddingModelRequest } from '../models/model-requests';
+import { Inject } from "@bunest/core";
+import { DEFAULT_MODEL_NAME, getEmbeddingModelToken } from "../ai.constants";
+import { recordEmbeddingModelRequest } from "../models/model-requests";
 
 /**
  * Injects the configured `EmbeddingModel` called `name` (default `'default'`).

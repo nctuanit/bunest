@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BODY_SANITIZED_SYMBOL,
@@ -13,7 +12,7 @@ import {
   type ExecutionContext,
   type StandardSchemaV1,
   type ValidationErrorResponse,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   IsEmail,
   IsInt,
@@ -21,8 +20,8 @@ import {
   Min,
   MinLength,
   ValidateNested,
-} from "class-validator";
-import { Transform, Type as TransformType } from "class-transformer";
+} from "../src/validator";
+import { Transform, Type as TransformType } from "../src/transformer";
 import {
   SchemaValidationPipe,
   StandardSchemaSerializerInterceptor,
@@ -88,9 +87,13 @@ describe("ValidationPipe Hot Path (BODY_SANITIZED_SYMBOL & Pre-normalized Option
       throw new Error("expected prototype pollution rejection");
     } catch (err) {
       expect(err).toBeInstanceOf(HttpException);
-      const json = (err as HttpException).toJSON() as unknown as ValidationErrorResponse;
+      const json = (
+        err as HttpException
+      ).toJSON() as unknown as ValidationErrorResponse;
       expect(json.statusCode).toBe(400);
-      expect(json.details.some((d) => d.field.includes("__proto__"))).toBe(true);
+      expect(json.details.some((d) => d.field.includes("__proto__"))).toBe(
+        true,
+      );
     }
 
     // 2. HTTP-sanitized object carrying unforgeable BODY_SANITIZED_SYMBOL takes fast path
@@ -287,7 +290,9 @@ describe("Mapped DTO Types E2E with ValidationPipe (class-validator + class-tran
       @IsString()
       @Transform(({ value }) => {
         handleTransformRuns++;
-        return typeof value === "string" ? `${value.trim().toLowerCase()}!` : value;
+        return typeof value === "string"
+          ? `${value.trim().toLowerCase()}!`
+          : value;
       })
       handle!: string;
 
@@ -439,7 +444,9 @@ describe("StandardSchemaValidationPipe & SchemaValidationPipe Standard Schema v1
       throw new Error("should throw");
     } catch (err) {
       expect(err).toBeInstanceOf(HttpException);
-      const json = (err as HttpException).toJSON() as unknown as ValidationErrorResponse;
+      const json = (
+        err as HttpException
+      ).toJSON() as unknown as ValidationErrorResponse;
       expect(json.details.map((d) => d.field)).toEqual([
         "address.zipCode",
         "items[0].quantity",
@@ -483,7 +490,11 @@ describe("StandardSchemaSerializerInterceptor & @UseStandardSchema", () => {
       version: 1,
       vendor: "test-serializer",
       validate(val) {
-        if (typeof val !== "object" || val === null || typeof (val as any).id !== "number") {
+        if (
+          typeof val !== "object" ||
+          val === null ||
+          typeof (val as any).id !== "number"
+        ) {
           return { issues: [{ message: "Missing numeric id", path: ["id"] }] };
         }
         return { value: { id: (val as any).id } };

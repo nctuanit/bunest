@@ -1,2 +1,2 @@
-export * from './clock';
-export * from './duration';
+export * from "./clock";
+export * from "./duration";

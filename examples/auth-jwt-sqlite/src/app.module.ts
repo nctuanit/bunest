@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Body,
   ConflictException,
@@ -7,8 +6,9 @@ import {
   Injectable,
   Module,
   Post,
+  Secret,
   UnauthorizedException,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { BunestApplication } from "@bunest/core";
 import {
   CurrentUser,
@@ -21,23 +21,23 @@ import {
 import {
   Column,
   CreateDateColumn,
+  CrudRepository,
   Entity,
-  JpaRepository,
   Modifying,
+  OrmMigrationRunner,
+  OrmModule,
+  OrmRepository,
   PrimaryGeneratedColumn,
   Query,
   SqlParam,
-  SqliteMigrationRunner,
-  SqliteModule,
-  SqliteRepository,
   Transactional,
-  type SqliteMigration,
-} from "@bunest/sqlite";
+  type OrmMigration,
+} from "@bunest/orm";
 import { ValidationPipe } from "@bunest/validation";
 import { CreateTaskDto, LoginDto, RegisterDto } from "./auth.dto";
 
 export const AUTH_JWT_SECRET =
-  process.env.JWT_SECRET ?? "bunest-demo-jwt-secret-key-min-32-chars!!";
+  Bun.env.JWT_SECRET ?? "bunest-demo-jwt-secret-key-min-32-chars!!";
 
 export interface AuthenticatedUser {
   readonly sub: string;
@@ -45,21 +45,7 @@ export interface AuthenticatedUser {
   readonly roles: string[];
 }
 
-export interface DbUserRow {
-  readonly id: number;
-  readonly email: string;
-  readonly password_hash: string;
-  readonly roles: string;
-}
-
-export interface DbTaskRow {
-  readonly id: number;
-  readonly user_id: number;
-  readonly title: string;
-  readonly created_at: string;
-}
-
-export const AUTH_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
+export const AUTH_SQLITE_MIGRATIONS: readonly OrmMigration[] = [
   {
     id: "001_create_users",
     up: `
@@ -100,6 +86,7 @@ export class UserEntity {
   email!: string;
 
   @Column({ name: "password_hash", type: "text" })
+  @Secret()
   passwordHash!: string;
 
   @Column({ type: "json" })
@@ -121,8 +108,8 @@ export class TaskEntity {
   createdAt!: Date;
 }
 
-@SqliteRepository(UserEntity)
-export abstract class UserRepository extends JpaRepository<UserEntity, number> {
+@OrmRepository(UserEntity)
+export abstract class UserRepository extends CrudRepository<UserEntity, number> {
   abstract findByEmail(email: string): Promise<UserEntity | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
 
@@ -132,8 +119,8 @@ export abstract class UserRepository extends JpaRepository<UserEntity, number> {
   }
 }
 
-@SqliteRepository(TaskEntity)
-export abstract class TaskRepository extends JpaRepository<TaskEntity, number> {
+@OrmRepository(TaskEntity)
+export abstract class TaskRepository extends CrudRepository<TaskEntity, number> {
   @Query(
     "SELECT id, user_id, title, created_at FROM tasks WHERE user_id = :userId ORDER BY id ASC",
   )
@@ -274,10 +261,7 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Post()
-  create(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateTaskDto,
-  ) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTaskDto) {
     return this.tasksService.createTransactional(Number(user.sub), dto);
   }
 
@@ -291,15 +275,16 @@ export class TasksController {
 export class AdminController {
   constructor(
     private readonly tasksService: TasksService,
-    private readonly migrations: SqliteMigrationRunner,
+    private readonly migrations: OrmMigrationRunner,
   ) {}
 
   @Roles("admin")
   @Get("/stats")
   async stats() {
+    const migrationStatus = await this.migrations.status();
     return {
       ...(await this.tasksService.getAdminStats()),
-      appliedMigrations: this.migrations.status().applied.map((m) => m.id),
+      appliedMigrations: migrationStatus.applied.map((m) => m.id),
     };
   }
 }
@@ -307,13 +292,13 @@ export class AdminController {
 export function createAuthSqliteModule(filename: string = ":memory:") {
   @Module({
     imports: [
-      SqliteModule.forRoot({
-        filename,
+      OrmModule.forRoot({
+        type: "sqlite",
+        database: filename,
         migrations: AUTH_SQLITE_MIGRATIONS,
         autoMigrate: true,
-        global: true,
       }),
-      SqliteModule.forFeature([UserRepository, TaskRepository]),
+      OrmModule.forFeature([UserRepository, TaskRepository]),
       SecurityModule.forRoot({
         jwt: {
           secret: AUTH_JWT_SECRET,
@@ -336,7 +321,7 @@ export function createAuthSqliteModule(filename: string = ":memory:") {
 }
 
 export const AppModule = createAuthSqliteModule(
-  process.env.SQLITE_FILE ?? ":memory:",
+  Bun.env.SQLITE_FILE ?? ":memory:",
 );
 
 export function configureAuthSqliteApp(app: BunestApplication): void {

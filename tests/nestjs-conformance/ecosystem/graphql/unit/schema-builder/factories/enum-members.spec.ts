@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
-import type { GraphQLEnumType, GraphQLSchema } from "../../../../../../../packages/graphql/node_modules/graphql";
+import type {
+  GraphQLEnumType,
+  GraphQLSchema,
+} from "../../../../../../../packages/graphql/src";
 import {
   Args,
   GraphQLSchemaBuilderModule,
@@ -30,10 +32,9 @@ namespace OrderStatus {
   export const ALL: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.SHIPPED];
   export const LABELS = { PENDING: "Pending" };
 }
-registerEnumType(
-  OrderStatus as unknown as Record<string, string | number>,
-  { name: "OrderStatus" },
-);
+registerEnumType(OrderStatus as unknown as Record<string, string | number>, {
+  name: "OrderStatus",
+});
 
 @Resolver()
 class OrdersResolver {

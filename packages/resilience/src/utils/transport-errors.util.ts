@@ -2,7 +2,7 @@ import {
   HttpException,
   HttpStatus,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { HttpAdapterHost } from "@bunest/core";
 import { BulkheadFullError } from "../errors/bulkhead-full.error";
 import { CircuitOpenError } from "../errors/circuit-open.error";
@@ -81,12 +81,9 @@ export class TransportErrorMapper {
   }
 
   async map(error: unknown, context: ExecutionContext): Promise<unknown> {
-    if (
-      !(
-        error instanceof ResilienceTimeoutError ||
-        error instanceof RejectionError
-      )
-    ) {
+    if (!(
+      error instanceof ResilienceTimeoutError || error instanceof RejectionError
+    )) {
       return error;
     }
     const { code, statusCode, message, retryAfter } =
@@ -99,7 +96,11 @@ export class TransportErrorMapper {
         const response = context.switchToHttp().getResponse<unknown>();
         if (retryAfter !== undefined && !headersSent(response, adapter)) {
           if (adapter && typeof adapter.setHeader === "function") {
-            adapter.setHeader(response as never, "Retry-After", String(retryAfter));
+            adapter.setHeader(
+              response as never,
+              "Retry-After",
+              String(retryAfter),
+            );
           } else if (
             response &&
             typeof (response as { header?: unknown }).header === "function"
@@ -131,7 +132,9 @@ export class TransportErrorMapper {
       }
       case "rpc": {
         if (!this.microservices) {
-          this.microservices = await loadOptionalModule("@bunest/microservices");
+          this.microservices = await loadOptionalModule(
+            "@bunest/microservices",
+          );
         }
         const payload = {
           status: "error",
@@ -147,7 +150,7 @@ export class TransportErrorMapper {
       }
       case "ws": {
         if (!this.websockets) {
-          this.websockets = await loadOptionalModule("@bunest/websockets");
+          this.websockets = await loadOptionalModule("@bunest/core/ws");
         }
         const payload = {
           status: "error",
@@ -181,7 +184,9 @@ export class TransportErrorMapper {
   }
 }
 
-async function loadOptionalModule<T>(specifier: string): Promise<T | undefined> {
+async function loadOptionalModule<T>(
+  specifier: string,
+): Promise<T | undefined> {
   try {
     return (await import(specifier)) as T;
   } catch {

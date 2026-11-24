@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Logger,
   type OnModuleInit,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CapturingLogger,
@@ -85,7 +84,7 @@ describeConformance(
         logger.assertLogged(/orders/, "log");
       });
 
-      // BUNEST_BUG: new Logger(OrdersService.name) inside providers does not route through TestingModuleBuilder.setLogger(capturingLogger) (packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: new Logger(OrdersService.name) inside providers does not route through TestingModuleBuilder.setLogger(capturingLogger) (packages/core/src/common/logger/logger.ts)
       it.skip('should capture the logs of "Logger" instances in providers', async () => {
         logger.assertLogged("Orders service ready", "log");
         await request(app).get("/orders").expect(200);

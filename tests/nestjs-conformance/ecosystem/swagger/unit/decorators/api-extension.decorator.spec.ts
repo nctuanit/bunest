@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Body,
@@ -8,7 +7,7 @@ import {
   Module,
   Post,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../../packages/core/src";
 import {
   ApiExtension,
@@ -23,7 +22,9 @@ interface StoredExtensionEntry {
   readonly value: unknown;
 }
 
-function getExtensionsRecord(target: object): Record<string, unknown> | undefined {
+function getExtensionsRecord(
+  target: object,
+): Record<string, unknown> | undefined {
   const entries = MetadataRegistry.get<readonly StoredExtensionEntry[]>(
     SWAGGER_METADATA_KEYS.API_EXTENSIONS,
     target,
@@ -47,7 +48,10 @@ async function getOperationExtensions(
   class TestModule {}
   const app = await BunestFactory.create(TestModule, { logger: false });
   try {
-    const doc = SwaggerModule.createDocument(app, new DocumentBuilder().build());
+    const doc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().build(),
+    );
     const op = doc.paths[path]?.[method] as Record<string, unknown> | undefined;
     const out: Record<string, unknown> = {};
     if (op) {
@@ -322,10 +326,9 @@ describeConformance(
         }
 
         const controller = new TestAppController();
-        const firstMetadata = getExtensionsRecord(controller.getFirst) as Record<
-          string,
-          { counter: number }
-        >;
+        const firstMetadata = getExtensionsRecord(
+          controller.getFirst,
+        ) as Record<string, { counter: number }>;
         const secondMetadata = getExtensionsRecord(
           controller.getSecond,
         ) as Record<string, { counter: number }>;

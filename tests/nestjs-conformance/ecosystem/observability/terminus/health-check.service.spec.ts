@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, mock } from "bun:test";
 import {
   ServiceUnavailableException,
   type LoggerService,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   HealthCheckException,
   HealthCheckService,

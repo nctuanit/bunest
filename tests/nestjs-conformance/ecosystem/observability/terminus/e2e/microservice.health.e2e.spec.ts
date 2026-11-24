@@ -1,7 +1,5 @@
-import "reflect-metadata";
-import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../../packages/core/src/common";
 import { Transport } from "../../../../../../packages/microservices/src";
 import {
   HealthCheck,
@@ -58,8 +56,7 @@ function createMicroserviceHealthApp(
 describeConformance(
   "MicroserviceHealthIndicator (e2e)",
   {
-    upstreamPath:
-      "terminus/e2e/health-checks/microservice.health.e2e-spec.ts",
+    upstreamPath: "terminus/e2e/health-checks/microservice.health.e2e-spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:
@@ -67,23 +64,24 @@ describeConformance(
   },
   () => {
     let ctx: TestAppContext | undefined;
-    let tcpServer: net.Server | undefined;
+    let tcpServer: Bun.TCPSocketListener<undefined> | undefined;
     let tcpPort = 0;
 
-    const closeTcpServer = async () => {
+    const closeTcpServer = () => {
       if (tcpServer) {
         const toClose = tcpServer;
         tcpServer = undefined;
-        await new Promise<void>((resolve) => toClose.close(() => resolve()));
+        toClose.stop(true);
       }
     };
 
-    beforeEach(async () => {
-      tcpServer = net.createServer();
-      await new Promise<void>((resolve) =>
-        tcpServer!.listen(0, "127.0.0.1", resolve),
-      );
-      tcpPort = (tcpServer.address() as net.AddressInfo).port;
+    beforeEach(() => {
+      tcpServer = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: { data() {} },
+      });
+      tcpPort = tcpServer.port;
     });
 
     afterEach(async () => {
@@ -91,7 +89,7 @@ describeConformance(
         await ctx.close();
         ctx = undefined;
       }
-      await closeTcpServer();
+      closeTcpServer();
     });
 
     describe("TCP", () => {
@@ -126,7 +124,7 @@ describeConformance(
         "Uses local ephemeral node:net TCP server (port: 0) instead of fixed port 8889",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
       it.skip(
         adaptedTitle(
           ["ADR-001"],
@@ -199,7 +197,7 @@ describeConformance(
         "Probes local ephemeral TCP socket via RMQ options.urls without Docker",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
       it.skip(
         adaptedTitle(
           ["ADR-001"],

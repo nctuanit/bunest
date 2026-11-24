@@ -1,13 +1,11 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   Controller,
   Get,
   Injectable,
   Module,
   Post,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { APP_GUARD } from "../../../../../../packages/core/src";
 import {
   SkipThrottle,
@@ -205,12 +203,9 @@ describeConformance(
           );
           expect(errRes.headers["retry-after"]).toMatch(/^\d+$/);
 
-          await delay(blockDuration + 60);
+          await Bun.sleep(blockDuration + 60);
 
-          const response = await ctx
-            .request()
-            .get(`/limit${url}`)
-            .expect(200);
+          const response = await ctx.request().get(`/limit${url}`).expect(200);
           expect(response.body).toEqual({ success: true });
           expect(response.headers["x-ratelimit-limit"]).toBe(limit.toString());
           expect(response.headers["x-ratelimit-remaining"]).toBe(
@@ -255,7 +250,7 @@ describeConformance(
           );
           expect(errRes.headers["retry-after"]).toMatch(/^\d+$/);
 
-          await delay(blockDuration + 60);
+          await Bun.sleep(blockDuration + 60);
 
           const response = await ctx.request().get("/default").expect(200);
           expect(response.body).toEqual({ success: true });
@@ -276,7 +271,7 @@ describeConformance(
             .expect(201);
           expect(res1.body).toEqual({ code: "THROTTLE_TEST" });
 
-          await delay(300);
+          await Bun.sleep(300);
 
           const res2 = await ctx
             .request()

@@ -1,5 +1,5 @@
-import type { AiModelPricing } from '../interfaces/ai-module-options.interface';
-import type { AiUsage } from '../interfaces/ai-usage.interface';
+import type { AiModelPricing } from "../interfaces/ai-module-options.interface";
+import type { AiUsage } from "../interfaces/ai-usage.interface";
 
 export const ZERO_USAGE: AiUsage = Object.freeze({
   inputTokens: 0,
@@ -13,22 +13,22 @@ export const ZERO_USAGE: AiUsage = Object.freeze({
 export function toUsage(usage: Record<string, any> | undefined): AiUsage {
   if (!usage) return { ...ZERO_USAGE };
   const inputTokens =
-    typeof usage.inputTokens === 'object' && usage.inputTokens !== null
+    typeof usage.inputTokens === "object" && usage.inputTokens !== null
       ? (usage.inputTokens.total ?? 0)
       : (usage.inputTokens ?? usage.promptTokens ?? 0);
   const outputTokens =
-    typeof usage.outputTokens === 'object' && usage.outputTokens !== null
+    typeof usage.outputTokens === "object" && usage.outputTokens !== null
       ? (usage.outputTokens.total ?? 0)
       : (usage.outputTokens ?? usage.completionTokens ?? 0);
   const cachedInputTokens =
-    (typeof usage.inputTokens === 'object' && usage.inputTokens !== null
+    (typeof usage.inputTokens === "object" && usage.inputTokens !== null
       ? usage.inputTokens.cacheRead
       : undefined) ??
     usage.inputTokenDetails?.cacheReadTokens ??
     usage.cachedInputTokens ??
     0;
   const reasoningTokens =
-    (typeof usage.outputTokens === 'object' && usage.outputTokens !== null
+    (typeof usage.outputTokens === "object" && usage.outputTokens !== null
       ? usage.outputTokens.reasoning
       : undefined) ??
     usage.outputTokenDetails?.reasoningTokens ??
@@ -38,7 +38,7 @@ export function toUsage(usage: Record<string, any> | undefined): AiUsage {
     inputTokens,
     outputTokens,
     totalTokens:
-      typeof usage.totalTokens === 'number'
+      typeof usage.totalTokens === "number"
         ? usage.totalTokens
         : inputTokens + outputTokens,
     cachedInputTokens,

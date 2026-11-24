@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, expect } from "bun:test";
-import { Controller, Module } from "../../../../../packages/common/src";
+import { Controller, Module } from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,

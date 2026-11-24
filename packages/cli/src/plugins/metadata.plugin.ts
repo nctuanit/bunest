@@ -1,6 +1,12 @@
 import type { BunPlugin } from "bun";
-import { mkdir, readdir } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import {
+  dirname,
+  ensureDir,
+  join,
+  readDirEntries,
+  relative,
+  resolve,
+} from "@bunest/core";
 
 export interface BunestMetadataPluginOptions {
   /**
@@ -726,8 +732,9 @@ function extractClassValidatorConstraints(
 
   for (const dec of decorators) {
     const firstArg = splitTopLevel(dec.rawArgs, ",")[0]?.trim() ?? "";
-    const parsedNum =
-      /^[+-]?\d+(?:\.\d+)?$/.test(firstArg) ? Number(firstArg) : undefined;
+    const parsedNum = /^[+-]?\d+(?:\.\d+)?$/.test(firstArg)
+      ? Number(firstArg)
+      : undefined;
 
     switch (dec.shortName) {
       case "IsEmail":
@@ -1053,7 +1060,10 @@ function extractLeadingDecoratorsBeforeIndex(
     if (masked[cursor] === "@") {
       const nameStart = cursor + 1;
       cursor++;
-      while (cursor < classStartIndex && /[A-Za-z0-9_$.]/.test(masked[cursor]!)) {
+      while (
+        cursor < classStartIndex &&
+        /[A-Za-z0-9_$.]/.test(masked[cursor]!)
+      ) {
         cursor++;
       }
       const name = source.slice(nameStart, cursor).trim();
@@ -1091,7 +1101,9 @@ function extractConstructorParameterProperties(
   const autoFillEnumName = options.autoFillEnumName === true;
 
   for (const param of params) {
-    const cleaned = param.replace(/^@[A-Za-z0-9_$.]+(?:\([^)]*\))?\s*/g, "").trim();
+    const cleaned = param
+      .replace(/^@[A-Za-z0-9_$.]+(?:\([^)]*\))?\s*/g, "")
+      .trim();
     const modMatch = cleaned.match(
       /^(public|protected|readonly)(?:\s+(public|protected|readonly))*\s+([A-Za-z_$][\w$]*)([?!])?\s*:\s*([\s\S]+)$/,
     );
@@ -1494,12 +1506,14 @@ function buildSwaggerEntryCode(
   }
   if (prop.constraints) {
     const c = prop.constraints;
-    if (c.format !== undefined) fields.push(`format: ${JSON.stringify(c.format)}`);
+    if (c.format !== undefined)
+      fields.push(`format: ${JSON.stringify(c.format)}`);
     if (c.minimum !== undefined) fields.push(`minimum: ${c.minimum}`);
     if (c.maximum !== undefined) fields.push(`maximum: ${c.maximum}`);
     if (c.minLength !== undefined) fields.push(`minLength: ${c.minLength}`);
     if (c.maxLength !== undefined) fields.push(`maxLength: ${c.maxLength}`);
-    if (c.pattern !== undefined) fields.push(`pattern: ${JSON.stringify(c.pattern)}`);
+    if (c.pattern !== undefined)
+      fields.push(`pattern: ${JSON.stringify(c.pattern)}`);
     if (c.minItems !== undefined) fields.push(`minItems: ${c.minItems}`);
     if (c.maxItems !== undefined) fields.push(`maxItems: ${c.maxItems}`);
     if (c.uniqueItems !== undefined) fields.push(`uniqueItems: true`);
@@ -1697,7 +1711,10 @@ ${registrationBlocks.join("\n")}
   };
 }
 
-const HTTP_METHOD_DECORATORS = new Map<string, { method: string; defaultStatus: number }>([
+const HTTP_METHOD_DECORATORS = new Map<
+  string,
+  { method: string; defaultStatus: number }
+>([
   ["Get", { method: "GET", defaultStatus: 200 }],
   ["Post", { method: "POST", defaultStatus: 201 }],
   ["Put", { method: "PUT", defaultStatus: 200 }],
@@ -1834,7 +1851,10 @@ function parseControllerMethods(
 
     const headRaw = source
       .slice(declStart, openParen)
-      .replace(/^(?:(?:public|protected|private|static|async|override)\s+)+/, "")
+      .replace(
+        /^(?:(?:public|protected|private|static|async|override)\s+)+/,
+        "",
+      )
       .trim();
     const methodMatch = headRaw.match(/^([A-Za-z_$][\w$]*)$/);
     if (!methodMatch) continue;
@@ -2001,7 +2021,7 @@ ${regLines.join("\n")}
 
 async function walkSourceFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
-  const entries = await readdir(dir, { withFileTypes: true });
+  const entries = await readDirEntries(dir);
   for (const entry of entries) {
     if (
       entry.name === "node_modules" ||
@@ -2073,7 +2093,11 @@ export async function generateMetadataFile(
 
   for (const filePath of files) {
     const source = await Bun.file(filePath).text();
-    const importSpec = toImportSpecifier(dirname(outputPath), filePath, esmCompatible);
+    const importSpec = toImportSpecifier(
+      dirname(outputPath),
+      filePath,
+      esmCompatible,
+    );
 
     if (dtoFilter.test(filePath)) {
       const dtoRes = transformDtoMetadataSource(source, filePath, options);
@@ -2114,9 +2138,12 @@ export async function generateMetadataFile(
               if (c.format) fields.push(`format: ${JSON.stringify(c.format)}`);
               if (c.minimum !== undefined) fields.push(`minimum: ${c.minimum}`);
               if (c.maximum !== undefined) fields.push(`maximum: ${c.maximum}`);
-              if (c.minLength !== undefined) fields.push(`minLength: ${c.minLength}`);
-              if (c.maxLength !== undefined) fields.push(`maxLength: ${c.maxLength}`);
-              if (c.pattern) fields.push(`pattern: ${JSON.stringify(c.pattern)}`);
+              if (c.minLength !== undefined)
+                fields.push(`minLength: ${c.minLength}`);
+              if (c.maxLength !== undefined)
+                fields.push(`maxLength: ${c.maxLength}`);
+              if (c.pattern)
+                fields.push(`pattern: ${JSON.stringify(c.pattern)}`);
             }
             propParts.push(
               `          ${JSON.stringify(prop.name)}: { ${fields.join(", ")} }`,
@@ -2186,7 +2213,7 @@ ${controllerEntries.join(",\n")}
 };
 `;
 
-  await mkdir(dirname(outputPath), { recursive: true });
+  await ensureDir(dirname(outputPath));
   await Bun.write(outputPath, code);
 
   return {

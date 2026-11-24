@@ -135,8 +135,7 @@ export class MemoryCacheStore implements CacheStore {
       return;
     }
 
-    const expiresAt =
-      effectiveTtl > 0 ? this.now() + effectiveTtl : undefined;
+    const expiresAt = effectiveTtl > 0 ? this.now() + effectiveTtl : undefined;
     const tags = new Set(opts.tags ?? []);
     const entry: CacheEntry = { value, expiresAt, tags };
 

@@ -1,11 +1,11 @@
-import type { BunHttpAdapter } from "@bunest/http";
+import type { BunHttpAdapter } from "@bunest/core/http";
 import {
   execute as defaultExecute,
   type ExecutionResult,
   parse,
   subscribe as defaultSubscribe,
   validate,
-} from "graphql";
+} from "../engine";
 import type {
   GqlSubscriptionServiceOptions,
   GraphQLWsOptions,
@@ -36,13 +36,14 @@ export class GqlSubscriptionService {
 
   constructor(
     private readonly options: GqlSubscriptionServiceOptions,
-    private readonly httpServer?: any,
+    private readonly httpServer?: unknown,
   ) {
     const schema = options.schema;
     const executeFn = options.execute ?? defaultExecute;
     const subscribeFn = options.subscribe ?? defaultSubscribe;
     const wsConfig: GraphQLWsOptions =
-      typeof options["graphql-ws"] === "object" && options["graphql-ws"] !== null
+      typeof options["graphql-ws"] === "object" &&
+      options["graphql-ws"] !== null
         ? options["graphql-ws"]
         : {};
     const path = wsConfig.path ?? options.path ?? "/graphql";
@@ -138,10 +139,17 @@ export class GqlSubscriptionService {
       },
     };
 
+    const fallbackContext: GraphQLWsOptions["context"] =
+      typeof options.context === "function"
+        ? (options.context as GraphQLWsOptions["context"])
+        : options.context
+          ? () => options.context as Record<string, unknown>
+          : undefined;
+
     this.wsHandler = new GraphQLWsHandler(executor, {
       ...wsConfig,
       path,
-      context: wsConfig.context ?? options.context,
+      context: wsConfig.context ?? fallbackContext,
       connectionInitWaitTimeoutMs:
         wsConfig.connectionInitWaitTimeoutMs ??
         wsConfig.connectionInitWaitTimeout,
@@ -151,12 +159,16 @@ export class GqlSubscriptionService {
   }
 
   private initialize(): void {
-    if (!this.httpServer) return;
+    if (!this.httpServer || typeof this.httpServer !== "object") return;
+    const srv = this.httpServer as {
+      registerWebsocketHandler?: unknown;
+      getHttpAdapter?: () => BunHttpAdapter;
+    };
     const adapter =
-      typeof this.httpServer.registerWebsocketHandler === "function"
+      typeof srv.registerWebsocketHandler === "function"
         ? (this.httpServer as BunHttpAdapter)
-        : typeof this.httpServer.getHttpAdapter === "function"
-          ? (this.httpServer.getHttpAdapter() as BunHttpAdapter)
+        : typeof srv.getHttpAdapter === "function"
+          ? srv.getHttpAdapter()
           : undefined;
     if (adapter && typeof adapter.registerWebsocketHandler === "function") {
       this.wsHandler.attachToHttpAdapter(adapter, this.wsHandler.getPath());

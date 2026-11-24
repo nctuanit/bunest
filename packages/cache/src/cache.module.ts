@@ -1,4 +1,4 @@
-import { Module, type DynamicModule, type Provider } from "@bunest/common";
+import { Module, type DynamicModule, type Provider } from "@bunest/core";
 import { Cache } from "./cache.abstract";
 import { CacheInterceptor } from "./cache.interceptor";
 import { CacheService } from "./cache.service";
@@ -35,7 +35,9 @@ function createStoreFromOptions(options: CacheModuleOptions): CacheStore {
 
 @Module({})
 export class CacheModule {
-  static register<StoreConfig extends Record<any, any> = Record<string, any>>(
+  static register<
+    StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
+  >(
     options: CacheModuleOptions<StoreConfig> = {} as CacheModuleOptions<StoreConfig>,
   ): DynamicModule {
     const optionsProvider: Provider = {
@@ -85,7 +87,7 @@ export class CacheModule {
   }
 
   static registerAsync<
-    StoreConfig extends Record<any, any> = Record<string, any>,
+    StoreConfig extends Record<PropertyKey, unknown> = Record<string, unknown>,
   >(options: CacheModuleAsyncOptions<StoreConfig>): DynamicModule {
     const asyncProviders = CacheModule.createAsyncOptionsProviders(options);
     const storeProvider: Provider = {

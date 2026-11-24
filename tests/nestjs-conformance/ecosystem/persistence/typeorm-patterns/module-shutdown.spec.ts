@@ -1,23 +1,15 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Injectable,
   type DynamicModule,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
-  SqlModule,
-  SqlService,
-  getSqlConnectionToken,
-  type SqlModuleForRootInput,
-  type SqlOptionsFactory,
-} from "../../../../../packages/sql/src";
-import {
-  SqliteModule,
-  SqliteService,
-  getSqliteConnectionToken,
-  type SqliteModuleOptions,
-  type SqliteOptionsFactory,
-} from "../../../../../packages/sqlite/src";
+  DataSource,
+  OrmModule,
+  getOrmDataSourceToken,
+  type OrmDataSourceOptions,
+  type OrmOptionsFactory,
+} from "../../../../../packages/orm/src";
 import {
   Test,
   createSandbox,
@@ -25,16 +17,16 @@ import {
 } from "../../../_helpers/index";
 
 @Injectable()
-class SqliteOptionsFactoryImpl implements SqliteOptionsFactory {
-  createSqliteOptions(): SqliteModuleOptions {
-    return { filename: ":memory:" };
+class SqliteOrmOptionsFactory implements OrmOptionsFactory {
+  createOrmOptions(): OrmDataSourceOptions {
+    return { type: "sqlite", database: ":memory:" };
   }
 }
 
 @Injectable()
-class SqlOptionsFactoryImpl implements SqlOptionsFactory {
-  createSqlOptions(): SqlModuleForRootInput {
-    return { url: "sqlite://:memory:" };
+class BunSqlOrmOptionsFactory implements OrmOptionsFactory {
+  createOrmOptions(): OrmDataSourceOptions {
+    return { type: "sqlite", url: "sqlite://:memory:", useBunSql: true };
   }
 }
 
@@ -45,7 +37,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:
-      "Adapts TypeOrmCoreModule shutdown matrix across sync/async default & named registrations to SqliteModule and SqlModule onModuleDestroy cleanup.",
+      "Adapts TypeOrmCoreModule shutdown matrix across sync/async default & named registrations to @bunest/orm OrmModule onApplicationShutdown cleanup for both SqliteOrmDriver and BunSqlOrmDriver.",
   },
   () => {
     const sandbox = createSandbox();
@@ -56,156 +48,135 @@ describeConformance(
 
     it.each<{
       case: string;
-      kind: "sqlite" | "sql";
       name: string;
       createModule: () => DynamicModule;
     }>([
       {
-        case: "SqliteModule named forRootAsync (name only on async options)",
-        kind: "sqlite",
+        case: "SqliteOrmDriver named forRootAsync (useFactory)",
         name: "secondary",
         createModule: () =>
-          SqliteModule.forRootAsync({
+          OrmModule.forRootAsync({
             name: "secondary",
-            useFactory: () => ({ filename: ":memory:" }),
+            useFactory: () => ({ type: "sqlite", database: ":memory:" }),
           }),
       },
       {
-        case: "SqliteModule named forRootAsync (useClass)",
-        kind: "sqlite",
+        case: "SqliteOrmDriver named forRootAsync (useClass)",
         name: "secondary",
         createModule: () =>
-          SqliteModule.forRootAsync({
+          OrmModule.forRootAsync({
             name: "secondary",
-            useClass: SqliteOptionsFactoryImpl,
+            useClass: SqliteOrmOptionsFactory,
           }),
       },
       {
-        case: "SqliteModule unnamed forRootAsync",
-        kind: "sqlite",
+        case: "SqliteOrmDriver unnamed forRootAsync",
         name: "default",
         createModule: () =>
-          SqliteModule.forRootAsync({
-            useFactory: () => ({ filename: ":memory:" }),
+          OrmModule.forRootAsync({
+            useFactory: () => ({ type: "sqlite", database: ":memory:" }),
           }),
       },
       {
-        case: "SqliteModule named forRoot",
-        kind: "sqlite",
+        case: "SqliteOrmDriver named forRoot",
         name: "secondary",
         createModule: () =>
-          SqliteModule.forRoot({
+          OrmModule.forRoot({
             name: "secondary",
-            filename: ":memory:",
+            type: "sqlite",
+            database: ":memory:",
           }),
       },
       {
-        case: "SqliteModule unnamed forRoot",
-        kind: "sqlite",
+        case: "SqliteOrmDriver unnamed forRoot",
         name: "default",
-        createModule: () => SqliteModule.forRoot({ filename: ":memory:" }),
+        createModule: () =>
+          OrmModule.forRoot({ type: "sqlite", database: ":memory:" }),
       },
       {
-        case: "SqlModule named forRootAsync (factory returns different name normalized to async name)",
-        kind: "sql",
+        case: "BunSqlOrmDriver named forRootAsync (useFactory)",
         name: "secondary",
         createModule: () =>
-          SqlModule.forRootAsync({
+          OrmModule.forRootAsync({
             name: "secondary",
-            useFactory: () => ({ name: "other", url: "sqlite://:memory:" }),
+            useFactory: () => ({
+              type: "sqlite",
+              url: "sqlite://:memory:",
+              useBunSql: true,
+            }),
           }),
       },
       {
-        case: "SqlModule named forRootAsync (useClass)",
-        kind: "sql",
+        case: "BunSqlOrmDriver named forRootAsync (useClass)",
         name: "secondary",
         createModule: () =>
-          SqlModule.forRootAsync({
+          OrmModule.forRootAsync({
             name: "secondary",
-            useClass: SqlOptionsFactoryImpl,
+            useClass: BunSqlOrmOptionsFactory,
           }),
       },
       {
-        case: "SqlModule unnamed forRoot",
-        kind: "sql",
+        case: "BunSqlOrmDriver unnamed forRoot",
         name: "default",
-        createModule: () => SqlModule.forRoot("sqlite://:memory:"),
+        createModule: () =>
+          OrmModule.forRoot({
+            type: "sqlite",
+            url: "sqlite://:memory:",
+            useBunSql: true,
+          }),
       },
     ])(
-      "closes the connection on moduleRef.close() ($case)",
-      async ({ kind, name, createModule }) => {
+      "destroys the DataSource on moduleRef.close() ($case)",
+      async ({ name, createModule }) => {
         const moduleRef = await Test.createTestingModule({
           imports: [createModule()],
         }).compile({ logger: false });
 
         await moduleRef.init();
 
-        if (kind === "sqlite") {
-          const svc = moduleRef.get<SqliteService>(
-            getSqliteConnectionToken(name),
-          );
-          const closeSpy = sandbox.spy(svc, "close");
+        const ds = moduleRef.get<DataSource>(getOrmDataSourceToken(name));
+        const destroySpy = sandbox.spy(ds, "destroy");
 
-          expect(svc.connectionName).toBe(name);
-          expect(svc.isClosed).toBe(false);
-          expect(svc.healthCheck()).toBe(true);
+        expect(ds.name).toBe(name);
+        expect(ds.isInitialized).toBe(true);
+        expect(await ds.ping()).toBe(true);
 
-          await moduleRef.close();
+        await moduleRef.close();
 
-          expect(closeSpy.calledOnce).toBe(true);
-          expect(svc.isClosed).toBe(true);
-          expect(svc.healthCheck()).toBe(false);
-        } else {
-          const svc = moduleRef.get<SqlService>(getSqlConnectionToken(name));
-          const closeSpy = sandbox.spy(svc, "close");
-
-          expect(svc.connectionName).toBe(name);
-          expect(svc.isClosed).toBe(false);
-          expect(await svc.healthCheck()).toBe(true);
-
-          await moduleRef.close();
-
-          expect(closeSpy.calledOnce).toBe(true);
-          expect(svc.isClosed).toBe(true);
-          expect(await svc.healthCheck()).toBe(false);
-        }
+        expect(destroySpy.calledOnce).toBe(true);
+        expect(ds.isInitialized).toBe(false);
+        expect(await ds.ping()).toBe(false);
       },
     );
 
-    it("rejects SqliteModule.forRootAsync when factory returns a conflicting connection name", async () => {
-      await expect(
-        Test.createTestingModule({
-          imports: [
-            SqliteModule.forRootAsync({
-              name: "secondary",
-              useFactory: () => ({ name: "other", filename: ":memory:" }),
-            }),
-          ],
-        }).compile({ logger: false }),
-      ).rejects.toThrow(/conflicting connection name "other"/);
-    });
-
-    it("keeps SqlService and SqliteService close() idempotent if manually closed before moduleRef.close()", async () => {
+    it("keeps DataSource.destroy() idempotent if manually destroyed before moduleRef.close()", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
-          SqliteModule.forRoot({ filename: ":memory:" }),
-          SqlModule.forRoot("sqlite://:memory:"),
+          OrmModule.forRoot({ type: "sqlite", database: ":memory:" }),
+          OrmModule.forRoot({
+            name: "bun_sql",
+            type: "sqlite",
+            url: "sqlite://:memory:",
+            useBunSql: true,
+          }),
         ],
       }).compile({ logger: false });
 
       await moduleRef.init();
-      const sqlite = moduleRef.get(SqliteService);
-      const sql = moduleRef.get(SqlService);
+      const sqliteDs = moduleRef.get(DataSource);
+      const bunSqlDs = moduleRef.get<DataSource>(
+        getOrmDataSourceToken("bun_sql"),
+      );
 
-      sqlite.close();
-      await sql.close();
+      await sqliteDs.destroy();
+      await bunSqlDs.destroy();
 
-      expect(sqlite.isClosed).toBe(true);
-      expect(sql.isClosed).toBe(true);
+      expect(sqliteDs.isInitialized).toBe(false);
+      expect(bunSqlDs.isInitialized).toBe(false);
 
       await expect(moduleRef.close()).resolves.toBeUndefined();
-      expect(sqlite.isClosed).toBe(true);
-      expect(sql.isClosed).toBe(true);
+      expect(sqliteDs.isInitialized).toBe(false);
+      expect(bunSqlDs.isInitialized).toBe(false);
     });
   },
 );

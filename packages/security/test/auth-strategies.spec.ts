@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,8 +5,8 @@ import {
   Injectable,
   UseGuards,
   type ExecutionContext,
-} from "@bunest/common";
-import { getCurrentRequestContext } from "@bunest/http";
+} from "@bunest/core";
+import { getCurrentRequestContext } from "@bunest/core/http";
 import { Test } from "@bunest/testing";
 import {
   ApiKeyAuthStrategy,
@@ -54,9 +53,7 @@ async function signEs256(
   kid: string,
   payload: Record<string, unknown>,
 ): Promise<string> {
-  const h = base64UrlEncode(
-    JSON.stringify({ alg: "ES256", typ: "JWT", kid }),
-  );
+  const h = base64UrlEncode(JSON.stringify({ alg: "ES256", typ: "JWT", kid }));
   const p = base64UrlEncode(JSON.stringify(payload));
   const input = `${h}.${p}`;
   const sig = await crypto.subtle.sign(
@@ -337,7 +334,9 @@ describe("Pluggable AuthStrategyRegistry, Built-in Strategies & AuthGuard E2E", 
       expect((await fallbackRes.json<{ sub: string }>()).sub).toBe("svc-admin");
 
       // 8. BasicAuthStrategy (with colons in password + constant-time check)
-      const validBasic = Buffer.from("ops:p@ss:with:colons!").toString("base64");
+      const validBasic = Buffer.from("ops:p@ss:with:colons!").toString(
+        "base64",
+      );
       const wrongBasic = Buffer.from("ops:wrong-password").toString("base64");
       expect(
         (
@@ -388,7 +387,8 @@ describe("Pluggable AuthStrategyRegistry, Built-in Strategies & AuthGuard E2E", 
   });
 
   it("supports AuthModule.registerAsync with DI-resolved JwksJwtAuthStrategy from JwksModule", async () => {
-    const { privateKey, publicJwk } = await createEc256SigningPair("async-ec-1");
+    const { privateKey, publicJwk } =
+      await createEc256SigningPair("async-ec-1");
 
     @Controller("/async-auth")
     class AsyncAuthController {

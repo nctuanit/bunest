@@ -1,0 +1,232 @@
+{
+  "name": "vscode-bunest",
+  "displayName": "Bunest — Framework IntelliSense, Declarative Repositories & Class Macros",
+  "description": "First-class VS Code DX for Bunest: Live Global Typegen, Declarative Repository Derived Query Autocomplete & SQL Preview (@SoftDelete/@TenantScoped/@Projection/Page<T>/Custom Operators), Custom Class Macros & Presets (Delombok / Hover / Diagnostics), bunest.config.ts Hot-Reload, Static & Architecture Diagnostics with TextEditor AST Quick Fixes, Inline HTTP Runner, and Interactive DI Module Graph.",
+  "version": "0.1.0",
+  "publisher": "bunest",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "apps/vscode-bunest"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "bunest",
+    "bun",
+    "typescript",
+    "nestjs",
+    "repository",
+    "lombok",
+    "di",
+    "typegen"
+  ],
+  "activationEvents": [
+    "workspaceContains:bunest.config.ts",
+    "workspaceContains:bunest.json",
+    "workspaceContains:package.json",
+    "onLanguage:typescript"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "bunest-explorer",
+          "title": "Bunest",
+          "icon": "media/bunest-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "bunest-explorer": [
+        {
+          "id": "bunest.routesView",
+          "name": "Routes"
+        },
+        {
+          "id": "bunest.dataModelsView",
+          "name": "Data & Repositories"
+        },
+        {
+          "id": "bunest.eventsRpcView",
+          "name": "Events & RPC"
+        },
+        {
+          "id": "bunest.modulesView",
+          "name": "Modules & DI"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "bunest.regenerateTypes",
+        "title": "Bunest: Run Typegen (CLI)",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "bunest.runCheck",
+        "title": "Bunest: Run Static Check (CLI)",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "bunest.refreshWorkspace",
+        "title": "Bunest: Refresh Read-Only AST Index",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "bunest.openDiGraph",
+        "title": "Bunest: Open Interactive DI Module Graph",
+        "icon": "$(type-hierarchy-sub)"
+      },
+      {
+        "command": "bunest.sendRequest",
+        "title": "Bunest: Send HTTP Request",
+        "icon": "$(play)"
+      },
+      {
+        "command": "bunest.copyRouteUrl",
+        "title": "Bunest: Copy Route URL",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "bunest.generateSchematic",
+        "title": "Bunest: Generate Component (Module / Controller / Service / Guard...)"
+      },
+      {
+        "command": "bunest.generateRepository",
+        "title": "Bunest: Generate Declarative Repository from @Entity()"
+      },
+      {
+        "command": "bunest.convertDerivedToQuery",
+        "title": "Bunest: Convert Derived Query to Explicit @Query()"
+      },
+      {
+        "command": "bunest.previewRepositorySql",
+        "title": "Bunest: Preview Compiled SQL"
+      },
+      {
+        "command": "bunest.delombokClass",
+        "title": "Bunest: Expand (Delombok) Class Macros"
+      },
+      {
+        "command": "bunest.collapseLogger",
+        "title": "Bunest: Collapse Manual Logger to @WithLogger()"
+      },
+      {
+        "command": "bunest.syncDiConstructor",
+        "title": "Bunest: Auto-Sync DI Constructor"
+      },
+      {
+        "command": "bunest.runBunTest",
+        "title": "Bunest: Run bun test",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "bunest.revealLocation",
+        "title": "Bunest: Reveal Source Location"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "bunest.generateSchematic",
+          "when": "explorerResourceIsFolder",
+          "group": "bunest@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "bunest.refreshWorkspace",
+          "when": "view == bunest.routesView || view == bunest.dataModelsView || view == bunest.eventsRpcView || view == bunest.modulesView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "bunest.openDiGraph",
+          "when": "view == bunest.modulesView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "bunest.regenerateTypes",
+          "when": "view == bunest.routesView",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "bunest.sendRequest",
+          "when": "view == bunest.routesView && viewItem == bunestRoute",
+          "group": "inline@1"
+        },
+        {
+          "command": "bunest.copyRouteUrl",
+          "when": "view == bunest.routesView && viewItem == bunestRoute",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Bunest",
+      "properties": {
+        "bunest.typegen.live": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically regenerate .bunest/types/bunest.d.ts live from unsaved editor buffers as you type (no file save required)."
+        },
+        "bunest.typegen.debounceMs": {
+          "type": "number",
+          "default": 120,
+          "description": "Debounce delay in milliseconds for live in-memory AST re-indexing and zero-save typegen while typing."
+        },
+        "bunest.index.debounceMs": {
+          "type": "number",
+          "default": 120,
+          "description": "Fallback debounce delay in milliseconds for in-memory AST re-indexing."
+        },
+        "bunest.http.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Default base URL for the inline Bunest HTTP Request Runner."
+        },
+        "bunest.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Bunest static & architecture diagnostics (BUNEST001..007, BUNEST_REPO001..007, BUNEST_MACRO001..005, BUNEST_DEC001..005, BUNEST_ARCH001..002, and custom rules from bunest.config.ts)."
+        },
+        "bunest.codelens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Bunest CodeLens actions for HTTP routes, repositories, entities, class macros, and tests."
+        },
+        "bunest.hover.revealSecrets": {
+          "type": "boolean",
+          "default": false,
+          "description": "When false (recommended), redacts sensitive .env keys (SECRET, PASSWORD, TOKEN, KEY, AUTH, CREDENTIAL, DSN) in hover previews."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun run ./build.ts",
+    "watch": "bun run ./build.ts --watch",
+    "package": "bun run ./build.ts && bunx @vscode/vsce package --no-dependencies",
+    "typecheck": "bun check",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/cli": "workspace:*",
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.95.0",
+    "typescript": "^7.0.2"
+  }
+}

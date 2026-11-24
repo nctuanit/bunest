@@ -49,11 +49,14 @@ const PRINTABLE_ASCII_RE = /^[\x20-\x7e]*$/;
 
 const SIGNED_URL_SERVERS = new WeakSet<StorageDisk>();
 
-function normalizePublicBase(publicUrl: string | URL | undefined): URL | undefined {
+function normalizePublicBase(
+  publicUrl: string | URL | undefined,
+): URL | undefined {
   if (publicUrl === undefined) {
     return undefined;
   }
-  const url = publicUrl instanceof URL ? new URL(publicUrl) : new URL(publicUrl);
+  const url =
+    publicUrl instanceof URL ? new URL(publicUrl) : new URL(publicUrl);
   if (!/^https?:$/.test(url.protocol) || url.search || url.hash) {
     throw new TypeError(
       `\`publicUrl\` must be an absolute http(s) URL without a query or hash`,
@@ -86,7 +89,8 @@ function validateMetadata(
     }
     const lower = k.toLowerCase();
     normalized[lower] = v;
-    totalBytes += Buffer.byteLength(lower, "utf8") + Buffer.byteLength(v, "utf8");
+    totalBytes +=
+      Buffer.byteLength(lower, "utf8") + Buffer.byteLength(v, "utf8");
   }
   if (totalBytes > MAX_METADATA_BYTES) {
     throw new TypeError(
@@ -118,7 +122,9 @@ function validateRangeInput(range: StorageRange | undefined): void {
   }
 }
 
-function resolveExpiresAt(expiresIn: StorageSignedUrlRequest["expiresIn"]): Date {
+function resolveExpiresAt(
+  expiresIn: StorageSignedUrlRequest["expiresIn"],
+): Date {
   const ms = expiresIn !== undefined ? toMs(expiresIn) : DEFAULT_EXPIRES_MS;
   if (ms <= 0 || ms > MAX_EXPIRES_MS) {
     throw new RangeError(
@@ -354,8 +360,16 @@ export abstract class StorageDisk {
     try {
       return await readAll(download.body);
     } finally {
-      if (!download.body.destroyed) {
-        download.body.destroy();
+      const body = download.body as ReadableStream<Uint8Array> & {
+        destroyed?: boolean;
+        destroy?: () => void;
+      };
+      if (typeof body.cancel === "function") {
+        if (!body.locked) {
+          await body.cancel().catch(() => {});
+        }
+      } else if (typeof body.destroy === "function" && !body.destroyed) {
+        body.destroy();
       }
     }
   }

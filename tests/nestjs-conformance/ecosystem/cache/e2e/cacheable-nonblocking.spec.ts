@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Inject,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CACHE_MANAGER,
@@ -13,11 +12,7 @@ import {
   CacheModule,
   MemoryCacheStore,
 } from "../../../../../packages/cache/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Controller()
 class CacheableNonBlockingController {

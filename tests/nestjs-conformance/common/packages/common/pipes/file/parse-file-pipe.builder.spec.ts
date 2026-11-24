@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   FileTypeValidator,
   FileValidator,
   MaxFileSizeValidator,
   ParseFilePipeBuilder,
-} from "../../../../../../../packages/common/src";
+} from "../../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../../_helpers";
 
 describeConformance(

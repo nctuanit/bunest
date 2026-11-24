@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { Inject, Module } from "../../../../../packages/common/src";
+import { Inject, Module } from "../../../../../packages/core/src/common";
 import { ConfigurableModuleBuilder } from "../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../_helpers";
 
@@ -13,13 +12,10 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
   new ConfigurableModuleBuilder<IntegrationModuleOptions>()
     .setClassMethodName("forRoot")
     .setFactoryMethodName("construct")
-    .setExtras(
-      { isGlobal: true },
-      (definition, extras) => ({
-        ...definition,
-        global: extras.isGlobal,
-      }),
-    )
+    .setExtras({ isGlobal: true }, (definition, extras) => ({
+      ...definition,
+      global: extras.isGlobal,
+    }))
     .build();
 
 @Module({})
@@ -71,7 +67,9 @@ describeConformance(
         ],
       }).compile();
 
-      expect(moduleRef.get<IntegrationModuleOptions>(MODULE_OPTIONS_TOKEN)).toEqual({
+      expect(
+        moduleRef.get<IntegrationModuleOptions>(MODULE_OPTIONS_TOKEN),
+      ).toEqual({
         url: "test_url",
         secure: false,
       });
@@ -114,7 +112,9 @@ describeConformance(
         ],
       }).compile();
 
-      expect(moduleRef.get<IntegrationModuleOptions>(MODULE_OPTIONS_TOKEN)).toEqual({
+      expect(
+        moduleRef.get<IntegrationModuleOptions>(MODULE_OPTIONS_TOKEN),
+      ).toEqual({
         url: "test_url",
         secure: false,
       });

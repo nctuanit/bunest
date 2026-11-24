@@ -1,6 +1,65 @@
-import type { KeyObject } from "node:crypto";
-import type { ConnectionOptions } from "node:tls";
 import type { Duration } from "./duration.interface";
+
+export type TlsVersion = "TLSv1" | "TLSv1.1" | "TLSv1.2" | "TLSv1.3";
+
+/**
+ * TLS options for Bun native TCP/TLS sockets (`Bun.connect` / `socket.upgradeTLS`).
+ */
+export interface SmtpTlsOptions {
+  /** Trusted CA certificate(s) in PEM format (replaces default Mozilla CAs when set). */
+  ca?: string | Uint8Array | Array<string | Uint8Array>;
+  /** Client certificate chain(s) in PEM format for mutual TLS. */
+  cert?: string | Uint8Array | Array<string | Uint8Array>;
+  /** Client private key(s) in PEM format for mutual TLS. */
+  key?:
+    | string
+    | Uint8Array
+    | Array<
+        string | Uint8Array | { pem: string | Uint8Array; passphrase?: string }
+      >;
+  /** Passphrase for an encrypted client private key. */
+  passphrase?: string;
+  /** PEM-formatted CRL(s). */
+  crl?: string | Uint8Array | Array<string | Uint8Array>;
+  /** SNI server name (alias of `serverName`). */
+  servername?: string;
+  /** SNI server name (`serverName` wins if both are set). */
+  serverName?: string;
+  /** Verify peer certificate chain and hostname. Default `true`. */
+  rejectUnauthorized?: boolean;
+  /** Minimum accepted TLS protocol version. Default `"TLSv1.2"`. */
+  minVersion?: TlsVersion;
+  /** Maximum accepted TLS protocol version. */
+  maxVersion?: TlsVersion;
+  /** OpenSSL cipher suite list. */
+  ciphers?: string;
+  /** OpenSSL `SSL_OP_*` bitmask. */
+  secureOptions?: number;
+  /** ALPN protocols. */
+  ALPNProtocols?: string | Uint8Array;
+  /** Reduce memory usage (`OPENSSL_RELEASE_BUFFERS`). */
+  lowMemoryMode?: boolean;
+}
+
+/**
+ * Structural representation of a key object (e.g. Node `KeyObject`) without
+ * importing `node:crypto`.
+ */
+export interface DkimKeyObjectLike {
+  readonly type: string;
+  readonly asymmetricKeyType?: string;
+  readonly asymmetricKeyDetails?: {
+    readonly modulusLength?: number;
+    readonly namedCurve?: string;
+  };
+  export(options?: never): unknown;
+}
+
+export type DkimPrivateKeyInput =
+  | string
+  | Uint8Array
+  | CryptoKey
+  | DkimKeyObjectLike;
 
 export type SmtpAuth =
   | {
@@ -32,11 +91,11 @@ export interface SmtpTransportOptions {
    */
   startTls?: "required" | "opportunistic" | "never";
   /**
-   * TLS options for `node:tls`: `ca` for a private CA, `servername`, `minVersion`
-   * (default TLSv1.2). Certificates are verified; turning that off
+   * TLS options for Bun native TLS: `ca` for a private CA, `servername`/`serverName`,
+   * `minVersion` (default TLSv1.2). Certificates are verified; turning that off
    * (`rejectUnauthorized: false`) lets anyone on the path read the mail and the password.
    */
-  tls?: Omit<ConnectionOptions, "socket" | "host" | "port">;
+  tls?: SmtpTlsOptions;
   /**
    * `{ user, pass }` for AUTH PLAIN or LOGIN (whichever the server offers), or
    * `{ user, accessToken }` for XOAUTH2 (Gmail, Microsoft 365). `accessToken` may be a
@@ -84,8 +143,8 @@ export interface DkimOptions {
   domainName: string;
   /** The selector (`s=`): the public key is published at `<selector>._domainkey.<domainName>`. */
   keySelector: string;
-  /** An RSA (2048 bits or more) or Ed25519 private key, PEM or a `KeyObject`. */
-  privateKey: string | Buffer | KeyObject;
+  /** An RSA (2048 bits or more) or Ed25519 private key (PEM, DER, WebCrypto `CryptoKey`, or key object). */
+  privateKey: DkimPrivateKeyInput;
   /**
    * Header fields to sign, when present. Default: From, Reply-To, To, Cc, Subject, Date,
    * Message-ID, MIME-Version, Content-Type, Content-Transfer-Encoding, plus the message's

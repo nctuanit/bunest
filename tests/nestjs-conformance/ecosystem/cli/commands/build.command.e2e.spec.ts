@@ -1,16 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   buildProject,
   runCli,
@@ -23,6 +19,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -43,10 +48,8 @@ function createCapturedIO(cwd: string): {
 }
 
 function writeBasicProject(root: string): void {
-  mkdirSync(join(root, "src"), { recursive: true });
-  writeFileSync(
-    join(root, "package.json"),
-    JSON.stringify(
+  mkdirSyncPath(join(root, "src"), { recursive: true });
+  writeTextSync(join(root, "package.json"), JSON.stringify(
       {
         name: "build-app",
         version: "0.1.0",
@@ -54,12 +57,8 @@ function writeBasicProject(root: string): void {
       },
       null,
       2,
-    ),
-    "utf8",
-  );
-  writeFileSync(
-    join(root, "tsconfig.json"),
-    JSON.stringify(
+    ));
+  writeTextSync(join(root, "tsconfig.json"), JSON.stringify(
       {
         compilerOptions: {
           lib: ["ESNext"],
@@ -71,24 +70,10 @@ function writeBasicProject(root: string): void {
       },
       null,
       2,
-    ),
-    "utf8",
-  );
-  writeFileSync(
-    join(root, "src", "app.service.ts"),
-    `export class AppService {\n  getHello(): string {\n    return "Hello World!";\n  }\n}\n`,
-    "utf8",
-  );
-  writeFileSync(
-    join(root, "src", "app.module.ts"),
-    `import { AppService } from "./app.service";\nexport class AppModule {\n  static readonly service = AppService;\n}\n`,
-    "utf8",
-  );
-  writeFileSync(
-    join(root, "src", "main.ts"),
-    `import { AppModule } from "./app.module";\nexport function bootstrap(): string {\n  return new AppModule.service().getHello();\n}\n`,
-    "utf8",
-  );
+    ));
+  writeTextSync(join(root, "src", "app.service.ts"), `export class AppService {\n  getHello(): string {\n    return "Hello World!";\n  }\n}\n`);
+  writeTextSync(join(root, "src", "app.module.ts"), `import { AppService } from "./app.service";\nexport class AppModule {\n  static readonly service = AppService;\n}\n`);
+  writeTextSync(join(root, "src", "main.ts"), `import { AppModule } from "./app.module";\nexport function bootstrap(): string {\n  return new AppModule.service().getHello();\n}\n`);
 }
 
 describeConformance(
@@ -104,12 +89,12 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-build-"));
+      tmpDir = makeTempDir("bunest-cli-conf-build-");
       writeBasicProject(tmpDir);
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -123,8 +108,8 @@ describeConformance(
         const out = res.output as BuildProjectResult;
         expect(out.success).toBe(true);
         expect(out.outputs.length).toBeGreaterThanOrEqual(1);
-        expect(existsSync(join(tmpDir, "dist"))).toBe(true);
-        expect(existsSync(join(tmpDir, "dist", "main.js"))).toBe(true);
+        expect(existsSyncPath(join(tmpDir, "dist"))).toBe(true);
+        expect(existsSyncPath(join(tmpDir, "dist", "main.js"))).toBe(true);
         expect(cap.stdout.join("\n")).toContain("Built ");
       },
     );
@@ -137,11 +122,11 @@ describeConformance(
         expect(res.success).toBe(true);
 
         const distMain = join(tmpDir, "dist", "main.js");
-        const mainJs = readFileSync(distMain, "utf8");
+        const mainJs = readTextSync(distMain);
         expect(mainJs).not.toMatch(/\bmodule\.exports\b|\brequire\(/);
 
         const loaded = (await import(
-          `${pathToFileURL(distMain).href}?t=${Date.now()}`
+          `${Bun.pathToFileURL(distMain).href}?t=${Date.now()}`
         )) as { bootstrap: () => string };
         expect(typeof loaded.bootstrap).toBe("function");
         expect(loaded.bootstrap()).toBe("Hello World!");
@@ -157,30 +142,22 @@ describeConformance(
       });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js"))).toBe(true);
       expect(spawnSpy.calledOnce).toBe(true);
       expect(spawnSpy.firstCall?.args[0]).toContain("--watch");
       expect(spawnSpy.firstCall?.args[0]).toContain("build");
     });
 
     it("should resolve custom --entryFile, --sourceRoot, --outdir, and bunest.json config", async () => {
-      mkdirSync(join(tmpDir, "server"), { recursive: true });
-      writeFileSync(
-        join(tmpDir, "server", "app-entry.ts"),
-        `export const customEntry = 42;\n`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "bunest.json"),
-        JSON.stringify({ sourceRoot: "server", entryFile: "app-entry" }),
-        "utf8",
-      );
+      mkdirSyncPath(join(tmpDir, "server"), { recursive: true });
+      writeTextSync(join(tmpDir, "server", "app-entry.ts"), `export const customEntry = 42;\n`);
+      writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ sourceRoot: "server", entryFile: "app-entry" }));
 
       const cap = createCapturedIO(tmpDir);
       const res = await runCli(["build", "--outdir", "out-bundle"], cap.io);
 
       expect(res.exitCode).toBe(0);
-      expect(existsSync(join(tmpDir, "out-bundle", "app-entry.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "out-bundle", "app-entry.js"))).toBe(true);
     });
 
     it("should support --minify, --sourcemap modes, --target, and --silent", async () => {
@@ -200,14 +177,14 @@ describeConformance(
 
       expect(res.exitCode).toBe(0);
       expect(cap.stdout).toHaveLength(0);
-      expect(existsSync(join(tmpDir, "dist", "main.js"))).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.js.map"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js.map"))).toBe(true);
     });
 
     it("should support boolean sourcemap=true (linked) and reject invalid target/sourcemap", async () => {
       const linked = await buildProject({ cwd: tmpDir, sourcemap: true });
       expect(linked.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.js.map"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js.map"))).toBe(true);
 
       await expect(
         buildProject({ cwd: tmpDir, target: "invalid" as "bun" }),
@@ -218,14 +195,14 @@ describeConformance(
     });
 
     it("should delete stale files in dist when --deleteOutDir is enabled", async () => {
-      mkdirSync(join(tmpDir, "dist"), { recursive: true });
-      writeFileSync(join(tmpDir, "dist", "stale.js"), "old", "utf8");
+      mkdirSyncPath(join(tmpDir, "dist"), { recursive: true });
+      writeTextSync(join(tmpDir, "dist", "stale.js"), "old");
 
       const res = await buildProject({ cwd: tmpDir, deleteOutDir: true });
 
       expect(res.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "stale.js"))).toBe(false);
-      expect(existsSync(join(tmpDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "stale.js"))).toBe(false);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js"))).toBe(true);
     });
 
     it("should support standalone executable compilation via --compile", async () => {
@@ -258,11 +235,7 @@ describeConformance(
     });
 
     it("should report structured failure logs on syntax errors and throw when entry file is missing", async () => {
-      writeFileSync(
-        join(tmpDir, "src", "broken.ts"),
-        `export const x = {{{;\n`,
-        "utf8",
-      );
+      writeTextSync(join(tmpDir, "src", "broken.ts"), `export const x = {{{;\n`);
       const cap = createCapturedIO(tmpDir);
       const failed = await buildProject(
         { cwd: tmpDir, entry: "src/broken.ts" },
@@ -278,9 +251,7 @@ describeConformance(
     });
 
     it("should resolve tsconfig 'paths' without 'baseUrl'", async () => {
-      writeFileSync(
-        join(tmpDir, "tsconfig.json"),
-        JSON.stringify(
+      writeTextSync(join(tmpDir, "tsconfig.json"), JSON.stringify(
           {
             compilerOptions: {
               paths: { "@shared/*": ["./src/shared/*"] },
@@ -288,20 +259,10 @@ describeConformance(
           },
           null,
           2,
-        ),
-        "utf8",
-      );
-      mkdirSync(join(tmpDir, "src", "shared"), { recursive: true });
-      writeFileSync(
-        join(tmpDir, "src", "shared", "index.ts"),
-        `export const shared = 42;\n`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "alias-consumer.ts"),
-        `import { shared } from "@shared/index";\nexport const value = shared;\n`,
-        "utf8",
-      );
+        ));
+      mkdirSyncPath(join(tmpDir, "src", "shared"), { recursive: true });
+      writeTextSync(join(tmpDir, "src", "shared", "index.ts"), `export const shared = 42;\n`);
+      writeTextSync(join(tmpDir, "src", "alias-consumer.ts"), `import { shared } from "@shared/index";\nexport const value = shared;\n`);
 
       const res = await buildProject({
         cwd: tmpDir,
@@ -309,9 +270,9 @@ describeConformance(
       });
       expect(res.success).toBe(true);
       const consumerJs = join(tmpDir, "dist", "alias-consumer.js");
-      expect(existsSync(consumerJs)).toBe(true);
+      expect(existsSyncPath(consumerJs)).toBe(true);
       const mod = (await import(
-        `${pathToFileURL(consumerJs).href}?t=${Date.now()}`
+        `${Bun.pathToFileURL(consumerJs).href}?t=${Date.now()}`
       )) as { value: number };
       expect(mod.value).toBe(42);
     });
@@ -319,24 +280,22 @@ describeConformance(
     it("should not emit .d.ts declaration files without --emit-declarations", async () => {
       const res = await buildProject({ cwd: tmpDir });
       expect(res.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.js"))).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.d.ts"))).toBe(false);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.d.ts"))).toBe(false);
     });
 
     // BUNEST_BUG: BuildProjectOptions declares `emitDeclarations?: boolean` and runner.ts parses `--emit-declarations`, but buildProject() never invokes declaration emission so zero .d.ts files are written (packages/cli/src/commands/build.ts)
     it.skip("should emit .d.ts declaration files with --emit-declarations", async () => {
       const res = await buildProject({ cwd: tmpDir, emitDeclarations: true });
       expect(res.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "main.d.ts"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "main.d.ts"))).toBe(true);
     });
 
     // BUNEST_BUG: BuildProjectOptions declares `path?: string` and runner.ts forwards `--path`, but buildProject() ignores `options.path` and never passes a custom tsconfig path to Bun.build() (packages/cli/src/commands/build.ts)
     it.skip("should build with a custom tsconfig path outside working directory using --path", async () => {
-      mkdirSync(join(tmpDir, "config"), { recursive: true });
-      mkdirSync(join(tmpDir, "src", "shared"), { recursive: true });
-      writeFileSync(
-        join(tmpDir, "config", "tsconfig.build.json"),
-        JSON.stringify(
+      mkdirSyncPath(join(tmpDir, "config"), { recursive: true });
+      mkdirSyncPath(join(tmpDir, "src", "shared"), { recursive: true });
+      writeTextSync(join(tmpDir, "config", "tsconfig.build.json"), JSON.stringify(
           {
             extends: "../tsconfig.json",
             compilerOptions: {
@@ -345,19 +304,9 @@ describeConformance(
           },
           null,
           2,
-        ),
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "shared", "val.ts"),
-        `export const val = 99;\n`,
-        "utf8",
-      );
-      writeFileSync(
-        join(tmpDir, "src", "entry-ext.ts"),
-        `import { val } from "@custom-alias/val";\nexport const out = val;\n`,
-        "utf8",
-      );
+        ));
+      writeTextSync(join(tmpDir, "src", "shared", "val.ts"), `export const val = 99;\n`);
+      writeTextSync(join(tmpDir, "src", "entry-ext.ts"), `import { val } from "@custom-alias/val";\nexport const out = val;\n`);
 
       const res = await buildProject({
         cwd: tmpDir,
@@ -365,57 +314,37 @@ describeConformance(
         path: "config/tsconfig.build.json",
       });
       expect(res.success).toBe(true);
-      expect(existsSync(join(tmpDir, "dist", "entry-ext.js"))).toBe(true);
+      expect(existsSyncPath(join(tmpDir, "dist", "entry-ext.js"))).toBe(true);
     });
 
     describe("dotfiles in a directory asset (#3522)", () => {
       // BUNEST_BUG: CompilerOptions declares `assets?: Asset[]`, but buildProject() never copies configured assets (bare directory or wildcard, including dotfiles) to outdir (packages/cli/src/commands/build.ts)
       it.skip("should copy a dotfile nested under a bare directory asset", async () => {
-        mkdirSync(join(tmpDir, "src", "config", "envs"), { recursive: true });
-        writeFileSync(
-          join(tmpDir, "src", "config", "envs", ".development"),
-          "SECRET=1",
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "src", "config", "envs", "prod.env"),
-          "X=1",
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ compilerOptions: { assets: ["config"] } }),
-          "utf8",
-        );
+        mkdirSyncPath(join(tmpDir, "src", "config", "envs"), { recursive: true });
+        writeTextSync(join(tmpDir, "src", "config", "envs", ".development"), "SECRET=1");
+        writeTextSync(join(tmpDir, "src", "config", "envs", "prod.env"), "X=1");
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ compilerOptions: { assets: ["config"] } }));
 
         const res = await buildProject({ cwd: tmpDir });
         expect(res.success).toBe(true);
         expect(
-          existsSync(join(tmpDir, "dist", "config", "envs", ".development")),
+          existsSyncPath(join(tmpDir, "dist", "config", "envs", ".development")),
         ).toBe(true);
         expect(
-          existsSync(join(tmpDir, "dist", "config", "envs", "prod.env")),
+          existsSyncPath(join(tmpDir, "dist", "config", "envs", "prod.env")),
         ).toBe(true);
       });
 
       // BUNEST_BUG: CompilerOptions declares `assets?: Asset[]`, but buildProject() never copies wildcard assets (including dotfiles) to outdir (packages/cli/src/commands/build.ts)
       it.skip("should keep copying dotfiles for the wildcard asset form", async () => {
-        mkdirSync(join(tmpDir, "src", "config", "envs"), { recursive: true });
-        writeFileSync(
-          join(tmpDir, "src", "config", "envs", ".development"),
-          "SECRET=1",
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ compilerOptions: { assets: ["config/envs/*"] } }),
-          "utf8",
-        );
+        mkdirSyncPath(join(tmpDir, "src", "config", "envs"), { recursive: true });
+        writeTextSync(join(tmpDir, "src", "config", "envs", ".development"), "SECRET=1");
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ compilerOptions: { assets: ["config/envs/*"] } }));
 
         const res = await buildProject({ cwd: tmpDir });
         expect(res.success).toBe(true);
         expect(
-          existsSync(join(tmpDir, "dist", "config", "envs", ".development")),
+          existsSyncPath(join(tmpDir, "dist", "config", "envs", ".development")),
         ).toBe(true);
       });
     });
@@ -423,17 +352,11 @@ describeConformance(
     describe("monorepo project builds", () => {
       // BUNEST_BUG: `runCli(["build", "<projectName>"])` ignores positional project arguments and buildProject() never resolves named monorepo projects from `bunest.json` `projects` (packages/cli/src/runner.ts, packages/cli/src/commands/build.ts)
       it.skip("should build a specific sub-app by name in monorepo mode", async () => {
-        mkdirSync(join(tmpDir, "apps", "secondary", "src"), {
+        mkdirSyncPath(join(tmpDir, "apps", "secondary", "src"), {
           recursive: true,
         });
-        writeFileSync(
-          join(tmpDir, "apps", "secondary", "src", "main.ts"),
-          `export const app = "secondary";\n`,
-          "utf8",
-        );
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({
+        writeTextSync(join(tmpDir, "apps", "secondary", "src", "main.ts"), `export const app = "secondary";\n`);
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({
             monorepo: true,
             projects: {
               secondary: {
@@ -443,15 +366,13 @@ describeConformance(
                 sourceRoot: "apps/secondary/src",
               },
             },
-          }),
-          "utf8",
-        );
+          }));
 
         const cap = createCapturedIO(tmpDir);
         const res = await runCli(["build", "secondary"], cap.io);
         expect(res.exitCode).toBe(0);
         expect(
-          existsSync(join(tmpDir, "dist", "apps", "secondary", "main.js")),
+          existsSyncPath(join(tmpDir, "dist", "apps", "secondary", "main.js")),
         ).toBe(true);
       });
     });

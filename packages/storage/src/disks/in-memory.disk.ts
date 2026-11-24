@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { Readable } from "node:stream";
 import {
   StorageFileNotFoundError,
   StorageRangeNotSatisfiableError,
@@ -14,7 +12,7 @@ import type {
   StorageRange,
   StorageWriteResult,
 } from "../interfaces/storage-types";
-import { readAll } from "../utils/body.util";
+import { bytesToReadableStream, readAll } from "../utils/body.util";
 import { resolveRange, StorageDisk } from "./storage.disk";
 
 interface StoredObject {
@@ -41,7 +39,7 @@ export function decodeCursor(cursor: string): string {
 }
 
 function md5Etag(data: Buffer): string {
-  return `"${createHash("md5").update(data).digest("hex")}"`;
+  return `"${new Bun.CryptoHasher("md5").update(data).digest("hex")}"`;
 }
 
 /**
@@ -101,17 +99,19 @@ export class InMemoryDisk extends StorageDisk {
     if (range === undefined) {
       return {
         ...info,
-        body: Readable.from([Buffer.from(entry.data)]),
+        body: bytesToReadableStream(Buffer.from(entry.data)),
       };
     }
     const resolved = resolveRange(range, entry.data.byteLength);
     if (!resolved) {
       throw new StorageRangeNotSatisfiableError(key, entry.data.byteLength);
     }
-    const slice = Buffer.from(entry.data.subarray(resolved.start, resolved.end + 1));
+    const slice = Buffer.from(
+      entry.data.subarray(resolved.start, resolved.end + 1),
+    );
     return {
       ...info,
-      body: Readable.from([slice]),
+      body: bytesToReadableStream(slice),
       range: resolved,
     };
   }

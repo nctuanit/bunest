@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Controller,
   Injectable,
   Module,
   type DynamicModule,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../_helpers";
 

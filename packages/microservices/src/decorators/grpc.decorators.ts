@@ -1,4 +1,4 @@
-import { Controller, MetadataRegistry } from "@bunest/common";
+import { Controller, MetadataRegistry } from "@bunest/core";
 import { GrpcMethodStreamingType } from "../enums";
 import type { GrpcMethodMetadata } from "../interfaces";
 import { GRPC_METHOD_METADATA } from "../tokens";
@@ -63,10 +63,7 @@ export function createGrpcMethodMetadata(
  */
 export function GrpcMethod(service?: string): MethodDecorator;
 export function GrpcMethod(service: string, method?: string): MethodDecorator;
-export function GrpcMethod(
-  service?: string,
-  method?: string,
-): MethodDecorator {
+export function GrpcMethod(service?: string, method?: string): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const meta = createGrpcMethodMetadata(
       target,

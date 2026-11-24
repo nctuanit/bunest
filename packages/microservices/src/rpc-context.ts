@@ -5,7 +5,7 @@ import type {
   RpcArgumentsHost,
   Type,
   WsArgumentsHost,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { RpcContext } from "./interfaces";
 
 /**

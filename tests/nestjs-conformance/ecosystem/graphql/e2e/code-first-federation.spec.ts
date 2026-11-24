@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Injectable, Module } from "../../../../../packages/common/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -282,18 +281,28 @@ describeConformance(
 
       expect(res.body.errors).toBeUndefined();
       const sdl: string = res.body.data._service.sdl;
-      expect(sdl).toContain("directive @shareable on FIELD_DEFINITION | OBJECT");
+      expect(sdl).toContain(
+        "directive @shareable on FIELD_DEFINITION | OBJECT",
+      );
       expect(sdl).toContain("directive @link(");
       expect(sdl).toContain("directive @inaccessible on");
-      expect(sdl).toContain("directive @override(from: String!) on FIELD_DEFINITION");
-      expect(sdl).toMatch(/interface IRecipe\s*\{[\s\S]*externalField: String! @external/);
+      expect(sdl).toContain(
+        "directive @override(from: String!) on FIELD_DEFINITION",
+      );
+      expect(sdl).toMatch(
+        /interface IRecipe\s*\{[\s\S]*externalField: String! @external/,
+      );
       expect(sdl).toMatch(/type Post @key\(fields: "id"\)/);
       expect(sdl).toMatch(/type User @extends @key\(fields: "id"\)/);
       expect(sdl).toMatch(/type User[\s\S]*id: ID! @external/);
       expect(sdl).toMatch(/type Recipe implements IRecipe/);
-      expect(sdl).toMatch(/type Human implements Character[\s\S]*friends: \[Human!\]!/);
+      expect(sdl).toMatch(
+        /type Human implements Character[\s\S]*friends: \[Human!\]!/,
+      );
       expect(sdl).toMatch(/interface Character[\s\S]*friends: \[Human!\]!/);
-      expect(sdl).toContain('search: [FederationSearchResultUnion!]! @deprecated(reason: "test")');
+      expect(sdl).toContain(
+        'search: [FederationSearchResultUnion!]! @deprecated(reason: "test")',
+      );
       expect(sdl).toContain("union FederationSearchResultUnion = Post | User");
     });
 

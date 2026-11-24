@@ -1,28 +1,31 @@
 # @bunest/validation
 
-DTO validation pipes, class serializer interceptor, Standard Schema adapters, and prototype-pollution sanitization for **Bunest**.
+Zero-external-dependency, compile-once Bun-native DTO validator (**336/336** `class-validator` API parity), class transformer (**21/21** `class-transformer` API parity), `ValidationPipe`, `ClassSerializerInterceptor`, Standard Schema adapters, and prototype-pollution sanitization for **Bunest** ([ADR-015](../../docs/adr/ADR-015.md), [ADR-016](../../docs/adr/ADR-016.md)).
 
 ## Features
 
-- **Class-Validator & Class-Transformer Pipe**: `ValidationPipe` supports `whitelist`, `forbidNonWhitelisted`, `transform`, `transformOptions`, custom `exceptionFactory`, and error truncation (`DEFAULT_MAX_ERROR_MESSAGES_LENGTH`).
-- **Standard Schema & Custom Schema Pipes**: Validate with Zod, Valibot, ArkType, or any Standard Schema v1 library via `StandardSchemaValidationPipe` and `SchemaValidationPipe`.
-- **Response Serialization**: `ClassSerializerInterceptor` (`@SerializeOptions()`) and `StandardSchemaSerializerInterceptor` (`@UseStandardSchema()`).
-- **Entity & Mapped-Type Hooks**: `validateEntity()` for domain/ORM entity validation and automatic `class-transformer` metadata cloning for `@bunest/mapped-types`.
-- **Prototype Pollution Guard**: `findDangerousKeys()`, `stripDangerousKeys()`, and `DANGEROUS_PROTOTYPE_KEYS` defend against `__proto__`, `constructor`, and `prototype` payload attacks.
+- **Zero-Dep Compile-Once Validator (`@bunest/validation/validator`):** Full drop-in API parity (~105 built-in linear-time ReDoS-safe validators + `registerPhoneNumberValidator` + UUIDv7), `WeakMap`-cached compilation plans, single-realm `Symbol.for("bunest:class-validator:storage")`, and a zero-Promise sync fast-path fused directly into `ValidationPipe`.
+- **Zero-Dep Compile-Once Transformer (`@bunest/validation/transformer`):** Full drop-in API parity (`plainToInstance`, `instanceToPlain`, `instanceToInstance`, `@Expose`, `@Exclude`, `@Type` + polymorphic `discriminator`, `@Transform`, method decorators), prototype-pollution immunity by construction, Web/Bun built-in preservation, and safe `enableImplicitConversion`.
+- **Seamless Dual-Engine Coexistence:** DTOs decorated with `@bunest/validation/validator` + `@bunest/validation/transformer` execute on the native Bun engine, while existing NestJS DTOs using upstream `class-validator` / `class-transformer` continue working side-by-side automatically when installed.
+- **Standard Schema & Custom Schema Pipes (`@bunest/validation/standard-schema`):** Validate and serialize with Zod, Valibot, ArkType, or any Standard Schema v1 library via `StandardSchemaValidationPipe`, `SchemaValidationPipe`, and `StandardSchemaSerializerInterceptor`.
+- **Entity & Mapped-Type Utilities:** `validateEntity()`, `PartialType`, `PickType`, `OmitType`, `IntersectionType`, and `CompositionType` with automatic metadata cloning.
 
 ## Installation
 
 ```bash
-bun add @bunest/validation class-validator class-transformer
+bun add @bunest/validation
 ```
+
+*(Zero external npm runtime dependencies — no need to install `class-validator` or `class-transformer`!)*
 
 ## Quick Start
 
 ```ts
-import { Body, Controller, Module, Post } from "@bunest/common";
-import { BunestFactory } from "@bunest/core";
+import "reflect-metadata";
+import { Body, BunestFactory, Controller, Module, Post } from "@bunest/core";
 import { ValidationPipe } from "@bunest/validation";
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { IsEmail, IsString, MinLength } from "@bunest/validation/validator";
+import { Exclude, Expose, Transform } from "@bunest/validation/transformer";
 
 export class CreateUserDto {
   @IsEmail()
@@ -30,6 +33,15 @@ export class CreateUserDto {
 
   @IsString()
   @MinLength(8)
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  password!: string;
+}
+
+export class UserResponse {
+  @Expose()
+  email!: string;
+
+  @Exclude()
   password!: string;
 }
 
@@ -45,24 +57,19 @@ export class UsersController {
 export class AppModule {}
 
 const app = await BunestFactory.create(AppModule);
-app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }),
-);
+app.useGlobalPipes(new ValidationPipe());
 await app.listen(3000);
 ```
 
-## Key Exports
+## Subpath Exports
 
-- **Validation Pipes**: `ValidationPipe`, `SchemaValidationPipe`, `StandardSchemaValidationPipe`, `VALIDATION_PIPE_OPTIONS`
-- **Serialization Interceptors & Decorators**: `ClassSerializerInterceptor`, `SerializeOptions`, `CLASS_SERIALIZER_OPTIONS`, `StandardSchemaSerializerInterceptor`, `UseStandardSchema`, `STANDARD_SCHEMA_SERIALIZER_METADATA`
-- **Entity & Hook Utilities**: `validateEntity`, `classTransformerMappedTypeHook`, `registerClassTransformerMappedTypeHook`
-- **Formatting & Sanitization**: `flattenValidationErrors`, `formatValidationErrorResponse`, `formatStandardSchemaIssues`, `formatStandardSchemaPath`, `findDangerousKeys`, `stripDangerousKeys`, `DANGEROUS_PROTOTYPE_KEYS`, `DEFAULT_MAX_ERROR_MESSAGES_LENGTH`, `OMITTED_ERRORS_MESSAGE`, `resolveMaxErrorMessagesLength`
+- **`@bunest/validation`** — `ValidationPipe`, `ClassSerializerInterceptor`, `SchemaValidationPipe`, `StandardSchemaValidationPipe`, `StandardSchemaSerializerInterceptor`, `PartialType`/`PickType`/`OmitType`/`IntersectionType`/`CompositionType`, `validateEntity`, sanitization & error-formatting helpers
+- **`@bunest/validation/validator`** — Zero-dep Bun-native validator engine (`validate`, `validateSync`, `validateOrReject`, `Validator`, `ValidationError`, `MetadataStorage`, `getMetadataStorage`, `registerDecorator`, `registerSchema`, `ValidateBy`, `canValidateSynchronously`, `registerPhoneNumberValidator`, and all ~105 built-in validators)
+- **`@bunest/validation/transformer`** — Zero-dep Bun-native transformer engine (`plainToInstance`, `instanceToPlain`, `instanceToInstance`, `serialize`, `deserialize`, `deserializeArray`, `ClassTransformer`, `@Expose`, `@Exclude`, `@Type`, `@Transform`, method decorators, `getMetadataStorage`)
+- **`@bunest/validation/standard-schema`** — `StandardSchemaValidationPipe`, `StandardSchemaSerializerInterceptor`, `UseStandardSchema`, `formatStandardSchemaIssues`
 
 ## Documentation
 
 - [Bunest Documentation](../../README.md)
-- [ADR Index](../../docs/adr/README.md)
+- [ADR-015: Bun-Native DTO Validation & Transformation Engine](../../docs/adr/ADR-015.md)
+- [ADR-016: 37 → 19 Package Consolidation & Bun 1.4.5 Native API Alignment](../../docs/adr/ADR-016.md)

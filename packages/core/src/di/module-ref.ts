@@ -1,8 +1,9 @@
 import type {
+  BunestTokenRegistry,
   InjectionToken,
   IntrospectionResult,
   Type,
-} from "@bunest/common";
+} from "../common/index";
 import type {
   ContextId,
   ModuleRefGetOptions,
@@ -26,6 +27,14 @@ export class ModuleRef {
    * Pass `{ strict: false }` to search across all modules, or `{ each: true }`
    * to retrieve all matching instances as an array.
    */
+  get<K extends keyof BunestTokenRegistry>(
+    token: K,
+    options: { strict?: boolean; each: true },
+  ): BunestTokenRegistry[K][];
+  get<K extends keyof BunestTokenRegistry>(
+    token: K,
+    options?: { strict?: boolean; each?: false },
+  ): BunestTokenRegistry[K];
   get<TInput = unknown, TResult = TInput>(
     token: InjectionToken<TInput>,
     options: { strict?: boolean; each: true },
@@ -52,6 +61,16 @@ export class ModuleRef {
   /**
    * Asynchronously resolves a provider of any scope (`SINGLETON`, `TRANSIENT`, `REQUEST`).
    */
+  resolve<K extends keyof BunestTokenRegistry>(
+    token: K,
+    contextIdOrContainer: ContextId | RequestScopeContainer | undefined,
+    options: { strict?: boolean; each: true },
+  ): Promise<BunestTokenRegistry[K][]>;
+  resolve<K extends keyof BunestTokenRegistry>(
+    token: K,
+    contextIdOrContainer?: ContextId | RequestScopeContainer,
+    options?: { strict?: boolean; each?: false },
+  ): Promise<BunestTokenRegistry[K]>;
   resolve<TInput = unknown, TResult = TInput>(
     token: InjectionToken<TInput>,
     contextIdOrContainer: ContextId | RequestScopeContainer | undefined,

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Dependencies,
   METADATA_KEYS,
   MetadataRegistry,
   flatten,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -43,7 +42,7 @@ describeConformance(
       expect(metadata).toEqual([dep, dep2]);
     });
 
-    // BUNEST_BUG: Dependencies() in packages/common/src/decorators/core.decorators.ts:226-236 only flattens one level of arrays instead of recursively calling flatten(dependencies).
+    // BUNEST_BUG: Dependencies() in packages/core/src/common/decorators/core.decorators.ts:226-236 only flattens one level of arrays instead of recursively calling flatten(dependencies).
     it.skip("should flatten deeply nested dependency arrays", () => {
       const metadata = MetadataRegistry.get(METADATA_KEYS.DEPENDENCIES, Test3);
       expect(metadata).toEqual([dep, dep2, dep3]);

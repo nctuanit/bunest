@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { SqliteService } from "@bunest/sqlite";
+import { DataSource } from "@bunest/orm";
 import { Test } from "@bunest/testing";
 import {
   configureAuthSqliteApp,
@@ -19,7 +18,7 @@ describe("Auth JWT + SQLite Example (E2E)", () => {
     const client = mod.createTestClient(app);
     await app.init();
 
-    const sqlite = mod.get(SqliteService);
+    const dataSource = mod.get(DataSource);
 
     try {
       // 1. Protected route rejects anonymous caller with 401 + security headers applied
@@ -34,7 +33,7 @@ describe("Auth JWT + SQLite Example (E2E)", () => {
       });
       expect(regUser.status).toBe(201);
 
-      const storedHash = sqlite.queryOne<{ password_hash: string }>(
+      const [storedHash] = await dataSource.query<{ password_hash: string }>(
         "SELECT password_hash FROM users WHERE email = ?",
         ["alice@bunest.dev"],
       );
@@ -117,6 +116,6 @@ describe("Auth JWT + SQLite Example (E2E)", () => {
     }
 
     // Graceful close releases SQLite handle cleanly
-    expect(sqlite.isClosed).toBe(true);
+    expect(dataSource.isInitialized).toBe(false);
   });
 });

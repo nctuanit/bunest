@@ -7,7 +7,6 @@
 ## 1. Unit Testing Services with `Test.createTestingModule`
 
 ```ts
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { UsersService } from "../src/users/users.service";
@@ -34,14 +33,14 @@ describe("UsersService", () => {
 
 ### Supported Overrides on `TestingModuleBuilder`
 
-| Method | Override Modes | Use Case |
-|---|---|---|
-| `.overrideProvider(token)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Swap services, DB clients, config tokens |
-| `.overrideGuard(GuardClass)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Bypass auth/role guards in controller tests |
-| `.overridePipe(PipeClass)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Stub custom transformation pipes |
-| `.overrideInterceptor(Cls)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Disable caching/tracing interceptors in unit tests |
-| `.overrideFilter(FilterCls)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Inspect raw exceptions or swap custom filters |
-| `.overrideModule(Mod)` | `.useModule(ReplacementMod)` | Swap an entire feature or dynamic module |
+| Method                       | Override Modes                                                  | Use Case                                           |
+| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
+| `.overrideProvider(token)`   | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Swap services, DB clients, config tokens           |
+| `.overrideGuard(GuardClass)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Bypass auth/role guards in controller tests        |
+| `.overridePipe(PipeClass)`   | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Stub custom transformation pipes                   |
+| `.overrideInterceptor(Cls)`  | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Disable caching/tracing interceptors in unit tests |
+| `.overrideFilter(FilterCls)` | `.useValue()`, `.useClass()`, `.useFactory()`, `.useExisting()` | Inspect raw exceptions or swap custom filters      |
+| `.overrideModule(Mod)`       | `.useModule(ReplacementMod)`                                    | Swap an entire feature or dynamic module           |
 
 Use `moduleRef.select(TargetModule).get(Token)` to test strict module visibility ([ADR-007](./adr/ADR-007.md)).
 
@@ -52,9 +51,13 @@ Use `moduleRef.select(TargetModule).get(Token)` to test strict module visibility
 Avoid manually listing mock providers for every transitive dependency by plugging `createAutoMocker()` into `.useMocker()`:
 
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Test, createAutoMocker, createMockFn, type MockFunction } from "@bunest/testing";
+import {
+  Test,
+  createAutoMocker,
+  createMockFn,
+  type MockFunction,
+} from "@bunest/testing";
 import { OrdersService } from "../src/orders/orders.service";
 import { PaymentGateway } from "../src/payments/payment.gateway";
 
@@ -93,7 +96,6 @@ Bunest provides **three** ergonomic ways to exercise the full 11-stage HTTP pipe
 ### Option A: Supertest-Compatible `request(app)` (In-Memory — Zero Sockets)
 
 ```ts
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ValidationPipe, type BunestApplication } from "@bunest/core";
 import { Test, request } from "@bunest/testing";
@@ -176,7 +178,10 @@ expect(res.status).toBe(200);
 import { ContextIdFactory } from "@bunest/testing";
 
 const contextId = ContextIdFactory.create();
-moduleRef.registerRequestByContextId(new Request("http://localhost/tenants"), contextId);
+moduleRef.registerRequestByContextId(
+  new Request("http://localhost/tenants"),
+  contextId,
+);
 
 const a = await moduleRef.resolve(TenantContext, contextId);
 const b = await moduleRef.resolve(TenantContext, contextId);

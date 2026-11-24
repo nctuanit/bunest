@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Body,
@@ -7,7 +6,7 @@ import {
   Module,
   RequestMapping,
   RequestMethod,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../packages/core/src";
 import {
   ApiWebhook,

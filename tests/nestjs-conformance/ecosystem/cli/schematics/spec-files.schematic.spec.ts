@@ -1,8 +1,9 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -11,6 +12,15 @@ import {
   type SchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 /** Schematics that emit a spec file next to the element they generate. */
 const elementSchematics: readonly SchematicType[] = [
@@ -63,16 +73,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -146,47 +156,44 @@ describeConformance(
       });
     });
 
-    describe.each(suffixSupportingTreeSchematics)(
-      "`%s`",
-      (schematic, name) => {
-        it("should generate .spec files by default", async () => {
-          const planned = buildSchematicFiles(
-            schematic,
-            parseSchematicName(name),
-            { flat: false, spec: true },
-          );
-          expect(specFiles(planned, "spec").length).toBeGreaterThan(0);
+    describe.each(suffixSupportingTreeSchematics)("`%s`", (schematic, name) => {
+      it("should generate .spec files by default", async () => {
+        const planned = buildSchematicFiles(
+          schematic,
+          parseSchematicName(name),
+          { flat: false, spec: true },
+        );
+        expect(specFiles(planned, "spec").length).toBeGreaterThan(0);
 
-          const cwd = createTempDir();
-          const result = await generateSchematic({
-            schematic,
-            name,
-            cwd,
-          });
-          expect(specFiles(result.files, "spec").length).toBeGreaterThan(0);
+        const cwd = createTempDir();
+        const result = await generateSchematic({
+          schematic,
+          name,
+          cwd,
         });
+        expect(specFiles(result.files, "spec").length).toBeGreaterThan(0);
+      });
 
-        it("should honour a custom spec file suffix", async () => {
-          const planned = buildSchematicFiles(
-            schematic,
-            parseSchematicName(name),
-            { flat: false, spec: true, specFileSuffix: "test" },
-          );
-          expect(specFiles(planned, "test").length).toBeGreaterThan(0);
-          expect(specFiles(planned, "spec")).toEqual([]);
+      it("should honour a custom spec file suffix", async () => {
+        const planned = buildSchematicFiles(
+          schematic,
+          parseSchematicName(name),
+          { flat: false, spec: true, specFileSuffix: "test" },
+        );
+        expect(specFiles(planned, "test").length).toBeGreaterThan(0);
+        expect(specFiles(planned, "spec")).toEqual([]);
 
-          const cwd = createTempDir();
-          const result = await generateSchematic({
-            schematic,
-            name,
-            specFileSuffix: "test",
-            cwd,
-          });
-          expect(specFiles(result.files, "test").length).toBeGreaterThan(0);
-          expect(specFiles(result.files, "spec")).toEqual([]);
+        const cwd = createTempDir();
+        const result = await generateSchematic({
+          schematic,
+          name,
+          specFileSuffix: "test",
+          cwd,
         });
-      },
-    );
+        expect(specFiles(result.files, "test").length).toBeGreaterThan(0);
+        expect(specFiles(result.files, "spec")).toEqual([]);
+      });
+    });
 
     describe("`application`", () => {
       it("should generate .spec files by default", async () => {

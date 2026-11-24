@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { validate } from "class-validator";
+import { validate } from "../../../../../../packages/validation/src/validator";
 import {
   MetadataRegistry,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ApiProperty,
   IntersectionType,
@@ -74,7 +73,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: PartialType (packages/common/src/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
+      // BUNEST_BUG: PartialType (packages/core/src/common/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
       it.skip.each([{}, { skipNullProperties: false }])(
         "should not whitelist documented properties that have no validation decorator (%j)",
         async (options) => {
@@ -104,7 +103,7 @@ describeConformance(
     });
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/common/src/mapped-types/mapped-types.utils.ts) does not inherit plugin metadata loaded after PartialType(CreateUserDto) ("active" missing)
+      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not inherit plugin metadata loaded after PartialType(CreateUserDto) ("active" missing)
       it.skip("should return partial class", async () => {
         await SwaggerModule.loadPluginMetadata(async () => SERIALIZED_METADATA);
 
@@ -127,10 +126,9 @@ describeConformance(
       it('should set "required" option to "false" for each property', () => {
         const ownProps: ApiPropertyMetadata[] = [];
         for (const ctor of MetadataRegistry.getPrototypeChain(UpdateUserDto)) {
-          const entries = MetadataRegistry.getOwn<readonly ApiPropertyMetadata[]>(
-            SWAGGER_METADATA_KEYS.API_PROPERTIES,
-            ctor,
-          );
+          const entries = MetadataRegistry.getOwn<
+            readonly ApiPropertyMetadata[]
+          >(SWAGGER_METADATA_KEYS.API_PROPERTIES, ctor);
           if (entries) ownProps.push(...entries);
         }
 
@@ -167,7 +165,9 @@ describeConformance(
 
         const oneOf = [{ type: "string" }, { type: "null" }];
         expect(schemas.NullableBinDto?.properties?.bin).toEqual({ oneOf });
-        expect(schemas.UpdateNullableBinDto?.properties?.bin).toEqual({ oneOf });
+        expect(schemas.UpdateNullableBinDto?.properties?.bin).toEqual({
+          oneOf,
+        });
       });
 
       // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string") when oneOf is declared without an explicit type across mapped types

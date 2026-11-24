@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Readable } from "node:stream";
 import {
   APP_INTERCEPTOR,
   Controller,
   Get,
   Module,
-} from "../../../../../packages/common/src";
+  StreamableFile,
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CACHE_MANAGER,
@@ -14,11 +13,7 @@ import {
   CacheInterceptor,
   CacheModule,
 } from "../../../../../packages/cache/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Controller()
 class StreamingController {
@@ -34,7 +29,14 @@ class StreamingController {
 
   @Get("node-readable")
   nodeReadable() {
-    return Readable.from(["chunk"]);
+    return new StreamableFile(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("chunk"));
+          controller.close();
+        },
+      }),
+    );
   }
 
   @Get("response")

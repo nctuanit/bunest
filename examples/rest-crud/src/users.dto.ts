@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   IsEmail,
   IsInt,
@@ -7,9 +6,9 @@ import {
   Max,
   Min,
   MinLength,
-} from "class-validator";
-import { Type } from "class-transformer";
-import { ApiProperty, ApiPropertyOptional } from "@bunest/swagger";
+} from "@bunest/validation/validator";
+import { Type } from "@bunest/validation/transformer";
+import { ApiProperty, ApiPropertyOptional, PartialType } from "@bunest/swagger";
 
 export class CreateUserDto {
   @ApiProperty({ example: "Ada Lovelace", minLength: 2 })
@@ -30,23 +29,4 @@ export class CreateUserDto {
   age?: number;
 }
 
-export class UpdateUserDto {
-  @ApiPropertyOptional({ example: "Augusta Ada", minLength: 2 })
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  name?: string;
-
-  @ApiPropertyOptional({ example: "augusta@bunest.dev", format: "email" })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @ApiPropertyOptional({ example: 37, minimum: 13, maximum: 150 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(13)
-  @Max(150)
-  age?: number;
-}
+export class UpdateUserDto extends PartialType(CreateUserDto) {}

@@ -1,9 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { ensureDir, join, removePath, statPath } from "@bunest/core";
 import {
   AVAILABLE_BUILDERS,
   addLibrary,
@@ -26,10 +22,12 @@ import {
   type SchematicType,
 } from "../src";
 
+const TMP_DIR = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
 const tempDirs: string[] = [];
 
 async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix));
+  const dir = join(TMP_DIR, `${prefix}${crypto.randomUUID().slice(0, 8)}`);
+  await ensureDir(dir);
   tempDirs.push(dir);
   return dir;
 }
@@ -54,7 +52,7 @@ function createCapturedIO(cwd: string): {
 
 async function fileExists(p: string): Promise<boolean> {
   try {
-    await stat(p);
+    await statPath(p);
     return true;
   } catch {
     return false;
@@ -64,7 +62,7 @@ async function fileExists(p: string): Promise<boolean> {
 afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop()!;
-    await rm(dir, { recursive: true, force: true });
+    await removePath(dir, { recursive: true, force: true });
   }
 });
 
@@ -72,9 +70,9 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
   it("supports start, add, upgrade/update, and deploy commands with full flags", async () => {
     const workdir = await makeTempDir("bunest-cli-cmds-");
     const entryPath = join(workdir, "src/server.ts");
-    await mkdir(join(workdir, "src"), { recursive: true });
-    await writeFile(entryPath, `console.log("boot");\n`);
-    await writeFile(
+    await ensureDir(join(workdir, "src"));
+    await Bun.write(entryPath, `console.log("boot");\n`);
+    await Bun.write(
       join(workdir, "package.json"),
       JSON.stringify(
         {
@@ -112,7 +110,10 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
     expect(parsedStart.flags.debug).toBe("0.0.0.0:9229");
     expect(parsedStart.flags["env-file"]).toEqual([".env", ".env.local"]);
 
-    const startCalls: Array<{ cmd: string[]; env?: Record<string, string | undefined> }> = [];
+    const startCalls: Array<{
+      cmd: string[];
+      env?: Record<string, string | undefined>;
+    }> = [];
     const startRes = await runStartCommand({
       cwd: workdir,
       entryFile: "server",
@@ -130,18 +131,23 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
     expect(startCalls).toHaveLength(1);
     expect(startCalls[0]?.cmd).toContain("--watch");
     expect(startCalls[0]?.cmd).toContain("--inspect=9229");
-    expect(startCalls[0]?.cmd.filter((a) => a === "--env-file")).toHaveLength(2);
+    expect(startCalls[0]?.cmd.filter((a) => a === "--env-file")).toHaveLength(
+      2,
+    );
     expect(startCalls[0]?.env?.BUNEST_PRESERVE_WATCH_OUTPUT).toBe("1");
 
     // 2. add command (--dry-run + mocked spawn + invalid library rejection)
     const addDryCap = createCapturedIO(workdir);
-    const addDryRes = await runCli(["add", "@bunest/swagger", "-d"], addDryCap.io);
+    const addDryRes = await runCli(
+      ["add", "@bunest/swagger", "-d"],
+      addDryCap.io,
+    );
     expect(addDryRes.exitCode).toBe(0);
     expect(addDryCap.stdout.join("\n")).toContain("bun add @bunest/swagger");
 
     const addCalls: string[][] = [];
     const addRes = await addLibrary({
-      library: "@bunest/config",
+      library: "@bunest/orm",
       cwd: workdir,
       spawn: async (cmd) => {
         addCalls.push(cmd);
@@ -149,7 +155,7 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
       },
     });
     expect(addRes.installed).toBe(true);
-    expect(addCalls[0]?.slice(1)).toEqual(["add", "@bunest/config"]);
+    expect(addCalls[0]?.slice(1)).toEqual(["add", "@bunest/orm"]);
 
     await expect(
       addLibrary({ library: "../evil;rm -rf", cwd: workdir }),
@@ -157,7 +163,10 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
 
     // 3. upgrade & alias update commands
     const upgCap = createCapturedIO(workdir);
-    const upgRes = await runCli(["update", "--dry-run", "-t", "next"], upgCap.io);
+    const upgRes = await runCli(
+      ["update", "--dry-run", "-t", "next"],
+      upgCap.io,
+    );
     expect(upgRes.exitCode).toBe(0);
     expect(upgCap.stdout.join("\n")).toContain("@bunest/core@next");
     expect(upgCap.stdout.join("\n")).toContain("@bunest/swagger@next");
@@ -185,11 +194,14 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
 
     // 4. deploy command (dry-run + custom command from bunest.json + compile)
     const deployDryCap = createCapturedIO(workdir);
-    const deployDryRes = await runCli(["deploy", "--compile", "-d"], deployDryCap.io);
+    const deployDryRes = await runCli(
+      ["deploy", "--compile", "-d"],
+      deployDryCap.io,
+    );
     expect(deployDryRes.exitCode).toBe(0);
     expect(deployDryCap.stdout.join("\n")).toContain("mode=compile");
 
-    await writeFile(
+    await Bun.write(
       join(workdir, "bunest.json"),
       JSON.stringify({ deploy: { command: ["echo", "deployed"] } }),
     );
@@ -235,10 +247,10 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
     expect(tsconfig.compilerOptions.strict).toBe(false);
 
     // 2. build --deleteOutDir --silent & --compile
-    await mkdir(join(workdir, "app/src"), { recursive: true });
-    await mkdir(join(workdir, "app/dist"), { recursive: true });
-    await writeFile(join(workdir, "app/dist/stale.txt"), "old");
-    await writeFile(join(workdir, "app/src/main.ts"), `export const x = 1;\n`);
+    await ensureDir(join(workdir, "app/src"));
+    await ensureDir(join(workdir, "app/dist"));
+    await Bun.write(join(workdir, "app/dist/stale.txt"), "old");
+    await Bun.write(join(workdir, "app/src/main.ts"), `export const x = 1;\n`);
 
     const cap = createCapturedIO(join(workdir, "app"));
     const buildRes = await buildProject(
@@ -270,7 +282,7 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
     const workdir = await makeTempDir("bunest-cli-schematics-v12-");
 
     // Write bunest.json with projects and custom generateOptions
-    await writeFile(
+    await Bun.write(
       join(workdir, "bunest.json"),
       JSON.stringify(
         {
@@ -292,13 +304,13 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
     const loaded = await loadCliConfiguration(workdir);
     expect(loaded.found).toBe(true);
     expect(AVAILABLE_BUILDERS).toContain("tsc");
-    expect(resolveProjectConfiguration(loaded.config, "billing")?.sourceRoot).toBe(
-      "apps/billing/src",
-    );
+    expect(
+      resolveProjectConfiguration(loaded.config, "billing")?.sourceRoot,
+    ).toBe("apps/billing/src");
 
     // Fallback to nest-cli.json in a separate dir
     const nestDir = await makeTempDir("bunest-cli-nest-cfg-");
-    await writeFile(
+    await Bun.write(
       join(nestDir, "nest-cli.json"),
       JSON.stringify({ sourceRoot: "server", entryFile: "index" }),
     );
@@ -320,7 +332,9 @@ describe("@bunest/cli v12 Parity — Commands, Schematics, Config Loader & Metad
       "audit/audit.interceptor.test.ts",
     ]);
     expect(
-      await fileExists(join(workdir, "apps/billing/src/audit/audit.interceptor.test.ts")),
+      await fileExists(
+        join(workdir, "apps/billing/src/audit/audit.interceptor.test.ts"),
+      ),
     ).toBe(true);
 
     // Verify all 10 new schematics via CLI
@@ -544,8 +558,12 @@ export class TasksController {
         isArray: false,
       },
     ]);
-    expect(ctrlRes.code).toContain('Symbol.for("bunest:swagger:api_operation")');
-    expect(ctrlRes.code).toContain('Symbol.for("bunest:swagger:api_responses")');
+    expect(ctrlRes.code).toContain(
+      'Symbol.for("bunest:swagger:api_operation")',
+    );
+    expect(ctrlRes.code).toContain(
+      'Symbol.for("bunest:swagger:api_responses")',
+    );
 
     const skipStatusRes = transformControllerMetadataSource(
       ctrlSource,
@@ -556,12 +574,12 @@ export class TasksController {
 
     // 3. Static build-time generateMetadataFile() + real Bun.build() plugin check on controller
     const tmpProject = await makeTempDir("bunest-meta-gen-");
-    await mkdir(join(tmpProject, "src"), { recursive: true });
-    await writeFile(
+    await ensureDir(join(tmpProject, "src"));
+    await Bun.write(
       join(tmpProject, "src/item.dto.ts"),
       `export class ItemDto {\n  /** Item label */\n  label!: string;\n  count: number = 1;\n}\n`,
     );
-    await writeFile(
+    await Bun.write(
       join(tmpProject, "src/item.controller.ts"),
       `import { ItemDto } from "./item.dto";\nfunction Get(): MethodDecorator { return () => {}; }\nexport class ItemController {\n  /** Fetch item */\n  @Get()\n  getItem(): ItemDto {\n    return new ItemDto();\n  }\n}\n`,
     );
@@ -577,13 +595,13 @@ export class TasksController {
     expect(metaFile.controllersCount).toBe(1);
     expect(await fileExists(metaFile.outputPath)).toBe(true);
     expect(metaFile.code).toContain('"@nestjs/swagger"');
-    expect(metaFile.code).toContain('./item.dto.js');
-    expect(metaFile.code).toContain('./item.controller.js');
+    expect(metaFile.code).toContain("./item.dto.js");
+    expect(metaFile.code).toContain("./item.controller.js");
     expect(metaFile.code).toContain('"ItemDto"');
     expect(metaFile.code).toContain('"ItemController"');
 
     // Also test real Bun.build with bunestMetadataPlugin on controller file
-    await writeFile(
+    await Bun.write(
       join(tmpProject, "tsconfig.json"),
       JSON.stringify({
         compilerOptions: {
@@ -597,11 +615,13 @@ export class TasksController {
       outdir: join(tmpProject, "dist"),
       target: "bun",
       format: "esm",
-      plugins: [bunestMetadataPlugin({ controllerFileNameSuffix: [".controller.ts"] })],
+      plugins: [
+        bunestMetadataPlugin({ controllerFileNameSuffix: [".controller.ts"] }),
+      ],
     });
     expect(buildOut.success).toBe(true);
     const mod = (await import(
-      `${pathToFileURL(buildOut.outputs[0]!.path).href}?t=${Date.now()}`
+      `${Bun.pathToFileURL(buildOut.outputs[0]!.path).href}?t=${Date.now()}`
     )) as { ItemController: Function };
     const opMeta = Reflect.getOwnMetadata(
       Symbol.for("bunest:swagger:api_operation"),

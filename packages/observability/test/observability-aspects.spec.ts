@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
-import { Injectable, Module } from "@bunest/common";
+import { Injectable, Module } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   Counted,
@@ -89,7 +88,12 @@ describe("@bunest/observability Service-Level Method Aspect Decorators", () => {
       const constructedSpan = new Span(
         "direct.span",
         "INTERNAL",
-        { traceId: "a".repeat(32), spanId: "b".repeat(16), traceFlags: 1, sampled: true },
+        {
+          traceId: "a".repeat(32),
+          spanId: "b".repeat(16),
+          traceFlags: 1,
+          sampled: true,
+        },
         {},
       );
       expect(constructedSpan).toBeInstanceOf(Span);
@@ -214,12 +218,8 @@ describe("@bunest/observability Service-Level Method Aspect Decorators", () => {
       expect(defaultErr.get()).toBe(1);
 
       const prom = registry.toPrometheusText();
-      expect(prom).toContain(
-        'billing_charge_total{gateway="stripe"} 3',
-      );
-      expect(prom).toContain(
-        'billing_charge_errors_total{gateway="stripe"} 1',
-      );
+      expect(prom).toContain('billing_charge_total{gateway="stripe"} 3');
+      expect(prom).toContain('billing_charge_errors_total{gateway="stripe"} 1');
     } finally {
       await ctx.close();
     }

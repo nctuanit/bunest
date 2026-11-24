@@ -1,4 +1,4 @@
-import { ConfigurableModuleBuilder } from "@bunest/common";
+import { ConfigurableModuleBuilder } from "@bunest/core";
 import { STORAGE_MODULE_OPTIONS } from "./constants";
 import type { StorageDisk } from "./disks/storage.disk";
 import type {

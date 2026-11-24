@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   afterAll,
   beforeAll,
@@ -14,7 +13,7 @@ import {
   Module,
   UseGuards,
   applyDecorators,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type Enhancer,
@@ -30,11 +29,7 @@ import {
   Resolver,
   UseFieldMiddleware,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 const executionLog: string[] = [];
 

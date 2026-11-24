@@ -22,7 +22,10 @@ export class MailError extends Error {
       cause?: unknown;
     },
   ) {
-    super(message, init.cause === undefined ? undefined : { cause: init.cause });
+    super(
+      message,
+      init.cause === undefined ? undefined : { cause: init.cause },
+    );
     this.name = new.target.name;
     this.permanent = init.permanent;
     if (init.code !== undefined) {

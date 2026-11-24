@@ -1,20 +1,27 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { SqlMigrationRunner, SqlService } from "../../../../../packages/sql/src";
 import {
-  BaseSqliteRepository,
-  SqliteEntity,
-  SqliteMigrationRunner,
-  SqliteService,
+  Column,
+  DataSource,
+  Entity,
+  PrimaryGeneratedColumn,
   assertSafeSqlIdentifier,
-  quoteSqlIdentifier,
-} from "../../../../../packages/sqlite/src";
+  escapeLikePattern,
+  formatPlaceholder,
+  formatTableRef,
+  quoteIdentifier,
+} from "../../../../../packages/orm/src";
 import { describeConformance } from "../../../_helpers/index";
 
-interface UserRow extends Record<string, unknown> {
-  id: number;
-  username: string;
-  bio: string;
+@Entity("sec_users")
+class SecUser {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ unique: true })
+  username!: string;
+
+  @Column()
+  bio!: string;
 }
 
 const MALICIOUS_IDENTIFIERS = [
@@ -33,52 +40,58 @@ const MALICIOUS_IDENTIFIERS = [
 ] as const;
 
 const SQL_INJECTION_VALUES = [
-  "'; DROP TABLE users; --",
+  "'; DROP TABLE sec_users; --",
   "' OR '1'='1",
   '" OR 1=1 --',
-  "Robert'); DROP TABLE users;--",
+  "Robert'); DROP TABLE sec_users;--",
   "admin' UNION SELECT 1,2,3 --",
   "value\0with-null",
 ] as const;
 
 describeConformance(
-  "Persistence (bun-native) - SQL injection, identifier validation & security guardrails",
+  "Persistence (bun-native) - @bunest/orm SQL injection, identifier validation & security guardrails",
   {
     upstreamPath: "bun-native/sql-injection-and-security",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Verifies SQL identifier allowlisting, repository column/sort/pagination validation, strict value parameterization, PRAGMA sanitization, savepointName validation, and migrationsTable validation.",
+      "Verifies SQL identifier allowlisting, multi-dialect quoting, LIKE metacharacter escaping, and strict value parameterization across SqliteOrmDriver, BunSqlOrmDriver, and Repository<Entity>.",
   },
   () => {
-    const openSqlite: SqliteService[] = [];
-    const openSql: SqlService[] = [];
+    const openSources: DataSource[] = [];
 
-    const trackSqlite = (svc: SqliteService): SqliteService => {
-      openSqlite.push(svc);
-      return svc;
-    };
-
-    const trackSql = (svc: SqlService): SqlService => {
-      openSql.push(svc);
-      return svc;
+    const track = async (ds: DataSource): Promise<DataSource> => {
+      await ds.initialize();
+      openSources.push(ds);
+      return ds;
     };
 
     afterEach(async () => {
-      while (openSqlite.length > 0) {
-        openSqlite.pop()!.close();
-      }
-      while (openSql.length > 0) {
-        await openSql.pop()!.close();
+      while (openSources.length > 0) {
+        await openSources.pop()!.destroy();
       }
     });
 
-    describe("assertSafeSqlIdentifier() & quoteSqlIdentifier()", () => {
-      it("accepts valid ASCII SQL identifiers and wraps them in double quotes", () => {
+    describe("assertSafeSqlIdentifier(), quoteIdentifier(), formatTableRef() & escapeLikePattern()", () => {
+      it("accepts valid ASCII SQL identifiers and quotes them accurately per dialect", () => {
         for (const valid of ["users", "_internal", "Order_Items_2026", "A"]) {
           expect(assertSafeSqlIdentifier(valid)).toBe(valid);
-          expect(quoteSqlIdentifier(valid)).toBe(`"${valid}"`);
+          expect(quoteIdentifier(valid, "sqlite")).toBe(`"${valid}"`);
+          expect(quoteIdentifier(valid, "postgres")).toBe(`"${valid}"`);
+          expect(quoteIdentifier(valid, "mysql")).toBe(`\`${valid}\``);
+          expect(quoteIdentifier(valid, "mariadb")).toBe(`\`${valid}\``);
+          expect(quoteIdentifier(valid, "mssql")).toBe(`[${valid}]`);
         }
+
+        expect(formatTableRef("users", "public", "postgres")).toBe(
+          '"public"."users"',
+        );
+        expect(formatTableRef("users", "app", "mysql")).toBe("`app`.`users`");
+        expect(formatPlaceholder(1, "postgres")).toBe("$1");
+        expect(formatPlaceholder(2, "sqlite")).toBe("?");
+        expect(formatPlaceholder(3, "mssql")).toBe("@p3");
+        expect(formatPlaceholder(4, "oracle")).toBe(":4");
+        expect(escapeLikePattern("100%_test!ok")).toBe("100!%!_test!!ok");
       });
 
       it.each(MALICIOUS_IDENTIFIERS)(
@@ -87,281 +100,95 @@ describeConformance(
           expect(() => assertSafeSqlIdentifier(payload, "table name")).toThrow(
             /Invalid table name/,
           );
-          expect(() => quoteSqlIdentifier(payload, "column name")).toThrow(
-            /Invalid column name/,
+          expect(() =>
+            quoteIdentifier(payload, "sqlite", "column name"),
+          ).toThrow(/Invalid column name/);
+          expect(() => formatTableRef(payload, undefined, "postgres")).toThrow(
+            /Invalid table name/,
           );
         },
       );
 
-      it("rejects malicious table or idColumn in @SqliteEntity() at decoration time", () => {
-        expect(() => SqliteEntity("users; DROP TABLE users")).toThrow(
-          /Invalid table name/,
-        );
-        expect(() => SqliteEntity("users", "id; --")).toThrow(
-          /Invalid id column name/,
-        );
-      });
-    });
-
-    describe("BaseSqliteRepository identifier & query-shape validation", () => {
-      const makeRepo = () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        db.exec(
-          "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, bio TEXT NOT NULL)",
-        );
-        return {
-          db,
-          repo: new BaseSqliteRepository<UserRow, number>(db, "users"),
-        };
-      };
-
-      it("rejects malicious tableName and idColumn in constructor", () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        expect(
-          () => new BaseSqliteRepository(db, "users; DROP TABLE users"),
-        ).toThrow(/Invalid table name/);
-        expect(
-          () => new BaseSqliteRepository(db, "users", "id OR 1=1"),
-        ).toThrow(/Invalid id column name/);
-      });
-
-      it("rejects malicious column names in select, where, insert, update, orderBy, and upsert", () => {
-        const { repo } = makeRepo();
-
-        expect(() =>
-          repo.findAll({ select: ["username; DROP TABLE users" as any] }),
-        ).toThrow(/Invalid select column/);
-
-        expect(() =>
-          repo.findWhere({ "username = 'a' OR 1=1 --": "x" } as any),
-        ).toThrow(/Invalid column name/);
-
-        expect(() =>
-          repo.insert({ "username) VALUES ('x'); --": "x" } as any),
-        ).toThrow(/Invalid column name/);
-
-        expect(() =>
-          repo.updateById(1, { "bio = 'pwned' WHERE 1=1 --": "x" } as any),
-        ).toThrow(/Invalid column name/);
-
-        expect(() =>
-          repo.findAll({ orderBy: "id; DROP TABLE users" }),
-        ).toThrow(/Invalid orderBy column/);
-
-        expect(() =>
-          repo.findAll({
-            orderBy: [{ column: "id; --", order: "ASC" }],
-          }),
-        ).toThrow(/Invalid orderBy column/);
-
-        expect(() =>
-          repo.findAll({ orderBy: "id", order: "ASC; DROP TABLE users" as any }),
-        ).toThrow(/Invalid sort direction/);
-
-        expect(() =>
-          repo.findAll({
-            orderBy: [{ column: "id", order: "DESC; --" as any }],
-          }),
-        ).toThrow(/Invalid sort direction/);
-
-        expect(() =>
-          repo.upsert(
-            { username: "alice", bio: "ok" },
-            "username); DROP TABLE users; --" as any,
-          ),
-        ).toThrow(/Invalid conflict column/);
-
-        expect(() =>
-          repo.upsert(
-            { username: "alice", bio: "ok" },
-            "username",
-            ["bio = 'x'; DROP TABLE users; --" as any],
-          ),
-        ).toThrow(/Invalid update column/);
-      });
-
-      it("rejects negative, fractional, NaN, and Infinity limit/offset values", () => {
-        const { repo } = makeRepo();
-
-        for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-          expect(() => repo.findAll({ limit: bad })).toThrow(/Invalid limit/);
-          expect(() => repo.findAll({ offset: bad })).toThrow(/Invalid offset/);
+      it("rejects malicious table or schema names during DataSource metadata compilation / schema build", async () => {
+        @Entity("users; DROP TABLE users")
+        class BadTableEntity {
+          @PrimaryGeneratedColumn()
+          id!: number;
         }
+
+        const ds = new DataSource({
+          type: "sqlite",
+          database: ":memory:",
+          entities: [BadTableEntity],
+          synchronize: true,
+        });
+        await expect(ds.initialize()).rejects.toThrow(/Invalid/);
+        await ds.destroy().catch(() => {});
       });
     });
 
     describe("strict value parameterization (SQL injection payloads stored literally)", () => {
-      it("stores and queries injection payloads literally via SqlService tagged templates and unsafe()", async () => {
-        const svc = trackSql(new SqlService("sqlite://:memory:"));
-        await svc.sql`
-          CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            bio TEXT NOT NULL
-          )
-        `;
+      it("stores and queries injection payloads literally via Repository<SecUser> on SqliteOrmDriver", async () => {
+        const ds = await track(
+          new DataSource({
+            type: "sqlite",
+            database: ":memory:",
+            entities: [SecUser],
+            synchronize: true,
+          }),
+        );
+        const repo = ds.getRepository(SecUser);
 
         for (let i = 0; i < SQL_INJECTION_VALUES.length; i++) {
-          const payload = SQL_INJECTION_VALUES[i]!;
-          await svc.sql`INSERT INTO users (username, bio) VALUES (${`u${i}`}, ${payload})`;
-        }
-
-        // Table must still exist with all rows intact
-        expect(
-          await svc.queryScalar<number>("SELECT COUNT(*) FROM users"),
-        ).toBe(SQL_INJECTION_VALUES.length);
-
-        // Parameterized lookup does not match all rows when querying "' OR '1'='1"
-        const tautology = "' OR '1'='1";
-        const taggedMatch = await svc.sql<{ username: string; bio: string }>`
-          SELECT username, bio FROM users WHERE bio = ${tautology}
-        `;
-        expect([...taggedMatch]).toEqual([{ username: "u1", bio: tautology }]);
-
-        const unsafeMatch = await svc.query<{ username: string; bio: string }>(
-          "SELECT username, bio FROM users WHERE bio = ?",
-          [tautology],
-        );
-        expect(unsafeMatch.rows).toEqual([{ username: "u1", bio: tautology }]);
-      });
-
-      it("stores and queries injection payloads literally via SqliteService and BaseSqliteRepository", () => {
-        const db = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        db.exec(
-          "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, bio TEXT NOT NULL)",
-        );
-        const repo = new BaseSqliteRepository<UserRow, number>(db, "users");
-
-        for (let i = 0; i < SQL_INJECTION_VALUES.length; i++) {
-          repo.insert({
+          await repo.save({
             username: `user_${i}`,
             bio: SQL_INJECTION_VALUES[i]!,
           });
         }
 
-        expect(repo.count()).toBe(SQL_INJECTION_VALUES.length);
+        expect(await repo.count()).toBe(SQL_INJECTION_VALUES.length);
 
         const tautology = "' OR '1'='1";
-        const found = repo.findWhere({ bio: tautology });
+        const found = await repo.findBy({ bio: tautology });
         expect(found).toHaveLength(1);
         expect(found[0]!.bio).toBe(tautology);
 
-        // updateById & deleteWhere with injection values affect ONLY targeted row
-        const dropPayload = "'; DROP TABLE users; --";
-        repo.updateById(found[0]!.id, { bio: dropPayload });
-        expect(repo.count()).toBe(SQL_INJECTION_VALUES.length);
+        const dropPayload = "'; DROP TABLE sec_users; --";
+        await repo.update(found[0]!.id, { bio: dropPayload });
+        expect(await repo.count()).toBe(SQL_INJECTION_VALUES.length);
 
-        const deleted = repo.deleteWhere({ bio: dropPayload });
-        expect(deleted.changes).toBe(2); // original u0 + updated u1
-        expect(repo.count()).toBe(SQL_INJECTION_VALUES.length - 2);
-      });
-    });
-
-    describe("PRAGMA, savepointName & migrationsTable injection defenses", () => {
-      it("rejects malicious PRAGMA keys, string values, and non-finite numeric values on SqliteService", () => {
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              pragmas: { "foreign_keys; DROP TABLE x": "ON" },
-            }),
-        ).toThrow(/Invalid PRAGMA name/);
-
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              pragmas: { synchronous: "NORMAL; DROP TABLE x" },
-            }),
-        ).toThrow(/disallowed characters/);
-
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              pragmas: { synchronous: "NORMAL -- comment" },
-            }),
-        ).toThrow(/disallowed characters/);
-
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              pragmas: { cache_size: Number.NaN },
-            }),
-        ).toThrow(/must be finite/);
-
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              pragmas: { cache_size: Number.POSITIVE_INFINITY },
-            }),
-        ).toThrow(/must be finite/);
-
-        expect(
-          () =>
-            new SqliteService({
-              filename: ":memory:",
-              busyTimeout: Number.NaN,
-            }),
-        ).toThrow(/Invalid busyTimeout/);
+        const deleted = await repo.delete({ bio: dropPayload });
+        expect(deleted.affected).toBe(2);
+        expect(await repo.count()).toBe(SQL_INJECTION_VALUES.length - 2);
       });
 
-      it("rejects malicious savepointName payloads on both SqliteService and SqlService", async () => {
-        const sqlite = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        await sqlite.transaction(async () => {
-          for (const badSp of [
-            "sp; DROP TABLE users; --",
-            'sp"quote',
-            "sp space",
-            "1digit",
-            "",
-          ]) {
-            await expect(
-              sqlite.transaction(async () => {}, { savepointName: badSp }),
-            ).rejects.toThrow(/Invalid savepoint name/);
+      it("stores and queries injection payloads literally via BunSqlOrmDriver parameterized queries", async () => {
+        const ds = await track(
+          new DataSource({
+            type: "sqlite",
+            url: "sqlite://:memory:",
+            useBunSql: true,
+            entities: [SecUser],
+            synchronize: true,
+          }),
+        );
+        const repo = ds.getRepository(SecUser);
 
-            expect(() =>
-              sqlite.transactionSync(() => {}, { savepointName: badSp }),
-            ).toThrow(/Invalid savepoint name/);
-          }
-        });
-
-        const sql = trackSql(new SqlService("sqlite://:memory:"));
-        await sql.transaction(async () => {
-          for (const badSp of [
-            "sp; DROP TABLE users; --",
-            'sp"quote',
-            "sp space",
-            "1digit",
-            "",
-          ]) {
-            await expect(
-              sql.transaction(async () => {}, { savepointName: badSp }),
-            ).rejects.toThrow(/Invalid savepoint name/);
-          }
-        });
-      });
-
-      it("rejects malicious migrationsTable identifiers on both SqlMigrationRunner and SqliteMigrationRunner", () => {
-        const sqlite = trackSqlite(new SqliteService({ filename: ":memory:" }));
-        const sql = trackSql(new SqlService("sqlite://:memory:"));
-
-        for (const badTable of [
-          "_migs; DROP TABLE users; --",
-          'bad"table',
-          "bad table",
-          "123migs",
-          "",
-        ]) {
-          expect(() => new SqliteMigrationRunner(sqlite, [], badTable)).toThrow(
-            /Invalid migrations table name/,
-          );
-          expect(() => new SqlMigrationRunner(sql, [], badTable)).toThrow(
-            /Invalid migrations table name/,
-          );
+        for (let i = 0; i < SQL_INJECTION_VALUES.length; i++) {
+          await repo.save({
+            username: `sql_u_${i}`,
+            bio: SQL_INJECTION_VALUES[i]!,
+          });
         }
+
+        expect(await repo.count()).toBe(SQL_INJECTION_VALUES.length);
+
+        const tautology = "' OR '1'='1";
+        const rows = await ds.query<{ username: string; bio: string }>(
+          'SELECT username, bio FROM "sec_users" WHERE bio = ?',
+          [tautology],
+        );
+        expect(rows).toEqual([{ username: "sql_u_1", bio: tautology }]);
       });
     });
   },

@@ -1,4 +1,4 @@
-import type { ConfigurableModuleAsyncOptions, Type } from "@bunest/common";
+import type { ConfigurableModuleAsyncOptions, Type } from "@bunest/core";
 import type { Duration } from "../core/time/duration";
 import type { WorkflowClock } from "./workflow-clock.interface";
 import type { WorkflowPayloadCodec } from "./workflow-payload-codec.interface";
@@ -54,8 +54,7 @@ export interface WorkflowsModuleOptions {
 /** Implemented by a `forRootAsync({ useClass })` class: Nest calls `createWorkflowsOptions()`. */
 export interface WorkflowsOptionsFactory {
   createWorkflowsOptions():
-    | WorkflowsModuleOptions
-    | Promise<WorkflowsModuleOptions>;
+    WorkflowsModuleOptions | Promise<WorkflowsModuleOptions>;
 }
 
 /** What `forRootAsync()` takes: `imports`, `inject` and `useFactory`, `useClass` or `useExisting`, and `isGlobal`. */

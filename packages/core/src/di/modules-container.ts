@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   Subscribable,
   SubscribableObserver,
@@ -11,7 +10,7 @@ import type { ModuleNode } from "../module/module-node";
  * matching NestJS v12 `ModulesContainer` (including zero-RxJS RPC target registry).
  */
 export class ModulesContainer extends Map<string, ModuleNode> {
-  private readonly _applicationId = randomUUID();
+  private readonly _applicationId = crypto.randomUUID();
   private readonly rpcTargets = new Set<unknown>();
   private readonly rpcTargetListeners = new Set<(target: unknown) => void>();
 

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { Socket } from "bun";
 import {
@@ -9,7 +8,7 @@ import {
   type BunestInterceptor,
   type CallHandler,
   type ExecutionContext,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Ctx,
   EventPattern,
@@ -403,8 +402,11 @@ describeConformance(
 
       it("should dispatch event envelopes to all registered event handlers without writing any response frame", async () => {
         const server = await createListeningServer();
-        const received: Array<{ handler: string; data: unknown; pattern: string }> =
-          [];
+        const received: Array<{
+          handler: string;
+          data: unknown;
+          pattern: string;
+        }> = [];
         let resolveDone!: () => void;
         const done = new Promise<void>((res) => {
           resolveDone = res;
@@ -481,9 +483,9 @@ describeConformance(
         });
         clients.push(client);
 
-        await expect(
-          client.send("guarded", { auth: false }),
-        ).rejects.toThrow("missing auth");
+        await expect(client.send("guarded", { auth: false })).rejects.toThrow(
+          "missing auth",
+        );
         expectNotCalled(handler);
 
         expect(await client.send("guarded", { auth: true })).toBe("ok");

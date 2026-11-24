@@ -1,14 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   deployProject,
   runCli,
@@ -21,6 +18,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -53,16 +59,12 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-deploy-"));
-      writeFileSync(
-        join(tmpDir, "package.json"),
-        JSON.stringify({ name: "deploy-e2e", version: "1.0.0" }),
-        "utf8",
-      );
+      tmpDir = makeTempDir("bunest-cli-conf-deploy-");
+      writeTextSync(join(tmpDir, "package.json"), JSON.stringify({ name: "deploy-e2e", version: "1.0.0" }));
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     describe("when a custom deploy command is configured in bunest.json", () => {
@@ -70,15 +72,11 @@ describeConformance(
         ["ADR-001"],
         "invokes the configured deploy command and forwards arguments verbatim",
         async () => {
-          writeFileSync(
-            join(tmpDir, "bunest.json"),
-            JSON.stringify({
+          writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({
               deploy: {
                 command: ["my-deploy", "deploy", "--force", "--env=production"],
               },
-            }),
-            "utf8",
-          );
+            }));
           const cap = createCapturedIO(tmpDir);
           const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
 
@@ -108,11 +106,7 @@ describeConformance(
       );
 
       it("previews custom deploy command without spawning on --dry-run", async () => {
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ deploy: { command: ["flyctl", "deploy"] } }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ deploy: { command: ["flyctl", "deploy"] } }));
         const cap = createCapturedIO(tmpDir);
         const res = await runCli(["deploy", "--dry-run"], cap.io);
 
@@ -127,11 +121,7 @@ describeConformance(
       });
 
       it("propagates non-zero exit code when custom deploy hook fails", async () => {
-        writeFileSync(
-          join(tmpDir, "bunest.json"),
-          JSON.stringify({ deploy: { command: ["failing-deploy"] } }),
-          "utf8",
-        );
+        writeTextSync(join(tmpDir, "bunest.json"), JSON.stringify({ deploy: { command: ["failing-deploy"] } }));
         const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 42 }));
         const result = await deployProject({ cwd: tmpDir, spawn: spawnSpy });
 
@@ -157,12 +147,8 @@ describeConformance(
         ["ADR-001"],
         "produces a minified production bundle by default and supports --compile and --dry-run",
         async () => {
-          mkdirSync(join(tmpDir, "src"), { recursive: true });
-          writeFileSync(
-            join(tmpDir, "src", "main.ts"),
-            `export const deployed = true;\n`,
-            "utf8",
-          );
+          mkdirSyncPath(join(tmpDir, "src"), { recursive: true });
+          writeTextSync(join(tmpDir, "src", "main.ts"), `export const deployed = true;\n`);
 
           const dryCap = createCapturedIO(tmpDir);
           const dryRes = await runCli(["deploy", "--compile", "-d"], dryCap.io);
@@ -179,7 +165,7 @@ describeConformance(
           expect((bundleRes.output as DeployProjectResult).target).toBe(
             "bundle",
           );
-          expect(existsSync(join(tmpDir, "release", "main.js"))).toBe(true);
+          expect(existsSyncPath(join(tmpDir, "release", "main.js"))).toBe(true);
 
           const compileSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
           const compileRes = await deployProject({

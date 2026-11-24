@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Injectable,
@@ -8,7 +7,7 @@ import {
   type OnApplicationShutdown,
   type OnModuleDestroy,
   type OnModuleInit,
-} from "@bunest/common";
+} from "../src/common/index";
 import { DIContainer, LifecycleManager, ModuleScanner } from "../src";
 
 describe("LifecycleManager (ADR-007 §7)", () => {

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   Scope,
   UseGuards,
   type CanActivate,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ModuleRef,
   type BunestApplication,

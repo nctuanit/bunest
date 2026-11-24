@@ -7,11 +7,11 @@
 
 | Property | Value |
 |---|---|
-| Measured At (UTC) | `2026-11-20T16:37:18.127Z` |
-| Bun Runtime | `v1.4.3` (`c6da4a4d`) |
-| OS / Arch | `win32 10.0.26300 (x64)` |
-| CPU | `AMD Ryzen 7 5800H with Radeon Graphics` (16 logical cores) |
-| Total RAM | `63.36 GiB` |
+| Measured At (UTC) | `2026-11-22T17:50:56.513Z` |
+| Bun Runtime | `v1.4.5` (`a7733435`) |
+| OS / Arch | `darwin 25.5.0 (arm64)` |
+| CPU | `Apple M4` (10 logical cores) |
+| Total RAM | `16.00 GiB` |
 | Package Versions | `@bunest/core@0.1.0`, `class-validator@0.14.4`, `class-transformer@0.5.1` |
 | Live HTTP Config | 4,000 requests/workload, 400 warmup, concurrency 32, HTTP/1.1 `keep-alive`, POST JSON payload 59 bytes, logging disabled |
 | In-Process Dispatch Config | 10,000 iterations/workload, 1,000 warmup, concurrency 1 (isolates framework routing/pipeline/DI overhead from loopback TCP) |
@@ -21,23 +21,23 @@
 
 | Workload | Framework | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | RSS (MB) | Errors (%) |
 |---|---|---:|---:|---:|---:|---:|---:|
-| 1. Static GET /health | Bun.serve (raw) | 22,863 | 1.365 | 1.902 | 2.925 | 66.0 | 0.00% |
-| 1. Static GET /health | Bunest | 21,299 | 1.272 | 2.254 | 4.320 | 66.0 | 0.00% |
-| 2. Param GET /users/:id + DI | Bun.serve (raw) | 18,290 | 1.482 | 2.601 | 15.124 | 63.9 | 0.00% |
-| 2. Param GET /users/:id + DI | Bunest | 18,119 | 1.700 | 2.376 | 3.801 | 67.2 | 0.00% |
-| 3. JSON POST /users (@Body) | Bun.serve (raw) | 15,666 | 1.903 | 3.144 | 5.299 | 66.4 | 0.00% |
-| 3. JSON POST /users (@Body) | Bunest | 12,458 | 2.462 | 3.867 | 4.914 | 69.3 | 0.00% |
-| 4. Validated POST /users/validated (DTO) | Bun.serve (raw) | 6,795 | 4.356 | 5.994 | 15.971 | 86.0 | 0.00% |
-| 4. Validated POST /users/validated (DTO) | Bunest | 7,182 | 4.156 | 5.973 | 18.956 | 85.9 | 0.00% |
+| 1. Static GET /health | Bun.serve (raw) | 139,978 | 0.227 | 0.316 | 0.563 | 35.2 | 0.00% |
+| 1. Static GET /health | Bunest | 156,094 | 0.154 | 0.296 | 0.321 | 38.3 | 0.00% |
+| 2. Param GET /users/:id + DI | Bun.serve (raw) | 158,908 | 0.154 | 0.291 | 0.373 | 38.5 | 0.00% |
+| 2. Param GET /users/:id + DI | Bunest | 151,968 | 0.165 | 0.306 | 0.409 | 38.6 | 0.00% |
+| 3. JSON POST /users (@Body) | Bun.serve (raw) | 125,851 | 0.191 | 0.382 | 0.566 | 40.6 | 0.00% |
+| 3. JSON POST /users (@Body) | Bunest | 109,714 | 0.223 | 0.432 | 0.751 | 42.7 | 0.00% |
+| 4. Validated POST /users/validated (DTO) | Bun.serve (raw) | 95,492 | 0.259 | 0.530 | 0.822 | 50.4 | 0.00% |
+| 4. Validated POST /users/validated (DTO) | Bunest | 93,508 | 0.274 | 0.537 | 0.781 | 52.1 | 0.00% |
 
 ### Live HTTP Overhead vs Raw `Bun.serve()`
 
 | Workload | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | p50 Overhead (ms) | p99 Overhead (ms) |
 |---|---:|---:|---:|---:|---:|
-| 1. Static GET /health | 22,863 | 21,299 | 93.2% | -0.093 | +1.394 |
-| 2. Param GET /users/:id + DI | 18,290 | 18,119 | 99.1% | +0.218 | -11.324 |
-| 3. JSON POST /users (@Body) | 15,666 | 12,458 | 79.5% | +0.558 | -0.385 |
-| 4. Validated POST /users/validated (DTO) | 6,795 | 7,182 | 105.7% | -0.201 | +2.985 |
+| 1. Static GET /health | 139,978 | 156,094 | 111.5% | -0.073 | -0.242 |
+| 2. Param GET /users/:id + DI | 158,908 | 151,968 | 95.6% | +0.011 | +0.036 |
+| 3. JSON POST /users (@Body) | 125,851 | 109,714 | 87.2% | +0.032 | +0.185 |
+| 4. Validated POST /users/validated (DTO) | 95,492 | 93,508 | 97.9% | +0.014 | -0.042 |
 
 ## 2. In-Process `fetch()` Dispatch Microbenchmark (10,000 ops)
 
@@ -45,32 +45,32 @@ Separates Bunest's compiled route matching, parameter extraction, DI resolution,
 
 | Workload | Framework | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | RSS (MB) | Errors (%) |
 |---|---|---:|---:|---:|---:|---:|---:|
-| 1. Static GET /health | Bun.serve (raw) | 299,164 | 0.003 | 0.008 | 0.014 | 94.1 | 0.00% |
-| 1. Static GET /health | Bunest | 221,325 | 0.003 | 0.008 | 0.023 | 97.5 | 0.00% |
-| 2. Param GET /users/:id + DI | Bun.serve (raw) | 294,501 | 0.003 | 0.005 | 0.018 | 98.2 | 0.00% |
-| 2. Param GET /users/:id + DI | Bunest | 124,164 | 0.005 | 0.010 | 0.040 | 100.5 | 0.00% |
-| 3. JSON POST /users (@Body) | Bun.serve (raw) | 228,768 | 0.003 | 0.006 | 0.024 | 101.2 | 0.00% |
-| 3. JSON POST /users (@Body) | Bunest | 20,801 | 0.011 | 0.037 | 1.219 | 108.0 | 0.00% |
-| 4. Validated POST /users/validated (DTO) | Bun.serve (raw) | 30,169 | 0.021 | 0.046 | 0.090 | 126.6 | 0.00% |
-| 4. Validated POST /users/validated (DTO) | Bunest | 10,847 | 0.031 | 0.081 | 1.676 | 128.7 | 0.00% |
+| 1. Static GET /health | Bun.serve (raw) | 1,867,806 | 0.000 | 0.001 | 0.003 | 53.9 | 0.00% |
+| 1. Static GET /health | Bunest | 1,088,895 | 0.001 | 0.001 | 0.004 | 57.2 | 0.00% |
+| 2. Param GET /users/:id + DI | Bun.serve (raw) | 1,863,369 | 0.000 | 0.001 | 0.003 | 57.8 | 0.00% |
+| 2. Param GET /users/:id + DI | Bunest | 934,278 | 0.001 | 0.001 | 0.004 | 60.2 | 0.00% |
+| 3. JSON POST /users (@Body) | Bun.serve (raw) | 1,236,228 | 0.001 | 0.001 | 0.004 | 60.5 | 0.00% |
+| 3. JSON POST /users (@Body) | Bunest | 438,807 | 0.002 | 0.003 | 0.007 | 63.4 | 0.00% |
+| 4. Validated POST /users/validated (DTO) | Bun.serve (raw) | 501,783 | 0.002 | 0.002 | 0.007 | 68.2 | 0.00% |
+| 4. Validated POST /users/validated (DTO) | Bunest | 314,175 | 0.003 | 0.004 | 0.007 | 69.6 | 0.00% |
 
 ### In-Process Overhead vs Raw Handler
 
 | Workload | Raw `Bun.serve` (req/s) | Bunest (req/s) | Relative Throughput | p50 Overhead (ms) | p99 Overhead (ms) |
 |---|---:|---:|---:|---:|---:|
-| 1. Static GET /health | 299,164 | 221,325 | 74.0% | +0.001 | +0.009 |
-| 2. Param GET /users/:id + DI | 294,501 | 124,164 | 42.2% | +0.002 | +0.021 |
-| 3. JSON POST /users (@Body) | 228,768 | 20,801 | 9.1% | +0.007 | +1.195 |
-| 4. Validated POST /users/validated (DTO) | 30,169 | 10,847 | 36.0% | +0.010 | +1.586 |
+| 1. Static GET /health | 1,867,806 | 1,088,895 | 58.3% | +0.000 | +0.001 |
+| 2. Param GET /users/:id + DI | 1,863,369 | 934,278 | 50.1% | +0.000 | +0.001 |
+| 3. JSON POST /users (@Body) | 1,236,228 | 438,807 | 35.5% | +0.001 | +0.003 |
+| 4. Validated POST /users/validated (DTO) | 501,783 | 314,175 | 62.6% | +0.001 | +0.001 |
 
 ## 3. DI Container & Bootstrap Microbenchmarks
 
 | Operation | Iterations | Throughput (ops/s) | p50 (ms) | p95 (ms) | p99 (ms) | RSS (MB) |
 |---|---:|---:|---:|---:|---:|---:|
-| Cold bootstrap (scan + DI + route compile + init) | 50 | 1,235 | 0.5367 | 1.5730 | 5.3485 | 134.4 |
-| Hot singleton DI lookup (app.get) | 10,000 | 1,273,869 | 0.0005 | 0.0010 | 0.0021 | 138.6 |
-| Hot transient DI resolve (app.resolve) | 10,000 | 54,718 | 0.0138 | 0.0263 | 0.0443 | 154.6 |
-| Request-scoped DI lifecycle (create + resolve + destroy) | 10,000 | 91,574 | 0.0077 | 0.0181 | 0.0272 | 151.1 |
+| Cold bootstrap (scan + DI + route compile + init) | 50 | 6,801 | 0.1145 | 0.3423 | 0.5108 | 74.0 |
+| Hot singleton DI lookup (app.get) | 10,000 | 5,259,581 | 0.0001 | 0.0003 | 0.0005 | 74.5 |
+| Hot transient DI resolve (app.resolve) | 10,000 | 413,487 | 0.0017 | 0.0029 | 0.0049 | 82.8 |
+| Request-scoped DI lifecycle (create + resolve + destroy) | 10,000 | 580,302 | 0.0013 | 0.0020 | 0.0035 | 84.0 |
 
 ## Reproduction
 

@@ -4,7 +4,7 @@ import {
   type DynamicModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
-} from "@bunest/common";
+} from "@bunest/core";
 import { MailEvents } from "./events/mail-events.service";
 import type {
   MailModuleAsyncOptions,

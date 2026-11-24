@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadGatewayException,
@@ -25,7 +24,7 @@ import {
   UnprocessableEntityException,
   UnsupportedMediaTypeException,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -64,7 +63,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: HttpException.createBody(undefined, description, statusCode) in packages/common/src/exceptions/http.exception.ts includes `error: "Bad Request"` when message is undefined, whereas NestJS omits `error` and returns `{ statusCode: 400, message: "Bad Request" }`.
+      // BUNEST_BUG: HttpException.createBody(undefined, description, statusCode) in packages/core/src/common/exceptions/http.exception.ts includes `error: "Bad Request"` when message is undefined, whereas NestJS omits `error` and returns `{ statusCode: 400, message: "Bad Request" }`.
       it.skip("should return an object even when the message is undefined", () => {
         expect(new BadRequestException().getResponse()).toEqual({
           statusCode: 400,
@@ -107,7 +106,7 @@ describeConformance(
       });
 
       describe("getResponse", () => {
-        // BUNEST_BUG: HttpException.createBody(undefined, description, statusCode) in packages/common/src/exceptions/http.exception.ts adds `error: expectedMessage`, whereas NestJS returns `{ message: expectedMessage, statusCode: expectedStatus }` without `error`.
+        // BUNEST_BUG: HttpException.createBody(undefined, description, statusCode) in packages/core/src/common/exceptions/http.exception.ts adds `error: expectedMessage`, whereas NestJS returns `{ message: expectedMessage, statusCode: expectedStatus }` without `error`.
         it.skip("should return a response with default message and status code", () => {
           const testCases: [Type<HttpException>, number, string][] = [
             [BadRequestException, 400, "Bad Request"],
@@ -130,7 +129,11 @@ describeConformance(
             [BadGatewayException, 502, "Bad Gateway"],
             [ServiceUnavailableException, 503, "Service Unavailable"],
             [GatewayTimeoutException, 504, "Gateway Timeout"],
-            [HttpVersionNotSupportedException, 505, "HTTP Version Not Supported"],
+            [
+              HttpVersionNotSupportedException,
+              505,
+              "HTTP Version Not Supported",
+            ],
           ];
 
           testCases.forEach(
@@ -173,7 +176,7 @@ describeConformance(
       });
 
       describe('and "response" parameter is an object', () => {
-        // BUNEST_BUG: BadRequestException({ foo: "bar" }) calls HttpException.createBody which injects `message: "Bad Request"` into the custom object, so `${badRequestError}` serializes to `"BadRequestException: Bad Request"` instead of `"BadRequestException: Bad Request Exception"` (packages/common/src/exceptions/http.exception.ts:205-210).
+        // BUNEST_BUG: BadRequestException({ foo: "bar" }) calls HttpException.createBody which injects `message: "Bad Request"` into the custom object, so `${badRequestError}` serializes to `"BadRequestException: Bad Request"` instead of `"BadRequestException: Bad Request Exception"` (packages/core/src/common/exceptions/http.exception.ts:205-210).
         it.skip("should use default message", () => {
           const responseAsObject = { foo: "bar" };
           const error = new HttpException(responseAsObject, 400);
@@ -184,22 +187,26 @@ describeConformance(
             "BadRequestException: Bad Request Exception",
           );
           expect(`${error}`.includes("[object Object]")).not.toBe(true);
-          expect(`${badRequestError}`.includes("[object Object]")).not.toBe(true);
+          expect(`${badRequestError}`.includes("[object Object]")).not.toBe(
+            true,
+          );
         });
       });
     });
 
     describe("createBody", () => {
       describe("when object has been passed", () => {
-        // BUNEST_BUG: HttpException.createBody(object) in packages/common/src/exceptions/http.exception.ts requires (description, statusCode) and injects `{ statusCode, error, message }` instead of returning plain object verbatim.
+        // BUNEST_BUG: HttpException.createBody(object) in packages/core/src/common/exceptions/http.exception.ts requires (description, statusCode) and injects `{ statusCode, error, message }` instead of returning plain object verbatim.
         it.skip("should return expected object", () => {
           const object = {
             message: "test",
           };
           expect(
-            (HttpException.createBody as (obj: Record<string, unknown>) => unknown)(
-              object,
-            ),
+            (
+              HttpException.createBody as (
+                obj: Record<string, unknown>,
+              ) => unknown
+            )(object),
           ).toEqual(object);
         });
       });
@@ -218,7 +225,7 @@ describeConformance(
       });
 
       describe("when nil has been passed", () => {
-        // BUNEST_BUG: HttpException.createBody(null, error, status) in packages/common/src/exceptions/http.exception.ts includes `error` field (`{ statusCode, message: error, error }`) whereas NestJS omits `error` (`{ message: error, statusCode }`).
+        // BUNEST_BUG: HttpException.createBody(null, error, status) in packages/core/src/common/exceptions/http.exception.ts includes `error` field (`{ statusCode, message: error, error }`) whereas NestJS omits `error` (`{ message: error, statusCode }`).
         it.skip("should return expected object", () => {
           const status = 500;
           const error = "error";
@@ -385,7 +392,7 @@ describeConformance(
           ).toBe("from-options");
         });
 
-        // BUNEST_BUG: HttpException.getDescriptionFrom({}) in packages/common/src/exceptions/http.exception.ts:218 returns "" instead of undefined when description is omitted.
+        // BUNEST_BUG: HttpException.getDescriptionFrom({}) in packages/core/src/common/exceptions/http.exception.ts:218 returns "" instead of undefined when description is omitted.
         it.skip("should return undefined when options has no description", () => {
           expect(HttpException.getDescriptionFrom({})).toBeUndefined();
         });
@@ -421,7 +428,7 @@ describeConformance(
       });
 
       describe("createBody with number message", () => {
-        // BUNEST_BUG: HttpException.createBody in packages/common/src/exceptions/http.exception.ts does not handle number `objectOrError` (falls through to object spread and sets message to description instead of 404).
+        // BUNEST_BUG: HttpException.createBody in packages/core/src/common/exceptions/http.exception.ts does not handle number `objectOrError` (falls through to object spread and sets message to description instead of 404).
         it.skip("should handle a number as the message", () => {
           expect(
             (
@@ -440,12 +447,14 @@ describeConformance(
       });
 
       describe("createBody with empty string", () => {
-        // BUNEST_BUG: HttpException.createBody("", "Error", 500) in packages/common/src/exceptions/http.exception.ts does not treat empty string "" as nil (returns `{ statusCode: 500, message: "", error: "Error" }` instead of `{ message: "Error", statusCode: 500 }`).
+        // BUNEST_BUG: HttpException.createBody("", "Error", 500) in packages/core/src/common/exceptions/http.exception.ts does not treat empty string "" as nil (returns `{ statusCode: 500, message: "", error: "Error" }` instead of `{ message: "Error", statusCode: 500 }`).
         it.skip("should treat empty string as nil", () => {
-          expect(HttpException.createBody("", "Error", 500) as unknown).toEqual({
-            message: "Error",
-            statusCode: 500,
-          });
+          expect(HttpException.createBody("", "Error", 500) as unknown).toEqual(
+            {
+              message: "Error",
+              statusCode: 500,
+            },
+          );
         });
       });
     });
@@ -488,7 +497,7 @@ describeConformance(
         expect(exception.errorCode).toBe("BAD_REQUEST_CODE");
       });
 
-      // BUNEST_BUG: HttpException.createBody in packages/common/src/exceptions/http.exception.ts:184 does not accept a 4th `errorCode` parameter and does not attach `errorCode` to the created response body (only toJSON() adds errorCode).
+      // BUNEST_BUG: HttpException.createBody in packages/core/src/common/exceptions/http.exception.ts:184 does not accept a 4th `errorCode` parameter and does not attach `errorCode` to the created response body (only toJSON() adds errorCode).
       it.skip("should be included in the response body when createBody is called", () => {
         const body = (
           HttpException.createBody as (
@@ -501,7 +510,7 @@ describeConformance(
         expect(body.errorCode).toBe("BAD_REQUEST_CODE");
       });
 
-      // BUNEST_BUG: Built-in exceptions in packages/common/src/exceptions/built-in.exceptions.ts do not forward `options.errorCode` into `HttpException.createBody`, so `getResponse().errorCode` is undefined (only `error.errorCode` and `error.toJSON().errorCode` have it).
+      // BUNEST_BUG: Built-in exceptions in packages/core/src/common/exceptions/built-in.exceptions.ts do not forward `options.errorCode` into `HttpException.createBody`, so `getResponse().errorCode` is undefined (only `error.errorCode` and `error.toJSON().errorCode` have it).
       it.skip("should be included in the response body of a built-in exception", () => {
         const builtInErrorClasses = [
           BadGatewayException,
@@ -538,7 +547,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Built-in exceptions do not forward `errorCode` into `getResponse()` and also include `error: "Bad Request"` when message is undefined (packages/common/src/exceptions/http.exception.ts & built-in.exceptions.ts).
+      // BUNEST_BUG: Built-in exceptions do not forward `errorCode` into `getResponse()` and also include `error: "Bad Request"` when message is undefined (packages/core/src/common/exceptions/http.exception.ts & built-in.exceptions.ts).
       it.skip("should be included in the response body when no message is given", () => {
         const error = new BadRequestException(undefined, {
           errorCode: "WEAK_PASSWORD",

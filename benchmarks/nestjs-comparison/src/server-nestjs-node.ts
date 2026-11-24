@@ -1,10 +1,7 @@
 import "reflect-metadata";
 import type { AddressInfo } from "node:net";
 import { NestFactory } from "@nestjs/core";
-import {
-  NodeAdapter,
-  type NestNodeApplication,
-} from "@nestjs/platform-node";
+import { NodeAdapter, type NestNodeApplication } from "@nestjs/platform-node";
 import { attachIpcChannel } from "./ipc";
 import { AppModule } from "./nestjs-app";
 

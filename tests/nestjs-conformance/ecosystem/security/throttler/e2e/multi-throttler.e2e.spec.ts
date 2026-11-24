@@ -1,11 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { setTimeout as delay } from "node:timers/promises";
-import {
-  Controller,
-  Get,
-  Module,
-} from "../../../../../../packages/common/src";
+import { Controller, Get, Module } from "../../../../../../packages/core/src/common";
 import { APP_GUARD } from "../../../../../../packages/core/src";
 import {
   SkipThrottle,
@@ -116,7 +110,7 @@ describeConformance(
         const r2 = await ctx.request().get("/").expect(429);
         expect(r2.headers[retryHeader(short)]).toMatch(/^\d+$/);
 
-        await delay(SHORT_TTL + 60);
+        await Bun.sleep(SHORT_TTL + 60);
       });
 
       // BUNEST_BUG: packages/security/src/throttler/throttler.guard.ts (onModuleInit lines 128-141 & handleRequest lines 276-293, 408-418) sorts throttlers by ttl before naming unnamed rules (misnaming the unnamed default rule `"rule_1"` instead of `"default"`) and overwrites unsuffixed `X-RateLimit-Limit` with `state.primary` (`short`: `"1"`) instead of the default throttler's `"2"`.
@@ -125,12 +119,12 @@ describeConformance(
         expect(r1.headers[remainingHeader()]).toBe("0");
         expect(r1.headers[limitHeader()]).toBe("2");
 
-        await delay(SHORT_TTL + 60);
+        await Bun.sleep(SHORT_TTL + 60);
 
         const r2 = await ctx.request().get("/").expect(429);
         expect(r2.headers[retryHeader()]).toMatch(/^\d+$/);
 
-        await delay(DEFAULT_TTL + 60);
+        await Bun.sleep(DEFAULT_TTL + 60);
       });
 
       // BUNEST_BUG: packages/security/src/throttler/throttler.guard.ts (onModuleInit lines 128-141 & handleRequest lines 276-293, 408-418) misnames the unnamed default rule `"rule_1"` after TTL sorting and overwrites unsuffixed `X-RateLimit-Remaining` with the lowest remaining throttler (`short`: `"0"`) instead of default's `"1"`.
@@ -140,19 +134,19 @@ describeConformance(
         expect(r1.headers[remainingHeader(long)]).toBe("2");
         expect(r1.headers[remainingHeader(short)]).toBe("0");
 
-        await delay(SHORT_TTL + 60);
+        await Bun.sleep(SHORT_TTL + 60);
 
         const r2 = await ctx.request().get("/").expect(200);
         expect(r2.headers[remainingHeader()]).toBe("0");
 
-        await delay(DEFAULT_TTL + 60);
+        await Bun.sleep(DEFAULT_TTL + 60);
 
         const r3 = await ctx.request().get("/").expect(200);
         expect(r3.headers[remainingHeader(long)]).toBe("0");
         expect(r3.headers[remainingHeader(short)]).toBe("0");
         expect(r3.headers[remainingHeader()]).toBe("1");
 
-        await delay(SHORT_TTL + 60);
+        await Bun.sleep(SHORT_TTL + 60);
 
         const r4 = await ctx.request().get("/").expect(429);
         expect(r4.headers[retryHeader(long)]).toMatch(/^\d+$/);

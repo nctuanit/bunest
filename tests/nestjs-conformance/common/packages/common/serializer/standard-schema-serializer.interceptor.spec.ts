@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   HttpException,
@@ -12,7 +10,7 @@ import {
   type StandardSchemaV1Options,
   type StandardSchemaV1Result,
   type ValidationErrorResponse,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   StandardSchemaSerializerInterceptor,
   UseStandardSchema,
@@ -314,13 +312,25 @@ describeConformance(
         };
 
         beforeEach(() => {
-          (mockExecutionContext as unknown as { getType: () => string }).getType =
-            () => "http";
+          (
+            mockExecutionContext as unknown as { getType: () => string }
+          ).getType = () => "http";
         });
 
         // BUNEST_BUG: StandardSchemaSerializerInterceptor passes Readable / ReadableStream / async generators through untouched over HTTP instead of mapping yielded objects through the schema (packages/validation/src/standard-schema-serializer.interceptor.ts:200)
         it.skip.each<[string, (chunks: unknown[]) => unknown]>([
-          ["a Readable in object mode", (chunks) => Readable.from(chunks)],
+          [
+            "a ReadableStream in object mode",
+            (chunks) =>
+              new ReadableStream({
+                start(controller) {
+                  for (const chunk of chunks) {
+                    controller.enqueue(chunk);
+                  }
+                  controller.close();
+                },
+              }),
+          ],
           [
             "a ReadableStream",
             (chunks) =>
@@ -405,7 +415,12 @@ describeConformance(
             interceptor = new StandardSchemaSerializerInterceptor(
               mockReflector as unknown as Reflector,
             );
-            const stream = Readable.from([{ id: 1 }]);
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue({ id: 1 });
+                controller.close();
+              },
+            });
             mockCallHandler.handle.resolves(stream);
 
             const result = await interceptor.intercept(
@@ -636,9 +651,11 @@ describeConformance(
     describe("validateOptions", () => {
       // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` in constructor options and calls `validate(response)` with 1 argument instead of forwarding `validateOptions` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
       it.skip("should forward default validateOptions to the schema", async () => {
-        const validateSpy = createSpy((_value: unknown, _options?: unknown) => ({
-          value: { ok: true },
-        }));
+        const validateSpy = createSpy(
+          (_value: unknown, _options?: unknown) => ({
+            value: { ok: true },
+          }),
+        );
         const schema = createSchema(validateSpy);
         const opts: StandardSchemaV1Options = {
           libraryOptions: { strip: true },
@@ -662,9 +679,11 @@ describeConformance(
 
       // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` from `@SerializeOptions()` metadata or forward it to `schema["~standard"].validate()` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
       it.skip("should forward context validateOptions from @SerializeOptions()", async () => {
-        const validateSpy = createSpy((_value: unknown, _options?: unknown) => ({
-          value: { ok: true },
-        }));
+        const validateSpy = createSpy(
+          (_value: unknown, _options?: unknown) => ({
+            value: { ok: true },
+          }),
+        );
         const schema = createSchema(validateSpy);
         const contextOpts: StandardSchemaV1Options = {
           libraryOptions: { mode: "strict" },
@@ -689,9 +708,11 @@ describeConformance(
 
       // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` override between context and default options (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
       it.skip("should let context validateOptions override default", async () => {
-        const validateSpy = createSpy((_value: unknown, _options?: unknown) => ({
-          value: { ok: true },
-        }));
+        const validateSpy = createSpy(
+          (_value: unknown, _options?: unknown) => ({
+            value: { ok: true },
+          }),
+        );
         const schema = createSchema(validateSpy);
         const defaultOpts: StandardSchemaV1Options = {
           libraryOptions: { from: "default" },
@@ -722,9 +743,11 @@ describeConformance(
 
       // BUNEST_BUG: StandardSchemaSerializerInterceptor calls `schema["~standard"].validate(response)` with 1 argument instead of `(response, validateOptions)` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
       it.skip("should pass undefined when no validateOptions are set", async () => {
-        const validateSpy = createSpy((_value: unknown, _options?: unknown) => ({
-          value: { ok: true },
-        }));
+        const validateSpy = createSpy(
+          (_value: unknown, _options?: unknown) => ({
+            value: { ok: true },
+          }),
+        );
         const schema = createSchema(validateSpy);
         interceptor = new StandardSchemaSerializerInterceptor(
           mockReflector as unknown as Reflector,

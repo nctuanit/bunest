@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve } from "@bunest/core";
 import { buildProjectTemplateFiles } from "../templates/project.templates";
 import type {
   CliIO,
@@ -74,7 +74,7 @@ export async function createProject(
   if (!dryRun && !skipGit) {
     const gitRes = await spawn(["git", "init"], {
       cwd: targetDir,
-      env: process.env,
+      env: Bun.env,
     });
     gitInitialized = gitRes.exitCode === 0;
   }
@@ -87,7 +87,7 @@ export async function createProject(
         : [packageManager, "install"];
     const { exitCode } = await spawn(installCmd, {
       cwd: targetDir,
-      env: process.env,
+      env: Bun.env,
     });
     if (exitCode !== 0) {
       throw new Error(

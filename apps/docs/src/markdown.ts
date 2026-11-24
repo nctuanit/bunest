@@ -21,11 +21,7 @@ export interface RenderedMarkdown {
 }
 
 function escapeHtml(str: string): string {
-  return str
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return Bun.escapeHTML(str);
 }
 
 function slugifyHeading(text: string): string {
@@ -221,10 +217,7 @@ function highlightTypeScript(code: string): string {
     }
 
     // Numbers
-    if (
-      /[0-9]/.test(ch) &&
-      (i === 0 || !/[A-Za-z0-9_$]/.test(code[i - 1]!))
-    ) {
+    if (/[0-9]/.test(ch) && (i === 0 || !/[A-Za-z0-9_$]/.test(code[i - 1]!))) {
       let j = i;
       while (j < len && /[0-9a-fA-FxXoObB._]/.test(code[j]!)) {
         j += 1;
@@ -347,15 +340,17 @@ function highlightBash(code: string): string {
       if (trimmed.startsWith("#")) {
         return `<span class="tok-comment">${escapeHtml(line)}</span>`;
       }
-      return line.replace(
-        /^(\s*)(\$\s+)?(bun|bunx|curl|git|mkdir|cd|export|NODE_ENV=[^\s]+)(?=\s|$)/,
-        (_, indent: string, prompt: string | undefined, cmd: string) =>
-          `${escapeHtml(indent)}${prompt ? `<span class="tok-punct">${escapeHtml(prompt)}</span>` : ""}<span class="tok-fn">${escapeHtml(cmd)}</span>`,
-      ).replace(
-        /(\s)(--?[a-zA-Z0-9_-]+)/g,
-        (_, sp: string, flag: string) =>
-          `${sp}<span class="tok-decorator">${escapeHtml(flag)}</span>`,
-      );
+      return line
+        .replace(
+          /^(\s*)(\$\s+)?(bun|bunx|curl|git|mkdir|cd|export|NODE_ENV=[^\s]+)(?=\s|$)/,
+          (_, indent: string, prompt: string | undefined, cmd: string) =>
+            `${escapeHtml(indent)}${prompt ? `<span class="tok-punct">${escapeHtml(prompt)}</span>` : ""}<span class="tok-fn">${escapeHtml(cmd)}</span>`,
+        )
+        .replace(
+          /(\s)(--?[a-zA-Z0-9_-]+)/g,
+          (_, sp: string, flag: string) =>
+            `${sp}<span class="tok-decorator">${escapeHtml(flag)}</span>`,
+        );
     })
     .join("\n");
 }
@@ -503,7 +498,11 @@ function renderCodeBlockGroup(tabs: CodeBlockTab[], groupId: number): string {
 </div>`;
 }
 
-function renderCallout(kind: string, bodyLines: string[], basePath = ""): string {
+function renderCallout(
+  kind: string,
+  bodyLines: string[],
+  basePath = "",
+): string {
   const normalized = kind.toLowerCase();
   const icons: Record<string, string> = {
     info: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
@@ -516,7 +515,9 @@ function renderCallout(kind: string, bodyLines: string[], basePath = ""): string
   const contentHtml = bodyLines
     .join("\n")
     .split(/\n\s*\n/)
-    .map((p) => `<p>${renderInline(p.replace(/\n/g, " ").trim(), basePath)}</p>`)
+    .map(
+      (p) => `<p>${renderInline(p.replace(/\n/g, " ").trim(), basePath)}</p>`,
+    )
     .join("");
 
   return `<blockquote class="bn-callout bn-callout-${normalized}">
@@ -585,7 +586,10 @@ export function renderMarkdown(
   let i = 0;
 
   const flushSection = () => {
-    if (currentSection.content.trim().length > 0 || currentSection.headingText) {
+    if (
+      currentSection.content.trim().length > 0 ||
+      currentSection.headingText
+    ) {
       sections.push({
         headingId: currentSection.headingId,
         headingText: currentSection.headingText,
@@ -630,7 +634,9 @@ export function renderMarkdown(
         const id = uniqueHeadingId(plainText);
         flushSection();
         currentSection = { headingId: id, headingText: plainText, content: "" };
-        htmlParts.push(`<h1 id="${id}" class="bn-doc-h1">${renderInline(rawText, basePath)}</h1>`);
+        htmlParts.push(
+          `<h1 id="${id}" class="bn-doc-h1">${renderInline(rawText, basePath)}</h1>`,
+        );
       } else if (level === 2 || level === 3) {
         const id = uniqueHeadingId(plainText);
         toc.push({ id, text: plainText, level });
@@ -641,7 +647,9 @@ export function renderMarkdown(
         );
       } else {
         const id = uniqueHeadingId(plainText);
-        htmlParts.push(`<h4 id="${id}">${renderInline(rawText, basePath)}</h4>`);
+        htmlParts.push(
+          `<h4 id="${id}">${renderInline(rawText, basePath)}</h4>`,
+        );
       }
       i += 1;
       continue;
@@ -658,7 +666,9 @@ export function renderMarkdown(
     const filenameMatch = trimmed.match(/^@@filename\((.+)\)$/);
     const tabMatch = trimmed.match(/^@@tab\((.+)\)$/);
     if (filenameMatch || tabMatch || trimmed.startsWith("```")) {
-      let pendingFilename = filenameMatch ? filenameMatch[1]!.trim() : undefined;
+      let pendingFilename = filenameMatch
+        ? filenameMatch[1]!.trim()
+        : undefined;
       let pendingTabLabel = tabMatch ? tabMatch[1]!.trim() : undefined;
       if (filenameMatch || tabMatch) {
         i += 1;
@@ -748,7 +758,9 @@ export function renderMarkdown(
         i += 1;
       }
       const firstLine = quoteLines[0] ?? "";
-      const calloutMatch = firstLine.match(/^(info|warning|tip|danger)\s+(.*)$/i);
+      const calloutMatch = firstLine.match(
+        /^(info|warning|tip|danger)\s+(.*)$/i,
+      );
       if (calloutMatch) {
         const kind = calloutMatch[1]!.toLowerCase();
         const bodyLines = [calloutMatch[2]!, ...quoteLines.slice(1)];
@@ -759,7 +771,10 @@ export function renderMarkdown(
         const inner = quoteLines
           .join("\n")
           .split(/\n\s*\n/)
-          .map((p) => `<p>${renderInline(p.replace(/\n/g, " ").trim(), basePath)}</p>`)
+          .map(
+            (p) =>
+              `<p>${renderInline(p.replace(/\n/g, " ").trim(), basePath)}</p>`,
+          )
           .join("");
         htmlParts.push(`<blockquote class="bn-quote">${inner}</blockquote>`);
       }
@@ -792,11 +807,16 @@ export function renderMarkdown(
         .map(
           (row) =>
             `<tr>${headers
-              .map((_, idx) => `<td>${renderInline(row[idx] ?? "", basePath)}</td>`)
+              .map(
+                (_, idx) =>
+                  `<td>${renderInline(row[idx] ?? "", basePath)}</td>`,
+              )
               .join("")}</tr>`,
         )
         .join("")}</tbody>`;
-      htmlParts.push(`<div class="bn-table-wrap"><table>${thead}${tbody}</table></div>`);
+      htmlParts.push(
+        `<div class="bn-table-wrap"><table>${thead}${tbody}</table></div>`,
+      );
       continue;
     }
 

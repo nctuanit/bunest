@@ -3,7 +3,7 @@ import {
   Logger,
   type LoggerService,
   type PreRequestHook,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { BaseRpcContext } from "./ctx-host";
 import { RpcException, type SerializedRpcError } from "./exceptions";
 import {
@@ -61,8 +61,8 @@ export abstract class MicroserviceTransportServer {
   protected onProcessingStartHook?: (
     transportId: TransportId,
     context: unknown,
-    done: () => Promise<any>,
-  ) => void | Promise<any>;
+    done: () => Promise<unknown>,
+  ) => void | Promise<unknown>;
   protected onProcessingEndHook?: (
     transportId: TransportId,
     context: unknown,
@@ -136,8 +136,8 @@ export abstract class MicroserviceTransportServer {
       | ((
           transportId: TransportId,
           context: unknown,
-          done: () => Promise<any>,
-        ) => void | Promise<any>)
+          done: () => Promise<unknown>,
+        ) => void | Promise<unknown>)
       | undefined,
   ): void {
     this.onProcessingStartHook = hook;
@@ -173,7 +173,7 @@ export abstract class MicroserviceTransportServer {
     pattern: PatternInput,
     callback: MessageHandler,
     isEventHandler = false,
-    extras: Record<string, any> = {},
+    extras: Record<string, unknown> = {},
   ): void {
     const key = normalizePattern(pattern);
     callback.isEventHandler = isEventHandler;
@@ -308,7 +308,7 @@ export abstract class MicroserviceTransportServer {
     packet: ReadPacket | unknown,
     context?: RpcContext | BaseRpcContext,
     handler?: MessageHandler | null,
-  ): Promise<any> {
+  ): Promise<void> {
     const data =
       packet && typeof packet === "object" && "data" in packet
         ? (packet as ReadPacket).data
@@ -334,9 +334,7 @@ export abstract class MicroserviceTransportServer {
   /**
    * Promise-only ADR-008 counterpart to NestJS `Server.transformToObservable`.
    */
-  async transformToObservable<T>(
-    resultOrDeferred: T | Promise<T>,
-  ): Promise<T> {
+  async transformToObservable<T>(resultOrDeferred: T | Promise<T>): Promise<T> {
     return await resultOrDeferred;
   }
 
@@ -344,28 +342,31 @@ export abstract class MicroserviceTransportServer {
    * Reads a property from an options object with an optional fallback default.
    */
   getOptionsProp<
-    Options extends Record<string, any> | undefined,
+    Options extends object | undefined,
     Attribute extends keyof NonNullable<Options>,
   >(obj: Options, prop: Attribute): NonNullable<Options>[Attribute] | undefined;
   getOptionsProp<
-    Options extends Record<string, any> | undefined,
+    Options extends object | undefined,
     Attribute extends keyof NonNullable<Options>,
-    DefaultValue extends NonNullable<Options>[Attribute] = NonNullable<Options>[Attribute],
+    DefaultValue extends NonNullable<Options>[Attribute] =
+      NonNullable<Options>[Attribute],
   >(
     obj: Options,
     prop: Attribute,
     defaultValue: DefaultValue,
   ): NonNullable<Options>[Attribute];
   getOptionsProp(
-    obj: Record<string, any> | undefined,
+    obj: object | undefined,
     prop: string | number | symbol,
-    defaultValue?: any,
-  ): any {
-    return obj && prop in obj ? obj[prop as string] : defaultValue;
+    defaultValue?: unknown,
+  ): unknown {
+    return obj && prop in obj
+      ? (obj as Record<PropertyKey, unknown>)[prop]
+      : defaultValue;
   }
 
   abstract listen(
-    callback?: (...optionalParams: unknown[]) => any,
+    callback?: (...optionalParams: unknown[]) => unknown,
   ): Promise<void>;
   abstract close(): Promise<void>;
 
@@ -394,7 +395,7 @@ export abstract class MicroserviceTransportServer {
     }
 
     let capturedPromise: Promise<T> | undefined;
-    let hookResult: void | Promise<any>;
+    let hookResult: void | Promise<unknown>;
     try {
       hookResult = this.onProcessingStartHook(tid, context, () => {
         capturedPromise = runCore();

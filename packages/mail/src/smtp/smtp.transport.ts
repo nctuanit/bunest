@@ -36,7 +36,7 @@ interface PoolWaiter {
 }
 
 /**
- * SMTP on `node:net` and `node:tls` (RFC 5321): implicit TLS or STARTTLS (required by
+ * SMTP on Bun native TCP/TLS sockets (RFC 5321): implicit TLS or STARTTLS (required by
  * default), certificate verification, AUTH PLAIN, LOGIN and XOAUTH2, SIZE, SMTPUTF8,
  * optional DKIM signing and connection pooling.
  *
@@ -64,7 +64,9 @@ export class SmtpTransport extends MailTransport {
       throw new TypeError("SmtpTransport `host` is required (or `url`)");
     }
     const secure =
-      options.secure ?? fromUrl.secure ?? (options.port ?? fromUrl.port) === 465;
+      options.secure ??
+      fromUrl.secure ??
+      (options.port ?? fromUrl.port) === 465;
     const port = options.port ?? fromUrl.port ?? (secure ? 465 : 587);
     if (!Number.isInteger(port) || port < 1 || port > 65_535) {
       throw new TypeError("SmtpTransport `port` must be 1-65535");
@@ -125,7 +127,9 @@ export class SmtpTransport extends MailTransport {
     message: MailMessage,
     { signal }: MailTransportSendOptions,
   ): Promise<MailTransportResult> {
-    const data = this.dkim ? this.dkim(message.toMime()) : message.toMime();
+    const data = this.dkim
+      ? await this.dkim(message.toMime())
+      : message.toMime();
     const envelope = message.envelope;
     const smtputf8 = message.internationalized;
     for (let fresh = false; ; fresh = true) {
@@ -366,9 +370,7 @@ function checkAuth(auth: SmtpAuth | undefined): void {
     return;
   }
   if (!auth || typeof auth.user !== "string" || !auth.user) {
-    throw new TypeError(
-      "SmtpTransport `auth.user` must be a non-empty string",
-    );
+    throw new TypeError("SmtpTransport `auth.user` must be a non-empty string");
   }
   if ("pass" in auth) {
     if (typeof auth.pass !== "string") {

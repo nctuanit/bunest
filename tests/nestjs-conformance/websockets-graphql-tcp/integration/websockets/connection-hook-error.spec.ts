@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import type { Type } from "../../../../../packages/common/src";
+import type { Type } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type OnGatewayConnection,
@@ -8,7 +7,7 @@ import {
   WebSocketModule,
   WsException,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance } from "../../../_helpers";
 
 @WebSocketGateway({ path: "/ws" })
@@ -69,7 +68,7 @@ describeConformance(
       ["throws", SyncRejectingGateway],
       ["rejects", AsyncRejectingGateway],
     ] as const)("when the hook %s", (_, gateway) => {
-      // BUNEST_BUG: Expected handleConnection() throwing/rejecting WsException to be routed through BaseWsExceptionFilter and emit an error frame to the connected client, but BunWebSocketAdapter.handleOpen() catches and only logs the error without notifying the client (packages/websockets/src/adapter/bun-ws.adapter.ts#L679-L688).
+      // BUNEST_BUG: Expected handleConnection() throwing/rejecting WsException to be routed through BaseWsExceptionFilter and emit an error frame to the connected client, but BunWebSocketAdapter.handleOpen() catches and only logs the error without notifying the client (packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
       it.skip("should send the exception to a ws client [ADR-001]", async () => {
         const port = await start(gateway);
         const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -77,7 +76,10 @@ describeConformance(
 
         const message = await new Promise<WsMessageFrame>((resolve, reject) => {
           const timer = setTimeout(
-            () => reject(new Error("Timed out waiting for connection hook error frame")),
+            () =>
+              reject(
+                new Error("Timed out waiting for connection hook error frame"),
+              ),
             1500,
           );
           client.addEventListener("message", (evt) => {

@@ -1,4 +1,4 @@
-import { Injectable, Scope, type Type } from "@bunest/common";
+import { Injectable, MetadataRegistry, Scope, type Type } from "@bunest/core";
 import { DiscoveryService } from "@bunest/core";
 import { WorkflowNotFoundError } from "../errors/workflow-not-found.error";
 import type {
@@ -34,7 +34,10 @@ export const ROUTE_EVENTS = Symbol("WorkflowRegistry.routeEvents");
 @Injectable()
 export class WorkflowRegistry {
   private definitions?: Map<string, WorkflowDefinition>;
-  private declared?: Map<string, WorkflowDeclaredSchedule & { workflow: string }>;
+  private declared?: Map<
+    string,
+    WorkflowDeclaredSchedule & { workflow: string }
+  >;
   private eventsRouted = false;
 
   constructor(private readonly discovery: DiscoveryService) {}
@@ -130,15 +133,19 @@ export class WorkflowRegistry {
   /**
    * Name and version for a `start()` call.
    */
-  resolve(workflow: Type<unknown> | string, version?: number): WorkflowMetadata {
+  resolve(
+    workflow: Type<unknown> | string,
+    version?: number,
+  ): WorkflowMetadata {
     let name: string;
     let fallback: WorkflowMetadata | undefined;
     if (typeof workflow === "string") {
       name = workflow;
     } else {
-      const meta = Reflect.getMetadata(WORKFLOW_METADATA, workflow) as
-        | WorkflowMetadata
-        | undefined;
+      const meta = MetadataRegistry.get<WorkflowMetadata>(
+        WORKFLOW_METADATA,
+        workflow,
+      );
       if (!meta) {
         throw new WorkflowNotFoundError(
           `${workflow.name} is not decorated with @Workflow().`,
@@ -163,8 +170,7 @@ export class WorkflowRegistry {
         timeout: known?.timeout,
         concurrency:
           latest?.concurrency ?? fallback?.concurrency ?? known?.concurrency,
-        rateLimit:
-          latest?.rateLimit ?? fallback?.rateLimit ?? known?.rateLimit,
+        rateLimit: latest?.rateLimit ?? fallback?.rateLimit ?? known?.rateLimit,
       };
     }
     const def = this.latest(name);
@@ -211,10 +217,7 @@ export class WorkflowRegistry {
           : rawWrapper.metatype
       ) as Type<unknown> | undefined;
       const meta =
-        type &&
-        (Reflect.getMetadata(WORKFLOW_METADATA, type) as
-          | WorkflowMetadata
-          | undefined);
+        type && MetadataRegistry.get<WorkflowMetadata>(WORKFLOW_METADATA, type);
       if (!meta || !type) {
         continue;
       }
@@ -244,7 +247,7 @@ export class WorkflowRegistry {
       }
       if (
         !this.eventsRouted &&
-        Reflect.getOwnMetadata(WORKFLOW_EVENT_ROUTES_METADATA, type)
+        MetadataRegistry.getOwn(WORKFLOW_EVENT_ROUTES_METADATA, type)
       ) {
         throw new Error(
           `Workflow ${type.name} is started or signalled by CQRS events (@StartOn(), @SignalOn()), but ` +

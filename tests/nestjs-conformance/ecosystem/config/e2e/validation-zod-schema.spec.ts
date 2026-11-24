@@ -1,8 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { join } from "node:path";
-import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigService } from "../../../../../packages/config/src";
+import { join, type BunestApplication } from "../../../../../packages/core/src";
+import { ConfigService } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { AppModule, fixturesDir } from "../_fixtures/app.module";
 
@@ -45,7 +43,7 @@ describeConformance(
     });
 
     describe.each(variants)("$name", ({ withValidation }) => {
-      // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: ..." prefix (packages/config/src/validator.ts:194-197)
+      // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: ..." prefix (packages/core/src/config/validator.ts:194-197)
       it.skip("should validate loaded env variables", async () => {
         await expect(
           Test.createTestingModule({
@@ -62,7 +60,7 @@ describeConformance(
         ).rejects.toThrow(/PORT[\s\S]*DATABASE_NAME/);
       });
 
-      // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - ..." instead of NestJS "Config validation error: ..." prefix (packages/config/src/validator.ts:194-197)
+      // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - ..." instead of NestJS "Config validation error: ..." prefix (packages/core/src/config/validator.ts:194-197)
       it.skip("should validate env variables even when ignoreEnvFile is true", async () => {
         await expect(
           Test.createTestingModule({

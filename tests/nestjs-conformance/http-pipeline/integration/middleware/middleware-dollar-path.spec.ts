@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, it } from "bun:test";
 import {
   Controller,
@@ -8,7 +7,7 @@ import {
   type BunestModule,
   type MiddlewareConsumer,
   type RouteInfo,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -73,10 +72,13 @@ describeConformance(
       ["the controller", PricesController],
       ["a plain string", "prices/usd$"],
       ["a route", { path: "prices/usd$", method: RequestMethod.GET }],
-    ] as const)('should run on the "$" route bound by %s', async (_label, route) => {
-      await createApp(route);
-      await request(app!).get("/prices/usd$").expect(200, MIDDLEWARE_VALUE);
-    });
+    ] as const)(
+      'should run on the "$" route bound by %s',
+      async (_label, route) => {
+        await createApp(route);
+        await request(app!).get("/prices/usd$").expect(200, MIDDLEWARE_VALUE);
+      },
+    );
 
     it('should not run on the route without the "$" bound by a route with it', async () => {
       await createApp({ path: "prices/usd$", method: RequestMethod.GET });
@@ -85,9 +87,7 @@ describeConformance(
 
     it('should run on the "$" route under a global prefix', async () => {
       await createApp(PricesController, "api");
-      await request(app!)
-        .get("/api/prices/usd$")
-        .expect(200, MIDDLEWARE_VALUE);
+      await request(app!).get("/api/prices/usd$").expect(200, MIDDLEWARE_VALUE);
     });
   },
 );

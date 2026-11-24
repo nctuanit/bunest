@@ -2,12 +2,12 @@ import type {
   AiModelInfo,
   AiResilienceSettings,
   EmbeddingModel,
-} from './ai-types.interface';
+} from "./ai-types.interface";
 
 /** Embedding settings, independent of language-model generation defaults. */
 export interface AiEmbeddingSettings extends AiResilienceSettings {
   /** Provider-specific options. */
-  providerOptions?: Record<string, Record<string, any>>;
+  providerOptions?: Record<string, Record<string, unknown>>;
   /** HTTP headers sent to the embedding provider. */
   headers?: Record<string, string>;
   /** Maximum concurrent batch requests within one `embedMany()` operation. Default 4. */
@@ -26,7 +26,8 @@ export interface AiEmbeddingModelDefinition extends AiEmbeddingSettings {
 }
 
 /** A registered embedding name, or an SDK embedding-model object passed directly to a call. */
-export type AiEmbeddingModelReference = string | Exclude<EmbeddingModel, string>;
+export type AiEmbeddingModelReference =
+  string | Exclude<EmbeddingModel, string>;
 
 /** Options shared by single and batch embedding calls. */
 export interface AiEmbeddingCallOptions extends AiEmbeddingSettings {
@@ -53,8 +54,8 @@ export interface AiEmbedResult {
   value: string;
   embedding: number[];
   usage: { tokens: number };
-  warnings: any[];
-  providerMetadata?: Record<string, Record<string, any>>;
+  warnings: unknown[];
+  providerMetadata?: Record<string, Record<string, unknown>>;
   response?: {
     headers?: Record<string, string>;
     body?: unknown;
@@ -71,8 +72,8 @@ export interface AiEmbedManyResult {
   values: string[];
   embeddings: number[][];
   usage: { tokens: number };
-  warnings: any[];
-  providerMetadata?: Record<string, Record<string, any>>;
+  warnings: unknown[];
+  providerMetadata?: Record<string, Record<string, unknown>>;
   responses?: Array<
     | {
         headers?: Record<string, string>;
@@ -89,7 +90,7 @@ export interface AiEmbedManyResult {
 
 /** One successful embedding operation. */
 export interface AiEmbeddingUsageEvent {
-  operation: 'embed' | 'embedMany';
+  operation: "embed" | "embedMany";
   label?: string;
   model: AiModelInfo;
   inputCount: number;

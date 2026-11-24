@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Args,
@@ -35,10 +34,7 @@ describeConformance(
 
     it("should replace the entry an override inherits at the same index", () => {
       class UserResolver extends BaseResolver {
-        override notes(
-          @Parent() _user: any,
-          @Args("cursor") _cursor?: string,
-        ) {
+        override notes(@Parent() _user: any, @Args("cursor") _cursor?: string) {
           return [];
         }
       }

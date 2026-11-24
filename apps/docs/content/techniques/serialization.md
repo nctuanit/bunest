@@ -4,11 +4,12 @@ Serialization transforms class instances returned by route handlers into clean p
 
 ## Excluding & Exposing Properties
 
-Decorate your response entity with `class-transformer` decorators (`@Exclude()`, `@Expose()`, `@Transform()`):
+Decorate your response entity with `@bunest/validation/transformer` decorators (`@Exclude()`, `@Expose()`, `@Transform()` — also compatible with upstream `class-transformer`):
 
 @@filename(user.entity.ts)
+
 ```ts
-import { Exclude, Expose } from "class-transformer";
+import { Exclude, Expose } from "@bunest/validation/transformer";
 
 export class UserEntity {
   id!: string;
@@ -38,9 +39,13 @@ export class UserEntity {
 Attach `ClassSerializerInterceptor` at method, controller, or global scope, and customize options per route using `@SerializeOptions()`:
 
 @@filename(users.controller.ts)
+
 ```ts
 import { Controller, Get, UseInterceptors } from "@bunest/core";
-import { ClassSerializerInterceptor, SerializeOptions } from "@bunest/validation";
+import {
+  ClassSerializerInterceptor,
+  SerializeOptions,
+} from "@bunest/validation";
 import { UserEntity } from "./user.entity";
 
 @UseInterceptors(ClassSerializerInterceptor)

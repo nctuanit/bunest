@@ -1,4 +1,4 @@
-import { Module, type DynamicModule } from "@bunest/common";
+import { Module, type DynamicModule } from "../common/index";
 import { WithClsAspect } from "./cls.decorator";
 import {
   CLS_MODULE_OPTIONS,

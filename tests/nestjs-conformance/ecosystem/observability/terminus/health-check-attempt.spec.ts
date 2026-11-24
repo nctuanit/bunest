@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   afterEach,
   beforeEach,
@@ -8,16 +7,42 @@ import {
   mock,
   setSystemTime,
 } from "bun:test";
-import { setTimeout as sleep } from "node:timers/promises";
 import {
   HealthCheckService,
   HealthIndicatorService,
   HealthIndicatorSession,
 } from "../../../../../packages/observability/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers/index";
+import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function sleep(
+  ms: number,
+  _value?: undefined,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const signal = options?.signal;
+  if (!signal) {
+    return Bun.sleep(ms);
+  }
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+    );
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        signal.reason ??
+          new DOMException("The operation was aborted.", "AbortError"),
+      );
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 // The data methods are tested in `health-check-attempt.data.spec.ts` and
 // `attempt-data.spec.ts`, the types in `health-check-attempt.types.spec.ts`.
@@ -416,7 +441,9 @@ describeConformance(
       ] as const)(
         "should not depend on the builder order (%s)",
         async (_label, first) => {
-          const build = (fn: (opts: { signal: AbortSignal }) => Promise<void>) => {
+          const build = (
+            fn: (opts: { signal: AbortSignal }) => Promise<void>,
+          ) => {
             const attempt = session.attempt(fn);
             if (first) {
               return attempt.degradedAfter(10).withTimeout(100);
@@ -424,14 +451,12 @@ describeConformance(
             return attempt.withTimeout(100).degradedAfter(10);
           };
           expect(
-            (
-              await build(({ signal }) => sleep(30, undefined, { signal }))
-            ).test.status,
+            (await build(({ signal }) => sleep(30, undefined, { signal }))).test
+              .status,
           ).toBe("degraded");
           expect(
-            (
-              await build(({ signal }) => sleep(5000, undefined, { signal }))
-            ).test,
+            (await build(({ signal }) => sleep(5000, undefined, { signal })))
+              .test,
           ).toMatchObject({
             status: "down",
             message: "timeout of 100ms exceeded",
@@ -508,7 +533,11 @@ describeConformance(
         async () => {
           const service = new HealthCheckService(
             {},
-            { log: mock(() => {}), error: mock(() => {}), warn: mock(() => {}) },
+            {
+              log: mock(() => {}),
+              error: mock(() => {}),
+              warn: mock(() => {}),
+            },
           );
           const h = new HealthIndicatorService();
           const result = await service.check([

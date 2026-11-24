@@ -31,10 +31,13 @@ export class MailTemplateError extends MailError {
   ) {
     const { template, file, shownAs, line, column, cause } = init;
     const at = line === undefined ? "" : `:${line}:${column ?? 1}`;
-    super(file === undefined ? problem : `${shownAs ?? file}${at}: ${problem}`, {
-      permanent: true,
-      cause,
-    });
+    super(
+      file === undefined ? problem : `${shownAs ?? file}${at}: ${problem}`,
+      {
+        permanent: true,
+        cause,
+      },
+    );
     if (template !== undefined) {
       this.template = template;
     }

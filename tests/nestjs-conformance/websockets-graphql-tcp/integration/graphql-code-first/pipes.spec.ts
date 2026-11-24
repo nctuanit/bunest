@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { Type } from "class-transformer";
-import { Length, MaxLength } from "class-validator";
+import { Type } from "../../../../../packages/validation/src/transformer";
+import { Length, MaxLength } from "../../../../../packages/validation/src/validator";
 import {
   Injectable,
   Module,
   UsePipes,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,

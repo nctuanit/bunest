@@ -1,4 +1,4 @@
-import { Injectable, type Type } from "@bunest/common";
+import { Injectable, MetadataRegistry, type Type } from "@bunest/core";
 import { DiscoveryService } from "@bunest/core";
 import {
   WorkflowRegistry,
@@ -92,7 +92,7 @@ export class WorkflowEventsExplorer {
       if (
         type &&
         eventRoutesOf(type).length > 0 &&
-        !Reflect.getMetadata(WORKFLOW_METADATA, type)
+        !MetadataRegistry.get(WORKFLOW_METADATA, type)
       ) {
         throw new Error(
           `${type.name} has @StartOn() or @SignalOn() but no @Workflow(). Events start and signal workflows: ` +

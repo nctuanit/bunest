@@ -1,20 +1,18 @@
-import type { StandardSchemaV1, Type } from "@bunest/common";
+import type { JsonValue, StandardSchemaV1, Type } from "@bunest/core";
 
 // ============================================================================
 // Standard JSON Schema v1 & Conversion Types (Zero External Deps)
 // ============================================================================
 
 export interface StandardJsonSchemaOptions {
-  readonly target:
-    | "draft-2020-12"
-    | "draft-07"
-    | "openapi-3.0"
-    | ({} & string);
+  readonly target: "draft-2020-12" | "draft-07" | "openapi-3.0" | ({} & string);
   readonly libraryOptions?: Record<string, unknown> | undefined;
 }
 
 export interface StandardJsonSchemaConverter {
-  readonly input: (options: StandardJsonSchemaOptions) => Record<string, unknown>;
+  readonly input: (
+    options: StandardJsonSchemaOptions,
+  ) => Record<string, unknown>;
   readonly output: (
     options: StandardJsonSchemaOptions,
   ) => Record<string, unknown>;
@@ -38,7 +36,7 @@ export type StandardSchemaObject = StandardSchemaV1 | StandardJSONSchemaV1;
 
 export interface StandardSchemaConversionResult {
   schema: unknown;
-  components?: Record<string, any>;
+  components?: Record<string, OpenApiSchema | ReferenceObject>;
 }
 
 export type StandardSchemaConverter = (
@@ -51,13 +49,7 @@ export type StandardSchemaConverter = (
 // ============================================================================
 
 export type OpenApiSchemaType =
-  | "string"
-  | "number"
-  | "integer"
-  | "boolean"
-  | "array"
-  | "object"
-  | "null";
+  "string" | "number" | "integer" | "boolean" | "array" | "object" | "null";
 
 export type OpenAPIFormat =
   | "int32"
@@ -135,7 +127,7 @@ export interface OpenApiInfo {
   contact?: OpenApiContact;
   license?: OpenApiLicense;
   version: string;
-  [extension: `x-${string}`]: any;
+  [extension: `x-${string}`]: unknown;
 }
 export type InfoObject = OpenApiInfo;
 
@@ -150,7 +142,7 @@ export interface OpenApiServer {
   url: string;
   description?: string;
   variables?: Record<string, OpenApiServerVariable>;
-  [extension: string]: any;
+  [extension: string]: unknown;
 }
 export type ServerObject = OpenApiServer;
 
@@ -178,8 +170,8 @@ export interface OpenApiSchema {
   writeOnly?: boolean;
   xml?: XmlObject;
   externalDocs?: ExternalDocumentationObject;
-  example?: any;
-  examples?: any[] | Record<string, any>;
+  example?: unknown;
+  examples?: unknown[] | Record<string, unknown>;
   deprecated?: boolean;
   type?: OpenApiSchemaType | OpenApiSchemaType[] | (string & {}) | string[];
   allOf?: Array<OpenApiSchema | ReferenceObject>;
@@ -189,10 +181,10 @@ export interface OpenApiSchema {
   items?: OpenApiSchema | ReferenceObject;
   properties?: Record<string, OpenApiSchema | ReferenceObject>;
   additionalProperties?: boolean | OpenApiSchema | ReferenceObject;
-  patternProperties?: Record<string, OpenApiSchema | ReferenceObject> | any;
+  patternProperties?: Record<string, OpenApiSchema | ReferenceObject>;
   description?: string;
   format?: OpenAPIFormat;
-  default?: any;
+  default?: unknown;
   title?: string;
   multipleOf?: number;
   maximum?: number;
@@ -208,8 +200,8 @@ export interface OpenApiSchema {
   maxProperties?: number;
   minProperties?: number;
   required?: string[];
-  enum?: any[];
-  const?: any;
+  enum?: unknown[];
+  const?: unknown;
   contentEncoding?: string;
   contentMediaType?: string;
   "x-enumNames"?: string[];
@@ -220,7 +212,7 @@ export type SchemasObject = Record<string, SchemaObject>;
 export interface ExampleObject {
   summary?: string;
   description?: string;
-  value?: any;
+  value?: unknown;
   externalValue?: string;
 }
 export type ExamplesObject = Record<string, ExampleObject | ReferenceObject>;
@@ -247,7 +239,7 @@ export type EncodingObject = Record<string, EncodingPropertyObject>;
 export interface OpenApiMediaType {
   schema?: OpenApiSchema | ReferenceObject;
   examples?: ExamplesObject;
-  example?: any;
+  example?: unknown;
   encoding?: EncodingObject;
 }
 export type MediaTypeObject = OpenApiMediaType;
@@ -264,7 +256,7 @@ export interface BaseParameterObject {
   allowReserved?: boolean;
   schema?: OpenApiSchema;
   examples?: Record<string, ExampleObject | ReferenceObject>;
-  example?: any;
+  example?: unknown;
   content?: ContentObject;
 }
 
@@ -286,13 +278,13 @@ export interface OpenApiRequestBody {
 }
 export type RequestBodyObject = OpenApiRequestBody;
 
-export type LinkParametersObject = Record<string, any>;
+export type LinkParametersObject = Record<string, JsonValue | unknown>;
 
 export interface LinkObject {
   operationRef?: string;
   operationId?: string;
   parameters?: LinkParametersObject;
-  requestBody?: any | string;
+  requestBody?: JsonValue | unknown;
   description?: string;
   server?: ServerObject;
 }
@@ -308,8 +300,10 @@ export interface OpenApiResponse {
 }
 export type ResponseObject = OpenApiResponse;
 
-export interface ResponsesObject
-  extends Record<string, ResponseObject | undefined> {
+export interface ResponsesObject extends Record<
+  string,
+  ResponseObject | undefined
+> {
   default?: ResponseObject;
 }
 
@@ -369,7 +363,7 @@ export type PathItemObject = OpenApiPathItem;
 export type PathsObject = Record<string, PathItemObject>;
 export type WebhooksObject = Record<string, PathItemObject>;
 
-export type ScopesObject = Record<string, any>;
+export type ScopesObject = Record<string, string>;
 
 export interface OAuthFlowObject {
   authorizationUrl?: string;
@@ -386,11 +380,7 @@ export interface OAuthFlowsObject {
 }
 
 export type SecuritySchemeType =
-  | "apiKey"
-  | "http"
-  | "mutualTLS"
-  | "oauth2"
-  | "openIdConnect";
+  "apiKey" | "http" | "mutualTLS" | "oauth2" | "openIdConnect";
 
 export interface OpenApiSecurityScheme {
   $ref?: string;
@@ -403,7 +393,7 @@ export interface OpenApiSecurityScheme {
   flows?: OAuthFlowsObject;
   openIdConnectUrl?: string;
   "x-tokenName"?: string;
-  [extension: `x-${string}`]: any;
+  [extension: `x-${string}`]: unknown;
 }
 export type SecuritySchemeObject = OpenApiSecurityScheme;
 
@@ -430,7 +420,7 @@ export interface OpenApiDocument {
   security?: OpenApiSecurityRequirement[];
   tags?: OpenApiTag[];
   externalDocs?: OpenApiExternalDocs;
-  [extension: `x-${string}`]: any;
+  [extension: `x-${string}`]: unknown;
 }
 export type OpenAPIObject = OpenApiDocument;
 
@@ -441,32 +431,40 @@ export type SwaggerConfig = Omit<OpenApiDocument, "paths">;
 // ============================================================================
 
 export type ApiTypeInput =
-  | Type<any>
+  | Type<unknown>
   | Function
   | [Function]
   | string
-  | (() => Type<any> | Function | [Function]);
+  | (() => Type<unknown> | Function | [Function]);
 
 export type SwaggerEnumType =
   | readonly unknown[]
-  | Record<string, any>
-  | (() => readonly unknown[] | Record<string, any>);
+  | Record<string, unknown>
+  | (() => readonly unknown[] | Record<string, unknown>);
 
 export type EnumSchemaAttributes = Pick<
   SchemaObject,
-  "default" | "description" | "deprecated" | "readOnly" | "writeOnly" | "nullable"
+  | "default"
+  | "description"
+  | "deprecated"
+  | "readOnly"
+  | "writeOnly"
+  | "nullable"
 >;
 
 export type ApiOperationOptions = Partial<OperationObject>;
 
 export interface ApiResponseExamples {
   summary: string;
-  value: any;
+  value: unknown;
 }
 
-export interface ApiResponseCommonMetadata
-  extends Omit<ResponseObject, "description"> {
-  status?: number | "default" | "1XX" | "2XX" | "3XX" | "4XX" | "5XX" | `${number}`;
+export interface ApiResponseCommonMetadata extends Omit<
+  ResponseObject,
+  "description"
+> {
+  status?:
+    number | "default" | "1XX" | "2XX" | "3XX" | "4XX" | "5XX" | `${number}`;
   type?: ApiTypeInput;
   standardSchema?: StandardSchemaObject;
   isArray?: boolean;
@@ -476,25 +474,28 @@ export interface ApiResponseCommonMetadata
 }
 
 export type ApiResponseMetadata =
-  | (ApiResponseCommonMetadata & { example?: any })
+  | (ApiResponseCommonMetadata & { example?: unknown })
   | (ApiResponseCommonMetadata & {
       examples?: { [key: string]: ApiResponseExamples };
     });
 
-export interface ApiResponseSchemaHost
-  extends Omit<ResponseObject, "description"> {
+export interface ApiResponseSchemaHost extends Omit<
+  ResponseObject,
+  "description"
+> {
   schema: SchemaObject & Partial<ReferenceObject>;
-  status?: number | "default" | "1XX" | "2XX" | "3XX" | "4XX" | "5XX" | `${number}`;
+  status?:
+    number | "default" | "1XX" | "2XX" | "3XX" | "4XX" | "5XX" | `${number}`;
   description?: string;
   contentType?: string;
-  example?: any;
+  example?: unknown;
   examples?: { [key: string]: ApiResponseExamples };
 }
 
 export type ApiResponseOptions = ApiResponseMetadata | ApiResponseSchemaHost;
 
 export type ApiResponseNoStatusOptions =
-  | (Omit<ApiResponseCommonMetadata, "status"> & { example?: any })
+  | (Omit<ApiResponseCommonMetadata, "status"> & { example?: unknown })
   | (Omit<ApiResponseCommonMetadata, "status"> & {
       examples?: { [key: string]: ApiResponseExamples };
     })
@@ -514,10 +515,10 @@ export interface ApiPropertyOptions {
   enumName?: string;
   enumSchema?: EnumSchemaAttributes;
   "x-enumNames"?: string[];
-  const?: any;
-  default?: any;
-  example?: any;
-  examples?: any[] | Record<string, any>;
+  const?: unknown;
+  default?: unknown;
+  example?: unknown;
+  examples?: unknown[] | Record<string, unknown>;
   exampleMaxDepth?: number;
   minimum?: number;
   maximum?: number;
@@ -536,9 +537,12 @@ export interface ApiPropertyOptions {
   writeOnly?: boolean;
   deprecated?: boolean;
   items?: OpenApiSchema | ReferenceObject;
-  properties?: Record<string, ApiPropertyOptions | OpenApiSchema | ReferenceObject>;
+  properties?: Record<
+    string,
+    ApiPropertyOptions | OpenApiSchema | ReferenceObject
+  >;
   additionalProperties?: boolean | OpenApiSchema | ReferenceObject;
-  patternProperties?: Record<string, OpenApiSchema | ReferenceObject> | any;
+  patternProperties?: Record<string, OpenApiSchema | ReferenceObject>;
   allOf?: Array<OpenApiSchema | ReferenceObject>;
   anyOf?: Array<OpenApiSchema | ReferenceObject>;
   oneOf?: Array<OpenApiSchema | ReferenceObject>;
@@ -568,26 +572,39 @@ export interface ApiLinkOptions {
   routeParam: string;
 }
 
-export interface ApiParamOptions extends Omit<ParameterObject, "in" | "schema"> {
+export interface ApiParamOptions extends Omit<
+  ParameterObject,
+  "in" | "schema"
+> {
   type?: ApiTypeInput;
   format?: OpenAPIFormat;
   enum?: SwaggerEnumType;
   enumName?: string;
   enumSchema?: EnumSchemaAttributes;
-  extensions?: Record<string, any>;
+  extensions?: Record<string, unknown>;
   schema?: OpenApiSchema;
 }
 
 export interface ApiQueryMetadata
-  extends Omit<ParameterObject, "in" | "schema" | "name">,
-    Omit<SchemaObject, "required" | "type" | "enum" | "example" | "examples" | "description" | "deprecated"> {
+  extends
+    Omit<ParameterObject, "in" | "schema" | "name">,
+    Omit<
+      SchemaObject,
+      | "required"
+      | "type"
+      | "enum"
+      | "example"
+      | "examples"
+      | "description"
+      | "deprecated"
+    > {
   name?: string;
   type?: ApiTypeInput;
   isArray?: boolean;
   enum?: SwaggerEnumType;
   enumName?: string;
   enumSchema?: EnumSchemaAttributes;
-  extensions?: Record<string, any>;
+  extensions?: Record<string, unknown>;
   schema?: OpenApiSchema | ReferenceObject;
 }
 
@@ -595,7 +612,7 @@ export type ApiQueryOptions = ApiQueryMetadata;
 
 export interface ApiHeaderOptions extends Omit<ParameterObject, "in"> {
   enum?: SwaggerEnumType;
-  extensions?: Record<string, any>;
+  extensions?: Record<string, unknown>;
 }
 
 export interface ApiBodyOptions extends Omit<RequestBodyObject, "content"> {
@@ -682,7 +699,7 @@ export interface SwaggerUiOptions {
     usePkceWithAuthorizationCodeGrant?: boolean;
   };
   persistAuthorization?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SwaggerSetupOptions {
@@ -722,7 +739,7 @@ export interface SwaggerSetupOptions {
   /**
    * Hook invoked on every request to dynamically patch/filter the served OpenAPI document.
    */
-  patchDocumentOnRequest?: <TRequest = any, TResponse = any>(
+  patchDocumentOnRequest?: <TRequest = unknown, TResponse = unknown>(
     req: TRequest,
     res: TResponse,
     document: OpenAPIObject,
@@ -779,12 +796,21 @@ export interface SwaggerSetupOptions {
 
 export type SwaggerCustomOptions = SwaggerSetupOptions;
 
-export type DeepPartial<T> = T extends Date | RegExp | ((...args: any[]) => any)
-  ? T
-  : T extends Array<infer U>
+type DeepPartialLeaf = Date | RegExp | ((...args: any[]) => any);
+
+type DeepPartialArray<T> =
+  T extends Array<infer U>
     ? Array<DeepPartial<U>>
     : T extends ReadonlyArray<infer U>
       ? ReadonlyArray<DeepPartial<U>>
-      : T extends object
-        ? { [P in keyof T]?: DeepPartial<T[P]> }
-        : T;
+      : never;
+
+type DeepPartialObject<T> = T extends object
+  ? { [P in keyof T]?: DeepPartial<T[P]> }
+  : T;
+
+export type DeepPartial<T> = T extends DeepPartialLeaf
+  ? T
+  : T extends ReadonlyArray<unknown>
+    ? DeepPartialArray<T>
+    : DeepPartialObject<T>;

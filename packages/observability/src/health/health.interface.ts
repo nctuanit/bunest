@@ -5,7 +5,7 @@ import type {
   ModuleMetadata,
   Provider,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 
 export const HEALTH_MODULE_OPTIONS = Symbol.for(
   "bunest:observability:health_options",
@@ -73,7 +73,7 @@ export interface HealthIndicatorDetail {
 export type HealthIndicatorResult<
   TKey extends string = string,
   TStatus extends HealthIndicatorStatus = HealthIndicatorStatus,
-  TData extends Record<string, any> = Record<string, any>,
+  TData extends Record<string, unknown> = Record<string, unknown>,
 > = Record<
   TKey,
   {
@@ -108,11 +108,9 @@ export abstract class HealthIndicator {
 export type HealthCheckResult<
   TDetails extends HealthIndicatorResult = HealthIndicatorResult,
   TInfo extends Partial<HealthIndicatorResult> | undefined =
-    | Partial<TDetails>
-    | undefined,
+    Partial<TDetails> | undefined,
   TError extends Partial<HealthIndicatorResult> | undefined =
-    | Partial<TDetails>
-    | undefined,
+    Partial<TDetails> | undefined,
 > = {
   /**
    * The overall status of the Health Check.
@@ -194,18 +192,15 @@ export type TerminusAsyncModuleOptions = Omit<
  */
 export interface TerminusOptionsFactory {
   createTerminusOptions():
-    | Promise<TerminusAsyncModuleOptions>
-    | TerminusAsyncModuleOptions;
+    Promise<TerminusAsyncModuleOptions> | TerminusAsyncModuleOptions;
 }
 
 /**
  * Asynchronous configuration options for `TerminusModule.forRootAsync()`.
  */
-export interface TerminusAsyncOptions
-  extends Pick<ModuleMetadata, "imports"> {
+export interface TerminusAsyncOptions extends Pick<ModuleMetadata, "imports"> {
   useExisting?:
-    | Type<TerminusOptionsFactory>
-    | InjectionToken<TerminusOptionsFactory>;
+    Type<TerminusOptionsFactory> | InjectionToken<TerminusOptionsFactory>;
   useClass?: Type<TerminusOptionsFactory>;
   useFactory?: (
     ...args: any[]

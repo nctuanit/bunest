@@ -1,13 +1,12 @@
-import "reflect-metadata";
 import { describe, expect, it, spyOn } from "bun:test";
-import { Injectable } from "../../../../../packages/common/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import {
   CqrsExplorer,
   CqrsModule,
   EventBus,
   EventsHandler,
   type IEventHandler,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 import { Test, describeConformance } from "../../../_helpers";
 
 class OrderPlacedEvent {}
@@ -28,7 +27,7 @@ describeConformance(
   },
   () => {
     describe('when a handler is also exposed through a "useExisting" alias', () => {
-      // BUNEST_BUG: Expected CqrsExplorer to deduplicate handlers exposed via useExisting aliases so handle() runs once, but packages/cqrs/src/cqrs.module.ts getAllLoadedWrappers() only deduplicates by InstanceWrapper reference (ignoring wrapper.isAlias / same instance), causing handle() to be invoked twice.
+      // BUNEST_BUG: Expected CqrsExplorer to deduplicate handlers exposed via useExisting aliases so handle() runs once, but packages/messaging/src/cqrs/cqrs.module.ts getAllLoadedWrappers() only deduplicates by InstanceWrapper reference (ignoring wrapper.isAlias / same instance), causing handle() to be invoked twice.
       it.skip("should register and invoke the handler only once", async () => {
         const moduleRef = await Test.createTestingModule({
           imports: [CqrsModule.forRoot()],

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Inject, Injectable, Module, type LoggerService } from "@bunest/common";
+import {
+  ensureDir,
+  Inject,
+  Injectable,
+  join,
+  Module,
+  readDirNames,
+  removePath,
+  type LoggerService,
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   FileMailTransport,
@@ -37,7 +43,10 @@ class WelcomeMail implements Mailable<{ name: string; token: string }> {
   render(data: { name: string; token: string }, ctx: MailRenderContext) {
     return {
       subject: `${this.greeting.prefix()}, ${data.name}! (${ctx.locale ?? "default"})`,
-      html: html`<p>Welcome ${data.name}!</p><a href="https://app.example.com/verify?token=${data.token}">Verify</a>`,
+      html: html`<p>Welcome ${data.name}!</p>
+        <a href="https://app.example.com/verify?token=${data.token}"
+          >Verify</a
+        >`,
       headers: { "X-Mail-Kind": "welcome" },
     };
   }
@@ -97,8 +106,12 @@ describe("MailModule, Mailer, InMemoryMailTransport, LogMailTransport & FileMail
     mailbox.assertNotSent({ to: "nobody@example.com" });
 
     expect(mailbox.mails).toHaveLength(2);
-    expect(mailbox.filter((m) => m.to[0]?.address === "bob@example.com")).toHaveLength(1);
-    expect(() => mailbox.assertNotSent({ to: "bob@example.com" })).toThrow(/Expected no mail/);
+    expect(
+      mailbox.filter((m) => m.to[0]?.address === "bob@example.com"),
+    ).toHaveLength(1);
+    expect(() => mailbox.assertNotSent({ to: "bob@example.com" })).toThrow(
+      /Expected no mail/,
+    );
 
     mailbox.clear();
     expect(mailbox.mails).toHaveLength(0);
@@ -198,13 +211,17 @@ describe("MailModule, Mailer, InMemoryMailTransport, LogMailTransport & FileMail
       ],
     }).compile();
 
-    await mod3.get(Mailer).send({ to: "u@example.com", subject: "ClassTransport", text: "hi" });
+    await mod3
+      .get(Mailer)
+      .send({ to: "u@example.com", subject: "ClassTransport", text: "hi" });
     expect(recorded).toEqual(["di-ok:ClassTransport"]);
     await mod3.close();
   });
 
   it("validates MailModule transport/template placement and missing template engine", async () => {
-    expect(() => MailModule.forRoot({} as never)).toThrow(/MailModule needs a `transport`/);
+    expect(() => MailModule.forRoot({} as never)).toThrow(
+      /MailModule needs a `transport`/,
+    );
 
     const t1 = new InMemoryMailTransport();
     const t2 = new InMemoryMailTransport();
@@ -267,7 +284,11 @@ describe("MailModule, Mailer, InMemoryMailTransport, LogMailTransport & FileMail
       },
     });
 
-    const pending = mailer.send({ to: "u@example.com", subject: "Slow", text: "hi" });
+    const pending = mailer.send({
+      to: "u@example.com",
+      subject: "Slow",
+      text: "hi",
+    });
     await startedPromise;
 
     const closing = mod.close();
@@ -309,11 +330,17 @@ describe("MailModule, Mailer, InMemoryMailTransport, LogMailTransport & FileMail
       text: "Sign-in link here",
       attachments: [{ filename: "a.txt", content: "x" }],
     });
-    expect(logs[0]).toContain('"Logged" to user@example.com with 1 attachment(s): a.txt');
+    expect(logs[0]).toContain(
+      '"Logged" to user@example.com with 1 attachment(s): a.txt',
+    );
     expect(debugs[0]).toBe("Sign-in link here");
     await logMod.close();
 
-    const outDir = await mkdtemp(join(tmpdir(), "bunest-mail-eml-"));
+    const outDir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-mail-eml-${crypto.randomUUID()}`,
+    );
+    await ensureDir(outDir);
     try {
       const fileMod = await Test.createTestingModule({
         imports: [
@@ -328,16 +355,16 @@ describe("MailModule, Mailer, InMemoryMailTransport, LogMailTransport & FileMail
         subject: "Saved to disk",
         text: "Hello EML",
       });
-      const files = await readdir(outDir);
+      const files = await readDirNames(outDir);
       expect(files).toHaveLength(1);
       expect(files[0]?.endsWith(".eml")).toBe(true);
       expect(res.response).toBe(join(outDir, files[0]!));
-      const content = await readFile(res.response!, "utf8");
+      const content = await Bun.file(res.response!).text();
       expect(content).toContain("Subject: Saved to disk");
       expect(content).toContain("Hello EML");
       await fileMod.close();
     } finally {
-      await rm(outDir, { recursive: true, force: true });
+      await removePath(outDir, { recursive: true, force: true });
     }
   });
 });

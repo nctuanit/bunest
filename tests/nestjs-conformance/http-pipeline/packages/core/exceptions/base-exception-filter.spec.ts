@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -185,7 +184,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: Filter class with static-only catch() returns 500 instead of 400 — DIContainer.resolveEnhancer instantiates `new StaticOnly()` (which lacks `.catch()`) instead of recognizing a class with static `catch()` and no prototype `catch()` (packages/core/src/di/di-container.ts:1462-1600, packages/http/src/pipeline/exception-handler.ts:248).
+        // BUNEST_BUG: Filter class with static-only catch() returns 500 instead of 400 — DIContainer.resolveEnhancer instantiates `new StaticOnly()` (which lacks `.catch()`) instead of recognizing a class with static `catch()` and no prototype `catch()` (packages/core/src/di/di-container.ts:1462-1600, packages/core/src/http/pipeline/exception-handler.ts:248).
         it.skip("should return and invoke the class when only the class has a static 'catch'", async () => {
           @Catch(HttpException)
           class StaticOnly {
@@ -259,7 +258,12 @@ describeConformance(
 
           // Static context resolution (without RequestContainer) cannot return an unconstructed placeholder
           await expect(
-            container.resolveEnhancer(RequestScopedFilter, undefined, undefined, "filter"),
+            container.resolveEnhancer(
+              RequestScopedFilter,
+              undefined,
+              undefined,
+              "filter",
+            ),
           ).rejects.toThrow();
 
           // Once a RequestContainer exists, each request gets its own constructed instance
@@ -358,8 +362,7 @@ describeConformance(
           const valueFilterInstance = new ValueFilter();
           const factoryFilterInstance: ExceptionFilter = {
             catch(ex: unknown) {
-              const status =
-                ex instanceof HttpException ? ex.getStatus() : 500;
+              const status = ex instanceof HttpException ? ex.getStatus() : 500;
               return new Response(JSON.stringify({ kind: "factory" }), {
                 status,
                 headers: { "Content-Type": "application/json" },
@@ -430,10 +433,14 @@ describeConformance(
             close: () => undefined,
           };
           const filter = new BaseExceptionFilter(mockAdapter);
-          const err = new HttpException("Forbidden action", HttpStatus.FORBIDDEN, {
-            headers: { "X-Reason": "policy" },
-            errorCode: "ERR_POLICY",
-          });
+          const err = new HttpException(
+            "Forbidden action",
+            HttpStatus.FORBIDDEN,
+            {
+              headers: { "X-Reason": "policy" },
+              errorCode: "ERR_POLICY",
+            },
+          );
 
           filter.catch(err, host);
 
@@ -459,8 +466,9 @@ describeConformance(
           adapterHost.httpAdapter = adapter;
 
           const filter = new BaseExceptionFilter();
-          (filter as unknown as { httpAdapterHost: HttpAdapterHost }).httpAdapterHost =
-            adapterHost;
+          (
+            filter as unknown as { httpAdapterHost: HttpAdapterHost }
+          ).httpAdapterHost = adapterHost;
 
           const result = filter.catch(
             new BadRequestException("bad input"),
@@ -652,7 +660,9 @@ describeConformance(
         class CustomSubFilter extends BaseExceptionFilter {
           override catch(exception: unknown, argHost: ArgumentsHost) {
             seen.push(
-              exception instanceof Error ? exception.message : String(exception),
+              exception instanceof Error
+                ? exception.message
+                : String(exception),
             );
             return super.catch(exception, argHost);
           }

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   FileTypeValidator,
   detectMagicMimeType,
   type FileTypeValidatorOptions,
   type UploadedFileInfo,
-} from "../../../../../../../packages/common/src";
+} from "../../../../../../../packages/core/src/common";
 import { describeConformance, itAdapted } from "../../../../../_helpers";
 
 const pngBuffer = Buffer.from([
@@ -32,8 +31,7 @@ const unknownBinaryBuffer = Buffer.from([
 describeConformance(
   "FileTypeValidator",
   {
-    upstreamPath:
-      "packages/common/test/pipes/file/file-type.validator.spec.ts",
+    upstreamPath: "packages/common/test/pipes/file/file-type.validator.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-005"],
     notes:
@@ -41,7 +39,7 @@ describeConformance(
   },
   () => {
     describe("isValid", () => {
-      // BUNEST_BUG: matchesExpectedFileType mutates caller's RegExp `expected.lastIndex = 0` directly instead of isolating stateful `g`/`y` flags; expected fileType.lastIndex to remain 3, actual 0 (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: matchesExpectedFileType mutates caller's RegExp `expected.lastIndex = 0` directly instead of isolating stateful `g`/`y` flags; expected fileType.lastIndex to remain 3, actual 0 (packages/core/src/common/pipes/file-validators.ts)
       it.skip.each(["y", "g", "gy"])(
         "should isolate a regexp with %s flags between uploads",
         async (flags) => {
@@ -68,7 +66,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: matchesExpectedFileType runs `.test()` directly on sticky RegExp leaving `fileType.lastIndex` at 9 instead of preserving 0 via isolated RegExp copy (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: matchesExpectedFileType runs `.test()` directly on sticky RegExp leaving `fileType.lastIndex` at 9 instead of preserving 0 via isolated RegExp copy (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should reuse a sticky regexp for magic number validation", async () => {
         const fileType = /^image\/png$/y;
         const validator = new FileTypeValidator({ fileType });
@@ -188,7 +186,7 @@ describeConformance(
         expect(await fileTypeValidator.isValid()).toBe(false);
       });
 
-      // BUNEST_BUG: FileTypeValidator.isValid crashes with TypeError when `validationOptions.fileType` is undefined (`expected.toLowerCase()` on undefined) instead of returning true when no options are provided (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidator.isValid crashes with TypeError when `validationOptions.fileType` is undefined (`expected.toLowerCase()` on undefined) instead of returning true when no options are provided (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return true when no validation options are provided", async () => {
         const fileTypeValidator = new FileTypeValidator(
           {} as FileTypeValidatorOptions,
@@ -240,7 +238,7 @@ describeConformance(
         expect(await fileTypeValidator.isValid(requestFile)).toBe(false);
       });
 
-      // BUNEST_BUG: matchesExpectedFileType uses unanchored `new RegExp(expected, "i")` without word/token boundaries, so prefix strings falsely match longer MIME types (e.g. "audio/wav" matches "audio/wavpack", "font/woff" matches "font/woff2") (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: matchesExpectedFileType uses unanchored `new RegExp(expected, "i")` without word/token boundaries, so prefix strings falsely match longer MIME types (e.g. "audio/wav" matches "audio/wavpack", "font/woff" matches "font/woff2") (packages/core/src/common/pipes/file-validators.ts)
       it.skip.each([
         ["audio/wav", "audio/wavpack"],
         ["wav", "audio/wavpack"],
@@ -462,7 +460,7 @@ describeConformance(
     });
 
     describe("buildErrorMessage", () => {
-      // BUNEST_BUG: FileTypeValidator.buildErrorMessage() with no file returns "Validation failed (current file type is unknown, expected type is image/jpeg)" instead of "Validation failed (expected type is image/jpeg)" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidator.buildErrorMessage() with no file returns "Validation failed (current file type is unknown, expected type is image/jpeg)" instead of "Validation failed (expected type is image/jpeg)" (packages/core/src/common/pipes/file-validators.ts)
       it.skip('should return a string with the format "Validation failed (expected type is #fileType)"', async () => {
         const fileType = "image/jpeg";
         const fileTypeValidator = new FileTypeValidator({
@@ -521,7 +519,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not emit the missing-buffer message when file.buffer is absent and fallbackToMimetype is false; actual "Validation failed (current file type is image/jpeg, expected type is image/jpeg)" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not emit the missing-buffer message when file.buffer is absent and fallbackToMimetype is false; actual "Validation failed (current file type is image/jpeg, expected type is image/jpeg)" (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return a specific error message when file buffer is not available and fallbackToMimetype is not enabled", async () => {
         const fileTypeValidator = new FileTypeValidator({
           fileType: "image/jpeg",
@@ -568,7 +566,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not distinguish undetectable content from declared mimetype; returns "Validation failed (current file type is ..., expected type is ...)" instead of "file type could not be detected from its content" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not distinguish undetectable content from declared mimetype; returns "Validation failed (current file type is ..., expected type is ...)" instead of "file type could not be detected from its content" (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should report that the type could not be detected from the content", async () => {
         const fileTypeValidator = new FileTypeValidator({
           fileType: "application/octet-stream",
@@ -584,7 +582,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not append " - magic number detection failed, used mimetype fallback" when fallbackToMimetype is used after failed magic detection (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidator.buildErrorMessage does not append " - magic number detection failed, used mimetype fallback" when fallbackToMimetype is used after failed magic detection (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should mention the mimetype fallback when the type could not be detected from the content", async () => {
         const fileTypeValidator = new FileTypeValidator({
           fileType: "image/png",
@@ -644,7 +642,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ static `errorMessage` string option (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ static `errorMessage` string option (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return a static custom error message when the file type does not match", async () => {
         const expectedFileType = "image/png";
         const actualFileType = "text/csv";
@@ -662,7 +660,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ dynamic `errorMessage(ctx)` callback option (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ dynamic `errorMessage(ctx)` callback option (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return a dynamic custom error message based on context when the file type does not match", async () => {
         const expectedFileType = "image/png";
         const actualFileType = "text/csv";
@@ -686,7 +684,7 @@ describeConformance(
     });
 
     describe("overrideMimeType", () => {
-      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ `overrideMimeType` option; `requestFile.mimetype` remains "image/jpeg" instead of being updated to "image/png" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: FileTypeValidatorOptions does not support NestJS v11+ `overrideMimeType` option; `requestFile.mimetype` remains "image/jpeg" instead of being updated to "image/png" (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should override mimetype when overrideMimeType is enabled", async () => {
         const fileTypeValidator = new FileTypeValidator({
           fileType: /^image\/png$/,

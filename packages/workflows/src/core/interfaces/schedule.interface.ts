@@ -1,4 +1,4 @@
-import type { Duration } from '../time/duration';
+import type { Duration } from "../time/duration";
 
 /**
  * When a schedule's occurrences are: exactly one of `cron`, `every` or `rrule`, with its time zone and bounds. Times
@@ -44,7 +44,7 @@ export interface ScheduleTiming {
  * const missed: ScheduleMissed = 'once';
  * ```
  */
-export type ScheduleMissed = 'skip' | 'once' | 'all';
+export type ScheduleMissed = "skip" | "once" | "all";
 
 /**
  * What an occurrence does while a run the schedule started is still unfinished: `'skip'` it, `'allow'` it (both run),
@@ -55,7 +55,8 @@ export type ScheduleMissed = 'skip' | 'once' | 'all';
  * const overlap: ScheduleOverlap = 'buffer-one';
  * ```
  */
-export type ScheduleOverlap = 'skip' | 'allow' | 'cancel-previous' | 'buffer-one';
+export type ScheduleOverlap =
+  "skip" | "allow" | "cancel-previous" | "buffer-one";
 
 /**
  * A schedule's timing and policies, as a package takes them (it adds its own, such as workflows' `priority`):

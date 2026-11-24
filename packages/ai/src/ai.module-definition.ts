@@ -3,23 +3,23 @@ import {
   INQUIRER,
   Scope,
   type ConfigurableModuleAsyncOptions,
-} from '@bunest/common';
+} from "@bunest/core";
 import type {
   AiModuleOptions,
   AiModuleStructure,
   AiOptionsFactory,
-} from './interfaces/ai-module-options.interface';
+} from "./interfaces/ai-module-options.interface";
 import {
   AI_MODULE_OPTIONS,
   getEmbeddingModelToken,
   getModelToken,
-} from './ai.constants';
-import { AiEmbeddingModels } from './models/ai-embedding-models.service';
-import { AiModels } from './models/ai-models.service';
+} from "./ai.constants";
+import { AiEmbeddingModels } from "./models/ai-embedding-models.service";
+import { AiModels } from "./models/ai-models.service";
 import {
   requestedEmbeddingModelNames,
   requestedModelNames,
-} from './models/model-requests';
+} from "./models/model-requests";
 
 export { AI_MODULE_OPTIONS };
 export type { AiOptionsFactory };
@@ -32,7 +32,7 @@ export type AiModuleRootOptions = AiModuleOptions & {
 /** What `forRootAsync()` takes. */
 export type AiModuleAsyncOptions = ConfigurableModuleAsyncOptions<
   AiModuleOptions,
-  'createAiOptions'
+  "createAiOptions"
 > &
   AiModuleStructure & {
     isGlobal?: boolean;
@@ -40,11 +40,11 @@ export type AiModuleAsyncOptions = ConfigurableModuleAsyncOptions<
 
 export const { ConfigurableModuleClass, OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } =
   new ConfigurableModuleBuilder<AiModuleOptions>({
-    moduleName: 'Ai',
+    moduleName: "Ai",
     optionsInjectionToken: AI_MODULE_OPTIONS,
   })
-    .setClassMethodName('forRoot')
-    .setFactoryMethodName('createAiOptions')
+    .setClassMethodName("forRoot")
+    .setFactoryMethodName("createAiOptions")
     .setExtras<{
       isGlobal?: boolean;
       modelNames?: string[];

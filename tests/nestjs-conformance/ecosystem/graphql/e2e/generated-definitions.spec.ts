@@ -1,10 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+import { Module } from "../../../../../packages/core/src/common";
+import {
+  ensureDir,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   GraphQLFactory,
   GraphQLFederationDefinitionsFactory,
@@ -430,8 +431,11 @@ describeConformance(
     let workDir: string;
 
     beforeEach(async () => {
-      workDir = join(tmpdir(), `bunest-gql-defs-${crypto.randomUUID()}`);
-      mkdirSync(workDir, { recursive: true });
+      workDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-gql-defs-${crypto.randomUUID()}`,
+      );
+      await ensureDir(workDir);
 
       const moduleRef = await Test.createTestingModule({
         imports: [DefinitionsAppModule],
@@ -445,7 +449,7 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      rmSync(workDir, { recursive: true, force: true });
+      await removePath(workDir, { recursive: true, force: true });
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -455,7 +459,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(SIMPLE_TYPE_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(SIMPLE_TYPE_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -468,7 +472,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(
+      expect(await Bun.file(outputFile).text()).toBe(
         INTERFACE_PROPERTY_EXPECTED,
       );
     });
@@ -480,7 +484,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(ARRAY_PROPERTY_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(ARRAY_PROPERTY_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -490,7 +494,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(QUERY_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(QUERY_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -503,7 +507,7 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(QUERY_SKIP_ARGS_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(QUERY_SKIP_ARGS_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -513,7 +517,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(MUTATION_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(MUTATION_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
@@ -523,7 +527,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(ENUM_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(ENUM_EXPECTED);
     });
 
     // BUNEST_BUG: Expected `export type Foobar = "Foo" | "Bar" | "Baz";` with leading header newline and compact type spacing; actual emits single-quoted `'Foo' | 'Bar' | 'Baz'` (graphql-ast.explorer.ts:368), strips leading header newline (:58), and adds extra blank lines via `blocks.join("\n\n")` (:92).
@@ -536,7 +540,7 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(ENUM_AS_TYPE_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(ENUM_AS_TYPE_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading header newline and compact scalar type alias spacing; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines around `export type CustomDate = any;` via `blocks.join("\n\n")` (:92).
@@ -546,7 +550,7 @@ describeConformance(
         definitions: { path: outputFile },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(CUSTOM_SCALAR_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(CUSTOM_SCALAR_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading header newline and compact scalar type alias spacing; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines around `export type CustomDate = unknown;` via `blocks.join("\n\n")` (:92).
@@ -562,7 +566,7 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(
+      expect(await Bun.file(outputFile).text()).toBe(
         CUSTOM_SCALAR_DEFAULT_TYPE_EXPECTED,
       );
     });
@@ -584,7 +588,7 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(
+      expect(await Bun.file(outputFile).text()).toBe(
         CUSTOM_SCALAR_TYPE_MAPPING_EXPECTED,
       );
     });
@@ -599,13 +603,13 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(CUSTOM_HEADER_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(CUSTOM_HEADER_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading header newline and grouped output order (`enum Category` before classes `Post`/`User`/`IQuery`); actual strips leading header newline (graphql-ast.explorer.ts:58) and emits definitions in raw AST order (:63-89).
     it.skip("should generate for a federated graph", async () => {
       const gqlFile = join(workDir, "federation.graphql");
-      writeFileSync(gqlFile, FEDERATION_GQL, "utf8");
+      await Bun.write(gqlFile, FEDERATION_GQL);
       const outputFile = join(workDir, "federation.test-definitions.ts");
 
       const factory = new GraphQLFederationDefinitionsFactory();
@@ -615,13 +619,13 @@ describeConformance(
         outputAs: "class",
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(FEDERATION_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(FEDERATION_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading header newline and grouped output order (`enum Animal`, `enum Category` before classes `Post`/`User`/`IQuery`); actual strips leading header newline (graphql-ast.explorer.ts:58) and emits definitions in raw AST order (:63-89, appending inline typeDefs after typePaths).
     it.skip("should generate for a federated graph with typeDef", async () => {
       const gqlFile = join(workDir, "federation-typedef.graphql");
-      writeFileSync(gqlFile, FEDERATION_GQL, "utf8");
+      await Bun.write(gqlFile, FEDERATION_GQL);
       const outputFile = join(
         workDir,
         "federation-typedef.test-definitions.ts",
@@ -638,7 +642,7 @@ describeConformance(
         outputAs: "class",
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(
+      expect(await Bun.file(outputFile).text()).toBe(
         FEDERATION_TYPEDEF_EXPECTED,
       );
     });
@@ -653,13 +657,13 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(TYPENAME_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(TYPENAME_EXPECTED);
     });
 
     // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
     it.skip("should generate for a federated graph with partial query definition", async () => {
       const gqlFile = join(workDir, "federation-partial-query.graphql");
-      writeFileSync(gqlFile, FEDERATION_PARTIAL_QUERY_GQL, "utf8");
+      await Bun.write(gqlFile, FEDERATION_PARTIAL_QUERY_GQL);
       const outputFile = join(
         workDir,
         "federation-partial-query.test-definitions.ts",
@@ -672,7 +676,7 @@ describeConformance(
         outputAs: "interface",
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(
+      expect(await Bun.file(outputFile).text()).toBe(
         FEDERATION_PARTIAL_QUERY_EXPECTED,
       );
     });
@@ -687,7 +691,7 @@ describeConformance(
         },
       });
 
-      expect(readFileSync(outputFile, "utf8")).toBe(TYPE_NAME_EXPECTED);
+      expect(await Bun.file(outputFile).text()).toBe(TYPE_NAME_EXPECTED);
     });
   },
 );

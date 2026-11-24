@@ -7,7 +7,7 @@ import {
   type CallHandler,
   type ExecutionContext,
   type ResponseContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Cache } from "./cache.abstract";
 import {
   CACHE_KEY_METADATA,
@@ -271,7 +271,10 @@ export class CacheInterceptor implements BunestInterceptor {
     return this.allowedMethods.includes(request.method.toUpperCase());
   }
 
-  protected setHeadersWhenHttp(context: ExecutionContext, value: unknown): void {
+  protected setHeadersWhenHttp(
+    context: ExecutionContext,
+    value: unknown,
+  ): void {
     if (context.getType() !== "http") {
       return;
     }

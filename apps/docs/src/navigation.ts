@@ -117,13 +117,19 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "Organize application structure with @Module(), provider encapsulation, re-exports, @Global(), and DynamicModule.",
         keywords: [
           "@Module",
+          "@AutoModule",
           "@Global",
+          "@RegisterIf",
+          "@RegisterIfEnv",
+          "@RegisterIfMissing",
+          "@Profile",
           "DynamicModule",
           "exports",
           "imports",
           "re-export",
           "forRoot",
           "ADR-007",
+          "ADR-018",
         ],
       },
       {
@@ -456,7 +462,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Logger",
         file: "techniques/logger.md",
         description:
-          "Structured text and JSON logging with automatic deep secret redaction built into @bunest/common.",
+          "Structured text and JSON logging with automatic deep secret redaction built into @bunest/core.",
         keywords: [
           "Logger",
           "LoggerService",
@@ -472,9 +478,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Configuration",
         file: "techniques/configuration.md",
         description:
-          "Typed .env loading, variable expansion, registerAs namespaces, DTO/Standard Schema validation, and @InjectConfig/@ConfigValue via @bunest/config.",
+          "Typed .env loading, variable expansion, registerAs namespaces, DTO/Standard Schema validation, and @InjectConfig/@ConfigValue via @bunest/core/config.",
         keywords: [
-          "@bunest/config",
+          "@bunest/core/config",
           "ConfigModule",
           "ConfigService",
           "registerAs",
@@ -506,9 +512,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Task scheduling",
         file: "techniques/task-scheduling.md",
         description:
-          "Pure-TS 5/6-field DST-aware cron jobs, @Cron, CronExpression, @Interval, @Timeout, and SchedulerRegistry via @bunest/scheduler.",
+          "Pure-TS 5/6-field DST-aware cron jobs, @Cron, CronExpression, @Interval, @Timeout, and SchedulerRegistry via @bunest/jobs/scheduler.",
         keywords: [
-          "@bunest/scheduler",
+          "@bunest/jobs/scheduler",
           "ScheduleModule",
           "@Cron",
           "CronExpression",
@@ -522,9 +528,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Events",
         file: "techniques/events.md",
         description:
-          "In-process event dispatching with EventEmitterModule, @OnEvent, @EmitEvent, @EventPayload, and wildcard matching via @bunest/events.",
+          "In-process event dispatching with EventEmitterModule, @OnEvent, @EmitEvent, @EventPayload, and wildcard matching via @bunest/messaging/events.",
         keywords: [
-          "@bunest/events",
+          "@bunest/messaging/events",
           "EventEmitterModule",
           "EventEmitter2",
           "@OnEvent",
@@ -534,34 +540,31 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
       },
       {
         slug: "techniques/queues",
-        title: "Queues & Bull",
+        title: "Queues",
         file: "techniques/queues.md",
         description:
-          "Background job queues with @bunest/queues, @bunest/bull, and @bunest/bullmq using MemoryQueueDriver and atomic Lua RedisQueueDriver.",
+          "Background job queues with @bunest/jobs/queues (QueueModule & BullModule/BullMQModule) using MemoryQueueDriver and atomic Lua RedisQueueDriver.",
         keywords: [
-          "@bunest/queues",
-          "@bunest/bull",
-          "@bunest/bullmq",
+          "@bunest/jobs/queues",
           "QueueModule",
           "BullModule",
           "BullMQModule",
           "@Processor",
           "@Process",
+          "WorkerHost",
+          "FlowProducer",
         ],
       },
       {
         slug: "techniques/http-client",
-        title: "HTTP client & Axios",
+        title: "HTTP client",
         file: "techniques/http-client.md",
         description:
-          "Zero-dependency native fetch() HTTP clients with @bunest/http-client and drop-in @nestjs/axios parity via @bunest/axios.",
+          "Zero-dependency native fetch() HTTP client with named clients, retries, timeouts, interceptors, and typed errors via @bunest/core/client.",
         keywords: [
-          "@bunest/http-client",
-          "@bunest/axios",
+          "@bunest/core/client",
           "HttpClientModule",
           "HttpClient",
-          "HttpModule",
-          "HttpService",
         ],
       },
       {
@@ -569,9 +572,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Internationalization (i18n)",
         file: "techniques/i18n.md",
         description:
-          "Per-request AsyncLocalStorage locale resolution, typed translations, Intl formatting, and localized validation via @bunest/i18n.",
+          "Per-request AsyncLocalStorage locale resolution, typed translations, Intl formatting, and localized validation via @bunest/core/i18n.",
         keywords: [
-          "@bunest/i18n",
+          "@bunest/core/i18n",
           "I18nModule",
           "I18nService",
           "@CurrentLocale",
@@ -598,10 +601,10 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Storage & Static files",
         file: "techniques/storage.md",
         description:
-          "Multi-disk local/memory/S3/R2/MinIO object storage with WebCrypto SigV4 (@bunest/storage) and static serving (@bunest/serve-static).",
+          "Multi-disk local/memory/S3/R2/MinIO object storage with WebCrypto SigV4 (@bunest/storage) and static serving via @bunest/core/http (ServeStaticModule).",
         keywords: [
           "@bunest/storage",
-          "@bunest/serve-static",
+          "@bunest/core/http",
           "StorageModule",
           "LocalDisk",
           "S3Disk",
@@ -613,9 +616,10 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Mapped types",
         file: "techniques/mapped-types.md",
         description:
-          "Derive DTO classes while preserving validation and OpenAPI metadata using PartialType, PickType, OmitType, and IntersectionType.",
+          "Derive DTO classes while preserving validation and OpenAPI metadata using PartialType, PickType, OmitType, and IntersectionType from @bunest/validation / @bunest/core.",
         keywords: [
-          "@bunest/mapped-types",
+          "@bunest/validation",
+          "@bunest/core",
           "PartialType",
           "PickType",
           "OmitType",
@@ -632,8 +636,15 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "Zero-overhead DIContainer MethodAspectWeaver, createMethodAspectDecorator, @UseMiddleware, and declarative service decorators.",
         keywords: [
           "ADR-014",
+          "ADR-018",
           "MethodAspectWeaver",
           "createMethodAspectDecorator",
+          "AspectPhase",
+          "defineAspectPipeline",
+          "createTypedAspect",
+          "AopModule",
+          "PointcutRule",
+          "registerGlobalPointcuts",
           "@UseMiddleware",
           "@InheritMethodEnhancers",
           "@WithCls",
@@ -648,22 +659,59 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
     defaultOpen: false,
     pages: [
       {
+        slug: "data/orm-adapters",
+        title: "Bunest ORM (@bunest/orm)",
+        file: "data/orm-adapters.md",
+        badge: "Native",
+        description:
+          "Circular-safe, zero-dep Bun-native ORM covering 12 database dialects over bun:sqlite, Bun.SQL, fetch(), and Bun.connect(), with @OrmRepository, CrudRepository, @Transactional, OrmMigrationRunner, and SQL Store Kit subpaths.",
+        keywords: [
+          "@bunest/orm",
+          "OrmModule",
+          "DataSource",
+          "Repository",
+          "CrudRepository",
+          "@OrmRepository",
+          "registerQueryOperator",
+          "@RepositoryScope",
+          "@SoftDelete",
+          "@TenantScoped",
+          "@IgnoreScope",
+          "@Projection",
+          "Page",
+          "Pageable",
+          "CursorPage",
+          "CursorPageable",
+          "composeRepository",
+          "withSoftDelete",
+          "withCursorPagination",
+          "MongoRepository",
+          "OrmMigrationRunner",
+          "@Transactional",
+          "Entity",
+          "Embedded",
+          "Relation",
+        ],
+      },
+      {
         slug: "data/sqlite",
         title: "SQLite (bun:sqlite)",
         file: "data/sqlite.md",
         badge: "Native",
         description:
-          "Bun-native bun:sqlite with @Transactional, Spring Data-style @SqliteRepository/JpaRepository derived finders, @Query, and migrations.",
+          "Bun-native bun:sqlite via @bunest/orm (SqliteOrmDriver) with @Transactional, Spring Data-style @OrmRepository/CrudRepository derived finders, @Query, and OrmMigrationRunner.",
         keywords: [
-          "@bunest/sqlite",
-          "SqliteModule",
-          "SqliteService",
-          "@SqliteRepository",
-          "JpaRepository",
+          "@bunest/orm",
+          "OrmModule",
+          "DataSource",
+          "SqliteOrmDriver",
+          "@OrmRepository",
+          "CrudRepository",
           "@Transactional",
           "@Query",
           "@Modifying",
           "@SqlParam",
+          "OrmMigrationRunner",
         ],
       },
       {
@@ -672,34 +720,19 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         file: "data/sql.md",
         badge: "Native",
         description:
-          "Multi-dialect Bun.SQL (Postgres/MySQL/SQLite) with SqlModule, @Transactional, and dialect-aware @SqlRepository/SqlCrudRepository.",
+          "Multi-dialect Bun.SQL (Postgres/MySQL/MariaDB/SQLite) and edge HTTP drivers via @bunest/orm with BunSqlOrmDriver, @Transactional, and dialect-aware @OrmRepository/CrudRepository.",
         keywords: [
-          "@bunest/sql",
-          "SqlModule",
-          "SqlService",
-          "@SqlRepository",
-          "SqlCrudRepository",
-          "@SqlQuery",
+          "@bunest/orm",
+          "OrmModule",
+          "DataSource",
+          "BunSqlOrmDriver",
+          "LibSqlOrmDriver",
+          "D1OrmDriver",
+          "ReplicatedOrmDriver",
+          "@OrmRepository",
+          "CrudRepository",
+          "@Query",
           "@Transactional",
-        ],
-      },
-      {
-        slug: "data/orm-adapters",
-        title: "ORM & ODM adapters",
-        file: "data/orm-adapters.md",
-        description:
-          "Zero-dep DI integrations for Prisma, Drizzle, TypeORM, Mongoose, and Sequelize.",
-        keywords: [
-          "@bunest/prisma",
-          "@bunest/drizzle",
-          "@bunest/typeorm",
-          "@bunest/mongoose",
-          "@bunest/sequelize",
-          "PrismaModule",
-          "DrizzleModule",
-          "TypeOrmModule",
-          "MongooseModule",
-          "SequelizeModule",
         ],
       },
       {
@@ -716,12 +749,15 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
       },
       {
         slug: "data/store-kit",
-        title: "Store kit",
+        title: "Store kit (@bunest/orm/store)",
         file: "data/store-kit.md",
         description:
-          "Foundational Bun.SQL store kit with Postgres/MySQL adapters, versioned migrations, CLI, and contract testing.",
+          "Foundational Bun.SQL store kit built into @bunest/orm (./store, ./postgres, ./mysql, ./testing) with versioned migrations, CLI, and contract testing.",
         keywords: [
-          "@bunest/store-kit",
+          "@bunest/orm/store",
+          "@bunest/orm/postgres",
+          "@bunest/orm/mysql",
+          "@bunest/orm/testing",
           "runStoreCli",
           "postgres",
           "mysql",
@@ -740,12 +776,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Security, JWT & Throttler",
         file: "security/security-module.md",
         description:
-          "SecurityModule.forRoot, @Auth, @Protected, WebCrypto JWT/JWKS, Argon2id passwords, RBAC, CSRF, and drop-in @bunest/jwt, @bunest/passport, @bunest/throttler facades.",
+          "SecurityModule.forRoot, @Auth, @Protected, WebCrypto JWT/JWKS, PassportModule/AuthGuard, Argon2id passwords, RBAC, CSRF, and ThrottlerModule via @bunest/security.",
         keywords: [
           "@bunest/security",
-          "@bunest/jwt",
-          "@bunest/passport",
-          "@bunest/throttler",
           "SecurityModule",
           "JwtModule",
           "PassportModule",
@@ -759,9 +792,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Authentication",
         file: "security/authentication.md",
         description:
-          "Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, magic links, OIDC/OAuth2, and API keys via @bunest/authentication.",
+          "Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, magic links, OIDC/OAuth2, and API keys via @bunest/security/auth.",
         keywords: [
-          "@bunest/authentication",
+          "@bunest/security/auth",
           "AuthenticationModule",
           "AuthenticationGuard",
           "@Authenticate",
@@ -773,9 +806,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Authorization",
         file: "security/authorization.md",
         description:
-          "Policy-based authorization with @Policy classes, @Can/@Can.Anyone, AuthorizationService, and audit events via @bunest/authorization.",
+          "Policy-based authorization with @Policy classes, @Can/@Can.Anyone, AuthorizationService, and audit events via @bunest/security/authz.",
         keywords: [
-          "@bunest/authorization",
+          "@bunest/security/authz",
           "AuthorizationModule",
           "AuthorizationService",
           "@Policy",
@@ -809,10 +842,10 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "GraphQL & Apollo",
         file: "apis/graphql.md",
         description:
-          "Code-first & schema-first GraphQL, Federation v2 Subgraph/Gateway, BunestDataLoader, and subscriptions via @bunest/graphql & @bunest/apollo.",
+          "Code-first & schema-first GraphQL, Federation v2 Subgraph/Gateway, BunestDataLoader, and subscriptions via @bunest/graphql & @bunest/graphql/apollo.",
         keywords: [
           "@bunest/graphql",
-          "@bunest/apollo",
+          "@bunest/graphql/apollo",
           "GraphQLModule",
           "ApolloDriver",
           "ApolloFederationDriver",
@@ -825,9 +858,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "WebSockets",
         file: "apis/websockets.md",
         description:
-          "Native Bun.serve({ websocket }) gateways with @WebSocketGateway, @SubscribeMessage, @Ack, rooms, and enhancers via @bunest/websockets.",
+          "Native Bun.serve({ websocket }) gateways with @WebSocketGateway, @SubscribeMessage, @Ack, rooms, and enhancers via @bunest/core/ws.",
         keywords: [
-          "@bunest/websockets",
+          "@bunest/core/ws",
           "@WebSocketGateway",
           "@SubscribeMessage",
           "@Ack",
@@ -861,9 +894,9 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "CQRS",
         file: "distributed/cqrs.md",
         description:
-          "Zero-RxJS CommandBus, QueryBus, EventBus, AggregateRoot, EventPublisher, and @Saga via @bunest/cqrs.",
+          "Zero-RxJS CommandBus, QueryBus, EventBus, AggregateRoot, EventPublisher, and @Saga via @bunest/messaging/cqrs.",
         keywords: [
-          "@bunest/cqrs",
+          "@bunest/messaging/cqrs",
           "CqrsModule",
           "CommandBus",
           "QueryBus",
@@ -895,8 +928,8 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         description:
           "Distributed leased locks with fencing tokens (@WithLock, LeaderElection) and @Idempotent request deduplication.",
         keywords: [
-          "@bunest/locks",
-          "@bunest/idempotency",
+          "@bunest/resilience/locks",
+          "@bunest/resilience/idempotency",
           "LocksModule",
           "@WithLock",
           "LeaderElection",
@@ -909,10 +942,10 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Outbox & Webhooks",
         file: "distributed/outbox-webhooks.md",
         description:
-          "Transactional outbox/inbox relay (@bunest/outbox) and HMAC-signed, SSRF-protected webhooks (@bunest/webhooks).",
+          "Transactional outbox/inbox relay (@bunest/messaging/outbox) and HMAC-signed, SSRF-protected webhooks (@bunest/messaging/webhooks).",
         keywords: [
-          "@bunest/outbox",
-          "@bunest/webhooks",
+          "@bunest/messaging/outbox",
+          "@bunest/messaging/webhooks",
           "OutboxModule",
           "@OnOutboxMessage",
           "WebhooksModule",
@@ -959,14 +992,8 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Model Context Protocol (MCP)",
         file: "ai/mcp.md",
         description:
-          "Expose @Tool, @Resource, @ResourceTemplate, and @Prompt over Streamable HTTP, SSE, and stdio JSON-RPC 2.0 via @bunest/mcp.",
-        keywords: [
-          "@bunest/mcp",
-          "McpModule",
-          "@Tool",
-          "@Resource",
-          "@Prompt",
-        ],
+          "Expose @Tool, @Resource, @ResourceTemplate, and @Prompt over Streamable HTTP, SSE, and stdio JSON-RPC 2.0 via @bunest/ai/mcp.",
+        keywords: ["@bunest/ai/mcp", "McpModule", "@Tool", "@Resource", "@Prompt"],
       },
     ],
   },
@@ -977,34 +1004,19 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
     pages: [
       {
         slug: "observability/observability",
-        title: "Observability, Terminus & Devtools",
+        title: "Observability, Health & Devtools",
         file: "observability/observability.md",
         description:
-          "ObservabilityModule, @Span/@Timed/@Counted, W3C tracing, Prometheus metrics, @bunest/terminus health checks, and @bunest/devtools-integration.",
+          "ObservabilityModule, @Span/@Timed/@Counted, W3C tracing, Prometheus metrics, TerminusModule/HealthModule health checks, and DevtoolsModule via @bunest/observability.",
         keywords: [
           "@bunest/observability",
-          "@bunest/terminus",
-          "@bunest/devtools-integration",
           "ObservabilityModule",
           "@Span",
           "@Timed",
           "@Counted",
+          "TerminusModule",
           "HealthCheckService",
           "DevtoolsModule",
-        ],
-      },
-      {
-        slug: "observability/observe",
-        title: "Observe APM",
-        file: "observability/observe.md",
-        description:
-          "Full APM agent with distributed tracing, SLO objectives, PII redaction, cardinality guards, and OTLP export via @bunest/observe.",
-        keywords: [
-          "@bunest/observe",
-          "ObserveModule",
-          "SLO",
-          "PII redaction",
-          "OTLP",
         ],
       },
       {
@@ -1012,13 +1024,27 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "CLI",
         file: "observability/cli.md",
         description:
-          "Project scaffolding, schematics, watch-mode dev server, Bun.build() bundling, REPL, and bunestMetadataPlugin via @bunest/cli.",
+          "Project scaffolding, schematics, bunest.config.ts, unified createBunestPlugin(), custom Class Macros, extensible typegen plugins, and custom architecture rules via @bunest/cli.",
         keywords: [
           "@bunest/cli",
           "bunest new",
           "bunest generate",
           "bunest build",
+          "bunest typegen",
+          "bunest check",
+          "bunest delombok",
+          "bunest.config.ts",
+          "defineBunestConfig",
+          "createBunestPlugin",
+          "defineClassMacro",
+          "defineMacroPreset",
+          "setGlobalMacroDefaults",
+          "defineTypegenPlugin",
+          "defineDiagnosticRule",
+          "BUNEST_ARCH001",
+          "BUNEST_ARCH002",
           "bunestMetadataPlugin",
+          "ADR-018",
         ],
       },
     ],
@@ -1084,7 +1110,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "ADR & RFC Index",
         file: "architecture/adrs.md",
         description:
-          "Complete index of Bunest Architecture Decision Records (ADR-001 through ADR-012) and RFC-001.",
+          "Complete index of Bunest Architecture Decision Records (ADR-001 through ADR-018) and RFC-001.",
         keywords: [
           "ADR-001",
           "ADR-002",
@@ -1098,6 +1124,12 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "ADR-010",
           "ADR-011",
           "ADR-012",
+          "ADR-013",
+          "ADR-014",
+          "ADR-015",
+          "ADR-016",
+          "ADR-017",
+          "ADR-018",
           "RFC-001",
         ],
       },
@@ -1129,11 +1161,11 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Packages & Monorepo",
         file: "ecosystem/packages.md",
         description:
-          "Explore @bunest/common, @bunest/core, @bunest/http, @bunest/validation, @bunest/testing, and the monorepo layout.",
+          "Explore @bunest/core, @bunest/core, @bunest/core/http, @bunest/validation, @bunest/testing, and the monorepo layout.",
         keywords: [
-          "@bunest/common",
           "@bunest/core",
-          "@bunest/http",
+          "@bunest/core",
+          "@bunest/core/http",
           "@bunest/validation",
           "@bunest/testing",
           "monorepo",
@@ -1178,7 +1210,11 @@ export function withBasePath(path: string, basePath = ""): string {
   if (path === "/" || path === "") {
     return `${base}/`;
   }
-  if (path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}#`)) {
+  if (
+    path === base ||
+    path.startsWith(`${base}/`) ||
+    path.startsWith(`${base}#`)
+  ) {
     return path;
   }
   const normalized = path.startsWith("/") ? path : `/${path}`;
@@ -1197,21 +1233,26 @@ export function normalizePathname(pathname: string, basePath = ""): string {
     stripped = stripped.slice(base.length);
   }
   const cleaned = stripped.replace(/\/+$/, "").replace(/^\/+/, "");
-  if (cleaned === "" || cleaned === "index.html" || cleaned === "introduction") {
+  if (
+    cleaned === "" ||
+    cleaned === "index.html" ||
+    cleaned === "introduction"
+  ) {
     return "";
   }
   return cleaned.replace(/\.html$/, "");
 }
 
 export function getFlattenedPages(): FlattenedPage[] {
-  const rawList: Array<NavPage & { categoryId: string; categoryTitle: string }> =
-    [
-      {
-        ...INTRO_PAGE,
-        categoryId: "introduction",
-        categoryTitle: "INTRODUCTION",
-      },
-    ];
+  const rawList: Array<
+    NavPage & { categoryId: string; categoryTitle: string }
+  > = [
+    {
+      ...INTRO_PAGE,
+      categoryId: "introduction",
+      categoryTitle: "INTRODUCTION",
+    },
+  ];
 
   for (const category of NAV_CATEGORIES) {
     for (const page of category.pages) {

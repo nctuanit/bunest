@@ -1,4 +1,3 @@
-import { domainToASCII } from "node:url";
 import { MailMessageError } from "../errors/mail-message.error";
 import type {
   MailAddress,
@@ -196,13 +195,36 @@ function parseAddrSpec(spec: string, field: string): string {
   return address;
 }
 
+/** Characters that would alter how WHATWG `new URL("http://" + domain)` parses a hostname. */
+const DOMAIN_FORBIDDEN = /[\s/?#:@\\[\]%]/;
+
 function toAsciiDomain(domain: string): string | undefined {
-  if (domain.startsWith("[")) {
-    return undefined; // address literals: not for application mail
+  if (!domain || domain.startsWith("[") || DOMAIN_FORBIDDEN.test(domain)) {
+    return undefined; // address literals or URL delimiters: not for application mail
   }
-  const ascii = /^[\x00-\x7f]*$/.test(domain)
-    ? domain.toLowerCase()
-    : domainToASCII(domain);
+  let ascii: string;
+  if (/^[\x00-\x7f]*$/.test(domain)) {
+    ascii = domain.toLowerCase();
+  } else {
+    try {
+      const parsed = new URL(`http://${domain}`);
+      if (
+        parsed.username ||
+        parsed.password ||
+        parsed.port ||
+        parsed.pathname !== "/" ||
+        parsed.search ||
+        parsed.hash ||
+        !parsed.hostname ||
+        parsed.hostname.startsWith("[")
+      ) {
+        return undefined;
+      }
+      ascii = parsed.hostname.toLowerCase();
+    } catch {
+      return undefined;
+    }
+  }
   if (!ascii || ascii.length > 253) {
     return undefined;
   }

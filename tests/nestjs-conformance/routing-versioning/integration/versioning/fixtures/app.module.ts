@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Controller,
   Get,
@@ -7,7 +6,7 @@ import {
   Version,
   type MiddlewareConsumer,
   type NestModule,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 
 @Controller({
   version: "1",

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeAll, expect, it, spyOn } from "bun:test";
-import { Logger } from "../../../../../../../packages/common/src";
+import { Logger } from "../../../../../../../packages/core/src/common";
 import {
   Query,
   Resolver,

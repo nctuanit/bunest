@@ -1,19 +1,20 @@
 # CQRS
 
-**`@bunest/cqrs`** implements the Command Query Responsibility Segregation pattern natively on Bun with zero RxJS and zero external runtime dependencies—featuring `CqrsModule`, `CommandBus`, `QueryBus`, `EventBus`, `AggregateRoot`, `EventPublisher`, and `@Saga()`.
+**`@bunest/messaging/cqrs`** implements the Command Query Responsibility Segregation pattern natively on Bun with zero RxJS and zero external runtime dependencies—featuring `CqrsModule`, `CommandBus`, `QueryBus`, `EventBus`, `AggregateRoot`, `EventPublisher`, and `@Saga()`.
 
 ## Installation
 
 ```bash
-bun add @bunest/cqrs
+bun add @bunest/messaging/cqrs
 ```
 
 ## Module Setup
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { CqrsModule } from "@bunest/cqrs";
+import { CqrsModule } from "@bunest/messaging/cqrs";
 import { CreateOrderHandler } from "./create-order.handler";
 
 @Module({
@@ -26,15 +27,24 @@ export class AppModule {}
 ## Commands, Queries & Events
 
 @@filename(create-order.handler.ts)
+
 ```ts
-import { Command, CommandHandler, EventBus, type ICommandHandler } from "@bunest/cqrs";
+import {
+  Command,
+  CommandHandler,
+  EventBus,
+  type ICommandHandler,
+} from "@bunest/messaging/cqrs";
 
 export class OrderCreatedEvent {
   constructor(public readonly orderId: string) {}
 }
 
 export class CreateOrderCommand extends Command<{ orderId: string }> {
-  constructor(public readonly customerId: string, public readonly totalCents: number) {
+  constructor(
+    public readonly customerId: string,
+    public readonly totalCents: number,
+  ) {
     super();
   }
 }

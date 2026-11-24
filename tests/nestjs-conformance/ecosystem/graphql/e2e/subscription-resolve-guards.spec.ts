@@ -1,17 +1,16 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   type ExecutionResult,
   parse,
   subscribe,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import {
   type CanActivate,
   type ExecutionContext,
   Injectable,
   Module,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Body,
@@ -6,7 +5,7 @@ import {
   ParseIntPipe,
   createParamDecorator,
   type StandardSchemaV1,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   createSpy,
   describeConformance,
@@ -71,7 +70,10 @@ describeConformance(
         };
 
         it.each([
-          ["a schema string and another key", { schema: "public", region: "eu" }],
+          [
+            "a schema string and another key",
+            { schema: "public", region: "eu" },
+          ],
           ["a pipes string and another key", { pipes: "water", region: "eu" }],
           [
             "an array of non-pipes and another key",
@@ -105,7 +107,10 @@ describeConformance(
             "only a schema string and a pipes array",
             { schema: "public", pipes: [] },
           ],
-          ["only a valid schema and a pipes string", { schema, pipes: "water" }],
+          [
+            "only a valid schema and a pipes string",
+            { schema, pipes: "water" },
+          ],
         ])("should preserve data containing %s", (_, data) => {
           class Test {
             public test(@Decorator(data) _param: unknown) {}
@@ -120,25 +125,29 @@ describeConformance(
         it.each([
           ["instance", new ParseIntPipe()],
           ["class", ParseIntPipe],
-        ])("should preserve custom data with a positional pipe %s", (_, pipe) => {
-          const data = { schema: "public", region: "eu" };
-          class Test {
-            public test(@Decorator(data, pipe) _param: unknown) {}
-          }
+        ])(
+          "should preserve custom data with a positional pipe %s",
+          (_, pipe) => {
+            const data = { schema: "public", region: "eu" };
+            class Test {
+              public test(@Decorator(data, pipe) _param: unknown) {}
+            }
 
-          const params = MetadataRegistry.getRouteParameters(Test, "test");
-          expect(params[0]?.data).toBe(data);
-          expect(params[0]?.pipes).toEqual([pipe]);
-          expect(params[0]?.schema).toBeUndefined();
-        });
+            const params = MetadataRegistry.getRouteParameters(Test, "test");
+            expect(params[0]?.data).toBe(data);
+            expect(params[0]?.pipes).toEqual([pipe]);
+            expect(params[0]?.schema).toBeUndefined();
+          },
+        );
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not parse trailing `{ schema, pipes }` options objects (treats options object as a pipe entry in `restPipes`).
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse trailing `{ schema, pipes }` options objects (treats options object as a pipe entry in `restPipes`).
         it.skip("should preserve custom data with trailing schema and pipe options", () => {
           const data = { schema: "public", region: "eu" };
           const pipe = new ParseIntPipe();
           class Test {
             public test(
-              @Decorator(data, { schema, pipes: [pipe] } as any) _param: unknown,
+              @Decorator(data, { schema, pipes: [pipe] } as any)
+              _param: unknown,
             ) {}
           }
 
@@ -241,12 +250,15 @@ describeConformance(
           },
         };
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not parse NestJS v12 `{ schema, pipes }` options objects (treats them as `data`).
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse NestJS v12 `{ schema, pipes }` options objects (treats them as `data`).
         it.skip("should accept options with a schema and pipe classes and instances", () => {
           const pipe = new ParseIntPipe();
           class Test {
             public test(
-              @Decorator({ schema: mockSchema, pipes: [ParseIntPipe, pipe] } as any)
+              @Decorator({
+                schema: mockSchema,
+                pipes: [ParseIntPipe, pipe],
+              } as any)
               _param: unknown,
             ) {}
           }
@@ -261,12 +273,13 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not parse `{ pipes }` options objects.
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ pipes }` options objects.
         it.skip("should accept pipes-only options before positional pipes", () => {
           const pipe = new ParseIntPipe();
           class Test {
             public test(
-              @Decorator({ pipes: [pipe] } as any, ParseIntPipe) _param: unknown,
+              @Decorator({ pipes: [pipe] } as any, ParseIntPipe)
+              _param: unknown,
             ) {}
           }
 
@@ -279,7 +292,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not parse `{ pipes: [] }` options objects.
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ pipes: [] }` options objects.
         it.skip("should accept an empty pipes array as options", () => {
           class Test {
             public test(@Decorator({ pipes: [] } as any) _param: unknown) {}
@@ -290,7 +303,7 @@ describeConformance(
           expect(params[0]?.pipes ?? []).toEqual([]);
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not parse `{ schema }` options objects with callable Standard Schema.
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ schema }` options objects with callable Standard Schema.
         it.skip("should accept a callable Standard Schema in options", () => {
           const schema = Object.assign((value: unknown) => value, {
             "~standard": mockSchema["~standard"],
@@ -304,7 +317,7 @@ describeConformance(
           expect(params[0]?.schema).toBe(schema);
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/common/src/decorators/params.decorators.ts:260-295 does not recognize options objects with undefined schema/pipes fields.
+        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not recognize options objects with undefined schema/pipes fields.
         it.skip.each([
           ["schema", { schema: undefined }],
           ["pipes", { pipes: undefined }],
@@ -361,7 +374,10 @@ describeConformance(
           const pipe = new ParseIntPipe();
           class Test {
             public test(
-              @Decorator({ schema: mockSchema, pipes: [pipe, undefined] } as any)
+              @Decorator({
+                schema: mockSchema,
+                pipes: [pipe, undefined],
+              } as any)
               _param: unknown,
             ) {}
           }
@@ -594,7 +610,7 @@ describeConformance(
     });
 
     describe("when enhancers are passed", () => {
-      // BUNEST_BUG: createParamDecorator(factory, enhancers?) in packages/common/src/decorators/params.decorators.ts:260 does not accept or invoke the 2nd `enhancers?: ParamDecoratorEnhancer[]` parameter.
+      // BUNEST_BUG: createParamDecorator(factory, enhancers?) in packages/core/src/common/decorators/params.decorators.ts:260 does not accept or invoke the 2nd `enhancers?: ParamDecoratorEnhancer[]` parameter.
       it.skip("should apply each enhancer to the decorated parameter", () => {
         const factoryFn = (_data: unknown, _req: unknown) => true;
         const enhancer = createSpy();
@@ -608,9 +624,9 @@ describeConformance(
           public test(@Decorator() _param: unknown) {}
         }
 
-        expect(
-          enhancer.calledOnceWithExactly(Test.prototype, "test", 0),
-        ).toBe(true);
+        expect(enhancer.calledOnceWithExactly(Test.prototype, "test", 0)).toBe(
+          true,
+        );
         expect(
           anotherEnhancer.calledOnceWithExactly(Test.prototype, "test", 0),
         ).toBe(true);

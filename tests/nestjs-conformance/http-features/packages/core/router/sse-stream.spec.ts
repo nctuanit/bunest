@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import type { SseMessageEvent } from "../../../../../../packages/common/src";
+import type { SseMessageEvent } from "../../../../../../packages/core/src/common";
 import {
   RequestContext,
   formatSseEvent,
   serializeResponse,
   type RouteResponseMeta,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import {
   describeConformance,
   itAdapted,
@@ -84,7 +83,7 @@ describeConformance(
       expect(formatted).toBe("id: the-id\nretry: 0\ndata: hello\n\n");
     });
 
-    // BUNEST_BUG: createSseStream / formatSseEvent does not auto-generate monotonic event ids when MessageEvent.id is omitted (packages/http/src/pipeline/response-serializer.ts:87-116).
+    // BUNEST_BUG: createSseStream / formatSseEvent does not auto-generate monotonic event ids when MessageEvent.id is omitted (packages/core/src/http/pipeline/response-serializer.ts:87-116).
     it.skip("auto-generates monotonic event ids when omitted", () => {
       async function* gen() {
         yield { data: "first" };
@@ -97,7 +96,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: formatSseEvent ignores SseMessageEvent.comment and serializes comment-only events as JSON data instead of `: <comment>` lines (packages/http/src/pipeline/response-serializer.ts:87-116).
+    // BUNEST_BUG: formatSseEvent ignores SseMessageEvent.comment and serializes comment-only events as JSON data instead of `: <comment>` lines (packages/core/src/http/pipeline/response-serializer.ts:87-116).
     it.skip("writes comment-only and comment-with-field SSE frames", () => {
       const commentOnly = formatSseEvent({
         comment: "comment-only",
@@ -112,7 +111,7 @@ describeConformance(
       expect(commentWithData).toContain("data: hello\n");
     });
 
-    // BUNEST_BUG: formatSseEvent ignores SseMessageEvent.comment and does not emit `: ` lines for empty or multiline comments (packages/http/src/pipeline/response-serializer.ts:87-116).
+    // BUNEST_BUG: formatSseEvent ignores SseMessageEvent.comment and does not emit `: ` lines for empty or multiline comments (packages/core/src/http/pipeline/response-serializer.ts:87-116).
     it.skip("writes empty and multiline comments", () => {
       const empty = formatSseEvent({
         comment: "",
@@ -122,9 +121,7 @@ describeConformance(
       const multiline = formatSseEvent({
         comment: "first\r\nsecond\rthird\n\nfourth",
       } as unknown as SseMessageEvent);
-      expect(multiline).toBe(
-        ": first\n: second\n: third\n: \n: fourth\n\n",
-      );
+      expect(multiline).toBe(": first\n: second\n: third\n: \n: fourth\n\n");
     });
 
     it("serializes empty data strings", () => {
@@ -184,7 +181,7 @@ describeConformance(
       "ResponseContext + @Header merge",
     );
 
-    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header() or ResponseContext.header('Content-Type', ...) overrides it (packages/http/src/pipeline/response-serializer.ts:554-563).
+    // BUNEST_BUG: serializeResponse sets "text/event-stream; charset=utf-8" as lowest-precedence default Content-Type so @Header() or ResponseContext.header('Content-Type', ...) overrides it (packages/core/src/http/pipeline/response-serializer.ts:554-563).
     it.skip("keeps the event stream content type over an additional one", () => {
       const ctx = createSseCtx();
       ctx.responseContext.header("Content-Type", "application/json");

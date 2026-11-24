@@ -1,9 +1,11 @@
-import "reflect-metadata";
-import { get } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+} from "bun:test";
 import {
   BadRequestException,
   Controller,
@@ -11,8 +13,14 @@ import {
   Injectable,
   Module,
   StreamableFile,
-} from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/core/src/common";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Test,
   describeConformance,
@@ -30,7 +38,8 @@ class NonFile {
 
 let tempDir: string;
 let fixturePath: string;
-const fixtureContent = "# Bunest Conformance Send-Files Fixture\n\nHello streaming world!\n";
+const fixtureContent =
+  "# Bunest Conformance Send-Files Fixture\n\nHello streaming world!\n";
 const fixtureBytes = Buffer.from(fixtureContent, "utf8");
 
 @Injectable()
@@ -170,13 +179,17 @@ describeConformance(
     let app: BunestApplication;
 
     beforeAll(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-send-files-"));
+      tempDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-send-files-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(tempDir, { recursive: true });
       fixturePath = join(tempDir, "Readme.md");
-      writeFileSync(fixturePath, fixtureBytes);
+      writeTextSync(fixturePath, fixtureBytes);
     });
 
-    afterAll(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     beforeEach(async () => {
@@ -231,7 +244,7 @@ describeConformance(
       await request(app).get("/file/not/exist").expect(400);
     });
 
-    // BUNEST_BUG: serializeResponse wraps StreamableFile(Bun.file('missing')).getStream() directly into a 200 Response without pre-checking file existence or invoking errorHandler/exception filters, causing mid-stream ENOENT / ECONNRESET (packages/http/src/pipeline/response-serializer.ts:572-595).
+    // BUNEST_BUG: serializeResponse wraps StreamableFile(Bun.file('missing')).getStream() directly into a 200 Response without pre-checking file existence or invoking errorHandler/exception filters, causing mid-stream ENOENT / ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:572-595).
     it.skip("should return an error status when StreamableFile wraps a non-existent BunFile", async () => {
       await app.listen(0, "127.0.0.1");
       const res = await fetch(`${app.getUrl()}file/not/exist/stream`);
@@ -255,14 +268,14 @@ describeConformance(
     it("should not complete the response when the stream fails after sending data", async () => {
       await app.listen(0, "127.0.0.1");
       const url = app.getUrl()!;
-      const complete = await new Promise<boolean>((resolve) => {
-        const req = get(new URL("/file/fails/midway", url), (res) => {
-          res.resume();
-          res.on("close", () => resolve(res.complete));
-          res.on("error", () => resolve(false));
-        });
-        req.on("error", () => resolve(false));
-      });
+      let complete = false;
+      try {
+        const res = await fetch(new URL("/file/fails/midway", url));
+        await res.text();
+        complete = true;
+      } catch {
+        complete = false;
+      }
       expect(complete).toBe(false);
     });
 

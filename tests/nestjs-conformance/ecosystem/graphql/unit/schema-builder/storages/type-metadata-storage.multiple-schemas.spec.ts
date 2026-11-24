@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import type {
   GraphQLObjectType,
   GraphQLSchema,
-} from "../../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../../packages/graphql/src";
 import {
   Args,
   Field,

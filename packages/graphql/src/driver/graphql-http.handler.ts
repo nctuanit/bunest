@@ -13,17 +13,13 @@ import {
   Optional,
   type ResponseContext,
   type Type,
-} from "@bunest/common";
-import {
-  DiscoveryService,
-  MetadataScanner,
-  ModuleRef,
 } from "@bunest/core";
+import { DiscoveryService, MetadataScanner, ModuleRef } from "@bunest/core";
 import {
   type BunHttpAdapter,
   normalizePath,
   sanitizeObject,
-} from "@bunest/http";
+} from "@bunest/core/http";
 import {
   type DocumentNode,
   execute,
@@ -39,7 +35,7 @@ import {
   subscribe,
   validate,
   type ValidationRule,
-} from "graphql";
+} from "../engine";
 import { GRAPHQL_METADATA_KEYS, GRAPHQL_MODULE_OPTIONS } from "../constants";
 import type {
   GraphQLModuleOptions,
@@ -166,9 +162,7 @@ export class GraphQLService
    * or `BunHttpAdapter` so real-time GraphQL subscriptions run natively on `Bun.serve({ websocket })`.
    */
   attachWebSocket(
-    appOrAdapter:
-      | BunHttpAdapter
-      | { getHttpAdapter(): BunHttpAdapter },
+    appOrAdapter: BunHttpAdapter | { getHttpAdapter(): BunHttpAdapter },
     wsOptions?: GraphQLWsOptions,
   ): GraphQLWsHandler {
     const adapter =
@@ -292,8 +286,11 @@ export class GraphQLService
     const builtSchema = await factory.create(resolverInstances, this.options);
 
     if (this.options.definitions?.path) {
-      const { path: outputPath, outputAs = "interface", ...genOpts } =
-        this.options.definitions;
+      const {
+        path: outputPath,
+        outputAs = "interface",
+        ...genOpts
+      } = this.options.definitions;
       const defsFactory = new GraphQLDefinitionsFactory();
       await defsFactory.generate({
         ...genOpts,
@@ -314,10 +311,7 @@ export class GraphQLService
     if (!introspectionEnabled) {
       rules.push(NoSchemaIntrospectionCustomRule);
     }
-    if (
-      this.options.maxDepth !== undefined &&
-      this.options.maxDepth > 0
-    ) {
+    if (this.options.maxDepth !== undefined && this.options.maxDepth > 0) {
       rules.push(createDepthLimitRule(this.options.maxDepth));
     }
     return rules;
@@ -713,7 +707,10 @@ export class GraphQLService
             return Response.json(
               {
                 errors: [
-                  { message: "GraphQL variables parameter must be a JSON object." },
+                  {
+                    message:
+                      "GraphQL variables parameter must be a JSON object.",
+                  },
                 ],
               },
               { status: 400 },
@@ -748,7 +745,9 @@ export class GraphQLService
       if (!isPlainRecord(parsedBody)) {
         return Response.json(
           {
-            errors: [{ message: "GraphQL request body must be a JSON object." }],
+            errors: [
+              { message: "GraphQL request body must be a JSON object." },
+            ],
           },
           { status: 400 },
         );
@@ -919,8 +918,7 @@ export class GraphQLService
     const iterator = subOrError[Symbol.asyncIterator]();
     let closed = false;
     let streamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | undefined;
+      ReadableStreamDefaultController<Uint8Array> | undefined;
 
     const cleanup = () => {
       if (closed) return;

@@ -26,11 +26,15 @@ function buildBackoffDelay(
 ): (attempt: number) => number {
   const baseMs = backoff?.delay !== undefined ? toMs(backoff.delay) : 100;
   const factor = backoff?.factor ?? 2;
-  const maxMs = backoff?.maxDelay !== undefined ? toMs(backoff.maxDelay) : 20_000;
+  const maxMs =
+    backoff?.maxDelay !== undefined ? toMs(backoff.maxDelay) : 20_000;
   const jitter = backoff?.jitter ?? "full";
 
   return (attempt: number): number => {
-    const raw = Math.min(maxMs, baseMs * Math.pow(factor, Math.max(0, attempt - 1)));
+    const raw = Math.min(
+      maxMs,
+      baseMs * Math.pow(factor, Math.max(0, attempt - 1)),
+    );
     if (jitter === "none") {
       return raw;
     }

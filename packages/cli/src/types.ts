@@ -1,3 +1,5 @@
+import type { TypegenIncludeTarget, TypegenResult } from "./typegen/types";
+
 export interface CliIO {
   stdout(message: string): void;
   stderr(message: string): void;
@@ -142,8 +144,13 @@ export interface BuildProjectResult {
 
 export interface DevServerOptions {
   readonly entry?: string;
+  readonly sourceRoot?: string;
+  readonly config?: string;
   readonly port?: number;
   readonly cwd?: string;
+  readonly typegen?: boolean;
+  readonly typegenOutDir?: string;
+  readonly silent?: boolean;
   readonly spawn?: SpawnFn;
 }
 
@@ -152,6 +159,7 @@ export interface DevServerResult {
   readonly command: readonly string[];
   readonly entry: string;
   readonly port?: number;
+  readonly typegen?: TypegenResult;
 }
 
 export interface StartCommandOptions {
@@ -168,6 +176,8 @@ export interface StartCommandOptions {
   readonly exec?: string;
   readonly port?: number;
   readonly cwd?: string;
+  readonly typegen?: boolean;
+  readonly typegenOutDir?: string;
   readonly spawn?: SpawnFn;
 }
 
@@ -178,6 +188,31 @@ export interface StartCommandResult {
   readonly watch: boolean;
   readonly debug?: boolean | string;
   readonly envFiles: readonly string[];
+  readonly typegen?: TypegenResult;
+}
+
+export interface TypegenCommandOptions {
+  readonly cwd?: string;
+  readonly sourceRoot?: string;
+  readonly outdir?: string;
+  readonly fileName?: string;
+  readonly tsconfig?: string;
+  readonly config?: string;
+  readonly envFile?: string | readonly string[];
+  readonly include?: readonly TypegenIncludeTarget[];
+  readonly includeGlobalNamespace?: boolean;
+  readonly watch?: boolean;
+  readonly check?: boolean;
+  readonly dryRun?: boolean;
+  readonly silent?: boolean;
+  readonly debounceMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface TypegenCommandResult {
+  readonly exitCode: number;
+  readonly watch: boolean;
+  readonly result: TypegenResult;
 }
 
 export interface AddLibraryOptions {

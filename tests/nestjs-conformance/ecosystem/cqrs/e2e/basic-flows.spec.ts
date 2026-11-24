@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { CommandBus, QueryBus } from "../../../../../packages/cqrs/src";
+import { CommandBus, QueryBus } from "../../../../../packages/messaging/src/cqrs";
 import {
   Test,
   describeConformance,

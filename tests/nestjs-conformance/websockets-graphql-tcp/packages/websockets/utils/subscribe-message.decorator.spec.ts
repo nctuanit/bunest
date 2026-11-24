@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   SubscribeMessage,
   WS_METADATA_KEYS,
   getGatewayMessageHandlers,
   type WsMessageHandlerMetadata,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import { describeConformance } from "../../../../_helpers/index";
 
 describeConformance(

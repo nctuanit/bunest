@@ -1,8 +1,4 @@
-import {
-  Module,
-  type DynamicModule,
-  type Type,
-} from "@bunest/common";
+import { Module, type DynamicModule, type Type } from "../common/index";
 import type { ScannedModuleGraph } from "../module/module-scanner";
 
 export const ROUTER_MODULE_ROUTES = Symbol.for(

@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Controller, MetadataRegistry } from "../../../../../../packages/common/src";
+import {
+  Controller,
+  MetadataRegistry,
+} from "../../../../../../packages/core/src/common";
 import {
   Ctx,
   InMemoryBroker,
@@ -20,10 +22,7 @@ import { describeConformance } from "../../../../_helpers";
 class CtxTest {
   public test(@Ctx() _ctx: RpcContext) {}
 
-  public withPayload(
-    @Payload() _payload: unknown,
-    @Ctx() _ctx: RpcContext,
-  ) {}
+  public withPayload(@Payload() _payload: unknown, @Ctx() _ctx: RpcContext) {}
 
   public ctxFirst(@Ctx() _ctx: RpcContext, @Payload("id") _id: string) {}
 }
@@ -31,7 +30,8 @@ class CtxTest {
 describeConformance(
   "@Ctx",
   {
-    upstreamPath: "packages/microservices/test/decorators/ctx.decorator.spec.ts",
+    upstreamPath:
+      "packages/microservices/test/decorators/ctx.decorator.spec.ts",
     category: "DIRECT_PORT",
     adrs: ["ADR-002"],
     notes:
@@ -54,11 +54,9 @@ describeConformance(
     });
 
     it("should record parameter index accurately when combined with @Payload()", () => {
-      const secondArgMeta = MetadataRegistry.getOwn<readonly RpcParamMetadata[]>(
-        RPC_PARAM_METADATA,
-        CtxTest.prototype,
-        "withPayload",
-      );
+      const secondArgMeta = MetadataRegistry.getOwn<
+        readonly RpcParamMetadata[]
+      >(RPC_PARAM_METADATA, CtxTest.prototype, "withPayload");
       expect(secondArgMeta).toEqual([
         {
           index: 0,
@@ -101,7 +99,10 @@ describeConformance(
 
     it("should inject the active RpcContext at runtime via MicroserviceHost", async () => {
       const broker = new InMemoryBroker();
-      const server = new InMemoryServer({ channel: "ctx-decorator-test", broker });
+      const server = new InMemoryServer({
+        channel: "ctx-decorator-test",
+        broker,
+      });
 
       @Controller()
       class CtxController {

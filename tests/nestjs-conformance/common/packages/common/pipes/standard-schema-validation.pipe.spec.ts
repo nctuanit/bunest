@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it, mock } from "bun:test";
 import {
   HttpException,
@@ -7,7 +6,7 @@ import {
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   StandardSchemaValidationPipe,
   type StandardSchemaValidationPipeOptions,
@@ -510,9 +509,9 @@ describeConformance(
             } as StandardSchemaValidationPipeOptions & Record<string, unknown>,
           );
 
-          await expect(
-            target.transform({}, { type: "body" }),
-          ).rejects.toThrow("custom");
+          await expect(target.transform({}, { type: "body" })).rejects.toThrow(
+            "custom",
+          );
           expect(exceptionFactory).toHaveBeenCalledWith(
             issues,
             expect.any(Array),

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -20,7 +19,7 @@ import {
   type NextFunction,
   type PipeTransform,
   type ResponseContext,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   BunestFactory,
   ClsModule,
@@ -277,7 +276,9 @@ describe("Core DI Method Aspect Weaver", () => {
 
       // Controller method aspect preserves HTTP metadata and retries via multiple proceed()
       const ctrl = app.get(AopController);
-      expect(MetadataRegistry.get(METADATA_KEYS.HTTP_CODE, ctrl.flaky)).toBe(201);
+      expect(MetadataRegistry.get(METADATA_KEYS.HTTP_CODE, ctrl.flaky)).toBe(
+        201,
+      );
       expect(MetadataRegistry.get("custom:flag", ctrl.flaky)).toBe("preserved");
 
       const res = await app.inject("/aop/flaky");
@@ -432,7 +433,9 @@ describe("ExternalContextCreator fixes (C5 DI param pipes & C6 proto/ctor metada
       }
     }
 
-    function ProtoArg(...pipes: Array<PipeTransform | (new (...a: any[]) => PipeTransform)>): ParameterDecorator {
+    function ProtoArg(
+      ...pipes: Array<PipeTransform | (new (...a: any[]) => PipeTransform)>
+    ): ParameterDecorator {
       return (target, propertyKey, index) => {
         MetadataRegistry.define(
           PROTO_PARAM_KEY,
@@ -443,7 +446,9 @@ describe("ExternalContextCreator fixes (C5 DI param pipes & C6 proto/ctor metada
       };
     }
 
-    function CtorArg(...pipes: Array<PipeTransform | (new (...a: any[]) => PipeTransform)>): ParameterDecorator {
+    function CtorArg(
+      ...pipes: Array<PipeTransform | (new (...a: any[]) => PipeTransform)>
+    ): ParameterDecorator {
       return (target, propertyKey, index) => {
         MetadataRegistry.define(
           CTOR_PARAM_KEY,
@@ -478,8 +483,11 @@ describe("ExternalContextCreator fixes (C5 DI param pipes & C6 proto/ctor metada
       const creator = ExternalContextCreator.fromContainer(container);
       const target = ctx.get(ExtTarget);
       const factory = {
-        exchangeKeyForValue: (_t: number | string, _d: unknown, args: unknown[]) =>
-          args[0],
+        exchangeKeyForValue: (
+          _t: number | string,
+          _d: unknown,
+          args: unknown[],
+        ) => args[0],
       };
 
       const protoFn = creator.create(

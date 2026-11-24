@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { timingSafeEqualBytes } from "@bunest/core";
 import { StorageSignedUrlError } from "../errors";
 import type {
   StorageSignedUrlClaims,
@@ -6,10 +6,7 @@ import type {
 } from "../interfaces/storage-types";
 
 export type SignedUrlQuery =
-  | string
-  | URL
-  | URLSearchParams
-  | Record<string, unknown>;
+  string | URL | URLSearchParams | Record<string, unknown>;
 
 const PARAMS = {
   key: "key",
@@ -172,7 +169,7 @@ export class UrlSigner {
     const given = Buffer.from(signature, "base64url");
     const authentic = this.keys.some((secret) => {
       const expected = this.mac(secret, claims, expires);
-      return given.length === expected.length && timingSafeEqual(given, expected);
+      return timingSafeEqualBytes(given, expected);
     });
     if (!authentic) {
       throw new StorageSignedUrlError("invalid");
@@ -201,6 +198,8 @@ export class UrlSigner {
       claims.contentLength ?? null,
       claims.contentDisposition ?? null,
     ]);
-    return createHmac("sha256", secret).update(input).digest();
+    return Buffer.from(
+      new Bun.CryptoHasher("sha256", secret).update(input).digest(),
+    );
   }
 }

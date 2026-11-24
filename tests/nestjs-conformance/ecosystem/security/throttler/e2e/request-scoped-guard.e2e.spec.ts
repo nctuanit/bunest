@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   Module,
   Scope,
   UseGuards,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ThrottlerGuard,
   ThrottlerModule,

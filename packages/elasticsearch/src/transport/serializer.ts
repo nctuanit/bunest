@@ -26,7 +26,8 @@ export class ElasticsearchSerializer {
   private readonly disableProtection: boolean | "proto" | "constructor";
 
   constructor(
-    disablePrototypePoisoningProtection: boolean | "proto" | "constructor" = false,
+    disablePrototypePoisoningProtection:
+      boolean | "proto" | "constructor" = false,
   ) {
     this.disableProtection = disablePrototypePoisoningProtection;
   }
@@ -44,9 +45,7 @@ export class ElasticsearchSerializer {
     }
     return (
       items
-        .map((item) =>
-          typeof item === "string" ? item : JSON.stringify(item),
-        )
+        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
         .join("\n") + "\n"
     );
   }

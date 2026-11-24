@@ -1,17 +1,12 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  statSyncPath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   bunestMetadataPlugin,
   generateMetadataFile,
@@ -19,6 +14,15 @@ import {
   transformDtoMetadataSource,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Metadata Printer & Source Transforms",
@@ -34,12 +38,12 @@ describeConformance(
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-metaprint-"));
-      mkdirSync(join(tmpDir, "src"), { recursive: true });
+      tmpDir = makeTempDir("bunest-cli-conf-metaprint-");
+      mkdirSyncPath(join(tmpDir, "src"), { recursive: true });
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     describe("metadata.ts printing semantics", () => {
@@ -51,7 +55,7 @@ describeConformance(
         });
 
         expect(res.outputPath).toBe(join(tmpDir, "src", "metadata.ts"));
-        const onDisk = readFileSync(res.outputPath, "utf8");
+        const onDisk = readTextSync(res.outputPath);
         expect(onDisk.startsWith("/* eslint-disable */")).toBe(true);
         expect(onDisk).toContain("export default async () => {");
         expect(onDisk).toContain('"@nestjs/swagger"');
@@ -71,15 +75,13 @@ describeConformance(
       });
 
       it("propagates extracted models and controllers into the printed metadata tree", async () => {
-        writeFileSync(
+        writeTextSync(
           join(tmpDir, "src", "foo.dto.ts"),
           `export class FooDto { bar!: string; }\n`,
-          "utf8",
         );
-        writeFileSync(
+        writeTextSync(
           join(tmpDir, "src", "foo.controller.ts"),
           `export class FooController {\n  /** Get foo */\n  @Get()\n  foo(): string { return "foo"; }\n}\n`,
-          "utf8",
         );
 
         const res = await generateMetadataFile({
@@ -99,7 +101,7 @@ describeConformance(
 
       it("overwrites metadata.ts when existing bytes on disk differ", async () => {
         const target = join(tmpDir, "src", "metadata.ts");
-        writeFileSync(target, "/* stale */\n", "utf8");
+        writeTextSync(target, "/* stale */\n");
 
         const res = await generateMetadataFile({
           rootDir: tmpDir,
@@ -107,7 +109,7 @@ describeConformance(
           outDir: "src",
         });
 
-        const updated = readFileSync(res.outputPath, "utf8");
+        const updated = readTextSync(res.outputPath);
         expect(updated).not.toBe("/* stale */\n");
         expect(updated.startsWith("/* eslint-disable */")).toBe(true);
       });
@@ -119,9 +121,8 @@ describeConformance(
           pathToSource: "src",
           outDir: "src",
         });
-        const oldDate = new Date("2020-01-01T00:00:00.000Z");
-        utimesSync(first.outputPath, oldDate, oldDate);
-        const beforeMtime = statSync(first.outputPath).mtimeMs;
+        Bun.spawnSync(["touch", "-t", "202001010000.00", first.outputPath]);
+        const beforeMtime = statSyncPath(first.outputPath).mtimeMs;
 
         await generateMetadataFile({
           rootDir: tmpDir,
@@ -129,7 +130,7 @@ describeConformance(
           outDir: "src",
         });
 
-        const afterMtime = statSync(first.outputPath).mtimeMs;
+        const afterMtime = statSyncPath(first.outputPath).mtimeMs;
         expect(afterMtime).toBe(beforeMtime);
       });
     });
@@ -261,7 +262,7 @@ export class OrdersController {
         ["ADR-001", "ADR-002"],
         "integrates with Bun.build({ plugins: [bunestMetadataPlugin()] }) to register runtime Reflect metadata",
         async () => {
-          writeFileSync(
+          writeTextSync(
             join(tmpDir, "tsconfig.json"),
             JSON.stringify({
               compilerOptions: {
@@ -269,12 +270,10 @@ export class OrdersController {
                 emitDecoratorMetadata: true,
               },
             }),
-            "utf8",
           );
-          writeFileSync(
+          writeTextSync(
             join(tmpDir, "src", "note.dto.ts"),
             `export class NoteDto {\n  /** Note body */\n  body!: string;\n}\n`,
-            "utf8",
           );
 
           const buildOut = await Bun.build({
@@ -287,7 +286,7 @@ export class OrdersController {
           expect(buildOut.success).toBe(true);
 
           const built = (await import(
-            `${pathToFileURL(buildOut.outputs[0]!.path).href}?t=${Date.now()}`
+            `${Bun.pathToFileURL(buildOut.outputs[0]!.path).href}?t=${Date.now()}`
           )) as { NoteDto: Function };
           const props = Reflect.getOwnMetadata(
             Symbol.for("bunest:swagger:api_properties"),

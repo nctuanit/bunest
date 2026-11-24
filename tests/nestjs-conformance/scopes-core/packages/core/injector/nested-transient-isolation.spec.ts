@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   Test,
   type TestingModule,

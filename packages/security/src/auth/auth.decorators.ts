@@ -3,7 +3,7 @@ import {
   createParamDecorator,
   type ExecutionContext,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 
 export const IS_PUBLIC_KEY = Symbol.for("bunest:security:is_public");
 export const ROLES_KEY = Symbol.for("bunest:security:roles");

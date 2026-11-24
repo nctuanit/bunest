@@ -1,17 +1,25 @@
-import "reflect-metadata";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  it,
+} from "bun:test";
 import {
   type GraphQLSchema,
   Kind,
   type ValueNode,
   defaultFieldResolver,
   isObjectType,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/graphql/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  ensureDir,
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   type CustomScalar,
@@ -193,10 +201,7 @@ class PostsResolvers {
   }
 
   @Mutation(() => Object, { name: "publishPost" })
-  publishPost(
-    @Args("id") id: string,
-    @Args("publishDate") publishDate: Date,
-  ) {
+  publishPost(@Args("id") id: string, @Args("publishDate") publishDate: Date) {
     return this.postsService.publish(id, publishDate);
   }
 
@@ -262,24 +267,25 @@ describeConformance(
     let usersDir: string;
     let postsDir: string;
 
-    beforeAll(() => {
-      usersDir = mkdtempSync(join(tmpdir(), "bunest-fed-users-"));
-      postsDir = mkdtempSync(join(tmpdir(), "bunest-fed-posts-"));
-      writeFileSync(
+    beforeAll(async () => {
+      const tempRoot = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+      usersDir = join(tempRoot, `bunest-fed-users-${crypto.randomUUID()}`);
+      postsDir = join(tempRoot, `bunest-fed-posts-${crypto.randomUUID()}`);
+      await ensureDir(usersDir);
+      await ensureDir(postsDir);
+      await Bun.write(
         join(usersDir, "users.types.graphql"),
         USERS_FEDERATION_SDL,
-        "utf8",
       );
-      writeFileSync(
+      await Bun.write(
         join(postsDir, "posts.types.graphql"),
         POSTS_FEDERATION_SDL,
-        "utf8",
       );
     });
 
-    afterAll(() => {
-      rmSync(usersDir, { recursive: true, force: true });
-      rmSync(postsDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(usersDir, { recursive: true, force: true });
+      await removePath(postsDir, { recursive: true, force: true });
     });
 
     afterEach(async () => {

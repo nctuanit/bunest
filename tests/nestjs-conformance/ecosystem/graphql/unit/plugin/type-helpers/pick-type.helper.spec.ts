@@ -1,6 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { IsBoolean, IsNumber, validate } from "class-validator";
+import {
+  IsBoolean,
+  IsNumber,
+  validate,
+} from "../../../../../../../packages/validation/src/validator";
 import {
   ArgsType,
   Field,

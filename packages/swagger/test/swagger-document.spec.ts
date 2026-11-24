@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   All,
@@ -13,7 +12,7 @@ import {
   Query,
   UploadedFile,
   type UploadedFileInfo,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   IsEmail,
@@ -24,7 +23,7 @@ import {
   Max,
   Min,
   MinLength,
-} from "class-validator";
+} from "../../validation/src/validator";
 import {
   ApiApiKey,
   ApiBadRequestResponse,
@@ -135,7 +134,11 @@ describe("DocumentBuilder & OpenAPI 3.1 Document Generation", () => {
   test("builds complete OpenAPI 3.1 document with parameters, DTOs, validator hints, inheritance, circular refs, security, and exclusions", async () => {
     @ApiTags("Users")
     @ApiBearerAuth()
-    @ApiHeader({ name: "X-Tenant-Id", required: true, description: "Tenant ID" })
+    @ApiHeader({
+      name: "X-Tenant-Id",
+      required: true,
+      description: "Tenant ID",
+    })
     @Controller("/users")
     class UsersController {
       @Post()
@@ -143,7 +146,10 @@ describe("DocumentBuilder & OpenAPI 3.1 Document Generation", () => {
         summary: "Create a user",
         description: "Registers a new user account",
       })
-      @ApiCreatedResponse({ type: UserResponseDto, description: "User created" })
+      @ApiCreatedResponse({
+        type: UserResponseDto,
+        description: "User created",
+      })
       @ApiBadRequestResponse({ description: "Validation error" })
       create(@Body() dto: CreateUserDto) {
         return dto;
@@ -302,7 +308,10 @@ describe("DocumentBuilder & OpenAPI 3.1 Document Generation", () => {
         type: "array",
         items: { $ref: "#/components/schemas/AuthorDto" },
       });
-      expect(authorsOp?.security).toEqual([{ bearer: [] }, { "x-api-key": [] }]);
+      expect(authorsOp?.security).toEqual([
+        { bearer: [] },
+        { "x-api-key": [] },
+      ]);
 
       // Schemas: DTO properties + class-validator hints + nested DTO + inheritance + OpenAPI 3.1 nullable
       const schemas = doc.components?.schemas ?? {};

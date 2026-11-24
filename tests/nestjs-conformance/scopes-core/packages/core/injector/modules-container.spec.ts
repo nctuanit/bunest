@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { ModulesContainer } from "../../../../../../packages/core/src";
 import { describeConformance } from "../../../../_helpers";

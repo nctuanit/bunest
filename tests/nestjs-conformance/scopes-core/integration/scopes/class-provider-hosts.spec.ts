@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -10,7 +9,7 @@ import {
   UseGuards,
   type CanActivate,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   DiscoveryService,
@@ -21,7 +20,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketModule,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   type TestingModule,
@@ -330,33 +329,30 @@ describeConformance(
       });
 
       // BUNEST_BUG: ExternalContextCreator resolves enhancer classes against root module even when wrapper.moduleId is passed (packages/core/src/helpers/external-context-creator.ts:103 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for module-local IS_ALLOWED.
-      it.skip(
-        "should run the guards of the module of the host when paired with a request-scoped global guard [ADR-012]",
-        async () => {
-          const { wrapper } = await compile([
-            { provide: APP_GUARD, useClass: RequestScopedAllowGuard },
-          ]);
-          const contextId = ContextIdFactory.create();
-          moduleRef!.registerRequestByContextId({}, contextId);
-          const resolver = await wrapper.moduleRef.resolve(
-            OrdersResolver,
+      it.skip("should run the guards of the module of the host when paired with a request-scoped global guard [ADR-012]", async () => {
+        const { wrapper } = await compile([
+          { provide: APP_GUARD, useClass: RequestScopedAllowGuard },
+        ]);
+        const contextId = ContextIdFactory.create();
+        moduleRef!.registerRequestByContextId({}, contextId);
+        const resolver = await wrapper.moduleRef.resolve(
+          OrdersResolver,
+          contextId,
+        );
+        const handler = moduleRef!
+          .get(ExternalContextCreator)
+          .create(
+            resolver,
+            resolver.orders,
+            "orders",
+            undefined,
+            undefined,
             contextId,
+            wrapper.moduleId,
           );
-          const handler = moduleRef!
-            .get(ExternalContextCreator)
-            .create(
-              resolver,
-              resolver.orders,
-              "orders",
-              undefined,
-              undefined,
-              contextId,
-              wrapper.moduleId,
-            );
 
-          await expect(handler()).rejects.toBeInstanceOf(ForbiddenException);
-        },
-      );
+        await expect(handler()).rejects.toBeInstanceOf(ForbiddenException);
+      });
     });
   },
 );

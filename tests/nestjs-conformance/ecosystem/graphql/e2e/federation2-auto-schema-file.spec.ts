@@ -1,7 +1,3 @@
-import "reflect-metadata";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
 import {
   type DirectiveNode,
@@ -11,9 +7,13 @@ import {
   parse,
   specifiedDirectives,
   visit,
-} from "../../../../../packages/graphql/node_modules/graphql";
-import { Injectable, Module } from "../../../../../packages/common/src";
-import type { BunestApplication } from "../../../../../packages/core/src";
+} from "../../../../../packages/graphql/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
+import {
+  join,
+  removePath,
+  type BunestApplication,
+} from "../../../../../packages/core/src";
 import {
   Args,
   Directive,
@@ -182,7 +182,7 @@ describeConformance(
     beforeEach(async () => {
       writeFileMock.mockClear();
       schemaPath = join(
-        tmpdir(),
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
         `bunest-fed2-auto-schema-${crypto.randomUUID()}.graphql`,
       );
 
@@ -217,7 +217,7 @@ describeConformance(
 
     afterEach(async () => {
       await app.close();
-      rmSync(schemaPath, { force: true });
+      await removePath(schemaPath, { force: true });
     });
 
     // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) writes autoSchemaFile via direct `node:fs` `writeFileSync` instead of DI `FileSystemHelper.writeFile()` (0 calls instead of 1), and emits raw `printSchema(schema)` without Federation v2 `extend schema @link(url: "https://specs.apollo.dev/federation/v2...", import: [...])` or `@key`/`@extends`/`@external` directives.

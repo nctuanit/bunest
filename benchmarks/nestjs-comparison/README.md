@@ -6,16 +6,16 @@ Self-contained, isolated benchmark suite comparing **Bunest** (`@bunest/core`) d
 
 ## Targets Compared (8 Configurations)
 
-| # | Target | Runtime | HTTP Layer | Entrypoint |
-|---|---|---|---|---|
-| A | **Raw `Bun.serve()`** | Bun | Native `Bun.serve({ routes })` | `src/server-raw-bun.ts` |
-| B | **Bunest (`@bunest/core`)** | Bun | Native `Bun.serve()` via compiled Bunest routes | `src/server-bunest.ts` |
-| C | **NestJS + Platform Node** | Bun | `@nestjs/platform-node` (`node:http` + `find-my-way`) | `dist/server-nestjs-node.js` |
-| D | **NestJS + Fastify** | Bun | `@nestjs/platform-fastify` + `fastify` | `dist/server-nestjs-fastify.js` |
-| E | **NestJS + Express** | Bun | `@nestjs/platform-express` + `express` | `dist/server-nestjs-express.js` |
-| F | **NestJS + Platform Node** | Node.js | `@nestjs/platform-node` (`node:http` + `find-my-way`) | `dist/server-nestjs-node.js` |
-| G | **NestJS + Fastify** | Node.js | `@nestjs/platform-fastify` + `fastify` | `dist/server-nestjs-fastify.js` |
-| H | **NestJS + Express** | Node.js | `@nestjs/platform-express` + `express` | `dist/server-nestjs-express.js` |
+| #   | Target                      | Runtime | HTTP Layer                                            | Entrypoint                      |
+| --- | --------------------------- | ------- | ----------------------------------------------------- | ------------------------------- |
+| A   | **Raw `Bun.serve()`**       | Bun     | Native `Bun.serve({ routes })`                        | `src/server-raw-bun.ts`         |
+| B   | **Bunest (`@bunest/core`)** | Bun     | Native `Bun.serve()` via compiled Bunest routes       | `src/server-bunest.ts`          |
+| C   | **NestJS + Platform Node**  | Bun     | `@nestjs/platform-node` (`node:http` + `find-my-way`) | `dist/server-nestjs-node.js`    |
+| D   | **NestJS + Fastify**        | Bun     | `@nestjs/platform-fastify` + `fastify`                | `dist/server-nestjs-fastify.js` |
+| E   | **NestJS + Express**        | Bun     | `@nestjs/platform-express` + `express`                | `dist/server-nestjs-express.js` |
+| F   | **NestJS + Platform Node**  | Node.js | `@nestjs/platform-node` (`node:http` + `find-my-way`) | `dist/server-nestjs-node.js`    |
+| G   | **NestJS + Fastify**        | Node.js | `@nestjs/platform-fastify` + `fastify`                | `dist/server-nestjs-fastify.js` |
+| H   | **NestJS + Express**        | Node.js | `@nestjs/platform-express` + `express`                | `dist/server-nestjs-express.js` |
 
 ## Workloads Measured (6 Dimensions)
 

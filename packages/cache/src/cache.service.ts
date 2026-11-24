@@ -3,7 +3,7 @@ import {
   Injectable,
   Optional,
   type OnModuleDestroy,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Cache } from "./cache.abstract";
 import { CACHE_MODULE_OPTIONS, CACHE_STORE } from "./constants";
 import type {
@@ -136,9 +136,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
         if (value !== undefined) {
           if (i > 0) {
             const remaining =
-              typeof store.ttl === "function"
-                ? await store.ttl(fullKey)
-                : null;
+              typeof store.ttl === "function" ? await store.ttl(fullKey) : null;
             const backfillTtl =
               remaining !== null && remaining > 0
                 ? remaining
@@ -205,9 +203,9 @@ export class CacheService extends Cache implements OnModuleDestroy {
     try {
       if (this.nonBlocking && this.stores.length > 1) {
         const primary = await this.stores[0]!.del(fullKey);
-        void Promise.all(
-          this.stores.slice(1).map((s) => s.del(fullKey)),
-        ).catch(() => {});
+        void Promise.all(this.stores.slice(1).map((s) => s.del(fullKey))).catch(
+          () => {},
+        );
         this.emitEvent("del", { key });
         return primary;
       }
@@ -240,9 +238,9 @@ export class CacheService extends Cache implements OnModuleDestroy {
     try {
       if (this.nonBlocking && this.stores.length > 1) {
         await this.stores[0]!.reset();
-        void Promise.all(
-          this.stores.slice(1).map((s) => s.reset()),
-        ).catch(() => {});
+        void Promise.all(this.stores.slice(1).map((s) => s.reset())).catch(
+          () => {},
+        );
       } else {
         await Promise.all(this.stores.map((store) => store.reset()));
       }
@@ -320,11 +318,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
         ] as const;
       }
       const [key, value, opts] = entry as CacheMsetTuple;
-      return [
-        this.formatKey(key),
-        value,
-        this.applyDefaultTtl(opts),
-      ] as const;
+      return [this.formatKey(key), value, this.applyDefaultTtl(opts)] as const;
     });
 
     const emitList = entries.map((entry) =>
@@ -354,9 +348,9 @@ export class CacheService extends Cache implements OnModuleDestroy {
 
       if (this.nonBlocking && this.stores.length > 1) {
         await writeStore(this.stores[0]!);
-        void Promise.all(
-          this.stores.slice(1).map((s) => writeStore(s)),
-        ).catch(() => {});
+        void Promise.all(this.stores.slice(1).map((s) => writeStore(s))).catch(
+          () => {},
+        );
       } else {
         await Promise.all(this.stores.map((s) => writeStore(s)));
       }
@@ -447,9 +441,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
     key: string,
     factory: () => T | Promise<T>,
     ttlOrOptions?:
-      | CacheTtlOrOptions
-      | ((value: T) => number)
-      | CacheWrapOptions<T>,
+      CacheTtlOrOptions | ((value: T) => number) | CacheWrapOptions<T>,
     refreshThresholdArg?: number | ((value: T) => number),
   ): Promise<T> {
     const fullKey = this.formatKey(key);
@@ -472,9 +464,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
       }
     }
 
-    const resolveSetOptions = (
-      computed: T,
-    ): CacheTtlOrOptions | undefined => {
+    const resolveSetOptions = (computed: T): CacheTtlOrOptions | undefined => {
       if (typeof ttlOrOptions === "function") {
         return this.applyDefaultTtl(ttlOrOptions(computed));
       }
@@ -485,7 +475,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
         const rawTtl =
           typeof ttlOrOptions.ttl === "function"
             ? ttlOrOptions.ttl(computed)
-            : ttlOrOptions.ttl ?? ttlOrOptions.ttlMs;
+            : (ttlOrOptions.ttl ?? ttlOrOptions.ttlMs);
         const setOpts: CacheSetOptions = {
           ...(rawTtl !== undefined ? { ttlMs: rawTtl } : {}),
           ...(ttlOrOptions.tags ? { tags: ttlOrOptions.tags } : {}),

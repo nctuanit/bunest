@@ -1,5 +1,3 @@
-import "reflect-metadata";
-
 export { WorkflowsModule } from "./workflows.module";
 export { WORKFLOWS_MODULE_OPTIONS } from "./workflows.module-definition";
 export type {

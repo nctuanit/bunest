@@ -1,7 +1,6 @@
 import {
   METADATA_KEYS,
   MetadataRegistry,
-  getMethodAspects,
   hasMethodAspects,
   wrapMethodDescriptor,
   type Abstract,
@@ -12,10 +11,17 @@ import {
   type MethodAspectMetadata,
   type MethodAspectToken,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import type { RequestContainer } from "../di/request-container";
 import { formatToken } from "../errors/token-formatter";
 import type { ModuleNode } from "../module/module-node";
+import {
+  getAllEffectiveMethodAspects,
+  getEffectiveMethodAspects,
+  hasMatchingPointcuts,
+  matchesPointcutClass,
+  type PointcutRule,
+} from "./aop-pipeline";
 
 export interface ResolvedAspectEntry {
   readonly found: boolean;
@@ -26,10 +32,7 @@ export interface ResolvedAspectEntry {
 }
 
 export type AspectResolutionValue =
-  | MethodAspectHandler
-  | MethodAspectFn
-  | ResolvedAspectEntry
-  | undefined;
+  MethodAspectHandler | MethodAspectFn | ResolvedAspectEntry | undefined;
 
 /**
  * Functional resolver for looking up a `MethodAspectHandler` / `MethodAspectFn`
@@ -186,12 +189,14 @@ function hasExplicitMethodAspectForKey(
 }
 
 /**
- * Collects all unique DI aspect tokens declared at class-level or method-level
- * across `targetClass`'s inheritance chain (used to eagerly pre-warm singleton
- * aspect handlers for `useFactory` and `Proxy`-backed providers).
+ * Collects all unique DI aspect tokens declared at class-level, method-level,
+ * or via matching declarative `PointcutRule`s across `targetClass`'s inheritance
+ * chain (used to eagerly pre-warm singleton aspect handlers for `useFactory`
+ * and `Proxy`-backed providers).
  */
 export function collectClassAspectTokens(
   targetClass: Abstract<unknown> | Type<unknown>,
+  pointcuts?: readonly PointcutRule[],
 ): InjectionToken[] {
   const tokens = new Set<InjectionToken>();
   const chain = MetadataRegistry.getPrototypeChain(targetClass);
@@ -217,6 +222,21 @@ export function collectClassAspectTokens(
       for (let j = 0; j < methodAspects.length; j++) {
         const tok = methodAspects[j]!.token;
         if (!isMethodAspectHandlerObject(tok)) {
+          tokens.add(tok as InjectionToken);
+        }
+      }
+    }
+  }
+
+  if (pointcuts && pointcuts.length > 0) {
+    for (let i = 0; i < pointcuts.length; i++) {
+      const rule = pointcuts[i]!;
+      if (!matchesPointcutClass(rule, targetClass)) {
+        continue;
+      }
+      for (let j = 0; j < rule.aspects.length; j++) {
+        const tok = rule.aspects[j]!.token;
+        if (tok !== targetClass && !isMethodAspectHandlerObject(tok)) {
           tokens.add(tok as InjectionToken);
         }
       }
@@ -261,7 +281,12 @@ function finalizeDynamicSlot(
         `Method aspect handler for token ${formatToken(token)} on ${className}.${String(methodName)} is not registered in the DI container.`,
       );
     }
-    const callable = toCallableHandler(raw.handler, token, className, methodName);
+    const callable = toCallableHandler(
+      raw.handler,
+      token,
+      className,
+      methodName,
+    );
     if (raw.cacheable !== false) {
       slot.handler = callable;
     }
@@ -309,8 +334,14 @@ export function weaveMethodExecutor<
   methodName: string | symbol,
   executor: (...args: TArgs) => TResult,
   resolver: AspectResolver,
+  pointcuts?: readonly PointcutRule[],
 ): (...args: TArgs) => TResult {
-  const aspects = getMethodAspects(targetClass, methodName);
+  const aspects = getEffectiveMethodAspects(
+    targetClass,
+    methodName,
+    pointcuts,
+    target,
+  );
   if (aspects.length === 0) {
     return executor;
   }
@@ -412,7 +443,7 @@ export function weaveMethodExecutor<
 
 /**
  * Wraps a `useFactory`-created instance or `Proxy`-backed declarative repository
- * (e.g. `JpaRepository` / `SqlCrudRepository`) in an aspect-weaving `Proxy` so
+ * (e.g. `SqliteCrudRepository` / `SqlCrudRepository`) in an aspect-weaving `Proxy` so
  * BOTH class-level and method-level `MethodAspect` decorators execute seamlessly
  * on CRUD methods, `@Query` methods, concrete helpers, AND dynamically synthesized
  * derived methods.
@@ -425,12 +456,16 @@ export function weaveProxyMethodAspects<T extends object>(
   proxy: T,
   targetClass: Abstract<T> | Type<T>,
   resolver: AspectResolver,
+  pointcuts?: readonly PointcutRule[],
 ): T {
   if (
     proxy === null ||
     typeof proxy !== "object" ||
     WOVEN_PROXIES.has(proxy) ||
-    !hasMethodAspects(targetClass)
+    (!hasMethodAspects(targetClass) &&
+      !hasMatchingPointcuts(targetClass, pointcuts, {
+        includeDynamicMethods: true,
+      }))
   ) {
     return proxy;
   }
@@ -469,6 +504,7 @@ export function weaveProxyMethodAspects<T extends object>(
         prop,
         value as (...args: unknown[]) => unknown,
         resolver,
+        pointcuts,
       );
 
       if (woven === value) {
@@ -486,9 +522,9 @@ export function weaveProxyMethodAspects<T extends object>(
 
 /**
  * Weaves all declared `@MethodAspect` / `createMethodAspectDecorator()` entries
- * onto the decorated methods of a freshly instantiated provider or controller
- * instance, preserving `.name`, `.length`, `this` binding, and all own metadata
- * via `wrapMethodDescriptor`.
+ * and matching declarative `PointcutRule`s onto the decorated/matched methods of
+ * a freshly instantiated provider or controller instance, preserving `.name`,
+ * `.length`, `this` binding, and all own metadata via `wrapMethodDescriptor`.
  *
  * - Synchronous aspects wrapping synchronous methods stay 100% synchronous (no Promise overhead).
  * - Multiple aspects execute outer-to-inner in exact top-to-bottom declaration order (and `order` ascending).
@@ -501,8 +537,13 @@ export async function weaveInstanceMethodAspects(
   host: MethodAspectResolverHost,
   requestContainer: RequestContainer | undefined,
   activeInstantiations: Set<string>,
+  pointcuts?: readonly PointcutRule[],
 ): Promise<void> {
-  const aspects = getMethodAspects(targetClass);
+  const aspects = getAllEffectiveMethodAspects(
+    targetClass,
+    pointcuts,
+    instance,
+  );
   if (aspects.length === 0) {
     return;
   }
@@ -593,13 +634,15 @@ export async function weaveInstanceMethodAspects(
       slots.push(slot);
     }
 
-    const existingDesc =
-      Object.getOwnPropertyDescriptor(instance, methodName) ?? {
-        value: originalCandidate,
-        writable: true,
-        enumerable: false,
-        configurable: true,
-      };
+    const existingDesc = Object.getOwnPropertyDescriptor(
+      instance,
+      methodName,
+    ) ?? {
+      value: originalCandidate,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    };
 
     const wrappedDesc = wrapMethodDescriptor(
       { ...existingDesc, value: originalCandidate },

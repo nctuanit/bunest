@@ -8,7 +8,7 @@ import {
   type Provider,
   type Scope,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   DIContainer,
   ENHANCER_OVERRIDE_MARKER,
@@ -117,9 +117,7 @@ export class TestingModuleBuilder {
     return this.createEnhancerOverride("guards", token);
   }
 
-  overridePipe(
-    token: Type<unknown>,
-  ): OverrideByEnhancer<TestingModuleBuilder> {
+  overridePipe(token: Type<unknown>): OverrideByEnhancer<TestingModuleBuilder> {
     return this.createEnhancerOverride("pipes", token);
   }
 

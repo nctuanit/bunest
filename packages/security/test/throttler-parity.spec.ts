@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -8,7 +7,7 @@ import {
   Module,
   TooManyRequestsException,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   DEFAULT_IPV6_SUBNET_PREFIX,
@@ -237,8 +236,11 @@ describe("@nestjs/throttler v6.8 Parity (Helpers, IPv6 /64, DI, Protected Guard 
     try {
       // Tenant A: 1st succeeds, 2nd triggers custom throwThrottlingException
       expect(
-        (await client.get("/tenant-rate/data", { headers: { "x-tenant": "acme" } }))
-          .status,
+        (
+          await client.get("/tenant-rate/data", {
+            headers: { "x-tenant": "acme" },
+          })
+        ).status,
       ).toBe(200);
       const blocked = await client.get("/tenant-rate/data", {
         headers: { "x-tenant": "acme" },
@@ -253,8 +255,11 @@ describe("@nestjs/throttler v6.8 Parity (Helpers, IPv6 /64, DI, Protected Guard 
 
       // Tenant B has independent bucket
       expect(
-        (await client.get("/tenant-rate/data", { headers: { "x-tenant": "beta" } }))
-          .status,
+        (
+          await client.get("/tenant-rate/data", {
+            headers: { "x-tenant": "beta" },
+          })
+        ).status,
       ).toBe(200);
 
       // shouldSkip hook bypasses even for already-throttled Tenant A

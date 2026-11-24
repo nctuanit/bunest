@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Body,
   Controller,
   HttpCode,
   Post,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Ctx,
@@ -268,7 +267,11 @@ describeConformance(
         port: 0,
         package: "proto_example",
       });
-      parentSrv.addGrpcHandler("orders.OrderService", "Find", () => SAMPLE_ORDER);
+      parentSrv.addGrpcHandler(
+        "orders.OrderService",
+        "Find",
+        () => SAMPLE_ORDER,
+      );
       await parentSrv.listen();
       const nestedClient = new GrpcClientProxy({
         url: parentSrv.url,

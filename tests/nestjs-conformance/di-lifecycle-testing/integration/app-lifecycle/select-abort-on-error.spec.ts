@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
-import { Injectable, Module } from "../../../../../packages/common/src";
+import { Injectable, Module } from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   UnknownDependencyException,
@@ -31,7 +30,9 @@ describeConformance(
     let exit: ReturnType<typeof spyOn>;
 
     beforeEach(() => {
-      exit = spyOn(process, "exit").mockImplementation((() => undefined) as never);
+      exit = spyOn(process, "exit").mockImplementation(
+        (() => undefined) as never,
+      );
     });
 
     afterEach(async () => {

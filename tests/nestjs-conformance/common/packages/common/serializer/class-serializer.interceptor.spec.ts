@@ -1,14 +1,15 @@
-import "reflect-metadata";
-import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as classTransformer from "class-transformer";
-import { Exclude, Expose } from "class-transformer";
+import * as classTransformer from "../../../../../../packages/validation/src/transformer";
+import {
+  Exclude,
+  Expose,
+} from "../../../../../../packages/validation/src/transformer";
 import {
   Reflector,
   StreamableFile,
   type CallHandler,
   type ExecutionContext,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   CLASS_SERIALIZER_OPTIONS,
   ClassSerializerInterceptor,
@@ -189,9 +190,9 @@ describeConformance(
 
           const mockHandler = function handler() {};
           const mockClass = class Ctrl {};
-          (
-            mockExecutionContext.getHandler as unknown as SinonLikeStub
-          ).returns(mockHandler);
+          (mockExecutionContext.getHandler as unknown as SinonLikeStub).returns(
+            mockHandler,
+          );
           (mockExecutionContext.getClass as unknown as SinonLikeStub).returns(
             mockClass,
           );
@@ -299,7 +300,18 @@ describeConformance(
                 yield* chunks;
               })(),
           ],
-          ["a Readable in object mode", (chunks) => Readable.from(chunks)],
+          [
+            "a ReadableStream in object mode",
+            (chunks) =>
+              new ReadableStream({
+                start(controller) {
+                  for (const chunk of chunks) {
+                    controller.enqueue(chunk);
+                  }
+                  controller.close();
+                },
+              }),
+          ],
           [
             "a ReadableStream",
             (chunks) =>
@@ -343,7 +355,14 @@ describeConformance(
               ...mockExecutionContext,
               getType: () => "rpc",
             } as ExecutionContext;
-            const stream = Readable.from(users());
+            const stream = new ReadableStream({
+              start(controller) {
+                for (const user of users()) {
+                  controller.enqueue(user);
+                }
+                controller.close();
+              },
+            });
             const next: CallHandler = { handle: async () => stream };
 
             const result = await interceptor.intercept(context, next);
@@ -465,7 +484,16 @@ describeConformance(
       it.each<[string, () => unknown]>([
         ["a Response", () => new Response("test")],
         ["a ReadableStream", () => new ReadableStream()],
-        ["a Readable", () => Readable.from(["test"])],
+        [
+          "a ReadableStream with bytes",
+          () =>
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("test"));
+                controller.close();
+              },
+            }),
+        ],
         ["an async generator", () => (async function* () {})()],
       ])("should return %s unchanged", (_, create) => {
         const stream = create();

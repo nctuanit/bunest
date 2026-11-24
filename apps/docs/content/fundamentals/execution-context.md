@@ -20,6 +20,7 @@ export interface ArgumentsHost {
 Inside HTTP Exception Filters, call `host.switchToHttp()` to obtain the native Web `Request` and mutable `ResponseContext`:
 
 @@filename(audit-error.filter.ts)
+
 ```ts
 import {
   Catch,
@@ -60,16 +61,17 @@ export class AuditErrorFilter implements ExceptionFilter<HttpException> {
 
 ## Reading Metadata with `Reflector`
 
-`Reflector` (`@bunest/common`, re-exported by `@bunest/core`) reads metadata attached via `@SetMetadata()` or `Reflector.createDecorator()`:
+`Reflector` (`@bunest/core`, re-exported by `@bunest/core`) reads metadata attached via `@SetMetadata()` or `Reflector.createDecorator()`:
 
-| Method | Behavior across `[handler, controllerClass]` |
-|---|---|
-| `get(key, target)` | Reads metadata from a single target |
-| `getAll(key, targets)` | Returns array of metadata values for each target |
+| Method                            | Behavior across `[handler, controllerClass]`                      |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `get(key, target)`                | Reads metadata from a single target                               |
+| `getAll(key, targets)`            | Returns array of metadata values for each target                  |
 | `getAllAndOverride(key, targets)` | Returns the **first defined** value (method overrides controller) |
-| `getAllAndMerge(key, targets)` | Combines arrays or merges objects across all targets |
+| `getAllAndMerge(key, targets)`    | Combines arrays or merges objects across all targets              |
 
 @@filename(feature-flag.guard.ts)
+
 ```ts
 import {
   Injectable,

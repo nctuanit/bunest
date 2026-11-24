@@ -9,6 +9,7 @@ Unlike Express middleware, Bunest middleware operates natively on Web `Request` 
 Implement the `BunestMiddleware` interface on an `@Injectable()` class when your middleware needs constructor DI:
 
 @@filename(logger.middleware.ts)
+
 ```ts
 import {
   Injectable,
@@ -40,10 +41,15 @@ export class RequestLoggerMiddleware implements BunestMiddleware {
 When no DI dependencies are required, use a lightweight `MiddlewareFunction`:
 
 @@filename(timing.middleware.ts)
+
 ```ts
 import type { MiddlewareFunction } from "@bunest/core";
 
-export const poweredByMiddleware: MiddlewareFunction = async (_req, res, next) => {
+export const poweredByMiddleware: MiddlewareFunction = async (
+  _req,
+  res,
+  next,
+) => {
   res.header("X-Runtime", "Bun");
   return next();
 };
@@ -54,6 +60,7 @@ export const poweredByMiddleware: MiddlewareFunction = async (_req, res, next) =
 Modules that attach middleware implement `BunestModule` and its `configure(consumer: MiddlewareConsumer)` method:
 
 @@filename(app.module.ts)
+
 ```ts
 import {
   Module,
@@ -86,6 +93,7 @@ export class AppModule implements BunestModule {
 Register middleware that applies to every route globally via `app.use(...)`:
 
 @@filename(main.ts)
+
 ```ts
 const app = await BunestFactory.create(AppModule);
 app.use(poweredByMiddleware);

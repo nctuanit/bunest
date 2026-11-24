@@ -6,8 +6,7 @@ import {
   HttpStatus,
   NotFoundException,
   StreamableFile,
-} from "@bunest/common";
-import { Readable } from "node:stream";
+} from "@bunest/core";
 import {
   contentDisposition,
   servesSignedUrls,
@@ -27,6 +26,7 @@ import type {
   StorageRange,
   StorageSignedUrlClaims,
 } from "../interfaces/storage-types";
+import { toReadableStream } from "../utils/body.util";
 import { contentTypeEssence } from "../utils/content-type.util";
 import { basename } from "../utils/keys.util";
 
@@ -102,7 +102,9 @@ export function setStatus(res: unknown, status: number): void {
   }
 }
 
-export function requestHeaders(req: unknown): Record<string, string | undefined> {
+export function requestHeaders(
+  req: unknown,
+): Record<string, string | undefined> {
   if (!req || typeof req !== "object") {
     return {};
   }
@@ -123,7 +125,9 @@ export function requestHeaders(req: unknown): Record<string, string | undefined>
   }
   if (rawHeaders && typeof rawHeaders === "object") {
     const out: Record<string, string | undefined> = {};
-    for (const [k, v] of Object.entries(rawHeaders as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(
+      rawHeaders as Record<string, unknown>,
+    )) {
       if (typeof v === "string") {
         out[k.toLowerCase()] = v;
       } else if (Array.isArray(v) && typeof v[0] === "string") {
@@ -152,7 +156,9 @@ export function requestUrl(req: unknown): string {
   return "";
 }
 
-function parseSingleRangeHeader(header: string | undefined): StorageRange | undefined {
+function parseSingleRangeHeader(
+  header: string | undefined,
+): StorageRange | undefined {
   if (!header) return undefined;
   const trimmed = header.trim();
   if (!/^bytes=/i.test(trimmed)) return undefined;
@@ -175,7 +181,10 @@ function parseSingleRangeHeader(header: string | undefined): StorageRange | unde
   return { start, end };
 }
 
-function etagMatches(ifNoneMatch: string | undefined, etag: string | undefined): boolean {
+function etagMatches(
+  ifNoneMatch: string | undefined,
+  etag: string | undefined,
+): boolean {
   if (!ifNoneMatch || !etag) return false;
   const trimmed = ifNoneMatch.trim();
   if (trimmed === "*") return true;
@@ -208,7 +217,10 @@ export function toHttpError(error: unknown, res?: unknown): unknown {
     if (res && error.size !== undefined) {
       setHeader(res, "Content-Range", `bytes */${error.size}`);
     }
-    return new HttpException(error.message, HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
+    return new HttpException(
+      error.message,
+      HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+    );
   }
   return error;
 }
@@ -248,7 +260,10 @@ async function serveDownload(
       : (options.req as { signal?: AbortSignal } | undefined)?.signal;
   if (reqSignal) {
     if (reqSignal.aborted) ac.abort(reqSignal.reason);
-    else reqSignal.addEventListener("abort", () => ac.abort(reqSignal.reason), { once: true });
+    else
+      reqSignal.addEventListener("abort", () => ac.abort(reqSignal.reason), {
+        once: true,
+      });
   }
 
   try {
@@ -256,7 +271,11 @@ async function serveDownload(
       const info = await disk.stat(key, { signal: ac.signal });
       if (etagMatches(ifNoneMatch, info.etag)) {
         if (info.etag) setHeader(options.res, "ETag", info.etag);
-        setHeader(options.res, "Last-Modified", info.lastModified.toUTCString());
+        setHeader(
+          options.res,
+          "Last-Modified",
+          info.lastModified.toUTCString(),
+        );
         setHeader(
           options.res,
           "Cache-Control",
@@ -279,10 +298,7 @@ async function serveDownload(
     const filename = options.filename ?? basename(key);
     let dispositionValue: string;
     if (options.forcedDisposition !== undefined) {
-      if (
-        options.forcedDisposition.startsWith("inline") &&
-        !safeInline
-      ) {
+      if (options.forcedDisposition.startsWith("inline") && !safeInline) {
         dispositionValue = contentDisposition("attachment", filename);
       } else {
         dispositionValue = options.forcedDisposition;
@@ -306,7 +322,11 @@ async function serveDownload(
     if (download.etag) {
       setHeader(options.res, "ETag", download.etag);
     }
-    setHeader(options.res, "Last-Modified", download.lastModified.toUTCString());
+    setHeader(
+      options.res,
+      "Last-Modified",
+      download.lastModified.toUTCString(),
+    );
     setHeader(
       options.res,
       "Cache-Control",
@@ -324,9 +344,7 @@ async function serveDownload(
       setStatus(options.res, 206);
     }
 
-    const webStream = Readable.toWeb(
-      download.body,
-    ) as unknown as ReadableStream<Uint8Array>;
+    const webStream = toReadableStream(download.body);
 
     return new StreamableFile(webStream, {
       type: download.contentType,

@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, expect } from "bun:test";
 import {
   Inject,
   Injectable,
   type MicroserviceInstance,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   BunWebSocketAdapter,
@@ -14,7 +13,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 class NoopTransport implements MicroserviceInstance {
@@ -90,7 +89,11 @@ describeConformance(
 
           app = testingModule.createNestApplication({ logger: false });
           const wsAdapter = app.get(BunWebSocketAdapter);
-          app.useWebSocketAdapter(wsAdapter as unknown as Parameters<BunestApplication["useWebSocketAdapter"]>[0]);
+          app.useWebSocketAdapter(
+            wsAdapter as unknown as Parameters<
+              BunestApplication["useWebSocketAdapter"]
+            >[0],
+          );
 
           const transport = new NoopTransport();
           app.connectMicroservice(transport, { inheritAppConfig });

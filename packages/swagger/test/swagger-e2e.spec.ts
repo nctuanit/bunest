@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
-import { Controller, Get, Module } from "@bunest/common";
+import { Controller, Get, Module } from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   ApiOkResponse,
@@ -39,7 +38,9 @@ describe("SwaggerModule.setup() HTTP E2E & XSS Protection", () => {
       SwaggerModule.setup("/docs", app, doc);
 
       // In-memory app.fetch() tests
-      const jsonRes = await app.fetch(new Request("http://localhost/docs-json"));
+      const jsonRes = await app.fetch(
+        new Request("http://localhost/docs-json"),
+      );
       expect(jsonRes.status).toBe(200);
       expect(jsonRes.headers.get("content-type")).toContain("application/json");
       const servedDoc = (await jsonRes.json()) as Record<string, unknown>;
@@ -148,10 +149,14 @@ describe("SwaggerModule.setup() HTTP E2E & XSS Protection", () => {
     class DynamicAppModule {}
 
     // Case 1: useGlobalPrefix: false (default) with setGlobalPrefix called AFTER create() and BEFORE init()
-    const app1 = await BunestFactory.create(DynamicAppModule, { logger: false });
+    const app1 = await BunestFactory.create(DynamicAppModule, {
+      logger: false,
+    });
     try {
       app1.setGlobalPrefix("api");
-      const config = new DocumentBuilder().setTitle("Dynamic Prefix API").build();
+      const config = new DocumentBuilder()
+        .setTitle("Dynamic Prefix API")
+        .build();
       const doc = SwaggerModule.createDocument(app1, config);
 
       expect(doc.paths["/api/items/{id}"]).toBeDefined();
@@ -199,7 +204,9 @@ describe("SwaggerModule.setup() HTTP E2E & XSS Protection", () => {
     });
     try {
       app2.setGlobalPrefix("api");
-      const config = new DocumentBuilder().setTitle("Prefixed Docs API").build();
+      const config = new DocumentBuilder()
+        .setTitle("Prefixed Docs API")
+        .build();
       const doc = SwaggerModule.createDocument(app2, config);
 
       SwaggerModule.setup("/docs", app2, doc, { useGlobalPrefix: true });

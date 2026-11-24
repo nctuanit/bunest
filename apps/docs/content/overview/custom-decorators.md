@@ -7,6 +7,7 @@ Bunest embraces decorators as a first-class extensibility mechanism. You can com
 Use `createParamDecorator<Data, Output>(factory)` to extract domain concepts—such as the authenticated user, tenant ID, or trace correlation header—directly into controller parameters:
 
 @@filename(current-user.decorator.ts)
+
 ```ts
 import { createParamDecorator, type ExecutionContext } from "@bunest/core";
 
@@ -16,23 +17,25 @@ export interface AuthUser {
   role: string;
 }
 
-export const CurrentUser = createParamDecorator<keyof AuthUser | undefined, unknown>(
-  (property, ctx: ExecutionContext) => {
-    const req = ctx.switchToHttp().getRequest();
-    // Example: read user headers or RequestContext attached by an AuthGuard
-    const user: AuthUser = {
-      id: req.headers.get("x-user-id") ?? "anonymous",
-      email: req.headers.get("x-user-email") ?? "",
-      role: req.headers.get("x-user-role") ?? "guest",
-    };
-    return property ? user[property] : user;
-  },
-);
+export const CurrentUser = createParamDecorator<
+  keyof AuthUser | undefined,
+  unknown
+>((property, ctx: ExecutionContext) => {
+  const req = ctx.switchToHttp().getRequest();
+  // Example: read user headers or RequestContext attached by an AuthGuard
+  const user: AuthUser = {
+    id: req.headers.get("x-user-id") ?? "anonymous",
+    email: req.headers.get("x-user-email") ?? "",
+    role: req.headers.get("x-user-role") ?? "guest",
+  };
+  return property ? user[property] : user;
+});
 ```
 
 Now use `@CurrentUser()` anywhere in a controller—optionally passing data or parameter-level pipes!
 
 @@filename(profile.controller.ts)
+
 ```ts
 import { Controller, Get } from "@bunest/core";
 import { CurrentUser, type AuthUser } from "./current-user.decorator";
@@ -58,6 +61,7 @@ export class ProfileController {
 Instead of raw string keys with `@SetMetadata("roles", [...])`, use `Reflector.createDecorator<T>()` to create type-safe decorators backed by unique symbols:
 
 @@filename(public.decorator.ts)
+
 ```ts
 import { Reflector } from "@bunest/core";
 
@@ -70,6 +74,7 @@ export const CacheTtl = Reflector.createDecorator<number>({
 Read the metadata inside a Guard or Interceptor with full type inference:
 
 @@filename(cache-ttl.interceptor.ts)
+
 ```ts
 import {
   Injectable,
@@ -104,6 +109,7 @@ export class CacheHeaderInterceptor implements BunestInterceptor {
 Because legacy decorators are plain TypeScript functions, you can bundle multiple guards, metadata, and response headers into a single semantic decorator:
 
 @@filename(auth.decorator.ts)
+
 ```ts
 import { UseGuards } from "@bunest/core";
 import { BearerAuthGuard } from "./auth.guard";
@@ -111,7 +117,11 @@ import { Roles } from "./roles.decorator";
 import { RolesGuard } from "./roles.guard";
 
 export function Auth(...roles: string[]): MethodDecorator & ClassDecorator {
-  return (target: object, propertyKey?: string | symbol, descriptor?: PropertyDescriptor) => {
+  return (
+    target: object,
+    propertyKey?: string | symbol,
+    descriptor?: PropertyDescriptor,
+  ) => {
     const rolesDec = Roles(roles);
     const guardsDec = UseGuards(BearerAuthGuard, RolesGuard);
     if (propertyKey !== undefined && descriptor !== undefined) {

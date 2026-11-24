@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { ContextStorage } from "@bunest/core";
 
 interface StepScopeState {
   idempotencyKey: string;
@@ -6,7 +6,7 @@ interface StepScopeState {
   starts: Map<string, number>;
 }
 
-const scope = new AsyncLocalStorage<StepScopeState>();
+const scope = new ContextStorage<StepScopeState>();
 
 /** Runs a step attempt's function, so the signals it sends and the workflows it starts can derive their ids from the step. */
 export function runInStepScope<T>(idempotencyKey: string, fn: () => T): T {

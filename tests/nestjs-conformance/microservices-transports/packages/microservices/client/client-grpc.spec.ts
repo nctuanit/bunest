@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   GrpcClientProxy,
@@ -173,7 +172,9 @@ describeConformance(
           fetch(req) {
             seenPaths.push(new URL(req.url).pathname);
             return new Response(
-              encodeGrpcFrame(new TextEncoder().encode(JSON.stringify({ ok: true }))),
+              encodeGrpcFrame(
+                new TextEncoder().encode(JSON.stringify({ ok: true })),
+              ),
               {
                 status: 200,
                 headers: {
@@ -229,7 +230,10 @@ describeConformance(
         }>("TestService");
 
         expect(
-          await svc.find({}, { metadata: { "x-trace": "t-99" }, timeoutMs: 1500 }),
+          await svc.find(
+            {},
+            { metadata: { "x-trace": "t-99" }, timeoutMs: 1500 },
+          ),
         ).toEqual({
           trace: "t-99",
           hasDeadline: true,
@@ -451,7 +455,9 @@ describeConformance(
           err2 = err;
         }
         expect(err2).toBeInstanceOf(GrpcException);
-        expect((err2 as GrpcException).code).toBe(GrpcStatus.RESOURCE_EXHAUSTED);
+        expect((err2 as GrpcException).code).toBe(
+          GrpcStatus.RESOURCE_EXHAUSTED,
+        );
       });
 
       it("should tolerate malformed percent-encoding in grpc-message header", async () => {
@@ -526,7 +532,10 @@ describeConformance(
         async () => {
           const srv = await startGrpcServer();
           srv.addGrpcStreamHandler("Feed", "Items", async function* (data) {
-            const { count, failAt } = data as { count: number; failAt?: number };
+            const { count, failAt } = data as {
+              count: number;
+              failAt?: number;
+            };
             for (let i = 1; i <= count; i++) {
               if (failAt === i) {
                 throw new GrpcException(
@@ -571,7 +580,9 @@ describeConformance(
           expect(caught).toBeInstanceOf(GrpcException);
           expect((caught as GrpcException).code).toBe(GrpcStatus.OUT_OF_RANGE);
           expect((caught as GrpcException).message).toBe("stopped at 3");
-          expect((caught as GrpcException).metadata?.get("x-fail-idx")).toBe("3");
+          expect((caught as GrpcException).metadata?.get("x-fail-idx")).toBe(
+            "3",
+          );
 
           // 3. Client-side early cancel (break) stops consuming cleanly without throwing
           const partial: number[] = [];
@@ -725,9 +736,11 @@ describeConformance(
         expect(hookSpy.calledOnce).toBe(true);
 
         await client.onModuleDestroy();
-        await expect(client.call("Events", "Notify", {})).rejects.toMatchObject({
-          code: GrpcStatus.UNAVAILABLE,
-        });
+        await expect(client.call("Events", "Notify", {})).rejects.toMatchObject(
+          {
+            code: GrpcStatus.UNAVAILABLE,
+          },
+        );
         await expect(async () => {
           for await (const _x of client.stream("Events", "Notify", {})) {
             // should fail immediately

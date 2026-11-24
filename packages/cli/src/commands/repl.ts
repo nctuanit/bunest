@@ -1,5 +1,4 @@
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, statPath } from "@bunest/core";
 import type {
   CliIO,
   ReplCommandOptions,
@@ -30,7 +29,7 @@ export async function runReplCommand(
   const entry = resolve(cwd, options.entry ?? "src/repl.ts");
 
   try {
-    const info = await stat(entry);
+    const info = await statPath(entry);
     if (!info.isFile()) {
       throw new Error(`REPL entry path is not a file: ${entry}`);
     }
@@ -51,7 +50,7 @@ export async function runReplCommand(
   const spawn = options.spawn ?? defaultSpawn;
   const { exitCode } = await spawn([process.execPath, "run", entry], {
     cwd,
-    env: { ...process.env, BUNEST_REPL: "1" },
+    env: { ...Bun.env, BUNEST_REPL: "1" },
   });
 
   return {

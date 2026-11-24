@@ -9,8 +9,8 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
   type HttpServer,
-} from "@bunest/common";
-import { getCurrentRequestContext } from "@bunest/http";
+} from "../common/index";
+import { getCurrentRequestContext } from "../http/index";
 import { HttpAdapterHost } from "../helpers/http-adapter-host";
 
 /**
@@ -48,7 +48,7 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
     }
 
     if (adapter && typeof adapter.reply === "function") {
-      return adapter.reply(res, payload, status);
+      return adapter.reply(res, payload, status) as Response | void;
     }
 
     const reqCtx = getCurrentRequestContext();
@@ -91,7 +91,7 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
 
     const res = host.switchToHttp().getResponse();
     if (applicationRef && typeof applicationRef.reply === "function") {
-      return applicationRef.reply(res, body, body.statusCode);
+      return applicationRef.reply(res, body, body.statusCode) as Response | void;
     }
 
     return new Response(JSON.stringify(body), {
@@ -100,18 +100,20 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
     });
   }
 
-  isExceptionObject(err: any): err is Error {
+  isExceptionObject(err: unknown): err is Error {
     return typeof err === "object" && err !== null && "message" in err;
   }
 
   isHttpError(
-    err: any,
+    err: unknown,
   ): err is { statusCode: number; message: string; expose?: boolean } {
     return (
       typeof err === "object" &&
       err !== null &&
-      typeof err.statusCode === "number" &&
-      typeof err.message === "string"
+      "statusCode" in err &&
+      "message" in err &&
+      typeof (err as { statusCode?: unknown }).statusCode === "number" &&
+      typeof (err as { message?: unknown }).message === "string"
     );
   }
 

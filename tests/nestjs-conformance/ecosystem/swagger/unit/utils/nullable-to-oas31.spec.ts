@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Module,
   Post,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../../packages/core/src";
 import {
   ApiBody,
@@ -46,9 +45,7 @@ describeConformance(
   () => {
     describe("type unions", () => {
       it("turns a nullable primitive into a type union", () => {
-        expect(
-          exploreProperty31({ type: "string", nullable: true }),
-        ).toEqual({
+        expect(exploreProperty31({ type: "string", nullable: true })).toEqual({
           type: ["string", "null"],
         });
       });
@@ -164,9 +161,7 @@ describeConformance(
           @ApiProperty()
           name!: string;
         }
-        expect(
-          exploreProperty31({ type: () => Cat, nullable: true }),
-        ).toEqual({
+        expect(exploreProperty31({ type: () => Cat, nullable: true })).toEqual({
           anyOf: [{ $ref: "#/components/schemas/Cat" }, { type: "null" }],
         });
       });
@@ -242,9 +237,7 @@ describeConformance(
       });
 
       it("drops nullable: false without other changes", () => {
-        expect(
-          exploreProperty31({ type: "string", nullable: false }),
-        ).toEqual({
+        expect(exploreProperty31({ type: "string", nullable: false })).toEqual({
           type: "string",
         });
       });

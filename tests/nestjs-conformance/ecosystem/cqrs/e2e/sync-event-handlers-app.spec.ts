@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   afterAll,
   beforeAll,
@@ -8,7 +7,7 @@ import {
   it,
   spyOn,
 } from "bun:test";
-import { EventBus } from "../../../../../packages/cqrs/src";
+import { EventBus } from "../../../../../packages/messaging/src/cqrs";
 import {
   Test,
   describeConformance,

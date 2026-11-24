@@ -1,5 +1,4 @@
-import "reflect-metadata";
-import { Module, UnauthorizedException } from "@bunest/common";
+import { Module, UnauthorizedException } from "@bunest/core";
 import {
   ConnectedSocket,
   MessageBody,
@@ -12,7 +11,7 @@ import {
   type BunWsServer,
   type OnGatewayAuthenticate,
   type OnGatewayDisconnect,
-} from "@bunest/websockets";
+} from "@bunest/core/ws";
 
 export const VALID_CHAT_TOKENS = new Map<string, string>([
   ["token-alice", "alice"],

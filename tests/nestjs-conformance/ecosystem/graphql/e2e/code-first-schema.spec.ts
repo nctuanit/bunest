@@ -1,7 +1,11 @@
-import "reflect-metadata";
 import { beforeAll, describe, expect, it } from "bun:test";
-import { Type } from "class-transformer";
-import { Length, Max, MaxLength, Min } from "class-validator";
+import { Type } from "../../../../../packages/validation/src/transformer";
+import {
+  Length,
+  Max,
+  MaxLength,
+  Min,
+} from "../../../../../packages/validation/src/validator";
 import {
   GraphQLSchema,
   type IntrospectionField,
@@ -12,7 +16,7 @@ import {
   getIntrospectionQuery,
   graphql,
   printSchema,
-} from "../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../packages/graphql/src";
 import {
   type CanActivate,
   type ExecutionContext,
@@ -20,7 +24,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   Args,
   ArgsType,

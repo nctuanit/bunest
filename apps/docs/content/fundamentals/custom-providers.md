@@ -4,19 +4,20 @@ Standard class providers (`providers: [UsersService]`) cover most cases, but Bun
 
 ## Provider Forms Overview
 
-| Provider Kind | Syntax | Lifetime |
-|---|---|---|
-| Class shorthand | `UsersService` | `@Injectable({ scope })` (default `SINGLETON`) |
-| `ClassProvider` | `{ provide: TOKEN, useClass: ImplClass, scope? }` | Explicit `scope` overrides decorator scope |
-| `ValueProvider` | `{ provide: TOKEN, useValue: constantOrObj }` | Always `SINGLETON` |
-| `FactoryProvider` | `{ provide: TOKEN, useFactory: (...deps) => ..., inject?, scope? }` | Sync or `async` factory |
-| `ExistingProvider` | `{ provide: ALIAS, useExisting: TARGET }` | Shares the target provider's instance |
+| Provider Kind      | Syntax                                                              | Lifetime                                       |
+| ------------------ | ------------------------------------------------------------------- | ---------------------------------------------- |
+| Class shorthand    | `UsersService`                                                      | `@Injectable({ scope })` (default `SINGLETON`) |
+| `ClassProvider`    | `{ provide: TOKEN, useClass: ImplClass, scope? }`                   | Explicit `scope` overrides decorator scope     |
+| `ValueProvider`    | `{ provide: TOKEN, useValue: constantOrObj }`                       | Always `SINGLETON`                             |
+| `FactoryProvider`  | `{ provide: TOKEN, useFactory: (...deps) => ..., inject?, scope? }` | Sync or `async` factory                        |
+| `ExistingProvider` | `{ provide: ALIAS, useExisting: TARGET }`                           | Shares the target provider's instance          |
 
 ## Value Providers (`useValue`)
 
 Bind configuration objects, constants, or test mocks to a symbol, string, or class token:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 
@@ -47,6 +48,7 @@ export class ConfigModule {}
 Swap implementations dynamically based on environment or feature flags:
 
 @@filename(storage.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { LocalStorageService } from "./local-storage.service";
@@ -73,6 +75,7 @@ export class StorageModule {}
 `useFactory` lets you compute a provider dynamically—including **`async` initialization** (such as opening a `bun:sqlite` or `Bun.sql` connection pool). Bunest awaits async singleton factories in deterministic topological order during bootstrap before starting `Bun.serve()`:
 
 @@filename(database.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { Database } from "bun:sqlite";
@@ -89,8 +92,13 @@ export const METRICS_CLIENT = Symbol("METRICS_CLIENT");
         APP_CONFIG,
         { token: METRICS_CLIENT, optional: true }, // OptionalFactoryDependency
       ],
-      useFactory: async (config: AppConfig, metrics?: { track: (k: string) => void }) => {
-        const db = new Database(config.env === "production" ? "prod.sqlite" : ":memory:");
+      useFactory: async (
+        config: AppConfig,
+        metrics?: { track: (k: string) => void },
+      ) => {
+        const db = new Database(
+          config.env === "production" ? "prod.sqlite" : ":memory:",
+        );
         db.run("PRAGMA journal_mode = WAL;");
         metrics?.track("db.connected");
         return db;
@@ -107,6 +115,7 @@ export class DatabaseModule {}
 Expose an existing provider under an additional token without instantiating a second copy:
 
 @@filename(alias.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { StructuredLogger } from "./structured-logger.service";

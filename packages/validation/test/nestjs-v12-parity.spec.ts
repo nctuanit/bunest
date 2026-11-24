@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import * as CommonPkg from "@bunest/common";
+import * as CommonPkg from "@bunest/core";
 import {
   BadRequestException,
   HttpException,
@@ -12,8 +11,8 @@ import {
   type ExecutionContext,
   type StandardSchemaV1,
   type ValidationErrorResponse,
-} from "@bunest/common";
-import { IsEmail, IsString, MinLength } from "class-validator";
+} from "@bunest/core";
+import { IsEmail, IsString, MinLength } from "../src/validator";
 import {
   CLASS_SERIALIZER_OPTIONS,
   ClassSerializerInterceptor,
@@ -58,7 +57,11 @@ function makeContext(
 }
 
 function makeNext<T>(value: T): CallHandler<T> {
-  return { async handle() { return value; } };
+  return {
+    async handle() {
+      return value;
+    },
+  };
 }
 
 describe("@bunest/validation NestJS v12 API Parity", () => {
@@ -185,8 +188,12 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
         throw new Error("should throw");
       } catch (err) {
         expect(err).toBeInstanceOf(HttpException);
-        const body = (err as HttpException).getResponse() as unknown as ValidationErrorResponse;
-        expect(body.details.some((d) => d.messages.includes(OMITTED_ERRORS_MESSAGE))).toBe(true);
+        const body = (
+          err as HttpException
+        ).getResponse() as unknown as ValidationErrorResponse;
+        expect(
+          body.details.some((d) => d.messages.includes(OMITTED_ERRORS_MESSAGE)),
+        ).toBe(true);
       }
 
       // Custom exceptionFactory receives ALL issues regardless of maxErrorMessagesLength
@@ -233,41 +240,64 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
       }
 
       const pipe = new CustomStdPipe({ maxErrorMessagesLength: 10 });
-      await pipe.transform({ name: "  hi " }, { type: "body", schema: trimSchema });
-      expect(hookLog).toEqual(["toValidate:body", "stripProtoKeys", "validate"]);
+      await pipe.transform(
+        { name: "  hi " },
+        { type: "body", schema: trimSchema },
+      );
+      expect(hookLog).toEqual([
+        "toValidate:body",
+        "stripProtoKeys",
+        "validate",
+      ]);
 
       const formatted = pipe.testFormat([
         { message: "is invalid", path: ["user", "email"] },
         { message: "should be omitted", path: ["other"] },
       ]);
-      expect(formatted).toEqual(["user.email: is invalid", OMITTED_ERRORS_MESSAGE]);
+      expect(formatted).toEqual([
+        "user.email: is invalid",
+        OMITTED_ERRORS_MESSAGE,
+      ]);
     });
   });
 
   describe("StandardSchemaSerializerInterceptor (@SerializeOptions + serialize + transformToPlain)", () => {
     const receivedValidateOpts: unknown[] = [];
 
-    const userSchema: StandardSchemaV1<unknown, { id: number; name: string }> = {
-      "~standard": {
-        version: 1,
-        vendor: "test-ser",
-        validate(val, opts) {
-          receivedValidateOpts.push(opts);
-          if (typeof val !== "object" || val === null || typeof (val as any).id !== "number") {
-            return { issues: [{ message: "invalid id", path: ["id"] }] };
-          }
-          return {
-            value: { id: (val as any).id, name: String((val as any).name ?? "") },
-          };
+    const userSchema: StandardSchemaV1<unknown, { id: number; name: string }> =
+      {
+        "~standard": {
+          version: 1,
+          vendor: "test-ser",
+          validate(val, opts) {
+            receivedValidateOpts.push(opts);
+            if (
+              typeof val !== "object" ||
+              val === null ||
+              typeof (val as any).id !== "number"
+            ) {
+              return { issues: [{ message: "invalid id", path: ["id"] }] };
+            }
+            return {
+              value: {
+                id: (val as any).id,
+                name: String((val as any).name ?? ""),
+              },
+            };
+          },
         },
-      },
-    };
+      };
 
-    @SerializeOptions({ schema: userSchema, validateOptions: { libraryOptions: { mode: "class" } } })
+    @SerializeOptions({
+      schema: userSchema,
+      validateOptions: { libraryOptions: { mode: "class" } },
+    })
     class ProfileController {
       list() {}
 
-      @SerializeOptions({ validateOptions: { libraryOptions: { mode: "handler" } } })
+      @SerializeOptions({
+        validateOptions: { libraryOptions: { mode: "handler" } },
+      })
       listWithHandlerOpts() {}
 
       @UseStandardSchema(userSchema)
@@ -276,10 +306,15 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
 
     it("reads @SerializeOptions({ schema, validateOptions }), merges handler validateOptions with class schema, and serializes arrays", async () => {
       receivedValidateOpts.length = 0;
-      const interceptor = new StandardSchemaSerializerInterceptor(new Reflector());
+      const interceptor = new StandardSchemaSerializerInterceptor(
+        new Reflector(),
+      );
 
       // Class-level @SerializeOptions({ schema }) serializes single & array responses
-      const listCtx = makeContext(ProfileController, ProfileController.prototype.list);
+      const listCtx = makeContext(
+        ProfileController,
+        ProfileController.prototype.list,
+      );
       const listOut = await interceptor.intercept(
         listCtx,
         makeNext([
@@ -291,7 +326,9 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
         { id: 1, name: "Ada" },
         { id: 2, name: "Grace" },
       ]);
-      expect(receivedValidateOpts[0]).toEqual({ libraryOptions: { mode: "class" } });
+      expect(receivedValidateOpts[0]).toEqual({
+        libraryOptions: { mode: "class" },
+      });
 
       // Handler sets ONLY validateOptions -> preserves class schema!
       receivedValidateOpts.length = 0;
@@ -304,7 +341,9 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
         makeNext({ id: 9, name: "Lin", passwordHash: "nope" }),
       );
       expect(singleOut).toEqual({ id: 9, name: "Lin" });
-      expect(receivedValidateOpts[0]).toEqual({ libraryOptions: { mode: "handler" } });
+      expect(receivedValidateOpts[0]).toEqual({
+        libraryOptions: { mode: "handler" },
+      });
 
       // Public serialize() and transformToPlain() directly callable
       expect(
@@ -358,13 +397,18 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
 
     it("exposes public createExceptionFactory() supporting bunest, list, and grouped formats with OMITTED_ERRORS_MESSAGE", () => {
       const errors: ValidationError[] = [
-        { property: "email", constraints: { isEmail: "email must be an email" } },
+        {
+          property: "email",
+          constraints: { isEmail: "email must be an email" },
+        },
         { property: "name", constraints: { minLength: "name is too short" } },
       ];
 
       // Default ADR-009 bunest format
       const bunestPipe = new ValidationPipe();
-      const bunestErr = bunestPipe.createExceptionFactory()(errors) as HttpException;
+      const bunestErr = bunestPipe.createExceptionFactory()(
+        errors,
+      ) as HttpException;
       expect(bunestErr).toBeInstanceOf(BadRequestException);
       expect((bunestErr.getResponse() as any).details).toHaveLength(2);
 
@@ -373,7 +417,9 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
         errorFormat: "list",
         maxErrorMessagesLength: 10,
       });
-      const listErr = listPipe.createExceptionFactory()(errors) as HttpException;
+      const listErr = listPipe.createExceptionFactory()(
+        errors,
+      ) as HttpException;
       expect((listErr.getResponse() as any).message).toEqual([
         "email must be an email",
         OMITTED_ERRORS_MESSAGE,
@@ -384,7 +430,9 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
         errorFormat: "grouped",
         maxErrorMessagesLength: 10,
       });
-      const groupedErr = groupedPipe.createExceptionFactory()(errors) as HttpException;
+      const groupedErr = groupedPipe.createExceptionFactory()(
+        errors,
+      ) as HttpException;
       expect((groupedErr.getResponse() as any).message).toEqual({
         email: ["email must be an email"],
         "...": [OMITTED_ERRORS_MESSAGE],
@@ -409,7 +457,10 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
             {
               property: "nested",
               children: [
-                { property: "city", constraints: { isString: "must be string" } },
+                {
+                  property: "city",
+                  constraints: { isString: "must be string" },
+                },
               ],
             },
           ]);
@@ -417,14 +468,25 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
             {
               property: "nested",
               children: [
-                { property: "city", constraints: { isString: "city must be string" } },
+                {
+                  property: "city",
+                  constraints: { isString: "city must be string" },
+                },
               ],
             },
           ]);
           const binErrors = this.findNestedBinaryValues({
             payload: new Uint8Array([1, 2]),
           });
-          return { isPrim, isBin, emptyNil, hasRules, grouped, flat, binErrors };
+          return {
+            isPrim,
+            isBin,
+            emptyNil,
+            hasRules,
+            grouped,
+            flat,
+            binErrors,
+          };
         }
       }
 
@@ -447,7 +509,9 @@ describe("@bunest/validation NestJS v12 API Parity", () => {
       } catch (err) {
         expect(err).toBeInstanceOf(HttpException);
         expect((err as HttpException).getStatus()).toBe(422);
-        expect((err as HttpException).getResponse()).toEqual({ customCount: 2 });
+        expect((err as HttpException).getResponse()).toEqual({
+          customCount: 2,
+        });
       }
     });
   });

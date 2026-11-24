@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   UseFilters,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class Filter {
@@ -47,7 +46,7 @@ describeConformance(
       expect(metadata).toEqual(filters);
     });
 
-    // BUNEST_BUG: UseFilters() in packages/common/src/decorators/enhancers.decorators.ts does not validate decorator arguments (does not throw InvalidDecoratorItemException when a primitive like 'test' is passed).
+    // BUNEST_BUG: UseFilters() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator arguments (does not throw InvalidDecoratorItemException when a primitive like 'test' is passed).
     it.skip("when object is invalid should throw exception", () => {
       let error: unknown = undefined;
       try {

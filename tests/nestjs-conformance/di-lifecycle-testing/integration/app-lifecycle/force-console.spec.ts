@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   ConsoleLogger,
   Controller,
   Get,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -78,7 +77,9 @@ describeConformance(
 
         expect(consoleErrorSpy).toHaveBeenCalled();
         const calls = consoleErrorSpy.mock.calls.filter((args: unknown[]) =>
-          args.some((arg: unknown) => String(arg).includes("Test error message")),
+          args.some((arg: unknown) =>
+            String(arg).includes("Test error message"),
+          ),
         );
         expect(calls.length).toBeGreaterThan(0);
       });
@@ -101,8 +102,12 @@ describeConformance(
       beforeEach(async () => {
         consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
         consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
-        stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
-        stderrSpy = spyOn(process.stderr, "write").mockImplementation(() => true);
+        stdoutSpy = spyOn(process.stdout, "write").mockImplementation(
+          () => true,
+        );
+        stderrSpy = spyOn(process.stderr, "write").mockImplementation(
+          () => true,
+        );
 
         const moduleRef = await Test.createTestingModule({
           imports: [AppModule],
@@ -141,7 +146,9 @@ describeConformance(
 
     describe("When forceConsole is set via application creation", () => {
       it("should apply forceConsole to ConsoleLogger", async () => {
-        const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+        const consoleLogSpy = spyOn(console, "log").mockImplementation(
+          () => {},
+        );
 
         const moduleRef = await Test.createTestingModule({
           imports: [AppModule],

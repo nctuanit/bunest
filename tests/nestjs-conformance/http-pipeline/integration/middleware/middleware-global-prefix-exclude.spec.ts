@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, it } from "bun:test";
 import {
   Controller,
@@ -12,9 +11,14 @@ import {
   type MiddlewareConsumer,
   type RouteInfo,
   type VersioningOptions,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { Test, describeConformance, itAdapted, request } from "../../../_helpers";
+import {
+  Test,
+  describeConformance,
+  itAdapted,
+  request,
+} from "../../../_helpers";
 
 type VersionedRouteInfo = RouteInfo & { version?: string };
 
@@ -143,7 +147,7 @@ describeConformance(
         "405 Method Not Allowed + Allow header on disallowed method",
       );
 
-      // BUNEST_BUG: Expected GET /api/users/1 to return 200 "middleware", got 404. packages/http/src/scanner/path-normalizer.ts (matchesPathPattern line 151) treats `tSeg.startsWith(":")` as matching any static pattern segment, so setGlobalPrefix('api', { exclude: ['users/me'] }) erroneously excludes "/users/:id" from the global prefix.
+      // BUNEST_BUG: Expected GET /api/users/1 to return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) treats `tSeg.startsWith(":")` as matching any static pattern segment, so setGlobalPrefix('api', { exclude: ['users/me'] }) erroneously excludes "/users/:id" from the global prefix.
       it.skip(`forRoutes('users/:id') should run on "/users/me" excluded from the prefix`, async () => {
         await request(app!).get("/api/users/1").expect(200, MIDDLEWARE_VALUE);
         await request(app!).get("/users/me").expect(200, MIDDLEWARE_VALUE);
@@ -178,7 +182,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /reports to return 200 "middleware", got 404. packages/http/src/scanner/path-normalizer.ts (matchesPathPattern) does not support path-to-regexp v8 `{*path}` optional wildcard syntax in globalPrefix exclude or middleware forRoutes.
+      // BUNEST_BUG: Expected GET /reports to return 200 "middleware", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not support path-to-regexp v8 `{*path}` optional wildcard syntax in globalPrefix exclude or middleware forRoutes.
       it.skip.each(["{*path}", "reports"])(
         `forRoutes('%s') should run on "/reports"`,
         async (route) => {
@@ -220,7 +224,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: Expected GET /health to return "middleware" while GET /health/ready skips middleware, got "test" for /health. packages/http/src/scanner/path-normalizer.ts (matchesPathPattern) does not recognize `{*path}` in `.forRoutes('{*path}')` (or `health/{*path}`), and lines 160-167 match `health/(.*)` against bare `/health`.
+      // BUNEST_BUG: Expected GET /health to return "middleware" while GET /health/ready skips middleware, got "test" for /health. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not recognize `{*path}` in `.forRoutes('{*path}')` (or `health/{*path}`), and lines 160-167 match `health/(.*)` against bare `/health`.
       it.skip.each(["health/{*path}", "health/:check", "health/(.*)"])(
         `exclude('%s') should skip "/health/ready" excluded from the prefix`,
         async (exclusion) => {
@@ -231,7 +235,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Expected GET /health to return "middleware", got "test". packages/http/src/scanner/path-normalizer.ts (matchesPathPattern) does not recognize `{*path}` in `.forRoutes('{*path}')`, and lines 160-167 erroneously match `health/*` and `health/(.*)` against bare `/health`.
+      // BUNEST_BUG: Expected GET /health to return "middleware", got "test". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not recognize `{*path}` in `.forRoutes('{*path}')`, and lines 160-167 erroneously match `health/*` and `health/(.*)` against bare `/health`.
       it.skip.each(["health/{*path}", "health/*", "health/(.*)"])(
         `exclude('%s') should not skip "/health" excluded from the prefix as "health/"`,
         async (exclusion) => {
@@ -244,7 +248,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Expected GET /reports to return 200 "test", got 404. packages/http/src/scanner/path-normalizer.ts (matchesPathPattern) does not support `{*path}` syntax in globalPrefix exclude `reports/{*path}` or `.forRoutes('{*path}')`.
+      // BUNEST_BUG: Expected GET /reports to return 200 "test", got 404. packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern) does not support `{*path}` syntax in globalPrefix exclude `reports/{*path}` or `.forRoutes('{*path}')`.
       it.skip(`exclude('reports') should skip "/reports" excluded by a wildcard`, async () => {
         await createApp("reports", ["reports/{*path}"]);
         await request(app!).get("/reports").expect(200, RETURN_VALUE);
@@ -312,10 +316,13 @@ describeConformance(
           { type: VersioningType.URI, defaultVersion: "1", prefix: false },
           "/2/admin/secret",
         ],
-      ])(`forRoutes('*') should run with %s`, async (_label, versioning, url) => {
-        await createApp(versioning);
-        await request(app!).get(url).expect(200, MIDDLEWARE_VALUE);
-      });
+      ])(
+        `forRoutes('*') should run with %s`,
+        async (_label, versioning, url) => {
+          await createApp(versioning);
+          await request(app!).get(url).expect(200, MIDDLEWARE_VALUE);
+        },
+      );
 
       it(`forRoutes('*') should run on an excluded route with a "version" parameter`, async () => {
         await createApp({ type: VersioningType.URI, defaultVersion: "1" });
@@ -324,15 +331,13 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: Expected GET /v2/admin/secret to bypass version-1 middleware and return "test", got "middleware". RouteInfo has no `version` property in packages/common/src/interfaces/pipeline.interface.ts; packages/core/src/module/middleware-consumer.ts and packages/http/src/scanner/path-normalizer.ts ignore `version` on forRoutes().
+      // BUNEST_BUG: Expected GET /v2/admin/secret to bypass version-1 middleware and return "test", got "middleware". RouteInfo has no `version` property in packages/core/src/common/interfaces/pipeline.interface.ts; packages/core/src/module/middleware-consumer.ts and packages/core/src/http/scanner/path-normalizer.ts ignore `version` on forRoutes().
       it.skip(`forRoutes({ path: '*', version: '1' }) should not run for another version`, async () => {
         await createApp(
           { type: VersioningType.URI, defaultVersion: "1" },
           { path: "*", method: RequestMethod.ALL, version: "1" },
         );
-        await request(app!)
-          .get("/v2/admin/secret")
-          .expect(200, RETURN_VALUE);
+        await request(app!).get("/v2/admin/secret").expect(200, RETURN_VALUE);
       });
     });
   },

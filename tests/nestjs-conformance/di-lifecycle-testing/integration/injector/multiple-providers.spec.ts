@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Module, Scope } from "../../../../../packages/common/src";
+import { Module, Scope } from "../../../../../packages/core/src/common";
 import { Test, describeConformance } from "../../../_helpers";
 
 @Module({

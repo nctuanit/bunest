@@ -4,18 +4,13 @@ import {
   Logger,
   Optional,
   type LoggerService,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   HealthIndicatorStatus,
   TERMINUS_LOGGER,
   type HealthIndicatorResult,
 } from "./health.interface";
-import {
-  TimeoutError,
-  formatErrorMessage,
-  toMs,
-  type Duration,
-} from "./units";
+import { TimeoutError, formatErrorMessage, toMs, type Duration } from "./units";
 
 const MAX_DURATION_MS = 2 ** 31 - 1;
 const RESERVED_ATTEMPT_KEYS = [
@@ -221,8 +216,9 @@ export class HealthCheckAttempt<
   TStatic extends object = {},
   TSuccess extends object | undefined = undefined,
   TFailure extends object = {},
-> implements Promise<HealthCheckAttemptResult<TKey, TStatic, TSuccess, TFailure>>
-{
+> implements Promise<
+  HealthCheckAttemptResult<TKey, TStatic, TSuccess, TFailure>
+> {
   private timeoutMs?: number;
   private cacheTtlMs?: number;
   private degradedAfterMs?: number;
@@ -253,7 +249,13 @@ export class HealthCheckAttempt<
    */
   withData<const TData extends object>(
     data: TData,
-  ): HealthCheckAttempt<TKey, TResult, Merge<TStatic, TData>, TSuccess, TFailure> {
+  ): HealthCheckAttempt<
+    TKey,
+    TResult,
+    Merge<TStatic, TData>,
+    TSuccess,
+    TFailure
+  > {
     this.staticValues = {
       ...this.staticValues,
       ...sanitizeAttemptData(this.key, data, this.logger),
@@ -398,7 +400,10 @@ export class HealthCheckAttempt<
       let data: Record<string, unknown> = {};
       for (const fn of this.successFns) {
         const value = await fn(result);
-        data = { ...data, ...sanitizeAttemptData(this.key, value, this.logger) };
+        data = {
+          ...data,
+          ...sanitizeAttemptData(this.key, value, this.logger),
+        };
       }
       return data;
     }
@@ -418,7 +423,10 @@ export class HealthCheckAttempt<
       }
       try {
         const value = await runAttemptWithTimeout(remainingMs, () => fn(err));
-        data = { ...data, ...sanitizeAttemptData(this.key, value, this.logger) };
+        data = {
+          ...data,
+          ...sanitizeAttemptData(this.key, value, this.logger),
+        };
       } catch (innerErr) {
         warnOnce(
           this.logger,
@@ -492,7 +500,10 @@ export class HealthIndicatorSession<TKey extends Readonly<string> = string> {
     private readonly logger?: LoggerService,
   ) {}
 
-  private assertNotReserved(data: Record<string, unknown>, keys: string[]): void {
+  private assertNotReserved(
+    data: Record<string, unknown>,
+    keys: string[],
+  ): void {
     for (const key of keys) {
       if (key in data) {
         throw new Error(
@@ -531,7 +542,9 @@ export class HealthIndicatorSession<TKey extends Readonly<string> = string> {
     HealthIndicatorStatus.DOWN,
     { message: TMessage }
   >;
-  down(data?: unknown): HealthIndicatorResult<TKey, HealthIndicatorStatus.DOWN> {
+  down(
+    data?: unknown,
+  ): HealthIndicatorResult<TKey, HealthIndicatorStatus.DOWN> {
     return this.compose(HealthIndicatorStatus.DOWN, data);
   }
 
@@ -626,9 +639,7 @@ export type HealthCheckFunction = HealthIndicatorFunction;
 
 export type InferHealthIndicatorResult<
   TFn extends HealthIndicatorFunction = HealthIndicatorFunction,
-> = TFn extends (...args: any) => any
-  ? Awaited<ReturnType<TFn>>
-  : Awaited<TFn>;
+> = TFn extends (...args: any) => any ? Awaited<ReturnType<TFn>> : Awaited<TFn>;
 
 export type InferHealthIndicatorResults<
   TFns extends readonly HealthIndicatorFunction[] = HealthIndicatorFunction[],

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/common";
+import { Inject, Injectable, Optional } from "@bunest/core";
 import { ResilienceEvents } from "../events/resilience-events.service";
 import type { CircuitBreakerOptions } from "../interfaces/circuit-breaker-options.interface";
 import type { ResilienceModuleOptions } from "../interfaces/resilience-module-options.interface";

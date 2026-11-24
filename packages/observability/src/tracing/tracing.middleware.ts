@@ -18,7 +18,7 @@ import {
   type ModuleMetadata,
   type NextFunction,
   type ResponseContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   extractTraceContext,
   formatTraceParent,

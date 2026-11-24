@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   HttpException,
   HttpVersionNotSupportedException,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -19,7 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(505);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "HTTP Version Not Supported", 505) in packages/common/src/exceptions/http.exception.ts:189 includes `error: "HTTP Version Not Supported"` in getResponse(), whereas NestJS returns `{ message: "HTTP Version Not Supported", statusCode: 505 }`.
+    // BUNEST_BUG: HttpException.createBody(undefined, "HTTP Version Not Supported", 505) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "HTTP Version Not Supported"` in getResponse(), whereas NestJS returns `{ message: "HTTP Version Not Supported", statusCode: 505 }`.
     it.skip('should return "HTTP Version Not Supported" as default message', () => {
       const exc = new HttpVersionNotSupportedException();
       expect(exc.getResponse()).toEqual({
@@ -37,7 +36,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/common/src/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
+    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
     it.skip("should accept a custom object", () => {
       const exc = new HttpVersionNotSupportedException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });

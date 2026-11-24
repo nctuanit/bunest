@@ -3,15 +3,14 @@ import {
   createMethodAspectDecorator,
   type MethodAspectContext,
   type MethodAspectHandler,
-} from "@bunest/common";
+} from "@bunest/core";
 import { CacheService } from "../cache.service";
 import type { CacheSetOptions } from "../interfaces/cache.interface";
 
 export type CacheAspectKeyResolver = string | ((...args: any[]) => string);
 
 export type CacheAspectTagsResolver =
-  | readonly string[]
-  | ((...args: any[]) => readonly string[]);
+  readonly string[] | ((...args: any[]) => readonly string[]);
 
 export interface CacheableOptions {
   /**
@@ -172,9 +171,7 @@ function buildSetOptions(
  * Core Method Aspect handler backing `@Cacheable(...)` on `@Injectable()` services.
  */
 @Injectable()
-export class CacheableAspectHandler
-  implements MethodAspectHandler<CacheableOptions>
-{
+export class CacheableAspectHandler implements MethodAspectHandler<CacheableOptions> {
   private readonly inFlight = new Map<string, Promise<unknown>>();
 
   constructor(private readonly cacheService: CacheService) {}
@@ -225,9 +222,7 @@ export class CacheableAspectHandler
  * Core Method Aspect handler backing `@CacheEvict(...)` on `@Injectable()` services.
  */
 @Injectable()
-export class CacheEvictAspectHandler
-  implements MethodAspectHandler<CacheEvictOptions>
-{
+export class CacheEvictAspectHandler implements MethodAspectHandler<CacheEvictOptions> {
   constructor(private readonly cacheService: CacheService) {}
 
   async intercept(
@@ -293,9 +288,7 @@ export class CacheEvictAspectHandler
  * Core Method Aspect handler backing `@CachePut(...)` on `@Injectable()` services.
  */
 @Injectable()
-export class CachePutAspectHandler
-  implements MethodAspectHandler<CachePutOptions>
-{
+export class CachePutAspectHandler implements MethodAspectHandler<CachePutOptions> {
   constructor(private readonly cacheService: CacheService) {}
 
   async intercept(ctx: MethodAspectContext<CachePutOptions>): Promise<unknown> {

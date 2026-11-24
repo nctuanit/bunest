@@ -40,8 +40,7 @@ export interface SesTransportOptions extends HttpProviderOptions {
    * Default: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`.
    */
   credentials?:
-    | AwsCredentials
-    | (() => AwsCredentials | Promise<AwsCredentials>);
+    AwsCredentials | (() => AwsCredentials | Promise<AwsCredentials>);
   /** Sent as `ConfigurationSetName`, for event publishing and dedicated IPs. */
   configurationSetName?: string;
   /** Default `https://email.<region>.amazonaws.com`. */

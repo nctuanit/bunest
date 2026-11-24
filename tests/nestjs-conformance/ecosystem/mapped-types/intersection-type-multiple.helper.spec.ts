@@ -1,13 +1,15 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Transform, instanceToInstance } from "class-transformer";
+import {
+  Transform,
+  instanceToInstance,
+} from "../../../../packages/validation/src/transformer";
 import {
   IsString,
   MinLength,
   getMetadataStorage,
   validate,
-} from "class-validator";
-import { IntersectionType } from "../../../../packages/mapped-types/src";
+} from "../../../../packages/validation/src/validator";
+import { IntersectionType } from "../../../../packages/validation/src";
 import { describeConformance } from "../../_helpers/index";
 
 function getValidationMetadataByTarget(target: Function) {

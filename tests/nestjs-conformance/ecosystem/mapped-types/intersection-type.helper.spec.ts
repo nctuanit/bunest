@@ -1,13 +1,15 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Transform, instanceToInstance } from "class-transformer";
+import {
+  Transform,
+  instanceToInstance,
+} from "../../../../packages/validation/src/transformer";
 import {
   IsString,
   MinLength,
   getMetadataStorage,
   validate,
-} from "class-validator";
-import { IntersectionType } from "../../../../packages/mapped-types/src";
+} from "../../../../packages/validation/src/validator";
+import { IntersectionType } from "../../../../packages/validation/src";
 import { describeConformance } from "../../_helpers/index";
 
 function getValidationMetadataByTarget(target: Function) {
@@ -108,7 +110,7 @@ describeConformance(
     });
 
     describe("Transformer metadata", () => {
-      // BUNEST_BUG: inheritDtoMetadata() (packages/common/src/mapped-types/mapped-types.utils.ts:609) hardcodes stackDecorators=true even for operation="intersection", causing ClassA and ClassB @Transform decorators on repeatedProperty to stack ("repeatedPropertyTestValue_transformed_transformed") instead of overriding ("repeatedPropertyTestValue_transformed").
+      // BUNEST_BUG: inheritDtoMetadata() (packages/core/src/common/mapped-types/mapped-types.utils.ts:609) hardcodes stackDecorators=true even for operation="intersection", causing ClassA and ClassB @Transform decorators on repeatedProperty to stack ("repeatedPropertyTestValue_transformed_transformed") instead of overriding ("repeatedPropertyTestValue_transformed").
       it.skip("should inherit transformer metadata", () => {
         const password = "1234567891011";
         const lastName = "lastNameTest";

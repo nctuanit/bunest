@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   REQUEST,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type BunWsClient,
@@ -16,7 +15,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   describeConformance,
@@ -94,9 +93,7 @@ class ImplicitLeakyRequestGateway {
 }
 
 @WebSocketGateway({ path: "/ws", scope: Scope.REQUEST })
-class RequestScopeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+class RequestScopeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @Inject(ConnectionStateService)
     private readonly connectionState: ConnectionStateService,
@@ -149,8 +146,14 @@ function connectStateClient(url: string): Promise<StateWsClient> {
 
     ws.addEventListener("message", (evt) => {
       if (typeof evt.data !== "string") return;
-      const frame = JSON.parse(evt.data) as WsMessageFrame<ConnectionStateSnapshot>;
-      if (frame.event === "connectedState" && !connectedStateResolved && frame.data) {
+      const frame = JSON.parse(
+        evt.data,
+      ) as WsMessageFrame<ConnectionStateSnapshot>;
+      if (
+        frame.event === "connectedState" &&
+        !connectedStateResolved &&
+        frame.data
+      ) {
         connectedStateResolved = true;
         clearTimeout(timer);
         resolve({
@@ -224,10 +227,7 @@ describeConformance(
           () =>
             Test.createTestingModule({
               imports: [WebSocketModule.forRoot()],
-              providers: [
-                ImplicitLeakyRequestGateway,
-                ConnectionStateService,
-              ],
+              providers: [ImplicitLeakyRequestGateway, ConnectionStateService],
             }).compile({ logger: false }),
           /ImplicitLeakyRequestGateway.*ConnectionStateService/,
         );
@@ -235,7 +235,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: WsGatewayExplorer.discoverAndBindGateways() only iterates discovery.getAllSingletonInstances() and skips @WebSocketGateway({ scope: Scope.REQUEST }) providers; BunWebSocketAdapter lacks per-connection RequestContainer/REQUEST resolution (packages/websockets/src/explorer/ws-gateway.explorer.ts#L122, packages/websockets/src/adapter/bun-ws.adapter.ts#L240).
+    // BUNEST_BUG: WsGatewayExplorer.discoverAndBindGateways() only iterates discovery.getAllSingletonInstances() and skips @WebSocketGateway({ scope: Scope.REQUEST }) providers; BunWebSocketAdapter lacks per-connection RequestContainer/REQUEST resolution (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L240).
     it.skip("should reuse the same request-scoped provider per connection and isolate across clients [ADR-001, ADR-012]", async () => {
       const testingModule = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],

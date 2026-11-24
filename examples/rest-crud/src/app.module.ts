@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Body,
   Catch,
@@ -17,7 +16,7 @@ import {
   Post,
   type ArgumentsHost,
   type ExceptionFilter,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   ApiBadRequestResponse,
   ApiCreatedResponse,

@@ -4,30 +4,30 @@ In this guide, you will configure a Bunest workspace, set up the mandatory `tsco
 
 ## Requirements
 
-Bunest targets **Bun `>= 1.4.3`** exclusively. Verify your local Bun runtime version first:
+Bunest targets **Bun `>= 1.4.5`** exclusively. Verify your local Bun runtime version first:
 
 ```bash
 bun --version
-# 1.4.3 or higher
+# 1.4.5 or higher
 ```
 
 ## Installing dependencies
 
-Install the Bunest workspace packages along with `reflect-metadata`, `class-validator`, and `class-transformer`:
+Install `@bunest/core` and `@bunest/validation` (zero external runtime dependencies — includes Bunest's built-in Reflect Metadata shim and compile-once DTO validator/transformer):
 
 ```bash
-bun add @bunest/core @bunest/common @bunest/http @bunest/validation
-bun add reflect-metadata class-validator class-transformer
+bun add @bunest/core @bunest/validation
 bun add -d @types/bun typescript
 ```
 
-> info **Hint** `@bunest/core` re-exports everything from `@bunest/common` (decorators, built-in pipes, `HttpException` classes, `Logger`, `Reflector`, and core interfaces), so most feature files only need to import from `@bunest/core`.
+> info **Hint** `@bunest/core` exports decorators, built-in pipes, `HttpException` classes, `Logger`, `Reflector`, and core HTTP/DI/Config/WS/I18n subpaths, and auto-installs a zero-dependency ECMAScript Reflect Metadata shim ([ADR-017](/architecture/adrs)).
 
 ## TypeScript configuration (`tsconfig.json`)
 
-Bunest uses **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) to support constructor dependency injection (`design:paramtypes`), parameter decorators (`@Body()`, `@Param()`, `@Query()`), and `class-validator` DTOs.
+Bunest uses **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) to support constructor dependency injection (`design:paramtypes`), parameter decorators (`@Body()`, `@Param()`, `@Query()`), and `@bunest/validation` (or `class-validator`) DTOs.
 
 @@filename(tsconfig.json)
+
 ```json
 {
   "compilerOptions": {
@@ -50,11 +50,11 @@ Bunest uses **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) to 
 
 ## Application Entrypoint
 
-Import `reflect-metadata` **once at the very top of your entrypoint**, before loading any decorated modules, controllers, or DTOs:
+`@bunest/core` auto-installs its zero-dependency Reflect Metadata shim ([ADR-017](/architecture/adrs)), so no `import "reflect-metadata"` boilerplate is needed:
 
 @@filename(src/main.ts)
+
 ```ts
-import "reflect-metadata";
 import { BunestFactory } from "@bunest/core";
 import { ValidationPipe } from "@bunest/validation";
 import { AppModule } from "./app.module";
@@ -65,7 +65,8 @@ async function bootstrap() {
   // Enable secure-by-default DTO validation globally (ADR-009)
   app.useGlobalPipes(new ValidationPipe());
 
-  await app.listen(3000);
+  const port = Number(Bun.env.PORT ?? 3000);
+  await app.listen(port);
 }
 
 bootstrap();
@@ -77,7 +78,7 @@ A clean NestJS-style Bunest application organizes domain features into self-cont
 
 ```text
 src/
-├── main.ts                  # Entrypoint (imports reflect-metadata first)
+├── main.ts                  # Application entrypoint
 ├── app.module.ts            # Root @Module() assembling feature modules
 └── users/
     ├── users.module.ts      # Feature @Module()
@@ -88,6 +89,7 @@ src/
 ```
 
 @@filename(src/app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { UsersModule } from "./users/users.module";
@@ -106,7 +108,7 @@ Bunest uses Bun's native tooling for running, testing, and fast multi-threaded t
 # Run application in watch mode
 bun --watch src/main.ts
 
-# Fast multi-threaded typecheck (Bun 1.4.3+)
+# Fast multi-threaded typecheck (Bun 1.4.5+)
 bun check
 
 # Run unit & integration tests via bun:test

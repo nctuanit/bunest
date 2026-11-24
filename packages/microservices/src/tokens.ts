@@ -1,4 +1,4 @@
-import { REQUEST } from "@bunest/common";
+import { REQUEST } from "@bunest/core";
 
 export enum Transport {
   TCP = "TCP",

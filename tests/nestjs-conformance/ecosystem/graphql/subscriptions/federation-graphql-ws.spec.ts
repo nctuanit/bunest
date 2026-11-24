@@ -1,9 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import {
-  type DynamicModule,
-  Module,
-} from "../../../../../packages/common/src";
+import { type DynamicModule, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -174,7 +170,8 @@ describeConformance(
       try {
         await new Promise<void>((resolve, reject) => {
           timeoutTimer = setTimeout(
-            () => reject(new Error("Timed out waiting for federated notification")),
+            () =>
+              reject(new Error("Timed out waiting for federated notification")),
             3000,
           );
 

@@ -3,7 +3,7 @@
  * Zod 4.2+ and ArkType schemas are, as they are; Valibot through `toStandardJsonSchema()`.
  */
 export interface AiSchema<Input = any, Output = Input> {
-  readonly '~standard': {
+  readonly "~standard": {
     readonly version: 1;
     readonly vendor: string;
     readonly types?:
@@ -22,13 +22,15 @@ export interface AiSchema<Input = any, Output = Input> {
     ) => AiSchemaResult<Output> | Promise<AiSchemaResult<Output>>;
     readonly jsonSchema: {
       readonly input: (options: AiJsonSchemaOptions) => Record<string, unknown>;
-      readonly output: (options: AiJsonSchemaOptions) => Record<string, unknown>;
+      readonly output: (
+        options: AiJsonSchemaOptions,
+      ) => Record<string, unknown>;
     };
   };
 }
 
 export interface AiJsonSchemaOptions {
-  readonly target: 'draft-2020-12' | 'draft-07' | 'openapi-3.0' | ({} & string);
+  readonly target: "draft-2020-12" | "draft-07" | "openapi-3.0" | ({} & string);
   readonly libraryOptions?: Record<string, unknown> | undefined;
 }
 
@@ -53,5 +55,5 @@ export type AiSchemaResult<Output> =
 
 /** The type a schema validates to. */
 export type InferSchemaOutput<S extends AiSchema> = NonNullable<
-  S['~standard']['types']
->['output'];
+  S["~standard"]["types"]
+>["output"];

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   All,
@@ -18,13 +17,13 @@ import {
   type Type,
   type VersionValue,
   type VersioningOptions,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   DuplicateRouteException,
   canonicalizePath,
   normalizePath,
   scanControllers,
-} from "../../../../../../packages/http/src";
+} from "../../../../../../packages/core/src/http";
 import {
   createSandbox,
   describeConformance,
@@ -106,7 +105,7 @@ interface DetectedConflictSummary {
 }
 
 /**
- * Runs `@bunest/http`'s real `scanControllers()` with `{ duplicate: "warn", shadow: "warn" }`
+ * Runs `@bunest/core/http`'s real `scanControllers()` with `{ duplicate: "warn", shadow: "warn" }`
  * and returns every duplicate and shadow conflict reported by Bunest's scanner.
  */
 function detectConflictsViaScanner(
@@ -167,59 +166,59 @@ describeConformance(
   },
   () => {
     describe("tokenizePath", () => {
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector (nor tokenizePath); route parsing lives privately inside packages/http/src/scanner/controller-scanner.ts and packages/http/src/router/fallback-radix-router.ts.
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector (nor tokenizePath); route parsing lives privately inside packages/core/src/http/scanner/controller-scanner.ts and packages/core/src/http/router/fallback-radix-router.ts.
       it.skip("should classify literal segments", () => {
         expect(normalizePath("/users/me")).toBe("/users/me");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should classify named param segments", () => {
         expect(canonicalizePath("/users/:userId")).toBe("/users/:_");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should classify named wildcard segments", () => {
         expect(normalizePath("/files/*path")).toBe("/files/*path");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should classify adapter-normalized wildcard group segments", () => {
         expect(normalizePath("/files/{*path}")).toBe("/files/{*path}");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should ignore leading and trailing slashes and empty segments", () => {
         expect(normalizePath("//users//me/")).toBe("/users/me");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should classify segments that mix text and params", () => {
         expect(normalizePath("/v:version/items")).toBe("/v:version/items");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should classify a wildcard after text in the same segment as mixed", () => {
         expect(normalizePath("/static*path")).toBe("/static*path");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should read optional groups as present", () => {
         expect(normalizePath("/users{/:userId}")).toBe("/users{/:userId}");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should keep a param with an optional suffix a param, as it matches the same segments", () => {
         expect(normalizePath("/users/:id{.:format}")).toBe(
           "/users/:id{.:format}",
         );
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should split paths path-to-regexp cannot parse on '/'", () => {
         expect(normalizePath("/files/*")).toBe("/files/*");
       });
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector.tokenizePath (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should split paths path-to-regexp parses but cannot match on '/'", () => {
         expect(normalizePath("/files/:name:ext")).toBe("/files/:name:ext");
       });
@@ -283,7 +282,7 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: Expected optional-group paths (`users{/:userId}`, `/files/{*path}`, `/{*path}`) to overlap their expanded variants (`true`), but got `false`. packages/http/src/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) does not expand `{...}` optional groups.
+      // BUNEST_BUG: Expected optional-group paths (`users{/:userId}`, `/files/{*path}`, `/{*path}`) to overlap their expanded variants (`true`), but got `false`. packages/core/src/http/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) does not expand `{...}` optional groups.
       it.skip("should compare every variant of a path with optional groups", () => {
         expect(
           pathsCanOverlapViaScanner("/users{/:userId}", "/users/:id"),
@@ -300,11 +299,11 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: Expected `/v:version/items` to overlap `/v1/items` (`true`) and `/files/:name.:ext` not to overlap `/files/readme` (`false`), but packages/http/src/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) treats `v:version` as static and `:name.:ext` as a plain `:param`.
+      // BUNEST_BUG: Expected `/v:version/items` to overlap `/v1/items` (`true`) and `/files/:name.:ext` not to overlap `/files/readme` (`false`), but packages/core/src/http/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) treats `v:version` as static and `:name.:ext` as a plain `:param`.
       it.skip("should match a literal against a segment that mixes text and params", () => {
-        expect(
-          pathsCanOverlapViaScanner("/v:version/items", "/v1/items"),
-        ).toBe(true);
+        expect(pathsCanOverlapViaScanner("/v:version/items", "/v1/items")).toBe(
+          true,
+        );
         expect(
           pathsCanOverlapViaScanner("/v:version/items", "/api/items"),
         ).toBe(false);
@@ -325,7 +324,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: Expected `/files/:name.json` and `/files/:name.xml` NOT to overlap (`false`), but got `true` because packages/http/src/scanner/controller-scanner.ts:127 (`es.startsWith(":")`) ignores trailing literal suffixes after a `:param`.
+      // BUNEST_BUG: Expected `/files/:name.json` and `/files/:name.xml` NOT to overlap (`false`), but got `true` because packages/core/src/http/scanner/controller-scanner.ts:127 (`es.startsWith(":")`) ignores trailing literal suffixes after a `:param`.
       it.skip("should not overlap mixed segments whose leading or trailing text differ", () => {
         expect(
           pathsCanOverlapViaScanner("/orders/ord_:id", "/orders/inv_:id"),
@@ -338,7 +337,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: Expected `/static*path` and `/users/:id` NOT to overlap (`false`), but got `true` because packages/http/src/scanner/controller-scanner.ts:120 (`es.includes("*")`) ignores leading literal text before `*`.
+      // BUNEST_BUG: Expected `/static*path` and `/users/:id` NOT to overlap (`false`), but got `true` because packages/core/src/http/scanner/controller-scanner.ts:120 (`es.includes("*")`) ignores leading literal text before `*`.
       it.skip("should keep the text before a wildcard in the same segment", () => {
         expect(pathsCanOverlapViaScanner("/static*path", "/users/:id")).toBe(
           false,
@@ -374,7 +373,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Expected `canonicalizePath("/files/*path")` to equal `canonicalizePath("/files/*rest")`, but got `"/files/*path"` vs `"/files/*rest"`. packages/http/src/scanner/path-normalizer.ts:43-56 (`canonicalizePath`) only normalizes `:param` segments, not named wildcards `*name`.
+      // BUNEST_BUG: Expected `canonicalizePath("/files/*path")` to equal `canonicalizePath("/files/*rest")`, but got `"/files/*path"` vs `"/files/*rest"`. packages/core/src/http/scanner/path-normalizer.ts:43-56 (`canonicalizePath`) only normalizes `:param` segments, not named wildcards `*name`.
       it.skip("should be true for named wildcard paths that differ by wildcard names only", () => {
         expect(canonicalizePath("/files/*path")).toBe(
           canonicalizePath("/files/*rest"),
@@ -449,7 +448,7 @@ describeConformance(
         expect(conflicts).toHaveLength(0);
       });
 
-      // BUNEST_BUG: Expected 1 shadow conflict when a header-versioned `VERSION_NEUTRAL` route precedes a `"1"` route on the same path, but got 0 conflicts. packages/http/src/scanner/controller-scanner.ts:592 skips identical canonical paths in the shadow loop and does not compare version overlap.
+      // BUNEST_BUG: Expected 1 shadow conflict when a header-versioned `VERSION_NEUTRAL` route precedes a `"1"` route on the same path, but got 0 conflicts. packages/core/src/http/scanner/controller-scanner.ts:592 skips identical canonical paths in the shadow loop and does not compare version overlap.
       it.skip("should flag overlap as a shadow (not duplicate) when one of the two header-versioned routes is version-neutral", () => {
         const versioningOptions: VersioningOptions = {
           type: VersioningType.HEADER,
@@ -467,7 +466,7 @@ describeConformance(
         expect(conflicts[0]?.kind).toBe("shadow");
       });
 
-      // BUNEST_BUG: Expected 1 shadow conflict when a hostless route precedes a host-specific route on the same path, but got 0 conflicts. packages/http/src/scanner/controller-scanner.ts:588-593 skips pairs where `String(earlier.host ?? "") !== String(later.host ?? "")` or `earlier.canonicalPath === later.canonicalPath`.
+      // BUNEST_BUG: Expected 1 shadow conflict when a hostless route precedes a host-specific route on the same path, but got 0 conflicts. packages/core/src/http/scanner/controller-scanner.ts:588-593 skips pairs where `String(earlier.host ?? "") !== String(later.host ?? "")` or `earlier.canonicalPath === later.canonicalPath`.
       it.skip("should flag overlap as a shadow when a hostless route faces a host-specific route on the same path", () => {
         const conflicts = detectConflictsViaScanner([
           { path: "/users/me" },
@@ -478,7 +477,7 @@ describeConformance(
         expect(conflicts[0]?.kind).toBe("shadow");
       });
 
-      // BUNEST_BUG: Expected partial host-array overlap (`["api.example.com", "admin.example.com"]` vs `["admin.example.com"]`) to be classified as `"shadow"`, but got `"duplicate"`. packages/http/src/scanner/controller-scanner.ts:509-521 checks duplicate collision keys per individual host element rather than comparing full host sets.
+      // BUNEST_BUG: Expected partial host-array overlap (`["api.example.com", "admin.example.com"]` vs `["admin.example.com"]`) to be classified as `"shadow"`, but got `"duplicate"`. packages/core/src/http/scanner/controller-scanner.ts:509-521 checks duplicate collision keys per individual host element rather than comparing full host sets.
       it.skip("should detect host-array overlap when arrays share a value (set membership, not stringified equality)", () => {
         const conflicts = detectConflictsViaScanner([
           { path: "/users/me", host: ["api.example.com", "admin.example.com"] },
@@ -502,7 +501,7 @@ describeConformance(
         expect(conflicts).toHaveLength(0);
       });
 
-      // BUNEST_BUG: Expected 1 shadow conflict between RegExp host `/\.example\.com$/` and matching string host `"api.example.com"`, but got 0 conflicts. packages/http/src/scanner/controller-scanner.ts:588-593 does not evaluate RegExp host overlap against string hosts.
+      // BUNEST_BUG: Expected 1 shadow conflict between RegExp host `/\.example\.com$/` and matching string host `"api.example.com"`, but got 0 conflicts. packages/core/src/http/scanner/controller-scanner.ts:588-593 does not evaluate RegExp host overlap against string hosts.
       it.skip("should detect host overlap between a RegExp host and a string host the RegExp matches", () => {
         const conflicts = detectConflictsViaScanner([
           { path: "/users/me", host: /\.example\.com$/ },
@@ -513,7 +512,7 @@ describeConformance(
         expect(conflicts[0]?.kind).toBe("shadow");
       });
 
-      // BUNEST_BUG: Expected 2 shadow conflicts when RegExp host `/\.example\.com$/g` matches both `"api.example.com"` and `"admin.example.com"`, but got 0 conflicts. packages/http/src/scanner/controller-scanner.ts:588-593 does not evaluate RegExp host overlap.
+      // BUNEST_BUG: Expected 2 shadow conflicts when RegExp host `/\.example\.com$/g` matches both `"api.example.com"` and `"admin.example.com"`, but got 0 conflicts. packages/core/src/http/scanner/controller-scanner.ts:588-593 does not evaluate RegExp host overlap.
       it.skip("should detect host overlap consistently when the RegExp host has the g flag (stateful lastIndex)", () => {
         const globalRegExp = /\.example\.com$/g;
         const conflicts = detectConflictsViaScanner([
@@ -529,7 +528,7 @@ describeConformance(
         expect(conflicts).toHaveLength(2);
       });
 
-      // BUNEST_BUG: Expected 1 shadow conflict for each overlapping host pattern pair (`:tenant.example.com`, `{www.}example.com`, case variants, RegExp), but packages/http/src/scanner/controller-scanner.ts:588-593 skips differing host patterns on the same path (0 conflicts) and normalizes `"Admin.example.com"` vs `"admin.example.com"` as `"duplicate"` instead of `"shadow"`.
+      // BUNEST_BUG: Expected 1 shadow conflict for each overlapping host pattern pair (`:tenant.example.com`, `{www.}example.com`, case variants, RegExp), but packages/core/src/http/scanner/controller-scanner.ts:588-593 skips differing host patterns on the same path (0 conflicts) and normalizes `"Admin.example.com"` vs `"admin.example.com"` as `"duplicate"` instead of `"shadow"`.
       it.skip.each<[string | RegExp, string | RegExp]>([
         [":tenant.example.com", "admin.example.com"],
         ["admin.example.com", ":tenant.example.com"],
@@ -582,7 +581,7 @@ describeConformance(
         expect(conflicts).toHaveLength(1);
       });
 
-      // BUNEST_BUG: Expected 1 conflict for each host + RegExp overlapping pair, but got 0 conflicts. packages/http/src/scanner/controller-scanner.ts:140-161 & 588-593 does not compare parameterized/string hosts against RegExp hosts.
+      // BUNEST_BUG: Expected 1 conflict for each host + RegExp overlapping pair, but got 0 conflicts. packages/core/src/http/scanner/controller-scanner.ts:140-161 & 588-593 does not compare parameterized/string hosts against RegExp hosts.
       it.skip.each<[string | RegExp, string | RegExp]>([
         [":tenant.example.com", /\.example\.com$/],
         [/\.example\.com$/, ":tenant.example.com"],
@@ -599,7 +598,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector with internal `toComparableHost` host memoization helper (see packages/core/src/index.ts & packages/http/src/scanner/controller-scanner.ts).
+      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector with internal `toComparableHost` host memoization helper (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
       it.skip("should read each distinct host once per run", () => {
         const routes: TestRouteSpec[] = [
           ...Array.from({ length: 5 }, (_, index) => ({
@@ -611,7 +610,7 @@ describeConformance(
         expect(detectConflictsViaScanner(routes)).toHaveLength(1);
       });
 
-      // BUNEST_BUG: Expected 1 duplicate conflict for identical host arrays in different order (`["api.example.com", "admin.example.com"]` vs `["admin.example.com", "api.example.com"]`), but got 2 warnings (one per host key). packages/http/src/scanner/controller-scanner.ts:374-396 warns on every colliding key in `collisionKeys` rather than once per route pair.
+      // BUNEST_BUG: Expected 1 duplicate conflict for identical host arrays in different order (`["api.example.com", "admin.example.com"]` vs `["admin.example.com", "api.example.com"]`), but got 2 warnings (one per host key). packages/core/src/http/scanner/controller-scanner.ts:374-396 warns on every colliding key in `collisionKeys` rather than once per route pair.
       it.skip("should classify identical host arrays declared in different order as a duplicate", () => {
         const conflicts = detectConflictsViaScanner([
           { path: "/users/me", host: ["api.example.com", "admin.example.com"] },
@@ -626,7 +625,7 @@ describeConformance(
         expect(conflicts[0]?.kind).toBe("duplicate");
       });
 
-      // BUNEST_BUG: Expected partial host-array overlaps with repeated values to be classified as 1 `"shadow"` conflict, but packages/http/src/scanner/controller-scanner.ts:374-396 & 509-521 classifies them as `"duplicate"` (1 or 2 warnings) per individual host key.
+      // BUNEST_BUG: Expected partial host-array overlaps with repeated values to be classified as 1 `"shadow"` conflict, but packages/core/src/http/scanner/controller-scanner.ts:374-396 & 509-521 classifies them as `"duplicate"` (1 or 2 warnings) per individual host key.
       it.skip.each<[string[], string[]]>([
         [
           ["api.example.com", "api.example.com"],
@@ -663,7 +662,7 @@ describeConformance(
         expect(conflicts[0]?.kind).toBe("duplicate");
       });
 
-      // BUNEST_BUG: Expected 3 pairwise conflicts `(1,2), (1,3), (2,3)` for 3 identical routes, but got 2 warnings. packages/http/src/scanner/controller-scanner.ts:374-413 tracks only the latest entry per collision key instead of comparing all unique route pairs.
+      // BUNEST_BUG: Expected 3 pairwise conflicts `(1,2), (1,3), (2,3)` for 3 identical routes, but got 2 warnings. packages/core/src/http/scanner/controller-scanner.ts:374-413 tracks only the latest entry per collision key instead of comparing all unique route pairs.
       it.skip("should compare across multiple routes only once per unique pair", () => {
         const conflicts = detectConflictsViaScanner([
           { path: "/users/me", methodName: "first" },
@@ -765,7 +764,7 @@ describeConformance(
         expect(capturedError?.message).toMatch(/Duplicate route/);
       });
 
-      // BUNEST_BUG: Expected a single aggregated exception mentioning both the duplicate conflict AND the shadow conflict, but packages/http/src/scanner/controller-scanner.ts:378 throws immediately on the first duplicate before shadow detection runs (line 576).
+      // BUNEST_BUG: Expected a single aggregated exception mentioning both the duplicate conflict AND the shadow conflict, but packages/core/src/http/scanner/controller-scanner.ts:378 throws immediately on the first duplicate before shadow detection runs (line 576).
       it.skip("should aggregate every error-policy conflict into one exception", () => {
         const policy: RouteConflictPolicy = {
           duplicate: "error",
@@ -791,7 +790,7 @@ describeConformance(
         expect(capturedError?.message.toLowerCase()).toContain("shadow");
       });
 
-      // BUNEST_BUG: Expected `{ duplicate: "error", shadow: "warn" }` to emit 1 shadow warning AND throw DuplicateRouteException, but `warnSpy.callCount` was 0 because packages/http/src/scanner/controller-scanner.ts:378 throws on the duplicate before the shadow loop (line 576) executes.
+      // BUNEST_BUG: Expected `{ duplicate: "error", shadow: "warn" }` to emit 1 shadow warning AND throw DuplicateRouteException, but `warnSpy.callCount` was 0 because packages/core/src/http/scanner/controller-scanner.ts:378 throws on the duplicate before the shadow loop (line 576) executes.
       it.skip("should mix warn and error policies when the kinds differ", () => {
         const policy: RouteConflictPolicy = {
           duplicate: "error",
@@ -869,7 +868,11 @@ describeConformance(
       });
 
       it("should return an empty list when given an empty routes array", () => {
-        const conflicts = detectConflictsViaScanner([], undefined, "specificity");
+        const conflicts = detectConflictsViaScanner(
+          [],
+          undefined,
+          "specificity",
+        );
         expect(conflicts).toHaveLength(0);
       });
     });

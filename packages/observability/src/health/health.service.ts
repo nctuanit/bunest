@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
   type BeforeApplicationShutdown,
   type LoggerService,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   HealthCheckAttempt,
   type HealthIndicatorFunction,
@@ -88,8 +88,10 @@ async function runIndicatorWithTimeout(
     if (indicator instanceof HealthCheckAttempt) {
       return Promise.resolve(indicator as PromiseLike<HealthIndicatorResult>);
     }
-    return Promise.resolve().then(() =>
-      indicator() as PromiseLike<HealthIndicatorResult> | HealthIndicatorResult,
+    return Promise.resolve().then(
+      () =>
+        indicator() as
+          PromiseLike<HealthIndicatorResult> | HealthIndicatorResult,
     );
   };
 
@@ -201,9 +203,7 @@ export class HealthCheckService implements BeforeApplicationShutdown {
     options: HealthCheckOptions = {},
   ): Promise<HealthCheckResult<InferHealthIndicatorResults<TFns>>> {
     const timeoutMs =
-      options.timeoutMs !== undefined
-        ? Math.max(1, options.timeoutMs)
-        : 5_000;
+      options.timeoutMs !== undefined ? Math.max(1, options.timeoutMs) : 5_000;
 
     const settled = await Promise.all(
       indicators.map((fn, idx) => runIndicatorWithTimeout(fn, idx, timeoutMs)),

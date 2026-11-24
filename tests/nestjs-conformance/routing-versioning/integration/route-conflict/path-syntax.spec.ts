@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import type {
   NestApplicationOptions,
   Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -59,7 +58,7 @@ describeConformance(
     });
 
     describe("a route with an optional group declared first", () => {
-      // BUNEST_BUG: Expected `GET /users/5` to match `users{/:userId}` (`{ handler: "find", userId: "5" }`), but got `{ handler: "byId", userId: "5" }`. packages/http/src/router/fallback-radix-router.ts:147-207 does not support path-to-regexp v8 `{/:param}` optional group syntax (only `:param?`).
+      // BUNEST_BUG: Expected `GET /users/5` to match `users{/:userId}` (`{ handler: "find", userId: "5" }`), but got `{ handler: "byId", userId: "5" }`. packages/core/src/http/router/fallback-radix-router.ts:147-207 does not support path-to-regexp v8 `{/:param}` optional group syntax (only `:param?`).
       it.skip("serves the requests of the route after it", async () => {
         app = await startApp(OptionalGroupController, {});
 
@@ -67,7 +66,7 @@ describeConformance(
         expect(response.body).toEqual({ handler: "find", userId: "5" });
       });
 
-      // BUNEST_BUG: Expected `shadow: "warn"` to emit 1 warning for `users{/:userId}` shadowing `users/:userId`, but got 0 warnings. packages/http/src/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) does not expand or tokenize `{/:param}` optional groups.
+      // BUNEST_BUG: Expected `shadow: "warn"` to emit 1 warning for `users{/:userId}` shadowing `users/:userId`, but got 0 warnings. packages/core/src/http/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) does not expand or tokenize `{/:param}` optional groups.
       it.skip("is reported as shadowing that route", async () => {
         const warnings: string[] = [];
         app = await startApp(
@@ -105,7 +104,7 @@ describeConformance(
     });
 
     describe("a segment mixing text and a param declared first", () => {
-      // BUNEST_BUG: Expected `GET /releases/v1` to match `v:version` (`{ handler: "byVersion", version: "1" }`), but got `{ handler: "v1" }`. packages/http/src/router/fallback-radix-router.ts:147-207 treats `v:version` as a static literal rather than a mixed text+param segment.
+      // BUNEST_BUG: Expected `GET /releases/v1` to match `v:version` (`{ handler: "byVersion", version: "1" }`), but got `{ handler: "v1" }`. packages/core/src/http/router/fallback-radix-router.ts:147-207 treats `v:version` as a static literal rather than a mixed text+param segment.
       it.skip("serves the requests of a literal route after it", async () => {
         app = await startApp(MixedSegmentController, {});
 
@@ -113,7 +112,7 @@ describeConformance(
         expect(response.body).toEqual({ handler: "byVersion", version: "1" });
       });
 
-      // BUNEST_BUG: Expected `shadow: "warn"` to emit 1 warning for `/releases/v:version` shadowing `/releases/v1`, but got 0 warnings. packages/http/src/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) only treats segments starting with `:` as parameters.
+      // BUNEST_BUG: Expected `shadow: "warn"` to emit 1 warning for `/releases/v:version` shadowing `/releases/v1`, but got 0 warnings. packages/core/src/http/scanner/controller-scanner.ts:113-138 (`canEarlierPatternShadowLater`) only treats segments starting with `:` as parameters.
       it.skip("is reported as shadowing that route", async () => {
         const warnings: string[] = [];
         app = await startApp(
@@ -127,7 +126,7 @@ describeConformance(
         expect(warnings[0]).toContain("/releases/v:version");
       });
 
-      // BUNEST_BUG: Expected `GET /releases/v2` to match `/releases/v:version` (`{ handler: "byVersion", version: "2" }`), but got 404. packages/http/src/router/fallback-radix-router.ts:147-207 does not support mixed literal+param segments like `v:version`.
+      // BUNEST_BUG: Expected `GET /releases/v2` to match `/releases/v:version` (`{ handler: "byVersion", version: "2" }`), but got 404. packages/core/src/http/router/fallback-radix-router.ts:147-207 does not support mixed literal+param segments like `v:version`.
       it.skip("is registered after that route with the specificity strategy", async () => {
         app = await startApp(MixedSegmentController, {
           routeResolutionStrategy: "specificity",
@@ -142,7 +141,7 @@ describeConformance(
     });
 
     describe("a segment mixing params that a literal route cannot match", () => {
-      // BUNEST_BUG: Expected FileNameController (`:name.:ext` + `readme`) to boot under `shadow: "error"` and route `/files/notes.txt` -> `{ handler: "byName", name: "notes", ext: "txt" }`, but threw false-positive DuplicateRouteException (`:name.:ext` shadows `readme`) in packages/http/src/scanner/controller-scanner.ts:127 (`es.startsWith(":")`) AND packages/http/src/router/fallback-radix-router.ts does not parse `:name.:ext`.
+      // BUNEST_BUG: Expected FileNameController (`:name.:ext` + `readme`) to boot under `shadow: "error"` and route `/files/notes.txt` -> `{ handler: "byName", name: "notes", ext: "txt" }`, but threw false-positive DuplicateRouteException (`:name.:ext` shadows `readme`) in packages/core/src/http/scanner/controller-scanner.ts:127 (`es.startsWith(":")`) AND packages/core/src/http/router/fallback-radix-router.ts does not parse `:name.:ext`.
       it.skip("lets the application start with shadow=error", async () => {
         app = await startApp(FileNameController, {
           routeConflictPolicy: { shadow: "error" },

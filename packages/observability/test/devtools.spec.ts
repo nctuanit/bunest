@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BunestFactory,
@@ -191,7 +190,9 @@ describe("DevtoolsModule & DevtoolsService Introspection", () => {
       const devtools = app.get(DevtoolsService);
       // Do NOT call devtools.attachApplication(app) — DiscoveryService resolves modules automatically!
       const graph = devtools.getGraph();
-      expect(graph.modules.some((m) => m.name === "StandaloneDevtoolsModule")).toBe(true);
+      expect(
+        graph.modules.some((m) => m.name === "StandaloneDevtoolsModule"),
+      ).toBe(true);
       expect(graph.providers.some((p) => p.token === "HealthRepo")).toBe(true);
       expect(graph.routes.some((r) => r.fullPath === "/ping")).toBe(true);
     } finally {

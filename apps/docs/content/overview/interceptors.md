@@ -26,6 +26,7 @@ export interface BunestInterceptor<T = unknown, R = unknown> {
 ## Timing & Logging Interceptor
 
 @@filename(logging.interceptor.ts)
+
 ```ts
 import {
   Injectable,
@@ -39,7 +40,10 @@ import {
 export class LoggingInterceptor implements BunestInterceptor {
   private readonly logger = new Logger("Interceptor");
 
-  async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<unknown> {
     const start = performance.now();
     const handlerName = `${context.getClass().name}.${context.getHandler().name}`;
 
@@ -57,6 +61,7 @@ export class LoggingInterceptor implements BunestInterceptor {
 Wrap plain JSON payloads into a consistent `{ data }` envelope while leaving native Web `Response`, streams, and files untouched:
 
 @@filename(transform.interceptor.ts)
+
 ```ts
 import {
   Injectable,
@@ -69,7 +74,11 @@ import {
 export class TransformInterceptor<T> implements BunestInterceptor<T, unknown> {
   async intercept(_context: ExecutionContext, next: CallHandler<T>) {
     const data = await next.handle();
-    if (data instanceof Response || data instanceof ReadableStream || data instanceof Blob) {
+    if (
+      data instanceof Response ||
+      data instanceof ReadableStream ||
+      data instanceof Blob
+    ) {
       return data;
     }
     return { data };
@@ -82,6 +91,7 @@ export class TransformInterceptor<T> implements BunestInterceptor<T, unknown> {
 Skipping `next.handle()` bypasses parameter extraction, pipes, and the route handler completely:
 
 @@filename(cache.interceptor.ts)
+
 ```ts
 import {
   Injectable,
@@ -117,6 +127,7 @@ export class SimpleCacheInterceptor implements BunestInterceptor {
 Bind interceptors via `@UseInterceptors(...)` on controllers/methods or globally via `APP_INTERCEPTOR`:
 
 @@filename(cats.controller.ts)
+
 ```ts
 import { Controller, Get, UseInterceptors } from "@bunest/core";
 import { LoggingInterceptor } from "./logging.interceptor";

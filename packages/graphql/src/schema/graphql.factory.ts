@@ -1,5 +1,5 @@
-import { Injectable, Module, Optional } from "@bunest/common";
-import { type GraphQLSchema, parse, printSchema } from "graphql";
+import { Injectable, Module, Optional } from "@bunest/core";
+import { type GraphQLSchema, parse, printSchema } from "../engine";
 import type {
   AutoSchemaFileValue,
   BuildFederatedSchemaOptions,
@@ -44,13 +44,16 @@ export class GraphQLFactory {
 
   async generateDefinitions(
     typeDefs: string | string[],
-    options: GqlModuleOptions,
+    options: Pick<GqlModuleOptions, "definitions" | "typePaths">,
   ): Promise<void> {
     if (!options.definitions?.path) {
       return;
     }
-    const { path: outputPath, outputAs = "interface", ...rest } =
-      options.definitions;
+    const {
+      path: outputPath,
+      outputAs = "interface",
+      ...rest
+    } = options.definitions;
     await this.definitionsFactory.generate({
       ...rest,
       typePaths: options.typePaths ?? [],

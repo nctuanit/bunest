@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type {
   ScheduleMissed,
   ScheduleOccurrence,
@@ -45,8 +45,9 @@ export interface WorkflowScheduleOptions extends ScheduleOptions {
 export type WorkflowScheduleOccurrence = ScheduleOccurrence;
 
 /** One entry of `@Workflow(name, { schedules })`. */
-export interface WorkflowScheduleDeclaration<I = any>
-  extends WorkflowScheduleOptions {
+export interface WorkflowScheduleDeclaration<
+  I = any,
+> extends WorkflowScheduleOptions {
   /** Unique across the application's schedules: letters, digits, `.`, `:`, `_` and `-`. */
   id: string;
   /**
@@ -54,8 +55,7 @@ export interface WorkflowScheduleDeclaration<I = any>
    * that starts it (`input: ({ at }) => ({ week: isoWeek(at) })`). Default: none.
    */
   input?:
-    | ((occurrence: WorkflowScheduleOccurrence) => I)
-    | ScheduleInputValue<I>;
+    ((occurrence: WorkflowScheduleOccurrence) => I) | ScheduleInputValue<I>;
 }
 
 /**
@@ -66,8 +66,9 @@ type ScheduleInputValue<I> = unknown extends I
   : I;
 
 /** What `WorkflowSchedules.upsert()` takes. */
-export interface UpsertWorkflowScheduleOptions<W = unknown>
-  extends WorkflowScheduleOptions {
+export interface UpsertWorkflowScheduleOptions<
+  W = unknown,
+> extends WorkflowScheduleOptions {
   /** The workflow it starts: the class, or its name. */
   workflow: Type<W> | string;
   /** Pin a version. Default: the highest the worker that starts an occurrence registers. */

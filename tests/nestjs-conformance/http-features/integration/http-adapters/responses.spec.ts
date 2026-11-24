@@ -1,7 +1,3 @@
-import "reflect-metadata";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -15,10 +11,14 @@ import {
   REQUEST_CONTEXT,
   Redirect,
   Scope,
-} from "../../../../../packages/common/src";
-import type {
-  BunestApplication,
-  RequestContext,
+} from "../../../../../packages/core/src/common";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+  type BunestApplication,
+  type RequestContext,
 } from "../../../../../packages/core/src";
 import {
   Test,
@@ -128,9 +128,13 @@ describeConformance(
     let app: BunestApplication;
 
     beforeAll(async () => {
-      staticRootDir = mkdtempSync(join(tmpdir(), "bunest-responses-files-"));
-      writeFileSync(join(staticRootDir, "hello.txt"), "hello from a file");
-      mkdirSync(join(staticRootDir, "folder"));
+      staticRootDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-responses-files-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(staticRootDir, { recursive: true });
+      writeTextSync(join(staticRootDir, "hello.txt"), "hello from a file");
+      mkdirSyncPath(join(staticRootDir, "folder"));
 
       const modRef = await Test.createTestingModule({
         imports: [ResponsesModule],
@@ -143,7 +147,7 @@ describeConformance(
 
     afterAll(async () => {
       await app.close();
-      rmSync(staticRootDir, { recursive: true, force: true });
+      await removePath(staticRootDir, { recursive: true, force: true });
     });
 
     describe("Redirects and primitive serialization", () => {

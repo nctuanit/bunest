@@ -13,6 +13,7 @@ bun add @bunest/ai
 Register `AiModule.forRoot()` with one or more named language or embedding models:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { AiModule } from "@bunest/ai";
@@ -34,6 +35,7 @@ export class AppModule {}
 Inject `AiService` for `generateText()`, `generateObject()`, `streamText()`, `embed()`, and `embedMany()`:
 
 @@filename(assistant.service.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { AiService } from "@bunest/ai";
@@ -56,6 +58,7 @@ export class AssistantService {
 Expose typed DI-managed methods as callable agent tools with full Bunest enhancer support (`@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters`):
 
 @@filename(weather.tools.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
 import { AgentFunction } from "@bunest/ai";

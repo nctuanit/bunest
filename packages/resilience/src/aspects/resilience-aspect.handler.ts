@@ -4,7 +4,7 @@ import {
   type MethodAspectContext,
   type MethodAspectHandler,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { ResilienceAspectSlotOptions } from "../decorators/resilience-decorator.util";
 import { executeEntrypoint } from "../policies/resilience.policy";
 import { RESILIENCE_METHOD_ASPECT } from "../resilience.constants";
@@ -23,9 +23,7 @@ import {
  * `ResilienceInterceptor` so they are never double-wrapped.
  */
 @Injectable()
-export class ResilienceMethodAspectHandler
-  implements MethodAspectHandler<ResilienceAspectSlotOptions>
-{
+export class ResilienceMethodAspectHandler implements MethodAspectHandler<ResilienceAspectSlotOptions> {
   private readonly primarySlotCache = new WeakMap<
     Type,
     Map<string | symbol, ResilienceAspectSlotOptions | undefined>
@@ -34,9 +32,7 @@ export class ResilienceMethodAspectHandler
 
   constructor(private readonly planner: EntrypointPlanner) {}
 
-  intercept(
-    ctx: MethodAspectContext<ResilienceAspectSlotOptions>,
-  ): unknown {
+  intercept(ctx: MethodAspectContext<ResilienceAspectSlotOptions>): unknown {
     // If multiple resilience aspect slots exist (e.g., class-level + method-level or inheritance),
     // execute the unified EntrypointPlanner pipeline once at the outermost slot only.
     const primarySlot = this.getPrimarySlot(ctx.targetClass, ctx.methodName);

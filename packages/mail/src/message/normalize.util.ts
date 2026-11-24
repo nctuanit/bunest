@@ -1,8 +1,4 @@
-import type { Type } from "@bunest/common";
-import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
-import { Readable } from "node:stream";
+import { basename, extname, type Type } from "@bunest/core";
 import { MailMessageError } from "../errors/mail-message.error";
 import type {
   MailAddress,
@@ -81,8 +77,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".zip": "application/zip",
   ".docx":
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xlsx":
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 const CONTENT_TYPE =
@@ -135,7 +130,10 @@ export async function createMailMessage(
   const text =
     input.text ?? (html !== undefined ? htmlToText(html) : undefined);
   if (html === undefined && text === undefined) {
-    throw new MailMessageError("html", "or `text` is required: a mail needs a body");
+    throw new MailMessageError(
+      "html",
+      "or `text` is required: a mail needs a body",
+    );
   }
   const headers = checkHeaders(mergeHeaders(defaults.headers, input.headers));
   const attachments = await Promise.all(
@@ -146,7 +144,10 @@ export async function createMailMessage(
   const cids = attachments.flatMap((a) => (a.cid ? [a.cid] : []));
   const duplicate = cids.find((cid, i) => cids.indexOf(cid) !== i);
   if (duplicate) {
-    throw new MailMessageError("attachments", `use the cid "${duplicate}" twice`);
+    throw new MailMessageError(
+      "attachments",
+      `use the cid "${duplicate}" twice`,
+    );
   }
   if (
     input.idempotencyKey !== undefined &&
@@ -191,11 +192,14 @@ export function assertRecipients(message: MailMessage): void {
 function messageId(from: MailAddress, idempotencyKey?: string): string {
   const domain = from.address.slice(from.address.lastIndexOf("@") + 1);
   const id = idempotencyKey
-    ? createHash("sha256")
-        .update(`nestjs-mail:${idempotencyKey}`)
-        .digest("base64url")
+    ? Buffer.from(
+        new Bun.CryptoHasher("sha256")
+          .update(`nestjs-mail:${idempotencyKey}`)
+          .digest(),
+      )
+        .toString("base64url")
         .slice(0, 32)
-    : randomUUID();
+    : crypto.randomUUID();
   return `<${id}@${domain}>`;
 }
 
@@ -307,7 +311,7 @@ async function readContent(
         "must be a local file path (URLs are not fetched)",
       );
     }
-    return readFile(path);
+    return Buffer.from(await Bun.file(path).arrayBuffer());
   }
   if (typeof content === "string") {
     return Buffer.from(content, "utf8");
@@ -315,18 +319,30 @@ async function readContent(
   if (content instanceof Uint8Array) {
     return Buffer.from(content);
   }
-  if (content instanceof Readable || content instanceof ReadableStream) {
-    const stream =
-      content instanceof ReadableStream
-        ? Readable.fromWeb(
-            content as unknown as Parameters<typeof Readable.fromWeb>[0],
-          )
-        : content;
+  if (content instanceof ReadableStream) {
+    return Buffer.from(await Bun.readableStreamToBytes(content));
+  }
+  if (
+    content !== null &&
+    typeof content === "object" &&
+    Symbol.asyncIterator in content
+  ) {
     const chunks: Buffer[] = [];
-    for await (const chunk of stream) {
-      chunks.push(
-        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array),
-      );
+    for await (const chunk of content as AsyncIterable<Uint8Array | string>) {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk, "utf8"));
+      } else if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      } else if (chunk instanceof Uint8Array) {
+        chunks.push(
+          Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+        );
+      } else {
+        throw new MailMessageError(
+          `${field}.content`,
+          "must be a string, a Buffer, or a readable stream",
+        );
+      }
     }
     return Buffer.concat(chunks);
   }

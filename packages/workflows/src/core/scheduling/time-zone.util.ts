@@ -3,9 +3,14 @@ const DAY = 86_400_000;
 const formats = new Map<string, Intl.DateTimeFormat>();
 
 /** Throws a TypeError naming `owner` for a zone Intl doesn't know (e.g. 'Europe/Warsaw', 'UTC', 'Asia/Kolkata' are fine). */
-export function assertTimeZone(tz: unknown, owner: string): asserts tz is string {
-  if (typeof tz !== 'string' || !isTimeZone(tz)) {
-    throw new TypeError(`Invalid time zone ${JSON.stringify(tz)} for ${owner}. Use an IANA name, such as "Europe/Warsaw" or "UTC".`);
+export function assertTimeZone(
+  tz: unknown,
+  owner: string,
+): asserts tz is string {
+  if (typeof tz !== "string" || !isTimeZone(tz)) {
+    throw new TypeError(
+      `Invalid time zone ${JSON.stringify(tz)} for ${owner}. Use an IANA name, such as "Europe/Warsaw" or "UTC".`,
+    );
   }
 }
 
@@ -49,7 +54,9 @@ export function fromWallTime(wall: number, tz: string): number {
 export function recentClockChange(utc: number, tz: string): number {
   const now = offsetAt(utc, tz);
   const change = now - offsetAt(utc - DAY, tz);
-  return change !== 0 && offsetAt(utc - Math.abs(change), tz) !== now ? change : 0;
+  return change !== 0 && offsetAt(utc - Math.abs(change), tz) !== now
+    ? change
+    : 0;
 }
 
 function isTimeZone(tz: string): boolean {
@@ -65,16 +72,16 @@ function formatter(tz: string): Intl.DateTimeFormat {
   let format = formats.get(tz);
   if (!format) {
     // `era` tells year 1 from 1 BC, which both print as "1".
-    format = new Intl.DateTimeFormat('en-US', {
+    format = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
-      hourCycle: 'h23',
-      era: 'short',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+      hourCycle: "h23",
+      era: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
     formats.set(tz, format);
   }
@@ -87,9 +94,18 @@ function wallSecond(utc: number, tz: string): number {
   for (const { type, value } of formatter(tz).formatToParts(utc)) {
     parts[type] = value;
   }
-  const year = parts.era === 'BC' ? 1 - Number(parts.year) : Number(parts.year);
+  const year = parts.era === "BC" ? 1 - Number(parts.year) : Number(parts.year);
   // Not Date.UTC, which reads years 0-99 as 1900-1999.
-  const wall = new Date(Date.UTC(2000, 0, 1, Number(parts.hour), Number(parts.minute), Number(parts.second)));
+  const wall = new Date(
+    Date.UTC(
+      2000,
+      0,
+      1,
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    ),
+  );
   wall.setUTCFullYear(year, Number(parts.month) - 1, Number(parts.day));
   return wall.getTime();
 }

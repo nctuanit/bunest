@@ -1,4 +1,4 @@
-import type { Duration } from '../time/duration';
+import type { Duration } from "../time/duration";
 
 /**
  * A concurrency limit, in the family's words: at most `limit` run at once across every worker, of the whole (a

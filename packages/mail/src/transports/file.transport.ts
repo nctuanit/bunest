@@ -1,7 +1,12 @@
-import { Logger } from "@bunest/common";
-import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import {
+  ensureDir,
+  isAbsolute,
+  join,
+  Logger,
+  relative,
+  resolve,
+  writeExclusiveFile,
+} from "@bunest/core";
 import type { FileMailTransportOptions } from "../interfaces/local-transport-options.interface";
 import type { MailTransportResult } from "../interfaces/mail-transport.interface";
 import { LOCAL_TRANSPORT } from "../mail.constants";
@@ -29,18 +34,16 @@ export class FileMailTransport extends MailTransport {
   }
 
   override async send(message: MailMessage): Promise<MailTransportResult> {
-    await mkdir(this.directory, { recursive: true });
+    await ensureDir(this.directory, { recursive: true });
     const stamp = message.date.toISOString().replace(/[:.]/g, "-");
     // The id is ours, but keep the name to characters every file system accepts
     const id = message.messageId
       .slice(1, message.messageId.indexOf("@"))
       .replace(/[^A-Za-z0-9_-]/g, "");
     // A random suffix: the same mail sent twice in one millisecond (same idempotency key) gets two files
-    const path = join(
-      this.directory,
-      `${stamp}-${id}-${randomBytes(3).toString("hex")}.eml`,
-    );
-    await writeFile(path, message.toMime(), { flag: "wx" });
+    const suffix = Buffer.from(crypto.getRandomValues(new Uint8Array(3))).toString("hex");
+    const path = join(this.directory, `${stamp}-${id}-${suffix}.eml`);
+    await writeExclusiveFile(path, message.toMime());
     if (this.log) {
       const shown = relative(process.cwd(), path);
       this.logger.log(

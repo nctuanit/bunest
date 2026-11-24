@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { GraphQLObjectType } from "../../../../../../packages/graphql/node_modules/graphql";
+import { GraphQLObjectType } from "../../../../../../packages/graphql/src";
 import type {
   ArgumentsHost,
   HttpArgumentsHost,
   RpcArgumentsHost,
   WsArgumentsHost,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { GqlArgumentsHost } from "../../../../../../packages/graphql/src";
 import { describeConformance } from "../../../../_helpers/index";
 

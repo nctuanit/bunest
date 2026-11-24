@@ -1,5 +1,5 @@
 /** An SSE comment line: clients skip it, and proxies see the connection is alive. */
-const KEEP_ALIVE = new TextEncoder().encode(': keep-alive\n\n');
+const KEEP_ALIVE = new TextEncoder().encode(": keep-alive\n\n");
 
 /**
  * `body` with a keep-alive comment written whenever it has been quiet for `intervalMs`: while a tool runs, or the
@@ -16,12 +16,12 @@ export function withKeepAlive(
     pull: async (controller) => {
       pending ??= reader.read();
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const quiet = new Promise<'quiet'>((resolve) => {
-        timer = setTimeout(() => resolve('quiet'), intervalMs);
+      const quiet = new Promise<"quiet">((resolve) => {
+        timer = setTimeout(() => resolve("quiet"), intervalMs);
       });
       try {
         const next = await Promise.race([pending, quiet]);
-        if (next === 'quiet') {
+        if (next === "quiet") {
           controller.enqueue(KEEP_ALIVE);
           return;
         }

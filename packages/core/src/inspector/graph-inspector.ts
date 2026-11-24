@@ -7,7 +7,7 @@ import {
   type InjectionToken,
   type InjectTokenMetadata,
   type PropertyInjectMetadata,
-} from "@bunest/common";
+} from "../common/index";
 import type { InstanceWrapper } from "../discovery/discovery.service";
 import { formatToken } from "../errors/token-formatter";
 import type { ModuleNode } from "../module/module-node";
@@ -194,9 +194,8 @@ export class GraphInspector {
       : `${moduleRef.id}:provider:${sourceTokenLabel}`;
 
     const paramTypes =
-      (Reflect.getMetadata(DESIGN_METADATA_KEYS.PARAMTYPES, metatype) as
-        | unknown[]
-        | undefined) ?? [];
+      MetadataRegistry.get<unknown[]>(DESIGN_METADATA_KEYS.PARAMTYPES, metatype) ??
+      [];
     const injectTokens =
       MetadataRegistry.get<readonly InjectTokenMetadata[]>(
         METADATA_KEYS.INJECT_TOKENS,
@@ -218,8 +217,7 @@ export class GraphInspector {
 
     for (let index = 0; index < maxArgs; index++) {
       const depToken = (injectByIndex.get(index) ?? paramTypes[index]) as
-        | InjectionToken
-        | undefined;
+        InjectionToken | undefined;
       if (!depToken) continue;
       const targetLabel = formatToken(depToken);
       const targetNodeId = `${moduleRef.id}:provider:${targetLabel}`;
@@ -281,10 +279,7 @@ export class GraphInspector {
   }
 
   insertAttachedEnhancer(nodeId: string | InstanceWrapper<any>): void {
-    const id =
-      typeof nodeId === "string"
-        ? nodeId
-        : formatToken(nodeId.token);
+    const id = typeof nodeId === "string" ? nodeId : formatToken(nodeId.token);
     this.graph.insertAttachedEnhancer(id);
   }
 

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { Global, Injectable, Module } from "../../../../../packages/common/src";
+import { Global, Injectable, Module } from "../../../../../packages/core/src/common";
 import {
   LazyModuleLoader,
   type BunestApplication,

@@ -4,7 +4,7 @@ import type {
   ModuleImport,
   Provider,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { ClientProxy } from "./client-proxy";
 import type { KafkaStatus } from "./enums";
 import type {
@@ -16,7 +16,7 @@ import type {
 
 export interface CustomClientOptions {
   customClass: Type<ClientProxy<any, any>>;
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
 }
 
 export type ClientProvider = ClientOptions | CustomClientOptions;
@@ -46,7 +46,10 @@ export interface ClientsProviderAsyncOptions {
   readonly imports?: ModuleImport[];
   readonly useFactory?: (
     ...args: any[]
-  ) => Promise<TransportConfig | ClientProvider> | TransportConfig | ClientProvider;
+  ) =>
+    | Promise<TransportConfig | ClientProvider>
+    | TransportConfig
+    | ClientProvider;
   readonly inject?: FactoryDependency[];
   readonly useClass?: Type<ClientsModuleOptionsFactory>;
   readonly useExisting?: InjectionToken<ClientsModuleOptionsFactory>;
@@ -60,8 +63,10 @@ export type ClientsModuleAsyncOptions =
       readonly isGlobal?: boolean;
     };
 
-export interface ClientKafkaProxy
-  extends Omit<ClientProxy<Record<string, Function>, KafkaStatus>, "on"> {
+export interface ClientKafkaProxy extends Omit<
+  ClientProxy<Record<string, Function>, KafkaStatus>,
+  "on"
+> {
   readonly consumer: KafkaConsumerLike | null;
   readonly producer: KafkaProducerLike | null;
   subscribeToResponseOf(pattern: unknown): void;

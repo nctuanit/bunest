@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, it } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   RequestMethod,
   type BunestModule,
   type MiddlewareConsumer,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   getCurrentRequestContext,
   type BunestApplication,
@@ -148,7 +147,7 @@ describeConformance(
       await request(app).get("/api/v1/health").expect(200);
     });
 
-    // BUNEST_BUG: Expected standalone module middleware bound via MiddlewareConsumer.forRoutes({ path: 'middleware', method: GET/POST }) with exclude: ['/middleware'] to serve /middleware (200/201); actual returns 404 because Bunest only executes module middleware on matched controller routes, not standalone middleware-only paths (packages/http/src/router/route-compiler.ts, packages/http/src/adapter/bun-http.adapter.ts).
+    // BUNEST_BUG: Expected standalone module middleware bound via MiddlewareConsumer.forRoutes({ path: 'middleware', method: GET/POST }) with exclude: ['/middleware'] to serve /middleware (200/201); actual returns 404 because Bunest only executes module middleware on matched controller routes, not standalone middleware-only paths (packages/core/src/http/router/route-compiler.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
     it.skip("should exclude the path as string", async () => {
       app.setGlobalPrefix("/api/v1", { exclude: ["/test", "/middleware"] });
       await app.init();
@@ -166,7 +165,7 @@ describeConformance(
       await request(app).post("/api/v1/middleware").expect(404);
     });
 
-    // BUNEST_BUG: Expected standalone module middleware bound via forRoutes({ path: 'middleware', method: GET/POST }) to serve /middleware (POST) and /api/v1/middleware (GET); actual returns 404 because Bunest does not execute module middleware on paths without a controller route (packages/http/src/router/route-compiler.ts, packages/http/src/adapter/bun-http.adapter.ts).
+    // BUNEST_BUG: Expected standalone module middleware bound via forRoutes({ path: 'middleware', method: GET/POST }) to serve /middleware (POST) and /api/v1/middleware (GET); actual returns 404 because Bunest does not execute module middleware on paths without a controller route (packages/core/src/http/router/route-compiler.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
     it.skip("should exclude the path as RouteInfo", async () => {
       app.setGlobalPrefix("/api/v1", {
         exclude: [
@@ -216,7 +215,7 @@ describeConformance(
       await request(app).get("/test").expect(200);
     });
 
-    // BUNEST_BUG: Expected standalone module middleware bound via forRoutes({ path: 'middleware/*', method: GET }) with exclude: ['/middleware/:name'] to serve /middleware/foo (200); actual returns 404 because Bunest only binds module middleware to controller routes (packages/http/src/router/route-compiler.ts, packages/http/src/adapter/bun-http.adapter.ts).
+    // BUNEST_BUG: Expected standalone module middleware bound via forRoutes({ path: 'middleware/*', method: GET }) with exclude: ['/middleware/:name'] to serve /middleware/foo (200); actual returns 404 because Bunest only binds module middleware to controller routes (packages/core/src/http/router/route-compiler.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
     it.skip("should exclude the path with route param", async () => {
       app.setGlobalPrefix("/api/v1", {
         exclude: ["/hello/:name", "/middleware/:name"],

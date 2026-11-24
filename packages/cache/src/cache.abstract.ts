@@ -40,9 +40,7 @@ export abstract class Cache {
     key: string,
     factory: () => T | Promise<T>,
     ttlOrOptions?:
-      | CacheTtlOrOptions
-      | ((value: T) => number)
-      | CacheWrapOptions<T>,
+      CacheTtlOrOptions | ((value: T) => number) | CacheWrapOptions<T>,
     refreshThreshold?: number | ((value: T) => number),
   ): Promise<T>;
 

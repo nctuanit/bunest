@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -19,7 +18,7 @@ import {
   type NestInterceptor,
   type PipeTransform,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   CircularDependencyException,
   type BunestApplication,

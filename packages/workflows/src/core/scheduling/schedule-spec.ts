@@ -1,12 +1,27 @@
-import type { ScheduleMissed, ScheduleOptions, ScheduleOverlap, ScheduleSpec } from '../interfaces/schedule.interface';
-import { parseDuration } from '../time/duration';
-import { canonical } from '../utils/canonical.util';
-import { type CronExpression, cronOccurrences, parseCron } from './cron.util';
-import { parseRRule, type RRule, rruleCounts, rruleOccurrences } from './rrule.util';
-import { assertTimeZone } from './time-zone.util';
+import type {
+  ScheduleMissed,
+  ScheduleOptions,
+  ScheduleOverlap,
+  ScheduleSpec,
+} from "../interfaces/schedule.interface";
+import { parseDuration } from "../time/duration";
+import { canonical } from "../utils/canonical.util";
+import { type CronExpression, cronOccurrences, parseCron } from "./cron.util";
+import {
+  parseRRule,
+  type RRule,
+  rruleCounts,
+  rruleOccurrences,
+} from "./rrule.util";
+import { assertTimeZone } from "./time-zone.util";
 
-const MISSED: readonly ScheduleMissed[] = ['skip', 'once', 'all'];
-const OVERLAP: readonly ScheduleOverlap[] = ['skip', 'allow', 'cancel-previous', 'buffer-one'];
+const MISSED: readonly ScheduleMissed[] = ["skip", "once", "all"];
+const OVERLAP: readonly ScheduleOverlap[] = [
+  "skip",
+  "allow",
+  "cancel-previous",
+  "buffer-one",
+];
 const MAX_COUNT = 10_000;
 const MAX_PREVIEW = 1_000;
 /** Schedule ids, like workflow names, can't hold the `@` that separates them from the time in an occurrence's run id. */
@@ -22,25 +37,38 @@ const SCHEDULE_ID = /^[\w.:-]+$/;
  * const spec = parseSchedule({ cron: '0 0 8 * * MON', tz: 'Europe/Warsaw', missed: 'once' }, 'Schedule "weekly-digest"');
  * ```
  */
-export function parseSchedule(options: ScheduleOptions, owner: string = 'Schedule'): ScheduleSpec {
-  if (options === null || typeof options !== 'object') {
-    throw new TypeError(`${owner}: expected an object with cron, every or rrule, got ${JSON.stringify(options)}.`);
+export function parseSchedule(
+  options: ScheduleOptions,
+  owner: string = "Schedule",
+): ScheduleSpec {
+  if (options === null || typeof options !== "object") {
+    throw new TypeError(
+      `${owner}: expected an object with cron, every or rrule, got ${JSON.stringify(options)}.`,
+    );
   }
-  const kinds = (['cron', 'every', 'rrule'] as const).filter((kind) => options[kind] !== undefined);
+  const kinds = (["cron", "every", "rrule"] as const).filter(
+    (kind) => options[kind] !== undefined,
+  );
   if (kinds.length !== 1) {
-    throw new TypeError(`${owner}: give exactly one of cron, every and rrule${kinds.length ? `, not ${kinds.join(' and ')}` : ''}.`);
+    throw new TypeError(
+      `${owner}: give exactly one of cron, every and rrule${kinds.length ? `, not ${kinds.join(" and ")}` : ""}.`,
+    );
   }
-  const tz = options.tz ?? 'UTC';
+  const tz = options.tz ?? "UTC";
   assertTimeZone(tz, owner);
-  const startAt = instant(owner, 'startAt', options.startAt);
-  const endAt = instant(owner, 'endAt', options.endAt);
+  const startAt = instant(owner, "startAt", options.startAt);
+  const endAt = instant(owner, "endAt", options.endAt);
   if (startAt !== null && endAt !== null && endAt <= startAt) {
-    throw new TypeError(`${owner}: endAt (${new Date(endAt).toISOString()}) must be after startAt (${new Date(startAt).toISOString()}).`);
+    throw new TypeError(
+      `${owner}: endAt (${new Date(endAt).toISOString()}) must be after startAt (${new Date(startAt).toISOString()}).`,
+    );
   }
-  const timing: Partial<Pick<ScheduleSpec, 'cron' | 'every' | 'rrule'>> = {};
+  const timing: Partial<Pick<ScheduleSpec, "cron" | "every" | "rrule">> = {};
   if (options.cron !== undefined) {
-    if (typeof options.cron !== 'string') {
-      throw new TypeError(`${owner}: cron must be a string, such as '0 8 * * MON'.`);
+    if (typeof options.cron !== "string") {
+      throw new TypeError(
+        `${owner}: cron must be a string, such as '0 8 * * MON'.`,
+      );
     }
     compiledCron(options.cron);
     timing.cron = options.cron;
@@ -52,7 +80,9 @@ export function parseSchedule(options: ScheduleOptions, owner: string = 'Schedul
       throw new TypeError(`${owner}: ${(error as Error).message}`);
     }
     if (every < 1_000) {
-      throw new TypeError(`${owner}: every (${JSON.stringify(options.every)}) must be at least a second.`);
+      throw new TypeError(
+        `${owner}: every (${JSON.stringify(options.every)}) must be at least a second.`,
+      );
     }
     if (options.tz !== undefined) {
       throw new TypeError(
@@ -62,34 +92,47 @@ export function parseSchedule(options: ScheduleOptions, owner: string = 'Schedul
     }
     timing.every = every;
   } else {
-    if (typeof options.rrule !== 'string') {
-      throw new TypeError(`${owner}: rrule must be a string, such as 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=8'.`);
+    if (typeof options.rrule !== "string") {
+      throw new TypeError(
+        `${owner}: rrule must be a string, such as 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=8'.`,
+      );
     }
     const rule = compiledRRule(options.rrule);
     if (rruleCounts(rule) && startAt === null) {
-      throw new TypeError(`${owner}: an rrule with COUNT counts from startAt: give one (or use limit).`);
+      throw new TypeError(
+        `${owner}: an rrule with COUNT counts from startAt: give one (or use limit).`,
+      );
     }
     // COUNT is counted from DTSTART at every computation of the next occurrence: `limit` counts as it goes.
     if ((rule.count ?? 0) > MAX_COUNT) {
-      throw new TypeError(`${owner}: an rrule's COUNT (${rule.count}) can be at most ${MAX_COUNT}. For more, use limit.`);
+      throw new TypeError(
+        `${owner}: an rrule's COUNT (${rule.count}) can be at most ${MAX_COUNT}. For more, use limit.`,
+      );
     }
     timing.rrule = options.rrule;
   }
   const limit = options.limit ?? null;
   if (limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) {
-    throw new TypeError(`${owner}: invalid limit ${JSON.stringify(limit)}. Use a positive integer.`);
-  }
-  const missed = options.missed ?? 'skip';
-  if (!MISSED.includes(missed)) {
-    throw new TypeError(`${owner}: invalid missed ${JSON.stringify(missed)}. Use 'skip', 'once' or 'all'.`);
-  }
-  const overlap = options.overlap ?? 'skip';
-  if (!OVERLAP.includes(overlap)) {
-    throw new TypeError(`${owner}: invalid overlap ${JSON.stringify(overlap)}. Use 'skip', 'allow', 'cancel-previous' or 'buffer-one'.`);
-  }
-  if (missed === 'all' && overlap !== 'allow') {
     throw new TypeError(
-      `${owner}: missed: 'all' starts every missed occurrence at once, so it needs overlap: 'allow'. ` + "For one catch-up run, use missed: 'once'.",
+      `${owner}: invalid limit ${JSON.stringify(limit)}. Use a positive integer.`,
+    );
+  }
+  const missed = options.missed ?? "skip";
+  if (!MISSED.includes(missed)) {
+    throw new TypeError(
+      `${owner}: invalid missed ${JSON.stringify(missed)}. Use 'skip', 'once' or 'all'.`,
+    );
+  }
+  const overlap = options.overlap ?? "skip";
+  if (!OVERLAP.includes(overlap)) {
+    throw new TypeError(
+      `${owner}: invalid overlap ${JSON.stringify(overlap)}. Use 'skip', 'allow', 'cancel-previous' or 'buffer-one'.`,
+    );
+  }
+  if (missed === "all" && overlap !== "allow") {
+    throw new TypeError(
+      `${owner}: missed: 'all' starts every missed occurrence at once, so it needs overlap: 'allow'. ` +
+        "For one catch-up run, use missed: 'once'.",
     );
   }
   return { ...timing, tz, startAt, endAt, limit, missed, overlap };
@@ -108,17 +151,27 @@ export function parseSchedule(options: ScheduleOptions, owner: string = 'Schedul
 export function nextOccurrences(
   spec: ScheduleSpec,
   options: { from?: Date | number; count?: number; runs?: number } = {},
-  owner: string = 'nextOccurrences()',
+  owner: string = "nextOccurrences()",
 ): number[] {
   const count = options.count ?? 10;
   if (!Number.isSafeInteger(count) || count < 1 || count > MAX_PREVIEW) {
-    throw new TypeError(`${owner}: count (${count}) must be an integer from 1 to ${MAX_PREVIEW}.`);
+    throw new TypeError(
+      `${owner}: count (${count}) must be an integer from 1 to ${MAX_PREVIEW}.`,
+    );
   }
-  const from = options.from === undefined ? Date.now() : options.from instanceof Date ? options.from.getTime() : options.from;
-  if (typeof from !== 'number' || !Number.isFinite(from)) {
-    throw new TypeError(`${owner}: invalid from ${String(options.from)}. Pass a valid Date or a timestamp in milliseconds.`);
+  const from =
+    options.from === undefined
+      ? Date.now()
+      : options.from instanceof Date
+        ? options.from.getTime()
+        : options.from;
+  if (typeof from !== "number" || !Number.isFinite(from)) {
+    throw new TypeError(
+      `${owner}: invalid from ${String(options.from)}. Pass a valid Date or a timestamp in milliseconds.`,
+    );
   }
-  const left = spec.limit === null ? Infinity : spec.limit - (options.runs ?? 0);
+  const left =
+    spec.limit === null ? Infinity : spec.limit - (options.runs ?? 0);
   const times: number[] = [];
   for (const at of occurrences(spec, from)) {
     if (times.length >= Math.min(count, left)) {
@@ -150,26 +203,41 @@ export function occurrenceId(schedule: string, at: number): string {
  * assertScheduleId(id, 'queue "emails"'); // Invalid schedule id "weekly digest" of queue "emails". ...
  * ```
  */
-export function assertScheduleId(id: unknown, owner?: string): asserts id is string {
-  if (typeof id !== 'string' || !SCHEDULE_ID.test(id)) {
-    throw new TypeError(`Invalid schedule id ${JSON.stringify(id)}${owner === undefined ? '' : ` of ${owner}`}. Use letters, digits, ".", ":", "_" or "-".`);
+export function assertScheduleId(
+  id: unknown,
+  owner?: string,
+): asserts id is string {
+  if (typeof id !== "string" || !SCHEDULE_ID.test(id)) {
+    throw new TypeError(
+      `Invalid schedule id ${JSON.stringify(id)}${owner === undefined ? "" : ` of ${owner}`}. Use letters, digits, ".", ":", "_" or "-".`,
+    );
   }
 }
 
 /** Whether two specs have the same occurrences (their policies aside). */
 export function sameTiming(a: ScheduleSpec, b: ScheduleSpec): boolean {
-  const timing = ({ cron, every, rrule, tz, startAt, endAt }: ScheduleSpec) => canonical({ cron, every, rrule, tz, startAt, endAt });
+  const timing = ({ cron, every, rrule, tz, startAt, endAt }: ScheduleSpec) =>
+    canonical({ cron, every, rrule, tz, startAt, endAt });
   return timing(a) === timing(b);
 }
 
 /** The spec's occurrences strictly after `after`, ascending, within `startAt` and `endAt` (not counting `limit`). */
-export function* occurrences(spec: ScheduleSpec, after: number): Generator<number> {
-  const from = spec.startAt === null ? after : Math.max(after, spec.startAt - 1);
+export function* occurrences(
+  spec: ScheduleSpec,
+  after: number,
+): Generator<number> {
+  const from =
+    spec.startAt === null ? after : Math.max(after, spec.startAt - 1);
   let times: Generator<number>;
   if (spec.cron !== undefined) {
     times = cronOccurrences(compiledCron(spec.cron), from, spec.tz);
   } else if (spec.rrule !== undefined) {
-    times = rruleOccurrences(compiledRRule(spec.rrule), spec.startAt, spec.tz, from);
+    times = rruleOccurrences(
+      compiledRRule(spec.rrule),
+      spec.startAt,
+      spec.tz,
+      from,
+    );
   } else {
     times = everyOccurrences(spec.every!, spec.startAt ?? 0, from);
   }
@@ -182,7 +250,10 @@ export function* occurrences(spec: ScheduleSpec, after: number): Generator<numbe
 }
 
 /** The first occurrence strictly after `after`, or `null`. */
-export function nextOccurrence(spec: ScheduleSpec, after: number): number | null {
+export function nextOccurrence(
+  spec: ScheduleSpec,
+  after: number,
+): number | null {
   for (const at of occurrences(spec, after)) {
     return at;
   }
@@ -193,7 +264,12 @@ export function nextOccurrence(spec: ScheduleSpec, after: number): number | null
  * The latest `count` occurrences in `[from, to]`, ascending. Looks back from `to` in growing windows, so a
  * schedule that fell far behind costs as much as the occurrences it returns, not all it missed.
  */
-export function latestOccurrences(spec: ScheduleSpec, from: number, to: number, count: number): number[] {
+export function latestOccurrences(
+  spec: ScheduleSpec,
+  from: number,
+  to: number,
+  count: number,
+): number[] {
   for (let window = 60_000; ; window *= 16) {
     const start = Math.max(from, to - window);
     const found: number[] = [];
@@ -212,21 +288,34 @@ export function latestOccurrences(spec: ScheduleSpec, from: number, to: number, 
   }
 }
 
-function* everyOccurrences(every: number, anchor: number, after: number): Generator<number> {
-  let at = after < anchor ? anchor : anchor + (Math.floor((after - anchor) / every) + 1) * every;
+function* everyOccurrences(
+  every: number,
+  anchor: number,
+  after: number,
+): Generator<number> {
+  let at =
+    after < anchor
+      ? anchor
+      : anchor + (Math.floor((after - anchor) / every) + 1) * every;
   for (;;) {
     yield at;
     at += every;
   }
 }
 
-function instant(owner: string, name: string, value: Date | number | undefined): number | null {
+function instant(
+  owner: string,
+  name: string,
+  value: Date | number | undefined,
+): number | null {
   if (value === undefined) {
     return null;
   }
   const ms = value instanceof Date ? value.getTime() : value;
-  if (typeof ms !== 'number' || !Number.isFinite(ms)) {
-    throw new TypeError(`${owner}: invalid ${name} ${String(value)}. Pass a valid Date or a timestamp in milliseconds.`);
+  if (typeof ms !== "number" || !Number.isFinite(ms)) {
+    throw new TypeError(
+      `${owner}: invalid ${name} ${String(value)}. Pass a valid Date or a timestamp in milliseconds.`,
+    );
   }
   return ms;
 }

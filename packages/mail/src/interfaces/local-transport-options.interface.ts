@@ -1,4 +1,4 @@
-import type { LoggerService } from "@bunest/common";
+import type { LoggerService } from "@bunest/core";
 
 export interface FileMailTransportOptions {
   /** Where the `.eml` files go. Created when missing. */

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../../packages/core/src/common";
 import {
   HealthCheck,
   HealthCheckService,
@@ -60,10 +59,8 @@ describeConformance(
       Promise.resolve({ test: { status: "up" } });
 
     const getHealthResponses = () =>
-      SwaggerModule.createDocument(
-        ctx!.app,
-        new DocumentBuilder().build(),
-      ).paths["/health"]?.get?.responses;
+      SwaggerModule.createDocument(ctx!.app, new DocumentBuilder().build())
+        .paths["/health"]?.get?.responses;
 
     afterEach(async () => {
       if (ctx) {

@@ -140,7 +140,10 @@ export async function readSseEvents(
   const processLines = (finalChunk: boolean): boolean => {
     // Normalize CRLF and stray CR into LF while keeping a potential trailing CR for next chunk
     if (!finalChunk && buffer.endsWith("\r")) {
-      const safe = buffer.slice(0, -1).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const safe = buffer
+        .slice(0, -1)
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
       buffer = `${safe}\r`;
     } else {
       buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");

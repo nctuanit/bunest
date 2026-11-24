@@ -1,5 +1,4 @@
-import "reflect-metadata";
-import { registerAs } from "../../../../../packages/config/src";
+import { registerAs } from "../../../../../packages/core/src/config";
 
 export default registerAs("database.driver", () => ({
   host: "host",

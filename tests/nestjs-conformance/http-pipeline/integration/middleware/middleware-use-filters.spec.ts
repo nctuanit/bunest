@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, it } from "bun:test";
 import {
   Catch,
@@ -13,7 +12,7 @@ import {
   type BunestModule,
   type ExceptionFilter,
   type MiddlewareConsumer,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -80,7 +79,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Expected GET /private to return 403 "filtered" from @UseFilters(new ForbiddenFilter()) on GuardMiddleware.use(), got default JSON 403 {"statusCode":403,"message":"Forbidden",...}. packages/http/src/router/route-compiler.ts and packages/http/src/pipeline/execution-pipeline.ts only scan @UseFilters metadata on controller classes/handlers and global filters, not on middleware class `use()` methods.
+    // BUNEST_BUG: Expected GET /private to return 403 "filtered" from @UseFilters(new ForbiddenFilter()) on GuardMiddleware.use(), got default JSON 403 {"statusCode":403,"message":"Forbidden",...}. packages/core/src/http/router/route-compiler.ts and packages/core/src/http/pipeline/execution-pipeline.ts only scan @UseFilters metadata on controller classes/handlers and global filters, not on middleware class `use()` methods.
     it.skip.each([[[]], [["public"]]])(
       "should apply them with the exclusions %j",
       async (exclusions) => {

@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -13,6 +16,15 @@ import {
   type CliIO,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Configuration Schematic Factory",
@@ -28,11 +40,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-config-"));
+      tempDir = makeTempDir("bunest-cli-conf-config-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -51,10 +63,10 @@ describeConformance(
 
         const cliRes = await runCli(["g", "configuration"], io);
         expect(cliRes.exitCode).toBe(0);
-        expect(existsSync(join(tempDir, "bunest.json"))).toBe(true);
+        expect(existsSyncPath(join(tempDir, "bunest.json"))).toBe(true);
 
         const parsed = JSON.parse(
-          readFileSync(join(tempDir, "bunest.json"), "utf8"),
+          readTextSync(join(tempDir, "bunest.json")),
         ) as Record<string, unknown>;
         expect(parsed).toEqual({
           collection: "@bunest/schematics",
@@ -103,10 +115,10 @@ describeConformance(
         expect(result.files.map((f) => f.relativePath)).toEqual([
           "bunest.json",
         ]);
-        expect(existsSync(join(tempDir, "project/bunest.json"))).toBe(true);
+        expect(existsSyncPath(join(tempDir, "project/bunest.json"))).toBe(true);
         expect(
           JSON.parse(
-            readFileSync(join(tempDir, "project/bunest.json"), "utf8"),
+            readTextSync(join(tempDir, "project/bunest.json")),
           ),
         ).toMatchObject({
           collection: "@bunest/schematics",
@@ -128,7 +140,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "project/bunest.json"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "project/bunest.json"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "project/bunest.json"))).toBe(true);
     });
 
     // BUNEST_BUG: GenerateSchematicOptions in packages/cli/src/types.ts and buildSchematicFiles("configuration") in packages/cli/src/templates/schematic.templates.ts do not accept a custom "language" option and omit "language" from generated bunest.json (note: ADR-001 also scopes Bunest to TypeScript).
@@ -142,7 +154,7 @@ describeConformance(
       });
 
       const parsed = JSON.parse(
-        readFileSync(join(tempDir, "project/bunest.json"), "utf8"),
+        readTextSync(join(tempDir, "project/bunest.json")),
       ) as Record<string, unknown>;
       expect(parsed.language).toBe("ts");
     });
@@ -158,7 +170,7 @@ describeConformance(
       });
 
       const parsed = JSON.parse(
-        readFileSync(join(tempDir, "project/bunest.json"), "utf8"),
+        readTextSync(join(tempDir, "project/bunest.json")),
       ) as Record<string, unknown>;
       expect(parsed.collection).toBe("foo");
     });

@@ -1,7 +1,5 @@
-import "reflect-metadata";
-import net from "node:net";
 import { afterEach, describe, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../../packages/core/src/common";
 import {
   HealthCheck,
   HealthCheckService,
@@ -112,7 +110,7 @@ describeConformance(
         "Bunest native fetch HttpHealthIndicator records responseTime via HealthCheckAttempt",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
       it.skip(
         adaptedTitle(
           ["ADR-001", "ADR-008"],
@@ -154,7 +152,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
       it.skip(
         adaptedTitle(
           ["ADR-001"],
@@ -162,12 +160,13 @@ describeConformance(
           "Uses closed ephemeral localhost port instead of external DNS lookup",
         ),
         async () => {
-          const probe = net.createServer();
-          await new Promise<void>((resolve) =>
-            probe.listen(0, "127.0.0.1", resolve),
-          );
-          const closedPort = (probe.address() as net.AddressInfo).port;
-          await new Promise<void>((resolve) => probe.close(() => resolve()));
+          const probe = Bun.listen({
+            hostname: "127.0.0.1",
+            port: 0,
+            socket: { data() {} },
+          });
+          const closedPort = probe.port;
+          probe.stop(true);
 
           ctx = await createHttpHealthApp(({ healthCheck, http }) =>
             healthCheck.check([
@@ -179,8 +178,12 @@ describeConformance(
           const body = res.body as {
             status: string;
             info: Record<string, unknown>;
-            error: { http: { status: string; message: string; responseTime: number } };
-            details: { http: { status: string; message: string; responseTime: number } };
+            error: {
+              http: { status: string; message: string; responseTime: number };
+            };
+            details: {
+              http: { status: string; message: string; responseTime: number };
+            };
           };
           expect(body.status).toBe("error");
           expect(body.info).toEqual({});
@@ -193,7 +196,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
       it.skip(
         adaptedTitle(
           ["ADR-001", "ADR-008"],
@@ -264,7 +267,7 @@ describeConformance(
         "Native fetch responseCheck records responseTime via HealthCheckAttempt",
       );
 
-      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) HttpHealthIndicator.responseCheck() throws "Response did not pass the check" instead of "Request failed with status code 400" on non-2xx responses failing callback (packages/observability/src/health/health.indicators.ts:643-649).
+      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) HttpHealthIndicator.responseCheck() throws "Response did not pass the check" instead of "Request failed with status code 400" on non-2xx responses failing callback (packages/observability/src/health/health.indicators.ts:643-649).
       it.skip("should not be healthy if remote server returns 400 and status code 200 is expected", async () => {
         const remoteUrl = startRemoteServer(
           () =>

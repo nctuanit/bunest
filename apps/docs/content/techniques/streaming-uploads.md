@@ -7,8 +7,15 @@ Because Bunest operates directly on Web Standards and Bun's native I/O primitive
 Return a `BunFile` (which extends `Blob`) directly from any controller handler. Bunest's Response Serializer passes it untouched to `new Response(blob, ...)`—preserving Bun's OS-level zero-copy `sendfile` fast path ([ADR-010](/architecture/response-serialization)):
 
 @@filename(files.controller.ts)
+
 ```ts
-import { Controller, Get, Header, NotFoundException, Param } from "@bunest/core";
+import {
+  Controller,
+  Get,
+  Header,
+  NotFoundException,
+  Param,
+} from "@bunest/core";
 
 @Controller("files")
 export class FilesController {
@@ -33,6 +40,7 @@ export class FilesController {
 You can also return a native Web `ReadableStream` (zero-buffering chunk streaming) or `Uint8Array` / `ArrayBuffer`:
 
 @@filename(export.controller.ts)
+
 ```ts
 import { Controller, Get, Header } from "@bunest/core";
 
@@ -60,6 +68,7 @@ export class ExportController {
 Use `@UploadedFile(fieldName?)` and `@UploadedFiles(fieldName?)` to extract uploaded files parsed from `multipart/form-data` alongside regular `@Body()` fields:
 
 @@filename(uploads.controller.ts)
+
 ```ts
 import {
   BadRequestException,

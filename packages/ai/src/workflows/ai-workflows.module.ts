@@ -1,6 +1,6 @@
-import { Module } from '@bunest/common';
-import { AiAgentSegment } from './ai-agent.workflow';
-import { AiAgents } from './ai-agents.service';
+import { Module } from "@bunest/core";
+import { AiAgentSegment } from "./ai-agent.workflow";
+import { AiAgents } from "./ai-agents.service";
 
 /**
  * Durable agent runs on `@bunest/workflows`: import it next to `AiModule` and `WorkflowsModule`,

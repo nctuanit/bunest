@@ -1,5 +1,5 @@
-import { stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, readTextSync, resolve, statPath } from "@bunest/core";
+import type { TypegenConfiguration } from "../typegen/types";
 
 // ============================================================================
 // NestJS / Bunest CLI Configuration Types (100% @nestjs/cli parity)
@@ -53,12 +53,7 @@ export interface TscBuilderOptions {
   configPath?: string;
 }
 
-export const AVAILABLE_BUILDERS = [
-  "tsc",
-  "webpack",
-  "swc",
-  "rspack",
-] as const;
+export const AVAILABLE_BUILDERS = ["tsc", "webpack", "swc", "rspack"] as const;
 
 export type BuilderVariant = (typeof AVAILABLE_BUILDERS)[number];
 
@@ -126,6 +121,7 @@ export interface ProjectConfiguration {
   compilerOptions?: CompilerOptions;
   generateOptions?: GenerateOptions;
   deploy?: DeployConfiguration;
+  typegen?: boolean | TypegenConfiguration;
 }
 
 export interface Configuration {
@@ -138,6 +134,7 @@ export interface Configuration {
   compilerOptions?: CompilerOptions;
   generateOptions?: GenerateOptions;
   deploy?: DeployConfiguration;
+  typegen?: boolean | TypegenConfiguration;
   projects?: {
     [key: string]: ProjectConfiguration;
   };
@@ -178,7 +175,7 @@ export interface LoadedCliConfiguration {
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
-    const info = await stat(filePath);
+    const info = await statPath(filePath);
     return info.isFile();
   } catch {
     return false;
@@ -222,7 +219,10 @@ export async function loadCliConfiguration(
     };
   }
 
-  const rawText = await Bun.file(targetPath).text();
+  const rawText =
+    typeof Bun !== "undefined"
+      ? await Bun.file(targetPath).text()
+      : readTextSync(targetPath);
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);

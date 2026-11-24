@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import * as CommonPkg from "@bunest/common";
+import * as CommonPkg from "@bunest/core";
 import {
   BODY_SANITIZED_SYMBOL,
   BadRequestException,
@@ -14,15 +13,9 @@ import {
   UnprocessableEntityException,
   UpdateDateColumn,
   type ValidationErrorResponse,
-} from "@bunest/common";
-import { Transform } from "class-transformer";
-import {
-  IsEmail,
-  IsInt,
-  IsOptional,
-  IsString,
-  Min,
-} from "class-validator";
+} from "@bunest/core";
+import { Transform } from "../src/transformer";
+import { IsEmail, IsInt, IsOptional, IsString, Min } from "../src/validator";
 import {
   ValidationPipe,
   flattenValidationErrors,
@@ -175,7 +168,9 @@ describe("Entity Schema Single-Source-of-Truth Validation (validateEntity & Vali
       expect(res.value.rating).toBe(4.75);
       expect(res.value.active).toBe(false);
       expect(res.value.birthDate).toBeInstanceOf(Date);
-      expect(res.value.birthDate?.toISOString()).toBe("1998-12-10T00:00:00.000Z");
+      expect(res.value.birthDate?.toISOString()).toBe(
+        "1998-12-10T00:00:00.000Z",
+      );
       expect(res.value.tags).toEqual(["ts", "bun"]);
       expect(res.value.metadata).toEqual({ theme: "dark" });
       expect(res.value.id).toBeUndefined();
@@ -432,7 +427,10 @@ describe("Entity Schema Single-Source-of-Truth Validation (validateEntity & Vali
         ),
       );
       expect(err422).toBeInstanceOf(UnprocessableEntityException);
-      expect((err422.getResponse() as { message: Record<string, string[]> }).message.username).toBeDefined();
+      expect(
+        (err422.getResponse() as { message: Record<string, string[]> }).message
+          .username,
+      ).toBeDefined();
 
       const sanitized: Record<PropertyKey, unknown> = {
         username: "ada_ok",
@@ -489,7 +487,9 @@ describe("Entity Schema Single-Source-of-Truth Validation (validateEntity & Vali
 
       expect(byField.get("name")?.constraints.minLength).toBeDefined();
       expect(byField.get("email")?.constraints.isEmail).toBeDefined();
-      expect(byField.get("unknownProp")?.constraints.whitelistValidation).toBeDefined();
+      expect(
+        byField.get("unknownProp")?.constraints.whitelistValidation,
+      ).toBeDefined();
 
       // Exactly ONE error entry for `age` with custom class-validator message taking precedence
       const ageDetails = body.details.filter((d) => d.field === "age");
@@ -497,7 +497,9 @@ describe("Entity Schema Single-Source-of-Truth Validation (validateEntity & Vali
       expect(ageDetails[0]?.constraints).toEqual({
         min: "must be at least 18 years old",
       });
-      expect(ageDetails[0]?.messages).toEqual(["must be at least 18 years old"]);
+      expect(ageDetails[0]?.messages).toEqual([
+        "must be at least 18 years old",
+      ]);
 
       // Coerced integer on `age: "25"` must NOT trigger spurious class-validator @IsInt() failure when another field fails
       const partialFail = await expectValidationHttpException(

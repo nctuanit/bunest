@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -62,15 +62,14 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/cqrs/index.ts ./src/postgres/index.ts ./src/mysql/index.ts ./src/core/index.ts ./src/cli.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/common --external @bunest/core --external @bunest/cqrs --external @bunest/store-kit --external @bunest/store-kit/postgres --external @bunest/store-kit/mysql --external reflect-metadata",
+    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/cqrs/index.ts ./src/postgres/index.ts ./src/mysql/index.ts ./src/core/index.ts ./src/cli.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/core --external @bunest/messaging --external @bunest/orm --external @bunest/orm/store --external @bunest/orm/postgres --external @bunest/orm/mysql --external @bunest/orm/testing --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n --external @bunest/messaging/events --external @bunest/messaging/cqrs --external @bunest/messaging/outbox --external @bunest/messaging/webhooks",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*",
-    "@bunest/cqrs": "workspace:*",
-    "@bunest/store-kit": "workspace:*"
+    "@bunest/messaging": "workspace:*",
+    "@bunest/orm": "workspace:*"
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"

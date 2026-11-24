@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   METADATA_KEYS,
@@ -7,8 +6,8 @@ import {
   type CallHandler,
   type ExecutionContext,
   type Type,
-} from "@bunest/common";
-import { Exclude, Expose, Transform } from "class-transformer";
+} from "@bunest/core";
+import { Exclude, Expose, Transform } from "../src/transformer";
 import {
   CLASS_SERIALIZER_OPTIONS,
   ClassSerializerInterceptor,
@@ -267,7 +266,10 @@ describe("ClassSerializerInterceptor & @SerializeOptions()", () => {
 
     // Verify DI tokens for @bunest/core container resolution
     expect(
-      MetadataRegistry.has(METADATA_KEYS.INJECTABLE, ClassSerializerInterceptor),
+      MetadataRegistry.has(
+        METADATA_KEYS.INJECTABLE,
+        ClassSerializerInterceptor,
+      ),
     ).toBe(true);
     const injectTokens = MetadataRegistry.getInjectTokens(
       ClassSerializerInterceptor,
@@ -276,9 +278,9 @@ describe("ClassSerializerInterceptor & @SerializeOptions()", () => {
       { index: 0, token: Reflector },
       { index: 1, token: CLASS_SERIALIZER_OPTIONS },
     ]);
-    expect(MetadataRegistry.getOptionalDeps(ClassSerializerInterceptor)).toEqual(
-      [0, 1],
-    );
+    expect(
+      MetadataRegistry.getOptionalDeps(ClassSerializerInterceptor),
+    ).toEqual([0, 1]);
   });
 
   it("passes through native Response, ReadableStream, Blob/BunFile, Uint8Array, AsyncIterable, and primitives untouched", async () => {

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { IsString } from "class-validator";
+import { IsString } from "../../../../../packages/validation/src/validator";
 import {
   BadRequestException,
   Controller,
@@ -11,7 +10,7 @@ import {
   type ExecutionContext,
   type PipeTransform,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   HttpAdapterHost,
   type BunestApplication,
@@ -115,7 +114,7 @@ describeConformance(
         expect(res.headers["x-from-param"]).toBe("yes");
       });
 
-      // BUNEST_BUG: resolveRouteArguments runs parameter-scoped pipes (and global pipes on custom decorators) even when the custom param decorator returns ResponseContext (packages/http/src/pipeline/param-extractor.ts:289-293, 340-358).
+      // BUNEST_BUG: resolveRouteArguments runs parameter-scoped pipes (and global pipes on custom decorators) even when the custom param decorator returns ResponseContext (packages/core/src/http/pipeline/param-extractor.ts:289-293, 340-358).
       it.skip("should run no pipe on the response a decorator gives", async () => {
         const res = await request(app).get("/response-with-pipe");
 

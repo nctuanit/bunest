@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Socket } from "bun";
 import {
@@ -204,7 +203,9 @@ describeConformance(
               port: server.port!,
               socket: {
                 data(_sock, chunk) {
-                  replies.push(...replyDecoder.push<RpcResponseEnvelope>(chunk));
+                  replies.push(
+                    ...replyDecoder.push<RpcResponseEnvelope>(chunk),
+                  );
                 },
                 close() {
                   resolveClosed();
@@ -265,7 +266,9 @@ describeConformance(
               port: server.port!,
               socket: {
                 data(_sock, chunk) {
-                  replies.push(...replyDecoder.push<RpcResponseEnvelope>(chunk));
+                  replies.push(
+                    ...replyDecoder.push<RpcResponseEnvelope>(chunk),
+                  );
                 },
                 close() {
                   resolveClosed();

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { Module } from "../../../../../packages/common/src";
+import { Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Directive,
@@ -14,11 +13,7 @@ import {
   createUnionType,
   registerEnumType,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 enum Visibility {
   PUBLIC = "PUBLIC",
@@ -123,8 +118,7 @@ describeConformance(
         })
         .expect(200);
       expect(res.body.errors).toBeUndefined();
-      const sdl = (res.body.data as { _service: { sdl: string } })._service
-        .sdl;
+      const sdl = (res.body.data as { _service: { sdl: string } })._service.sdl;
 
       expect(sdl).toMatch(/enum Visibility[^{]*@tag\(name: "visibility"\)/);
       expect(sdl).toMatch(/PUBLIC @tag\(name: "public"\)/);

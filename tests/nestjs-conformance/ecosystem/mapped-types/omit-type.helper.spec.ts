@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Expose,
@@ -6,14 +5,14 @@ import {
   Type,
   instanceToInstance,
   plainToInstance,
-} from "class-transformer";
+} from "../../../../packages/validation/src/transformer";
 import {
   IsNumber,
   MinLength,
   getMetadataStorage,
   validate,
-} from "class-validator";
-import { OmitType } from "../../../../packages/mapped-types/src";
+} from "../../../../packages/validation/src/validator";
+import { OmitType } from "../../../../packages/validation/src";
 import { describeConformance } from "../../_helpers/index";
 
 function getValidationMetadataByTarget(target: Function) {

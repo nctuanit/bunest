@@ -1,22 +1,17 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Module,
   UseInterceptors,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CacheInterceptor,
   CacheModule,
   CacheTTL,
 } from "../../../../../packages/cache/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 @Controller()
 @CacheTTL(600)
@@ -49,7 +44,8 @@ describeConformance(
     upstreamPath: "cache-manager/tests/e2e/cache-header.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
-    notes: "Uses Bunest zero-socket request(app) helper instead of Express/supertest.",
+    notes:
+      "Uses Bunest zero-socket request(app) helper instead of Express/supertest.",
   },
   () => {
     let app: BunestApplication;

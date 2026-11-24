@@ -25,6 +25,11 @@ const BOOLEAN_FLAGS = new Set([
   "compile",
   "observe",
   "no-observe",
+  "typegen",
+  "no-typegen",
+  "check",
+  "no-global",
+  "fix",
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -45,11 +50,21 @@ const VALUE_FLAGS = new Set([
   "package-manager",
   "tag",
   "collection",
+  "typegen-dir",
+  "tsconfig",
+  "driver",
+  "decorator",
+  "class",
+  "method",
+  "module",
+  "symbol",
+  "kind",
+  "from",
 ]);
 
 const REPEATABLE_FLAGS = new Set(["env-file"]);
 
-const OPTIONAL_VALUE_FLAGS = new Set(["debug", "sourcemap"]);
+const OPTIONAL_VALUE_FLAGS = new Set(["debug", "sourcemap", "format"]);
 
 const DEFAULT_SHORT_FLAG_ALIASES: Readonly<Record<string, string>> = {
   h: "help",
@@ -122,6 +137,18 @@ const COMMAND_SHORT_ALIASES: Readonly<
     c: "config",
     o: "outdir",
     e: "entry",
+  },
+  typegen: {
+    w: "watch",
+    o: "outdir",
+    c: "config",
+    d: "dry-run",
+  },
+  tg: {
+    w: "watch",
+    o: "outdir",
+    c: "config",
+    d: "dry-run",
   },
 };
 
@@ -240,6 +267,21 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
           i += 1;
         } else {
           setFlagValue(flags, "debug", true);
+        }
+        continue;
+      }
+
+      if (body === "format") {
+        const next = argv[i + 1];
+        if (
+          next !== undefined &&
+          !next.startsWith("-") &&
+          (next === "pretty" || next === "json")
+        ) {
+          setFlagValue(flags, "format", next);
+          i += 1;
+        } else {
+          setFlagValue(flags, "format", true);
         }
         continue;
       }

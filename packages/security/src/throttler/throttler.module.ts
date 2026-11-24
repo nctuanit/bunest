@@ -1,4 +1,4 @@
-import { Module, type DynamicModule, type Provider } from "@bunest/common";
+import { Module, type DynamicModule, type Provider } from "@bunest/core";
 import { MemoryThrottlerStorage } from "./memory-throttler.storage";
 import { ThrottlerGuard } from "./throttler.guard";
 import {

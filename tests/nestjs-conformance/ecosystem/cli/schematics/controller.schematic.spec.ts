@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const expectedControllerSource = (kebab: string, pascal: string): string =>
   `import { Controller, Get } from "@bunest/core";\n` +
@@ -35,11 +47,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-ctrl-"));
+      tempDir = makeTempDir("bunest-cli-conf-ctrl-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -80,7 +92,7 @@ describeConformance(
           ),
         ).toBeUndefined();
         expect(
-          readFileSync(join(tempDir, "foo/foo.controller.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo/foo.controller.ts")),
         ).toEqual(expectedControllerSource("foo", "Foo"));
       },
       "Bunest controller imports from @bunest/core with starter @Get() handler",
@@ -108,7 +120,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo/foo.controller.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo/foo.controller.ts")),
         ).toEqual(expectedControllerSource("foo", "Foo"));
       },
       "Bunest controller template uses @bunest/core and bun:test spec",
@@ -134,7 +146,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo/foo.controller.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo/foo.controller.ts")),
         ).toEqual(expectedControllerSource("foo", "Foo"));
       },
       "Bunest uses dir option for base directory",
@@ -162,7 +174,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo-bar/foo-bar.controller.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo-bar/foo-bar.controller.ts")),
         ).toEqual(expectedControllerSource("foo-bar", "FooBar"));
       },
       "Normalizes camelCase controller name to kebab-case path and PascalCase class",
@@ -188,7 +200,7 @@ describeConformance(
         ),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_bar/foo/foo.controller.ts"), "utf8"),
+        readTextSync(join(tempDir, "_bar/foo/foo.controller.ts")),
       ).toEqual(expectedControllerSource("foo", "Foo"));
     });
 
@@ -214,7 +226,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo/foo.controller.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo/foo.controller.ts")),
         ).toEqual(expectedControllerSource("foo", "Foo"));
       },
       "Ports upstream barBaz/foo controller path normalization test",
@@ -254,10 +266,7 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const appModule = readFileSync(
-        join(tempDir, "src/app.module.ts"),
-        "utf8",
-      );
+      const appModule = readTextSync(join(tempDir, "src/app.module.ts"));
       expect(appModule).toContain(
         'import { FooController } from "./foo/foo.controller";',
       );
@@ -285,10 +294,7 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const fooModule = readFileSync(
-        join(tempDir, "src/foo/foo.module.ts"),
-        "utf8",
-      );
+      const fooModule = readTextSync(join(tempDir, "src/foo/foo.module.ts"));
       expect(fooModule).toContain(
         'import { FooController } from "./foo.controller";',
       );
@@ -308,7 +314,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.controller.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.controller.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.controller.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -328,8 +334,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.controller.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.controller.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.controller.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.controller.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.controller.test.ts"))).toBe(true);
     });
 
     // BUNEST_BUG: generateSchematic("controller") in packages/cli/src/commands/generate.ts does not auto-register FooController into src/app.module.ts for ESM projects.
@@ -346,10 +352,7 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const appModule = readFileSync(
-        join(tempDir, "src/app.module.ts"),
-        "utf8",
-      );
+      const appModule = readTextSync(join(tempDir, "src/app.module.ts"));
       expect(appModule).toContain("FooController");
     });
 
@@ -372,16 +375,13 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const fooModule = readFileSync(
-        join(tempDir, "src/foo/foo.module.ts"),
-        "utf8",
-      );
+      const fooModule = readTextSync(join(tempDir, "src/foo/foo.module.ts"));
       expect(fooModule).toContain("FooController");
     });
 
     itAdapted(
       ["ADR-001", "ADR-002"],
-      "should generate bun:test spec file with reflect-metadata and extensionless ESM import",
+      "should generate bun:test spec file without reflect-metadata and with extensionless ESM import",
       async () => {
         await generateSchematic({
           schematic: "application",
@@ -398,11 +398,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "src/foo.controller.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "src/foo.controller.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );

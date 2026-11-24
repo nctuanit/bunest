@@ -1,6 +1,6 @@
 # OpenAPI (Swagger)
 
-**`@bunest/swagger`** provides 100% `@nestjs/swagger` v12 API parity (**160/160** exports) for generating **OpenAPI 3.1** specifications directly from your controllers, DTOs, `@bunest/mapped-types`, and `@Version()` routes—plus a built-in zero-dependency Interactive Try-It-Out UI (and Scalar / Swagger UI presets).
+**`@bunest/swagger`** provides 100% `@nestjs/swagger` v12 API parity (**160/160** exports) for generating **OpenAPI 3.1** specifications directly from your controllers, DTOs, mapped types (`PartialType`/`PickType`/`OmitType`/`IntersectionType`), and `@Version()` routes—plus a built-in zero-dependency Interactive Try-It-Out UI (and Scalar / Swagger UI presets).
 
 ## Installation
 
@@ -13,8 +13,8 @@ bun add @bunest/swagger
 Build an OpenAPI document with `DocumentBuilder` and mount it with `SwaggerModule.setup()`:
 
 @@filename(main.ts)
+
 ```ts
-import "reflect-metadata";
 import { BunestFactory } from "@bunest/core";
 import { DocumentBuilder, SwaggerModule } from "@bunest/swagger";
 import { AppModule } from "./app.module";
@@ -39,6 +39,7 @@ await app.listen(3000);
 ## Decorating Controllers & DTOs
 
 @@filename(users.controller.ts)
+
 ```ts
 import { Body, Controller, Get, Param, Post } from "@bunest/core";
 import {

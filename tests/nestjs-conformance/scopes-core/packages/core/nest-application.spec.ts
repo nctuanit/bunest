@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -16,7 +15,7 @@ import {
   type InterceptorLike,
   type ExceptionFilterLike,
   type WebSocketAdapter,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ApplicationConfig,
   BunHttpAdapter,
@@ -131,7 +130,7 @@ describeConformance(
         await app2.close();
       });
 
-      // BUNEST_BUG: BunHttpAdapter/BunestApplication rejects empty cookie secret with generic Error instead of TypeError (packages/http/src/adapter/bun-http.adapter.ts & packages/core/src/application/bunest-application.ts).
+      // BUNEST_BUG: BunHttpAdapter/BunestApplication rejects empty cookie secret with generic Error instead of TypeError (packages/core/src/http/adapter/bun-http.adapter.ts & packages/core/src/application/bunest-application.ts).
       it.skip("should reject an empty cookie secret", async () => {
         await expect(
           BunestFactory.create(AppModule, {
@@ -170,9 +169,9 @@ describeConformance(
         app.connectMicroservice(ms);
         await app.startAllMicroservices();
 
-        expect(
-          app.get(ApplicationConfig).getGlobalInterceptors().length,
-        ).toBe(1);
+        expect(app.get(ApplicationConfig).getGlobalInterceptors().length).toBe(
+          1,
+        );
         expect(ms.getGlobalInterceptors().length).toBe(0);
         await app.close();
       });
@@ -184,9 +183,9 @@ describeConformance(
         app.connectMicroservice(ms, { inheritAppConfig: true });
         await app.startAllMicroservices();
 
-        expect(
-          app.get(ApplicationConfig).getGlobalInterceptors().length,
-        ).toBe(1);
+        expect(app.get(ApplicationConfig).getGlobalInterceptors().length).toBe(
+          1,
+        );
         expect(ms.getGlobalInterceptors().length).toBe(1);
         await app.close();
       });
@@ -385,7 +384,11 @@ describeConformance(
           logger: false,
           instrument: { instanceDecorator },
         });
-        const mw = async (_req: any, _res: any, next: () => Promise<Response | void> | Response | void) => {
+        const mw = async (
+          _req: any,
+          _res: any,
+          next: () => Promise<Response | void> | Response | void,
+        ) => {
           calls.push("original");
           await next();
         };
@@ -550,7 +553,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: BunestApplication.useSecurityHeaders() / compileSecurityHeaders() does not reject semicolon/CRLF directive injection in CSP values (packages/http/src/security/security-headers.ts).
+      // BUNEST_BUG: BunestApplication.useSecurityHeaders() / compileSecurityHeaders() does not reject semicolon/CRLF directive injection in CSP values (packages/core/src/http/security/security-headers.ts).
       it.skip("should validate CSP directives eagerly", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
 

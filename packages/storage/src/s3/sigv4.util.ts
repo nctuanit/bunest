@@ -1,4 +1,3 @@
-import { createHash, createHmac } from "node:crypto";
 import type { S3Credentials } from "../interfaces/storage-types";
 import { encodeRfc3986 } from "../utils/keys.util";
 
@@ -7,18 +6,17 @@ export const EMPTY_SHA256 =
 export const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
 
 export function sha256Hex(data: string | Uint8Array): string {
-  return createHash("sha256").update(data).digest("hex");
+  return new Bun.CryptoHasher("sha256").update(data).digest("hex");
 }
 
-function hmac(key: string | Buffer, data: string): Buffer {
-  return createHmac("sha256", key).update(data, "utf8").digest();
+function hmac(key: string | Uint8Array, data: string): Buffer {
+  const bytes = new Bun.CryptoHasher("sha256", key).update(data).digest();
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
 /** `20150830T123600Z` */
 export function amzDate(date: Date): string {
-  return date
-    .toISOString()
-    .replace(/[:-]|\.\d{3}/g, "");
+  return date.toISOString().replace(/[:-]|\.\d{3}/g, "");
 }
 
 function dateStamp(date: Date): string {
@@ -35,7 +33,15 @@ export function canonicalQuery(pairs: Iterable<[string, string]>): string {
     encoded.push([encodeRfc3986(k), encodeRfc3986(v)]);
   }
   encoded.sort((a, b) =>
-    a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1,
+    a[0] === b[0]
+      ? a[1] < b[1]
+        ? -1
+        : a[1] > b[1]
+          ? 1
+          : 0
+      : a[0] < b[0]
+        ? -1
+        : 1,
   );
   return encoded.map(([k, v]) => `${k}=${v}`).join("&");
 }
@@ -106,12 +112,9 @@ export function stringToSign(
   date: Date,
   scope: string,
 ): string {
-  return [
-    "AWS4-HMAC-SHA256",
-    amzDate(date),
-    scope,
-    sha256Hex(request),
-  ].join("\n");
+  return ["AWS4-HMAC-SHA256", amzDate(date), scope, sha256Hex(request)].join(
+    "\n",
+  );
 }
 
 export function signature(
@@ -222,7 +225,10 @@ export function presignUrl(input: PresignInput): URL {
   );
   out.searchParams.set("X-Amz-SignedHeaders", signed);
   if (input.credentials.sessionToken) {
-    out.searchParams.set("X-Amz-Security-Token", input.credentials.sessionToken);
+    out.searchParams.set(
+      "X-Amz-Security-Token",
+      input.credentials.sessionToken,
+    );
   }
 
   const queryPairs: Array<[string, string]> = [];

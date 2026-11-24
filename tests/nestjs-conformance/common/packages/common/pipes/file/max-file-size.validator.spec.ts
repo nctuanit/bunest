@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   MaxFileSizeValidator,
   type MaxFileSizeValidatorOptions,
   type UploadedFileInfo,
-} from "../../../../../../../packages/common/src";
+} from "../../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../../_helpers";
 
 describeConformance(
@@ -42,7 +41,7 @@ describeConformance(
         expect(maxFileSizeValidator.isValid(requestFile)).toBe(false);
       });
 
-      // BUNEST_BUG: MaxFileSizeValidator.isValid uses `size <= maxSize` (inclusive) instead of NestJS `< maxSize` (strict); expected false for size === maxSize, actual true (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidator.isValid uses `size <= maxSize` (inclusive) instead of NestJS `< maxSize` (strict); expected false for size === maxSize, actual true (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return false when the file size is equal to the maximum size", () => {
         const maxFileSizeValidator = new MaxFileSizeValidator({
           maxSize: oneKb,
@@ -55,7 +54,7 @@ describeConformance(
         expect(maxFileSizeValidator.isValid(requestFile)).toBe(false);
       });
 
-      // BUNEST_BUG: MaxFileSizeValidator.isValid returns false when no file is provided instead of NestJS true (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidator.isValid returns false when no file is provided instead of NestJS true (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return true when no file provided", () => {
         const maxFileSizeValidator = new MaxFileSizeValidator({
           maxSize: oneKb,
@@ -66,7 +65,7 @@ describeConformance(
     });
 
     describe("buildErrorMessage", () => {
-      // BUNEST_BUG: MaxFileSizeValidator.buildErrorMessage() without a file returns "Validation failed (current file size is 0, expected size is less than or equal to 1024)" instead of NestJS "Validation failed (expected size is less than 1024)" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidator.buildErrorMessage() without a file returns "Validation failed (current file size is 0, expected size is less than or equal to 1024)" instead of NestJS "Validation failed (expected size is less than 1024)" (packages/core/src/common/pipes/file-validators.ts)
       it.skip('should return a string with the format "Validation failed (expected size is less than #maxSize")', () => {
         const maxFileSizeValidator = new MaxFileSizeValidator({
           maxSize: oneKb,
@@ -79,7 +78,7 @@ describeConformance(
         ).toBe(`Validation failed (expected size is less than ${oneKb})`);
       });
 
-      // BUNEST_BUG: MaxFileSizeValidator.buildErrorMessage(file) says "expected size is less than or equal to #maxSize" instead of NestJS "expected size is less than #maxSize" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidator.buildErrorMessage(file) says "expected size is less than or equal to #maxSize" instead of NestJS "expected size is less than #maxSize" (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should include the file size in the error message when a file is provided", () => {
         const currentFileSize = oneKb + 1;
         const maxFileSizeValidator = new MaxFileSizeValidator({
@@ -108,7 +107,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage` string option (only `message`); returns default error message instead of "File size exceeds the limit" (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage` string option (only `message`); returns default error message instead of "File size exceeds the limit" (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return a static custom error message when the file size exceeds the limit", async () => {
         const currentFileSize = oneKb + 1;
         const maxFileSizeValidator = new MaxFileSizeValidator({
@@ -124,7 +123,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage(ctx)` callback option (only `message`); returns default error message (packages/common/src/pipes/file-validators.ts)
+      // BUNEST_BUG: MaxFileSizeValidatorOptions does not support NestJS v11+ `errorMessage(ctx)` callback option (only `message`); returns default error message (packages/core/src/common/pipes/file-validators.ts)
       it.skip("should return a dynamic custom error message based on context when the file size exceeds the limit", async () => {
         const currentFileSize = oneKb + 1;
         const maxFileSizeValidator = new MaxFileSizeValidator({

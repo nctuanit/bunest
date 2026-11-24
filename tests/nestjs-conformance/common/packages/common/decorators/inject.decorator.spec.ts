@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Inject,
   METADATA_KEYS,
   MetadataRegistry,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -56,7 +55,7 @@ describeConformance(
         expect(metadata).toEqual([{ index: 0, token: Dependency }]);
       });
 
-      // BUNEST_BUG: Inject(undefined) in packages/common/src/decorators/core.decorators.ts:78 uses `token ?? getParamTypes()?.[parameterIndex]` instead of distinguishing omitted argument (`arguments.length === 0`) from explicit `undefined`, so `@Inject(undefined)` still infers `Dependency` instead of preserving explicit `undefined`.
+      // BUNEST_BUG: Inject(undefined) in packages/core/src/common/decorators/core.decorators.ts:78 uses `token ?? getParamTypes()?.[parameterIndex]` instead of distinguishing omitted argument (`arguments.length === 0`) from explicit `undefined`, so `@Inject(undefined)` still infers `Dependency` instead of preserving explicit `undefined`.
       it.skip("should not infer the token when an explicit undefined token is passed", () => {
         const metadata = MetadataRegistry.get(
           METADATA_KEYS.INJECT_TOKENS,

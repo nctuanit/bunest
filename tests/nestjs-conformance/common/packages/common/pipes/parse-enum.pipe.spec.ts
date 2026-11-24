@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   BadRequestException,
   HttpException,
   ParseEnumPipe,
   type ArgumentMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class CustomTestError extends HttpException {
@@ -40,7 +39,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ParseEnumPipe constructor rejects non-object `enumType` (typeof !== "object") even when truthy, whereas NestJS only rejects null/undefined `enumType` (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseEnumPipe constructor rejects non-object `enumType` (typeof !== "object") even when truthy, whereas NestJS only rejects null/undefined `enumType` (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should not throw an error if enumType is undefined/null and optional is true", async () => {
           const optionalTarget = new ParseEnumPipe(
             "DOWN" as unknown as Record<string, string | number>,
@@ -55,14 +54,14 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error", async () => {
           return expect(
             target.transform("DOWN", {} as ArgumentMetadata),
           ).rejects.toThrow(CustomTestError);
         });
 
-        // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error if enumType is wrong and optional is true", async () => {
           target = new ParseEnumPipe(Direction, {
             exceptionFactory: (_error: unknown) => new CustomTestError(),
@@ -76,7 +75,7 @@ describeConformance(
     });
 
     describe("constructor", () => {
-      // BUNEST_BUG: ParseEnumPipe constructor throws `"ParseEnumPipe requires a valid enum object."` instead of NestJS `` `"ParseEnumPipe" requires "enumType" argument specified (to validate input values).` `` (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe constructor throws `"ParseEnumPipe requires a valid enum object."` instead of NestJS `` `"ParseEnumPipe" requires "enumType" argument specified (to validate input values).` `` (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip('should throw an error if "enumType" is undefined/null', () => {
         let caught: unknown;
         try {
@@ -119,27 +118,21 @@ describeConformance(
 
       it("should return numeric enum value when the numeric value is passed as a string", async () => {
         expect(
-          await numericTarget.transform(
-            "0" as unknown,
-            {} as ArgumentMetadata,
-          ),
+          await numericTarget.transform("0" as unknown, {} as ArgumentMetadata),
         ).toBe(Status.Active);
         expect(
-          await numericTarget.transform(
-            "1" as unknown,
-            {} as ArgumentMetadata,
-          ),
+          await numericTarget.transform("1" as unknown, {} as ArgumentMetadata),
         ).toBe(Status.Inactive);
       });
 
-      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw when an invalid numeric string is passed", async () => {
         await expect(
           numericTarget.transform("2" as unknown, {} as ArgumentMetadata),
         ).rejects.toThrow(BadRequestException);
       });
 
-      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw when an empty or whitespace string is passed", async () => {
         await expect(
           numericTarget.transform("" as unknown, {} as ArgumentMetadata),
@@ -149,7 +142,7 @@ describeConformance(
         ).rejects.toThrow(BadRequestException);
       });
 
-      // BUNEST_BUG: ParseEnumPipe accepts looser numeric strings like "01", "00", "-0", "+1" via STRICT_INT_REGEX + parseInt instead of requiring canonical `String(parsed) === value`, plus transform() is sync and throws HttpException instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe accepts looser numeric strings like "01", "00", "-0", "+1" via STRICT_INT_REGEX + parseInt instead of requiring canonical `String(parsed) === value`, plus transform() is sync and throws HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw when a looser numeric representation is passed", async () => {
         const invalidValues = [
           "01",
@@ -168,7 +161,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw when a reverse-mapped key name is passed instead of the value", async () => {
         let threw = false;
         try {
@@ -193,7 +186,7 @@ describeConformance(
         Inactive = 1,
       }
 
-      // BUNEST_BUG: ParseEnumPipe does not expose NestJS `computeEnumValues()` method (precomputes enum values eagerly in constructor) (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe does not expose NestJS `computeEnumValues()` method (precomputes enum values eagerly in constructor) (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should compute the enum values only once across transforms", async () => {
         const memoTarget = new ParseEnumPipe(Status);
         const computeSpy = spyOn(memoTarget as any, "computeEnumValues");
@@ -242,7 +235,7 @@ describeConformance(
         floatTarget = new ParseEnumPipe(Ratio);
       });
 
-      // BUNEST_BUG: ParseEnumPipe only checks STRICT_INT_REGEX + parseInt for numeric enum strings, failing to parse float numeric enum strings like "0.5" and "1.5" (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe only checks STRICT_INT_REGEX + parseInt for numeric enum strings, failing to parse float numeric enum strings like "0.5" and "1.5" (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should parse float numeric string and return number", async () => {
         expect(
           await floatTarget.transform("0.5" as unknown, {} as ArgumentMetadata),
@@ -252,7 +245,7 @@ describeConformance(
         ).toBe(Ratio.OneAndHalf);
       });
 
-      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw for looser float representations", async () => {
         await expect(
           floatTarget.transform("0.50" as unknown, {} as ArgumentMetadata),
@@ -291,14 +284,14 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe.transform() is synchronous instead of async and throws base HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should still reject a reverse-mapped name that is not a declared value", async () => {
         await expect(
           mixedTarget.transform("Two" as unknown, {} as ArgumentMetadata),
         ).rejects.toThrow(BadRequestException);
       });
 
-      // BUNEST_BUG: ParseEnumPipe falsely accepts "01" as Mixed.One (via parseInt), plus transform() is sync and throws base HttpException instead of BadRequestException (packages/common/src/pipes/built-in.pipes.ts)
+      // BUNEST_BUG: ParseEnumPipe falsely accepts "01" as Mixed.One (via parseInt), plus transform() is sync and throws base HttpException instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
       it.skip("should throw when invalid value is passed", async () => {
         await expect(
           mixedTarget.transform("b" as unknown, {} as ArgumentMetadata),

@@ -1,12 +1,10 @@
-import "reflect-metadata";
-import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   ConsoleLogger,
   Logger,
   type LogLevel,
   type LoggerService,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { createSpy, describeConformance } from "../../../../_helpers";
 
 function createEnvStubber() {
@@ -65,7 +63,7 @@ describeConformance(
           processStderrWriteSpy.mockRestore();
         });
 
-        // BUNEST_BUG: Logger's default static instance is `new Logger()` writing via `console.log`/`console.error` instead of `ConsoleLogger` writing to `process.stdout.write`/`process.stderr.write`, and static `Logger.log`/`Logger.error` do not support multi-message varargs or stacktrace line splitting (packages/common/src/logger/logger.ts:60,162-187)
+        // BUNEST_BUG: Logger's default static instance is `new Logger()` writing via `console.log`/`console.error` instead of `ConsoleLogger` writing to `process.stdout.write`/`process.stderr.write`, and static `Logger.log`/`Logger.error` do not support multi-message varargs or stacktrace line splitting (packages/core/src/common/logger/logger.ts:60,162-187)
         it.skip("should print one message to the console", () => {
           const message = "random message";
           const context = "RandomContext";
@@ -81,7 +79,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance writes via `console.log` instead of `process.stdout.write` (packages/common/src/logger/logger.ts:45-60)
+        // BUNEST_BUG: Logger's default static instance writes via `console.log` instead of `process.stdout.write` (packages/core/src/common/logger/logger.ts:45-60)
         it.skip("should print one message without context to the console", () => {
           const message = "random message without context";
 
@@ -93,7 +91,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Static `Logger.log(message, context?)` only accepts 2 args and writes via `console.log` instead of printing multiple messages to `process.stdout.write` (packages/common/src/logger/logger.ts:162-164)
+        // BUNEST_BUG: Static `Logger.log(message, context?)` only accepts 2 args and writes via `console.log` instead of printing multiple messages to `process.stdout.write` (packages/core/src/common/logger/logger.ts:162-164)
         it.skip("should print multiple messages to the console", () => {
           const messages = ["message 1", "message 2", "message 3"];
           const context = "RandomContext";
@@ -128,7 +126,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance writes errors via `console.error` instead of `process.stderr.write` (packages/common/src/logger/logger.ts:45-60)
+        // BUNEST_BUG: Logger's default static instance writes errors via `console.error` instead of `process.stderr.write` (packages/core/src/common/logger/logger.ts:45-60)
         it.skip("should print one error to the console with context", () => {
           const message = "random error";
           const context = "RandomContext";
@@ -144,7 +142,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance does not detect stacktrace strings or print stack on a separate `process.stderr.write` call (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: Logger's default static instance does not detect stacktrace strings or print stack on a separate `process.stderr.write` call (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print one error to the console with stacktrace", () => {
           const message = "random error";
           const stacktrace = "Error: message\n    at <anonymous>:1:2";
@@ -163,7 +161,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance does not detect multi-line stacktrace strings or write to `process.stderr.write` (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: Logger's default static instance does not detect multi-line stacktrace strings or write to `process.stderr.write` (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print one error to the console with stacktrace of a multi-line error message", () => {
           const message = "random error";
           const stacktrace = "Error: line 1\nline 2\n    at <anonymous>:1:2";
@@ -179,7 +177,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance writes via `console.error` instead of `process.stderr.write` (packages/common/src/logger/logger.ts:45-60)
+        // BUNEST_BUG: Logger's default static instance writes via `console.error` instead of `process.stderr.write` (packages/core/src/common/logger/logger.ts:45-60)
         it.skip("should print one error without context to the console", () => {
           const message = "random error without context";
 
@@ -191,7 +189,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance JSON-serializes Error objects via `console.error` instead of formatting via `ConsoleLogger` to `process.stderr.write` (packages/common/src/logger/logger.ts:288-302,368-378)
+        // BUNEST_BUG: Logger's default static instance JSON-serializes Error objects via `console.error` instead of formatting via `ConsoleLogger` to `process.stderr.write` (packages/core/src/common/logger/logger.ts:288-302,368-378)
         it.skip("should print error object without context to the console", () => {
           const error = new Error("Random text here");
 
@@ -203,7 +201,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Logger's default static instance formats plain objects via `JSON.stringify` to `console.error` instead of `Object(n)` inspect output to `process.stderr.write` (packages/common/src/logger/logger.ts:368-378)
+        // BUNEST_BUG: Logger's default static instance formats plain objects via `JSON.stringify` to `console.error` instead of `Object(n)` inspect output to `process.stderr.write` (packages/core/src/common/logger/logger.ts:368-378)
         it.skip("should serialise a plain JS object (as a message) without context to the console", () => {
           const error = {
             randomError: true,
@@ -217,13 +215,13 @@ describeConformance(
             `Object(${Object.keys(error).length})`,
           );
           expect(
-            stripVTControlCharacters(
+            Bun.stripANSI(
               String(processStderrWriteSpy.mock.calls[0]?.[0]),
             ),
           ).toContain("randomError: true");
         });
 
-        // BUNEST_BUG: Logger's default static instance writes stacktrace inline via `console.error` instead of printing stacktrace separately to `process.stderr.write` (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: Logger's default static instance writes stacktrace inline via `console.error` instead of printing stacktrace separately to `process.stderr.write` (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print one error with stacktrace and context to the console", () => {
           const message = "random error with context";
           const stacktrace = "stacktrace";
@@ -248,7 +246,7 @@ describeConformance(
           ).not.toContain(context);
         });
 
-        // BUNEST_BUG: Static `Logger.error` only forwards 3 args and writes via `console.error` instead of printing multiple errors + stacktrace to `process.stderr.write` (packages/common/src/logger/logger.ts:166-171)
+        // BUNEST_BUG: Static `Logger.error` only forwards 3 args and writes via `console.error` instead of printing multiple errors + stacktrace to `process.stderr.write` (packages/core/src/common/logger/logger.ts:166-171)
         it.skip("should print multiple 2 errors and one stacktrace to the console", () => {
           const messages = ["message 1", "message 2"];
           const stack = "stacktrace";
@@ -348,7 +346,7 @@ describeConformance(
           expect(json.message).toBe(message);
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Map values via `util.inspect`, serializing Map as `{}` (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Map values via `util.inspect`, serializing Map as `{}` (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should log Map object", () => {
           const map = new Map([
             ["key1", "value1"],
@@ -368,7 +366,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Set values via `util.inspect`, serializing Set as `{}` (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Set values via `util.inspect`, serializing Set as `{}` (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should log Set object", () => {
           const set = new Set(["value1", "value2"]);
 
@@ -397,7 +395,7 @@ describeConformance(
           expect(json.message).toBe("9007199254740991");
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Symbol values via `v.toString()`, omitting the `message` field in JSON output (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not convert Symbol values via `v.toString()`, omitting the `message` field in JSON output (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should log symbol", () => {
           const symbol = Symbol("test");
 
@@ -738,7 +736,7 @@ describeConformance(
           processStderrWriteSpy.mockRestore();
         });
 
-        // BUNEST_BUG: `new Logger()` writes via `console.log` instead of delegating to `ConsoleLogger` / `process.stdout.write` (packages/common/src/logger/logger.ts:45-53,201-223)
+        // BUNEST_BUG: `new Logger()` writes via `console.log` instead of delegating to `ConsoleLogger` / `process.stdout.write` (packages/core/src/common/logger/logger.ts:45-53,201-223)
         it.skip("should print one message to the console", () => {
           const message = "random message";
           const context = "RandomContext";
@@ -754,7 +752,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger()` writes via `console.log` instead of `process.stdout.write` (packages/common/src/logger/logger.ts:45-53,201-223)
+        // BUNEST_BUG: `new Logger()` writes via `console.log` instead of `process.stdout.write` (packages/core/src/common/logger/logger.ts:45-53,201-223)
         it.skip("should print one message without context to the console", () => {
           const message = "random message without context";
 
@@ -766,7 +764,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().log(m1, m2, m3, ctx)` joins args into one `console.log` line instead of printing 3 separate lines via `process.stdout.write` (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: `new Logger().log(m1, m2, m3, ctx)` joins args into one `console.log` line instead of printing 3 separate lines via `process.stdout.write` (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print multiple messages to the console", () => {
           const messages = ["message 1", "message 2", "message 3"];
           const context = "RandomContext";
@@ -796,7 +794,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().error()` writes via `console.error` instead of `process.stderr.write` (packages/common/src/logger/logger.ts:45-53,205-207)
+        // BUNEST_BUG: `new Logger().error()` writes via `console.error` instead of `process.stderr.write` (packages/core/src/common/logger/logger.ts:45-53,205-207)
         it.skip("should print one error to the console with context", () => {
           const message = "random error";
           const context = "RandomContext";
@@ -812,7 +810,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().error(msg, stacktrace)` treats stacktrace as `[context]` and writes via `console.error` instead of printing stacktrace on a second `process.stderr.write` line (packages/common/src/logger/logger.ts:328-335)
+        // BUNEST_BUG: `new Logger().error(msg, stacktrace)` treats stacktrace as `[context]` and writes via `console.error` instead of printing stacktrace on a second `process.stderr.write` line (packages/core/src/common/logger/logger.ts:328-335)
         it.skip("should print one error to the console with stacktrace", () => {
           const message = "random error";
           const stacktrace = new Error("err").stack;
@@ -831,7 +829,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().error()` writes via `console.error` instead of `process.stderr.write` (packages/common/src/logger/logger.ts:45-53)
+        // BUNEST_BUG: `new Logger().error()` writes via `console.error` instead of `process.stderr.write` (packages/core/src/common/logger/logger.ts:45-53)
         it.skip("should print one error without context to the console", () => {
           const message = "random error without context";
 
@@ -843,7 +841,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().error(msg, stack, ctx)` writes inline via `console.error` instead of printing stack on a separate `process.stderr.write` line (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: `new Logger().error(msg, stack, ctx)` writes inline via `console.error` instead of printing stack on a separate `process.stderr.write` line (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print one error with stacktrace and context to the console", () => {
           const message = "random error with context";
           const stacktrace = "stacktrace";
@@ -865,7 +863,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger().error(m1, m2, stack, ctx)` joins args into one `console.error` line instead of 3 `process.stderr.write` calls (packages/common/src/logger/logger.ts:316-379)
+        // BUNEST_BUG: `new Logger().error(m1, m2, stack, ctx)` joins args into one `console.error` line instead of 3 `process.stderr.write` calls (packages/core/src/common/logger/logger.ts:316-379)
         it.skip("should print 2 errors and one stacktrace to the console", () => {
           const messages = ["message 1", "message 2"];
           const stack = "stacktrace";
@@ -918,7 +916,7 @@ describeConformance(
           processStderrWriteSpy.mockRestore();
         });
 
-        // BUNEST_BUG: `new Logger(ctx, { timestamp: true })` writes one line via `console.log` with ISO timestamp instead of per-message `+Nms` timestamp diffs via `process.stdout.write` (packages/common/src/logger/logger.ts:339-379)
+        // BUNEST_BUG: `new Logger(ctx, { timestamp: true })` writes one line via `console.log` with ISO timestamp instead of per-message `+Nms` timestamp diffs via `process.stdout.write` (packages/core/src/common/logger/logger.ts:339-379)
         it.skip("should print multiple messages to the console and append global context", () => {
           const messages = ["message 1", "message 2", "message 3"];
 
@@ -953,7 +951,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: `new Logger(ctx, { timestamp: true }).error()` writes via `console.error` instead of `process.stderr.write` (packages/common/src/logger/logger.ts:45-53)
+        // BUNEST_BUG: `new Logger(ctx, { timestamp: true }).error()` writes via `console.error` instead of `process.stderr.write` (packages/core/src/common/logger/logger.ts:45-53)
         it.skip("should log out an error to stderr but not include an undefined log", () => {
           const message = "message 1";
 
@@ -994,7 +992,7 @@ describeConformance(
           Logger.overrideLogger(previousLoggerRef);
         });
 
-        // BUNEST_BUG: `new Logger()` instance methods emit directly via `this.emit()` and ignore `Logger.overrideLogger(false)` instead of delegating to `Logger.staticInstanceRef` (packages/common/src/logger/logger.ts:94-96,201-223)
+        // BUNEST_BUG: `new Logger()` instance methods emit directly via `this.emit()` and ignore `Logger.overrideLogger(false)` instead of delegating to `Logger.staticInstanceRef` (packages/core/src/common/logger/logger.ts:94-96,201-223)
         it.skip("should not print any message to the console", () => {
           const message = "random message";
           const context = "RandomContext";
@@ -1029,7 +1027,7 @@ describeConformance(
             Logger.overrideLogger(previousLoggerRef);
           });
 
-          // BUNEST_BUG: `new Logger(globalContext)` does not delegate to `Logger.overrideLogger(customLogger)` (packages/common/src/logger/logger.ts:201-223)
+          // BUNEST_BUG: `new Logger(globalContext)` does not delegate to `Logger.overrideLogger(customLogger)` (packages/core/src/common/logger/logger.ts:201-223)
           it.skip('should call custom logger "#log()" method with context as second argument', () => {
             const message = "random log message with global context";
 
@@ -1047,7 +1045,7 @@ describeConformance(
             }
           });
 
-          // BUNEST_BUG: `new Logger(globalContext)` does not delegate to `Logger.overrideLogger(customLogger)` (packages/common/src/logger/logger.ts:201-223)
+          // BUNEST_BUG: `new Logger(globalContext)` does not delegate to `Logger.overrideLogger(customLogger)` (packages/core/src/common/logger/logger.ts:201-223)
           it.skip('should call custom logger "#error()" method with context as third argument', () => {
             const message = "random error message with global context";
 
@@ -1082,7 +1080,7 @@ describeConformance(
             Logger.overrideLogger(previousLoggerRef);
           });
 
-          // BUNEST_BUG: `new Logger()` does not delegate to `Logger.overrideLogger(customLogger)` (packages/common/src/logger/logger.ts:201-223)
+          // BUNEST_BUG: `new Logger()` does not delegate to `Logger.overrideLogger(customLogger)` (packages/core/src/common/logger/logger.ts:201-223)
           it.skip('should call custom logger "#log()" method', () => {
             const message = "random message";
             const context = "RandomContext";
@@ -1098,7 +1096,7 @@ describeConformance(
             }
           });
 
-          // BUNEST_BUG: `new Logger()` does not delegate to `Logger.overrideLogger(customLogger)` (packages/common/src/logger/logger.ts:201-223)
+          // BUNEST_BUG: `new Logger()` does not delegate to `Logger.overrideLogger(customLogger)` (packages/core/src/common/logger/logger.ts:201-223)
           it.skip('should call custom logger "#error()" method', () => {
             const message = "random message";
             const context = "RandomContext";
@@ -1262,7 +1260,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConsoleLogger.getContextAndMessagesToPrint() only extracts a trailing plain object as params (not mid-argument plain objects), and stringifyMessage() omits NestJS `Array(n)`/`Object(n)` prefixes (packages/common/src/logger/console-logger.ts:393-399,525-532)
+      // BUNEST_BUG: ConsoleLogger.getContextAndMessagesToPrint() only extracts a trailing plain object as params (not mid-argument plain objects), and stringifyMessage() omits NestJS `Array(n)`/`Object(n)` prefixes (packages/core/src/common/logger/console-logger.ts:393-399,525-532)
       it.skip("should stringify messages (plain objects extracted as params)", () => {
         class CustomConsoleLogger extends ConsoleLogger {
           protected override colorize(message: string, _: LogLevel): string {
@@ -1332,7 +1330,7 @@ describeConformance(
           }
         }
 
-        // BUNEST_BUG: ConsoleLogger.getInspectOptions() defaults `compact` to `false` in text mode, so `stringifyParams()` formats `{ userId: 1 }` across multiple lines instead of inline `{ userId: 1 }` (packages/common/src/logger/console-logger.ts:244,401-403)
+        // BUNEST_BUG: ConsoleLogger.getInspectOptions() defaults `compact` to `false` in text mode, so `stringifyParams()` formats `{ userId: 1 }` across multiple lines instead of inline `{ userId: 1 }` (packages/core/src/common/logger/console-logger.ts:244,401-403)
         it.skip("should inline single plain object as params after message", () => {
           const logger = new DeterministicConsoleLogger({ colors: false });
           logger.log("User created", { userId: 1 });
@@ -1343,7 +1341,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.getContextAndMessagesToPrint() only pops a single trailing plain object instead of merging multiple plain objects into one params object (packages/common/src/logger/console-logger.ts:525-532)
+        // BUNEST_BUG: ConsoleLogger.getContextAndMessagesToPrint() only pops a single trailing plain object instead of merging multiple plain objects into one params object (packages/core/src/common/logger/console-logger.ts:525-532)
         it.skip("should merge multiple plain objects into single params", () => {
           const logger = new DeterministicConsoleLogger({ colors: false });
           logger.log("Request", { userId: 1 }, { reqId: "abc" });
@@ -1354,7 +1352,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyMessage() uses raw `util.inspect()` without NestJS's `Object(n)` prefix for plain object messages (packages/common/src/logger/console-logger.ts:393-399)
+        // BUNEST_BUG: ConsoleLogger.stringifyMessage() uses raw `util.inspect()` without NestJS's `Object(n)` prefix for plain object messages (packages/core/src/common/logger/console-logger.ts:393-399)
         it.skip("should treat plain object as first arg as message, not params", () => {
           const logger = new ConsoleLogger({ colors: false });
           logger.log({ randomError: true });
@@ -1365,7 +1363,7 @@ describeConformance(
           expect(output).toContain("randomError: true");
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyParams() uses `compact: false` in text mode, printing `{ meta: true }` across multiple lines instead of inline (packages/common/src/logger/console-logger.ts:244,401-403)
+        // BUNEST_BUG: ConsoleLogger.stringifyParams() uses `compact: false` in text mode, printing `{ meta: true }` across multiple lines instead of inline (packages/core/src/common/logger/console-logger.ts:244,401-403)
         it.skip("should keep strings as messages and extract objects as params", () => {
           const logger = new DeterministicConsoleLogger({ colors: false });
           logger.log("msg1", "msg2", { meta: true }, "Context");
@@ -1379,7 +1377,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyMessage() uses raw `util.inspect()` without NestJS's `Array(n)` prefix for array messages (packages/common/src/logger/console-logger.ts:393-399)
+        // BUNEST_BUG: ConsoleLogger.stringifyMessage() uses raw `util.inspect()` without NestJS's `Array(n)` prefix for array messages (packages/core/src/common/logger/console-logger.ts:393-399)
         it.skip("should not treat arrays as params", () => {
           const logger = new ConsoleLogger({ colors: false });
           logger.log("msg", [1, 2, 3]);
@@ -1508,7 +1506,7 @@ describeConformance(
       });
 
       describe("structuredParams: false (legacy behavior)", () => {
-        // BUNEST_BUG: ConsoleLogger.stringifyMessage() omits NestJS's `Object(n)` prefix when inspecting plain objects in text mode (packages/common/src/logger/console-logger.ts:393-399)
+        // BUNEST_BUG: ConsoleLogger.stringifyMessage() omits NestJS's `Object(n)` prefix when inspecting plain objects in text mode (packages/core/src/common/logger/console-logger.ts:393-399)
         it.skip("should treat plain objects as separate messages in text mode", () => {
           const logger = new ConsoleLogger({
             colors: false,
@@ -1569,7 +1567,7 @@ describeConformance(
       });
 
       describe("circular structures", () => {
-        // BUNEST_BUG: ConsoleLogger passes the raw params object without shallow-merging copies (`Object.assign({}, ...)`), so self-referential params close the cycle at depth 1 instead of depth 2 (packages/common/src/logger/console-logger.ts:531)
+        // BUNEST_BUG: ConsoleLogger passes the raw params object without shallow-merging copies (`Object.assign({}, ...)`), so self-referential params close the cycle at depth 1 instead of depth 2 (packages/core/src/common/logger/console-logger.ts:531)
         it.skip("should replace circular references instead of throwing", () => {
           const logger = new ConsoleLogger("Ctx", { json: true });
           const payload: Record<string, unknown> = { id: 1 };
@@ -1620,7 +1618,7 @@ describeConformance(
           ]);
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() uses a flat WeakSet `seen` without tracking ancestor stack / removing visited objects on exit, wrongly replacing non-circular sibling references (`second`) with `"[Circular]"` (packages/common/src/logger/console-logger.ts:420-429)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() uses a flat WeakSet `seen` without tracking ancestor stack / removing visited objects on exit, wrongly replacing non-circular sibling references (`second`) with `"[Circular]"` (packages/core/src/common/logger/console-logger.ts:420-429)
         it.skip("should keep repeated (non-circular) references intact", () => {
           const logger = new ConsoleLogger({ json: true });
           const shared = { a: 1 };
@@ -1633,7 +1631,7 @@ describeConformance(
           expect(json.params).toEqual({ first: { a: 1 }, second: { a: 1 } });
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not serialize Symbol, Map, or Set values in JSON mode (Map/Set become `{}`, Symbol is omitted) (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() does not serialize Symbol, Map, or Set values in JSON mode (Map/Set become `{}`, Symbol is omitted) (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should still serialize bigint, symbol, Map and Set values", () => {
           const logger = new ConsoleLogger({ json: true });
           const nested: Record<string, unknown> = {};
@@ -1677,7 +1675,7 @@ describeConformance(
       });
 
       describe("record length", () => {
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() marks non-circular repeated refs as `"[Circular]"` instead of enforcing bounded repetition with `"[Truncated]"` (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() marks non-circular repeated refs as `"[Circular]"` instead of enforcing bounded repetition with `"[Truncated]"` (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should cut a record short instead of repeating a shared object without bounds", () => {
           const logger = new ConsoleLogger({ json: true });
           const target = new Array(1_000).fill(0.1234567890123456);
@@ -1696,7 +1694,7 @@ describeConformance(
           expect(json.params.errors[999]).toBe("[Truncated]");
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() marks repeated sibling arrays as `"[Circular]"` instead of truncating at `"[Truncated]"` (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() marks repeated sibling arrays as `"[Circular]"` instead of truncating at `"[Truncated]"` (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should cut a record short when the repeated values are empty strings", () => {
           const logger = new ConsoleLogger({ json: true });
           const tags = new Array(10_000).fill("");
@@ -1713,7 +1711,7 @@ describeConformance(
           expect(json.params.copies[999]).toBe("[Truncated]");
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() calls `JSON.stringify` eagerly on all items and slices the resulting string at MAX_JSON_LENGTH + `"[Truncated]"`, emitting invalid unparseable JSON and calling `toJSON()` past the limit (packages/common/src/logger/console-logger.ts:430-432)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() calls `JSON.stringify` eagerly on all items and slices the resulting string at MAX_JSON_LENGTH + `"[Truncated]"`, emitting invalid unparseable JSON and calling `toJSON()` past the limit (packages/core/src/common/logger/console-logger.ts:430-432)
         it.skip("should not call toJSON() on the values past the limit", () => {
           const logger = new ConsoleLogger({ json: true });
           const toJSON = createSpy(() => "x".repeat(100_000));
@@ -1731,7 +1729,7 @@ describeConformance(
           expect(toJSON.callCount).toBeLessThanOrEqual(11);
         });
 
-        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() invokes `Buffer.prototype.toJSON()` for every element (100 times) instead of stopping past the record length limit and emitting valid JSON with `"[Truncated]"` (packages/common/src/logger/console-logger.ts:419-437)
+        // BUNEST_BUG: ConsoleLogger.stringifyJsonLogObject() invokes `Buffer.prototype.toJSON()` for every element (100 times) instead of stopping past the record length limit and emitting valid JSON with `"[Truncated]"` (packages/core/src/common/logger/console-logger.ts:419-437)
         it.skip("should not convert a Buffer for each reference past the limit", () => {
           const logger = new ConsoleLogger({ json: true });
           const attachment = Buffer.alloc(100_000, 1);
@@ -1769,7 +1767,7 @@ describeConformance(
       });
 
       describe("stringifyReplacer", () => {
-        // BUNEST_BUG: ConsoleLogger.stringifyReplacer() does not inspect Map values with logger inspectOptions, outputting `{}` (packages/common/src/logger/console-logger.ts:423-440)
+        // BUNEST_BUG: ConsoleLogger.stringifyReplacer() does not inspect Map values with logger inspectOptions, outputting `{}` (packages/core/src/common/logger/console-logger.ts:423-440)
         it.skip("should inspect a Map with the logger inspect options", () => {
           const logger = new ConsoleLogger({ json: true });
 
@@ -1785,7 +1783,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger constructor leaves `this.options.prefix` as `undefined` (only defaulting in `formatPid()`), so `${this.options.prefix}:${value}` in an overridden `stringifyReplacer()` yields `"undefined:Ctx"` instead of `"Nest:Ctx"` (packages/common/src/logger/console-logger.ts:130-138,262-265)
+        // BUNEST_BUG: ConsoleLogger constructor leaves `this.options.prefix` as `undefined` (only defaulting in `formatPid()`), so `${this.options.prefix}:${value}` in an overridden `stringifyReplacer()` yields `"undefined:Ctx"` instead of `"Nest:Ctx"` (packages/core/src/common/logger/console-logger.ts:130-138,262-265)
         it.skip('should call an overridden replacer with the logger as "this"', () => {
           class CustomConsoleLogger extends ConsoleLogger {
             protected override stringifyReplacer(key: string, value: unknown) {
@@ -1970,7 +1968,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: ConsoleLogger.serializeError() checks `error.cause instanceof Error`, dropping non-Error `cause` objects (packages/common/src/logger/console-logger.ts:385-387)
+        // BUNEST_BUG: ConsoleLogger.serializeError() checks `error.cause instanceof Error`, dropping non-Error `cause` objects (packages/core/src/common/logger/console-logger.ts:385-387)
         it.skip('should keep a non-error "cause" as is', () => {
           const logger = new ConsoleLogger({ json: true });
 
@@ -1983,7 +1981,7 @@ describeConformance(
           expect(json.error.cause).toEqual({ status: 503, retry: true });
         });
 
-        // BUNEST_BUG: ConsoleLogger.serializeError() returns `{ name, message }` instead of `"[Truncated]"` when cause depth exceeds limit (packages/common/src/logger/console-logger.ts:367-369)
+        // BUNEST_BUG: ConsoleLogger.serializeError() returns `{ name, message }` instead of `"[Truncated]"` when cause depth exceeds limit (packages/core/src/common/logger/console-logger.ts:367-369)
         it.skip('should cap the "cause" chain depth', () => {
           const logger = new ConsoleLogger({ json: true });
           let error = new Error("level 0");
@@ -2004,7 +2002,7 @@ describeConformance(
           expect(current).toBe("[Truncated]");
         });
 
-        // BUNEST_BUG: ConsoleLogger.serializeError() returns `{ name, message }` instead of `"[Circular]"` on circular cause chains (packages/common/src/logger/console-logger.ts:367-369)
+        // BUNEST_BUG: ConsoleLogger.serializeError() returns `{ name, message }` instead of `"[Circular]"` on circular cause chains (packages/core/src/common/logger/console-logger.ts:367-369)
         it.skip('should not loop on a circular "cause" chain', () => {
           const logger = new ConsoleLogger({ json: true });
           const first = new Error("first");
@@ -2064,7 +2062,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.getContextAndStackAndMessagesToPrint() leaves a trailing `undefined` stack argument in `messages`, printing 2 records instead of 1 (packages/common/src/logger/console-logger.ts:616-662)
+        // BUNEST_BUG: ConsoleLogger.getContextAndStackAndMessagesToPrint() leaves a trailing `undefined` stack argument in `messages`, printing 2 records instead of 1 (packages/core/src/common/logger/console-logger.ts:616-662)
         it.skip("should print one record when the stack is undefined", () => {
           new ConsoleLogger("Ctx", { json: true }).error("Failed", undefined);
           new ConsoleLogger("Ctx", { colors: false }).error(
@@ -2079,7 +2077,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ConsoleLogger.printAsJson() always emits JSON.stringify() even when `compact: false` instead of `util.inspect()` formatting (packages/common/src/logger/console-logger.ts:516-530)
+        // BUNEST_BUG: ConsoleLogger.printAsJson() always emits JSON.stringify() even when `compact: false` instead of `util.inspect()` formatting (packages/core/src/common/logger/console-logger.ts:516-530)
         it.skip("should structure the error when using compact: false", () => {
           const logger = new ConsoleLogger({ json: true, compact: false });
 
@@ -2092,7 +2090,7 @@ describeConformance(
           expect(output).toContain(`message: 'boom'`);
         });
 
-        // BUNEST_BUG: `new Logger("Ctx")` does not delegate to `Logger.overrideLogger(new ConsoleLogger({ json: true }))` (packages/common/src/logger/logger.ts:205-207)
+        // BUNEST_BUG: `new Logger("Ctx")` does not delegate to `Logger.overrideLogger(new ConsoleLogger({ json: true }))` (packages/core/src/common/logger/logger.ts:205-207)
         it.skip('should print one record through a "Logger" instance with a context', () => {
           const previousLoggerRef = Logger.staticInstanceRef;
           Logger.overrideLogger(new ConsoleLogger({ json: true }));
@@ -2216,7 +2214,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: `Logger.fatal()` and `new Logger().fatal()` write via `console.error` instead of `ConsoleLogger` / `process.stderr.write`, and do not split stacktrace onto a separate stderr line (packages/common/src/logger/logger.ts:45-53,185-187,221-223)
+      // BUNEST_BUG: `Logger.fatal()` and `new Logger().fatal()` write via `console.error` instead of `ConsoleLogger` / `process.stderr.write`, and do not split stacktrace onto a separate stderr line (packages/core/src/common/logger/logger.ts:45-53,185-187,221-223)
       it.skip('should print to stderr through "Logger"', () => {
         Logger.fatal("static fatal");
         new Logger("Ctx").fatal("instance fatal", stack);
@@ -2262,7 +2260,7 @@ describeConformance(
       });
 
       describe('existing "Logger" instances', () => {
-        // BUNEST_BUG: Existing `new Logger()` instances do not delegate to `Logger.staticInstanceRef` and ignore runtime `Logger.overrideLogger(levels)` changes (packages/common/src/logger/logger.ts:94-96,201-223)
+        // BUNEST_BUG: Existing `new Logger()` instances do not delegate to `Logger.staticInstanceRef` and ignore runtime `Logger.overrideLogger(levels)` changes (packages/core/src/common/logger/logger.ts:94-96,201-223)
         it.skip('should apply levels set with "overrideLogger" after they logged', () => {
           const logger = new Logger("Ctx");
           logger.log("before");
@@ -2279,7 +2277,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: Existing `new Logger()` instances do not delegate to `Logger.staticInstanceRef` and ignore subsequent `Logger.overrideLogger(levels)` calls (packages/common/src/logger/logger.ts:94-96,201-223)
+        // BUNEST_BUG: Existing `new Logger()` instances do not delegate to `Logger.staticInstanceRef` and ignore subsequent `Logger.overrideLogger(levels)` calls (packages/core/src/common/logger/logger.ts:94-96,201-223)
         it.skip("should apply every subsequent level change", () => {
           const logger = new Logger("Ctx");
           Logger.overrideLogger(["error"]);
@@ -2309,7 +2307,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: `Logger.isLevelEnabled()` checks exact set membership (`this.levels.has(level)`) instead of NestJS severity hierarchy, so `Logger.overrideLogger(['warn'])` returns `false` for `'error'` (packages/common/src/logger/logger.ts:197-199)
+        // BUNEST_BUG: `Logger.isLevelEnabled()` checks exact set membership (`this.levels.has(level)`) instead of NestJS severity hierarchy, so `Logger.overrideLogger(['warn'])` returns `false` for `'error'` (packages/core/src/common/logger/logger.ts:197-199)
         it.skip('should follow levels set with "overrideLogger"', () => {
           Logger.overrideLogger(["warn"]);
 
@@ -2368,7 +2366,7 @@ describeConformance(
         JSON.parse(String(processStderrWriteSpy.mock.calls[call]?.[0]));
 
       describe("text mode", () => {
-        // BUNEST_BUG: ConsoleLogger.stringifyParams() uses `compact: false` in text mode, outputting multi-line inspect text instead of compact single-line `{ user: ..., headers: ... }` (packages/common/src/logger/console-logger.ts:244,401-403)
+        // BUNEST_BUG: ConsoleLogger.stringifyParams() uses `compact: false` in text mode, outputting multi-line inspect text instead of compact single-line `{ user: ..., headers: ... }` (packages/core/src/common/logger/console-logger.ts:244,401-403)
         it.skip("should mask params", () => {
           const logger = new ConsoleLogger({
             colors: false,
@@ -2418,7 +2416,7 @@ describeConformance(
           ).not.toContain("hunter2");
         });
 
-        // BUNEST_BUG: ConsoleLogger.redact() converts Error instances in params to plain `{}` via `Object.entries(node)`, dropping `Error.message` (`"Request failed"`) (packages/common/src/logger/console-logger.ts:342-349)
+        // BUNEST_BUG: ConsoleLogger.redact() converts Error instances in params to plain `{}` via `Object.entries(node)`, dropping `Error.message` (`"Request failed"`) (packages/core/src/common/logger/console-logger.ts:342-349)
         it.skip("should mask the properties of an error in params", () => {
           const logger = new ConsoleLogger({
             colors: false,
@@ -2470,7 +2468,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: ConsoleLogger.redact() does not catch throwing getters (throws `Error("getter")` instead of returning the censor), and `flattenParams` uses `Object.assign(payload, redactedParams)` directly (packages/common/src/logger/console-logger.ts:343,463-464)
+        // BUNEST_BUG: ConsoleLogger.redact() does not catch throwing getters (throws `Error("getter")` instead of returning the censor), and `flattenParams` uses `Object.assign(payload, redactedParams)` directly (packages/core/src/common/logger/console-logger.ts:343,463-464)
         it.skip("should not spread the censor string as character indices when flattened params fail redaction", () => {
           const logger = new ConsoleLogger({
             json: true,
@@ -2490,7 +2488,7 @@ describeConformance(
           expect(record["0"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: ConsoleLogger.getJsonLogObject() / serializeError() does not apply `this.redact()` to Error own properties or `cause` (packages/common/src/logger/console-logger.ts:362-395,500)
+        // BUNEST_BUG: ConsoleLogger.getJsonLogObject() / serializeError() does not apply `this.redact()` to Error own properties or `cause` (packages/core/src/common/logger/console-logger.ts:362-395,500)
         it.skip("should mask the structured error and its cause", () => {
           const logger = new ConsoleLogger({ json: true, redact: ["token"] });
           const cause = Object.assign(new Error("Unauthorized"), {
@@ -2514,7 +2512,7 @@ describeConformance(
           expect(cause.token).toBe("abc");
         });
 
-        // BUNEST_BUG: ConsoleLogger.redact() does not traverse Map entries and `Object.entries(map)` turns the Map into `{}` (packages/common/src/logger/console-logger.ts:333-353)
+        // BUNEST_BUG: ConsoleLogger.redact() does not traverse Map entries and `Object.entries(map)` turns the Map into `{}` (packages/core/src/common/logger/console-logger.ts:333-353)
         it.skip("should mask the entries of a Map", () => {
           const logger = new ConsoleLogger({
             json: true,
@@ -2530,7 +2528,7 @@ describeConformance(
           expect(output).not.toContain("hunter2");
         });
 
-        // BUNEST_BUG: ConsoleLogger does not shallow-merge params before redacting, so circular `payload.self = payload` closes at depth 1 instead of depth 2 (packages/common/src/logger/console-logger.ts:531)
+        // BUNEST_BUG: ConsoleLogger does not shallow-merge params before redacting, so circular `payload.self = payload` closes at depth 1 instead of depth 2 (packages/core/src/common/logger/console-logger.ts:531)
         it.skip("should mask circular params", () => {
           const logger = new ConsoleLogger({
             json: true,
@@ -2564,7 +2562,10 @@ describeConformance(
             redact: ["password", "message", "context", "stack"],
           });
 
-          logger.error("password reset failed", "Error: x\n    at y (z.ts:1:1)");
+          logger.error(
+            "password reset failed",
+            "Error: x\n    at y (z.ts:1:1)",
+          );
 
           expect(stderrJson()).toMatchObject({
             message: "password reset failed",
@@ -2635,7 +2636,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: filterLogLevels() does not support exclusive `>` ranges (like `">log"`) and ConsoleLogger.isLevelEnabled() does not apply severity hierarchy for comma lists like `"verbose, error"` (packages/common/src/logger/console-logger.ts:30-60,221-224)
+      // BUNEST_BUG: filterLogLevels() does not support exclusive `>` ranges (like `">log"`) and ConsoleLogger.isLevelEnabled() does not apply severity hierarchy for comma lists like `"verbose, error"` (packages/core/src/common/logger/console-logger.ts:30-60,221-224)
       it.skip('should accept the "filterLogLevels" formats, in any case', () => {
         env.stub("NEST_LOG_LEVEL", ">=DEBUG");
         expect(enabledLevels(new ConsoleLogger())).toEqual([
@@ -2661,7 +2662,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: filterLogLevels() does not support exclusive `>` ranges such as `">fatal"`, falling back to all 6 log levels instead of `[]` (packages/common/src/logger/console-logger.ts:30-60)
+      // BUNEST_BUG: filterLogLevels() does not support exclusive `>` ranges such as `">fatal"`, falling back to all 6 log levels instead of `[]` (packages/core/src/common/logger/console-logger.ts:30-60)
       it.skip('should disable every level for ">fatal"', () => {
         env.stub("NEST_LOG_LEVEL", ">fatal");
         const logger = new ConsoleLogger();
@@ -2687,7 +2688,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: `new Logger()` does not delegate to `ConsoleLogger` and does not read `NEST_LOG_LEVEL` (packages/common/src/logger/logger.ts:75-92)
+      // BUNEST_BUG: `new Logger()` does not delegate to `ConsoleLogger` and does not read `NEST_LOG_LEVEL` (packages/core/src/common/logger/logger.ts:75-92)
       it.skip('should apply to "Logger" instances using the default logger', () => {
         env.stub("NEST_LOG_LEVEL", "warn");
         const logger = new Logger("Ctx");
@@ -2733,23 +2734,26 @@ describeConformance(
       });
 
       describe("when the value is invalid", () => {
-        // BUNEST_BUG: ConsoleLogger.getDefaultLogLevels() / filterLogLevels() does not validate invalid NEST_LOG_LEVEL values or emit a `[ConsoleLogger]` warning (and silently keeps valid tokens in `"warn,info"` / `"warn,"`) (packages/common/src/logger/console-logger.ts:30-60,226-235)
-        it.skip.each(["warning", "warn,info", "warn,", ">=info", ">=warn,error"])(
-          'should warn and enable every level for "%s"',
-          (value) => {
-            env.stub("NEST_LOG_LEVEL", value);
-            const logger = new ConsoleLogger("Ctx");
+        // BUNEST_BUG: ConsoleLogger.getDefaultLogLevels() / filterLogLevels() does not validate invalid NEST_LOG_LEVEL values or emit a `[ConsoleLogger]` warning (and silently keeps valid tokens in `"warn,info"` / `"warn,"`) (packages/core/src/common/logger/console-logger.ts:30-60,226-235)
+        it.skip.each([
+          "warning",
+          "warn,info",
+          "warn,",
+          ">=info",
+          ">=warn,error",
+        ])('should warn and enable every level for "%s"', (value) => {
+          env.stub("NEST_LOG_LEVEL", value);
+          const logger = new ConsoleLogger("Ctx");
 
-            expect(enabledLevels(logger)).toHaveLength(6);
-            expect(processStdoutWriteSpy).toHaveBeenCalledTimes(1);
-            const output = String(processStdoutWriteSpy.mock.calls[0]?.[0]);
-            expect(output).toContain("WARN");
-            expect(output).toContain("[ConsoleLogger]");
-            expect(output).toContain(`Invalid NEST_LOG_LEVEL value "${value}"`);
-          },
-        );
+          expect(enabledLevels(logger)).toHaveLength(6);
+          expect(processStdoutWriteSpy).toHaveBeenCalledTimes(1);
+          const output = String(processStdoutWriteSpy.mock.calls[0]?.[0]);
+          expect(output).toContain("WARN");
+          expect(output).toContain("[ConsoleLogger]");
+          expect(output).toContain(`Invalid NEST_LOG_LEVEL value "${value}"`);
+        });
 
-        // BUNEST_BUG: ConsoleLogger does not emit or deduplicate warnings for invalid NEST_LOG_LEVEL values (packages/common/src/logger/console-logger.ts:226-235)
+        // BUNEST_BUG: ConsoleLogger does not emit or deduplicate warnings for invalid NEST_LOG_LEVEL values (packages/core/src/common/logger/console-logger.ts:226-235)
         it.skip("should warn only once for the same value", () => {
           env.stub("NEST_LOG_LEVEL", "loud");
 
@@ -2765,7 +2769,7 @@ describeConformance(
           expect(processStdoutWriteSpy).toHaveBeenCalledTimes(4);
         });
 
-        // BUNEST_BUG: ConsoleLogger does not emit a JSON warning record for invalid NEST_LOG_LEVEL values (packages/common/src/logger/console-logger.ts:226-235)
+        // BUNEST_BUG: ConsoleLogger does not emit a JSON warning record for invalid NEST_LOG_LEVEL values (packages/core/src/common/logger/console-logger.ts:226-235)
         it.skip("should print the warning in json mode for a json logger", () => {
           env.stub("NEST_LOG_LEVEL", "quiet");
 

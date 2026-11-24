@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it, mock } from "bun:test";
 import type {
   BullMQBackendFactory,
@@ -9,7 +8,7 @@ import type {
   NestWorkerOptions,
   RegisterFlowProducerOptions,
   RegisterQueueOptions,
-} from "../../../../packages/queues/src";
+} from "../../../../packages/jobs/src/queues";
 import { describeConformance } from "../../_helpers/index";
 
 /**
@@ -25,8 +24,7 @@ type PostgresBackendFactory = (
 describeConformance(
   "BullMQBackendFactory",
   {
-    upstreamPath:
-      "bull/packages/bullmq/lib/test/backend-factory.types.spec.ts",
+    upstreamPath: "bull/packages/bullmq/lib/test/backend-factory.types.spec.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:

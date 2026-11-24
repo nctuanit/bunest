@@ -1,9 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { IsEmail, IsString } from "class-validator";
+import { IsEmail, IsString } from "../packages/validation/src/validator";
 import {
   Body,
   BunestFactory,
@@ -15,28 +11,33 @@ import {
   Query,
   UploadedFile,
   ValidationPipe,
+  ensureDir,
+  join,
+  removePath,
   type UploadedFileInfo,
 } from "../packages/core/src";
 import {
   canonicalizePath,
   isNativeBunRoutePath,
   normalizePath,
-} from "../packages/http/src";
-import { parseEnvContent } from "../packages/config/src";
+} from "../packages/core/src/http";
+import { parseEnvContent } from "../packages/core/src/config";
 import {
   CronExpressionError,
   getNextCronDate,
   parseCronExpression,
-} from "../packages/scheduler/src";
+} from "../packages/jobs/src/scheduler";
 import {
   JwtInvalidException,
   JwtService,
-  LocalStorageAdapter,
-  StoragePathTraversalException,
-  assertSafeStorageKey,
   base64UrlEncode,
 } from "../packages/security/src";
-import { parseWsFrame } from "../packages/websockets/src";
+import {
+  LocalDisk,
+  StorageInvalidKeyError,
+  assertValidKey,
+} from "../packages/storage/src";
+import { parseWsFrame } from "../packages/core/src/ws";
 
 /**
  * Deterministic Mulberry32 PRNG for reproducible fuzzing across runs.
@@ -69,7 +70,7 @@ const tempDirs: string[] = [];
 
 afterEach(async () => {
   while (tempDirs.length > 0) {
-    await rm(tempDirs.pop()!, { recursive: true, force: true });
+    await removePath(tempDirs.pop()!, { recursive: true, force: true });
   }
 });
 
@@ -194,7 +195,9 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
         const badMultipartRes = await app.fetch(
           new Request("http://localhost/sec/upload", {
             method: "POST",
-            headers: { "content-type": "multipart/form-data; boundary=---broken" },
+            headers: {
+              "content-type": "multipart/form-data; boundary=---broken",
+            },
             body: "not-a-valid-multipart-stream",
           }),
         );
@@ -215,7 +218,9 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
 
   describe("JWT & Storage Security", () => {
     it("rejects alg:none, tampered signatures, HMAC CryptoKey algorithm confusion, path traversal, and Windows NTFS ADS", async () => {
-      const jwt = new JwtService({ secret: "super-secret-signing-key-32bytes!" });
+      const jwt = new JwtService({
+        secret: "super-secret-signing-key-32bytes!",
+      });
       const valid = await jwt.sign({ sub: "user_1", role: "user" });
 
       // 1. alg: "none" forgery rejected
@@ -223,7 +228,9 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
         new TextEncoder().encode(JSON.stringify({ alg: "none", typ: "JWT" })),
       );
       const fakePayload = base64UrlEncode(
-        new TextEncoder().encode(JSON.stringify({ sub: "admin", role: "admin" })),
+        new TextEncoder().encode(
+          JSON.stringify({ sub: "admin", role: "admin" }),
+        ),
       );
       await expect(jwt.verify(`${noneHeader}.${fakePayload}.`)).rejects.toThrow(
         JwtInvalidException,
@@ -259,9 +266,25 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
       );
 
       // 4. Storage traversal & Windows NTFS Alternate Data Stream (:) rejection
-      const rootDir = await mkdtemp(join(tmpdir(), "bunest-sec-storage-"));
+      const rootDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-sec-storage-${crypto.randomUUID()}`,
+      );
+      await ensureDir(rootDir);
       tempDirs.push(rootDir);
-      const storage = new LocalStorageAdapter({ rootDir });
+      const storage = new LocalDisk({ root: rootDir });
+
+      for (const maliciousKey of [
+        "../outside.txt",
+        "..\\outside.txt",
+        "nested/../../escape.txt",
+        "/etc/passwd",
+        "null\0byte.txt",
+      ]) {
+        expect(() => assertValidKey(maliciousKey)).toThrow(
+          StorageInvalidKeyError,
+        );
+      }
 
       for (const maliciousKey of [
         "../outside.txt",
@@ -273,11 +296,8 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
         "nested/C:drive.txt",
         "null\0byte.txt",
       ]) {
-        expect(() => assertSafeStorageKey(maliciousKey)).toThrow(
-          StoragePathTraversalException,
-        );
         await expect(storage.put(maliciousKey, "x")).rejects.toThrow(
-          StoragePathTraversalException,
+          StorageInvalidKeyError,
         );
       }
     });
@@ -316,7 +336,9 @@ describe("Cross-Package Security & Deterministic Fuzz Suite (§20.1 & Phase 7)",
       @Module({ controllers: [FuzzRouterController] })
       class FuzzRouterModule {}
 
-      const app = await BunestFactory.create(FuzzRouterModule, { logger: false });
+      const app = await BunestFactory.create(FuzzRouterModule, {
+        logger: false,
+      });
       try {
         for (let i = 0; i < ITERATIONS; i += 1) {
           const rawPath = randomFromAlphabet(rng, alphabet, 0, 48);

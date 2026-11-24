@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Scope } from "../../../../../packages/common/src";
+import { Scope } from "../../../../../packages/core/src/common";
 import { UnknownDependencyException } from "../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../_helpers";
 

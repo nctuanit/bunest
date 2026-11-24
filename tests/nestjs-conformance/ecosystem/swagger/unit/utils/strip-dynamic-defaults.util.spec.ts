@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   ApiProperty,
@@ -148,7 +147,10 @@ describeConformance(
 
       const explorer = new SchemaExplorer({ excludeDynamicDefaults: true });
       explorer.registerDtoSchema(Dto);
-      const props = explorer.getSchemas().Dto?.properties as Record<string, any>;
+      const props = explorer.getSchemas().Dto?.properties as Record<
+        string,
+        any
+      >;
 
       expect(props.lastSeen.additionalProperties.default).toBeUndefined();
       expect(props.flags.additionalProperties).toBe(true);

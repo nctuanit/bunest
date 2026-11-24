@@ -6,7 +6,7 @@ import {
   Reflector,
   type CanActivate,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ROLES_KEY, getRequestUser } from "./auth.decorators";
 
 export const ROLES_GUARD_OPTIONS = Symbol.for(

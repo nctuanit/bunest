@@ -19,7 +19,7 @@ import {
   isNonNullType,
   isObjectType,
   isUnionType,
-} from "graphql";
+} from "../engine";
 
 function mapRecordValues<T, R>(
   object: Record<string, T>,
@@ -62,14 +62,11 @@ export function transformSchema(
     ...schemaConfig,
     types: Object.values(typeMap),
     query: replaceMaybeType(schemaConfig.query) as
-      | GraphQLObjectType
-      | undefined,
+      GraphQLObjectType | undefined,
     mutation: replaceMaybeType(schemaConfig.mutation) as
-      | GraphQLObjectType
-      | undefined,
+      GraphQLObjectType | undefined,
     subscription: replaceMaybeType(schemaConfig.subscription) as
-      | GraphQLObjectType
-      | undefined,
+      GraphQLObjectType | undefined,
     directives: replaceDirectives([...schemaConfig.directives]),
   });
 
@@ -86,14 +83,12 @@ export function transformSchema(
       });
       const apolloExt = (
         type.extensions as
-          | { apollo?: { subgraph?: { resolveReference?: unknown } } }
-          | undefined
+          { apollo?: { subgraph?: { resolveReference?: unknown } } } | undefined
       )?.apollo;
       if (apolloExt?.subgraph?.resolveReference) {
         const objApollo = (
           objectType.extensions as
-            | { apollo?: { subgraph?: Record<string, unknown> } }
-            | undefined
+            { apollo?: { subgraph?: Record<string, unknown> } } | undefined
         )?.apollo;
         objectType.extensions = {
           ...objectType.extensions,

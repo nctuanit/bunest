@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Injectable,
@@ -8,7 +7,7 @@ import {
   type DynamicModule,
   type MiddlewareConsumer,
   type ModuleImport,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ModulesContainer,
   type BunestApplication,
@@ -111,7 +110,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Expected GET /dashboard (middleware-only route without controller) to return 200 "unauthorized" after verifying single forwardRef module registration, got 404. packages/http/src/router/route-compiler.ts does not execute module middlewares on unmatched routes, packages/http/src/scanner/path-normalizer.ts does not recognize `{*path}`, and packages/core/src/application/bunest-application.ts registers child module middlewares before parent module middlewares.
+    // BUNEST_BUG: Expected GET /dashboard (middleware-only route without controller) to return 200 "unauthorized" after verifying single forwardRef module registration, got 404. packages/core/src/http/router/route-compiler.ts does not execute module middlewares on unmatched routes, packages/core/src/http/scanner/path-normalizer.ts does not recognize `{*path}`, and packages/core/src/application/bunest-application.ts registers child module middlewares before parent module middlewares.
     it.skip("should register a dynamic module given as forwardRef() once, below its importer", async () => {
       await createApp([forwardRef(() => DashboardModule.register())]);
 
@@ -120,7 +119,7 @@ describeConformance(
       await request(app!).get("/dashboard").expect(200, AUTH_VALUE);
     });
 
-    // BUNEST_BUG: Expected GET /dashboard (middleware-only route without controller) to return 200 "unauthorized" after verifying single forwardRef module/service registration, got 404. packages/http/src/router/route-compiler.ts does not execute module middlewares on unmatched routes, packages/http/src/scanner/path-normalizer.ts does not recognize `{*path}`, and packages/core/src/application/bunest-application.ts registers child middlewares before parent middlewares.
+    // BUNEST_BUG: Expected GET /dashboard (middleware-only route without controller) to return 200 "unauthorized" after verifying single forwardRef module/service registration, got 404. packages/core/src/http/router/route-compiler.ts does not execute module middlewares on unmatched routes, packages/core/src/http/scanner/path-normalizer.ts does not recognize `{*path}`, and packages/core/src/application/bunest-application.ts registers child middlewares before parent middlewares.
     it.skip("should register a module given as forwardRef() in the imports of a dynamic module once", async () => {
       await createApp([FeatureModule.register()]);
 

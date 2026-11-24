@@ -1,4 +1,4 @@
-import { Logger } from "@bunest/common";
+import { Logger } from "@bunest/core";
 import {
   isEncodedPayload as encoded,
   type PayloadCodecs,

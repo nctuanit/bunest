@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { IsInt, IsString, MinLength } from "class-validator";
+import { IsInt, IsString, MinLength } from "../packages/validation/src/validator";
 import {
   ApiConsumes,
   ApiCookieAuth,
@@ -105,7 +104,7 @@ import {
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
-} from "../packages/websockets/src";
+} from "../packages/core/src/ws";
 import {
   GrpcStreamCall,
   InMemoryBroker,
@@ -122,10 +121,7 @@ import {
   type CustomTransportStrategy,
 } from "../packages/microservices/src";
 import { Test, request } from "../packages/testing/src";
-import {
-  parseCliArgs,
-  transformDtoMetadataSource,
-} from "../packages/cli/src";
+import { parseCliArgs, transformDtoMetadataSource } from "../packages/cli/src";
 import { DevtoolsModule, DevtoolsService } from "../packages/observability/src";
 
 describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
@@ -183,7 +179,9 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         JSON.parse('{"ok":1,"__proto__":{"polluted":true}}'),
       ) as Record<string, unknown>;
       expect(clean.ok).toBe(1);
-      expect(Object.prototype.hasOwnProperty.call(clean, "__proto__")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(clean, "__proto__")).toBe(
+        false,
+      );
 
       expect(filterLogLevels("warn")).toEqual(["fatal", "error", "warn"]);
       const consoleLogger = new ConsoleLogger("TestCtx", {
@@ -225,7 +223,10 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         constructor(private readonly svc: LegacyJsService) {}
 
         @RequestMapping({ path: "mapped", method: RequestMethod.GET })
-        mapped(@Request() req: globalThis.Request, @Response({ passthrough: true }) res: ResponseContext) {
+        mapped(
+          @Request() req: globalThis.Request,
+          @Response({ passthrough: true }) res: ResponseContext,
+        ) {
           res.header("x-verb", req.method);
           return { word: this.svc.repo.getWord() };
         }
@@ -274,7 +275,10 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         expect(r3.statusCode).toBe(200);
         expect(r3.json()).toEqual({ dav: true });
 
-        const r4 = await app.inject({ method: "QUERY", url: "/v12/query-verb" });
+        const r4 = await app.inject({
+          method: "QUERY",
+          url: "/v12/query-verb",
+        });
         expect(r4.statusCode).toBe(200);
         expect(r4.json()).toEqual({ queryVerb: true });
 
@@ -336,7 +340,8 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
       });
       app.useSecurityHeaders();
       app.setViewEngine(
-        (template, model) => `<h1>${template}: ${(model as { name: string }).name}</h1>`,
+        (template, model) =>
+          `<h1>${template}: ${(model as { name: string }).name}</h1>`,
       );
       await app.init();
 
@@ -349,7 +354,10 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         expect(ping.headers["x-powered-by"]).toBeUndefined();
 
         // Security headers applied on 404
-        const notFound = await app.inject({ method: "GET", url: "/does-not-exist" });
+        const notFound = await app.inject({
+          method: "GET",
+          url: "/does-not-exist",
+        });
         expect(notFound.statusCode).toBe(404);
         expect(notFound.headers["x-content-type-options"]).toBe("nosniff");
 
@@ -357,7 +365,10 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         const blocked = await app.inject({
           method: "POST",
           url: "/sec/mutate",
-          headers: { "sec-fetch-site": "cross-site", origin: "https://evil.example" },
+          headers: {
+            "sec-fetch-site": "cross-site",
+            origin: "https://evil.example",
+          },
         });
         expect(blocked.statusCode).toBe(403);
         expect(blocked.headers["x-content-type-options"]).toBe("nosniff");
@@ -382,11 +393,16 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         expect(trusted.statusCode).toBe(201);
 
         // Signed cookies round-trip + tamper rejection
-        const setRes = await app.inject({ method: "GET", url: "/sec/set-cookie" });
+        const setRes = await app.inject({
+          method: "GET",
+          url: "/sec/set-cookie",
+        });
         const setCookieHeader = String(setRes.headers["set-cookie"] ?? "");
         expect(setCookieHeader).toContain("Priority=High");
         const rawCookiePair = setCookieHeader.split(";")[0]!;
-        const cookieVal = decodeURIComponent(rawCookiePair.slice("session=".length));
+        const cookieVal = decodeURIComponent(
+          rawCookiePair.slice("session=".length),
+        );
 
         const readValid = await app.inject({
           method: "GET",
@@ -454,7 +470,8 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         );
         await badApp.init();
       } catch (err) {
-        shadowThrown = err instanceof Error && err.message.toLowerCase().includes("shadow");
+        shadowThrown =
+          err instanceof Error && err.message.toLowerCase().includes("shadow");
       }
       expect(shadowThrown).toBe(true);
 
@@ -471,19 +488,27 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
       const listPipe = new ValidationPipe({ errorFormat: "list" });
       let listErr: unknown;
       try {
-        await listPipe.transform({ name: "a", qty: "nope" }, { type: "body", metatype: CreateItemDto });
+        await listPipe.transform(
+          { name: "a", qty: "nope" },
+          { type: "body", metatype: CreateItemDto },
+        );
       } catch (e) {
         listErr = e;
       }
       expect(listErr).toBeInstanceOf(HttpException);
-      const listBody = (listErr as HttpException).getResponse() as { message: string[] };
+      const listBody = (listErr as HttpException).getResponse() as {
+        message: string[];
+      };
       expect(Array.isArray(listBody.message)).toBe(true);
       expect(listBody.message.length).toBeGreaterThanOrEqual(2);
 
       const groupedPipe = new ValidationPipe({ errorFormat: "grouped" });
       let groupedErr: unknown;
       try {
-        await groupedPipe.transform({ name: "a", qty: "nope" }, { type: "body", metatype: CreateItemDto });
+        await groupedPipe.transform(
+          { name: "a", qty: "nope" },
+          { type: "body", metatype: CreateItemDto },
+        );
       } catch (e) {
         groupedErr = e;
       }
@@ -507,7 +532,9 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
 
       @Injectable({ scope: Scope.TRANSIENT })
       class ScopedLogger {
-        constructor(@Inject(INQUIRER) public readonly parentClass: Function | undefined) {}
+        constructor(
+          @Inject(INQUIRER) public readonly parentClass: Function | undefined,
+        ) {}
       }
 
       @FeatureFlag("beta")
@@ -529,11 +556,17 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
       @Catch()
       class CustomFilter extends BaseExceptionFilter {
         override catch(exception: unknown, host: ArgumentsHost) {
-          if (exception instanceof Error && exception.message === "custom-err") {
-            return new globalThis.Response(JSON.stringify({ handledBy: "BaseExceptionFilter" }), {
-              status: 418,
-              headers: { "content-type": "application/json" },
-            });
+          if (
+            exception instanceof Error &&
+            exception.message === "custom-err"
+          ) {
+            return new globalThis.Response(
+              JSON.stringify({ handledBy: "BaseExceptionFilter" }),
+              {
+                status: 418,
+                headers: { "content-type": "application/json" },
+              },
+            );
           }
           return super.catch(exception, host);
         }
@@ -604,9 +637,13 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
 
         // DiscoveryService.createDecorator + MetadataScanner.getAllFilteredMethodNames
         const discovery = app.get(DiscoveryService);
-        const providers = discovery.getProviders({ metadataKey: FeatureFlag.KEY });
+        const providers = discovery.getProviders({
+          metadataKey: FeatureFlag.KEY,
+        });
         expect(providers.length).toBe(1);
-        expect(discovery.getMetadataByDecorator(FeatureFlag, providers[0]!)).toBe("beta");
+        expect(
+          discovery.getMetadataByDecorator(FeatureFlag, providers[0]!),
+        ).toBe("beta");
 
         const scanner = app.get(MetadataScanner);
         expect([
@@ -870,12 +907,18 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
       @WebSocketGateway({ path: "/ack-ws", maxConcurrentMessages: 1 })
       class AckGateway {
         @SubscribeMessage("echo")
-        handleEcho(@MessageBody() data: { text: string }, @Ack() ack: (v: unknown) => void) {
+        handleEcho(
+          @MessageBody() data: { text: string },
+          @Ack() ack: (v: unknown) => void,
+        ) {
           ack({ echoed: data.text });
         }
       }
 
-      const app = await NestFactory.create({ providers: [AckGateway] }, { logger: false });
+      const app = await NestFactory.create(
+        { providers: [AckGateway] },
+        { logger: false },
+      );
       const wsAdapter = new BunWebSocketAdapter();
       app.useWebSocketAdapter(wsAdapter);
       await wsAdapter.registerGateway(app.get(AckGateway));
@@ -886,7 +929,13 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         const reply = await new Promise<unknown>((resolve, reject) => {
           const sock = new WebSocket(wsUrl);
           sock.onopen = () => {
-            sock.send(JSON.stringify({ event: "echo", data: { text: "ping" }, id: "req-1" }));
+            sock.send(
+              JSON.stringify({
+                event: "echo",
+                data: { text: "ping" },
+                id: "req-1",
+              }),
+            );
           };
           sock.onmessage = (ev) => {
             sock.close();
@@ -905,18 +954,24 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
     });
 
     it("supports @bunest/microservices RecordBuilders, CustomTransportStrategy, unwrap(), status/onStatus(), PreRequestHook, @GrpcStreamCall, and inheritAppConfig", async () => {
-      const rmq = new RmqRecordBuilder({ a: 1 }).setOptions({ priority: 5 }).build();
+      const rmq = new RmqRecordBuilder({ a: 1 })
+        .setOptions({ priority: 5 })
+        .build();
       expect(rmq.data).toEqual({ a: 1 });
       expect(rmq.options?.priority).toBe(5);
 
-      const nats = new NatsRecordBuilder("hi").setHeaders({ "x-id": "1" }).build();
+      const nats = new NatsRecordBuilder("hi")
+        .setHeaders({ "x-id": "1" })
+        .build();
       expect(nats.headers?.["x-id"]).toBe("1");
 
       const mqtt = new MqttRecordBuilder("m").setQoS(1).setRetain(true).build();
       expect(mqtt.options?.qos).toBe(1);
       expect(mqtt.options?.retain).toBe(true);
 
-      const redis = new RedisRecordBuilder("r").setOptions({ headers: { h: "v" } }).build();
+      const redis = new RedisRecordBuilder("r")
+        .setOptions({ headers: { h: "v" } })
+        .build();
       expect(redis.options?.headers?.h).toBe("v");
 
       // CustomTransportStrategy
@@ -1020,7 +1075,9 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         const devtools = moduleRef.get(DevtoolsService);
         const graph = devtools.getGraph();
         expect(graph.serializedGraph).toBeDefined();
-        expect(Object.keys(graph.serializedGraph!.nodes).length).toBeGreaterThan(0);
+        expect(
+          Object.keys(graph.serializedGraph!.nodes).length,
+        ).toBeGreaterThan(0);
 
         let msStarted = false;
         const ms = moduleRef.createNestMicroservice({
@@ -1049,10 +1106,14 @@ export class AccountDto {
   secretToken: string;
 }
 `;
-      const transformed = transformDtoMetadataSource(dtoSource, "account.dto.ts", {
-        swagger: true,
-        graphql: true,
-      });
+      const transformed = transformDtoMetadataSource(
+        dtoSource,
+        "account.dto.ts",
+        {
+          swagger: true,
+          graphql: true,
+        },
+      );
       expect(transformed.modified).toBe(true);
       expect(transformed.code).toContain('"email"');
       expect(transformed.code).not.toContain('propertyKey: "secretToken"');

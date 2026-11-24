@@ -8,14 +8,14 @@ import {
   type ResponseContext,
   type Type,
   type ValueProvider,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   HttpExecutionContext,
   HttpResponseContext,
   RequestContext,
   requestContextStorage,
   type RequestContextOptions,
-} from "@bunest/http";
+} from "@bunest/core/http";
 import type { TestRequestOptions } from "./interfaces/testing.interface";
 import {
   CapturingLogger,

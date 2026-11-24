@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { Injectable } from "../../../../../packages/common/src";
+import { Injectable } from "../../../../../packages/core/src/common";
 import {
   ApplicationConfig,
   HttpAdapterHost,

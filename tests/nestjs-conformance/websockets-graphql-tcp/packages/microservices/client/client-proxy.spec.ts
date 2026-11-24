@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   ClientProxy,
@@ -26,10 +25,8 @@ class TestClientProxy extends ClientProxy {
     data: unknown,
     timeoutMs: number,
   ) => Promise<unknown> = async (_pattern, data) => data;
-  public dispatchEventImpl: (
-    pattern: string,
-    data: unknown,
-  ) => Promise<void> = async () => {};
+  public dispatchEventImpl: (pattern: string, data: unknown) => Promise<void> =
+    async () => {};
 
   constructor(defaultTimeoutMs?: number) {
     super(defaultTimeoutMs);
@@ -175,7 +172,11 @@ describeConformance(
           return "recovered";
         };
 
-        const res = await client.send("flaky", {}, { retries: 3, retryDelayMs: 5 });
+        const res = await client.send(
+          "flaky",
+          {},
+          { retries: 3, retryDelayMs: 5 },
+        );
         expect(res).toBe("recovered");
         expect(attempts).toBe(3);
       });
@@ -264,7 +265,9 @@ describeConformance(
       const metadata = { traceId: "trace-1" };
 
       it("should let the hook inspect or attach metadata to an outgoing request", async () => {
-        const sendSpy = createSpy(async (_pattern: string, data: unknown) => data);
+        const sendSpy = createSpy(
+          async (_pattern: string, data: unknown) => data,
+        );
         client.sendOnceImpl = sendSpy;
 
         const returned = client.setPreRequestHook((ctx) => {
@@ -287,10 +290,12 @@ describeConformance(
 
       it("should let an async hook run before an outgoing event", async () => {
         const order: string[] = [];
-        const dispatchSpy = createSpy(async (_pattern: string, data: unknown) => {
-          order.push("dispatch");
-          expect(data).toEqual({ body: "data", metadata });
-        });
+        const dispatchSpy = createSpy(
+          async (_pattern: string, data: unknown) => {
+            order.push("dispatch");
+            expect(data).toEqual({ body: "data", metadata });
+          },
+        );
         client.dispatchEventImpl = dispatchSpy;
 
         client.setPreRequestHook(async (ctx) => {

@@ -1,15 +1,14 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   ConsoleLogger,
   Logger,
   Module as ModuleDecorator,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestApplication,
   BunestApplicationContext,
 } from "../../../../../packages/core/src";
-import { BunHttpAdapter } from "../../../../../packages/http/src";
+import { BunHttpAdapter } from "../../../../../packages/core/src/http";
 import { InMemoryServer } from "../../../../../packages/microservices/src";
 import {
   Test,
@@ -147,10 +146,17 @@ describeConformance(
           imports: [TestAppModule],
         }).compile();
 
-        mod.createNestApplication({ forceConsole: true } as Record<string, unknown>);
+        mod.createNestApplication({ forceConsole: true } as Record<
+          string,
+          unknown
+        >);
 
-        const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
-        const stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+        const consoleLogSpy = spyOn(console, "log").mockImplementation(
+          () => {},
+        );
+        const stdoutSpy = spyOn(process.stdout, "write").mockImplementation(
+          () => true,
+        );
         new Logger("TestContext").log("message");
 
         expect(consoleLogSpy).toHaveBeenCalledTimes(1);

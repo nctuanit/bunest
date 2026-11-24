@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 import type { ResiliencePreset } from "./interfaces/resilience-module-options.interface";
 import type { BulkheadPolicy } from "./policies/bulkhead.policy";
 import type { CircuitBreakerPolicy } from "./policies/circuit-breaker.policy";

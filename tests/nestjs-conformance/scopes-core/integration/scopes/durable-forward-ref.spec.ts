@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
@@ -11,7 +10,7 @@ import {
   type ContextId,
   type ContextIdStrategy,
   type HostComponentInfo,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   type BunestApplication,

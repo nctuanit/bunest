@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { Module } from "../../../../../packages/common/src";
+import { Module } from "../../../../../packages/core/src/common";
 import {
   Ack,
   type BunWsServer,
@@ -12,12 +11,8 @@ import {
   getGatewayMessageHandlers,
   getGatewayMethodParams,
   getGatewayServerProperties,
-} from "../../../../../packages/websockets/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../_helpers/index";
+} from "../../../../../packages/core/src/ws";
+import { Test, describeConformance, itAdapted } from "../../../_helpers/index";
 
 describeConformance(
   "GatewayMetadataExplorer / WsGatewayExplorer",
@@ -68,7 +63,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: @SubscribeMessage and @Ack store metadata on `target.constructor` / `Mixin.prototype` in packages/websockets/src/decorators/ws.decorators.ts. When TypeScript's `applyMixins()` copies property descriptors from `Mixin.prototype` onto `Host.prototype` (also overwriting `Host.prototype.constructor`), `getGatewayMessageHandlers(Host)` misses `mixedInWithAck` and `getGatewayMethodParams(Host, 'mixedInWithAck')` misses `@Ack()`.
+      // BUNEST_BUG: @SubscribeMessage and @Ack store metadata on `target.constructor` / `Mixin.prototype` in packages/core/src/ws/decorators/ws.decorators.ts. When TypeScript's `applyMixins()` copies property descriptors from `Mixin.prototype` onto `Host.prototype` (also overwriting `Host.prototype.constructor`), `getGatewayMessageHandlers(Host)` misses `mixedInWithAck` and `getGatewayMethodParams(Host, 'mixedInWithAck')` misses `@Ack()`.
       it.skip('should find the @Ack() of the handlers of a gateway whose "constructor" a mixin helper overwrote', () => {
         class Mixin {
           @SubscribeMessage(ackMessage)
@@ -105,7 +100,9 @@ describeConformance(
     describe("exploreMethodMetadata (getGatewayMethodParams)", () => {
       it("should return empty handlers/params for undecorated method", () => {
         const handlers = getGatewayMessageHandlers(TestGateway);
-        expect(handlers.find((h) => h.handlerKey === "noMessage")).toBeUndefined();
+        expect(
+          handlers.find((h) => h.handlerKey === "noMessage"),
+        ).toBeUndefined();
         expect(getGatewayMethodParams(TestGateway, "noMessage")).toEqual([]);
       });
 

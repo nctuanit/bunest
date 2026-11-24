@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Kind,
   type ValueNode,
-} from "../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../packages/graphql/src";
 import type { CustomScalar } from "../../../../../../packages/graphql/src";
 import { describeConformance } from "../../../../_helpers/index";
 
@@ -45,9 +44,9 @@ describeConformance(
       expect(
         scalar.parseLiteral({ kind: Kind.STRING, value: "noop" }),
       ).toBeNull();
-      expect(scalar.parseLiteral({ kind: Kind.INT, value: "0" })).toBeInstanceOf(
-        Date,
-      );
+      expect(
+        scalar.parseLiteral({ kind: Kind.INT, value: "0" }),
+      ).toBeInstanceOf(Date);
       expect(scalar.parseValue("not-a-number")).toBeNull();
       expect(scalar.serialize("not-a-date")).toBeNull();
     });

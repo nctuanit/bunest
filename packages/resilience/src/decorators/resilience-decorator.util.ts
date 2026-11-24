@@ -4,7 +4,7 @@ import {
   SetMetadata,
   createMethodAspectDecorator,
   type MethodAspectMetadata,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { EntrypointDecorator } from "../interfaces/entrypoint-options.interface";
 import { RESILIENCE_METHOD_ASPECT } from "../resilience.constants";
 
@@ -47,10 +47,11 @@ export function withResilienceAspect(
         (entry) => entry.token === RESILIENCE_METHOD_ASPECT,
       );
       if (!alreadyBound) {
-        const aspectDecorator = createMethodAspectDecorator<ResilienceAspectSlotOptions>(
-          RESILIENCE_METHOD_ASPECT,
-          { slotId: Symbol("resilience:class-slot") },
-        );
+        const aspectDecorator =
+          createMethodAspectDecorator<ResilienceAspectSlotOptions>(
+            RESILIENCE_METHOD_ASPECT,
+            { slotId: Symbol("resilience:class-slot") },
+          );
         (aspectDecorator as ClassDecorator)(target as Function);
       }
       return result;
@@ -73,10 +74,11 @@ export function withResilienceAspect(
           entry.methodName === propertyKey,
       );
       if (!alreadyBound) {
-        const aspectDecorator = createMethodAspectDecorator<ResilienceAspectSlotOptions>(
-          RESILIENCE_METHOD_ASPECT,
-          { slotId: Symbol("resilience:method-slot") },
-        );
+        const aspectDecorator =
+          createMethodAspectDecorator<ResilienceAspectSlotOptions>(
+            RESILIENCE_METHOD_ASPECT,
+            { slotId: Symbol("resilience:method-slot") },
+          );
         (aspectDecorator as MethodDecorator)(
           target,
           propertyKey,

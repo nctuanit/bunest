@@ -1,5 +1,3 @@
-import "reflect-metadata";
-
 export {
   ARGS_TYPE_METADATA,
   CLASS_TYPE_METADATA,
@@ -29,15 +27,11 @@ export {
   SUBSCRIPTION_TYPE,
 } from "./constants";
 
+export * from "./engine";
+
 export {
   Float,
-  GraphQLBoolean,
-  GraphQLFloat,
-  GraphQLID,
-  GraphQLInt,
   GraphQLISODateTime,
-  GraphQLScalarType,
-  GraphQLString,
   GraphQLTimestamp,
   ID,
   Int,

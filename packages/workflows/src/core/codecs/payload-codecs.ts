@@ -1,6 +1,10 @@
-import type { PayloadCodec, PayloadContext, SerializedError } from '../interfaces/payload-codec.interface';
-import { andThen, type Maybe } from '../utils/maybe.util';
-import { describePlace } from '../utils/payload-place.util';
+import type {
+  PayloadCodec,
+  PayloadContext,
+  SerializedError,
+} from "../interfaces/payload-codec.interface";
+import { andThen, type Maybe } from "../utils/maybe.util";
+import { describePlace } from "../utils/payload-place.util";
 
 /**
  * An encoded payload as stored: `$wf1:<codec id>:<what the codec returned>`. The prefix tells it from a payload
@@ -8,11 +12,11 @@ import { describePlace } from '../utils/payload-place.util';
  * can't start with the prefix: a string that does (the application's data) is stored as a `plain` envelope of its
  * JSON instead, so no payload is ever mistaken for another's envelope.
  */
-const ENVELOPE = '$wf1:';
+const ENVELOPE = "$wf1:";
 
 /** The envelope's own codec, for a string that starts like one when no codec encodes it: its JSON. */
 const PLAIN: PayloadCodec = {
-  id: 'plain',
+  id: "plain",
   encode: (value) => JSON.stringify(value),
   decode: (data) => JSON.parse(data),
 };
@@ -55,22 +59,37 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
     this.name = options.name ?? "the module's codec";
     const ids = new Set<string>();
     for (const codec of codecs) {
-      if (codec === null || typeof codec !== 'object' || typeof codec.encode !== 'function' || typeof codec.decode !== 'function') {
-        throw new TypeError(`${this.name}: expected a ${options.type ?? 'PayloadCodec'} (an object with id, encode() and decode()), got ${String(codec)}.`);
+      if (
+        codec === null ||
+        typeof codec !== "object" ||
+        typeof codec.encode !== "function" ||
+        typeof codec.decode !== "function"
+      ) {
+        throw new TypeError(
+          `${this.name}: expected a ${options.type ?? "PayloadCodec"} (an object with id, encode() and decode()), got ${String(codec)}.`,
+        );
       }
-      if (typeof codec.id !== 'string' || !/^[\w.-]+$/.test(codec.id) || codec.id === PLAIN.id) {
+      if (
+        typeof codec.id !== "string" ||
+        !/^[\w.-]+$/.test(codec.id) ||
+        codec.id === PLAIN.id
+      ) {
         throw new TypeError(
           `${this.name}: ${codec.constructor.name} has an invalid id ${JSON.stringify(codec.id)}. Use letters, digits, ".", "_" and "-" ` +
             `("${PLAIN.id}" is the envelope's).`,
         );
       }
       if (ids.has(codec.id)) {
-        throw new TypeError(`${this.name}: two codecs have the id "${codec.id}". Give each its own.`);
+        throw new TypeError(
+          `${this.name}: two codecs have the id "${codec.id}". Give each its own.`,
+        );
       }
       ids.add(codec.id);
     }
     this.writer = codecs[0];
-    this.byId = new Map<string, PayloadCodec<C>>([...codecs, PLAIN].map((codec) => [codec.id, codec]));
+    this.byId = new Map<string, PayloadCodec<C>>(
+      [...codecs, PLAIN].map((codec) => [codec.id, codec]),
+    );
   }
 
   /** Whether a codec encodes what is written (else payloads are stored as they are). */
@@ -84,7 +103,10 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
     if (value === undefined || value === null || !writer) {
       return value;
     }
-    return andThen(writer.encode(value, context), (data) => `${ENVELOPE}${writer.id}:${data}`);
+    return andThen(
+      writer.encode(value, context),
+      (data) => `${ENVELOPE}${writer.id}:${data}`,
+    );
   }
 
   /** The value in an envelope, or `stored` as it is when it isn't one. Throws for a codec that isn't listed. */
@@ -92,13 +114,13 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
     if (!isEncodedPayload(stored)) {
       return stored;
     }
-    const end = stored.indexOf(':', ENVELOPE.length);
+    const end = stored.indexOf(":", ENVELOPE.length);
     const id = stored.slice(ENVELOPE.length, end);
     const codec = this.byId.get(id);
     if (end < 0 || !codec) {
       throw new Error(
         `A payload of ${describePlace(context)} was encoded by the codec "${id}", which ${this.name} option doesn't list. ` +
-          'Keep a codec listed (codec: [current, previous]) while payloads it encoded may still be read.',
+          "Keep a codec listed (codec: [current, previous]) while payloads it encoded may still be read.",
       );
     }
     return codec.decode(stored.slice(end + 1), context) as Maybe<unknown>;
@@ -109,15 +131,28 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
    * class, which the store may filter on, not the application's data); a nested error (a field holding another
    * `SerializedError`) likewise, and nothing else. Without a codec, as it is, unless a message starts like an envelope.
    */
-  encodeError<E extends SerializedError | null | undefined>(error: E, context: C): Maybe<E> {
-    if (error === null || error === undefined || (!this.writer && !messages(error).some(isEncodedPayload))) {
+  encodeError<E extends SerializedError | null | undefined>(
+    error: E,
+    context: C,
+  ): Maybe<E> {
+    if (
+      error === null ||
+      error === undefined ||
+      (!this.writer && !messages(error).some(isEncodedPayload))
+    ) {
       return error;
     }
-    const secret = { message: error.message, ...(error.stack === undefined ? {} : { stack: error.stack }) };
+    const secret = {
+      message: error.message,
+      ...(error.stack === undefined ? {} : { stack: error.stack }),
+    };
     const writer: PayloadCodec<C> = this.writer ?? PLAIN;
     const nested = nestedErrors(error);
     return andThen(
-      andThen(writer.encode(secret, context), (data) => `${ENVELOPE}${writer.id}:${data}`),
+      andThen(
+        writer.encode(secret, context),
+        (data) => `${ENVELOPE}${writer.id}:${data}`,
+      ),
       (message) =>
         andThen(
           all(nested.map(([, inner]) => this.encodeError(inner, context))),
@@ -125,20 +160,31 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
             ({
               name: error.name,
               message,
-              ...Object.fromEntries(nested.map(([field], i) => [field, encoded[i]])),
+              ...Object.fromEntries(
+                nested.map(([field], i) => [field, encoded[i]]),
+              ),
             }) as E,
         ),
     );
   }
 
   /** What `encodeError()` encoded, decoded; an error stored as it is comes back as it is. */
-  async decodeError<E extends SerializedError | null | undefined>(error: E, context: C): Promise<E> {
+  async decodeError<E extends SerializedError | null | undefined>(
+    error: E,
+    context: C,
+  ): Promise<E> {
     if (!error || !isEncodedPayload(error.message)) {
       return error;
     }
-    const { message, stack } = (await this.decode(error.message, context)) as { message: string; stack?: string };
+    const { message, stack } = (await this.decode(error.message, context)) as {
+      message: string;
+      stack?: string;
+    };
     const nested = await Promise.all(
-      nestedErrors(error).map(async ([field, inner]) => [field, await this.decodeError(inner, context)] as const),
+      nestedErrors(error).map(
+        async ([field, inner]) =>
+          [field, await this.decodeError(inner, context)] as const,
+      ),
     );
     return {
       name: error.name,
@@ -158,32 +204,42 @@ export class PayloadCodecs<C extends PayloadContext = PayloadContext> {
  * ```
  */
 export function isEncodedPayload(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith(ENVELOPE);
+  return typeof value === "string" && value.startsWith(ENVELOPE);
 }
 
 /** The fields of `error` that hold nested errors (workflows' `compensation`), in their order. */
 function nestedErrors(error: SerializedError): [string, SerializedError][] {
   return Object.entries(error).filter(
     (entry): entry is [string, SerializedError] =>
-      entry[0] !== 'name' && entry[0] !== 'message' && entry[0] !== 'stack' && isSerializedError(entry[1]),
+      entry[0] !== "name" &&
+      entry[0] !== "message" &&
+      entry[0] !== "stack" &&
+      isSerializedError(entry[1]),
   );
 }
 
 /** The messages of `error` and of its nested errors. */
 function messages(error: SerializedError): string[] {
-  return [error.message, ...nestedErrors(error).flatMap(([, inner]) => messages(inner))];
+  return [
+    error.message,
+    ...nestedErrors(error).flatMap(([, inner]) => messages(inner)),
+  ];
 }
 
 function isSerializedError(value: unknown): value is SerializedError {
   return (
-    typeof value === 'object' &&
+    typeof value === "object" &&
     value !== null &&
-    typeof (value as SerializedError).name === 'string' &&
-    typeof (value as SerializedError).message === 'string'
+    typeof (value as SerializedError).name === "string" &&
+    typeof (value as SerializedError).message === "string"
   );
 }
 
 /** Every value, synchronously when none is a promise. */
 function all<T>(values: Maybe<T>[]): Maybe<T[]> {
-  return values.reduce<Maybe<T[]>>((done, value) => andThen(done, (list) => andThen(value, (item) => [...list, item])), []);
+  return values.reduce<Maybe<T[]>>(
+    (done, value) =>
+      andThen(done, (list) => andThen(value, (item) => [...list, item])),
+    [],
+  );
 }

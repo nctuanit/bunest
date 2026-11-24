@@ -220,9 +220,7 @@ export class OtlpHttpSpanExporter implements SpanExporter {
       });
 
       if (!res.ok) {
-        this.onError?.(
-          new Error(`OTLP export failed with HTTP ${res.status}`),
-        );
+        this.onError?.(new Error(`OTLP export failed with HTTP ${res.status}`));
       }
     } catch (err) {
       this.onError?.(err);

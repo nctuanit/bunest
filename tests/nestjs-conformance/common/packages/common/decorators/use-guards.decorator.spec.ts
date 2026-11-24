@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   UseGuards,
   type CanActivate,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class Guard implements CanActivate {
@@ -57,7 +56,7 @@ describeConformance(
       expect(metadata).toEqual(guards.concat(guards));
     });
 
-    // BUNEST_BUG: UseGuards() in packages/common/src/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
+    // BUNEST_BUG: UseGuards() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
     it.skip("should throw exception when object is invalid", () => {
       let error: unknown = undefined;
       try {

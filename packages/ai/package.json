@@ -1,11 +1,11 @@
 {
   "name": "@bunest/ai",
   "version": "0.1.0",
-  "description": "Language models for Bunest: model calls with timeouts, retries and fallbacks, structured output, tools and agents, and streaming.",
+  "description": "Language models, agents, streaming, and Model Context Protocol (MCP) server for Bunest",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -36,17 +36,28 @@
       "import": "./dist/workflows/index.js",
       "default": "./dist/workflows/index.js"
     },
+    "./mcp": {
+      "types": "./src/mcp/index.ts",
+      "bun": "./src/mcp/index.ts",
+      "import": "./dist/mcp/index.js",
+      "default": "./dist/mcp/index.js"
+    },
+    "./mcp/testing": {
+      "types": "./src/mcp/testing/index.ts",
+      "bun": "./src/mcp/testing/index.ts",
+      "import": "./dist/mcp/testing/index.js",
+      "default": "./dist/mcp/testing/index.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/workflows/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/common --external @bunest/core --external @bunest/resilience --external @bunest/workflows --external @bunest/testing --external reflect-metadata",
+    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/workflows/index.ts ./src/mcp/index.ts ./src/mcp/testing/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/core --external @bunest/resilience --external @bunest/workflows --external @bunest/testing --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
     "test": "bun test",
     "typecheck": "bun check"
   },
   "dependencies": {
-    "@bunest/common": "workspace:*",
     "@bunest/core": "workspace:*",
     "@bunest/resilience": "workspace:*",
     "@bunest/workflows": "workspace:*",

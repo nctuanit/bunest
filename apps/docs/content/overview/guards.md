@@ -9,6 +9,7 @@ A guard is an `@Injectable()` class implementing the `CanActivate` interface. Gu
 Implement `canActivate(context: ExecutionContext): boolean | Promise<boolean>`:
 
 @@filename(auth.guard.ts)
+
 ```ts
 import {
   Injectable,
@@ -42,6 +43,7 @@ export class BearerAuthGuard implements CanActivate {
 Combine `@SetMetadata()` (or `Reflector.createDecorator()`) with `Reflector.getAllAndOverride()` so method-level roles override controller-level defaults:
 
 @@filename(roles.decorator.ts)
+
 ```ts
 import { Reflector } from "@bunest/core";
 
@@ -49,6 +51,7 @@ export const Roles = Reflector.createDecorator<string[]>();
 ```
 
 @@filename(roles.guard.ts)
+
 ```ts
 import {
   Injectable,
@@ -83,6 +86,7 @@ export class RolesGuard implements CanActivate {
 
 @@filename(admin.controller.ts)
 @@tab(Controller / Method)
+
 ```ts
 import { Controller, Get, UseGuards } from "@bunest/core";
 import { BearerAuthGuard } from "./auth.guard";
@@ -99,8 +103,10 @@ export class AdminController {
   }
 }
 ```
+
 @@switch
 @@tab(Global via APP_GUARD)
+
 ```ts
 import { APP_GUARD, Module } from "@bunest/core";
 import { BearerAuthGuard } from "./auth.guard";

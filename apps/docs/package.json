@@ -10,5 +10,8 @@
     "build": "bun run src/build.ts",
     "preview": "bun run src/server.ts --static",
     "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*"
   }
 }

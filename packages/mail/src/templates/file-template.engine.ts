@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, resolve, sep } from "@bunest/core";
 import { MailTemplateError } from "../errors/mail-template.error";
 import type {
   FileTemplateEngineOptions,
@@ -65,7 +64,8 @@ export class FileTemplateEngine extends MailTemplateEngine {
     }
     if (
       options.layout !== undefined &&
-      (typeof options.layout !== "string" || !TEMPLATE_NAME.test(options.layout))
+      (typeof options.layout !== "string" ||
+        !TEMPLATE_NAME.test(options.layout))
     ) {
       throw new TypeError(
         `FileTemplateEngine: \`layout\` must be a template name, such as "layout" (got ${String(options.layout)})`,
@@ -145,11 +145,7 @@ export class FileTemplateEngine extends MailTemplateEngine {
       ...context,
       body: template.kind === "html" ? unsafeHtml(body) : body,
     };
-    return renderTemplate(
-      layout,
-      wrapped,
-      await this.partials(layout, locale),
-    );
+    return renderTemplate(layout, wrapped, await this.partials(layout, locale));
   }
 
   /** Every partial `template` includes, directly or through other partials, by name. */
@@ -247,7 +243,7 @@ export class FileTemplateEngine extends MailTemplateEngine {
     }
     let source: string;
     try {
-      source = await readFile(path, "utf8");
+      source = await Bun.file(path).text();
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") {

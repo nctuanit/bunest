@@ -1,4 +1,4 @@
-import { Logger, type OnModuleInit } from "@bunest/common";
+import { Logger, type OnModuleInit } from "@bunest/core";
 import {
   columns,
   ensureLockRows,
@@ -17,7 +17,7 @@ import {
   toInt,
   toJson,
   toText,
-} from "@bunest/store-kit/mysql";
+} from "@bunest/orm/mysql";
 import type {
   WorkflowInstance,
   WorkflowJournalEntry,
@@ -1229,7 +1229,11 @@ WHERE ${u.in("id", ids.slice(start, start + ROWS_PER_INSERT))} AND status = 'sus
     if (release.waits.length === 0) {
       return false;
     }
-    for (let start = 0; start < release.waits.length; start += ROWS_PER_INSERT) {
+    for (
+      let start = 0;
+      start < release.waits.length;
+      start += ROWS_PER_INSERT
+    ) {
       const p = new SqlParams();
       const rows = release.waits
         .slice(start, start + ROWS_PER_INSERT)
@@ -1263,8 +1267,7 @@ LIMIT 1`,
       const rows = entries
         .slice(start, start + ROWS_PER_INSERT)
         .map(
-          (entry) =>
-            `(${p.text(id)}, ${p.text(entry.name)}, ${p.json(entry)})`,
+          (entry) => `(${p.text(id)}, ${p.text(entry.name)}, ${p.json(entry)})`,
         );
       // The row alias names the values of the row being inserted (VALUES() is deprecated). The count isn't read.
       await tx.execute(

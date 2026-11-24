@@ -26,18 +26,23 @@ const NAMED_ENTITIES: Record<string, string> = {
 
 /** Decodes numeric character references and the common named entities. */
 export function decodeEntities(text: string): string {
-  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
-    if (entity[0] === "#") {
-      const code =
-        entity[1] === "x" || entity[1] === "X"
-          ? parseInt(entity.slice(2), 16)
-          : parseInt(entity.slice(1), 10);
-      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
-        ? String.fromCodePoint(code)
-        : match;
-    }
-    return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
-  });
+  return text.replace(
+    /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
+    (match, entity: string) => {
+      if (entity[0] === "#") {
+        const code =
+          entity[1] === "x" || entity[1] === "X"
+            ? parseInt(entity.slice(2), 16)
+            : parseInt(entity.slice(1), 10);
+        return code > 0 &&
+          code <= 0x10ffff &&
+          !(code >= 0xd800 && code <= 0xdfff)
+          ? String.fromCodePoint(code)
+          : match;
+      }
+      return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
+    },
+  );
 }
 
 const BLOCK_END =
@@ -106,10 +111,7 @@ function attributeValue(attributes: string, name: string): string | undefined {
  * (entities decoded, so `&amp;` in a query string is `&` again), then URLs in the text
  * part that the HTML didn't have. `#fragment`, `cid:` and `mailto:` targets are skipped.
  */
-export function extractLinks(
-  htmlBody?: string,
-  textBody?: string,
-): string[] {
+export function extractLinks(htmlBody?: string, textBody?: string): string[] {
   const links: string[] = [];
   const add = (link: string) => {
     if (link && !links.includes(link)) {

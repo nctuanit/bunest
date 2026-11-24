@@ -4,7 +4,7 @@ import {
   MetadataRegistry,
   type PipeLike,
   Scope,
-} from "@bunest/common";
+} from "@bunest/core";
 import { GRAPHQL_METADATA_KEYS } from "../constants";
 import type {
   ArgsOptions,
@@ -324,7 +324,10 @@ function registerGqlParam(
  */
 export function Args(): ParameterDecorator;
 export function Args(...pipes: PipeLike[]): ParameterDecorator;
-export function Args(property: string, ...pipes: PipeLike[]): ParameterDecorator;
+export function Args(
+  property: string,
+  ...pipes: PipeLike[]
+): ParameterDecorator;
 export function Args(
   property: string,
   options: ArgsOptions,

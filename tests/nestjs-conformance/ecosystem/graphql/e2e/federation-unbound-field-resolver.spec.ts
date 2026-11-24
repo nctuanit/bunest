@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it, spyOn } from "bun:test";
-import { Logger, Module } from "../../../../../packages/common/src";
+import { Logger, Module } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Field,

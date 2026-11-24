@@ -1,29 +1,33 @@
-import { Inject, Injectable, Logger, type OnModuleInit } from '@bunest/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from "@bunest/core";
 import {
   DiscoveryService,
   ExternalContextCreator,
+  MetadataRegistry,
   MetadataScanner,
-} from '@bunest/core';
-import type { AgentFunctionContext } from '../interfaces/agent-function.interface';
-import type { AiModuleOptions } from '../interfaces/ai-module-options.interface';
-import type { AiCaller, AiToolSelection } from '../interfaces/ai-tool.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
+} from "@bunest/core";
+import type { AgentFunctionContext } from "../interfaces/agent-function.interface";
+import type { AiModuleOptions } from "../interfaces/ai-module-options.interface";
+import type {
+  AiCaller,
+  AiToolSelection,
+} from "../interfaces/ai-tool.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
 import {
   AGENT_FUNCTION_METADATA,
   AI_CONTEXT_TYPE,
   AI_MODULE_OPTIONS,
   AI_PARAMS_METADATA,
-} from '../ai.constants';
-import { AiParamsFactory, recordHandlerParams } from '../context/ai-params';
-import { AiConfigurationError, AiToolError } from '../errors/ai.errors';
-import { toToolError } from '../utils/errors.util';
-import { assertProviderToolName } from '../utils/names.util';
+} from "../ai.constants";
+import { AiParamsFactory, recordHandlerParams } from "../context/ai-params";
+import { AiConfigurationError, AiToolError } from "../errors/ai.errors";
+import { toToolError } from "../utils/errors.util";
+import { assertProviderToolName } from "../utils/names.util";
 import {
   EMPTY_OBJECT_SCHEMA,
   toModelSchema,
   type ModelSchema,
-} from '../utils/schema.util';
-import { toToolOutput } from './tool-output.util';
+} from "../utils/schema.util";
+import { toToolOutput } from "./tool-output.util";
 
 const NEVER_ABORTED = new AbortController().signal;
 
@@ -63,7 +67,7 @@ export interface AiToolProgress {
  */
 @Injectable()
 export class AiTools implements OnModuleInit {
-  private readonly logger = new Logger('AiModule');
+  private readonly logger = new Logger("AiModule");
   private readonly entries = new Map<string, AiToolEntry>();
   private readonly paramsFactory = new AiParamsFactory();
   private scanned = false;
@@ -153,7 +157,7 @@ export class AiTools implements OnModuleInit {
     } = {},
   ): Promise<unknown> {
     const entry =
-      typeof entryOrName === 'string'
+      typeof entryOrName === "string"
         ? this.resolve([entryOrName])[0]!
         : entryOrName;
 
@@ -173,13 +177,13 @@ export class AiTools implements OnModuleInit {
       const missing = entry.scopes.filter((scope) => !held.has(scope));
       if (missing.length > 0) {
         throw new AiToolError(
-          `Forbidden: this tool needs the scope(s) ${missing.join(', ')}`,
+          `Forbidden: this tool needs the scope(s) ${missing.join(", ")}`,
           entry.name,
         );
       }
     }
 
-    const toolCallId = options.toolCallId ?? '';
+    const toolCallId = options.toolCallId ?? "";
     const context: AgentFunctionContext = {
       name: entry.name,
       ...(caller.request !== undefined && { request: caller.request }),
@@ -232,7 +236,7 @@ export class AiTools implements OnModuleInit {
     }
     const picked = new Map<string, AiToolEntry>();
     for (const item of selection) {
-      if (typeof item === 'string') {
+      if (typeof item === "string") {
         const entry = this.entries.get(item);
         if (!entry) {
           throw new AiConfigurationError(
@@ -240,7 +244,7 @@ export class AiTools implements OnModuleInit {
           );
         }
         picked.set(entry.name, entry);
-      } else if (typeof item === 'function') {
+      } else if (typeof item === "function") {
         const matches = [...this.entries.values()].filter(
           (entry) =>
             entry.host === item || entry.host.prototype instanceof item,
@@ -270,14 +274,16 @@ export class AiTools implements OnModuleInit {
     this.scanned = true;
     const seen = new Set<object>();
     const wrappers = this.discovery.getProviders(
-      this.options?.include ? { include: this.options.include as any } : undefined,
+      this.options?.include
+        ? { include: this.options.include }
+        : undefined,
     );
     for (const wrapper of wrappers) {
       const { instance } = wrapper;
       if (
         !instance ||
-        typeof instance !== 'object' ||
-        (wrapper as any).isAlias ||
+        typeof instance !== "object" ||
+        wrapper.isAlias ||
         seen.has(instance)
       ) {
         continue;
@@ -287,15 +293,17 @@ export class AiTools implements OnModuleInit {
       if (!prototype) continue;
       for (const methodName of this.scanner.getAllMethodNames(prototype)) {
         const method = prototype[methodName];
-        if (typeof method !== 'function') continue;
-        const definition = Reflect.getMetadata(AGENT_FUNCTION_METADATA, method);
+        if (typeof method !== "function") continue;
+        const definition = MetadataRegistry.get<any>(AGENT_FUNCTION_METADATA, method);
         if (!definition) {
           continue;
         }
         const where = `${wrapper.metatype?.name ?? instance.constructor.name}.${methodName}`;
-        const rawStatic = (wrapper as unknown as Record<string, unknown>)['isDependencyTreeStatic'];
+        const rawStatic = (wrapper as unknown as Record<string, unknown>)[
+          "isDependencyTreeStatic"
+        ];
         const isStatic =
-          typeof rawStatic === 'function'
+          typeof rawStatic === "function"
             ? (rawStatic as () => boolean).call(wrapper)
             : rawStatic !== false;
         if (!isStatic) {
@@ -345,7 +353,7 @@ export class AiTools implements OnModuleInit {
   private known(): string {
     const names = [...this.entries.keys()];
     return names.length
-      ? `Agent functions: ${names.join(', ')}.`
-      : 'The application has no agent functions (@AgentFunction() methods).';
+      ? `Agent functions: ${names.join(", ")}.`
+      : "The application has no agent functions (@AgentFunction() methods).";
   }
 }

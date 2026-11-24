@@ -7,6 +7,7 @@ Server-Sent Events allow a server to push real-time updates to browser clients o
 Decorate a controller method with `@Sse(path?)` and return an `AsyncIterable<SseMessageEvent>` (or `ReadableStream<SseMessageEvent>`):
 
 @@filename(events.controller.ts)
+
 ```ts
 import { Controller, Req, Sse, type SseMessageEvent } from "@bunest/core";
 

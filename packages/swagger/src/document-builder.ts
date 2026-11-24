@@ -158,7 +158,7 @@ export class DocumentBuilder {
 
   addExtension(
     extensionKey: string,
-    extensionProperties: any,
+    extensionProperties: unknown,
     location: ExtensionLocation = "root",
   ): this {
     if (!extensionKey.startsWith("x-")) {

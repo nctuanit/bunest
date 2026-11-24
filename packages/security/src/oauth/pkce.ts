@@ -64,7 +64,10 @@ export async function computePkceChallenge(
       "Invalid PKCE code_verifier: must be 43-128 characters from [A-Za-z0-9-._~]",
     );
   }
-  const digest = await crypto.subtle.digest("SHA-256", utf8Encode(codeVerifier));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    utf8Encode(codeVerifier),
+  );
   return base64UrlEncode(new Uint8Array(digest));
 }
 

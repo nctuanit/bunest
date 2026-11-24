@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -10,7 +9,7 @@ import {
   type InjectionToken,
   type PipeTransform,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestApplicationContext,
   BunestFactory,
@@ -731,9 +730,12 @@ describeConformance(
         @Module({ imports: [Module1, Module2, Module3] })
         class RootModule {}
 
-        const appCtx = await BunestFactory.createApplicationContext(RootModule, {
-          logger: false,
-        });
+        const appCtx = await BunestFactory.createApplicationContext(
+          RootModule,
+          {
+            logger: false,
+          },
+        );
 
         const instances = await appCtx.resolve(TOKEN, undefined, {
           strict: false,
@@ -760,12 +762,9 @@ describeConformance(
           }
         }
 
-        const appCtx = await testHelper(
-          A,
-          Scope.DEFAULT,
-          [UnusedTransient],
-          { snapshot: true },
-        );
+        const appCtx = await testHelper(A, Scope.DEFAULT, [UnusedTransient], {
+          snapshot: true,
+        });
 
         expect(UnusedTransient.constructorCalls).toBe(0);
 

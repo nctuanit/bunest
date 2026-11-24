@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import {
   Controller,
   Get,
   Module,
   Param,
   Version,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 
 // --- MultiUser fixture (cross-controller shadow) ---
 @Controller("users")

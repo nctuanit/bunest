@@ -1,19 +1,17 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Readable } from "node:stream";
 import {
   BadRequestException,
+  ensureDir,
   ForbiddenException,
   Injectable,
+  join,
   Module,
+  removePath,
   NotFoundException,
   UnsupportedMediaTypeException,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
-import { HttpResponseContext } from "@bunest/http";
+import { HttpResponseContext } from "@bunest/core/http";
 import {
   detectContentType,
   getDiskToken,
@@ -51,10 +49,14 @@ describe("@bunest/storage", () => {
         },
       });
 
-      const writeRes = await disk.put("docs/hello.txt", "Hello Bunest Storage!", {
-        cacheControl: "public, max-age=60",
-        metadata: { Author: "tester" },
-      });
+      const writeRes = await disk.put(
+        "docs/hello.txt",
+        "Hello Bunest Storage!",
+        {
+          cacheControl: "public, max-age=60",
+          metadata: { Author: "tester" },
+        },
+      );
       expect(writeRes.key).toBe("docs/hello.txt");
       expect(writeRes.size).toBe(21);
       expect(writeRes.contentType).toBe("text/plain; charset=utf-8");
@@ -62,7 +64,9 @@ describe("@bunest/storage", () => {
 
       expect(await disk.exists("docs/hello.txt")).toBe(true);
       expect(await disk.exists("docs/missing.txt")).toBe(false);
-      expect(await disk.getText("docs/hello.txt")).toBe("Hello Bunest Storage!");
+      expect(await disk.getText("docs/hello.txt")).toBe(
+        "Hello Bunest Storage!",
+      );
 
       const stat = await disk.stat("docs/hello.txt");
       expect(stat.metadata.author).toBe("tester");
@@ -108,7 +112,11 @@ describe("@bunest/storage", () => {
       for await (const entry of disk.listAll({ prefix: "docs/", limit: 1 })) {
         allKeys.push(entry.key);
       }
-      expect(allKeys).toEqual(["docs/a.txt", "docs/hello.txt", "docs/moved.txt"]);
+      expect(allKeys).toEqual([
+        "docs/a.txt",
+        "docs/hello.txt",
+        "docs/moved.txt",
+      ]);
 
       // Public URL & Signed URLs + key rotation
       expect(disk.url("docs/hello.txt")).toBe(
@@ -166,7 +174,9 @@ describe("@bunest/storage", () => {
 
   describe("LocalDisk", () => {
     it("supports atomic writes, sidecar metadata, ranges, pruning, and security confinement", async () => {
-      const dir = await mkdtemp(join(tmpdir(), "bunest-storage-test-"));
+      const tmpBase = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+      const dir = join(tmpBase, `bunest-storage-test-${crypto.randomUUID()}`);
+      await ensureDir(dir);
       try {
         const disk = new LocalDisk({ root: dir });
         await disk.put("nested/dir/report.bin", Buffer.from("0123456789"), {
@@ -198,9 +208,9 @@ describe("@bunest/storage", () => {
         await expect(
           disk.put(".nest-storage/secret", "x"),
         ).rejects.toBeInstanceOf(StorageInvalidKeyError);
-        await expect(
-          disk.put("file.txt:ads", "x"),
-        ).rejects.toBeInstanceOf(StorageInvalidKeyError);
+        await expect(disk.put("file.txt:ads", "x")).rejects.toBeInstanceOf(
+          StorageInvalidKeyError,
+        );
 
         // Copy, move, list, delete
         await disk.copy("nested/dir/report.bin", "copied/report.bin");
@@ -221,27 +231,31 @@ describe("@bunest/storage", () => {
         );
 
         // Symlink confinement test (skip gracefully if Windows lacks symlink privilege)
-        const outsideFile = join(tmpdir(), `bunest-outside-${Date.now()}.txt`);
-        await writeFile(outsideFile, "secret");
+        const outsideFile = join(tmpBase, `bunest-outside-${Date.now()}.txt`);
+        await Bun.write(outsideFile, "secret");
         try {
-          await symlink(outsideFile, join(dir, "escape.txt"));
+          const ln = Bun.spawnSync(["ln", "-s", outsideFile, join(dir, "escape.txt")]);
+          if (ln.exitCode !== 0) {
+            throw new Error("symlink unsupported");
+          }
           await expect(disk.getText("escape.txt")).rejects.toBeInstanceOf(
             StorageInvalidKeyError,
           );
         } catch {
           // Windows without developer mode may throw EPERM creating symlinks
         } finally {
-          await rm(outsideFile, { force: true });
+          await removePath(outsideFile, { force: true });
         }
       } finally {
-        await rm(dir, { recursive: true, force: true });
+        await removePath(dir, { recursive: true, force: true });
       }
     });
   });
 
   describe("S3Disk (native SigV4 fetch)", () => {
     it("signs requests with AWS SigV4, handles CRUD/list/delete/presign and retries", async () => {
-      const calls: Array<{ method: string; url: string; headers: Headers }> = [];
+      const calls: Array<{ method: string; url: string; headers: Headers }> =
+        [];
       let failOnce = true;
 
       const mockFetch: typeof globalThis.fetch = (async (
@@ -372,12 +386,18 @@ describe("@bunest/storage", () => {
         "application/pdf",
       );
       expect(
-        detectContentType(Buffer.from("\x00\x00\x00\x1cftypavif\x00\x00\x00\x00")),
+        detectContentType(
+          Buffer.from("\x00\x00\x00\x1cftypavif\x00\x00\x00\x00"),
+        ),
       ).toBe("image/avif");
       expect(
-        detectContentType(Buffer.from("\x00\x00\x00\x1cftypheic\x00\x00\x00\x00")),
+        detectContentType(
+          Buffer.from("\x00\x00\x00\x1cftypheic\x00\x00\x00\x00"),
+        ),
       ).toBe("image/heic");
-      expect(detectContentType(Buffer.from("<html><script>alert(1)</script>"))).toBeUndefined();
+      expect(
+        detectContentType(Buffer.from("<html><script>alert(1)</script>")),
+      ).toBeUndefined();
     });
 
     it("serves files with Range (206), ETag (304), signed URLs, signed uploads, and uploadToDisk", async () => {
@@ -492,7 +512,12 @@ describe("@bunest/storage", () => {
             fieldname: "avatar",
             originalname: "evil.html",
             mimetype: "text/html",
-            stream: Readable.from([pngBytes]),
+            stream: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(pngBytes);
+                controller.close();
+              },
+            }),
           },
           (err, info) => (err ? reject(err) : resolve(info)),
         );
@@ -510,7 +535,14 @@ describe("@bunest/storage", () => {
               fieldname: "avatar",
               originalname: "pic.png",
               mimetype: "image/png",
-              stream: Readable.from([Buffer.from("<script>alert(1)</script>")]),
+              stream: new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.enqueue(
+                    new TextEncoder().encode("<script>alert(1)</script>"),
+                  );
+                  controller.close();
+                },
+              }),
             },
             (err, info) => (err ? reject(err) : resolve(info)),
           );

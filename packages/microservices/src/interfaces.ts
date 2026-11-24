@@ -1,8 +1,4 @@
-import type {
-  InjectionToken,
-  PipeLike,
-  Type,
-} from "@bunest/common";
+import type { InjectionToken, PipeLike, Type } from "@bunest/core";
 import type { SerializedRpcError } from "./exceptions";
 import type { KafkaParserConfig } from "./helpers";
 import type { Deserializer, Serializer } from "./packets";
@@ -64,9 +60,7 @@ export interface RpcEventEnvelope {
 }
 
 export type RpcEnvelope =
-  | RpcRequestEnvelope
-  | RpcResponseEnvelope
-  | RpcEventEnvelope;
+  RpcRequestEnvelope | RpcResponseEnvelope | RpcEventEnvelope;
 
 export interface RpcContext {
   readonly transport: Transport;
@@ -179,8 +173,10 @@ export interface RedisTransportClientLike {
 }
 
 export interface RedisTransportOptions {
-  readonly pubClient: RedisTransportClientLike;
+  readonly pubClient?: RedisTransportClientLike;
   readonly subClient?: RedisTransportClientLike;
+  /** Native Bun `Bun.RedisClient` URL (e.g. `"redis://localhost:6379"`). Used automatically when `pubClient` is omitted. */
+  readonly url?: string;
   readonly channelPrefix?: string;
   readonly clientId?: string;
   readonly defaultTimeoutMs?: number;
@@ -295,11 +291,7 @@ export interface RabbitMqTransportOptions {
   readonly noAssert?: boolean;
   readonly exchange?: string;
   readonly exchangeType?:
-    | "direct"
-    | "fanout"
-    | "topic"
-    | "headers"
-    | (string & {});
+    "direct" | "fanout" | "topic" | "headers" | (string & {});
   readonly exchangeArguments?: Record<string, string>;
   readonly routingKey?: string;
   readonly wildcards?: boolean;
@@ -354,10 +346,10 @@ export interface GrpcTransportOptions {
     readonly http2MaxPingStrikes?: number;
   };
   readonly channelOptions?: Record<string, unknown>;
-  readonly credentials?: any;
+  readonly credentials?: unknown;
   readonly protoPath?: string | string[];
   readonly protoLoader?: string;
-  readonly packageDefinition?: any;
+  readonly packageDefinition?: unknown;
   readonly gracefulShutdown?: boolean;
   readonly maxPendingResponses?: number;
   readonly onLoadPackageDefinition?: (pkg: any, server: any) => void;
@@ -531,7 +523,7 @@ export interface MqttTransportOptions {
 
 export interface GrpcOptions {
   transport?: Transport.GRPC;
-  options: GrpcTransportOptions & { [key: string]: any };
+  options: GrpcTransportOptions & { [key: string]: unknown };
 }
 
 export interface TcpOptions {
@@ -546,27 +538,27 @@ export interface TcpClientOptions {
 
 export interface RedisOptions {
   transport?: Transport.REDIS;
-  options?: Partial<RedisTransportOptions> & { [key: string]: any };
+  options?: Partial<RedisTransportOptions> & { [key: string]: unknown };
 }
 
 export interface NatsOptions {
   transport?: Transport.NATS;
-  options?: Partial<NatsTransportOptions> & { [key: string]: any };
+  options?: Partial<NatsTransportOptions> & { [key: string]: unknown };
 }
 
 export interface MqttOptions {
   transport?: Transport.MQTT;
-  options?: Partial<MqttTransportOptions> & { [key: string]: any };
+  options?: Partial<MqttTransportOptions> & { [key: string]: unknown };
 }
 
 export interface RmqOptions {
   transport?: Transport.RMQ | Transport.RABBITMQ;
-  options?: Partial<RabbitMqTransportOptions> & { [key: string]: any };
+  options?: Partial<RabbitMqTransportOptions> & { [key: string]: unknown };
 }
 
 export interface KafkaOptions {
   transport?: Transport.KAFKA;
-  options?: Partial<KafkaTransportOptions> & { [key: string]: any };
+  options?: Partial<KafkaTransportOptions> & { [key: string]: unknown };
 }
 
 export interface InMemoryOptions {
@@ -592,7 +584,9 @@ export type AsyncOptions<T extends object> = {
 
 export type AsyncMicroserviceOptions = {
   inject: InjectionToken[];
-  useFactory: (...args: any[]) => MicroserviceOptions | Promise<MicroserviceOptions>;
+  useFactory: (
+    ...args: any[]
+  ) => MicroserviceOptions | Promise<MicroserviceOptions>;
 };
 
 export interface ClientGrpc {
@@ -611,7 +605,10 @@ export type ClientOptions =
   | InMemoryOptions;
 
 export type TransportConfig =
-  | { readonly transport: Transport.TCP; readonly options?: TcpTransportOptions }
+  | {
+      readonly transport: Transport.TCP;
+      readonly options?: TcpTransportOptions;
+    }
   | {
       readonly transport: Transport.IN_MEMORY;
       readonly options?: InMemoryTransportOptions;

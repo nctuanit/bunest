@@ -1,7 +1,7 @@
 import {
   TooManyRequestsException,
   type HttpExceptionOptions,
-} from "@bunest/common";
+} from "@bunest/core";
 
 export const throttlerMessage = "ThrottlerException: Too Many Requests";
 

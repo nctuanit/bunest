@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   UseInterceptors,
   type BunestInterceptor,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 class Interceptor implements BunestInterceptor {
@@ -46,7 +45,7 @@ describeConformance(
       expect(metadata).toEqual(interceptors);
     });
 
-    // BUNEST_BUG: UseInterceptors() in packages/common/src/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
+    // BUNEST_BUG: UseInterceptors() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
     it.skip("when object is invalid should throw exception", () => {
       let error: unknown = undefined;
       try {

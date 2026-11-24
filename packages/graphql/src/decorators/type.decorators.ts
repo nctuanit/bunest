@@ -7,8 +7,8 @@ import {
   IntersectionType as BaseIntersectionType,
   registerMappedTypeMetadataHook,
   type Type,
-} from "@bunest/common";
-import { GraphQLEnumType } from "graphql";
+} from "@bunest/core";
+import { GraphQLEnumType } from "../engine";
 import { GRAPHQL_METADATA_KEYS } from "../constants";
 import type {
   ArgsTypeOptions,
@@ -169,7 +169,7 @@ export function InterfaceType(
       name: meta.name,
       description: meta.description,
       isAbstract: meta.isAbstract,
-      interfaces: meta.implements as any,
+      interfaces: meta.implements,
       resolveType: meta.resolveType,
       registerIn: meta.registerIn,
     });
@@ -180,7 +180,7 @@ export function InterfaceType(
  * Creates a code-first GraphQL Union Type reference usable in `@Query()`,
  * `@Field()`, and `@ResolveField()` return type thunks.
  */
-export function createUnionType<T extends readonly Type<any>[]>(
+export function createUnionType<T extends readonly Type<unknown>[]>(
   options: CreateUnionTypeOptions<T>,
 ): UnionTypeRef<T> {
   const ref = Object.freeze({
@@ -248,7 +248,7 @@ export function ObjectType(
       description: meta.description,
       isAbstract: meta.isAbstract,
       inheritDescription: meta.inheritDescription,
-      interfaces: meta.implements as any,
+      interfaces: meta.implements,
       registerIn: meta.registerIn,
     });
   };
@@ -329,12 +329,14 @@ export function ArgsType(
  * Programmatic helper registering GraphQL field metadata onto a class prototype
  * (matching `@nestjs/graphql` `addFieldMetadata`).
  */
-export function addFieldMetadata<T extends ReturnTypeFuncValue = any>(
+export function addFieldMetadata<
+  T extends ReturnTypeFuncValue = ReturnTypeFuncValue,
+>(
   typeOrOptions: ReturnTypeFunc<T> | FieldOptions | undefined,
   fieldOptions: FieldOptions | undefined,
   prototype: object,
   propertyKey?: string | symbol,
-  _descriptor?: TypedPropertyDescriptor<any>,
+  _descriptor?: TypedPropertyDescriptor<unknown>,
   _loadEagerly?: boolean,
 ): void {
   if (propertyKey === undefined) {
@@ -378,7 +380,7 @@ export function addFieldMetadata<T extends ReturnTypeFuncValue = any>(
     schemaName: entry.name ?? key,
     name: key,
     typeFn: () =>
-      (typeFn ? typeFn() : designType ?? String) as GqlTypeReference,
+      (typeFn ? typeFn() : (designType ?? String)) as GqlTypeReference,
     target: ctor,
     options: {
       nullable: entry.nullable,
@@ -397,7 +399,9 @@ export function addFieldMetadata<T extends ReturnTypeFuncValue = any>(
  * Copy-on-write on `target.constructor`: subclasses never mutate parent metadata.
  */
 export function Field(): PropertyDecorator & MethodDecorator;
-export function Field(options: FieldOptions): PropertyDecorator & MethodDecorator;
+export function Field(
+  options: FieldOptions,
+): PropertyDecorator & MethodDecorator;
 export function Field(
   returnTypeFunc: ReturnTypeFunc,
   options?: FieldOptions,
@@ -761,10 +765,7 @@ export function getGraphQLFields(target: Function): FieldMetadata[] {
 }
 
 type GqlDecoratorFactory =
-  | typeof ArgsType
-  | typeof InterfaceType
-  | typeof ObjectType
-  | typeof InputType;
+  typeof ArgsType | typeof InterfaceType | typeof ObjectType | typeof InputType;
 
 /**
  * Returns the compiled `PropertyMetadata[]` and matching GraphQL class decorator
@@ -810,7 +811,9 @@ export function getFieldsAndDecoratorForType<T>(
   if (!decoratorFactory) {
     if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, objType)) {
       decoratorFactory = ObjectType;
-    } else if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, objType)) {
+    } else if (
+      MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, objType)
+    ) {
       decoratorFactory = InputType;
     } else if (
       MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, objType)
@@ -830,7 +833,7 @@ export function getFieldsAndDecoratorForType<T>(
     schemaName: f.name ?? f.propertyKey,
     name: f.propertyKey,
     typeFn: () =>
-      (f.typeFn ? f.typeFn() : f.designType ?? String) as GqlTypeReference,
+      (f.typeFn ? f.typeFn() : (f.designType ?? String)) as GqlTypeReference,
     target: objType,
     options: {
       nullable: f.nullable,
@@ -850,7 +853,7 @@ export function getFieldsAndDecoratorForType<T>(
   return { fields, decoratorFactory };
 }
 
-// Register GraphQL `@Field()` metadata cloning hook with `@bunest/common` Mapped Types
+// Register GraphQL `@Field()` metadata cloning hook with `@bunest/core` Mapped Types
 registerMappedTypeMetadataHook((ctx) => {
   const existing =
     MetadataRegistry.getOwn<readonly FieldMetadata[]>(

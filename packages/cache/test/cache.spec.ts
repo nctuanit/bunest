@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -12,7 +11,7 @@ import {
   UseInterceptors,
   type ExecutionContext,
   type ResponseContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
 import {
   CACHE_MANAGER,
@@ -98,7 +97,9 @@ function createMockRedisClient() {
       return Math.max(0, item.expiresAt - Date.now());
     },
     async mget(...keys: string[]): Promise<Array<string | null>> {
-      return keys.map((k) => (isAlive(k) ? (data.get(k)?.value ?? null) : null));
+      return keys.map((k) =>
+        isAlive(k) ? (data.get(k)?.value ?? null) : null,
+      );
     },
     async scan(
       cursor: string | number,
@@ -113,7 +114,8 @@ function createMockRedisClient() {
       const start = Number(cursor);
       const pageSize = 2;
       const slice = matching.slice(start, start + pageSize);
-      const next = start + pageSize < matching.length ? String(start + pageSize) : "0";
+      const next =
+        start + pageSize < matching.length ? String(start + pageSize) : "0";
       return [next, slice];
     },
     async sadd(key: string, ...members: string[]): Promise<number> {
@@ -288,7 +290,11 @@ describe("@bunest/cache", () => {
       });
 
       await store.set("user:1", { id: 1, name: "Alice" }, { tags: ["users"] });
-      await store.set("user:2", { id: 2, name: "Bob" }, { ttlMs: 5000, tags: ["users"] });
+      await store.set(
+        "user:2",
+        { id: 2, name: "Bob" },
+        { ttlMs: 5000, tags: ["users"] },
+      );
       await store.set("user:3", { id: 3, name: "Cara" }, { ttlMs: 5000 });
       await store.set("other:1", { ok: true }, 5000);
 
@@ -413,7 +419,11 @@ describe("@bunest/cache", () => {
           nativeCookieCalls += 1;
           return Response.json(
             { nativeCookieCall: nativeCookieCalls },
-            { headers: { "Set-Cookie": `csrf=tok_${nativeCookieCalls}; Path=/` } },
+            {
+              headers: {
+                "Set-Cookie": `csrf=tok_${nativeCookieCalls}; Path=/`,
+              },
+            },
           );
         }
       }
@@ -436,12 +446,16 @@ describe("@bunest/cache", () => {
 
       try {
         // 1. GET with @CacheKey -> MISS then HIT
-        const r1 = await app.fetch(new Request("http://localhost/catalog/products"));
+        const r1 = await app.fetch(
+          new Request("http://localhost/catalog/products"),
+        );
         expect(r1.status).toBe(200);
         expect(r1.headers.get("x-cache")).toBe("MISS");
         expect(await r1.json()).toEqual({ count: 1, items: ["a", "b"] });
 
-        const r2 = await app.fetch(new Request("http://localhost/catalog/products"));
+        const r2 = await app.fetch(
+          new Request("http://localhost/catalog/products"),
+        );
         expect(r2.status).toBe(200);
         expect(r2.headers.get("x-cache")).toBe("HIT");
         expect(await r2.json()).toEqual({ count: 1, items: ["a", "b"] });
@@ -457,21 +471,31 @@ describe("@bunest/cache", () => {
         expect(productsCalls).toBe(2);
 
         // 2. @CacheTTL(30) expires cleanly
-        const f1 = await app.fetch(new Request("http://localhost/catalog/flash"));
+        const f1 = await app.fetch(
+          new Request("http://localhost/catalog/flash"),
+        );
         expect(await f1.json()).toEqual({ call: 1 });
-        const f2 = await app.fetch(new Request("http://localhost/catalog/flash"));
+        const f2 = await app.fetch(
+          new Request("http://localhost/catalog/flash"),
+        );
         expect(await f2.json()).toEqual({ call: 1 });
         await Bun.sleep(45);
-        const f3 = await app.fetch(new Request("http://localhost/catalog/flash"));
+        const f3 = await app.fetch(
+          new Request("http://localhost/catalog/flash"),
+        );
         expect(await f3.json()).toEqual({ call: 2 });
         expect(shortTtlCalls).toBe(2);
 
         // 3. @NoCache() never caches
         expect(
-          await (await app.fetch(new Request("http://localhost/catalog/live"))).json(),
+          await (
+            await app.fetch(new Request("http://localhost/catalog/live"))
+          ).json(),
         ).toEqual({ live: 1 });
         expect(
-          await (await app.fetch(new Request("http://localhost/catalog/live"))).json(),
+          await (
+            await app.fetch(new Request("http://localhost/catalog/live"))
+          ).json(),
         ).toEqual({ live: 2 });
         expect(noCacheCalls).toBe(2);
 
@@ -485,8 +509,12 @@ describe("@bunest/cache", () => {
         expect(postCalls).toBe(2);
 
         // 5. Errors are never cached
-        const e1 = await app.fetch(new Request("http://localhost/catalog/fail"));
-        const e2 = await app.fetch(new Request("http://localhost/catalog/fail"));
+        const e1 = await app.fetch(
+          new Request("http://localhost/catalog/fail"),
+        );
+        const e2 = await app.fetch(
+          new Request("http://localhost/catalog/fail"),
+        );
         expect(e1.status).toBe(400);
         expect(e2.status).toBe(400);
         expect(errorCalls).toBe(2);
@@ -516,24 +544,36 @@ describe("@bunest/cache", () => {
         expect(noStoreResCalls).toBe(2);
 
         // 8. Cacheable native Response reconstructs fresh Response on HIT without Body already used
-        const n1 = await app.fetch(new Request("http://localhost/catalog/native-json"));
+        const n1 = await app.fetch(
+          new Request("http://localhost/catalog/native-json"),
+        );
         expect(n1.status).toBe(200);
         expect(await n1.json()).toEqual({ native: 1 });
-        const n2 = await app.fetch(new Request("http://localhost/catalog/native-json"));
+        const n2 = await app.fetch(
+          new Request("http://localhost/catalog/native-json"),
+        );
         expect(n2.status).toBe(200);
         expect(n2.headers.get("x-cache")).toBe("HIT");
         expect(await n2.json()).toEqual({ native: 1 });
         expect(nativeResCalls).toBe(1);
 
         // 9. Responses emitting Set-Cookie (via @Res() OR native Response) MUST NEVER be cached
-        const c1 = await app.fetch(new Request("http://localhost/catalog/with-cookie"));
-        const c2 = await app.fetch(new Request("http://localhost/catalog/with-cookie"));
+        const c1 = await app.fetch(
+          new Request("http://localhost/catalog/with-cookie"),
+        );
+        const c2 = await app.fetch(
+          new Request("http://localhost/catalog/with-cookie"),
+        );
         expect(await c1.json()).toEqual({ sessionCall: 1 });
         expect(await c2.json()).toEqual({ sessionCall: 2 });
         expect(cookieResCalls).toBe(2);
 
-        const nc1 = await app.fetch(new Request("http://localhost/catalog/native-cookie"));
-        const nc2 = await app.fetch(new Request("http://localhost/catalog/native-cookie"));
+        const nc1 = await app.fetch(
+          new Request("http://localhost/catalog/native-cookie"),
+        );
+        const nc2 = await app.fetch(
+          new Request("http://localhost/catalog/native-cookie"),
+        );
         expect(await nc1.json()).toEqual({ nativeCookieCall: 1 });
         expect(await nc2.json()).toEqual({ nativeCookieCall: 2 });
         expect(nativeCookieCalls).toBe(2);
@@ -593,7 +633,9 @@ describe("@bunest/cache", () => {
         expect(await consumer.byToken.set("greeting", "hello")).toBe("hello");
         expect(await consumer.byToken.get("greeting")).toBe("hello");
         // Underlying store received namespaced key
-        expect(await consumer.byService.getStore().get("ns1:greeting")).toBe("hello");
+        expect(await consumer.byService.getStore().get("ns1:greeting")).toBe(
+          "hello",
+        );
         expect(await consumer.byService.keys()).toEqual(["greeting"]);
 
         const rem = await consumer.byToken.ttl("greeting");
@@ -717,7 +759,9 @@ describe("@bunest/cache", () => {
       const EXTRA_TOKEN = Symbol("EXTRA_CACHE_PROVIDER");
 
       class CustomCacheInterceptor extends CacheInterceptor {
-        protected override isRequestCacheable(context: ExecutionContext): boolean {
+        protected override isRequestCacheable(
+          context: ExecutionContext,
+        ): boolean {
           const req = context.switchToHttp().getRequest<Request>();
           if (req.headers.get("x-skip-cache") === "1") {
             return false;
@@ -762,9 +806,7 @@ describe("@bunest/cache", () => {
           CacheModule.registerAsync({
             isGlobal: true,
             useClass: MyCacheConfig,
-            extraProviders: [
-              { provide: EXTRA_TOKEN, useValue: "extra-ready" },
-            ],
+            extraProviders: [{ provide: EXTRA_TOKEN, useValue: "extra-ready" }],
           }),
         ],
         controllers: [DynamicCacheController],

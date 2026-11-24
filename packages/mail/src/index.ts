@@ -52,7 +52,9 @@ export { FileMailTransport } from "./transports/file.transport";
 export { LogMailTransport } from "./transports/log.transport";
 export type {
   AwsCredentials,
+  DkimKeyObjectLike,
   DkimOptions,
+  DkimPrivateKeyInput,
   FileMailTransportOptions,
   LogMailTransportOptions,
   MailTransportResult,
@@ -62,7 +64,9 @@ export type {
   SendGridTransportOptions,
   SesTransportOptions,
   SmtpPoolOptions,
+  SmtpTlsOptions,
   SmtpTransportOptions,
+  TlsVersion,
 } from "./interfaces/index";
 
 // Testing
@@ -72,11 +76,7 @@ export type { SentMailQuery } from "./interfaces/index";
 
 // Events
 export { MailEvents } from "./events/index";
-export type {
-  MailEvent,
-  MailFailedEvent,
-  MailSentEvent,
-} from "./events/index";
+export type { MailEvent, MailFailedEvent, MailSentEvent } from "./events/index";
 
 // Errors
 export * from "./errors/index";

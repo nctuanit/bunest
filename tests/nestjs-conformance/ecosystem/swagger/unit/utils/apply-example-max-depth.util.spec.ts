@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   ApiProperty,
@@ -107,10 +106,7 @@ describeConformance(
         const prop = exploreWithMaxDepth(
           {
             type: "object",
-            examples: [
-              { a: { b: { c: "cut" } } },
-              { x: { y: { z: "cut" } } },
-            ],
+            examples: [{ a: { b: { c: "cut" } } }, { x: { y: { z: "cut" } } }],
           },
           2,
         );

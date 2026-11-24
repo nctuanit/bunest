@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   APP_INTERCEPTOR,
@@ -6,7 +5,7 @@ import {
   Module,
   Sse,
   type MessageEvent,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CacheInterceptor,

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   ConflictException,
   HttpException,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -18,7 +17,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(409);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Conflict", 409) in packages/common/src/exceptions/http.exception.ts:189 includes `error: "Conflict"` in getResponse(), whereas NestJS returns `{ message: "Conflict", statusCode: 409 }`.
+    // BUNEST_BUG: HttpException.createBody(undefined, "Conflict", 409) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Conflict"` in getResponse(), whereas NestJS returns `{ message: "Conflict", statusCode: 409 }`.
     it.skip('should return "Conflict" as default message', () => {
       const exc = new ConflictException();
       expect(exc.getResponse()).toEqual({
@@ -36,7 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/common/src/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
+    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
     it.skip("should accept a custom object", () => {
       const exc = new ConflictException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });

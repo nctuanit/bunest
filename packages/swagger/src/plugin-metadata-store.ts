@@ -41,7 +41,10 @@ export interface LoadedPluginControllerAction {
   readonly [key: string]: unknown;
 }
 
-const modelMetadataByClass = new WeakMap<Function, LoadedPluginModelProperty[]>();
+const modelMetadataByClass = new WeakMap<
+  Function,
+  LoadedPluginModelProperty[]
+>();
 const modelMetadataByName = new Map<string, LoadedPluginModelProperty[]>();
 const controllerMetadataByClass = new WeakMap<
   Function,
@@ -90,8 +93,18 @@ export async function registerLoadedPluginMetadata(
   const swaggerSection = (rawMetadata["@nestjs/swagger"] ??
     rawMetadata["@bunest/swagger"] ??
     rawMetadata) as {
-    models?: Array<[Promise<Record<string, unknown>> | Record<string, unknown>, Record<string, Record<string, Record<string, unknown>>>]>;
-    controllers?: Array<[Promise<Record<string, unknown>> | Record<string, unknown>, Record<string, Record<string, Record<string, unknown>>>]>;
+    models?: Array<
+      [
+        Promise<Record<string, unknown>> | Record<string, unknown>,
+        Record<string, Record<string, Record<string, unknown>>>,
+      ]
+    >;
+    controllers?: Array<
+      [
+        Promise<Record<string, unknown>> | Record<string, unknown>,
+        Record<string, Record<string, Record<string, unknown>>>,
+      ]
+    >;
   };
 
   if (Array.isArray(swaggerSection.models)) {

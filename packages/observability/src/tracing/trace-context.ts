@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { ContextStorage as AsyncLocalStorage } from "@bunest/core";
 
 export interface ParsedTraceParent {
   readonly version: string;
@@ -20,9 +20,7 @@ export interface SpanContext {
 }
 
 export type TraceCarrier =
-  | Headers
-  | Map<string, string>
-  | Record<string, string | undefined>;
+  Headers | Map<string, string> | Record<string, string | undefined>;
 
 const HEX_2 = /^[0-9a-f]{2}$/;
 const HEX_16 = /^[0-9a-f]{16}$/;
@@ -138,7 +136,11 @@ export function formatTraceParent(context: {
   return `00-${context.traceId.toLowerCase()}-${context.spanId.toLowerCase()}-${flagsHex}`;
 }
 
-const DANGEROUS_HEADER_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const DANGEROUS_HEADER_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 export function parseTraceState(
   header: string | null | undefined,
@@ -184,7 +186,11 @@ export function parseBaggage(
     const eq = trimmed.indexOf("=");
     if (eq <= 0) continue;
     const rawKey = trimmed.slice(0, eq).trim();
-    const rawVal = trimmed.slice(eq + 1).split(";")[0]?.trim() ?? "";
+    const rawVal =
+      trimmed
+        .slice(eq + 1)
+        .split(";")[0]
+        ?.trim() ?? "";
     try {
       const key = decodeURIComponent(rawKey);
       const val = decodeURIComponent(rawVal);
@@ -308,7 +314,8 @@ function setCarrierHeader(
  */
 export function injectTraceContext(
   carrier: TraceCarrier,
-  context: SpanContext | undefined = traceContextStorage.getCurrentSpanContext(),
+  context:
+    SpanContext | undefined = traceContextStorage.getCurrentSpanContext(),
 ): void {
   if (!context) {
     return;

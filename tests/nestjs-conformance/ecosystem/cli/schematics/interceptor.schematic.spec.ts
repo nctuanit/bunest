@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +13,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 const expectedInterceptorSource = (pascal: string): string =>
   "import {\n" +
@@ -34,8 +46,7 @@ const expectedInterceptorSource = (pascal: string): string =>
 describeConformance(
   "Interceptor Schematic Factory",
   {
-    upstreamPath:
-      "schematics/src/lib/interceptor/interceptor.factory.test.ts",
+    upstreamPath: "schematics/src/lib/interceptor/interceptor.factory.test.ts",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002", "ADR-008"],
     notes:
@@ -45,11 +56,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-itc-"));
+      tempDir = makeTempDir("bunest-cli-conf-itc-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -79,7 +90,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo.interceptor.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo.interceptor.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo.interceptor.ts")),
         ).toEqual(expectedInterceptorSource("Foo"));
       },
       "Bunest interceptor implements BunestInterceptor with async Promise<T> and type imports",
@@ -101,7 +112,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "bar/foo.interceptor.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo.interceptor.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo.interceptor.ts")),
         ).toEqual(expectedInterceptorSource("Foo"));
       },
       "Bunest interceptor uses Promise-based BunestInterceptor",
@@ -123,7 +134,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo.interceptor.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "baz/foo.interceptor.ts"), "utf8"),
+          readTextSync(join(tempDir, "baz/foo.interceptor.ts")),
         ).toEqual(expectedInterceptorSource("Foo"));
       },
       "Bunest uses dir option for base directory",
@@ -145,7 +156,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo-bar.interceptor.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo-bar.interceptor.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo-bar.interceptor.ts")),
         ).toEqual(expectedInterceptorSource("FooBar"));
       },
       "Normalizes camelCase interceptor name to kebab-case filename and PascalCase class",
@@ -165,7 +176,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "_bar/_foo.interceptor.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_bar/_foo.interceptor.ts"), "utf8"),
+        readTextSync(join(tempDir, "_bar/_foo.interceptor.ts")),
       ).toEqual(expectedInterceptorSource("Foo"));
     });
 
@@ -187,7 +198,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo.interceptor.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo.interceptor.ts")),
         ).toEqual(expectedInterceptorSource("Foo"));
       },
       "Normalizes camelCase path segment to kebab-case",
@@ -232,7 +243,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.interceptor.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.interceptor.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.interceptor.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -252,8 +263,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.interceptor.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.interceptor.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.interceptor.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.interceptor.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.interceptor.test.ts"))).toBe(true);
     });
 
     itAdapted(
@@ -275,11 +286,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "src/foo.interceptor.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "src/foo.interceptor.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );

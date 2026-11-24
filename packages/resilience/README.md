@@ -30,7 +30,11 @@ import {
 @Injectable()
 export class PaymentsGateway {
   @Retry({ maxAttempts: 3, backoff: { type: "exponential", delay: "100ms" } })
-  @CircuitBreaker({ name: "payments", failureThreshold: 5, openDuration: "30s" })
+  @CircuitBreaker({
+    name: "payments",
+    failureThreshold: 5,
+    openDuration: "30s",
+  })
   @Timeout("2s")
   async charge(amount: number, @Signal() signal?: AbortSignal) {
     const res = await fetch("https://payments.example.com/charge", {

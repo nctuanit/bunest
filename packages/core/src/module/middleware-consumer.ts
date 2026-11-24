@@ -10,7 +10,7 @@ import {
   type MiddlewareProxy,
   type RouteInfo,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import type { MiddlewareConfigEntry } from "../interfaces/core-types.interface";
 
 export interface MiddlewareConfiguration<T = any> {
@@ -30,9 +30,7 @@ function normalizeRoutePath(path: string): string {
     : withLeading;
 }
 
-function toRouteInfos(
-  entry: string | Type<unknown> | RouteInfo,
-): RouteInfo[] {
+function toRouteInfos(entry: string | Type<unknown> | RouteInfo): RouteInfo[] {
   if (typeof entry === "string") {
     return [{ path: normalizeRoutePath(entry), method: RequestMethod.ALL }];
   }

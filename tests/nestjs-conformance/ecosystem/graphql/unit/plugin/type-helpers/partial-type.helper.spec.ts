@@ -1,8 +1,16 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Expose, Transform } from "class-transformer";
-import { IsString, validate } from "class-validator";
-import type { MappedType, Type } from "../../../../../../../packages/common/src";
+import {
+  Expose,
+  Transform,
+} from "../../../../../../../packages/validation/src/transformer";
+import {
+  IsString,
+  validate,
+} from "../../../../../../../packages/validation/src/validator";
+import type {
+  MappedType,
+  Type,
+} from "../../../../../../../packages/core/src/common";
 import {
   Field,
   ObjectType,
@@ -100,7 +108,7 @@ describeConformance(
     });
 
     describe("Validation metadata", () => {
-      // BUNEST_BUG: inheritDtoMetadata() in packages/common/src/mapped-types/mapped-types.utils.ts (lines 671-692) applies @IsOptional() before invoking registered GraphQL hooks and does not discover @Field()-only properties without class-validator decorators, so validationKeys returns ["firstName", "password"] instead of all 7 fields.
+      // BUNEST_BUG: inheritDtoMetadata() in packages/core/src/common/mapped-types/mapped-types.utils.ts (lines 671-692) applies @IsOptional() before invoking registered GraphQL hooks and does not discover @Field()-only properties without class-validator decorators, so validationKeys returns ["firstName", "password"] instead of all 7 fields.
       it.skip("should inherit metadata", () => {
         const validationKeys = new Set(
           getValidationMetadataByTarget(UpdateUserDto).map(

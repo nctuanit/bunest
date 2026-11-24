@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { jest } from "bun:test";
 import {
   Injectable,
@@ -6,7 +5,7 @@ import {
   Scope,
   type DynamicModule,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   Cron,
   CronExpression,
@@ -16,7 +15,7 @@ import {
   SchedulerRegistry,
   Timeout,
   type ScheduleModuleOptions,
-} from "../../../../../packages/scheduler/src";
+} from "../../../../../packages/jobs/src/scheduler";
 
 export const DUPLICATE_SCHEDULER = (schedulerName: string, name: string) =>
   `${schedulerName} with the given name (${name}) already exists. Ignored.`;

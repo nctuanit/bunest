@@ -3,7 +3,7 @@ import {
   Injectable,
   type DynamicModule,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import type { ModuleRef } from "../di/module-ref";
 
 export interface LazyModuleLoaderOptions {
@@ -17,9 +17,7 @@ export interface LazyModuleLoaderOptions {
 export interface LazyModuleHost {
   loadLazyModule(
     loaderFn: () =>
-      | Promise<Type<unknown> | DynamicModule>
-      | Type<unknown>
-      | DynamicModule,
+      Promise<Type<unknown> | DynamicModule> | Type<unknown> | DynamicModule,
     options?: LazyModuleLoaderOptions,
   ): Promise<ModuleRef>;
 }
@@ -35,9 +33,7 @@ export class LazyModuleLoader {
 
   async load(
     loaderFn: () =>
-      | Promise<Type<unknown> | DynamicModule>
-      | Type<unknown>
-      | DynamicModule,
+      Promise<Type<unknown> | DynamicModule> | Type<unknown> | DynamicModule,
     loadOpts?: LazyModuleLoaderOptions,
   ): Promise<ModuleRef> {
     return this.host.loadLazyModule(loaderFn, loadOpts);

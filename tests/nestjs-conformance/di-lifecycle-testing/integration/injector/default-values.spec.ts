@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Inject,
   Injectable,
   Module,
   Optional,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { Test, describeConformance } from "../../../_helpers";
 
 @Injectable()

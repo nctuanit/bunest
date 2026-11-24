@@ -11,5 +11,4 @@ import { withResilienceAspect } from "./resilience-decorator.util";
  */
 export const Bulkhead = (
   options: BulkheadOptions | string = {},
-): EntrypointDecorator =>
-  withResilienceAspect(BULKHEAD_METADATA, options);
+): EntrypointDecorator => withResilienceAspect(BULKHEAD_METADATA, options);

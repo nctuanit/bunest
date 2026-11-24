@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, beforeEach, expect, it } from "bun:test";
 import {
   Inject,
@@ -6,7 +5,7 @@ import {
   Module,
   REQUEST,
   Scope,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   AggregateRoot,
   AsyncContext,
@@ -21,7 +20,7 @@ import {
   type IEvent,
   type IEventHandler,
   type IEventPublisher,
-} from "../../../../../packages/cqrs/src";
+} from "../../../../../packages/messaging/src/cqrs";
 import {
   Test,
   describeConformance,
@@ -119,9 +118,7 @@ class PlaceOrderHandler implements ICommandHandler<PlaceOrderCommand> {
 }
 
 @CommandHandler(ScopedPlaceOrderCommand, { scope: Scope.REQUEST })
-class ScopedPlaceOrderHandler
-  implements ICommandHandler<ScopedPlaceOrderCommand>
-{
+class ScopedPlaceOrderHandler implements ICommandHandler<ScopedPlaceOrderCommand> {
   constructor(
     private readonly publisher: EventPublisher,
     @Inject(REQUEST) private readonly context: AsyncContext,
@@ -234,7 +231,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: Expected CommandBus.execute(cmd, asyncContext) to register asyncContext as the REQUEST provider for asyncContext.id before resolving Scope.REQUEST command handlers, but packages/cqrs/src/command-bus.ts calls ref.resolve() without ref.registerRequestByContextId(ctx, ctx.id).
+    // BUNEST_BUG: Expected CommandBus.execute(cmd, asyncContext) to register asyncContext as the REQUEST provider for asyncContext.id before resolving Scope.REQUEST command handlers, but packages/messaging/src/cqrs/command-bus.ts calls ref.resolve() without ref.registerRequestByContextId(ctx, ctx.id).
     it.skip("keeps the async context of a request-scoped handler", async () => {
       const asyncContext = new AsyncContext();
       const transaction = { id: "tx-4" };

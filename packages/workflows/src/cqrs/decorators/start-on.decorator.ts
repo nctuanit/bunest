@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import { isPriority, MAX_PRIORITY } from "../../core/limits/limits";
 import type { WorkflowRunner } from "../../interfaces/workflow-runner.interface";
 import type { StartOnOptions } from "../interfaces/start-on-options.interface";
@@ -39,17 +39,11 @@ export function StartOn<E extends object, I = E>(
       id: options.id as (event: object) => string,
       input: options.input as ((event: object) => unknown) | undefined,
       priority: options.priority as
-        | number
-        | ((event: object) => number | undefined)
-        | undefined,
+        number | ((event: object) => number | undefined) | undefined,
       concurrencyKey: options.concurrencyKey as
-        | string
-        | ((event: object) => string | undefined)
-        | undefined,
+        string | ((event: object) => string | undefined) | undefined,
       rateLimitKey: options.rateLimitKey as
-        | string
-        | ((event: object) => string | undefined)
-        | undefined,
+        string | ((event: object) => string | undefined) | undefined,
     });
   };
 }

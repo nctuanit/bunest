@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import type {
   MailAddress,
   MailAttachment,
@@ -144,14 +143,16 @@ function attachmentLeaf(attachment: MailAttachment): MimeLeaf {
 
 /** `['a', ' b', ' c']` -> `['a;', ' b;', ' c']`: parameter separators, with fold points after them. */
 function withSemicolons(tokens: string[]): string[] {
-  return tokens.map((token, i) => (i < tokens.length - 1 ? `${token};` : token));
+  return tokens.map((token, i) =>
+    i < tokens.length - 1 ? `${token};` : token,
+  );
 }
 
 function serialize(node: MimeNode, headers: string[]): string {
   if ("body" in node) {
     return [...headers, ...node.headers].join("\r\n") + "\r\n\r\n" + node.body;
   }
-  const boundary = `=_${randomBytes(18).toString("base64url")}`;
+  const boundary = `=_${Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url")}`;
   const own = [
     ...headers,
     foldHeader("Content-Type", [

@@ -18,6 +18,7 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - Zero-overhead `DIContainer` `MethodAspectWeaver` (`createMethodAspectDecorator`, O(1) `WeakMap` presence cache, sync preservation, all DI scopes), `@UseMiddleware`, `@InheritMethodEnhancers`, `@Transactional`, Spring Data-style compiled-once `@SqliteRepository`/`@SqlRepository` + `JpaRepository`/`SqlCrudRepository` + `@Query`/`@Modifying`/`@SqlParam` + derived finders, `@Cacheable`/`@CacheEvict`/`@CachePut`, `@Span`/`@Trace`/`@Timed`/`@Counted`, `@EmitEvent`/`@EventPayload`, `@Auth`/`@Protected`/`SecurityModule.forRoot`, `@InjectConfig`/`@ConfigValue`, `@WithLock`, `@WithCls`, and service-level `@Retry`/`@CircuitBreaker`/`@Timeout`/`@Bulkhead`/`@Fallback`.
 
 ### Added — Decorator-First Architecture (Waves 1–3, [ADR-014](./docs/adr/ADR-014.md))
+
 - **Pillar 1 — Self-Registering `DecoratorRegistry`, `@AutoModule` & Pre-Indexed Controllers (`@bunest/common`, `@bunest/core`, `@bunest/http`):**
   - Added `Symbol.for`-backed `DecoratorRegistry` (`registerController`, `registerInjectable`, `registerEntity`, `register(kind, cls, meta?)`, `getControllers`, `getInjectables`, `getEntities`, `getByKind<T>`, `getTargetsByKind`, `markInternal`, `snapshot`, `restore`, `clear`) automatically populated by `@Controller`, `@Injectable`, `@Entity`, `@SqliteRepository`, and `@SqlRepository`, with internal framework providers excluded via `markInternal()`.
   - Added `@AutoModule(metadata?)`, `ModuleMetadata.autoDiscover` (`boolean | AutoDiscoverOptions`), `ModuleScanner` auto-discovery expansion (preserving explicit `@Module` apps untouched), and `BunestFactory.createAuto(options?: BunestCreateAutoOptions)`.
@@ -35,6 +36,7 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - `examples/auth-jwt-sqlite`: Decorated `UserEntity` and `TaskEntity` with `@Entity` + `@PrimaryGeneratedColumn` + `@Column` + `@CreateDateColumn` so `@SqliteRepository(UserEntity)` and `@SqliteRepository(TaskEntity)` derive table/column/JSON/timestamp mappings automatically while keeping `AUTH_SQLITE_MIGRATIONS` & `appliedMigrations` intact.
 
 ### Added — Service-Layer AOP Method Aspects & Declarative Decorators ([ADR-014](./docs/adr/ADR-014.md))
+
 - **Core AOP & HTTP Pipeline (`@bunest/common`, `@bunest/core`, `@bunest/http`):**
   - `createMethodAspectDecorator(token, options?, order?)`, `MethodAspectContext`, `MethodAspectHandler`, `MethodAspectFn`, `MethodAspectToken`, `getMethodAspects()`, `hasMethodAspects()`, `MetadataRegistry.copyMetadata()`, `MetadataRegistry.getMergedMethodArray<T>()`, and `wrapMethodDescriptor()`.
   - Zero-overhead `weaveInstanceMethodAspects()` integrated into `DIContainer` with O(1) `WeakMap` `hasAspectsForClass` short-circuit (zero wrapping on undecorated classes), weaving `SINGLETON`, `TRANSIENT`, `REQUEST`, and `useFactory` instances, preserving `.name`/`.length`/`this`/metadata and synchronous return values, outer-to-inner top-to-bottom + `order` stacking, and deferred/lazy DI resolution.
@@ -56,6 +58,7 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - `examples/distributed-worker`: Refactored to `@Span()`, `@EmitEvent()`, `OrderRepository`, and `ObservabilityModule.forRoot()`.
 
 ### Added — 31 New Ecosystem & Drop-In Facade Packages (53 Packages Total)
+
 - **Tier-1 ORM, Search, GraphQL & Queue Packages (7 packages — 100% NestJS v12 parity):**
   - `@bunest/typeorm` (`19/19`), `@bunest/mongoose` (`25/25`), `@bunest/sequelize` (`12/12`), `@bunest/drizzle` (`12/12`), `@bunest/elasticsearch` (`5/5`, native `fetch()` REST client), `@bunest/apollo` (`20/20`, `ApolloDriver`, `ApolloFederationDriver`, `ApolloGatewayDriver`), and `@bunest/bull` (`53/53`, backed natively by `@bunest/queues`).
 - **Tier-2 AI, Cloud-Native, Identity & Reliability Platform (16 packages — 100% NestJS v12 parity):**
@@ -68,6 +71,7 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - `@bunest/jwt`, `@bunest/throttler`, `@bunest/passport`, `@bunest/serve-static`, `@bunest/terminus`, `@bunest/devtools-integration`, `@bunest/bullmq`, and `@bunest/prisma`.
 
 ### Added — NestJS v12.5.1 Core 22-Package API Parity
+
 - **`@bunest/common` (218/218 = 100.0% `@nestjs/common@12.5.1` exports; 1,079/1,079 = 100.0% public members)**:
   - Runtime `enum ShutdownSignal`, canonical `ConfigurableModuleBuilder` (with `alwaysTransient`, `provideInjectionTokensFrom`, immutable branching, and all protected hooks), `Scope.DEFAULT` alias (`"SINGLETON"`), `INQUIRER` & `SSE_ABORT_CONTROLLER` tokens, 8 additional `HttpStatus` codes, 6 additional `HttpException` subclasses plus `HttpException.errorCode` & static description helpers.
   - Full WebDAV/HTTP decorators (`@RequestMapping`, `@Search`, `@Propfind`, `@Proppatch`, `@Mkcol`, `@Copy`, `@Move`, `@Lock`, `@Unlock`, `@QueryMethod`, `@Render`, `@Sse(path, SseOptions)`), parameter decorators (`@Request`, `@Response`, `@Next`, `@SignedCookies`, `@Bind`, `@Dependencies`, `ArgumentMetadata.schema` on `@Body`/`@Query`/`@Param`/`@Headers`), canonical zero-dep `ValidationPipe`, `StandardSchemaValidationPipe`, `ClassSerializerInterceptor`, `StandardSchemaSerializerInterceptor`, `MappedTypes` (10/10), full 52-method `HttpServer` interface, utilities (`mixin`, `flatten`, `assignMetadata`, `stripProtoKeys`), `ConsoleLogger` + `filterLogLevels` + `Logger` buffering, `StreamableFile` error hooks, all NestJS v12 protected subclass hooks, and 1:1 TypeScript compatibility aliases (`NestInterceptor`, `NestMiddleware`, `NestModule`, `INestApplication`, `INestApplicationContext`, `INestMicroservice`, `HttpServer`, `WebSocketAdapter`).
@@ -94,16 +98,19 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - `@bunest/sqlite` (**39** exports, **7/7** audit bugs fixed) and `@bunest/sql` (**52** exports, **8/8** audit bugs fixed).
 
 ### Fixed — Pre-Beta Audit Gates (P0)
+
 - **Swagger Bridge Delegation (`@bunest/swagger`)**: `SwaggerModule.setup()` now wraps the adapter's existing `CoreHttpBridge` (via `BunHttpAdapter.getBridge()`) instead of overwriting it, forwarding all 6 `HttpRuntimeBridge` methods and full `(enhancer, requestContainer, kind, controllerToken)` arguments to preserve module-local controller enhancers, kind-specific `TestingModule` overrides, and `@Catch()` mappings.
 - **Zero Circular Imports (`@bunest/core`)**: Extracted `LifecycleManagerLike` in `core-types.interface.ts`, eliminating the single remaining type-only circular import (`0` runtime + `0` type-only + `0` cross-package DAG cycles across all 22 packages).
 - **Public `DiscoveryService` & `MetadataScanner` (`@bunest/core`)**: Auto-registered built-in discovery singletons (`DiscoveryService`, `MetadataScanner`, `DiscoveryModule`), eliminating private `(moduleRef as any).host` casts across companion packages (`@bunest/graphql`, `@bunest/microservices`, `@bunest/observability`, `@bunest/cqrs`, `@bunest/events`, `@bunest/scheduler`, `@bunest/websockets`).
 - **Redis RPC Reply Isolation (`@bunest/microservices`)**: Replaced shared `${prefix}:${pattern}.reply` channel with isolated per-client `${prefix}:reply:${clientId}` reply inboxes (`replyTo`).
 
 ### Performance — HTTP & Validation Hot Path (P0)
+
 - **Single-pass JSON Body Parsing (`@bunest/http`)**: Added `Content-Length` fast-path (`req.text()`/`req.bytes()`), 1-pass prototype-pollution scanning (including `\u` escape detection) stamping unforgeable `BODY_SANITIZED_SYMBOL`, lazy `RequestContext`/`HttpResponseContext` allocations, and `executeFastSingletonRoute` fast-path for singleton routes.
 - **Zero-Double-Walk `ValidationPipe` (`@bunest/validation`)**: Skips redundant recursive `findDangerousKeys()` walks when `BODY_SANITIZED_SYMBOL === true` (while retaining full checks on direct/unsanitized calls), adds plain-object fast-path skipping 17 `instanceof` checks, skips `Buffer` metatypes for `@RawBody()`, and pre-normalizes/freezes options once in constructor.
 
 ### Added — Core, Common, HTTP & Validation Parity (P0–P2)
+
 - **`@bunest/common` & `@bunest/mapped-types`**:
   - `applyDecorators()` composing class, method, property, and parameter decorators without mutating inputs.
   - API Versioning primitives: `VersioningType` (`URI`, `HEADER`, `MEDIA_TYPE`, `CUSTOM`), `VERSION_NEUTRAL`, `@Version()`, and `@Controller({ version })`.
@@ -129,6 +136,7 @@ Major release completing **two landmark milestones** across **53 workspace packa
   - `StandardSchemaValidationPipe` (sync/async Standard Schema v1 -> ADR-009 400 error flattening), `StandardSchemaSerializerInterceptor` + `@UseStandardSchema()`, and transparent Standard Schema v1 support inside `SchemaValidationPipe`.
 
 ### Added — Enterprise Ecosystem Upgrades (P1–P2)
+
 - **`@bunest/security`**: Pure WebCrypto `JwksClient`/`JwksService` (RSA/EC JWK verification, key rotation, unknown-`kid` DoS cooldown, `oct`/`alg: "none"` rejection), RFC 7636 PKCE (`S256`), `OAuth2Service`/`OAuth2Module`, `OidcService`/`OidcModule` (discovery + ID token verification), `OAuth2Providers` presets (`google`, `github`, `microsoft`, `okta`, `auth0`), and pluggable multi-strategy `AuthGuard(strategy)` with `JwtAuthStrategy`, `JwksJwtAuthStrategy`, `ApiKeyAuthStrategy`, and `BasicAuthStrategy`.
 - **`@bunest/queues`**: Atomic Lua-scripted `RedisQueueDriver` (6 atomic Lua scripts with `evalsha` + `NOSCRIPT` fallback, worker lock leases, stale-worker token guards, periodic `.unref()` stalled-job sweeping, automatic lease renewal) and official `BullMQModule` / `BullMQQueueDriver` adapter.
 - **`@bunest/microservices`**: First-class `GrpcTransport` (`@GrpcMethod`, `@GrpcStreamMethod`, `GrpcServer`/`GrpcClientProxy` over Bun HTTP with 5-byte length-prefixed framing, pluggable codec, unary & server streaming, deadlines, metadata), `KafkaTransport` (`KafkaServer`/`KafkaClientProxy`/`KafkaContext`, regex patterns), and `MqttTransport` (`MqttServer`/`MqttClientProxy`/`MqttContext`, `+`/`#` wildcards, per-client reply topics).
@@ -143,9 +151,11 @@ Major release completing **two landmark milestones** across **53 workspace packa
 Initial Bun-native release of the Bunest framework ecosystem targeting **Bun >= 1.4.3** with Legacy TypeScript Decorators (`experimentalDecorators: true`, `emitDecoratorMetadata: true`, `verbatimModuleSyntax: true`).
 
 ### Architecture & Specifications
+
 - Locked **RFC-001** (NestJS-style controller & method routing) and **ADR-001 through ADR-012** covering Bun-only native runtime, legacy decorators, parameter decorators, `class-validator`/`class-transformer` defaults, module visibility & dynamic/global modules, exact 11-stage HTTP execution pipeline, normalized HTTP 400 validation errors, native Web `Response` serialization, hybrid `Bun.serve({ routes })` + `FallbackRadixRouter`, and `AsyncLocalStorage` request-scoped DI with fail-fast scope-leak detection.
 
 ### Added — Core Runtime
+
 - **`@bunest/common`**: Isolated `MetadataRegistry` (copy-on-write inheritance-safe) and `Reflector`, namespaced `Symbol` metadata keys & DI tokens (`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `REQUEST`, `REQUEST_CONTEXT`), full legacy decorator suite (`@Module`, `@Global`, `@Injectable`, `@Inject`, `@Optional`, `@Controller`, `@Get`/`@Post`/`@Put`/`@Patch`/`@Delete`/`@Options`/`@Head`/`@All`/`@Sse`, `@HttpCode`, `@Header`, `@Redirect`, `@SetMetadata`, `@Catch`, `@UseGuards`/`@UsePipes`/`@UseInterceptors`/`@UseFilters`, `@Body`/`@Query`/`@Param`/`@Headers`/`@Req`/`@Res`/`@Ip`/`@HostParam`/`@Cookies`/`@UploadedFile`/`@UploadedFiles`, `createParamDecorator`), 17 HTTP exceptions, 7 strict built-in pipes (`ParseIntPipe`, `ParseFloatPipe`, `ParseBoolPipe`, `ParseUUIDPipe`, `ParseArrayPipe`, `ParseEnumPipe`, `DefaultValuePipe`), and structured secret-redacting `Logger`.
 - **`@bunest/http`**: Native `Bun.serve({ routes, fetch, websocket })` adapter (`BunHttpAdapter`), bootstrap route compiler (zero hot-path `Reflect.getMetadata()`), duplicate canonical param route detection, hybrid native dispatcher + `FallbackRadixRouter`, `405 Method Not Allowed` with `Allow` header, `HEAD -> GET`, `AsyncLocalStorage` `RequestContext`, single-read body parser (`json`, `urlencoded`, `multipart/form-data`, `text`, binary), prototype-pollution sanitizer, `413` body-size enforcement, cookies, CORS, `trustProxy` IP extraction, full 11-stage pipeline, and ADR-010 response serializer (native `Response` passthrough, `@Redirect`, `@Sse` with abort cleanup, `ReadableStream`, `Blob`/`BunFile`, `Uint8Array`, JSON).
 - **`@bunest/validation`**: Secure-by-default `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `forbidUnknownValues`, explicit `transform` without implicit coercion, prototype-pollution key rejection, async custom validators, ADR-009 dot/bracket error flattening), `ClassSerializerInterceptor` + `@SerializeOptions()`, and extensible `SchemaValidationPipe` / `SchemaValidator` adapters.
@@ -153,6 +163,7 @@ Initial Bun-native release of the Bunest framework ecosystem targeting **Bun >= 
 - **`@bunest/testing`**: `Test.createTestingModule()` with provider/enhancer/module overrides, `ModuleMocker`, `TestClient`, `SupertestRequest`, SSE test helpers, and mock fixtures.
 
 ### Added — Developer Experience, Security & Persistence
+
 - **`@bunest/cli`**: Zero-dependency Bun CLI (`bunest new`, `bunest generate`/`g` for 11 schematics including full CRUD `resource`, `bunest dev`, `bunest build`, `bunest info`).
 - **`@bunest/config`**: Typed `.env` parser & variable expansion, DTO & custom validation, `registerAs()` namespaces, `ConfigModule.forRoot()`/`forFeature()`, `ConfigService`, and secret redaction.
 - **`@bunest/swagger`**: OpenAPI 3.1 decorators, `DocumentBuilder`, `SchemaExplorer` (with circular DTO support), `SwaggerModule.createDocument()`, and self-contained XSS-safe HTML API Explorer.
@@ -161,6 +172,7 @@ Initial Bun-native release of the Bunest framework ecosystem targeting **Bun >= 
 - **`@bunest/sql`**: Unified SQL adapter wrapping Bun 1.4.3's `Bun.SQL` (PostgreSQL, MySQL/MariaDB, SQLite), `AsyncLocalStorage` transactions, portable `SqlMigrationRunner`, plus `DrizzleModule` and `PrismaModule` lifecycle adapters.
 
 ### Added — Realtime, Distributed Systems, GraphQL & Observability
+
 - **`@bunest/websockets`**: Native `Bun.serve({ websocket })` gateways (`@WebSocketGateway`, `@SubscribeMessage`, `@MessageBody`, `@ConnectedSocket`, `@WebSocketServer`), handshake auth/CORS, rooms/pub-sub, WS guards/pipes/interceptors/filters, and graceful teardown.
 - **`@bunest/events`**: `EventEmitterModule`, `@OnEvent()`, sync/async dispatch, segment wildcard (`*`, `**`) matching, and error isolation.
 - **`@bunest/scheduler`**: Pure TypeScript 5/6-field DST-safe cron parser, `@Cron`, `@Interval`, `@Timeout`, `SchedulerRegistry`, overlap prevention (`waitForCompletion`), and graceful timer cleanup.
@@ -172,4 +184,5 @@ Initial Bun-native release of the Bunest framework ecosystem targeting **Bun >= 
 - **`@bunest/observability`**: W3C Trace Context (`traceparent`/`tracestate`/`baggage`), `AsyncLocalStorage` trace propagation (HTTP -> DB -> Queue), OpenTelemetry OTLP/HTTP batched exporter, Prometheus `MetricsRegistry` & `/metrics` endpoint, Terminus-style `/health` & `/ready` indicators, correlated `ObservabilityLogger`, and production-gated `DevtoolsModule` graph + Mermaid introspection.
 
 ### Added — Examples, Benchmarks, Governance & CI
+
 - Runnable examples (`examples/hello-world`, `examples/rest-crud`, `examples/auth-jwt-sqlite`, `examples/websocket-chat`, `examples/distributed-worker`), full-stack `apps/playground`, reproducible `benchmarks/` suite, cross-platform GitHub Actions CI (`ubuntu-latest`, `macos-latest`, `windows-latest` x Bun `1.4.3` & `latest`), and automated `bun run verify:release` gate.

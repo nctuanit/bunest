@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import type { OnModuleDestroy } from "../../../../../../packages/common/src";
+import type { OnModuleDestroy } from "../../../../../../packages/core/src/common";
 import { LifecycleManager } from "../../../../../../packages/core/src";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
@@ -47,7 +46,11 @@ describeConformance(
           await lifecycle.callShutdown([
             {
               module: sampleModMeta,
-              instances: [sampleModule, sampleProvider, new WithoutHookProvider()],
+              instances: [
+                sampleModule,
+                sampleProvider,
+                new WithoutHookProvider(),
+              ],
             },
           ]);
 

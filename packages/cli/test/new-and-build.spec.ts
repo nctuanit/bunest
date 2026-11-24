@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { ensureDir, join, removePath, statPath } from "@bunest/core";
 import {
   buildProject,
   createProject,
@@ -12,10 +10,12 @@ import {
   type CreateProjectResult,
 } from "../src";
 
+const TMP_DIR = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
 const tempDirs: string[] = [];
 
 async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix));
+  const dir = join(TMP_DIR, `${prefix}${crypto.randomUUID().slice(0, 8)}`);
+  await ensureDir(dir);
   tempDirs.push(dir);
   return dir;
 }
@@ -40,7 +40,7 @@ function createCapturedIO(cwd: string): {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await stat(path);
+    await statPath(path);
     return true;
   } catch {
     return false;
@@ -50,12 +50,12 @@ async function fileExists(path: string): Promise<boolean> {
 afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop()!;
-    await rm(dir, { recursive: true, force: true });
+    await removePath(dir, { recursive: true, force: true });
   }
 });
 
 describe("bunest new, bunest build, and bunest dev", () => {
-  it("scaffolds a complete Bunest project with verified Bun 1.4.3 tsconfig and main.ts", async () => {
+  it("scaffolds a complete Bunest project with verified Bun 1.4.5 tsconfig and main.ts", async () => {
     const workdir = await makeTempDir("bunest-cli-new-");
     const cap = createCapturedIO(workdir);
 
@@ -85,14 +85,17 @@ describe("bunest new, bunest build, and bunest dev", () => {
 
     const pkg = (await Bun.file(join(projectDir, "package.json")).json()) as {
       name: string;
+      engines?: Record<string, string>;
       dependencies: Record<string, string>;
       scripts: Record<string, string>;
     };
     expect(pkg.name).toBe("demo-api");
+    expect(pkg.engines?.bun).toBe(">=1.4.5");
     expect(pkg.dependencies["@bunest/core"]).toBeDefined();
-    expect(pkg.dependencies["reflect-metadata"]).toBeDefined();
-    expect(pkg.dependencies["class-validator"]).toBeDefined();
-    expect(pkg.dependencies["class-transformer"]).toBeDefined();
+    expect(pkg.dependencies["@bunest/validation"]).toBe("^0.1.0");
+    expect(pkg.dependencies["reflect-metadata"]).toBeUndefined();
+    expect(pkg.dependencies["class-validator"]).toBeUndefined();
+    expect(pkg.dependencies["class-transformer"]).toBeUndefined();
     expect(pkg.scripts.typecheck).toBe("bun check");
 
     const tsconfig = (await Bun.file(
@@ -107,9 +110,10 @@ describe("bunest new, bunest build, and bunest dev", () => {
     expect(tsconfig.compilerOptions.types).toEqual(["bun"]);
 
     const mainSrc = await Bun.file(join(projectDir, "src/main.ts")).text();
-    expect(mainSrc.startsWith('import "reflect-metadata";')).toBe(true);
+    expect(mainSrc).not.toContain("reflect-metadata");
     expect(mainSrc).toContain("BunestFactory.create(AppModule)");
     expect(mainSrc).toContain("new ValidationPipe()");
+    expect(mainSrc).toContain("Bun.env.PORT ?? 3000");
   });
 
   it("supports --dry-run, --dir, collision protection, --force, path traversal rejection, and install hook", async () => {
@@ -117,7 +121,10 @@ describe("bunest new, bunest build, and bunest dev", () => {
 
     // Path traversal rejected
     const badCap = createCapturedIO(workdir);
-    const badRes = await runCli(["new", "../evil-app", "--skip-install"], badCap.io);
+    const badRes = await runCli(
+      ["new", "../evil-app", "--skip-install"],
+      badCap.io,
+    );
     expect(badRes.exitCode).toBe(1);
     expect(badCap.stderr.join("\n")).toContain("Invalid project name");
 

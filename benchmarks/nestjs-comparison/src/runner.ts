@@ -1,6 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
-import { join, resolve } from "node:path";
+import {
+  existsSyncPath,
+  getCpuCount,
+  join,
+  readTextSync,
+  resolve,
+} from "../../../packages/core/src/index.ts";
 import type { MemPayload, ReadyPayload } from "./ipc";
 import { measureAllStackFootprints, type StackFootprint } from "./measure-deps";
 import {
@@ -757,14 +761,97 @@ async function runHttpWorkload(
 
 function readPkgVersion(absPath: string): string {
   try {
-    if (!existsSync(absPath)) return "unknown";
-    const pkg = JSON.parse(readFileSync(absPath, "utf8")) as {
+    if (!existsSyncPath(absPath)) return "unknown";
+    const pkg = JSON.parse(readTextSync(absPath)) as {
       version?: string;
     };
     return pkg.version ?? "unknown";
   } catch {
     return "unknown";
   }
+}
+
+function spawnTrim(cmd: string[]): string | undefined {
+  try {
+    const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore" });
+    if (proc.exitCode === 0) {
+      const text = proc.stdout.toString("utf8").trim();
+      if (text.length > 0) return text;
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
+
+function getSystemInfo(): {
+  readonly osPlatform: string;
+  readonly osRelease: string;
+  readonly cpuModel: string;
+  readonly cpuCores: number;
+  readonly totalRamGb: number;
+} {
+  const osPlatform = process.platform;
+  const osRelease =
+    osPlatform === "win32"
+      ? (spawnTrim(["cmd", "/c", "ver"]) ?? "unknown")
+      : (spawnTrim(["uname", "-r"]) ?? "unknown");
+
+  let cpuModel = "unknown";
+  if (osPlatform === "darwin") {
+    cpuModel = spawnTrim(["sysctl", "-n", "machdep.cpu.brand_string"]) ?? "unknown";
+  } else if (osPlatform === "linux") {
+    try {
+      const info = readTextSync("/proc/cpuinfo");
+      const match = info.match(/^model name\s*:\s*(.+)$/m);
+      if (match?.[1]) cpuModel = match[1].trim();
+    } catch {
+      // fall through
+    }
+  } else if (osPlatform === "win32") {
+    cpuModel =
+      Bun.env.PROCESSOR_IDENTIFIER?.trim() ||
+      spawnTrim([
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)",
+      ]) ||
+      "unknown";
+  }
+
+  let totalMemBytes = 0;
+  if (osPlatform === "darwin") {
+    const raw = spawnTrim(["sysctl", "-n", "hw.memsize"]);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) totalMemBytes = parsed;
+  } else if (osPlatform === "linux") {
+    try {
+      const info = readTextSync("/proc/meminfo");
+      const match = info.match(/^MemTotal:\s+(\d+)\s+kB$/m);
+      if (match?.[1]) totalMemBytes = Number(match[1]) * 1024;
+    } catch {
+      // fall through
+    }
+  } else if (osPlatform === "win32") {
+    const raw = spawnTrim([
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
+    ]);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) totalMemBytes = parsed;
+  }
+
+  return {
+    osPlatform,
+    osRelease,
+    cpuModel,
+    cpuCores: getCpuCount(),
+    totalRamGb:
+      Math.round((totalMemBytes / (1024 * 1024 * 1024)) * 100) / 100,
+  };
 }
 
 function getNodeVersion(): string {
@@ -806,11 +893,8 @@ function renderMarkdownReport(params: {
     footprints,
   } = params;
 
-  const cpus = os.cpus();
-  const cpuModel = cpus[0]?.model?.trim() || "unknown";
-  const cpuCores = cpus.length;
-  const totalRamGb =
-    Math.round((os.totalmem() / (1024 * 1024 * 1024)) * 100) / 100;
+  const { osPlatform, osRelease, cpuModel, cpuCores, totalRamGb } =
+    getSystemInfo();
   const payloadBytes = Buffer.byteLength(VALID_POST_PAYLOAD_JSON, "utf8");
 
   const byKey = new Map<string, AggregatedWorkloadResult>();
@@ -825,13 +909,20 @@ function renderMarkdownReport(params: {
   ];
   for (const w of WORKLOADS) {
     const raw = byKey.get(`${w.id}::raw-bun`)!.representative.throughputRps;
-    const bunest = byKey.get(`${w.id}::bunest-bun`)!.representative.throughputRps;
-    const nnBun = byKey.get(`${w.id}::nestjs-node-bun`)!.representative.throughputRps;
-    const nfBun = byKey.get(`${w.id}::nestjs-fastify-bun`)!.representative.throughputRps;
-    const neBun = byKey.get(`${w.id}::nestjs-express-bun`)!.representative.throughputRps;
-    const nnNode = byKey.get(`${w.id}::nestjs-node-node`)!.representative.throughputRps;
-    const nfNode = byKey.get(`${w.id}::nestjs-fastify-node`)!.representative.throughputRps;
-    const neNode = byKey.get(`${w.id}::nestjs-express-node`)!.representative.throughputRps;
+    const bunest = byKey.get(`${w.id}::bunest-bun`)!.representative
+      .throughputRps;
+    const nnBun = byKey.get(`${w.id}::nestjs-node-bun`)!.representative
+      .throughputRps;
+    const nfBun = byKey.get(`${w.id}::nestjs-fastify-bun`)!.representative
+      .throughputRps;
+    const neBun = byKey.get(`${w.id}::nestjs-express-bun`)!.representative
+      .throughputRps;
+    const nnNode = byKey.get(`${w.id}::nestjs-node-node`)!.representative
+      .throughputRps;
+    const nfNode = byKey.get(`${w.id}::nestjs-fastify-node`)!.representative
+      .throughputRps;
+    const neNode = byKey.get(`${w.id}::nestjs-express-node`)!.representative
+      .throughputRps;
     const vsNodeNode = bunest / nnNode;
     const vsFastifyNode = bunest / nfNode;
     const vsExpressNode = bunest / neNode;
@@ -848,10 +939,14 @@ function renderMarkdownReport(params: {
   ];
   for (const w of WORKLOADS) {
     const raw = byKey.get(`${w.id}::raw-bun`)!.representative.throughputRps;
-    const bunest = byKey.get(`${w.id}::bunest-bun`)!.representative.throughputRps;
-    const nnBun = byKey.get(`${w.id}::nestjs-node-bun`)!.representative.throughputRps;
-    const nfBun = byKey.get(`${w.id}::nestjs-fastify-bun`)!.representative.throughputRps;
-    const neBun = byKey.get(`${w.id}::nestjs-express-bun`)!.representative.throughputRps;
+    const bunest = byKey.get(`${w.id}::bunest-bun`)!.representative
+      .throughputRps;
+    const nnBun = byKey.get(`${w.id}::nestjs-node-bun`)!.representative
+      .throughputRps;
+    const nfBun = byKey.get(`${w.id}::nestjs-fastify-bun`)!.representative
+      .throughputRps;
+    const neBun = byKey.get(`${w.id}::nestjs-express-bun`)!.representative
+      .throughputRps;
 
     bunMatrixLines.push(
       `| ${w.label} | ${fmtNum(raw)} | **${fmtNum(bunest)}** | ${((bunest / raw) * 100).toFixed(1)}% | ${fmtNum(nnBun)} | ${fmtNum(nfBun)} | ${fmtNum(neBun)} | **${(bunest / nnBun).toFixed(2)}x** | **${(bunest / nfBun).toFixed(2)}x** | **${(bunest / neBun).toFixed(2)}x** |`,
@@ -892,8 +987,12 @@ function renderMarkdownReport(params: {
   for (const c of coldStarts) {
     const ratio = c.medianFirstReqMs / bunestCold.medianFirstReqMs;
     const relStr =
-      c.target.id === "bunest-bun" ? "**1.00x (baseline)**" : `${ratio.toFixed(2)}x`;
-    const sampleStr = c.samples.map((s) => s.firstRequestMs.toFixed(1)).join(", ");
+      c.target.id === "bunest-bun"
+        ? "**1.00x (baseline)**"
+        : `${ratio.toFixed(2)}x`;
+    const sampleStr = c.samples
+      .map((s) => s.firstRequestMs.toFixed(1))
+      .join(", ");
     const nameCell =
       c.target.id === "bunest-bun" ? `**${c.target.name}**` : c.target.name;
     const medCell =
@@ -956,10 +1055,10 @@ function renderMarkdownReport(params: {
 | Measured At (UTC) | \`${timestamp}\` |
 | Bun Runtime | \`v${Bun.version}\` (\`${Bun.revision.slice(0, 8)}\`) |
 | Node.js Runtime | \`${nodeVersion}\` |
-| OS / Arch | \`${os.platform()} ${os.release()} (${process.arch})\` |
+| OS / Arch | \`${osPlatform} ${osRelease} (${process.arch})\` |
 | CPU | \`${cpuModel}\` (${cpuCores} logical cores) |
 | Total RAM | \`${totalRamGb} GiB\` |
-| Bunest Packages | \`@bunest/core@${versions["@bunest/core"]}\`, \`@bunest/common@${versions["@bunest/common"]}\`, \`@bunest/http@${versions["@bunest/http"]}\`, \`@bunest/validation@${versions["@bunest/validation"]}\` |
+| Bunest Packages | \`@bunest/core@${versions["@bunest/core"]}\`, \`@bunest/common@${versions["@bunest/core"]}\`, \`@bunest/http@${versions["@bunest/core/http"]}\`, \`@bunest/validation@${versions["@bunest/validation"]}\` |
 | Upstream NestJS Packages | \`@nestjs/core@${versions["@nestjs/core"]}\`, \`@nestjs/common@${versions["@nestjs/common"]}\`, \`@nestjs/platform-node@${versions["@nestjs/platform-node"]}\`, \`@nestjs/platform-fastify@${versions["@nestjs/platform-fastify"]}\`, \`@nestjs/platform-express@${versions["@nestjs/platform-express"]}\` |
 | HTTP Adapters & Runtime Libs | \`fastify@${versions["fastify"]}\`, \`express@${versions["express"]}\`, \`rxjs@${versions["rxjs"]}\`, \`reflect-metadata@${versions["reflect-metadata"]}\` |
 | Validation Libraries | \`class-validator@${versions["class-validator"]}\`, \`class-transformer@${versions["class-transformer"]}\` (exact same versions across all targets) |
@@ -1070,7 +1169,7 @@ async function main(): Promise<void> {
     "dist/server-nestjs-express.js",
     "dist/server-nestjs-fastify.js",
   ]) {
-    if (!existsSync(join(BENCH_DIR, distFile))) {
+    if (!existsSyncPath(join(BENCH_DIR, distFile))) {
       throw new Error(
         `Missing compiled NestJS artifact ${distFile}. Run "bun run build:node" first.`,
       );
@@ -1083,11 +1182,15 @@ async function main(): Promise<void> {
   );
   for (const target of TARGETS) {
     await verifyTargetCorrectness(target);
-    console.log(`  ✓ ${target.name} (GET/POST/DTO valid=201, invalid=400, extraField=400)`);
+    console.log(
+      `  ✓ ${target.name} (GET/POST/DTO valid=201, invalid=400, extraField=400)`,
+    );
   }
 
   if (config.verifyOnly) {
-    console.log(`\n✓ All ${TARGETS.length} targets passed pre-flight verification.`);
+    console.log(
+      `\n✓ All ${TARGETS.length} targets passed pre-flight verification.`,
+    );
     return;
   }
 
@@ -1241,21 +1344,43 @@ async function main(): Promise<void> {
 
   const benchNm = join(BENCH_DIR, "node_modules");
   const versions: Record<string, string> = {
-    "@bunest/core": readPkgVersion(join(REPO_ROOT, "packages/core/package.json")),
-    "@bunest/common": readPkgVersion(join(REPO_ROOT, "packages/common/package.json")),
-    "@bunest/http": readPkgVersion(join(REPO_ROOT, "packages/http/package.json")),
-    "@bunest/validation": readPkgVersion(join(REPO_ROOT, "packages/validation/package.json")),
+    "@bunest/core": readPkgVersion(
+      join(REPO_ROOT, "packages/core/package.json"),
+    ),
+    "@bunest/core": readPkgVersion(
+      join(REPO_ROOT, "packages/common/package.json"),
+    ),
+    "@bunest/core/http": readPkgVersion(
+      join(REPO_ROOT, "packages/http/package.json"),
+    ),
+    "@bunest/validation": readPkgVersion(
+      join(REPO_ROOT, "packages/validation/package.json"),
+    ),
     "@nestjs/core": readPkgVersion(join(benchNm, "@nestjs/core/package.json")),
-    "@nestjs/common": readPkgVersion(join(benchNm, "@nestjs/common/package.json")),
-    "@nestjs/platform-node": readPkgVersion(join(benchNm, "@nestjs/platform-node/package.json")),
-    "@nestjs/platform-fastify": readPkgVersion(join(benchNm, "@nestjs/platform-fastify/package.json")),
-    "@nestjs/platform-express": readPkgVersion(join(benchNm, "@nestjs/platform-express/package.json")),
+    "@nestjs/common": readPkgVersion(
+      join(benchNm, "@nestjs/common/package.json"),
+    ),
+    "@nestjs/platform-node": readPkgVersion(
+      join(benchNm, "@nestjs/platform-node/package.json"),
+    ),
+    "@nestjs/platform-fastify": readPkgVersion(
+      join(benchNm, "@nestjs/platform-fastify/package.json"),
+    ),
+    "@nestjs/platform-express": readPkgVersion(
+      join(benchNm, "@nestjs/platform-express/package.json"),
+    ),
     fastify: readPkgVersion(join(benchNm, "fastify/package.json")),
     express: readPkgVersion(join(benchNm, "express/package.json")),
     rxjs: readPkgVersion(join(benchNm, "rxjs/package.json")),
-    "reflect-metadata": readPkgVersion(join(benchNm, "reflect-metadata/package.json")),
-    "class-validator": readPkgVersion(join(benchNm, "class-validator/package.json")),
-    "class-transformer": readPkgVersion(join(benchNm, "class-transformer/package.json")),
+    "reflect-metadata": readPkgVersion(
+      join(benchNm, "reflect-metadata/package.json"),
+    ),
+    "class-validator": readPkgVersion(
+      join(benchNm, "class-validator/package.json"),
+    ),
+    "class-transformer": readPkgVersion(
+      join(benchNm, "class-transformer/package.json"),
+    ),
     typescript: readPkgVersion(join(benchNm, "typescript/package.json")),
   };
 

@@ -1,5 +1,5 @@
-import type { Duration } from '@bunest/resilience';
-import { AiConfigurationError } from '../errors/ai.errors';
+import type { Duration } from "@bunest/resilience";
+import { AiConfigurationError } from "../errors/ai.errors";
 
 const UNIT_MS: Record<string, number> = {
   ms: 1,
@@ -10,8 +10,11 @@ const UNIT_MS: Record<string, number> = {
 };
 
 /** A duration in milliseconds. */
-export function toMilliseconds(value: Duration | string, option: string): number {
-  if (typeof value === 'number') {
+export function toMilliseconds(
+  value: Duration | string,
+  option: string,
+): number {
+  if (typeof value === "number") {
     if (!Number.isFinite(value) || value < 0) {
       throw new AiConfigurationError(
         `Invalid duration for \`${option}\`: ${String(value)}`,

@@ -1,14 +1,14 @@
 # Validation
 
-`@bunest/validation` provides production-hardened DTO validation powered by **`class-validator` + `class-transformer`** as the default (`ValidationPipe`, [ADR-005](/architecture/adrs) & [ADR-009](/architecture/adrs)), plus a first-class **`SchemaValidationPipe`** adapter for **Zod, Valibot, TypeBox**, or custom schema validators!
+`@bunest/validation` provides production-hardened, zero-external-dep DTO validation powered by Bunest's compile-once native validator (`@bunest/validation/validator`) and transformer (`@bunest/validation/transformer`) as the default (`ValidationPipe`, [ADR-015](/architecture/adrs) & [ADR-009](/architecture/adrs)) with seamless dual-engine coexistence for upstream `class-validator`/`class-transformer` DTOs, plus first-class **`StandardSchemaValidationPipe`** / **`SchemaValidationPipe`** adapters for **Zod, Valibot, TypeBox**, or custom schema validators!
 
 ## Enabling `ValidationPipe`
 
 Bind `ValidationPipe` globally, on a controller/method (`@UsePipes`), or on a single parameter (`@Body(new ValidationPipe())`):
 
 @@filename(main.ts)
+
 ```ts
-import "reflect-metadata";
 import { BunestFactory } from "@bunest/core";
 import { ValidationPipe } from "@bunest/validation";
 import { AppModule } from "./app.module";
@@ -18,15 +18,16 @@ app.useGlobalPipes(new ValidationPipe());
 await app.listen(3000);
 ```
 
-> info **Opt-In Execution (ADR-005)** `class-validator` decorators (`@IsEmail()`, `@MinLength()`) only register metadata—they do **not** validate incoming requests unless a `ValidationPipe` is attached. Endpoints without DTOs or without `ValidationPipe` pay zero validation overhead.
+> info **Opt-In Execution (ADR-005 / ADR-015)** Validation decorators (`@IsEmail()`, `@MinLength()`) only register metadata—they do **not** validate incoming requests unless a `ValidationPipe` is attached. Endpoints without DTOs or without `ValidationPipe` pay zero validation overhead.
 
 ## Writing Validated DTOs
 
-Use `class-validator` constraints and explicit `@Type()` from `class-transformer` for nested DTOs, arrays, and explicit numeric conversions:
+Use `@bunest/validation/validator` constraints and explicit `@Type()` from `@bunest/validation/transformer` for nested DTOs, arrays, and explicit numeric conversions (existing upstream `class-validator` / `class-transformer` DTOs also continue to work automatically):
 
 @@filename(create-order.dto.ts)
+
 ```ts
-import { Type } from "class-transformer";
+import { Type } from "@bunest/validation/transformer";
 import {
   ArrayMinSize,
   IsArray,
@@ -37,7 +38,7 @@ import {
   Min,
   MinLength,
   ValidateNested,
-} from "class-validator";
+} from "@bunest/validation/validator";
 
 export class OrderItemDto {
   @IsString()
@@ -73,23 +74,23 @@ export class CreateOrderDto {
 
 Unlike permissive defaults that risk mass-assignment or silent type coercion bugs, Bunest's `new ValidationPipe()` ships with strict, security-first defaults:
 
-| Option | Default | Why |
-|---|---|---|
-| `whitelist` | `true` | Strips undecorated properties (prevents mass assignment) |
-| `forbidNonWhitelisted` | `true` | Rejects unexpected fields with HTTP 400 instead of silently ignoring them |
-| `forbidUnknownValues` | `true` | Prevents non-object or decorator-less payloads from passing as empty valid DTOs |
-| `transform` | `true` | Converts plain JSON to a real DTO instance via `plainToInstance()` |
-| `transformOptions.enableImplicitConversion` | `false` | **Explicit transform policy** — never turns `"false"` into `true` |
-| `validationError.target` | `false` | Omits full DTO from errors (never echoes passwords/secrets) |
-| `validationError.value` | `false` | Omits raw rejected input from errors (never echoes PII) |
-| `stopAtFirstError` | `false` | Returns all field violations in a single response |
-| `errorHttpStatusCode` | `400` | Throws `BadRequestException` (overrideable, e.g. `422`) |
+| Option                                      | Default | Why                                                                             |
+| ------------------------------------------- | ------- | ------------------------------------------------------------------------------- |
+| `whitelist`                                 | `true`  | Strips undecorated properties (prevents mass assignment)                        |
+| `forbidNonWhitelisted`                      | `true`  | Rejects unexpected fields with HTTP 400 instead of silently ignoring them       |
+| `forbidUnknownValues`                       | `true`  | Prevents non-object or decorator-less payloads from passing as empty valid DTOs |
+| `transform`                                 | `true`  | Converts plain JSON to a real DTO instance via `plainToInstance()`              |
+| `transformOptions.enableImplicitConversion` | `false` | **Explicit transform policy** — never turns `"false"` into `true`               |
+| `validationError.target`                    | `false` | Omits full DTO from errors (never echoes passwords/secrets)                     |
+| `validationError.value`                     | `false` | Omits raw rejected input from errors (never echoes PII)                         |
+| `stopAtFirstError`                          | `false` | Returns all field violations in a single response                               |
+| `errorHttpStatusCode`                       | `400`   | Throws `BadRequestException` (overrideable, e.g. `422`)                         |
 
 > warning **Prototype Pollution Guard** Before running `plainToInstance()`, both `ValidationPipe` and `SchemaValidationPipe` scan payloads for dangerous own keys (`__proto__`, `constructor`, `prototype`) using `findDangerousKeys()` and reject them with HTTP 400!
 
 ## Normalized HTTP 400 Error Format
 
-Nested objects and array items are automatically flattened into deterministic dot/bracket field paths (`address.zipCode`, `items[0].quantity`). Raw `class-validator` `ValidationError` trees are never leaked directly:
+Nested objects and array items are automatically flattened into deterministic dot/bracket field paths (`address.zipCode`, `items[0].quantity`). Raw `ValidationError` trees are never leaked directly:
 
 ```json
 {
@@ -129,7 +130,8 @@ Nested objects and array items are automatically flattened into deterministic do
 Prefer schema-first validation? `SchemaValidationPipe` adapts any `SchemaValidator<T>` implementing `parse`, `parseAsync`, `safeParse`, or `safeParseAsync`—automatically normalizing issues into the **exact same ADR-009 HTTP 400 format** and enforcing prototype-pollution protection!
 
 @@filename(create-user.controller.ts)
-@@tab(class-validator DTO)
+@@tab(@bunest/validation DTO)
+
 ```ts
 import { Body, Controller, Post, UsePipes } from "@bunest/core";
 import { ValidationPipe } from "@bunest/validation";
@@ -144,8 +146,10 @@ export class UsersController {
   }
 }
 ```
+
 @@switch
 @@tab(Zod / SchemaValidationPipe)
+
 ```ts
 import { Body, Controller, Post } from "@bunest/core";
 import { SchemaValidationPipe } from "@bunest/validation";

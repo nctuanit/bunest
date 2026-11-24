@@ -1,5 +1,5 @@
-import type { AiModelInfo } from '../interfaces/ai-types.interface';
-import type { AiUsage } from '../interfaces/ai-usage.interface';
+import type { AiModelInfo } from "../interfaces/ai-types.interface";
+import type { AiUsage } from "../interfaces/ai-usage.interface";
 
 /** The base class of the package's errors. */
 export class AiError extends Error {
@@ -27,7 +27,7 @@ export class AiModelError extends AiError {
     const last = attempts[attempts.length - 1];
     const tried = [
       ...new Set(attempts.map((attempt) => describeModel(attempt.model))),
-    ].join(', ');
+    ].join(", ");
     super(
       `The model call failed after ${attempts.length} attempt(s) (${tried}): ${messageOf(last?.error)}`,
       { cause: last?.error },

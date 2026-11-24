@@ -1,5 +1,3 @@
-import "reflect-metadata";
-
 export {
   ContextIdFactory,
   type ContextId,
@@ -28,7 +26,12 @@ export {
   type ReadSseEventsOptions,
   type SseEvent,
 } from "./sse-helper";
-export { createNodeHttpServer } from "./node-http-bridge";
+export {
+  createNodeHttpServer,
+  type BridgeAddressInfo,
+  type BridgeListenOptions,
+  type NodeHttpBridgeServer,
+} from "./node-http-bridge";
 export {
   TestingLogger,
   type TestingLoggerOptions,

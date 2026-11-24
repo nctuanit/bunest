@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   MqttClientProxy,
@@ -7,10 +6,7 @@ import {
   type MqttClientLike,
   type MqttPublishOptions,
 } from "../../../../../../packages/microservices/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "MqttRecordSerializer & MqttRecordBuilder",
@@ -114,12 +110,13 @@ describeConformance(
 
       // BUNEST_BUG: @bunest/microservices exports MqttRecord and MqttRecordBuilder (packages/microservices/src/records.ts), but does NOT export MqttRecordSerializer and MqttClientProxy.emit()/send() do not unwrap MqttRecord instances into MQTT publish options + plain data payload (packages/microservices/src/transports/mqtt.transport.ts).
       it.skip("should export MqttRecordSerializer and unwrap MqttRecord in outgoing packets and replies", async () => {
-        const mod = (await import(
-          "../../../../../../packages/microservices/src"
-        )) as Record<string, unknown>;
+        const mod =
+          (await import("../../../../../../packages/microservices/src")) as Record<
+            string,
+            unknown
+          >;
         const MqttRecordSerializer = mod.MqttRecordSerializer as
-          | (new () => { serialize(packet: unknown): unknown })
-          | undefined;
+          (new () => { serialize(packet: unknown): unknown }) | undefined;
         expect(MqttRecordSerializer).toBeDefined();
         const instance = new MqttRecordSerializer!();
 

@@ -1,26 +1,23 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import type { Provider } from "../../../../../packages/common/src";
+import type { DynamicModule, Provider } from "../../../../../packages/core/src/common";
 import {
-  SqlModule,
-  SqlService,
-  getSqlConnectionToken,
-  getSqlOptionsToken,
-} from "../../../../../packages/sql/src";
-import {
-  SqliteModule,
-  SqliteService,
-  getSqliteConnectionToken,
-  getSqliteOptionsToken,
-} from "../../../../../packages/sqlite/src";
+  DataSource,
+  EntityManager,
+  ORM_DATA_SOURCE_NAME,
+  ORM_MODULE_OPTIONS,
+  OrmCoreModule,
+  OrmModule,
+  getOrmDataSourceToken,
+  getOrmEntityManagerToken,
+} from "../../../../../packages/orm/src";
 import { describeConformance } from "../../../_helpers/index";
 
 type ValueProviderLike = Provider & { provide: unknown; useValue: unknown };
 
-function findOptionsValue(
+function findValueProvider<T>(
   providers: readonly Provider[] | undefined,
-  token: string,
-): Record<string, unknown> | undefined {
+  token: unknown,
+): T | undefined {
   if (!providers) {
     return undefined;
   }
@@ -32,7 +29,15 @@ function findOptionsValue(
       "useValue" in provider &&
       (provider as ValueProviderLike).provide === token,
   );
-  return match?.useValue as Record<string, unknown> | undefined;
+  return match?.useValue as T | undefined;
+}
+
+function exportedTokens(mod: DynamicModule): unknown[] {
+  return (mod.exports ?? []).map((entry) =>
+    typeof entry === "object" && entry !== null && "provide" in entry
+      ? (entry as { provide: unknown }).provide
+      : entry,
+  );
 }
 
 describeConformance(
@@ -42,85 +47,78 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-002"],
     notes:
-      "Adapts TypeOrmModule.forRoot options provider inspection to SqliteModule.forRoot and SqlModule.forRoot default/named connection options tokens.",
+      "Adapts TypeOrmModule.forRoot options provider inspection to @bunest/orm OrmModule.forRoot / OrmCoreModule.forRoot default & named DataSource tokens.",
   },
   () => {
-    it("should register default connection options and class alias when name is omitted", () => {
-      const sqliteMod = SqliteModule.forRoot({
-        filename: ":memory:",
-        foreignKeys: true,
+    it("should register default DataSource & EntityManager class aliases when name is omitted", () => {
+      const coreMod = OrmCoreModule.forRoot({
+        type: "sqlite",
+        database: ":memory:",
+        enforceForeignKeys: true,
       });
-      const sqliteOpts = findOptionsValue(
-        sqliteMod.providers,
-        getSqliteOptionsToken(),
-      );
-      expect(sqliteOpts).toBeDefined();
-      expect(sqliteOpts!.name).toBe("default");
-      expect(sqliteOpts!.filename).toBe(":memory:");
-      expect(sqliteMod.exports).toContain(getSqliteConnectionToken());
-      expect(sqliteMod.exports).toContain(SqliteService);
 
-      const sqlMod = SqlModule.forRoot({
-        url: "sqlite://:memory:",
-        connectOnInit: true,
-      });
-      const sqlOpts = findOptionsValue(sqlMod.providers, getSqlOptionsToken());
-      expect(sqlOpts).toBeDefined();
-      expect(sqlOpts!.name).toBe("default");
-      expect(sqlOpts!.url).toBe("sqlite://:memory:");
-      expect(sqlMod.exports).toContain(getSqlConnectionToken());
-      expect(sqlMod.exports).toContain(SqlService);
+      expect(findValueProvider<string>(coreMod.providers, ORM_DATA_SOURCE_NAME)).toBe(
+        "default",
+      );
+      const opts = findValueProvider<Record<string, unknown>>(
+        coreMod.providers,
+        ORM_MODULE_OPTIONS,
+      );
+      expect(opts).toBeDefined();
+      expect(opts!.type).toBe("sqlite");
+      expect(opts!.database).toBe(":memory:");
+
+      const exportsList = exportedTokens(coreMod);
+      expect(exportsList).toContain(DataSource);
+      expect(exportsList).toContain(EntityManager);
+      expect(getOrmDataSourceToken()).toBe(DataSource);
+      expect(getOrmEntityManagerToken()).toBe(EntityManager);
+
+      const wrapper = OrmModule.forRoot({ type: "sqlite", database: ":memory:" });
+      expect(wrapper.module).toBe(OrmModule);
+      expect(wrapper.imports).toHaveLength(1);
     });
 
-    it("should preserve explicit options.name under its named options token and omit default class alias", () => {
-      const sqliteMod = SqliteModule.forRoot({
+    it("should preserve explicit options.name under named tokens and omit default class aliases", () => {
+      const coreMod = OrmCoreModule.forRoot({
         name: "fromOptions",
-        filename: ":memory:",
+        type: "sqlite",
+        database: ":memory:",
         busyTimeout: 2500,
       });
-      const sqliteOpts = findOptionsValue(
-        sqliteMod.providers,
-        getSqliteOptionsToken("fromOptions"),
-      );
-      expect(sqliteOpts).toBeDefined();
-      expect(sqliteOpts!.name).toBe("fromOptions");
-      expect(sqliteOpts!.busyTimeout).toBe(2500);
-      expect(sqliteMod.exports).toContain(
-        getSqliteConnectionToken("fromOptions"),
-      );
-      expect(sqliteMod.exports).not.toContain(SqliteService);
 
-      const sqlMod = SqlModule.forRoot({
-        name: "analytics",
-        url: "sqlite://:memory:",
-      });
-      const sqlOpts = findOptionsValue(
-        sqlMod.providers,
-        getSqlOptionsToken("analytics"),
+      expect(findValueProvider<string>(coreMod.providers, ORM_DATA_SOURCE_NAME)).toBe(
+        "fromOptions",
       );
-      expect(sqlOpts).toBeDefined();
-      expect(sqlOpts!.name).toBe("analytics");
-      expect(sqlMod.exports).toContain(getSqlConnectionToken("analytics"));
-      expect(sqlMod.exports).not.toContain(SqlService);
+      const opts = findValueProvider<Record<string, unknown>>(
+        coreMod.providers,
+        ORM_MODULE_OPTIONS,
+      );
+      expect(opts).toBeDefined();
+      expect(opts!.name).toBe("fromOptions");
+      expect(opts!.busyTimeout).toBe(2500);
+
+      const exportsList = exportedTokens(coreMod);
+      expect(exportsList).toContain(getOrmDataSourceToken("fromOptions"));
+      expect(exportsList).toContain(getOrmEntityManagerToken("fromOptions"));
+      expect(exportsList).not.toContain(DataSource);
+      expect(exportsList).not.toContain(EntityManager);
     });
 
-    it("should normalize string and URL shorthand inputs in SqlModule.forRoot", () => {
-      const fromString = SqlModule.forRoot("sqlite://:memory:");
-      const stringOpts = findOptionsValue(
-        fromString.providers,
-        getSqlOptionsToken(),
-      );
-      expect(stringOpts).toEqual({
-        url: "sqlite://:memory:",
-        name: "default",
-      });
-
+    it("should preserve Bun.SQL URL options in OrmCoreModule.forRoot", () => {
       const urlObj = new URL("file:///tmp/bunest-for-root-options.sqlite");
-      const fromUrl = SqlModule.forRoot(urlObj);
-      const urlOpts = findOptionsValue(fromUrl.providers, getSqlOptionsToken());
-      expect(urlOpts).toBeDefined();
-      expect(urlOpts!.url).toBe(urlObj);
-      expect(urlOpts!.name).toBe("default");
+      const coreMod = OrmCoreModule.forRoot({
+        type: "sqlite",
+        url: urlObj,
+        useBunSql: true,
+      });
+      const opts = findValueProvider<Record<string, unknown>>(
+        coreMod.providers,
+        ORM_MODULE_OPTIONS,
+      );
+      expect(opts).toBeDefined();
+      expect(opts!.url).toBe(urlObj);
+      expect(opts!.useBunSql).toBe(true);
     });
   },
 );

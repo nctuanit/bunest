@@ -159,7 +159,10 @@ export function addressTokens(
   if (!address.name) {
     return [address.address];
   }
-  return [...encodePhrase(address.name, firstLineUsed), ` <${address.address}>`];
+  return [
+    ...encodePhrase(address.name, firstLineUsed),
+    ` <${address.address}>`,
+  ];
 }
 
 /**

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 export {
   CACHE_KEY_METADATA,
@@ -8,11 +7,7 @@ export {
   CACHE_TTL_METADATA,
   NO_CACHE_METADATA,
 } from "./constants";
-export {
-  CacheKey,
-  CacheTTL,
-  NoCache,
-} from "./decorators/cache.decorators";
+export { CacheKey, CacheTTL, NoCache } from "./decorators/cache.decorators";
 export {
   CacheEvict,
   CacheEvictAspectHandler,
@@ -30,6 +25,10 @@ export {
   MemoryCacheStore,
   type MemoryCacheStoreOptions,
 } from "./stores/memory-cache.store";
+export {
+  createBunRedisClient,
+  type BunRedisCacheOptions,
+} from "./stores/bun-redis.adapter";
 export {
   RedisCacheStore,
   type RedisCacheStoreOptions,

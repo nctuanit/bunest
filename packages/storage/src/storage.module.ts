@@ -8,7 +8,7 @@ import {
   type OnModuleInit,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { HttpAdapterHost, ModulesContainer } from "@bunest/core";
 import { STORAGE_DISKS, STORAGE_MODULE_OPTIONS } from "./constants";
 import { StorageDisk } from "./disks/storage.disk";
@@ -96,7 +96,11 @@ function buildDiskProviders(
         }
       }
       if (!disks.has(defaultName)) {
-        throw missingDiskError(defaultName, [...disks.keys()], "StorageModule.default");
+        throw missingDiskError(
+          defaultName,
+          [...disks.keys()],
+          "StorageModule.default",
+        );
       }
       return { disks, defaultName };
     },

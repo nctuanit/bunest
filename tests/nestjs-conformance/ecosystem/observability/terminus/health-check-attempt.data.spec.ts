@@ -1,10 +1,35 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { setTimeout as sleep } from "node:timers/promises";
-import {
-  Controller,
-  Get,
-} from "../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../packages/core/src/common";
+
+function sleep(
+  ms: number,
+  _value?: undefined,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const signal = options?.signal;
+  if (!signal) {
+    return Bun.sleep(ms);
+  }
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+    );
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        signal.reason ??
+          new DOMException("The operation was aborted.", "AbortError"),
+      );
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   HealthCheck,
@@ -68,7 +93,9 @@ describeConformance(
       });
 
       const slow = await session
-        .attempt(() => sleep(20, undefined, { signal: cleanupController.signal }))
+        .attempt(() =>
+          sleep(20, undefined, { signal: cleanupController.signal }),
+        )
         .withData(owner)
         .degradedAfter(5);
       expect(slow.test).toMatchObject({ status: "degraded", ...owner });
@@ -368,7 +395,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: HealthCheckException (packages/observability/src/health/health.service.ts:26-41) extends ServiceUnavailableException without overriding toJSON(), so HttpException.toJSON() (packages/common/src/exceptions/http.exception.ts:167-177) overwrites the non-string `error` map with `"HealthCheckException"` and wraps the 503 response body in a generic HttpException envelope (`statusCode`, `message`, `path`, `timestamp`, `errors`) instead of returning `{ status: "error", info: {}, error: { payments }, details: { payments } }`.
+      // BUNEST_BUG: HealthCheckException (packages/observability/src/health/health.service.ts:26-41) extends ServiceUnavailableException without overriding toJSON(), so HttpException.toJSON() (packages/core/src/common/exceptions/http.exception.ts:167-177) overwrites the non-string `error` map with `"HealthCheckException"` and wraps the 503 response body in a generic HttpException envelope (`statusCode`, `message`, `path`, `timestamp`, `errors`) instead of returning `{ status: "error", info: {}, error: { payments }, details: { payments } }`.
       it.skip("should respond 503 with the failure data of a failed check", async () => {
         const payments = {
           status: "down",

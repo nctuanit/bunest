@@ -6,7 +6,7 @@ import {
   type SelectionSetNode,
   type ValidationContext,
   type ValidationRule,
-} from "graphql";
+} from "../engine";
 
 /**
  * Creates a GraphQL validation rule that rejects operations whose selection-set
@@ -109,9 +109,7 @@ export function createDepthLimitRule(maxDepth: number): ValidationRule {
       OperationDefinition(node) {
         const { depth } = measureRelativeDepth(node.selectionSet, new Set());
         if (depth > maxDepth) {
-          const opName = node.name?.value
-            ? ` "${node.name.value}"`
-            : "";
+          const opName = node.name?.value ? ` "${node.name.value}"` : "";
           context.reportError(
             new GraphQLError(
               `GraphQL query${opName} exceeds maximum allowed depth of ${maxDepth} (measured: ${depth}).`,

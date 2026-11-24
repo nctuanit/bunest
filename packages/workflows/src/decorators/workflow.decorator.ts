@@ -1,4 +1,4 @@
-import { applyDecorators, Injectable, SetMetadata } from "@bunest/common";
+import { applyDecorators, Injectable, SetMetadata } from "@bunest/core";
 import { resolveConcurrency, resolveRateLimit } from "../core/limits/limits";
 import { assertScheduleId } from "../core/scheduling/schedule-spec";
 import type {

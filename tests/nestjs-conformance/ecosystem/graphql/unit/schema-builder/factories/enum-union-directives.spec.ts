@@ -1,6 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
-import type { GraphQLEnumType, GraphQLUnionType } from "../../../../../../../packages/graphql/node_modules/graphql";
+import type {
+  GraphQLEnumType,
+  GraphQLUnionType,
+} from "../../../../../../../packages/graphql/src";
 import {
   Field,
   GraphQLSchemaBuilderModule,

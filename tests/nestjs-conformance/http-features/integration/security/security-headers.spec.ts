@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Body,
@@ -17,7 +16,7 @@ import {
   type NextFunction,
   type ResponseContext,
   type SseMessageEvent,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,
@@ -205,7 +204,9 @@ describeConformance(
       it("lets @Header() override a header per route", async () => {
         const res = await request(app).get("/embeddable").expect(200);
         expect(res.headers["x-frame-options"]).toBe("DENY");
-        expect(res.headers["cross-origin-resource-policy"]).toBe("cross-origin");
+        expect(res.headers["cross-origin-resource-policy"]).toBe(
+          "cross-origin",
+        );
         expect(res.headers["content-security-policy"]).toBe(DEFAULT_CSP);
       });
     });
@@ -213,13 +214,11 @@ describeConformance(
     describe.each([
       [
         "useSecurityHeaders() first",
-        (a: BunestApplication) =>
-          a.useSecurityHeaders().enableCsrfProtection(),
+        (a: BunestApplication) => a.useSecurityHeaders().enableCsrfProtection(),
       ],
       [
         "enableCsrfProtection() first",
-        (a: BunestApplication) =>
-          a.enableCsrfProtection().useSecurityHeaders(),
+        (a: BunestApplication) => a.enableCsrfProtection().useSecurityHeaders(),
       ],
     ])("with CSRF protection, %s", (_order, configure) => {
       beforeEach(() => init(configure));
@@ -292,7 +291,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly via finalizeShortCircuitResponse without calling applySecurityHeaders() (packages/http/src/pipeline/execution-pipeline.ts:482-515).
+    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly via finalizeShortCircuitResponse without calling applySecurityHeaders() (packages/core/src/http/pipeline/execution-pipeline.ts:482-515).
     it.skip("sets them on responses ended by Nest middleware (NestFactory.create())", async () => {
       app = await NestFactory.create(AppModule, { logger: false });
       app.useSecurityHeaders();
@@ -304,7 +303,7 @@ describeConformance(
       expectDefaultHeaders(res.headers);
     });
 
-    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly without calling applySecurityHeaders(), leaving X-Powered-By intact (packages/http/src/pipeline/execution-pipeline.ts:482-515).
+    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly without calling applySecurityHeaders(), leaving X-Powered-By intact (packages/core/src/http/pipeline/execution-pipeline.ts:482-515).
     it.skip("removes X-Powered-By from responses ended by earlier middleware and preflight", async () => {
       await init((a) => {
         a.use((req: Request, _res: ResponseContext, next: NextFunction) => {
@@ -337,7 +336,7 @@ describeConformance(
       expect(res.headers["content-security-policy"]).toBeUndefined();
     });
 
-    // BUNEST_BUG: compileSecurityHeaders does not validate CSP directive values for ";" injection and fails to throw at startup (packages/http/src/security/security-headers.ts).
+    // BUNEST_BUG: compileSecurityHeaders does not validate CSP directive values for ";" injection and fails to throw at startup (packages/core/src/http/security/security-headers.ts).
     it.skip("rejects an invalid policy at startup", async () => {
       await expect(
         init((a) =>

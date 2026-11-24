@@ -1,22 +1,22 @@
-import { Inject, Injectable, Optional } from '@bunest/common';
+import { Inject, Injectable, Optional } from "@bunest/core";
 import type {
   AiEmbeddingModelDefinition,
   AiEmbeddingModelPricing,
   AiEmbeddingModelReference,
   AiEmbeddingSettings,
-} from '../interfaces/ai-embedding.interface';
+} from "../interfaces/ai-embedding.interface";
 import type {
   AiModuleOptions,
   EmbeddingModel,
-} from '../interfaces/ai-module-options.interface';
-import type { AiModelInfo } from '../interfaces/ai-types.interface';
+} from "../interfaces/ai-module-options.interface";
+import type { AiModelInfo } from "../interfaces/ai-types.interface";
 import {
   AI_EMBEDDING_MODEL_OVERRIDES,
   AI_MODULE_OPTIONS,
   DEFAULT_MODEL_NAME,
-} from '../ai.constants';
-import { AiConfigurationError } from '../errors/ai.errors';
-import { assertModelRegistries } from './model-registry.util';
+} from "../ai.constants";
+import { AiConfigurationError } from "../errors/ai.errors";
+import { assertModelRegistries } from "./model-registry.util";
 
 /** One resolved embedding model. Internal. */
 export interface ResolvedEmbeddingModel {
@@ -38,7 +38,7 @@ export class AiEmbeddingModels {
     overrides?: Record<string, EmbeddingModel> | null,
   ) {
     assertModelRegistries(options);
-    assertSettings(options.embeddingDefaults, 'AiModule: `embeddingDefaults`');
+    assertSettings(options.embeddingDefaults, "AiModule: `embeddingDefaults`");
     for (const [name, entry] of Object.entries(options.embeddingModels ?? {})) {
       const { model, pricing, ...settings } = isDefinition(entry)
         ? entry
@@ -47,7 +47,7 @@ export class AiEmbeddingModels {
       assertSettings(settings, `AiModule: the embedding model "${name}"`);
       if (
         pricing !== undefined &&
-        (typeof pricing !== 'object' ||
+        (typeof pricing !== "object" ||
           pricing === null ||
           !Number.isFinite(pricing.input) ||
           pricing.input < 0)
@@ -95,7 +95,7 @@ export class AiEmbeddingModels {
       const requester = (inquirer as { constructor?: { name?: string } })
         ?.constructor?.name;
       throw new AiConfigurationError(
-        `${requester ? `${requester}: ` : ''}@InjectEmbeddingModel('${name}') asks for an embedding model AiModule does not configure. ${this.known()} Add "${name}" to \`embeddingModels\` (in forRootAsync(), to what the factory returns).`,
+        `${requester ? `${requester}: ` : ""}@InjectEmbeddingModel('${name}') asks for an embedding model AiModule does not configure. ${this.known()} Add "${name}" to \`embeddingModels\` (in forRootAsync(), to what the factory returns).`,
       );
     }
     return resolved.model;
@@ -105,7 +105,7 @@ export class AiEmbeddingModels {
   resolve(
     reference: AiEmbeddingModelReference | undefined,
   ): ResolvedEmbeddingModel {
-    if (reference === undefined || typeof reference === 'string') {
+    if (reference === undefined || typeof reference === "string") {
       const name = reference ?? DEFAULT_MODEL_NAME;
       const resolved = this.models.get(name);
       if (!resolved) {
@@ -115,12 +115,12 @@ export class AiEmbeddingModels {
       }
       return resolved;
     }
-    assertModel(reference, 'The embedding `model` option');
+    assertModel(reference, "The embedding `model` option");
     return { info: identify(reference), model: reference, settings: {} };
   }
 
   private known(): string {
-    return `Configured embedding models: ${this.names().join(', ')}.`;
+    return `Configured embedding models: ${this.names().join(", ")}.`;
   }
 }
 
@@ -128,19 +128,19 @@ function isDefinition(
   entry: EmbeddingModel | AiEmbeddingModelDefinition,
 ): entry is AiEmbeddingModelDefinition {
   return (
-    typeof entry === 'object' &&
+    typeof entry === "object" &&
     entry !== null &&
-    'model' in entry &&
-    !('specificationVersion' in entry)
+    "model" in entry &&
+    !("specificationVersion" in entry)
   );
 }
 
 function assertModel(model: unknown, where: string): void {
   const valid =
-    (typeof model === 'string' && model.length > 0) ||
-    (typeof model === 'object' &&
+    (typeof model === "string" && model.length > 0) ||
+    (typeof model === "object" &&
       model !== null &&
-      typeof (model as any).doEmbed === 'function');
+      typeof (model as { doEmbed?: unknown }).doEmbed === "function");
   if (!valid) {
     throw new AiConfigurationError(
       `${where} is not an embedding model. Pass a model string or an object with doEmbed().`,
@@ -153,7 +153,7 @@ function assertSettings(settings: unknown, where: string): void {
     return;
   }
   if (
-    typeof settings !== 'object' ||
+    typeof settings !== "object" ||
     settings === null ||
     Array.isArray(settings)
   ) {
@@ -170,16 +170,19 @@ function assertSettings(settings: unknown, where: string): void {
   }
 }
 
-function identify(model: EmbeddingModel): { provider: string; modelId: string } {
-  if (typeof model === 'string') {
-    const slash = model.indexOf('/');
+function identify(model: EmbeddingModel): {
+  provider: string;
+  modelId: string;
+} {
+  if (typeof model === "string") {
+    const slash = model.indexOf("/");
     if (slash > 0) {
       return {
         provider: model.slice(0, slash),
         modelId: model.slice(slash + 1),
       };
     }
-    return { provider: 'gateway', modelId: model };
+    return { provider: "gateway", modelId: model };
   }
   return { provider: model.provider, modelId: model.modelId };
 }

@@ -1,5 +1,3 @@
-import "reflect-metadata";
-
 // Crypto & Timing-Safe Utilities
 export {
   base64UrlDecode,
@@ -267,35 +265,3 @@ export {
   type SecurityHeadersOptions,
   type StrictTransportSecurityOptions,
 } from "./headers/security-headers.middleware";
-
-// File Storage Abstraction
-export {
-  InjectStorage,
-  STORAGE_ADAPTER,
-  STORAGE_OPTIONS,
-  StoragePathTraversalException,
-  assertSafeStorageKey,
-  type SignedUrlOptions,
-  type StorageAdapter,
-  type StorageBodyInput,
-  type StorageObject,
-  type StoragePutOptions,
-  type StorageStat,
-} from "./storage/storage.interface";
-export {
-  LocalStorageAdapter,
-  type LocalStorageAdapterOptions,
-} from "./storage/local-storage.adapter";
-export { MemoryStorageAdapter } from "./storage/memory-storage.adapter";
-export {
-  S3StorageAdapter,
-  type S3ClientLike,
-  type S3FileLike,
-  type S3StorageAdapterOptions,
-} from "./storage/s3-storage.adapter";
-export {
-  StorageModule,
-  createStorageAdapter,
-  type StorageModuleAsyncOptions,
-  type StorageModuleOptions,
-} from "./storage/storage.module";

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   RabbitMqClientProxy,
@@ -7,10 +6,7 @@ import {
   type RabbitMqChannelLike,
   type RmqRecordOptions,
 } from "../../../../../../packages/microservices/src";
-import {
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "RmqRecordSerializer & RmqRecordBuilder",
@@ -109,12 +105,13 @@ describeConformance(
 
       // BUNEST_BUG: @bunest/microservices exports RmqRecord and RmqRecordBuilder (packages/microservices/src/records.ts), but does NOT export RmqRecordSerializer (needed for NestJS serializer parity).
       it.skip("should export RmqRecordSerializer and unwrap RmqRecord in request and reply packets", async () => {
-        const mod = (await import(
-          "../../../../../../packages/microservices/src"
-        )) as Record<string, unknown>;
+        const mod =
+          (await import("../../../../../../packages/microservices/src")) as Record<
+            string,
+            unknown
+          >;
         const RmqRecordSerializer = mod.RmqRecordSerializer as
-          | (new () => { serialize(packet: unknown): unknown })
-          | undefined;
+          (new () => { serialize(packet: unknown): unknown }) | undefined;
         expect(RmqRecordSerializer).toBeDefined();
         const instance = new RmqRecordSerializer!();
 
@@ -123,13 +120,13 @@ describeConformance(
           .setOptions({ appId: "app", persistent: true })
           .build();
 
-        expect(instance.serialize({ pattern: "test", data: rmqMessage })).toEqual(
-          {
-            pattern: "test",
-            options: { appId: "app", persistent: true },
-            data: { value: "string" },
-          },
-        );
+        expect(
+          instance.serialize({ pattern: "test", data: rmqMessage }),
+        ).toEqual({
+          pattern: "test",
+          options: { appId: "app", persistent: true },
+          data: { value: "string" },
+        });
 
         const plainPacket = { pattern: "test", data: { random: true } };
         expect(instance.serialize(plainPacket)).toBe(plainPacket);

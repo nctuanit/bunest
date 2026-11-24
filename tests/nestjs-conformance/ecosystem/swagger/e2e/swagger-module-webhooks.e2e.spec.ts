@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it, spyOn } from "bun:test";
 import {
   Controller,
   Logger,
   Module,
   Post,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../packages/core/src";
 import {
   ApiBearerAuth,
@@ -175,9 +174,8 @@ describeConformance(
         const document = SwaggerModule.createDocument(app, config);
 
         expect(
-          (document.webhooks?.default?.post?.responses["200"] as any)?.content?.[
-            "application/json"
-          ]?.schema,
+          (document.webhooks?.default?.post?.responses["200"] as any)
+            ?.content?.["application/json"]?.schema,
         ).toEqual({ type: ["string", "null"] });
       } finally {
         await app.close();

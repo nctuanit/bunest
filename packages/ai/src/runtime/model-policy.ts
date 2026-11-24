@@ -1,5 +1,9 @@
-import { Logger } from '@bunest/common';
-import type { Subscribable, SubscribableObserver, Unsubscribable } from '@bunest/core';
+import { Logger } from "@bunest/core";
+import type {
+  Subscribable,
+  SubscribableObserver,
+  Unsubscribable,
+} from "@bunest/core";
 import {
   FallbackPolicy,
   ResilienceContext,
@@ -11,29 +15,29 @@ import {
   type AttemptContext,
   type Duration,
   type RetryOptions,
-} from '@bunest/resilience';
-import type { AiModelInfo } from '../interfaces/ai-types.interface';
-import type { ResolvedModel } from '../models/ai-models.service';
+} from "@bunest/resilience";
+import type { AiModelInfo } from "../interfaces/ai-types.interface";
+import type { ResolvedModel } from "../models/ai-models.service";
 import {
   AiBudgetExceededError,
   AiConfigurationError,
   AiModelError,
   AiOutputError,
   type AiAttemptFailure,
-} from '../errors/ai.errors';
-import { toMilliseconds } from '../utils/duration.util';
+} from "../errors/ai.errors";
+import { toMilliseconds } from "../utils/duration.util";
 
-const logger = new Logger('AiModule');
+const logger = new Logger("AiModule");
 
 /** Argument errors which no retry or fallback model can fix. */
 const CALLER_MISTAKES = new Set([
-  'AI_InvalidPromptError',
-  'AI_InvalidArgumentError',
-  'AI_InvalidMessageRoleError',
-  'AI_MessageConversionError',
+  "AI_InvalidPromptError",
+  "AI_InvalidArgumentError",
+  "AI_InvalidMessageRoleError",
+  "AI_MessageConversionError",
 ]);
 
-const DEFAULT_TIMEOUT: Duration = '60s';
+const DEFAULT_TIMEOUT: Duration = "60s";
 const DEFAULT_BACKOFF = { delay: 1_000, factor: 2, maxDelay: 30_000 } as const;
 
 /** The identity the policy layer needs. */
@@ -68,9 +72,9 @@ export interface PolicyPlan<M extends PolicyModel = ResolvedModel> {
 }
 
 type StepStreamEvent<T, M extends PolicyModel> =
-  | { type: 'commit' }
-  | { type: 'chunk'; chunk: unknown }
-  | { type: 'outcome'; value: T; attempt: StepAttempt<M> };
+  | { type: "commit" }
+  | { type: "chunk"; chunk: unknown }
+  | { type: "outcome"; value: T; attempt: StepAttempt<M> };
 
 /** Minimal cold Subscribable<T> adapter (zero RxJS per ADR-008). */
 function createAttemptSubscribable<T>(
@@ -85,7 +89,7 @@ function createAttemptSubscribable<T>(
       complete?: () => void,
     ): Unsubscribable {
       const obs: SubscribableObserver<T> =
-        typeof observerOrNext === 'function'
+        typeof observerOrNext === "function"
           ? { next: observerOrNext, error, complete }
           : (observerOrNext ?? {});
       let closed = false;
@@ -173,19 +177,19 @@ export function runStep<T, M extends PolicyModel = ResolvedModel>(
           commit: () => {
             if (!committed && !subscriber.closed) {
               committed = true;
-              subscriber.next({ type: 'commit' });
+              subscriber.next({ type: "commit" });
             }
           },
           emit: (chunk: unknown) => {
             committed = true;
-            subscriber.next({ type: 'chunk', chunk });
+            subscriber.next({ type: "chunk", chunk });
           },
         };
 
         run(attempt).then(
           (value) => {
             settled = true;
-            subscriber.next({ type: 'outcome', value, attempt });
+            subscriber.next({ type: "outcome", value, attempt });
             subscriber.complete();
           },
           (error) => {
@@ -208,10 +212,13 @@ export function runStep<T, M extends PolicyModel = ResolvedModel>(
             logger.warn(
               `The model "${labelOf(model)}" failed (${describeError(error)}); falling back to "${labelOf(plan.chain[index + 1]!)}".`,
             );
-            return policyAt(index + 1).executeObservable(attemptsOf(index + 1), {
-              signal: context.signal,
-              source: plan.source,
-            });
+            return policyAt(index + 1).executeObservable(
+              attemptsOf(index + 1),
+              {
+                signal: context.signal,
+                source: plan.source,
+              },
+            );
           },
           {
             name: `${nameOf(model)} fallback`,
@@ -228,7 +235,9 @@ export function runStep<T, M extends PolicyModel = ResolvedModel>(
   };
 
   const ambient = new ResilienceContext().signal;
-  const signal = ambient ? AbortSignal.any([plan.signal, ambient]) : plan.signal;
+  const signal = ambient
+    ? AbortSignal.any([plan.signal, ambient])
+    : plan.signal;
 
   return new Promise((resolve, reject) => {
     let outcome: { value: T; attempt: StepAttempt<M> } | undefined;
@@ -236,9 +245,9 @@ export function runStep<T, M extends PolicyModel = ResolvedModel>(
       .executeObservable(attemptsOf(0), { signal, source: plan.source })
       .subscribe({
         next: (event) => {
-          if (event.type === 'chunk') {
+          if (event.type === "chunk") {
             emit?.(event.chunk);
-          } else if (event.type === 'outcome') {
+          } else if (event.type === "outcome") {
             outcome = { value: event.value, attempt: event.attempt };
           }
         },
@@ -248,7 +257,7 @@ export function runStep<T, M extends PolicyModel = ResolvedModel>(
             ? resolve({ ...outcome, attempts })
             : reject(
                 finalError(
-                  new Error('The model call ended without an answer'),
+                  new Error("The model call ended without an answer"),
                   failures,
                   signal,
                 ),
@@ -270,7 +279,7 @@ export function modelPolicy(
     retry: RetryOptions | false | undefined;
     timeout: Duration | false | undefined;
   },
-  namespace = 'ai',
+  namespace = "ai",
 ): ResiliencePolicy | undefined {
   const policies: ResiliencePolicy[] = [];
   if (retry !== false) {
@@ -279,7 +288,7 @@ export function modelPolicy(
   if (timeout !== false) {
     policies.push(
       new TimeoutPolicy({
-        timeout: toMilliseconds(timeout ?? DEFAULT_TIMEOUT, 'timeout'),
+        timeout: toMilliseconds(timeout ?? DEFAULT_TIMEOUT, "timeout"),
         name: `${nameOf(model, namespace)} timeout`,
       }),
     );
@@ -294,8 +303,8 @@ function retryPolicy(
 ): RetryPolicy {
   const backoff = retry.backoff;
   const maxDelay =
-    typeof backoff === 'object' && backoff.maxDelay !== undefined
-      ? toMilliseconds(backoff.maxDelay, 'retry.backoff.maxDelay')
+    typeof backoff === "object" && backoff.maxDelay !== undefined
+      ? toMilliseconds(backoff.maxDelay, "retry.backoff.maxDelay")
       : DEFAULT_BACKOFF.maxDelay;
   const retryIf = retry.retryIf ?? isRetryable;
   return new RetryPolicy({
@@ -307,7 +316,7 @@ function retryPolicy(
       (retryAfter(error) ?? 0) <= maxDelay &&
       retryIf(error, attempt),
     backoff:
-      typeof backoff === 'function'
+      typeof backoff === "function"
         ? backoff
         : (attempt, error) =>
             retryAfter(error) ??
@@ -320,27 +329,29 @@ export function isRetryable(error: unknown): boolean {
   if (error instanceof ResilienceTimeoutError) {
     return true;
   }
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (error instanceof DOMException && error.name === "AbortError") {
     return false;
   }
-  if (typeof error === 'object' && error !== null) {
+  if (typeof error === "object" && error !== null) {
     const e = error as Record<string, any>;
-    if (e['isRetryable'] === true) return true;
-    if (e['isRetryable'] === false) return false;
+    if (e["isRetryable"] === true) return true;
+    if (e["isRetryable"] === false) return false;
     const status =
-      typeof e['statusCode'] === 'number'
-        ? e['statusCode']
-        : typeof e['status'] === 'number'
-          ? e['status']
+      typeof e["statusCode"] === "number"
+        ? e["statusCode"]
+        : typeof e["status"] === "number"
+          ? e["status"]
           : undefined;
     if (status !== undefined) {
-      return status === 408 || status === 409 || status === 429 || status >= 500;
+      return (
+        status === 408 || status === 409 || status === 429 || status >= 500
+      );
     }
     if (
-      e['code'] === 'ECONNRESET' ||
-      e['code'] === 'ECONNREFUSED' ||
-      e['code'] === 'ETIMEDOUT' ||
-      e['code'] === 'UND_ERR_SOCKET'
+      e["code"] === "ECONNRESET" ||
+      e["code"] === "ECONNREFUSED" ||
+      e["code"] === "ETIMEDOUT" ||
+      e["code"] === "UND_ERR_SOCKET"
     ) {
       return true;
     }
@@ -379,18 +390,24 @@ function finalError(
   return new AiModelError(
     failures.length > 0
       ? failures
-      : [{ model: { provider: 'unknown', modelId: 'unknown' }, attempt: 1, error }],
+      : [
+          {
+            model: { provider: "unknown", modelId: "unknown" },
+            attempt: 1,
+            error,
+          },
+        ],
   );
 }
 
 function unwrap(error: unknown): unknown {
   if (
-    typeof error === 'object' &&
+    typeof error === "object" &&
     error !== null &&
-    'lastError' in error &&
-    (error as any).name === 'AI_RetryError'
+    "lastError" in error &&
+    (error as { name?: unknown }).name === "AI_RetryError"
   ) {
-    return (error as any).lastError ?? error;
+    return (error as { lastError?: unknown }).lastError ?? error;
   }
   return error;
 }
@@ -401,27 +418,27 @@ function exponential(
     delay,
     factor = 2,
     maxDelay,
-    jitter = 'full',
+    jitter = "full",
   }: {
     delay?: Duration;
     factor?: number;
     maxDelay?: Duration;
-    jitter?: 'full' | 'equal' | 'none';
+    jitter?: "full" | "equal" | "none";
   },
 ): number {
   const max = toMilliseconds(
     maxDelay ?? DEFAULT_BACKOFF.maxDelay,
-    'retry.backoff.maxDelay',
+    "retry.backoff.maxDelay",
   );
   const computed = Math.min(
     max,
-    toMilliseconds(delay ?? DEFAULT_BACKOFF.delay, 'retry.backoff.delay') *
+    toMilliseconds(delay ?? DEFAULT_BACKOFF.delay, "retry.backoff.delay") *
       Math.max(1, factor) ** (attempt - 1),
   );
   switch (jitter) {
-    case 'none':
+    case "none":
       return computed;
-    case 'equal':
+    case "equal":
       return computed / 2 + Math.random() * (computed / 2);
     default:
       return Math.random() * computed;
@@ -429,7 +446,7 @@ function exponential(
 }
 
 function retryAfter(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
+  if (typeof error !== "object" || error === null) return undefined;
   const rawHeaders = (error as { responseHeaders?: Record<string, string> })
     .responseHeaders;
   if (!rawHeaders) return undefined;
@@ -439,11 +456,11 @@ function retryAfter(error: unknown): number | undefined {
       value,
     ]),
   );
-  const ms = Number.parseFloat(headers['retry-after-ms'] ?? '');
+  const ms = Number.parseFloat(headers["retry-after-ms"] ?? "");
   if (Number.isFinite(ms) && ms >= 0) {
     return ms;
   }
-  const value = headers['retry-after'];
+  const value = headers["retry-after"];
   if (value === undefined) return undefined;
   const seconds = Number.parseFloat(value);
   if (Number.isFinite(seconds) && seconds >= 0) {
@@ -453,7 +470,7 @@ function retryAfter(error: unknown): number | undefined {
   return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
-function nameOf(model: PolicyModel, namespace = 'ai'): string {
+function nameOf(model: PolicyModel, namespace = "ai"): string {
   return `${namespace}:${labelOf(model)}`;
 }
 
@@ -470,10 +487,10 @@ function describeError(error: unknown): string {
     status?: unknown;
   };
   const code =
-    typeof statusCode === 'number'
+    typeof statusCode === "number"
       ? statusCode
-      : typeof status === 'number'
+      : typeof status === "number"
         ? status
         : undefined;
-  return `${error.constructor.name}${code !== undefined ? `, ${code}` : ''}: ${error.message}`;
+  return `${error.constructor.name}${code !== undefined ? `, ${code}` : ""}: ${error.message}`;
 }

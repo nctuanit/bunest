@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import type { ValidationErrorResponse } from "../../../packages/common/src";
+import type { ValidationErrorResponse } from "../../../packages/core/src/common";
 import { ScopeLeakException } from "../../../packages/core/src";
 
 export type AdrId =
@@ -30,7 +29,8 @@ export interface AdrEntry {
 export const BUNEST_ADRS: Readonly<Record<AdrId, AdrEntry>> = Object.freeze({
   "ADR-001": {
     id: "ADR-001",
-    title: "Bun-Only Runtime (Native Web Request/Response, Zero Express/Fastify)",
+    title:
+      "Bun-Only Runtime (Native Web Request/Response, Zero Express/Fastify)",
     docPath: "docs/adr/ADR-001.md",
     nestjsBehavior:
       "Runs on Node.js via AbstractHttpAdapter (Express, Fastify, or platform-node IncomingMessage/ServerResponse).",
@@ -57,7 +57,8 @@ export const BUNEST_ADRS: Readonly<Record<AdrId, AdrEntry>> = Object.freeze({
   },
   "ADR-004": {
     id: "ADR-004",
-    title: "Legacy Parameter Decorators, Cached Single-Read Body & Explicit Coercion",
+    title:
+      "Legacy Parameter Decorators, Cached Single-Read Body & Explicit Coercion",
     docPath: "docs/adr/ADR-004.md",
     nestjsBehavior:
       "Extracts parameters from Express/Fastify request objects; middleware often pre-parses body.",
@@ -75,10 +76,10 @@ export const BUNEST_ADRS: Readonly<Record<AdrId, AdrEntry>> = Object.freeze({
   },
   "ADR-006": {
     id: "ADR-006",
-    title: "@Controller() & HTTP Method Decorators with Inheritance-Safe Scanning",
+    title:
+      "@Controller() & HTTP Method Decorators with Inheritance-Safe Scanning",
     docPath: "docs/adr/ADR-006.md",
-    nestjsBehavior:
-      "Scans controller routes and enhancers across prototypes.",
+    nestjsBehavior: "Scans controller routes and enhancers across prototypes.",
     bunestBehavior:
       "Copy-on-write inheritance-safe metadata scanning with fail-fast InvalidControllerException and canonical duplicate route detection.",
   },
@@ -102,7 +103,8 @@ export const BUNEST_ADRS: Readonly<Record<AdrId, AdrEntry>> = Object.freeze({
   },
   "ADR-009": {
     id: "ADR-009",
-    title: "Strict ValidationPipe Defaults & Normalized HTTP 400 Error Envelope",
+    title:
+      "Strict ValidationPipe Defaults & Normalized HTTP 400 Error Envelope",
     docPath: "docs/adr/ADR-009.md",
     nestjsBehavior:
       "ValidationPipe defaults to whitelist: false, forbidNonWhitelisted: false, transform: false, and emits flat `{ statusCode, message: string[], error }`.",
@@ -129,7 +131,8 @@ export const BUNEST_ADRS: Readonly<Record<AdrId, AdrEntry>> = Object.freeze({
   },
   "ADR-012": {
     id: "ADR-012",
-    title: "Request-Scoped DI via AsyncLocalStorage & Fail-Fast ScopeLeakException",
+    title:
+      "Request-Scoped DI via AsyncLocalStorage & Fail-Fast ScopeLeakException",
     docPath: "docs/adr/ADR-012.md",
     nestjsBehavior:
       "Injecting a Scope.REQUEST provider into a singleton silently bubbles request scope up the dependency tree.",

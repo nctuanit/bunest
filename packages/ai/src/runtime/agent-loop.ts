@@ -1,17 +1,17 @@
-import type { AiStep, AiTextResult } from '../interfaces/ai-result.interface';
-import type { ModelMessage } from '../interfaces/ai-types.interface';
-import type { AiUsage, AiUsageEvent } from '../interfaces/ai-usage.interface';
-import { AiBudgetExceededError } from '../errors/ai.errors';
-import { addCost, addUsage, ZERO_USAGE } from '../utils/usage.util';
-import type { CallPlan } from './call-plan';
-import { runStep, type StepAttempt } from './model-policy';
+import type { AiStep, AiTextResult } from "../interfaces/ai-result.interface";
+import type { ModelMessage } from "../interfaces/ai-types.interface";
+import type { AiUsage, AiUsageEvent } from "../interfaces/ai-usage.interface";
+import { AiBudgetExceededError } from "../errors/ai.errors";
+import { addCost, addUsage, ZERO_USAGE } from "../utils/usage.util";
+import type { CallPlan } from "./call-plan";
+import { runStep, type StepAttempt } from "./model-policy";
 import {
   generateStep,
   streamStep,
   wantsAnotherStep,
   type StepOutcome,
   type StepOutput,
-} from './steps';
+} from "./steps";
 
 export type LoopMode =
   | {
@@ -88,7 +88,7 @@ export async function runLoop(
       responseMessages,
       model: final.step.model,
     },
-    ...('output' in final && { output: final.output }),
+    ...("output" in final && { output: final.output }),
     ...(final.finish && { finish: final.finish }),
   };
 }
@@ -116,7 +116,7 @@ export function usageEvent(
 
 /** Throws when the call has spent its budget. */
 export function assertWithinBudget(
-  plan: Pick<CallPlan, 'budget'>,
+  plan: Pick<CallPlan, "budget">,
   usage: AiUsage,
   cost: number | undefined,
 ): void {

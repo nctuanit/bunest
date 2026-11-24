@@ -10,7 +10,7 @@ Install `@bunest/testing` as a dev dependency alongside `@bunest/core`:
 bun add -d @bunest/testing
 ```
 
-Import `"reflect-metadata"` at the top of your test file (or preload it in `bunfig.toml`) so legacy decorator metadata (`design:paramtypes`) is available before loading controllers, services, or DTOs:
+`@bunest/core` includes a built-in zero-dependency Reflect Metadata shim ([ADR-017](/architecture/adrs)), so no `import "reflect-metadata"` boilerplate is needed in your test files:
 
 ```bash
 # Run all unit & E2E tests with Bun's native runner
@@ -28,8 +28,8 @@ bun test
 `Test.createTestingModule(metadata, options?)` creates an isolated `TestingModuleBuilder` backed by Bunest's real `ModuleScanner`, `DIContainer`, and `LifecycleManager`:
 
 @@filename(users.service.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Test, type TestingModule } from "@bunest/testing";
 import { UsersController } from "./users.controller";
@@ -75,8 +75,8 @@ describe("UsersController", () => {
 When importing an existing feature module or `AppModule`, replace any provider token (class, `string`, or `symbol`) before `compile()` using `overrideProvider(token)` with `useValue`, `useClass`, `useFactory`, or `useExisting`:
 
 @@filename(overrides.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Scope } from "@bunest/core";
 import { Test } from "@bunest/testing";
@@ -128,8 +128,8 @@ describe("Provider overrides", () => {
 Swap route-level (`@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters`), DI global (`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`), or imperative (`app.useGlobal*`) enhancers using `overrideGuard`, `overridePipe`, `overrideInterceptor`, and `overrideFilter`:
 
 @@filename(enhancer-overrides.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test, request } from "@bunest/testing";
 import { AppModule } from "./app.module";
@@ -155,11 +155,15 @@ describe("Enhancer overrides", () => {
       .useValue({ transform: (v: unknown) => v })
       .overrideInterceptor(AuditInterceptor)
       .useValue({
-        intercept: async (_ctx, next) => ({ audited: false, data: await next.handle() }),
+        intercept: async (_ctx, next) => ({
+          audited: false,
+          data: await next.handle(),
+        }),
       })
       .overrideFilter(DomainErrorFilter)
       .useValue({
-        catch: (err: Error) => Response.json({ mockedError: err.message }, { status: 400 }),
+        catch: (err: Error) =>
+          Response.json({ mockedError: err.message }, { status: 400 }),
       })
       .compile();
 
@@ -184,6 +188,7 @@ Key guarantees for enhancer overrides in Bunest:
 Replace an imported static module, nested module, `@Global()` module, `forwardRef()` circular module, or `DynamicModule` before module scanning with `overrideModule(target).useModule(replacement)`:
 
 @@filename(override-module.spec.ts)
+
 ```ts
 import { Module } from "@bunest/core";
 import { Test } from "@bunest/testing";
@@ -218,14 +223,10 @@ const moduleRef = await Test.createTestingModule({
 Instead of manually mocking every transitive dependency in a unit test, register a fallback `MockFactory` via `.useMocker(factory)` or use Bunest's zero-dependency `createAutoMocker()` / `ModuleMocker`:
 
 @@filename(orders.service.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import {
-  Test,
-  createAutoMocker,
-  type MockFunction,
-} from "@bunest/testing";
+import { Test, createAutoMocker, type MockFunction } from "@bunest/testing";
 import { InventoryClient } from "./inventory.client";
 import { OrdersService } from "./orders.service";
 import { PaymentGateway } from "./payment.gateway";
@@ -262,6 +263,7 @@ describe("OrdersService (auto-mocked)", () => {
 You can also drive `ModuleMocker` and `createMockFn()` directly inside a custom `useMocker((token) => ...)` factory (mirroring NestJS's `useMocker` pattern without installing `jest-mock`):
 
 @@filename(custom-mocker.spec.ts)
+
 ```ts
 import { ModuleMocker, Test } from "@bunest/testing";
 
@@ -277,7 +279,9 @@ const moduleRef = await Test.createTestingModule({
     if (typeof token === "function") {
       const metadata = moduleMocker.getMetadata(token);
       if (metadata) {
-        const Mock = moduleMocker.generateFromMetadata(metadata) as new () => object;
+        const Mock = moduleMocker.generateFromMetadata(
+          metadata,
+        ) as new () => object;
         return new Mock();
       }
     }
@@ -287,13 +291,13 @@ const moduleRef = await Test.createTestingModule({
   .compile();
 ```
 
-| `useMocker` Behavior | Detail |
-|---|---|
-| **Shared cache** | Each auto-mocked token is generated once and shared across all consumers (`SINGLETON`, `TRANSIENT`, and `REQUEST`), and is retrievable via `moduleRef.get(Token)` / `moduleRef.resolve(Token)`. |
-| **Strict failure on `null`/`undefined`** | If the factory returns `undefined` or `null`, Bunest throws the original `UnknownDependencyException`. |
-| **Respects `@Optional()` & built-ins** | `@Optional()` dependencies remain `undefined`; built-in `REQUEST` and `REQUEST_CONTEXT` tokens are never auto-mocked. |
-| **Non-class tokens** | Pass `createAutoMocker({ mockUnregisteredTokens: true })` to return a lazy spy `Proxy` for unregistered string/symbol tokens. |
-| **Spy API (`MockFunction`)** | Every auto-mocked method exposes `.calls`, `.results`, `.callCount`, `.called`, `.mockReturnValue(Once)`, `.mockResolvedValue(Once)`, `.mockRejectedValue(Once)`, `.mockImplementation(Once)`, `.mockClear()`, and `.mockReset()`. |
+| `useMocker` Behavior                     | Detail                                                                                                                                                                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Shared cache**                         | Each auto-mocked token is generated once and shared across all consumers (`SINGLETON`, `TRANSIENT`, and `REQUEST`), and is retrievable via `moduleRef.get(Token)` / `moduleRef.resolve(Token)`.                                    |
+| **Strict failure on `null`/`undefined`** | If the factory returns `undefined` or `null`, Bunest throws the original `UnknownDependencyException`.                                                                                                                             |
+| **Respects `@Optional()` & built-ins**   | `@Optional()` dependencies remain `undefined`; built-in `REQUEST` and `REQUEST_CONTEXT` tokens are never auto-mocked.                                                                                                              |
+| **Non-class tokens**                     | Pass `createAutoMocker({ mockUnregisteredTokens: true })` to return a lazy spy `Proxy` for unregistered string/symbol tokens.                                                                                                      |
+| **Spy API (`MockFunction`)**             | Every auto-mocked method exposes `.calls`, `.results`, `.callCount`, `.called`, `.mockReturnValue(Once)`, `.mockResolvedValue(Once)`, `.mockRejectedValue(Once)`, `.mockImplementation(Once)`, `.mockClear()`, and `.mockReset()`. |
 
 ---
 
@@ -304,12 +308,16 @@ const moduleRef = await Test.createTestingModule({
 Use `moduleRef.select(TargetModule)` to enforce strict module encapsulation ([ADR-007](/architecture/adrs)). `select()` is chainable and accepts both static module classes and `DynamicModule` instances:
 
 @@filename(select.spec.ts)
+
 ```ts
 // Strict lookup inside SecretModule (sees private providers of SecretModule only)
 const secretService = moduleRef.select(SecretModule).get(PrivateSecretService);
 
 // Chainable navigation across modules
-const repo = moduleRef.select(BillingModule).select(LedgerModule).get(LedgerRepo);
+const repo = moduleRef
+  .select(BillingModule)
+  .select(LedgerModule)
+  .get(LedgerRepo);
 
 // Retrieve every registration of a token across modules using `{ each: true }`
 const allPlugins = moduleRef.get(PLUGIN_TOKEN, { strict: false, each: true });
@@ -320,14 +328,10 @@ const allPlugins = moduleRef.get(PLUGIN_TOKEN, { strict: false, each: true });
 In NestJS-style tests, generate a synthetic `ContextId` with `ContextIdFactory.create()`, bind a mock `Request` via `registerRequestByContextId()`, and resolve `Scope.REQUEST` providers directly—no HTTP server required:
 
 @@filename(tenant.service.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import {
-  ContextIdFactory,
-  Test,
-  createMockRequest,
-} from "@bunest/testing";
+import { ContextIdFactory, Test, createMockRequest } from "@bunest/testing";
 import { TenantContext, TenantService } from "./tenant.service";
 
 describe("TenantService (Scope.REQUEST)", () => {
@@ -377,10 +381,16 @@ By default, `TestingModuleBuilder.compile()` attaches a **`TestingLogger`**, whi
 To assert on emitted logs cleanly without polluting stdout/stderr, pass **`CapturingLogger`** via `.setLogger(logger)` / `moduleRef.useLogger(logger)` (for framework & `DefaultExceptionFilter` logs) and/or inject it into your services via `overrideProvider`:
 
 @@filename(logging.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { Controller, Get, Inject, Injectable, type LoggerService } from "@bunest/core";
+import {
+  Controller,
+  Get,
+  Inject,
+  Injectable,
+  type LoggerService,
+} from "@bunest/core";
 import { CapturingLogger, Test, request } from "@bunest/testing";
 
 const APP_LOGGER = Symbol("APP_LOGGER");
@@ -431,7 +441,9 @@ describe("CapturingLogger assertions", () => {
     logger.assertLogged(/Charged 4900/, "log");
     logger.assertLogged("gateway timeout", "error");
     logger.assertNotLogged("payment failed", "warn");
-    expect(logger.filter({ level: "log", context: "BillingService" })).toHaveLength(1);
+    expect(
+      logger.filter({ level: "log", context: "BillingService" }),
+    ).toHaveLength(1);
 
     logger.clear();
     await app.close();
@@ -458,8 +470,8 @@ describe("CapturingLogger assertions", () => {
 `request(app)` provides a chainable, Supertest-compatible fluent API implementing `PromiseLike<SupertestResponse>`—zero sockets, zero npm `supertest` dependency:
 
 @@filename(test/accounts.e2e.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ValidationPipe, type BunestApplication } from "@bunest/core";
 import { Test, request } from "@bunest/testing";
@@ -510,9 +522,9 @@ describe("Accounts E2E (in-memory Supertest-style)", () => {
       .expect(400)
       .expect((res) => {
         expect(res.body.message).toBe("Validation failed");
-        expect(res.body.details.map((d: { field: string }) => d.field)).toContain(
-          "extraField",
-        );
+        expect(
+          res.body.details.map((d: { field: string }) => d.field),
+        ).toContain("extraField");
       });
   });
 
@@ -520,7 +532,10 @@ describe("Accounts E2E (in-memory Supertest-style)", () => {
     const agent = request.agent(app);
 
     // Server sets `Set-Cookie: sid=sess_42; HttpOnly; Path=/`
-    await agent.post("/auth/login").send({ email: "alice@example.com" }).expect(200);
+    await agent
+      .post("/auth/login")
+      .send({ email: "alice@example.com" })
+      .expect(200);
 
     // Cookie jar automatically sends `Cookie: sid=sess_42` on subsequent requests
     await agent.get("/auth/me").expect(200, { email: "alice@example.com" });
@@ -534,7 +549,7 @@ Supported `request(app)` (`SupertestAgent` & `SupertestRequest`) methods:
 - **`SupertestAgent` entrypoints & defaults:** `.get()`, `.post()`, `.put()`, `.patch()`, `.delete()`, `.head()`, `.options()`, `.request(method, path)`, plus agent-wide `.set()`, `.unset()`, `.auth()`, `.withCookies()`, `.getCookies()`, `.setCookie()`, `.clearCookies()`
 - **`SupertestRequest` headers & auth:** `.set(name, value)`, `.set(record)`, `.unset(name)`, `.auth(user, pass)`, `.auth(token, { type: "bearer" })`, `.type("json" | "form" | mime)`, `.accept(mime)`
 - **`SupertestRequest` payloads & params:** `.query(params)`, `.cookies(record)`, `.send(body)`, `.field(name, value)`, `.attach(field, data, filename?, contentType?)`
-- **`SupertestRequest` controls:** `.redirects(n)` *(defaults to `0` / manual so `301`/`302` `Location` headers can be asserted directly)*, `.timeout(ms)`
+- **`SupertestRequest` controls:** `.redirects(n)` _(defaults to `0` / manual so `301`/`302` `Location` headers can be asserted directly)_, `.timeout(ms)`
 - **`SupertestRequest` chainable assertions:** `.expect(status)`, `.expect(status, body)`, `.expect(headerName, string | RegExp)`, `.expect(bodyOrRegExp)`, `.expect((res) => ...)`
 
 ### 2. Web-Standard `TestClient`, `TestAgent` & Fastify-Style `app.inject()`
@@ -543,6 +558,7 @@ Prefer explicit Web-Standard `TestResponse` objects or Fastify-style `app.inject
 
 @@filename(test-client-and-inject.e2e.spec.ts)
 @@tab(TestClient & TestAgent)
+
 ```ts
 const moduleRef = await Test.createTestingModule({
   imports: [AccountsModule],
@@ -572,8 +588,10 @@ await agent.post("/auth/login", { json: { email: "alice@example.com" } });
 
 await moduleRef.close();
 ```
+
 @@switch
 @@tab(app.inject())
+
 ```ts
 const moduleRef = await Test.createTestingModule({
   imports: [AccountsModule],
@@ -608,8 +626,8 @@ await app.close();
 When testing real TCP sockets, WebSocket upgrades, or live `Bun.serve({ routes })` routing, bind an OS-assigned ephemeral port with `await app.listen(0)` (conflict-free across parallel `bun test` files) and point `TestClient.fromUrl(info.url)` or `request(app.getHttpServer())` at it:
 
 @@filename(live-server.e2e.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test, TestClient, request } from "@bunest/testing";
 import { AppModule } from "../src/app.module";
@@ -647,13 +665,19 @@ Test multipart file uploads with `.field()` + `.attach()` (or `FormData`), and c
 
 @@filename(multipart-and-sse.e2e.spec.ts)
 @@tab(Multipart Upload)
+
 ```ts
 import { request } from "@bunest/testing";
 
 const res = await request(app)
   .post("/files/upload")
   .field("album", "avatars")
-  .attach("avatar", new Uint8Array([1, 2, 3, 4]), "avatar.bin", "application/octet-stream")
+  .attach(
+    "avatar",
+    new Uint8Array([1, 2, 3, 4]),
+    "avatar.bin",
+    "application/octet-stream",
+  )
   .expect(201);
 
 expect(res.body).toEqual({
@@ -663,17 +687,17 @@ expect(res.body).toEqual({
   size: 4,
 });
 ```
+
 @@switch
 @@tab(SSE Streaming)
+
 ```ts
 import { TestClient, parseSseJson, readSseEvents } from "@bunest/testing";
 
 const client = TestClient.fromApp(app);
 const res = await client.get("/events/stream");
 
-res
-  .expectStatus(200)
-  .expectHeader("content-type", /text\/event-stream/);
+res.expectStatus(200).expectHeader("content-type", /text\/event-stream/);
 
 // Reads 2 events and cancels the reader (triggering generator `finally` cleanup)
 const events = await readSseEvents(res, {
@@ -691,6 +715,7 @@ expect(parseSseJson<{ count: number }>(events[0]!)).toEqual({ count: 1 });
 If you are migrating an existing NestJS repository that imports npm `supertest` directly, `@bunest/testing` provides `createNodeHttpServer(app)` to adapt any `BunestApplication` (`FetchCapable`) to a standard Node `http.Server`—preserving binary streams, abort cancellation, and multiple `Set-Cookie` headers:
 
 @@filename(legacy-supertest.e2e.spec.ts)
+
 ```ts
 import supertest from "supertest";
 import { Test, createNodeHttpServer } from "@bunest/testing";
@@ -712,7 +737,7 @@ try {
 }
 ```
 
-> warning **Architectural Boundary (ADR-001)** `node:http` is used **exclusively** inside `createNodeHttpServer()` in `@bunest/testing`—never in `@bunest/core` or `@bunest/http`. For new tests, prefer Bunest's built-in `request(app)` or `TestClient`, which run zero-socket in memory with no Node HTTP translation overhead.
+> warning **Architectural Boundary (ADR-001 / ADR-017)** `createNodeHttpServer()` in `@bunest/testing` runs natively on `Bun.serve({ port: 0 })` (zero `node:http`!). For new tests, prefer Bunest's built-in `request(app)` or `TestClient`, which run zero-socket in memory without opening a TCP port.
 
 ---
 
@@ -720,20 +745,20 @@ try {
 
 For testing guards, interceptors, middleware, exception filters, and ambient `RequestContext` helpers in pure isolation without compiling a module:
 
-| Fixture | Purpose |
-|---|---|
-| `createMockRequest(pathOrUrl?, options?)` | Builds a native Web `Request` with `method`, `baseUrl`, `query`, `headers`, `cookies`, `json`, `body`, `formData`, and `signal`. |
-| `createMockResponseContext()` | Returns a fresh `HttpResponseContext` for inspecting status, headers, and `Set-Cookie` mutations. |
-| `createMockExecutionContext(options?)` | Constructs an `ExecutionContext` (`HttpExecutionContext` for HTTP; cleanly isolated `ws: { client, data, pattern }` and `rpc: { data, context }` payloads without leaking HTTP objects). |
-| `createMockCallHandler(valueOrFactory)` | Builds a `CallHandler` spy exposing `.called` and `.callCount` to verify passthrough vs short-circuit interceptors. |
-| `createMockProvider(token, partialValue)` | Typed shorthand for `{ provide: token, useValue: partialValue as T }`. |
-| `createMockLogger(options?)` | Returns a `CapturingLogger` ready for log assertions. |
-| `createMockReflector(overrides?)` | Returns a real `Reflector` with optional method overrides. |
-| `runWithMockRequestContext(reqOrPath, fn, opts?)` | Executes `fn(ctx)` inside an active `AsyncLocalStorage` `RequestContext` so code calling `getCurrentRequestContext()` works in isolation. |
+| Fixture                                           | Purpose                                                                                                                                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createMockRequest(pathOrUrl?, options?)`         | Builds a native Web `Request` with `method`, `baseUrl`, `query`, `headers`, `cookies`, `json`, `body`, `formData`, and `signal`.                                                         |
+| `createMockResponseContext()`                     | Returns a fresh `HttpResponseContext` for inspecting status, headers, and `Set-Cookie` mutations.                                                                                        |
+| `createMockExecutionContext(options?)`            | Constructs an `ExecutionContext` (`HttpExecutionContext` for HTTP; cleanly isolated `ws: { client, data, pattern }` and `rpc: { data, context }` payloads without leaking HTTP objects). |
+| `createMockCallHandler(valueOrFactory)`           | Builds a `CallHandler` spy exposing `.called` and `.callCount` to verify passthrough vs short-circuit interceptors.                                                                      |
+| `createMockProvider(token, partialValue)`         | Typed shorthand for `{ provide: token, useValue: partialValue as T }`.                                                                                                                   |
+| `createMockLogger(options?)`                      | Returns a `CapturingLogger` ready for log assertions.                                                                                                                                    |
+| `createMockReflector(overrides?)`                 | Returns a real `Reflector` with optional method overrides.                                                                                                                               |
+| `runWithMockRequestContext(reqOrPath, fn, opts?)` | Executes `fn(ctx)` inside an active `AsyncLocalStorage` `RequestContext` so code calling `getCurrentRequestContext()` works in isolation.                                                |
 
 @@filename(roles.guard.spec.ts)
+
 ```ts
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   createMockCallHandler,
@@ -742,7 +767,7 @@ import {
   createMockRequest,
   runWithMockRequestContext,
 } from "@bunest/testing";
-import { getCurrentRequestContext } from "@bunest/http";
+import { getCurrentRequestContext } from "@bunest/core/http";
 import { RolesGuard } from "./roles.guard";
 import { TimingInterceptor } from "./timing.interceptor";
 import { AdminController } from "./admin.controller";
@@ -766,7 +791,11 @@ describe("Isolated enhancer fixtures", () => {
   it("tracks CallHandler invocations and supports WS/RPC contexts cleanly", async () => {
     const wsCtx = createMockExecutionContext({
       contextType: "ws",
-      ws: { client: { id: "sock_1" }, data: { room: "general" }, pattern: "join" },
+      ws: {
+        client: { id: "sock_1" },
+        data: { room: "general" },
+        pattern: "join",
+      },
     });
     expect(wsCtx.getType()).toBe("ws");
     expect(wsCtx.switchToWs().getPattern()).toBe("join");
@@ -795,22 +824,22 @@ describe("Isolated enhancer fixtures", () => {
 
 Official `@nestjs/testing` cannot be imported directly into a Bunest project because it couples directly to `@nestjs/core`'s internal `NestContainer`/`TestingInjector`, Express/Fastify HTTP adapters, Node `http.Server`, and RxJS `Observable` pipelines. Instead, `@bunest/testing` implements a **1-to-1 Bun-native equivalent** covering the full `@nestjs/testing` surface:
 
-| Capability | NestJS (`@nestjs/testing` + Jest + Supertest) | Bunest (`@bunest/testing` + `bun:test`) |
-|---|---|---|
-| **Test runner** | Jest / Vitest (`jest.fn()`, `jest-mock`) | Native **`bun:test`** (`*.spec.ts` / `*.e2e.spec.ts`) + zero-dep `createMockFn()` / `ModuleMocker` |
-| **Module builder** | `Test.createTestingModule(meta, opts?)` | `Test.createTestingModule(meta, opts?)` |
-| **DI overrides** | `overrideProvider` (`useValue`, `useClass`, `useFactory`) | `overrideProvider` (`useValue`, `useClass`, `useFactory`, **`useExisting`**) |
-| **Enhancer overrides** | `overrideGuard` / `Pipe` / `Interceptor` / `Filter` | `overrideGuard` / `Pipe` / `Interceptor` / `Filter` (full `APP_*` & `@Use*` + `@Catch` preservation) |
-| **Module overrides** | `overrideModule(Mod).useModule(Mock)` | `overrideModule(Mod).useModule(Mock)` (static, `@Global()`, `DynamicModule`, `forwardRef`) |
-| **Auto-mocking** | `.useMocker(token => ...)` + external `jest-mock` `ModuleMocker` | `.useMocker(createAutoMocker())` + built-in zero-dep `ModuleMocker` |
-| **Loggers** | `TestingLogger`, `CapturingLogger` (v12), `setLogger`, `useLogger`, `flushLogs` | `TestingLogger`, `CapturingLogger`, `setLogger`, `useLogger`, `flushLogs` |
-| **App creation** | `moduleRef.createNestApplication()` | `moduleRef.createNestApplication()` **and** `moduleRef.createBunestApplication()` |
-| **Scoped lookups** | `select(Mod)`, `get(tok, { strict, each })`, `resolve(tok, ctxId, opts)` | `select(Mod)` (chainable + `DynamicModule`), `get` / `resolve` with `{ strict, each }` |
-| **Request scope DI** | `ContextIdFactory.create()` + `registerRequestByContextId()` | `ContextIdFactory.create()` + `registerRequestByContextId()` + `createRequestContainer()` |
-| **In-memory E2E** | `supertest(app.getHttpServer())` (Node socket) or Fastify `app.inject()` | **Zero-socket** `request(app)`, `request.agent(app)`, `TestClient`, **and** `app.inject()` |
-| **Live HTTP / WS** | `await app.listen(0)` + `app.getUrl()` | `await app.listen(0)` + `TestClient.fromUrl(info.url)` / `request(app.getHttpServer())` |
-| **Legacy Supertest** | Native via Node `http.Server` | Optional `supertest(createNodeHttpServer(app))` bridge |
-| **SSE & Multipart** | Manual stream parsing / Multer | Built-in `readSseEvents()`, `parseSseJson()`, and `.field()` + `.attach()` |
-| **Interceptors** | RxJS `Observable` (`of(...)`) | Native `Promise` (`createMockCallHandler(() => ...)`) |
+| Capability             | NestJS (`@nestjs/testing` + Jest + Supertest)                                   | Bunest (`@bunest/testing` + `bun:test`)                                                              |
+| ---------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Test runner**        | Jest / Vitest (`jest.fn()`, `jest-mock`)                                        | Native **`bun:test`** (`*.spec.ts` / `*.e2e.spec.ts`) + zero-dep `createMockFn()` / `ModuleMocker`   |
+| **Module builder**     | `Test.createTestingModule(meta, opts?)`                                         | `Test.createTestingModule(meta, opts?)`                                                              |
+| **DI overrides**       | `overrideProvider` (`useValue`, `useClass`, `useFactory`)                       | `overrideProvider` (`useValue`, `useClass`, `useFactory`, **`useExisting`**)                         |
+| **Enhancer overrides** | `overrideGuard` / `Pipe` / `Interceptor` / `Filter`                             | `overrideGuard` / `Pipe` / `Interceptor` / `Filter` (full `APP_*` & `@Use*` + `@Catch` preservation) |
+| **Module overrides**   | `overrideModule(Mod).useModule(Mock)`                                           | `overrideModule(Mod).useModule(Mock)` (static, `@Global()`, `DynamicModule`, `forwardRef`)           |
+| **Auto-mocking**       | `.useMocker(token => ...)` + external `jest-mock` `ModuleMocker`                | `.useMocker(createAutoMocker())` + built-in zero-dep `ModuleMocker`                                  |
+| **Loggers**            | `TestingLogger`, `CapturingLogger` (v12), `setLogger`, `useLogger`, `flushLogs` | `TestingLogger`, `CapturingLogger`, `setLogger`, `useLogger`, `flushLogs`                            |
+| **App creation**       | `moduleRef.createNestApplication()`                                             | `moduleRef.createNestApplication()` **and** `moduleRef.createBunestApplication()`                    |
+| **Scoped lookups**     | `select(Mod)`, `get(tok, { strict, each })`, `resolve(tok, ctxId, opts)`        | `select(Mod)` (chainable + `DynamicModule`), `get` / `resolve` with `{ strict, each }`               |
+| **Request scope DI**   | `ContextIdFactory.create()` + `registerRequestByContextId()`                    | `ContextIdFactory.create()` + `registerRequestByContextId()` + `createRequestContainer()`            |
+| **In-memory E2E**      | `supertest(app.getHttpServer())` (Node socket) or Fastify `app.inject()`        | **Zero-socket** `request(app)`, `request.agent(app)`, `TestClient`, **and** `app.inject()`           |
+| **Live HTTP / WS**     | `await app.listen(0)` + `app.getUrl()`                                          | `await app.listen(0)` + `TestClient.fromUrl(info.url)` / `request(app.getHttpServer())`              |
+| **Legacy Supertest**   | Native via Node `http.Server`                                                   | Optional `supertest(createNodeHttpServer(app))` bridge                                               |
+| **SSE & Multipart**    | Manual stream parsing / Multer                                                  | Built-in `readSseEvents()`, `parseSseJson()`, and `.field()` + `.attach()`                           |
+| **Interceptors**       | RxJS `Observable` (`of(...)`)                                                   | Native `Promise` (`createMockCallHandler(() => ...)`)                                                |
 
 > tip **Coming from NestJS?** See the [Migration from NestJS](/architecture/migration-from-nestjs) guide for side-by-side Jest/Supertest-to-Bunest conversions and a full migration checklist.

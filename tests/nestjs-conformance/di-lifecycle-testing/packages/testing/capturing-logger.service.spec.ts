@@ -1,10 +1,17 @@
-import "reflect-metadata";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import {
   ConsoleLogger,
   Logger,
   type LoggerService,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { CapturingLogger, describeConformance } from "../../../_helpers";
 
 describeConformance(
@@ -246,7 +253,9 @@ describeConformance(
         expect(
           logger.filter({ level: "error", context: "Payments" }),
         ).toHaveLength(1);
-        expect(logger.filter({ level: "log", context: "Payments" })).toEqual([]);
+        expect(logger.filter({ level: "log", context: "Payments" })).toEqual(
+          [],
+        );
       });
 
       it("should return every entry without a matcher", () => {
@@ -303,7 +312,7 @@ describeConformance(
         Logger.overrideLogger(true);
       });
 
-      // BUNEST_BUG: Logger.overrideLogger(customLogger) overrides static Logger.warn/log calls but does NOT route existing or newly constructed `new Logger(context)` instances through the overridden logger (packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: Logger.overrideLogger(customLogger) overrides static Logger.warn/log calls but does NOT route existing or newly constructed `new Logger(context)` instances through the overridden logger (packages/core/src/common/logger/logger.ts)
       it.skip("should capture Logger instances after Logger.overrideLogger", () => {
         const serviceLogger = new Logger("OrdersService");
         serviceLogger.log("before the override");
@@ -314,8 +323,12 @@ describeConformance(
         Logger.warn("static", "Static");
 
         expect(logger.entries.length).toBeGreaterThanOrEqual(3);
-        expect(logger.find({ level: "log", message: "Order created" })).toBeDefined();
-        expect(logger.find({ level: "error", message: "Order failed" })).toBeDefined();
+        expect(
+          logger.find({ level: "log", message: "Order created" }),
+        ).toBeDefined();
+        expect(
+          logger.find({ level: "error", message: "Order failed" }),
+        ).toBeDefined();
         expect(logger.find({ level: "warn", message: "static" })).toBeDefined();
       });
 
@@ -326,12 +339,18 @@ describeConformance(
         Logger.error("Static error", "Static");
 
         expect(logger.entries).toHaveLength(3);
-        expect(logger.find({ level: "log", message: "Static log" })).toBeDefined();
-        expect(logger.find({ level: "warn", message: "Static warn" })).toBeDefined();
-        expect(logger.find({ level: "error", message: "Static error" })).toBeDefined();
+        expect(
+          logger.find({ level: "log", message: "Static log" }),
+        ).toBeDefined();
+        expect(
+          logger.find({ level: "warn", message: "Static warn" }),
+        ).toBeDefined();
+        expect(
+          logger.find({ level: "error", message: "Static error" }),
+        ).toBeDefined();
       });
 
-      // BUNEST_BUG: new Logger('OrdersService').error(...) ignores Logger.overrideLogger(logger) (packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: new Logger('OrdersService').error(...) ignores Logger.overrideLogger(logger) (packages/core/src/common/logger/logger.ts)
       it.skip("should capture errors logged by a Logger instance without a stack", () => {
         Logger.overrideLogger(logger);
         new Logger("OrdersService").error("Order failed");
@@ -343,7 +362,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Logger.isLevelEnabled() does not consult overridden CapturingLogger's configured levels (packages/common/src/logger/logger.ts)
+      // BUNEST_BUG: Logger.isLevelEnabled() does not consult overridden CapturingLogger's configured levels (packages/core/src/common/logger/logger.ts)
       it.skip("should report its levels through Logger.isLevelEnabled", () => {
         Logger.overrideLogger(new CapturingLogger({ levels: ["warn"] }));
 

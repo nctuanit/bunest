@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   type CanActivate,
@@ -6,7 +5,7 @@ import {
   Injectable,
   Module,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   type BunestApplication,
   NestFactory,

@@ -1,10 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import {
-  Inject,
-  Injectable,
-  Module,
-} from "../../../../../packages/common/src";
+import { Inject, Injectable, Module } from "../../../../../packages/core/src/common";
 import { UnknownDependencyException } from "../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../_helpers";
 

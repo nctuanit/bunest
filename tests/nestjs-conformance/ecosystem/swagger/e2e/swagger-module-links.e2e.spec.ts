@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Module,
   Param,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../packages/core/src";
 import {
   ApiExcludeController,

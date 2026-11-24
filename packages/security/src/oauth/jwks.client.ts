@@ -6,7 +6,7 @@ import {
   type DynamicModule,
   type FactoryDependency,
   type ModuleMetadata,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   JwtExpiredException,
   JwtInvalidException,
@@ -30,12 +30,7 @@ export type FetchLike = (
 ) => Promise<Response>;
 
 export type JwksAlgorithm =
-  | "RS256"
-  | "RS384"
-  | "RS512"
-  | "ES256"
-  | "ES384"
-  | "ES512";
+  "RS256" | "RS384" | "RS512" | "ES256" | "ES384" | "ES512";
 
 export interface JwksKey {
   kty: string;
@@ -143,7 +138,9 @@ function getExpectedEcCurve(alg: JwksAlgorithm): "P-256" | "P-384" | "P-521" {
     case "ES512":
       return "P-521";
     default:
-      throw new JwtInvalidException(`Algorithm "${alg}" is not an ECDSA algorithm`);
+      throw new JwtInvalidException(
+        `Algorithm "${alg}" is not an ECDSA algorithm`,
+      );
   }
 }
 
@@ -185,10 +182,7 @@ export async function importPublicJwk(
     );
   }
 
-  if (
-    typeof jwk.alg === "string" &&
-    jwk.alg.toLowerCase() === "none"
-  ) {
+  if (typeof jwk.alg === "string" && jwk.alg.toLowerCase() === "none") {
     throw new JwtInvalidException('Rejected JWK with forbidden alg: "none"');
   }
 
@@ -198,10 +192,7 @@ export async function importPublicJwk(
     );
   }
 
-  if (
-    Array.isArray(jwk.key_ops) &&
-    !jwk.key_ops.includes("verify")
-  ) {
+  if (Array.isArray(jwk.key_ops) && !jwk.key_ops.includes("verify")) {
     throw new JwtInvalidException(
       'Rejected JWK whose key_ops does not include "verify"',
     );
@@ -238,9 +229,7 @@ export async function importPublicJwk(
     }
     resolvedAlg = inferred;
   } else {
-    throw new JwtInvalidException(
-      `Unsupported JWK key type: "${jwk.kty}"`,
-    );
+    throw new JwtInvalidException(`Unsupported JWK key type: "${jwk.kty}"`);
   }
 
   if (RSA_ALGS.has(resolvedAlg)) {
@@ -355,9 +344,7 @@ export class JwksClient {
   private readonly defaultAlgorithms?: readonly JwksAlgorithm[];
   private readonly defaultIssuer?: string | readonly string[];
   private readonly defaultAudience?:
-    | string
-    | RegExp
-    | ReadonlyArray<string | RegExp>;
+    string | RegExp | ReadonlyArray<string | RegExp>;
   private readonly defaultClockTolerance?: number;
 
   private cache: CachedJwksState | null = null;
@@ -370,7 +357,11 @@ export class JwksClient {
     @Inject(JWKS_CLIENT_OPTIONS)
     options?: JwksClientOptions,
   ) {
-    if (!options || typeof options.jwksUri !== "string" || options.jwksUri.trim().length === 0) {
+    if (
+      !options ||
+      typeof options.jwksUri !== "string" ||
+      options.jwksUri.trim().length === 0
+    ) {
       throw new Error("JwksClient requires a non-empty jwksUri option");
     }
     this.jwksUri = options.jwksUri.trim();
@@ -545,7 +536,10 @@ export class JwksClient {
     }
 
     const rawKid = header.kid;
-    if (rawKid !== undefined && (typeof rawKid !== "string" || rawKid.length === 0)) {
+    if (
+      rawKid !== undefined &&
+      (typeof rawKid !== "string" || rawKid.length === 0)
+    ) {
       throw new JwtInvalidException("Malformed JWT header kid");
     }
 
@@ -593,7 +587,9 @@ export class JwksClient {
     alg: JwksAlgorithm,
   ): JwksKey | undefined {
     const expectedKty = RSA_ALGS.has(alg) ? "RSA" : "EC";
-    const expectedCurve = EC_ALGS.has(alg) ? getExpectedEcCurve(alg) : undefined;
+    const expectedCurve = EC_ALGS.has(alg)
+      ? getExpectedEcCurve(alg)
+      : undefined;
 
     if (kid !== undefined) {
       const byKid = keys.filter((k) => isPlainRecord(k) && k.kid === kid);
@@ -634,7 +630,9 @@ export class JwksClient {
     );
     if (
       sigKeys.length > 0 &&
-      sigKeys.every((k) => typeof k.kty === "string" && k.kty.toLowerCase() === "oct")
+      sigKeys.every(
+        (k) => typeof k.kty === "string" && k.kty.toLowerCase() === "oct",
+      )
     ) {
       throw new JwtInvalidException(
         'Rejected symmetric JWK (kty: "oct"): JWKS verification requires asymmetric public keys',
@@ -734,7 +732,10 @@ export class JwksClient {
     );
     const tolerance = opts.clockTolerance ?? 0;
 
-    if (payload.iat !== undefined && (typeof payload.iat !== "number" || !Number.isFinite(payload.iat))) {
+    if (
+      payload.iat !== undefined &&
+      (typeof payload.iat !== "number" || !Number.isFinite(payload.iat))
+    ) {
       throw new JwtInvalidException("Invalid JWT iat claim");
     }
 

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
   Module,
   Post,
   RawBody,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../../packages/core/src";
 import {
   Test,

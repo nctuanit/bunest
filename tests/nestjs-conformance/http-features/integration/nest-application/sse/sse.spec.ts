@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Type } from "class-transformer";
-import { IsInt } from "class-validator";
+import { Type } from "../../../../../../packages/validation/src/transformer";
+import { IsInt } from "../../../../../../packages/validation/src/validator";
 import {
   Body,
   Catch,
@@ -23,7 +22,7 @@ import {
   type ExecutionContext,
   type ExceptionFilter,
   type SseMessageEvent,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   BaseExceptionFilter,
   type BunestApplication,
@@ -651,7 +650,7 @@ describeConformance(
         expect(events.map((e) => e.data)).toEqual(["1", "0", "true"]);
       });
 
-      // BUNEST_BUG: formatSseEvent throws uncaught TypeError on BigInt inside ReadableStream.pull() causing ECONNRESET instead of emitting `event: error` and closing cleanly (packages/http/src/pipeline/response-serializer.ts:108, 434).
+      // BUNEST_BUG: formatSseEvent throws uncaught TypeError on BigInt inside ReadableStream.pull() causing ECONNRESET instead of emitting `event: error` and closing cleanly (packages/core/src/http/pipeline/response-serializer.ts:108, 434).
       it.skip("should send an error event and end the stream when a later event cannot be serialized", async () => {
         const response = await fetch(`${app.getUrl()}sse/unserializable`, {
           signal: AbortSignal.timeout(2000),
@@ -663,7 +662,7 @@ describeConformance(
         expect(body).not.toContain('data: {"n":3}');
       });
 
-      // BUNEST_BUG: createSseStream commits HTTP 200 text/event-stream headers before pulling/serializing the first event, so a BigInt serialization failure causes ECONNRESET instead of HTTP 500 JSON (packages/http/src/pipeline/response-serializer.ts:108, 434, 554-569).
+      // BUNEST_BUG: createSseStream commits HTTP 200 text/event-stream headers before pulling/serializing the first event, so a BigInt serialization failure causes ECONNRESET instead of HTTP 500 JSON (packages/core/src/http/pipeline/response-serializer.ts:108, 434, 554-569).
       it.skip("should return an error status when the first event cannot be serialized", async () => {
         const response = await fetch(
           `${app.getUrl()}sse/unserializable-first`,
@@ -937,7 +936,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: @SseSignal() injects raw ctx.signal (req.signal) without a stream-lifecycle AbortController, so it never aborts when an SSE stream completes naturally (packages/http/src/pipeline/param-extractor.ts:201-202, packages/http/src/pipeline/response-serializer.ts:567).
+      // BUNEST_BUG: @SseSignal() injects raw ctx.signal (req.signal) without a stream-lifecycle AbortController, so it never aborts when an SSE stream completes naturally (packages/core/src/http/pipeline/param-extractor.ts:201-202, packages/core/src/http/pipeline/response-serializer.ts:567).
       it.skip("aborts the signal once a stream that runs to completion has ended", async () => {
         const base = app.getUrl()!;
         const response = await fetch(`${base}sse/signal/completing`, {
@@ -948,7 +947,8 @@ describeConformance(
         expect(body).toContain('data: {"chunk":1}');
 
         const stats: any = await pollUntil(
-          async () => (await fetch(`${base}sse/signal/completing/stats`)).json(),
+          async () =>
+            (await fetch(`${base}sse/signal/completing/stats`)).json(),
           (s: any) => s.abortsObserved > 0,
           "Timed out waiting for completing SSE signal abort",
         );

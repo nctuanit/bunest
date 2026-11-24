@@ -19,7 +19,7 @@ import {
   type Type,
   type VersionValue,
   type VersioningOptions,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   type BunestApplication,
   resolveRouterModulePrefixes,
@@ -30,7 +30,7 @@ import {
   type HttpRuntimeBridge,
   normalizePath,
   scanControllers,
-} from "@bunest/http";
+} from "@bunest/core/http";
 import { SWAGGER_METADATA_KEYS } from "./constants";
 import { ApiExcludeController } from "./decorators/api.decorators";
 import {
@@ -181,13 +181,10 @@ function readAdapterGlobalPrefix(adapter: BunHttpAdapter): {
   prefix?: string;
   options?: GlobalPrefixOptions;
 } {
-  const raw = adapter as unknown as {
-    globalPrefix?: string;
-    globalPrefixOptions?: GlobalPrefixOptions;
-  };
+  const rawPrefix = adapter.getGlobalPrefix();
   return {
-    prefix: raw.globalPrefix,
-    options: raw.globalPrefixOptions,
+    prefix: typeof rawPrefix === "string" ? rawPrefix : rawPrefix?.[0],
+    options: adapter.getGlobalPrefixOptions(),
   };
 }
 
@@ -350,16 +347,16 @@ function getOrInstallAdapterRegistry(
   ) => {
     const nextOptions =
       registry.excludedPaths.size > 0
-        ? mergeExcludedGlobalPrefixOptions(prefixOptions, registry.excludedPaths)
+        ? mergeExcludedGlobalPrefixOptions(
+            prefixOptions,
+            registry.excludedPaths,
+          )
         : prefixOptions;
     return originalSetGlobalPrefix(prefix, nextOptions);
   };
 
   const existingBridge: HttpRuntimeBridge | undefined =
-    typeof (adapter as unknown as { getBridge?: () => HttpRuntimeBridge })
-      .getBridge === "function"
-      ? (adapter as unknown as { getBridge: () => HttpRuntimeBridge }).getBridge()
-      : (adapter as unknown as { bridge?: HttpRuntimeBridge }).bridge;
+    typeof adapter.getBridge === "function" ? adapter.getBridge() : undefined;
 
   const bridge: HttpRuntimeBridge = {
     resolveController(controllerToken, requestContainer) {
@@ -507,7 +504,9 @@ function applyUriVersionToPath(
   }
   const normalizedFull = normalizePath(fullPath);
   const versionSegment = `${uriPrefix}${version}`;
-  const normalizedGlobal = globalPrefix ? normalizePath(globalPrefix) : undefined;
+  const normalizedGlobal = globalPrefix
+    ? normalizePath(globalPrefix)
+    : undefined;
 
   if (
     normalizedGlobal &&
@@ -1193,8 +1192,7 @@ export class SwaggerModule {
         (docsPath === "/" ? "/openapi-yaml" : `${docsPath}-yaml`),
     );
 
-    const serveUi =
-      options.swaggerUiEnabled !== false && options.ui !== false;
+    const serveUi = options.swaggerUiEnabled !== false && options.ui !== false;
     const rawOption = options.raw ?? true;
     const serveJson =
       rawOption === true ||
@@ -1363,11 +1361,15 @@ export class SwaggerModule {
       if (serveUi) registry.excludedPaths.add(docsPath);
       if (serveJson) registry.excludedPaths.add(jsonPath);
       if (serveYaml) registry.excludedPaths.add(yamlPath);
-      const { prefix, options: prefixOptions } = readAdapterGlobalPrefix(adapter);
+      const { prefix, options: prefixOptions } =
+        readAdapterGlobalPrefix(adapter);
       if (prefix) {
         registry.originalSetGlobalPrefix(
           prefix,
-          mergeExcludedGlobalPrefixOptions(prefixOptions, registry.excludedPaths),
+          mergeExcludedGlobalPrefixOptions(
+            prefixOptions,
+            registry.excludedPaths,
+          ),
         );
       }
     }
@@ -1418,7 +1420,9 @@ export class SwaggerModule {
         handlerFn,
       ) ?? [];
     const opMetaTags = opMeta?.tags ?? [];
-    const combinedTags = [...new Set([...ctrlTags, ...methodTags, ...opMetaTags])];
+    const combinedTags = [
+      ...new Set([...ctrlTags, ...methodTags, ...opMetaTags]),
+    ];
     const autoTag = options.autoTagControllers !== false;
     const tags =
       combinedTags.length > 0
@@ -1700,7 +1704,9 @@ export class SwaggerModule {
             in: "path",
             required: existing?.required ?? true,
             schema:
-              existingSchemaObj?.pattern && !("$ref" in schema) && !schema.pattern
+              existingSchemaObj?.pattern &&
+              !("$ref" in schema) &&
+              !schema.pattern
                 ? { ...schema, pattern: existingSchemaObj.pattern }
                 : schema,
           });
@@ -1841,11 +1847,7 @@ export class SwaggerModule {
       ) ?? [];
     for (const q of [...ctrlQueries, ...methodQueries]) {
       // Whole-DTO `@ApiQuery({ type: FilterDto })` without `name` expands DTO properties as query params
-      if (
-        !q.name &&
-        q.type !== undefined &&
-        isDtoConstructor(q.type)
-      ) {
+      if (!q.name && q.type !== undefined && isDtoConstructor(q.type)) {
         const dtoName = explorer.registerDtoSchema(q.type);
         const dtoSchema = explorer.getSchemas()[dtoName];
         if (dtoSchema?.properties) {
@@ -1978,13 +1980,21 @@ export class SwaggerModule {
       } else {
         schema = { type: "object" as const };
       }
-      if (apiBody.enum !== undefined && !schema.enum && schema.type !== "array") {
+      if (
+        apiBody.enum !== undefined &&
+        !schema.enum &&
+        schema.type !== "array"
+      ) {
         schema.enum = normalizeEnumValues(apiBody.enum);
       }
       const mediaType: OpenApiMediaType = {
         schema,
-        ...(apiBody.examples !== undefined ? { examples: apiBody.examples } : {}),
-        ...(apiBody.encoding !== undefined ? { encoding: apiBody.encoding } : {}),
+        ...(apiBody.examples !== undefined
+          ? { examples: apiBody.examples }
+          : {}),
+        ...(apiBody.encoding !== undefined
+          ? { encoding: apiBody.encoding }
+          : {}),
       };
       return {
         ...(apiBody.description !== undefined
@@ -2089,7 +2099,10 @@ export class SwaggerModule {
       readonly isArray?: boolean;
       readonly status?: number;
     },
-    opResponses?: Record<string, OpenApiResponse | { $ref: string } | undefined>,
+    opResponses?: Record<
+      string,
+      OpenApiResponse | { $ref: string } | undefined
+    >,
   ): {
     responses: Record<string, OpenApiResponse>;
     responseModels: Map<string, Type<unknown> | Function>;

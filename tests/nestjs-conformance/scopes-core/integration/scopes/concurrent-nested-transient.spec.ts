@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   APP_GUARD,
@@ -14,7 +13,7 @@ import {
   type CanActivate,
   type ExecutionContext,
   type NestInterceptor,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it, mock } from "bun:test";
 import {
   Controller,
@@ -8,7 +7,7 @@ import {
   Module as ModuleDecorator,
   Scope,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   Test,
   TestingLogger,

@@ -25,13 +25,20 @@ import {
   type Provider,
   type ResponseContext,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import {
   BUNEST_APPLICATION_CONFIG_TOKEN,
   BUNEST_HTTP_ADAPTER_HOST_TOKEN,
   getCurrentRequestContext,
   type AbstractHttpAdapter,
-} from "@bunest/http";
+} from "../http/index";
+import {
+  AOP_POINTCUTS_TOKEN,
+  getGlobalPointcuts,
+  getGlobalPointcutsVersion,
+  hasMatchingPointcuts,
+  type PointcutRule,
+} from "../aop/aop-pipeline";
 import {
   collectClassAspectTokens,
   isMethodAspectClass,
@@ -95,6 +102,8 @@ import { ContextIdFactory } from "./context-id.factory";
 import { ModuleRef } from "./module-ref";
 import { ModulesContainer } from "./modules-container";
 import { RequestContainer } from "./request-container";
+
+const EMPTY_POINTCUTS: readonly PointcutRule[] = Object.freeze([]);
 
 export interface DIContainerOptions {
   readonly preview?: boolean;
@@ -320,7 +329,28 @@ export class DIContainer
   private readonly deferredBoxes = new Map<string, DeferredProxyBox>();
   private readonly tokenKeyIds = new Map<InjectionToken, number>();
   private readonly requestScopeCache = new Map<string, boolean>();
-  private readonly aspectPresenceCache = new WeakMap<Function, boolean>();
+  private aspectPresenceCache = new WeakMap<Function, boolean>();
+  private dynamicAspectPresenceCache = new WeakMap<Function, boolean>();
+  private moduleAspectPresenceCache = new WeakMap<
+    ModuleNode,
+    WeakMap<Function, boolean>
+  >();
+  private moduleDynamicAspectPresenceCache = new WeakMap<
+    ModuleNode,
+    WeakMap<Function, boolean>
+  >();
+  private cachedGlobalPointcutsVersion = getGlobalPointcutsVersion();
+  private readonly resolvedPointcutProviders = new Map<
+    ModuleNode,
+    readonly PointcutRule[]
+  >();
+  private ownerPointcutsCache = new WeakMap<
+    ModuleNode,
+    readonly PointcutRule[]
+  >();
+  private containerGlobalPointcuts: readonly PointcutRule[] = [];
+  private hasModuleScopedPointcuts = false;
+  private pointcutsIndexed = false;
   private readonly wovenInstances = new WeakSet<object>();
   private tokenIdCounter = 0;
   private syntheticCounter = 0;
@@ -471,8 +501,8 @@ export class DIContainer
     return this.httpAdapterHost;
   }
 
-  setHttpAdapter(httpAdapter: any): void {
-    this.httpAdapterHost.httpAdapter = httpAdapter;
+  setHttpAdapter(httpAdapter: unknown): void {
+    this.httpAdapterHost.httpAdapter = httpAdapter as HttpAdapterHost["httpAdapter"];
   }
 
   registerCoreModuleRef(moduleRef: ModuleNode): void {
@@ -494,7 +524,10 @@ export class DIContainer
     if (dynamicMetadata?.global === true) {
       return true;
     }
-    return MetadataRegistry.get<boolean>(METADATA_KEYS.GLOBAL_MODULE, metatype) === true;
+    return (
+      MetadataRegistry.get<boolean>(METADATA_KEYS.GLOBAL_MODULE, metatype) ===
+      true
+    );
   }
 
   addGlobalModule(module: ModuleNode): void {
@@ -706,6 +739,9 @@ export class DIContainer
       } else {
         mod.providers.set(normalized.token, normalized);
       }
+      if (normalized.token === AOP_POINTCUTS_TOKEN) {
+        this.invalidatePointcutCaches();
+      }
     }
     return normalized.token;
   }
@@ -758,20 +794,18 @@ export class DIContainer
     this.indexControllerEnhancers(controller, mod);
   }
 
-  replace(
-    toReplace: any,
-    options: { scope: any[] | null },
-  ): void {
-    if (!toReplace || typeof toReplace !== "object" || !("provide" in toReplace)) {
+  replace(toReplace: unknown, options: { scope: unknown[] | null }): void {
+    if (
+      !toReplace ||
+      typeof toReplace !== "object" ||
+      !("provide" in toReplace)
+    ) {
       return;
     }
     const normalized = normalizeProvider(toReplace as Provider);
     const targetScopes = options.scope;
     for (const mod of this.modulesMap.values()) {
-      if (
-        targetScopes === null ||
-        targetScopes.includes(mod.metatype)
-      ) {
+      if (targetScopes === null || targetScopes.includes(mod.metatype)) {
         if (mod.providers.has(normalized.token)) {
           mod.providers.set(normalized.token, normalized);
           this.singletons.delete(this.makeInstanceKey(mod, normalized.token));
@@ -836,17 +870,271 @@ export class DIContainer
     return value;
   }
 
+  private invalidatePointcutCaches(): void {
+    this.pointcutsIndexed = false;
+    this.aspectPresenceCache = new WeakMap<Function, boolean>();
+    this.dynamicAspectPresenceCache = new WeakMap<Function, boolean>();
+    this.moduleAspectPresenceCache = new WeakMap<
+      ModuleNode,
+      WeakMap<Function, boolean>
+    >();
+    this.moduleDynamicAspectPresenceCache = new WeakMap<
+      ModuleNode,
+      WeakMap<Function, boolean>
+    >();
+    this.ownerPointcutsCache = new WeakMap<
+      ModuleNode,
+      readonly PointcutRule[]
+    >();
+  }
+
+  private extractPointcutRules(value: unknown): PointcutRule[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const rules: PointcutRule[] = [];
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (
+        typeof item === "object" &&
+        item !== null &&
+        "match" in item &&
+        "aspects" in item &&
+        Array.isArray((item as PointcutRule).aspects)
+      ) {
+        rules.push(item as PointcutRule);
+      }
+    }
+    return rules;
+  }
+
+  private rebuildPointcutSummary(): void {
+    const globalList: PointcutRule[] = [];
+    let hasScoped = false;
+
+    for (const [mod, rules] of this.resolvedPointcutProviders.entries()) {
+      if (rules.length === 0) {
+        continue;
+      }
+      if (mod.isGlobal) {
+        globalList.push(...rules);
+      } else {
+        hasScoped = true;
+      }
+    }
+
+    this.containerGlobalPointcuts = globalList;
+    this.hasModuleScopedPointcuts = hasScoped;
+    this.aspectPresenceCache = new WeakMap<Function, boolean>();
+    this.dynamicAspectPresenceCache = new WeakMap<Function, boolean>();
+    this.moduleAspectPresenceCache = new WeakMap<
+      ModuleNode,
+      WeakMap<Function, boolean>
+    >();
+    this.moduleDynamicAspectPresenceCache = new WeakMap<
+      ModuleNode,
+      WeakMap<Function, boolean>
+    >();
+    this.ownerPointcutsCache = new WeakMap<
+      ModuleNode,
+      readonly PointcutRule[]
+    >();
+  }
+
+  private indexValuePointcutsIfNeeded(): void {
+    if (this.pointcutsIndexed) {
+      return;
+    }
+    this.pointcutsIndexed = true;
+    for (const mod of this.graph.topologicalOrder) {
+      if (this.resolvedPointcutProviders.has(mod)) {
+        continue;
+      }
+      const provider = mod.providers.get(AOP_POINTCUTS_TOKEN);
+      if (provider && provider.kind === "value") {
+        const rules = this.extractPointcutRules(provider.useValue);
+        if (rules.length > 0) {
+          this.resolvedPointcutProviders.set(mod, rules);
+        }
+      }
+    }
+    this.rebuildPointcutSummary();
+  }
+
+  private async preloadAopPointcuts(): Promise<void> {
+    this.resolvedPointcutProviders.clear();
+    for (const mod of this.graph.topologicalOrder) {
+      const provider = mod.providers.get(AOP_POINTCUTS_TOKEN);
+      if (!provider) {
+        continue;
+      }
+      const rawValue =
+        provider.kind === "value"
+          ? provider.useValue
+          : await this.resolveNormalizedProvider(
+              mod,
+              provider,
+              undefined,
+              new Set(),
+            );
+      const rules = this.extractPointcutRules(rawValue);
+      if (rules.length > 0) {
+        this.resolvedPointcutProviders.set(mod, rules);
+      }
+    }
+    this.pointcutsIndexed = true;
+    this.rebuildPointcutSummary();
+  }
+
+  private syncGlobalPointcutsCache(): void {
+    const currentVer = getGlobalPointcutsVersion();
+    if (currentVer !== this.cachedGlobalPointcutsVersion) {
+      this.cachedGlobalPointcutsVersion = currentVer;
+      this.aspectPresenceCache = new WeakMap<Function, boolean>();
+      this.dynamicAspectPresenceCache = new WeakMap<Function, boolean>();
+      this.moduleAspectPresenceCache = new WeakMap<
+        ModuleNode,
+        WeakMap<Function, boolean>
+      >();
+      this.moduleDynamicAspectPresenceCache = new WeakMap<
+        ModuleNode,
+        WeakMap<Function, boolean>
+      >();
+      this.ownerPointcutsCache = new WeakMap<
+        ModuleNode,
+        readonly PointcutRule[]
+      >();
+    }
+  }
+
   /**
-   * O(1) WeakMap-cached check for whether `cls` (or any ancestor) declares
-   * method aspects — guarantees zero hot-path overhead for plain classes.
+   * Resolves all active declarative `PointcutRule`s applicable to classes owned
+   * by `owner` (combining global registry pointcuts, `@Global()` `AopModule`
+   * pointcuts, and module-scoped `AOP_POINTCUTS_TOKEN` pointcuts visible to `owner`).
    */
-  private hasAspectsForClass(cls: Function): boolean {
-    const cached = this.aspectPresenceCache.get(cls);
+  getActivePointcuts(owner?: ModuleNode): readonly PointcutRule[] {
+    this.syncGlobalPointcutsCache();
+    this.indexValuePointcutsIfNeeded();
+
+    const globalRules = getGlobalPointcuts();
+    if (!this.hasModuleScopedPointcuts || !owner) {
+      if (
+        globalRules.length === 0 &&
+        this.containerGlobalPointcuts.length === 0
+      ) {
+        return EMPTY_POINTCUTS;
+      }
+      if (globalRules.length === 0) {
+        return this.containerGlobalPointcuts;
+      }
+      if (this.containerGlobalPointcuts.length === 0) {
+        return globalRules;
+      }
+      return [...globalRules, ...this.containerGlobalPointcuts];
+    }
+
+    const cached = this.ownerPointcutsCache.get(owner);
     if (cached !== undefined) {
       return cached;
     }
-    const present = hasMethodAspects(cls);
-    this.aspectPresenceCache.set(cls, present);
+
+    const combined: PointcutRule[] = [];
+    if (globalRules.length > 0) {
+      combined.push(...globalRules);
+    }
+    if (this.containerGlobalPointcuts.length > 0) {
+      combined.push(...this.containerGlobalPointcuts);
+    }
+
+    const seenScopedOwners = new Set<ModuleNode>();
+    if (!owner.isGlobal) {
+      const localRules = this.resolvedPointcutProviders.get(owner);
+      if (localRules && localRules.length > 0) {
+        seenScopedOwners.add(owner);
+        combined.push(...localRules);
+      }
+    }
+
+    for (let i = 0; i < owner.imports.length; i++) {
+      const imp = owner.imports[i]!;
+      if (imp.isGlobal) {
+        continue;
+      }
+      const exportedOwners = imp.getEffectiveExports().get(AOP_POINTCUTS_TOKEN);
+      if (!exportedOwners) {
+        continue;
+      }
+      for (const exportOwner of exportedOwners) {
+        if (exportOwner.isGlobal || seenScopedOwners.has(exportOwner)) {
+          continue;
+        }
+        seenScopedOwners.add(exportOwner);
+        const rules = this.resolvedPointcutProviders.get(exportOwner);
+        if (rules && rules.length > 0) {
+          combined.push(...rules);
+        }
+      }
+    }
+
+    const frozen = combined.length === 0 ? EMPTY_POINTCUTS : combined;
+    this.ownerPointcutsCache.set(owner, frozen);
+    return frozen;
+  }
+
+  /**
+   * O(1) WeakMap-cached check for whether `cls` (or any ancestor) declares
+   * method aspects or matches active declarative pointcuts — guarantees zero
+   * hot-path overhead for plain classes.
+   */
+  private hasAspectsForClass(
+    cls: Function,
+    owner?: ModuleNode,
+    includeDynamicMethods = false,
+  ): boolean {
+    this.syncGlobalPointcutsCache();
+    this.indexValuePointcutsIfNeeded();
+
+    if (!this.hasModuleScopedPointcuts || !owner) {
+      const cache = includeDynamicMethods
+        ? this.dynamicAspectPresenceCache
+        : this.aspectPresenceCache;
+      const cached = cache.get(cls);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const pointcuts = this.getActivePointcuts(owner);
+      const present =
+        hasMethodAspects(cls) ||
+        hasMatchingPointcuts(
+          cls,
+          pointcuts,
+          includeDynamicMethods ? { includeDynamicMethods: true } : undefined,
+        );
+      cache.set(cls, present);
+      return present;
+    }
+
+    const outer = includeDynamicMethods
+      ? this.moduleDynamicAspectPresenceCache
+      : this.moduleAspectPresenceCache;
+    let modCache = outer.get(owner);
+    if (!modCache) {
+      modCache = new WeakMap<Function, boolean>();
+      outer.set(owner, modCache);
+    }
+    const cached = modCache.get(cls);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const pointcuts = this.getActivePointcuts(owner);
+    const present =
+      hasMethodAspects(cls) ||
+      hasMatchingPointcuts(
+        cls,
+        pointcuts,
+        includeDynamicMethods ? { includeDynamicMethods: true } : undefined,
+      );
+    modCache.set(cls, present);
     return present;
   }
 
@@ -864,10 +1152,11 @@ export class DIContainer
       return;
     }
     const ctor = (instance as object).constructor;
-    if (typeof ctor !== "function" || !this.hasAspectsForClass(ctor)) {
+    if (typeof ctor !== "function" || !this.hasAspectsForClass(ctor, owner)) {
       return;
     }
     this.wovenInstances.add(instance as object);
+    const pointcuts = this.getActivePointcuts(owner);
     await weaveInstanceMethodAspects(
       instance as object,
       ctor as Type<unknown>,
@@ -875,6 +1164,7 @@ export class DIContainer
       this,
       requestContainer,
       activeInstantiations,
+      pointcuts,
     );
   }
 
@@ -883,9 +1173,10 @@ export class DIContainer
     owner: ModuleNode,
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
+    pointcuts?: readonly PointcutRule[],
   ): Promise<AspectResolverObject> {
     const prewarmed = new Map<InjectionToken, ResolvedAspectEntry>();
-    const tokens = collectClassAspectTokens(targetClass);
+    const tokens = collectClassAspectTokens(targetClass, pointcuts);
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]!;
@@ -934,8 +1225,7 @@ export class DIContainer
       requestContainer ??
       (isLazyCall
         ? (getCurrentRequestContext()?.container as
-            | RequestContainer
-            | undefined)
+            RequestContainer | undefined)
         : undefined);
 
     // 1. Check module-visible provider (owner, imports, globals)
@@ -1026,7 +1316,11 @@ export class DIContainer
       }
 
       const cacheKey = `aspect:${this.getTokenId(cls)}`;
-      if (scope === Scope.SINGLETON && !needsRequest && this.singletons.has(cacheKey)) {
+      if (
+        scope === Scope.SINGLETON &&
+        !needsRequest &&
+        this.singletons.has(cacheKey)
+      ) {
         return {
           found: true,
           handler: this.singletons.get(cacheKey),
@@ -1098,10 +1392,7 @@ export class DIContainer
     return this.controllerOwner.get(ctrl);
   }
 
-  private indexControllerEnhancers(
-    ctrl: Type<unknown>,
-    mod: ModuleNode,
-  ): void {
+  private indexControllerEnhancers(ctrl: Type<unknown>, mod: ModuleNode): void {
     const enhancerKeys: ReadonlyArray<[symbol, EnhancerKind]> = [
       [METADATA_KEYS.GUARDS, "guard"],
       [METADATA_KEYS.PIPES, "pipe"],
@@ -1144,8 +1435,7 @@ export class DIContainer
     for (const route of routes) {
       for (const ctor of chain) {
         const ctorProto = ctor.prototype as
-          | Record<string | symbol, unknown>
-          | undefined;
+          Record<string | symbol, unknown> | undefined;
         if (
           !ctorProto ||
           !Object.prototype.hasOwnProperty.call(ctorProto, route.handlerKey)
@@ -1184,7 +1474,10 @@ export class DIContainer
           }
         }
       }
-      const params = MetadataRegistry.getRouteParameters(ctrl, route.handlerKey);
+      const params = MetadataRegistry.getRouteParameters(
+        ctrl,
+        route.handlerKey,
+      );
       for (const param of params) {
         if (param.pipes) {
           for (const pipe of param.pipes) {
@@ -1241,7 +1534,9 @@ export class DIContainer
    */
   applyOverrides(overrides: ContainerOverrides): void {
     if (this.initialized) {
-      throw new Error("Cannot apply DI overrides after container initialization.");
+      throw new Error(
+        "Cannot apply DI overrides after container initialization.",
+      );
     }
 
     if (overrides.mocker !== undefined) {
@@ -1272,7 +1567,10 @@ export class DIContainer
     }
     if (overrides.filters) {
       for (const [target, replacement] of overrides.filters.entries()) {
-        this.filterOverrides.set(target, normalizeEnhancerOverride(replacement));
+        this.filterOverrides.set(
+          target,
+          normalizeEnhancerOverride(replacement),
+        );
       }
     }
 
@@ -1321,7 +1619,8 @@ export class DIContainer
               : entry.kind === "value" &&
                   typeof entry.useValue === "object" &&
                   entry.useValue !== null &&
-                  typeof (entry.useValue as object).constructor === "function" &&
+                  typeof (entry.useValue as object).constructor ===
+                    "function" &&
                   (entry.useValue as object).constructor !== Object
                 ? ((entry.useValue as object).constructor as Type<unknown>)
                 : undefined);
@@ -1363,6 +1662,9 @@ export class DIContainer
       this.validateScopeLeaks();
       this.validated = true;
 
+      // Phase 1.5: Preload declarative AOP pointcuts (value or factory providers)
+      await this.preloadAopPointcuts();
+
       // Phase 2: Instantiate module classes, singleton providers, multi-providers, and controllers
       for (const mod of this.graph.topologicalOrder) {
         await this.instantiateModuleSingletons(mod);
@@ -1390,7 +1692,10 @@ export class DIContainer
       if (
         !moduleAllowedInPreview &&
         !InitializeOnPreviewAllowlist.get(provider.token) &&
-        !(provider.useClass && InitializeOnPreviewAllowlist.get(provider.useClass))
+        !(
+          provider.useClass &&
+          InitializeOnPreviewAllowlist.get(provider.useClass)
+        )
       ) {
         continue;
       }
@@ -1404,7 +1709,12 @@ export class DIContainer
         allowRoot,
       );
       if (effectiveScope === Scope.SINGLETON) {
-        await this.resolveNormalizedProvider(mod, provider, undefined, new Set());
+        await this.resolveNormalizedProvider(
+          mod,
+          provider,
+          undefined,
+          new Set(),
+        );
       }
     }
 
@@ -1473,9 +1783,10 @@ export class DIContainer
                 ));
 
             if (!replacementDefinesCatch) {
-              const origCatch = MetadataRegistry.get<
-                readonly Type<unknown>[]
-              >(METADATA_KEYS.CATCH_EXCEPTIONS, origClass);
+              const origCatch = MetadataRegistry.get<readonly Type<unknown>[]>(
+                METADATA_KEYS.CATCH_EXCEPTIONS,
+                origClass,
+              );
               if (origCatch !== undefined) {
                 syntheticToken = this.createSyntheticEnhancerToken(
                   mod,
@@ -1542,8 +1853,7 @@ export class DIContainer
   ): void {
     const ownerMod =
       ownerModOrKind instanceof ModuleNode ? ownerModOrKind : undefined;
-    const kind =
-      typeof ownerModOrKind === "string" ? ownerModOrKind : kindArg;
+    const kind = typeof ownerModOrKind === "string" ? ownerModOrKind : kindArg;
 
     const mod = ownerMod ?? this.enhancerOwner.get(cls) ?? this.graph.root;
     this.registerEnhancerOwner(cls, mod);
@@ -2046,7 +2356,8 @@ export class DIContainer
       return cached;
     }
 
-    const ownerMod = this.controllerOwner.get(controllerToken) ?? this.graph.root;
+    const ownerMod =
+      this.controllerOwner.get(controllerToken) ?? this.graph.root;
     let requires = false;
 
     if (
@@ -2135,7 +2446,9 @@ export class DIContainer
 
     const scope = getControllerScope(controllerToken);
     const reqContainer =
-      requestContainer instanceof RequestContainer ? requestContainer : undefined;
+      requestContainer instanceof RequestContainer
+        ? requestContainer
+        : undefined;
 
     if (scope === Scope.REQUEST) {
       if (!reqContainer) {
@@ -2203,7 +2516,9 @@ export class DIContainer
 
     const mod = owningModule ?? this.enhancerOwner.get(cls) ?? this.graph.root;
     const reqContainer =
-      requestContainer instanceof RequestContainer ? requestContainer : undefined;
+      requestContainer instanceof RequestContainer
+        ? requestContainer
+        : undefined;
 
     // Check kind-specific enhancer override BEFORE provider lookups so
     // overrideProvider(X) and overrideGuard/Pipe/Interceptor/Filter(X) never clobber each other
@@ -2338,12 +2653,7 @@ export class DIContainer
       return reqContainer.getOrCreateScopedInstance<T>(
         cacheKey,
         async () =>
-          (await this.instantiateClass(
-            cls,
-            mod,
-            reqContainer,
-            new Set(),
-          )) as T,
+          (await this.instantiateClass(cls, mod, reqContainer, new Set())) as T,
       );
     }
 
@@ -2707,16 +3017,11 @@ export class DIContainer
 
   async loadLazyModule(
     loaderFn: () =>
-      | Promise<Type<unknown> | DynamicModule>
-      | Type<unknown>
-      | DynamicModule,
+      Promise<Type<unknown> | DynamicModule> | Type<unknown> | DynamicModule,
     _options?: LazyModuleLoaderOptions,
   ): Promise<ModuleRef> {
     const loaded = await loaderFn();
-    if (
-      !loaded ||
-      (typeof loaded !== "function" && !isDynamicModule(loaded))
-    ) {
+    if (!loaded || (typeof loaded !== "function" && !isDynamicModule(loaded))) {
       throw new Error(
         "LazyModuleLoader.load() expects a loader returning a @Module() class or DynamicModule.",
       );
@@ -2770,6 +3075,9 @@ export class DIContainer
         for (const node of newNodes) {
           this.modulesMap.set(node.id, node);
           this.topologicalModules.push(node);
+          if (node.providers.has(AOP_POINTCUTS_TOKEN)) {
+            this.invalidatePointcutCaches();
+          }
           if (node.isGlobal) {
             this.globalModulesList.push(node);
           }
@@ -2788,7 +3096,10 @@ export class DIContainer
         }
         if (subGraph.dynamicModuleMap) {
           for (const [dynKey, node] of subGraph.dynamicModuleMap.entries()) {
-            if (!existingIds.has(node.id) && !this.dynamicModuleNodes.has(dynKey)) {
+            if (
+              !existingIds.has(node.id) &&
+              !this.dynamicModuleNodes.has(dynKey)
+            ) {
               this.dynamicModuleNodes.set(dynKey, node);
               addedDynamicKeys.push(dynKey);
             }
@@ -2856,46 +3167,46 @@ export class DIContainer
   }
 
   private resolveBuiltInSingleton(
-    token: InjectionToken,
+    token: InjectionToken<unknown>,
     mod: ModuleNode,
   ): { found: true; value: unknown } | { found: false } {
-    if ((token as unknown) === ModuleRef) {
+    if (Object.is(token, ModuleRef)) {
       return { found: true, value: this.getModuleRef(mod.id) };
     }
-    if ((token as unknown) === Reflector) {
+    if (Object.is(token, Reflector)) {
       return { found: true, value: this.reflector };
     }
-    if ((token as unknown) === DiscoveryService) {
+    if (Object.is(token, DiscoveryService)) {
       return { found: true, value: this.discoveryService };
     }
-    if ((token as unknown) === MetadataScanner) {
+    if (Object.is(token, MetadataScanner)) {
       return { found: true, value: this.metadataScanner };
     }
-    if ((token as unknown) === LazyModuleLoader) {
+    if (Object.is(token, LazyModuleLoader)) {
       return { found: true, value: this.lazyModuleLoader };
     }
     if (
-      (token as unknown) === HttpAdapterHost ||
+      Object.is(token, HttpAdapterHost) ||
       token === BUNEST_HTTP_ADAPTER_HOST_TOKEN
     ) {
       return { found: true, value: this.httpAdapterHost };
     }
     if (
-      (token as unknown) === ApplicationConfig ||
+      Object.is(token, ApplicationConfig) ||
       token === BUNEST_APPLICATION_CONFIG_TOKEN
     ) {
       return { found: true, value: this._applicationConfig };
     }
-    if ((token as unknown) === ModulesContainer) {
+    if (Object.is(token, ModulesContainer)) {
       return { found: true, value: this.modulesContainer };
     }
-    if ((token as unknown) === ExternalContextCreator) {
+    if (Object.is(token, ExternalContextCreator)) {
       return { found: true, value: this.externalContextCreator };
     }
-    if ((token as unknown) === SerializedGraph) {
+    if (Object.is(token, SerializedGraph)) {
       return { found: true, value: this._serializedGraph };
     }
-    if ((token as unknown) === GraphInspector) {
+    if (Object.is(token, GraphInspector)) {
       return { found: true, value: this.graphInspector };
     }
     return { found: false };
@@ -2912,7 +3223,10 @@ export class DIContainer
       return { scope: Scope.SINGLETON };
     }
     const mod = this.graph.modules.get(moduleId) ?? this.graph.root;
-    if (typeof token === "function" && this.controllerOwner.has(token as Type<unknown>)) {
+    if (
+      typeof token === "function" &&
+      this.controllerOwner.has(token as Type<unknown>)
+    ) {
       return { scope: getControllerScope(token as Type<unknown>) };
     }
     const loc = this.locateTokenForModuleRef(mod, token, false);
@@ -2996,7 +3310,9 @@ export class DIContainer
 
       const locs = this.locateAllTokensForModuleRef(mod, token, strict);
       for (const loc of locs) {
-        results.push(this.readSingletonProviderSync<T>(loc.owner, loc.provider));
+        results.push(
+          this.readSingletonProviderSync<T>(loc.owner, loc.provider),
+        );
       }
 
       if (results.length === 0 && this.autoMocks.has(token)) {
@@ -3526,7 +3842,10 @@ export class DIContainer
             index: dep.index,
             propertyKey: dep.propertyKey,
             moduleName: mod.name,
-            resolutionPath: [...stack.map((s) => s.name), formatToken(dep.token)],
+            resolutionPath: [
+              ...stack.map((s) => s.name),
+              formatToken(dep.token),
+            ],
           });
         }
 
@@ -4155,29 +4474,32 @@ export class DIContainer
       ) {
         const tokenClass =
           typeof provider.token === "function" &&
-          this.hasAspectsForClass(provider.token)
+          this.hasAspectsForClass(provider.token, owner, true)
             ? (provider.token as Abstract<object>)
             : undefined;
         const ctorCandidate = (created as object).constructor;
         const ctorClass =
           !tokenClass &&
           typeof ctorCandidate === "function" &&
-          this.hasAspectsForClass(ctorCandidate)
+          this.hasAspectsForClass(ctorCandidate, owner, true)
             ? (ctorCandidate as Abstract<object>)
             : undefined;
         const aspectTargetClass = tokenClass ?? ctorClass;
 
         if (aspectTargetClass) {
+          const pointcuts = this.getActivePointcuts(owner);
           const resolver = await this.createPrewarmedAspectResolver(
             aspectTargetClass,
             owner,
             requestContainer,
             activeInstantiations,
+            pointcuts,
           );
           const woven = weaveProxyMethodAspects(
             created as object,
             aspectTargetClass,
             resolver,
+            pointcuts,
           );
           this.wovenInstances.add(created as object);
           this.wovenInstances.add(woven);
@@ -4222,7 +4544,7 @@ export class DIContainer
           allowRootFallback,
           inquirer,
         );
-        if (this.hasAspectsForClass(provider.useClass)) {
+        if (this.hasAspectsForClass(provider.useClass, owner)) {
           await this.weaveMethodAspectsIfNeeded(
             instance,
             owner,
@@ -4284,7 +4606,7 @@ export class DIContainer
       allowRootFallback,
       inquirer,
     );
-    if (this.hasAspectsForClass(target)) {
+    if (this.hasAspectsForClass(target, owner)) {
       await this.weaveMethodAspectsIfNeeded(
         instance,
         owner,
@@ -4317,7 +4639,10 @@ export class DIContainer
         allowRootFallback,
         dep.token === INQUIRER ? inquirer : target,
       );
-      if (dep.propertyKey !== undefined && (!dep.optional || value !== undefined)) {
+      if (
+        dep.propertyKey !== undefined &&
+        (!dep.optional || value !== undefined)
+      ) {
         instance[dep.propertyKey] = value;
       }
     }

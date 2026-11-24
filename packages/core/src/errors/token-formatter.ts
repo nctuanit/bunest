@@ -1,4 +1,4 @@
-import { isForwardReference } from "@bunest/common";
+import { isForwardReference } from "../common/index";
 
 /**
  * Formats any DI injection token, class, symbol, or forwardRef into a readable label

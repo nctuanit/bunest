@@ -8,7 +8,7 @@ import {
   type LoggerService,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   HealthIndicatorService,
   type HealthIndicatorFunction,
@@ -21,6 +21,7 @@ import {
   HttpHealthIndicator,
   MemoryHealthIndicator,
   MicroserviceHealthIndicator,
+  OrmHealthIndicator,
   PrismaHealthIndicator,
   defaultCheckDiskSpace,
 } from "./health.indicators";
@@ -143,6 +144,7 @@ const TERMINUS_BASE_INDICATORS = [
   FetchHealthIndicator,
   HttpHealthIndicator,
   DiskHealthIndicator,
+  OrmHealthIndicator,
   PrismaHealthIndicator,
   MicroserviceHealthIndicator,
   GRPCHealthIndicator,
@@ -278,10 +280,7 @@ export class HealthModule {
         HealthCheckService,
         ...TERMINUS_BASE_INDICATORS,
       ],
-      exports: [
-        HEALTH_MODULE_OPTIONS,
-        ...TERMINUS_EXPORTS,
-      ],
+      exports: [HEALTH_MODULE_OPTIONS, ...TERMINUS_EXPORTS],
     };
   }
 
@@ -309,10 +308,7 @@ export class HealthModule {
         HealthCheckService,
         ...TERMINUS_BASE_INDICATORS,
       ],
-      exports: [
-        HEALTH_MODULE_OPTIONS,
-        ...TERMINUS_EXPORTS,
-      ],
+      exports: [HEALTH_MODULE_OPTIONS, ...TERMINUS_EXPORTS],
     };
   }
 }

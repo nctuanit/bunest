@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import {
   graphql,
   type GraphQLSchema,
-} from "../../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../../packages/graphql/src";
 import {
   Field,
   type FieldMiddleware,
@@ -98,9 +97,7 @@ describeConformance(
         imports: [GraphQLSchemaBuilderModule],
       }).compile({ logger: false });
       resolver = new NodesResolver();
-      schema = await moduleRef
-        .get(GraphQLSchemaFactory)
-        .create([resolver]);
+      schema = await moduleRef.get(GraphQLSchemaFactory).create([resolver]);
     });
 
     const create = <T extends object>(type: new () => T) =>

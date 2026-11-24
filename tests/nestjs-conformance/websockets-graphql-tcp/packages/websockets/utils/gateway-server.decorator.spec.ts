@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   WS_METADATA_KEYS,
   WebSocketServer,
   getGatewayServerProperties,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import { describeConformance } from "../../../../_helpers/index";
 
 describeConformance(
@@ -44,7 +43,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: @WebSocketServer() in packages/websockets/src/decorators/ws.decorators.ts does not initialize the decorated property value to `null` by default (unlike NestJS `target[propertyKey] = null`), and when applied to a `static` property it attaches metadata to `target.constructor` (`Function`) instead of the class itself.
+    // BUNEST_BUG: @WebSocketServer() in packages/core/src/ws/decorators/ws.decorators.ts does not initialize the decorated property value to `null` by default (unlike NestJS `target[propertyKey] = null`), and when applied to a `static` property it attaches metadata to `target.constructor` (`Function`) instead of the class itself.
     it.skip("should set static server property metadata on the class and initialize value to null by default", () => {
       class StaticTestGateway {
         @WebSocketServer()

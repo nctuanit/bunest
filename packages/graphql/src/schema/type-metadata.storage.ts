@@ -1,5 +1,6 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type {
+  InterfaceImplementsInput,
   PropertyMetadata,
   RegisterInOption,
 } from "../interfaces/graphql.interface";
@@ -18,19 +19,22 @@ export interface StoredClassMetadata {
 }
 
 export interface StoredObjectTypeMetadata extends StoredClassMetadata {
-  interfaces?: Function | Function[] | (() => Function | Function[]);
+  interfaces?: InterfaceImplementsInput;
 }
 
 export interface StoredInterfaceMetadata extends StoredClassMetadata {
-  interfaces?: Function | Function[] | (() => Function | Function[]);
-  resolveType?: (...args: any[]) => any;
+  interfaces?: InterfaceImplementsInput;
+  resolveType?: (...args: any[]) => unknown;
 }
 
 export interface StoredEnumMetadata {
   ref: object;
   name: string;
   description?: string;
-  valuesMap?: Record<string, { description?: string; deprecationReason?: string }>;
+  valuesMap?: Record<
+    string,
+    { description?: string; deprecationReason?: string }
+  >;
   registerIn?: RegisterInOption;
   directives?: readonly string[];
 }
@@ -38,9 +42,9 @@ export interface StoredEnumMetadata {
 export interface StoredUnionMetadata {
   id: symbol | string;
   name: string;
-  typesFn: () => readonly Type<any>[];
+  typesFn: () => readonly Type<unknown>[];
   description?: string;
-  resolveType?: (...args: any[]) => any;
+  resolveType?: (...args: any[]) => unknown;
   registerIn?: RegisterInOption;
   directives?: readonly string[];
 }
@@ -49,7 +53,7 @@ export interface StoredResolverTypeMetadata {
   target: Function;
   methodName: string;
   schemaName: string;
-  typeFn?: () => any;
+  typeFn?: () => unknown;
   description?: string;
   deprecationReason?: string;
   options?: Record<string, unknown>;
@@ -60,7 +64,7 @@ export interface StoredFieldResolverMetadata {
   methodName: string;
   schemaName: string;
   kind: "internal" | "external";
-  typeFn?: () => any;
+  typeFn?: () => unknown;
   description?: string;
   deprecationReason?: string;
   options?: Record<string, unknown>;
@@ -70,7 +74,7 @@ export interface StoredFieldResolverMetadata {
 
 export interface StoredResolverClassMetadata {
   target: Function;
-  typeFn?: () => any;
+  typeFn?: () => unknown;
   isAbstract?: boolean;
 }
 
@@ -91,7 +95,7 @@ export interface StoredMethodParamMetadata {
   methodName: string;
   index: number;
   name?: string;
-  typeFn?: () => any;
+  typeFn?: () => unknown;
   options?: Record<string, unknown>;
 }
 
@@ -104,7 +108,10 @@ function resolveRegisterInModules(registerIn?: RegisterInOption): Function[] {
     // Detect arrow thunk `() => MyModule` vs class constructor
     const isThunk =
       item.prototype === undefined ||
-      (!Function.prototype.toString.call(item).trimStart().startsWith("class") &&
+      (!Function.prototype.toString
+        .call(item)
+        .trimStart()
+        .startsWith("class") &&
         item.length === 0);
     if (isThunk) {
       const val = (item as () => Function)();

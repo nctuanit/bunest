@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
 import {
   addLibrary,
   runCli,
@@ -15,6 +18,15 @@ import {
   describeConformance,
   itAdapted,
 } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function createCapturedIO(cwd: string): {
   io: CliIO;
@@ -48,11 +60,9 @@ describeConformance(
     let pkgPath: string;
 
     beforeEach(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-add-"));
+      tmpDir = makeTempDir("bunest-cli-conf-add-");
       pkgPath = join(tmpDir, "package.json");
-      writeFileSync(
-        pkgPath,
-        JSON.stringify(
+      writeTextSync(pkgPath, JSON.stringify(
           {
             name: "add-app",
             version: "0.1.0",
@@ -60,13 +70,11 @@ describeConformance(
           },
           null,
           2,
-        ),
-        "utf8",
-      );
+        ));
     });
 
-    afterEach(() => {
-      rmSync(tmpDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -77,30 +85,30 @@ describeConformance(
         const spawnSpy = createSpy<SpawnFn>(async () => ({ exitCode: 0 }));
 
         const result = await addLibrary(
-          { library: "@bunest/config", cwd: tmpDir, spawn: spawnSpy },
+          { library: "@bunest/orm", cwd: tmpDir, spawn: spawnSpy },
           cap.io,
         );
 
         expect(result.exitCode).toBe(0);
         expect(result.installed).toBe(true);
         expect(result.dryRun).toBe(false);
-        expect(result.library).toBe("@bunest/config");
-        expect(result.command).toEqual(["bun", "add", "@bunest/config"]);
+        expect(result.library).toBe("@bunest/orm");
+        expect(result.command).toEqual(["bun", "add", "@bunest/orm"]);
         expect(spawnSpy.calledOnce).toBe(true);
         expect(spawnSpy.firstCall?.args[0]).toEqual([
           process.execPath,
           "add",
-          "@bunest/config",
+          "@bunest/orm",
         ]);
         expect(spawnSpy.firstCall?.args[1].cwd).toBe(tmpDir);
         const out = cap.stdout.join("\n");
-        expect(out).toContain('Successfully installed "@bunest/config"');
-        expect(out).toContain("ConfigModule.forRoot");
+        expect(out).toContain('Successfully installed "@bunest/orm"');
+        expect(out).toContain("OrmModule.forRoot");
       },
     );
 
     it("should not install the library or touch package.json on a dry run", async () => {
-      const pkgBefore = readFileSync(pkgPath, "utf8");
+      const pkgBefore = readTextSync(pkgPath);
       const cap = createCapturedIO(tmpDir);
 
       const res = await runCli(["add", "@bunest/swagger", "--dry-run"], cap.io);
@@ -114,11 +122,11 @@ describeConformance(
         "[dry-run] Would run: bun add @bunest/swagger",
       );
       expect(cap.stdout.join("\n")).toContain("SwaggerModule.setup");
-      expect(readFileSync(pkgPath, "utf8")).toBe(pkgBefore);
+      expect(readTextSync(pkgPath)).toBe(pkgBefore);
     });
 
     it("should skip installation with --skip-install without modifying package.json", async () => {
-      const pkgBefore = readFileSync(pkgPath, "utf8");
+      const pkgBefore = readTextSync(pkgPath);
       const cap = createCapturedIO(tmpDir);
 
       const res = await runCli(
@@ -134,15 +142,12 @@ describeConformance(
         "[skip-install] Would run: bun add @bunest/security",
       );
       expect(cap.stdout.join("\n")).toContain("JwtModule");
-      expect(readFileSync(pkgPath, "utf8")).toBe(pkgBefore);
+      expect(readTextSync(pkgPath)).toBe(pkgBefore);
     });
 
     it("supports versioned package specifiers and strips version when looking up hints", async () => {
       const cap = createCapturedIO(tmpDir);
-      const res = await runCli(
-        ["add", "@bunest/graphql@^0.1.0", "-d"],
-        cap.io,
-      );
+      const res = await runCli(["add", "@bunest/graphql@^0.1.0", "-d"], cap.io);
 
       expect(res.exitCode).toBe(0);
       expect(cap.stdout.join("\n")).toContain("bun add @bunest/graphql@^0.1.0");
@@ -159,9 +164,9 @@ describeConformance(
       ];
 
       for (const bad of unsafeInputs) {
-        await expect(
-          addLibrary({ library: bad, cwd: tmpDir }),
-        ).rejects.toThrow(/Invalid library specifier/);
+        await expect(addLibrary({ library: bad, cwd: tmpDir })).rejects.toThrow(
+          /Invalid library specifier/,
+        );
       }
     });
 

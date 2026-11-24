@@ -1,9 +1,6 @@
 import { ClientProxy } from "../client-proxy";
 import { RpcException } from "../exceptions";
-import type {
-  InMemoryTransportOptions,
-  RpcContext,
-} from "../interfaces";
+import type { InMemoryTransportOptions, RpcContext } from "../interfaces";
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
@@ -50,7 +47,9 @@ export class InMemoryServer extends MicroserviceTransportServer {
         : defaultInMemoryBroker;
   }
 
-  async listen(callback?: (...optionalParams: unknown[]) => any): Promise<void> {
+  async listen(
+    callback?: (...optionalParams: unknown[]) => any,
+  ): Promise<void> {
     this.broker.registerServer(this.channel, this);
     this.listening = true;
     this.emitStatus("connected");
@@ -66,7 +65,10 @@ export class InMemoryServer extends MicroserviceTransportServer {
   async handleRequest(
     pattern: string,
     data: unknown,
-  ): Promise<{ response?: unknown; error?: ReturnType<RpcException["toSerialized"]> }> {
+  ): Promise<{
+    response?: unknown;
+    error?: ReturnType<RpcException["toSerialized"]>;
+  }> {
     const ctx: RpcContext = {
       transport: Transport.IN_MEMORY,
       pattern,

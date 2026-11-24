@@ -1,12 +1,17 @@
-import { setImmediate as nextMacrotask } from 'node:timers/promises';
-import type { ResultOutcome, ResultWaiterOptions, ResultWaitOptions } from '../interfaces/result-waiter-options.interface';
-import { parseDuration } from '../time/duration';
-import { MAX_TIMER_DELAY, setTimer } from '../utils/timer.util';
+import type {
+  ResultOutcome,
+  ResultWaiterOptions,
+  ResultWaitOptions,
+} from "../interfaces/result-waiter-options.interface";
+import { parseDuration } from "../time/duration";
+import { MAX_TIMER_DELAY, setTimer } from "../utils/timer.util";
+
+const nextMacrotask = () => Bun.sleep(0);
 
 /** What a read in flight gives way to: an outcome settled locally, or the waiter closing. */
-const SETTLED = Symbol('settled');
+const SETTLED = Symbol("settled");
 /** What a read in flight gives way to when the wait's timeout passes. */
-const EXPIRED = Symbol('expired');
+const EXPIRED = Symbol("expired");
 
 interface PendingWait<T> {
   outcome?: ResultOutcome<T>;
@@ -63,7 +68,8 @@ export class ResultWaiter<T = unknown> {
    * `timeoutError`, when `signal` aborts with its reason, and once the waiter closed with the `closedError`.
    */
   async wait(id: string, options: ResultWaitOptions = {}): Promise<T> {
-    const timeoutMs = options.timeout === undefined ? Infinity : parseDuration(options.timeout);
+    const timeoutMs =
+      options.timeout === undefined ? Infinity : parseDuration(options.timeout);
     const deadline = performance.now() + timeoutMs;
     options.signal?.throwIfAborted();
     const wait: PendingWait<T> = { closed: this.closed };
@@ -77,16 +83,24 @@ export class ResultWaiter<T = unknown> {
       nudge();
     };
     this.add(id, wait);
-    this.closing.signal.addEventListener('abort', close);
-    options.signal?.addEventListener('abort', nudge);
+    this.closing.signal.addEventListener("abort", close);
+    options.signal?.addEventListener("abort", nudge);
     try {
       for (let delay = 25; ; delay = Math.min(delay * 2, 1_000)) {
-        const read = wait.outcome || wait.closed ? SETTLED : await this.read(id, wait, deadline, options.signal);
+        const read =
+          wait.outcome || wait.closed
+            ? SETTLED
+            : await this.read(id, wait, deadline, options.signal);
         if (wait.outcome) {
           return unwrap(wait.outcome);
         }
         if (read === SETTLED) {
-          throw this.options.closedError?.(id) ?? new Error(`The waiter closed while waiting for the result of "${id}".`);
+          throw (
+            this.options.closedError?.(id) ??
+            new Error(
+              `The waiter closed while waiting for the result of "${id}".`,
+            )
+          );
         }
         if (read && read !== EXPIRED) {
           return unwrap(read);
@@ -94,7 +108,10 @@ export class ResultWaiter<T = unknown> {
         options.signal?.throwIfAborted();
         const remaining = deadline - performance.now();
         if (read === EXPIRED || remaining <= 0) {
-          throw this.options.timeoutError?.(id, timeoutMs) ?? new Error(`"${id}" didn't end within ${timeoutMs}ms.`);
+          throw (
+            this.options.timeoutError?.(id, timeoutMs) ??
+            new Error(`"${id}" didn't end within ${timeoutMs}ms.`)
+          );
         }
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, Math.min(delay, remaining));
@@ -107,8 +124,8 @@ export class ResultWaiter<T = unknown> {
       }
     } finally {
       this.remove(id, wait);
-      this.closing.signal.removeEventListener('abort', close);
-      options.signal?.removeEventListener('abort', nudge);
+      this.closing.signal.removeEventListener("abort", close);
+      options.signal?.removeEventListener("abort", nudge);
     }
   }
 
@@ -116,12 +133,15 @@ export class ResultWaiter<T = unknown> {
    * Settles the waits for `id` with its outcome at once, without a read, and a read in flight gives way to it: for
    * what this process saw end. A function is only called when something waits for `id`. The first outcome wins.
    */
-  settle(id: string, outcome: ResultOutcome<T> | (() => ResultOutcome<T>)): void {
+  settle(
+    id: string,
+    outcome: ResultOutcome<T> | (() => ResultOutcome<T>),
+  ): void {
     const waits = this.waits.get(id);
     if (!waits) {
       return;
     }
-    const settled = typeof outcome === 'function' ? outcome() : outcome;
+    const settled = typeof outcome === "function" ? outcome() : outcome;
     for (const wait of waits) {
       wait.outcome ??= settled;
       wait.settle?.();
@@ -155,16 +175,18 @@ export class ResultWaiter<T = unknown> {
       return null;
     }
     let timer: NodeJS.Timeout | undefined;
-    const givenWay = new Promise<null | typeof SETTLED | typeof EXPIRED>((resolve) => {
-      wait.settle = () => resolve(SETTLED);
-      wait.giveUp = () => resolve(null);
-      const remaining = deadline - performance.now();
-      if (remaining !== Infinity) {
-        // A deadline beyond what a timer supports: the read is given up at the longest delay, and the next one waits on.
-        const expired = remaining <= MAX_TIMER_DELAY ? EXPIRED : null;
-        timer = setTimer(() => resolve(expired), Math.max(remaining, 0));
-      }
-    });
+    const givenWay = new Promise<null | typeof SETTLED | typeof EXPIRED>(
+      (resolve) => {
+        wait.settle = () => resolve(SETTLED);
+        wait.giveUp = () => resolve(null);
+        const remaining = deadline - performance.now();
+        if (remaining !== Infinity) {
+          // A deadline beyond what a timer supports: the read is given up at the longest delay, and the next one waits on.
+          const expired = remaining <= MAX_TIMER_DELAY ? EXPIRED : null;
+          timer = setTimer(() => resolve(expired), Math.max(remaining, 0));
+        }
+      },
+    );
     try {
       return await Promise.race([this.options.read(id), givenWay]);
     } finally {
@@ -192,7 +214,7 @@ export class ResultWaiter<T = unknown> {
 }
 
 function unwrap<T>(outcome: ResultOutcome<T>): T {
-  if ('error' in outcome) {
+  if ("error" in outcome) {
     throw outcome.error;
   }
   return outcome.value;

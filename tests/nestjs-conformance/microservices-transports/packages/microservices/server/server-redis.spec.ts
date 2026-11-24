@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   createSandbox,
@@ -11,7 +10,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   RedisClientProxy,
   RedisRecordBuilder,
@@ -172,7 +171,11 @@ describeConformance(
         expect(server.getMessageHandler(/^metrics\./)).toBe(h1);
         expect(server.getEventHandlers("users.created")).toEqual([e1, e2]);
         expect(server.getRegisteredPatterns()).toEqual({
-          messagePatterns: ["users.get", '{"cmd":"sum","v":1}', "/^metrics\\./"],
+          messagePatterns: [
+            "users.get",
+            '{"cmd":"sum","v":1}',
+            "/^metrics\\./",
+          ],
           eventPatterns: ["users.created"],
         });
 
@@ -543,7 +546,11 @@ describeConformance(
           throw new RpcException("denied");
         });
         server.addMessageHandler("err.rpc.obj", () => {
-          throw new RpcException({ status: 422, message: "invalid", code: "E1" });
+          throw new RpcException({
+            status: 422,
+            message: "invalid",
+            code: "E1",
+          });
         });
         server.addMessageHandler("err.http", () => {
           throw new BadRequestException("bad-req");
@@ -559,7 +566,9 @@ describeConformance(
         });
         await server.listen();
 
-        const invoke = async (pattern: string): Promise<RpcResponseEnvelope> => {
+        const invoke = async (
+          pattern: string,
+        ): Promise<RpcResponseEnvelope> => {
           const before = transport.published.length;
           await transport.deliver(
             `bunest:rpc:${pattern}`,
@@ -800,9 +809,9 @@ describeConformance(
           expect(
             await client.send<number>({ cmd: "mul" }, { a: 7, b: 6 }),
           ).toBe(42);
-          await expect(
-            client.send("div", { a: 1, b: 0 }),
-          ).rejects.toThrow("division by zero");
+          await expect(client.send("div", { a: 1, b: 0 })).rejects.toThrow(
+            "division by zero",
+          );
 
           await client.emit("audit", { op: "mul" });
           await Bun.sleep(5);

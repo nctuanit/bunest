@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { Module } from "../../../../packages/common/src";
+import { Module } from "../../../../packages/core/src/common";
 import { NestFactory } from "../../../../packages/core/src";
 import {
   BullModule,
@@ -11,7 +10,7 @@ import {
   WorkerHost,
   getQueueToken,
   type Job,
-} from "../../../../packages/queues/src";
+} from "../../../../packages/jobs/src/queues";
 import { describeConformance } from "../../_helpers/index";
 
 /**
@@ -41,7 +40,7 @@ describeConformance(
   () => {
     // A job that is still running when the application closes should finish
     // against open queues: the worker drains it before any queue is closed.
-    // BUNEST_BUG: Expected active job on source queue to successfully add a child job to target queue during app.close() (`outcome: { added: true }` and 1 waiting job), actual fails with `Queue "shutdown_target" is closed and cannot accept jobs.` because BullMQExplorer.onModuleDestroy() (packages/queues/src/adapters/bullmq.adapter.ts) calls QueueRegistry.closeAll() (packages/queues/src/queue.module.ts), closing all queues concurrently in onModuleDestroy instead of draining workers in onModuleDestroy and closing queues in onApplicationShutdown.
+    // BUNEST_BUG: Expected active job on source queue to successfully add a child job to target queue during app.close() (`outcome: { added: true }` and 1 waiting job), actual fails with `Queue "shutdown_target" is closed and cannot accept jobs.` because BullMQExplorer.onModuleDestroy() (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls QueueRegistry.closeAll() (packages/jobs/src/queues/queue.module.ts), closing all queues concurrently in onModuleDestroy instead of draining workers in onModuleDestroy and closing queues in onApplicationShutdown.
     it.skip("should let an active job add to another queue while the app closes", async () => {
       const sourceName = "shutdown_source";
       const targetName = "shutdown_target";
@@ -76,10 +75,7 @@ describeConformance(
       @Module({
         imports: [
           BullModule.forRoot({ driver }),
-          BullModule.registerQueue(
-            { name: sourceName },
-            { name: targetName },
-          ),
+          BullModule.registerQueue({ name: sourceName }, { name: targetName }),
         ],
         providers: [SourceProcessor],
       })

@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Inject,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   CACHE_MANAGER,
@@ -13,10 +12,7 @@ import {
   CacheModule,
   MemoryCacheStore,
 } from "../../../../../packages/cache/src";
-import {
-  Test,
-  describeConformance,
-} from "../../../_helpers/index";
+import { Test, describeConformance } from "../../../_helpers/index";
 
 function deferred() {
   let resolve!: () => void;
@@ -69,7 +65,9 @@ describeConformance(
           gate.started.resolve();
           await gate.release.promise;
           if (store.closed) {
-            throw new Error("Store was disconnected while request was in flight");
+            throw new Error(
+              "Store was disconnected while request was in flight",
+            );
           }
           await this.cacheManager.set("shutdown-key", "shutdown-value");
           return this.cacheManager.get("shutdown-key");
@@ -94,7 +92,7 @@ describeConformance(
       await app.listen(0);
     });
 
-    // BUNEST_BUG: BunHttpAdapter defaults forceCloseConnections to true (packages/http/src/adapter/bun-http.adapter.ts:509,2215), so app.close() invokes server.stop(true) and forcibly aborts in-flight HTTP requests with ECONNRESET instead of draining them before CacheService disconnects the store; additionally CacheService disconnects in onModuleDestroy() rather than onApplicationShutdown() (packages/cache/src/cache.service.ts:587).
+    // BUNEST_BUG: BunHttpAdapter defaults forceCloseConnections to true (packages/core/src/http/adapter/bun-http.adapter.ts:509,2215), so app.close() invokes server.stop(true) and forcibly aborts in-flight HTTP requests with ECONNRESET instead of draining them before CacheService disconnects the store; additionally CacheService disconnects in onModuleDestroy() rather than onApplicationShutdown() (packages/cache/src/cache.service.ts:587).
     it.skip("should disconnect the store only after the requests in flight", async () => {
       const cacheManager = app.get<Cache>(CACHE_MANAGER);
       await cacheManager.del("shutdown-key");

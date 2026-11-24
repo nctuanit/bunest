@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import {
   Body,
   Controller,
@@ -14,7 +13,7 @@ import {
   Patch,
   Post,
   type OnApplicationBootstrap,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { BunestApplication } from "@bunest/core";
 import {
   DevtoolsModule,
@@ -23,13 +22,13 @@ import {
 } from "@bunest/observability";
 import {
   Column,
+  CrudRepository,
   Entity,
-  JpaRepository,
+  OrmModule,
+  OrmRepository,
   PrimaryGeneratedColumn,
-  SqliteModule,
-  SqliteRepository,
   Transactional,
-} from "@bunest/sqlite";
+} from "@bunest/orm";
 import {
   ApiOperation,
   ApiTags,
@@ -68,8 +67,8 @@ export class Todo implements TodoItem {
 }
 
 @Span({ kind: "CLIENT" })
-@SqliteRepository(Todo)
-export abstract class TodoRepository extends JpaRepository<Todo, number> {
+@OrmRepository(Todo)
+export abstract class TodoRepository extends CrudRepository<Todo, number> {
   abstract findAllByCompleted(completed: boolean): Promise<Todo[]>;
 }
 
@@ -186,9 +185,11 @@ export class TodosController {
 
 @Module({
   imports: [
-    SqliteModule.forRoot({
-      filename: ":memory:",
-      autoSync: true,
+    OrmModule.forRoot({
+      type: "sqlite",
+      database: ":memory:",
+      synchronize: true,
+      autoLoadEntities: true,
       autoRegisterRepositories: true,
     }),
     ObservabilityModule.forRoot({
@@ -230,7 +231,7 @@ export function configurePlaygroundApp(app: BunestApplication): void {
   const swaggerConfig = new DocumentBuilder()
     .setTitle("Bunest Interactive Playground")
     .setDescription(
-      "All-in-one showcase: Decorator-First @Entity + SQLite autoSync + Swagger + Health + Prometheus Metrics + Devtools",
+      "All-in-one showcase: Decorator-First @Entity + @bunest/orm SQLite synchronize + Swagger + Health + Prometheus Metrics + Devtools",
     )
     .setVersion("0.1.0")
     .addTag("todos")

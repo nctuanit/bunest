@@ -1,7 +1,4 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect } from "bun:test";
-import { once } from "node:events";
-import * as net from "node:net";
 import {
   FrameDecoder,
   TcpClientProxy,
@@ -10,6 +7,14 @@ import {
   type RpcResponseEnvelope,
 } from "../../../../../packages/microservices/src";
 import { describeConformance, itAdapted } from "../../../_helpers";
+
+interface ServerConn {
+  socket: Bun.Socket<unknown>;
+  closed: boolean;
+  closeResolvers: Array<() => void>;
+  buffered: Buffer[];
+  dataListener?: (chunk: Buffer) => void;
+}
 
 describeConformance(
   "TCP client reconnect",
@@ -21,42 +26,78 @@ describeConformance(
       "Uses Bunest TcpClientProxy + 4-byte length-prefixed framing (encodeFrame/FrameDecoder) and Promise request-reply instead of RxJS Observable stream.",
   },
   () => {
-    let server: net.Server;
+    let server: Bun.TCPSocketListener<undefined>;
     let client: TcpClientProxy;
-    let serverSockets: net.Socket[];
+    let serverSockets: ServerConn[];
     let accepted: Promise<void>;
 
-    beforeEach(async () => {
+    beforeEach(() => {
       serverSockets = [];
-      // Keep the old connection half-open until the new one has a pending
-      // request, so its late close is controlled by real TCP FINs, not timers.
-      server = net.createServer({ allowHalfOpen: true });
+      const connBySocket = new WeakMap<Bun.Socket<unknown>, ServerConn>();
+      let resolveAccepted!: () => void;
       accepted = new Promise<void>((resolve) => {
-        server.on("connection", (socket) => {
-          serverSockets.push(socket);
-          socket.on("error", () => {});
-          if (serverSockets.length === 2) {
-            resolve();
-          }
-        });
+        resolveAccepted = resolve;
       });
-      server.listen(0, "127.0.0.1");
-      await once(server, "listening");
+
+      server = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: {
+          open(socket) {
+            const conn: ServerConn = {
+              socket,
+              closed: false,
+              closeResolvers: [],
+              buffered: [],
+            };
+            connBySocket.set(socket, conn);
+            serverSockets.push(conn);
+            if (serverSockets.length === 2) {
+              resolveAccepted();
+            }
+          },
+          data(socket, chunk) {
+            const conn = connBySocket.get(socket);
+            if (!conn) {
+              return;
+            }
+            const buf = Buffer.from(chunk);
+            if (conn.dataListener) {
+              conn.dataListener(buf);
+            } else {
+              conn.buffered.push(buf);
+            }
+          },
+          close(socket) {
+            const conn = connBySocket.get(socket);
+            if (!conn || conn.closed) {
+              return;
+            }
+            conn.closed = true;
+            for (const fn of conn.closeResolvers.splice(0)) {
+              fn();
+            }
+          },
+          error() {},
+        },
+      });
       client = new TcpClientProxy({
         host: "127.0.0.1",
-        port: (server.address() as net.AddressInfo).port,
+        port: server.port,
         defaultTimeoutMs: 5000,
       });
     });
 
     afterEach(async () => {
       await client?.close();
-      for (const socket of serverSockets) {
-        socket.destroy();
+      for (const conn of serverSockets) {
+        try {
+          conn.socket.terminate();
+        } catch {
+          // ignore
+        }
       }
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      });
+      server.stop(true);
     });
 
     for (const closeWhileConnecting of [false, true]) {
@@ -79,21 +120,25 @@ describeConformance(
           const serverB = serverSockets[1]!;
 
           const closedA = new Promise<void>((resolve) => {
-            if (serverA.destroyed) {
+            if (serverA.closed) {
               resolve();
               return;
             }
-            serverA.once("close", () => resolve());
+            serverA.closeResolvers.push(resolve);
           });
 
           const decoderB = new FrameDecoder();
           const requestOnB = new Promise<RpcRequestEnvelope>((resolve) => {
-            serverB.on("data", (chunk: Buffer) => {
+            const handleChunk = (chunk: Buffer) => {
               const frames = decoderB.push<RpcRequestEnvelope>(chunk);
               if (frames.length > 0) {
                 resolve(frames[0]!);
               }
-            });
+            };
+            serverB.dataListener = handleChunk;
+            for (const buffered of serverB.buffered.splice(0)) {
+              handleChunk(buffered);
+            }
           });
 
           // Handle rejection immediately if a stale close fails the in-flight request
@@ -108,7 +153,9 @@ describeConformance(
 
           // Trigger late FIN on the stale connection while serverB's request is in flight.
           // Upstream only calls serverA.end() (relying on the client half closing cleanly).
-          serverA.end();
+          if (!serverA.closed) {
+            serverA.socket.end();
+          }
           let closeTimer: ReturnType<typeof setTimeout> | undefined;
           try {
             await Promise.race([
@@ -130,7 +177,7 @@ describeConformance(
           }
           await Bun.sleep(25);
 
-          serverB.write(
+          serverB.socket.write(
             encodeFrame({
               type: "response",
               id: packet.id,

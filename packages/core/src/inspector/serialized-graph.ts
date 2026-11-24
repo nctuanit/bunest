@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import type { InjectionToken, Scope } from "@bunest/common";
+import type { InjectionToken, Scope } from "../common/index";
 
 export type SerializedGraphStatus = "partial" | "complete";
 
@@ -198,6 +197,9 @@ export class SerializedGraph {
         ? String(edgeDefinition.metadata.keyOrIndex ?? "")
         : ""
     }`;
-    return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+    return new Bun.CryptoHasher("sha256")
+      .update(payload)
+      .digest("hex")
+      .slice(0, 16);
   }
 }

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   InMemorySpanExporter,
@@ -71,8 +70,7 @@ describeConformance(
                         kind: "CLIENT",
                         attributes: {
                           "http.request.method": "GET",
-                          "url.full":
-                            "https://api.stripe.com/v1/charges/ch_1",
+                          "url.full": "https://api.stripe.com/v1/charges/ch_1",
                           "server.address": "api.stripe.com",
                           "server.port": 443,
                         },
@@ -217,7 +215,9 @@ describeConformance(
           spanId: "1111222233334444",
           traceFlags: 1,
           startTimeUnixNano: (BigInt(startMs) * 1_000_000n).toString(),
-          endTimeUnixNano: (BigInt(Math.round(endMs * 1_000)) * 1_000n).toString(),
+          endTimeUnixNano: (
+            BigInt(Math.round(endMs * 1_000)) * 1_000n
+          ).toString(),
           durationMs: 42.5,
           attributes: {},
           events: [],
@@ -311,10 +311,7 @@ describeConformance(
 
     describe("status, events, and exception recording", () => {
       it("maps UNSET, OK, and ERROR status codes and optional status messages", () => {
-        const makeSpan = (
-          code: "UNSET" | "OK" | "ERROR",
-          message?: string,
-        ) => {
+        const makeSpan = (code: "UNSET" | "OK" | "ERROR", message?: string) => {
           const s = new Span(
             `status-${code}`,
             "SERVER",
@@ -521,7 +518,10 @@ describeConformance(
           },
           {},
           undefined,
-          { "graphql.document": "{ orders { id } }", "http.route": "Query.orders" },
+          {
+            "graphql.document": "{ orders { id } }",
+            "http.route": "Query.orders",
+          },
         );
         const gqlOtlp = gqlSpan.toOtlpSpan();
         expect(attributesOf(gqlOtlp)["graphql.document"]).toEqual({

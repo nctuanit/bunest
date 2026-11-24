@@ -1,5 +1,5 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  ContextStorage,
   DecoratorRegistry,
   Inject,
   Injectable,
@@ -7,10 +7,11 @@ import {
   type BunestInterceptor,
   type BunestMiddleware,
   type CallHandler,
+  type ContextStorageLike,
   type ExecutionContext,
   type NextFunction,
   type ResponseContext,
-} from "@bunest/common";
+} from "../common/index";
 
 export const CLS_MODULE_OPTIONS = Symbol.for("bunest:core:cls_module_options");
 export const CLS_ID = Symbol.for("bunest:core:cls_id");
@@ -38,10 +39,10 @@ export interface ClsModuleOptions {
   readonly setup?: (cls: ClsService, req?: Request) => void | Promise<void>;
 }
 
-const defaultClsStorage = new AsyncLocalStorage<ClsStore>();
+const defaultClsStorage = new ContextStorage<ClsStore>();
 
 /**
- * Generalized `AsyncLocalStorage`-backed continuation-local storage service
+ * Generalized `ContextStorage`-backed continuation-local storage service
  * usable uniformly across HTTP requests, WebSockets, Queues, Cron jobs,
  * Microservices, and standalone background tasks (`cls.run()`).
  */
@@ -49,7 +50,7 @@ const defaultClsStorage = new AsyncLocalStorage<ClsStore>();
 export class ClsService<
   TStore extends Record<PropertyKey, unknown> = Record<string, unknown>,
 > {
-  private readonly storage: AsyncLocalStorage<ClsStore>;
+  private readonly storage: ContextStorageLike<ClsStore>;
   private readonly generateId: boolean;
   private readonly idGenerator: (req?: Request) => string;
 
@@ -58,7 +59,7 @@ export class ClsService<
     @Inject(CLS_MODULE_OPTIONS)
     options: ClsModuleOptions = {},
     @Optional()
-    storage: AsyncLocalStorage<ClsStore> = defaultClsStorage,
+    storage: ContextStorageLike<ClsStore> = defaultClsStorage,
   ) {
     this.storage = storage;
     this.generateId = options.generateId ?? true;
@@ -184,6 +185,11 @@ export class ClsService<
       for (const [k, v] of Object.entries(initial)) {
         store.set(k, v);
       }
+    }
+    if (typeof this.storage.enterWith !== "function") {
+      throw new Error(
+        "ClsService.enter() requires an AsyncLocalStorage-compatible ContextStorage implementation.",
+      );
     }
     this.storage.enterWith(store);
   }

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { afterAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   Logger,
   MetadataRegistry,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   ApiTags,
   SWAGGER_METADATA_KEYS,
@@ -20,7 +19,9 @@ describeConformance(
       "Bunest stores @ApiTags names under SWAGGER_METADATA_KEYS.API_TAGS via MetadataRegistry (ADR-002).",
   },
   () => {
-    const warnSpy = spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    const warnSpy = spyOn(Logger.prototype, "warn").mockImplementation(
+      () => {},
+    );
 
     afterAll(() => {
       warnSpy.mockRestore();
@@ -159,11 +160,10 @@ describeConformance(
       // BUNEST_BUG: ApiTags (packages/swagger/src/decorators/api.decorators.ts:45-72) does not emit a Logger.prototype.warn warning per object tag carrying hierarchy fields
       it.skip("should warn once per object tag carrying hierarchy fields", () => {
         class TestController {
-          @ApiTags(
-            { name: "Cats", parent: "Animals" },
-            "Dogs",
-            { name: "Birds", kind: "navigation" },
-          )
+          @ApiTags({ name: "Cats", parent: "Animals" }, "Dogs", {
+            name: "Birds",
+            kind: "navigation",
+          })
           mixed() {}
         }
         void TestController;

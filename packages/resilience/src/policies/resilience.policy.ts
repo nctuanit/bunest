@@ -1,9 +1,6 @@
-import { HttpException } from "@bunest/common";
+import { HttpException } from "@bunest/core";
 import type { Subscribable, Unsubscribable } from "@bunest/core";
-import {
-  currentAttempt,
-  runInAttempt,
-} from "../context/attempt-scope.context";
+import { currentAttempt, runInAttempt } from "../context/attempt-scope.context";
 import type { ResilienceEvent } from "../events/resilience-events.interface";
 import { publish } from "../events/resilience.channels";
 import type {
@@ -83,7 +80,9 @@ export abstract class ResiliencePolicy {
     options: ExecuteOptions = {},
   ): Promise<T> {
     const signal =
-      options.signal ?? currentAttempt()?.signal ?? new AbortController().signal;
+      options.signal ??
+      currentAttempt()?.signal ??
+      new AbortController().signal;
     if (signal.aborted) {
       return Promise.reject(signal.reason);
     }
@@ -230,7 +229,11 @@ export function observe<T>(
         async ({ signal: attemptSignal, attempt }) =>
           runInAttempt(
             { signal: attemptSignal, attempt },
-            () => forward(factory({ signal: attemptSignal, attempt }), attemptSignal),
+            () =>
+              forward(
+                factory({ signal: attemptSignal, attempt }),
+                attemptSignal,
+              ),
             true,
           ),
         execution,

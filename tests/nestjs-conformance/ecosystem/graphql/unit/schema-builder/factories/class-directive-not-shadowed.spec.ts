@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
-import type { GraphQLObjectType } from "../../../../../../../packages/graphql/node_modules/graphql";
+import type { GraphQLObjectType } from "../../../../../../../packages/graphql/src";
 import {
   Directive,
   Field,

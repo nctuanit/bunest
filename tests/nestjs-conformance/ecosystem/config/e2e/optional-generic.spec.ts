@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigService } from "../../../../../packages/config/src";
+import { ConfigService } from "../../../../../packages/core/src/config";
 import {
   describeConformance,
   Test,

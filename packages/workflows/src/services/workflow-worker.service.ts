@@ -5,7 +5,7 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
-} from "@bunest/common";
+} from "@bunest/core";
 import type {
   LeasedRun,
   LeaseRequest,
@@ -59,12 +59,11 @@ interface ClaimedItem {
   exec?: WorkflowExecution;
 }
 
-type EventBody =
-  WorkflowEvent extends infer E
-    ? E extends WorkflowEventBase
-      ? Omit<E, keyof WorkflowEventBase>
-      : never
-    : never;
+type EventBody = WorkflowEvent extends infer E
+  ? E extends WorkflowEventBase
+    ? Omit<E, keyof WorkflowEventBase>
+    : never
+  : never;
 
 const FAILED: Record<"claim" | "produce" | "execute", string> = {
   claim: "Claiming workflow instances failed.",
@@ -293,9 +292,11 @@ export class WorkflowWorker
         leaseUntil: instance.leaseUntil!,
         signalCursor,
       };
-      await this.storage[ENGINE_STORE]
-        .handBack(instance.id, instance.leaseToken, lease)
-        .catch(() => undefined);
+      await this.storage[ENGINE_STORE].handBack(
+        instance.id,
+        instance.leaseToken,
+        lease,
+      ).catch(() => undefined);
       return null;
     }
     if (!details) {

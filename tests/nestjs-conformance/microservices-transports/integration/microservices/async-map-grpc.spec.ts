@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   type BunestInterceptor,
   type CallHandler,
   type ExecutionContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   GrpcClientProxy,
   GrpcException,

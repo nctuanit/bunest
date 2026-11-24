@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -14,7 +13,7 @@ import {
   type ContextIdStrategy,
   type HostComponentInfo,
   type Provider,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   CircularDependencyException,
   ContextIdFactory,

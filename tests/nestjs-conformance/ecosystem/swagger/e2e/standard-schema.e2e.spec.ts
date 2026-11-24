@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   BunestFactory,
@@ -57,7 +56,9 @@ function getResponse(
   return response;
 }
 
-function getSchemaFromRequestBody(requestBody: RequestBodyObject): SchemaObject {
+function getSchemaFromRequestBody(
+  requestBody: RequestBodyObject,
+): SchemaObject {
   const schema = requestBody.content?.["application/json"]?.schema;
   expect(schema).toBeDefined();
   if (!schema || "$ref" in schema) {
@@ -119,8 +120,7 @@ function getParameter(
 ): ParameterObject {
   const operation = getOperation(document, path, method);
   const parameters = operation.parameters as
-    | Array<ParameterObject | ReferenceObject>
-    | undefined;
+    Array<ParameterObject | ReferenceObject> | undefined;
   const parameter = parameters?.find(
     (candidate): candidate is ParameterObject =>
       !!candidate && !("$ref" in candidate) && candidate.name === name,

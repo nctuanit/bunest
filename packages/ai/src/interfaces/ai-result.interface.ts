@@ -1,5 +1,5 @@
-import type { AiModelInfo, ModelMessage } from './ai-types.interface';
-import type { AiUsage } from './ai-usage.interface';
+import type { AiModelInfo, ModelMessage } from "./ai-types.interface";
+import type { AiUsage } from "./ai-usage.interface";
 
 export type { AiModelInfo, ModelMessage };
 

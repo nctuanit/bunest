@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type {
   MailAddress,
   MailAttachment,
@@ -112,9 +112,7 @@ export class SentMail {
   attachment(filename: string): MailAttachment {
     const found = this.attachments.find((a) => a.filename === filename);
     if (!found) {
-      const names = this.attachments.map(
-        (a) => a.filename ?? `cid:${a.cid}`,
-      );
+      const names = this.attachments.map((a) => a.filename ?? `cid:${a.cid}`);
       throw new Error(
         `No attachment "${filename}" in the mail "${this.subject}". Attachments: ${names.join(", ") || "none"}`,
       );

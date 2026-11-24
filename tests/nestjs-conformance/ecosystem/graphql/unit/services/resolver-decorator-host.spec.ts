@@ -1,6 +1,12 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "bun:test";
-import { Logger } from "../../../../../../packages/common/src";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+} from "bun:test";
+import { Logger } from "../../../../../../packages/core/src/common";
 import { ResolverDecoratorHost } from "../../../../../../packages/graphql/src";
 import {
   type SinonLikeStub,

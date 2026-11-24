@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, stat, symlink, unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import {
+  ensureDir,
+  getPlatform,
+  join,
+  removeEmptyDir,
+  removePath,
+  resolve,
+  statPath,
+} from "@bunest/core";
 import {
   FileCollisionError,
   createProject,
@@ -12,10 +18,12 @@ import {
   type SchematicType,
 } from "../src";
 
+const TMP_DIR = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
 const tempDirs: Array<{ dir: string; junctions: string[] }> = [];
 
 async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix));
+  const dir = join(TMP_DIR, `${prefix}${crypto.randomUUID().slice(0, 8)}`);
+  await ensureDir(dir);
   tempDirs.push({ dir, junctions: [] });
   return dir;
 }
@@ -40,7 +48,7 @@ function createCapturedIO(cwd: string): {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await stat(path);
+    await statPath(path);
     return true;
   } catch {
     return false;
@@ -51,9 +59,13 @@ afterEach(async () => {
   while (tempDirs.length > 0) {
     const entry = tempDirs.pop()!;
     for (const junctionPath of entry.junctions) {
-      await unlink(junctionPath).catch(() => {});
+      if (getPlatform() === "win32") {
+        await removeEmptyDir(junctionPath).catch(() => {});
+      } else {
+        await removePath(junctionPath, { force: true }).catch(() => {});
+      }
     }
-    await rm(entry.dir, { recursive: true, force: true });
+    await removePath(entry.dir, { recursive: true, force: true });
   }
 });
 
@@ -140,7 +152,8 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
           "http-error/http-error.filter.ts",
           "http-error/http-error.filter.spec.ts",
         ],
-        expectedSymbol: "export class HttpErrorFilter implements ExceptionFilter",
+        expectedSymbol:
+          "export class HttpErrorFilter implements ExceptionFilter",
       },
       {
         alias: "mi",
@@ -150,7 +163,8 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
           "request-id/request-id.middleware.ts",
           "request-id/request-id.middleware.spec.ts",
         ],
-        expectedSymbol: "export class RequestIdMiddleware implements BunestMiddleware",
+        expectedSymbol:
+          "export class RequestIdMiddleware implements BunestMiddleware",
       },
       {
         alias: "ep",
@@ -189,6 +203,14 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
 
       const firstContent = await Bun.file(out.files[0]!.path).text();
       expect(firstContent).toContain(c.expectedSymbol);
+      if (
+        c.expectedType === "dto" ||
+        c.expectedType === "endpoint" ||
+        c.expectedType === "resource"
+      ) {
+        expect(firstContent).toContain('from "@bunest/validation/validator"');
+        expect(firstContent).not.toContain("class-validator");
+      }
     }
   });
 
@@ -301,35 +323,33 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
       });
     }
 
-    // Link workspace packages and shared dependencies via directory junctions (safe without admin on Windows)
+    // Link workspace packages and shared dependencies via directory junctions/symlinks (safe without admin on Windows)
     const repoRoot = resolve(import.meta.dir, "../../..");
     const repoNodeModules = join(repoRoot, "node_modules");
     const projectNodeModules = join(projectDir, "node_modules");
     const bunestScopeDir = join(projectNodeModules, "@bunest");
-    await mkdir(bunestScopeDir, { recursive: true });
+    await ensureDir(bunestScopeDir);
 
     const entryRecord = tempDirs[tempDirs.length - 1]!;
     const linkDir = async (target: string, linkPath: string) => {
-      await symlink(target, linkPath, "junction");
+      const cmd =
+        getPlatform() === "win32"
+          ? ["cmd", "/c", "mklink", "/J", linkPath, target]
+          : ["ln", "-s", target, linkPath];
+      const proc = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" });
+      const code = await proc.exited;
+      if (code !== 0) {
+        const errText = await new Response(proc.stderr).text();
+        throw new Error(`Failed to link ${linkPath} -> ${target}: ${errText}`);
+      }
       entryRecord.junctions.push(linkPath);
     };
 
-    for (const pkg of ["common", "http", "validation", "core", "testing"]) {
-      await linkDir(
-        join(repoRoot, "packages", pkg),
-        join(bunestScopeDir, pkg),
-      );
+    for (const pkg of ["validation", "core", "testing"]) {
+      await linkDir(join(repoRoot, "packages", pkg), join(bunestScopeDir, pkg));
     }
-    for (const dep of [
-      "reflect-metadata",
-      "class-validator",
-      "class-transformer",
-      "@types",
-    ]) {
-      await linkDir(
-        join(repoNodeModules, dep),
-        join(projectNodeModules, dep),
-      );
+    for (const dep of ["@types"]) {
+      await linkDir(join(repoNodeModules, dep), join(projectNodeModules, dep));
     }
 
     // 1. Real `bun check` against generated project's strict verbatimModuleSyntax tsconfig.json

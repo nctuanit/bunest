@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   RequestContext,
   extractRequestCookies,
   extractSignedCookies,
   signCookieValue,
-} from "../../../../../../../packages/http/src";
+} from "../../../../../../../packages/core/src/http";
 import { describeConformance, itAdapted } from "../../../../../_helpers";
 
 describeConformance(
@@ -74,7 +73,7 @@ describeConformance(
         expect(ctx.cookies.b).toBeUndefined();
       });
 
-      // BUNEST_BUG: RequestContext.cookies returns a plain {} instead of Object.create(null) (packages/http/src/security/cookie.ts:126), so inherited properties like constructor/toString resolve.
+      // BUNEST_BUG: RequestContext.cookies returns a plain {} instead of Object.create(null) (packages/core/src/http/security/cookie.ts:126), so inherited properties like constructor/toString resolve.
       it.skip("should not resolve inherited members of cookies object", () => {
         const ctx = new RequestContext({
           request: new Request("http://localhost/", {
@@ -136,7 +135,7 @@ describeConformance(
         expect(validFirst.signedCookies.uid).toBe("42");
       });
 
-      // BUNEST_BUG: RequestContext.signedCookies derives from this.cookies instead of verifying the raw Cookie header independently when req.cookies only holds plain entries (packages/http/src/context/request-context.ts:237-245).
+      // BUNEST_BUG: RequestContext.signedCookies derives from this.cookies instead of verifying the raw Cookie header independently when req.cookies only holds plain entries (packages/core/src/http/context/request-context.ts:237-245).
       it.skip("should verify the raw Cookie header even when req.cookies only contains plain entries", () => {
         const req = new Request("http://localhost/", {
           headers: { cookie: header },
@@ -156,7 +155,7 @@ describeConformance(
         expect(extractSignedCookies(cookies, undefined)).toEqual({});
       });
 
-      // BUNEST_BUG: RequestContext.signedCookies silently returns {} instead of throwing when no cookie secret is configured (packages/http/src/context/request-context.ts:237-245).
+      // BUNEST_BUG: RequestContext.signedCookies silently returns {} instead of throwing when no cookie secret is configured (packages/core/src/http/context/request-context.ts:237-245).
       it.skip("should throw when accessing signedCookies without a configured cookie secret", () => {
         const ctx = new RequestContext({
           request: new Request("http://localhost/", {

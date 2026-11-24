@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,64 +5,56 @@ import {
   Injectable,
   Module,
   Post,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
-  BaseSqliteRepository,
-  InjectSqliteRepository,
-  SqliteEntity,
-  SqliteModule,
-  type SqliteModuleOptions,
-  type SqliteOptionsFactory,
-} from "../../../../../packages/sqlite/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+  Column,
+  Entity,
+  InjectRepository,
+  OrmModule,
+  PrimaryGeneratedColumn,
+  type OrmDataSourceOptions,
+  type OrmOptionsFactory,
+  type Repository,
+} from "../../../../../packages/orm/src";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
-interface PhotoRow extends Record<string, unknown> {
-  id: number;
-  name: string;
-  description: string;
-  views: number;
+@Entity("photos")
+class Photo {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  name!: string;
+
+  @Column()
+  description!: string;
+
+  @Column({ type: "integer", default: 0 })
+  views!: number;
 }
-
-@SqliteEntity("photos")
-class Photo {}
-
-const CREATE_PHOTOS_MIGRATION = {
-  id: "001_create_photos",
-  up: `CREATE TABLE IF NOT EXISTS photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    views INTEGER NOT NULL DEFAULT 0
-  )`,
-  down: "DROP TABLE IF EXISTS photos",
-};
 
 @Injectable()
 class PhotoService {
   constructor(
-    @InjectSqliteRepository(Photo)
-    private readonly photoRepository: BaseSqliteRepository<PhotoRow, number>,
-    @InjectSqliteRepository(Photo, "connection_2")
-    private readonly photoRepository2: BaseSqliteRepository<PhotoRow, number>,
+    @InjectRepository(Photo)
+    private readonly photoRepository: Repository<Photo>,
+    @InjectRepository(Photo, "connection_2")
+    private readonly photoRepository2: Repository<Photo>,
   ) {}
 
-  findAll(): PhotoRow[] {
-    return this.photoRepository.findAll();
+  findAll(): Promise<Photo[]> {
+    return this.photoRepository.find();
   }
 
-  create(): Omit<PhotoRow, "id"> {
-    const inserted = this.photoRepository.insertReturning({
+  async create(): Promise<Omit<Photo, "id">> {
+    const inserted = await this.photoRepository.save({
       name: "Nest",
       description: "Is great!",
       views: 6000,
     });
     // Ensure secondary connection repository is wired and independent
-    expect(this.photoRepository2.count()).toBe(0);
+    expect(await this.photoRepository2.count()).toBe(0);
     return {
       name: inserted.name,
       description: inserted.description,
@@ -77,20 +68,20 @@ class PhotoController {
   constructor(private readonly photoService: PhotoService) {}
 
   @Get()
-  findAll(): PhotoRow[] {
+  findAll(): Promise<Photo[]> {
     return this.photoService.findAll();
   }
 
   @Post()
-  create(): Omit<PhotoRow, "id"> {
+  create(): Promise<Omit<Photo, "id">> {
     return this.photoService.create();
   }
 }
 
 @Module({
   imports: [
-    SqliteModule.forFeature([Photo]),
-    SqliteModule.forFeature([Photo], "connection_2"),
+    OrmModule.forFeature([Photo]),
+    OrmModule.forFeature([Photo], "connection_2"),
   ],
   providers: [PhotoService],
   controllers: [PhotoController],
@@ -98,26 +89,28 @@ class PhotoController {
 class PhotoModule {}
 
 @Injectable()
-class SqliteConfigService implements SqliteOptionsFactory {
-  createSqliteOptions(): SqliteModuleOptions {
+class OrmConfigService implements OrmOptionsFactory {
+  createOrmOptions(): OrmDataSourceOptions {
     return {
-      filename: ":memory:",
-      autoMigrate: true,
-      migrations: [CREATE_PHOTOS_MIGRATION],
+      type: "sqlite",
+      database: ":memory:",
+      entities: [Photo],
+      synchronize: true,
     };
   }
 }
 
 @Module({
   imports: [
-    SqliteModule.forRootAsync({
-      useClass: SqliteConfigService,
+    OrmModule.forRootAsync({
+      useClass: OrmConfigService,
     }),
-    SqliteModule.forRoot({
+    OrmModule.forRoot({
       name: "connection_2",
-      filename: ":memory:",
-      autoMigrate: true,
-      migrations: [CREATE_PHOTOS_MIGRATION],
+      type: "sqlite",
+      database: ":memory:",
+      entities: [Photo],
+      synchronize: true,
     }),
     PhotoModule,
   ],
@@ -131,7 +124,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Adapts TypeOrmModule.forRootAsync({ useClass }) pattern to SqliteModule.forRootAsync + SqliteOptionsFactory on in-memory bun:sqlite with zero-socket HTTP testing.",
+      "Adapts TypeOrmModule.forRootAsync({ useClass }) pattern to @bunest/orm OrmModule.forRootAsync + OrmOptionsFactory on in-memory bun:sqlite with zero-socket HTTP testing.",
   },
   () => {
     let app: BunestApplication;

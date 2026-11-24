@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   type CanActivate,
@@ -7,7 +6,7 @@ import {
   Module,
   ParseIntPipe,
   UseGuards,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Args,
@@ -19,11 +18,7 @@ import {
   Resolver,
   Subscription,
 } from "../../../../../packages/graphql/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers/index";
+import { Test, describeConformance, request } from "../../../_helpers/index";
 
 interface Cat {
   readonly id: number;
@@ -96,7 +91,9 @@ class CatsResolvers {
   }
 
   @Query(() => Object, { name: "cat" })
-  async findOneById(@Args("id", ParseIntPipe) id: number): Promise<Cat | undefined> {
+  async findOneById(
+    @Args("id", ParseIntPipe) id: number,
+  ): Promise<Cat | undefined> {
     return this.catsService.findOneById(id);
   }
 

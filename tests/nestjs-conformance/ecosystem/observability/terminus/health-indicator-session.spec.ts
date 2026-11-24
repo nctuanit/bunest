@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { HealthIndicatorSession } from "../../../../../packages/observability/src";
 import { describeConformance } from "../../../_helpers/index";
@@ -9,7 +8,8 @@ describeConformance(
     upstreamPath:
       "terminus/lib/health-indicator/service/health-indicator-session.spec.ts",
     category: "DIRECT_PORT",
-    notes: "Direct port of upstream @nestjs/terminus HealthIndicatorSession unit tests.",
+    notes:
+      "Direct port of upstream @nestjs/terminus HealthIndicatorSession unit tests.",
   },
   () => {
     let session: HealthIndicatorSession<"test">;

@@ -1,5 +1,5 @@
-import type { AiSchema } from './ai-schema.interface';
-import type { ModelMessage } from './ai-types.interface';
+import type { AiSchema } from "./ai-schema.interface";
+import type { ModelMessage } from "./ai-types.interface";
 
 /** Options for `@AgentFunction()`. */
 export interface AgentFunctionOptions {
@@ -26,7 +26,11 @@ export interface AgentFunctionContext<TRequest = any, TUser = any> {
   /** Aborted when the call is cancelled or times out. */
   readonly signal: AbortSignal;
   /** Reports progress during a long-running tool call. */
-  reportProgress(progress: number, total?: number, message?: string): Promise<void>;
+  reportProgress(
+    progress: number,
+    total?: number,
+    message?: string,
+  ): Promise<void>;
   /** The model's identifier for this tool call. */
   readonly toolCallId: string;
   /** Stable idempotency key for durable workflow steps. */

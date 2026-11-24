@@ -1,4 +1,4 @@
-import type { LogLevel, LoggerService } from "@bunest/common";
+import type { LogLevel, LoggerService } from "@bunest/core";
 
 export interface TestingLoggerOptions {
   readonly context?: string;

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import {
   Field,
@@ -58,9 +57,7 @@ describeConformance(
 
     // BUNEST_BUG: Expected schemaFactory.create() to reject with 'Cannot build the "Pet" union: its member "StrayDog" is not registered as a @ObjectType().', but it resolved without throwing; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateUnionType:909-912 / getOrCreateObjectType:975-985) silently synthesizes a GraphQLObjectType for undecorated union members instead of validating @ObjectType() registration.
     it.skip("should throw a descriptive error when a union member is not an @ObjectType", async () => {
-      await expect(
-        schemaFactory.create([new PetResolver()]),
-      ).rejects.toThrow(
+      await expect(schemaFactory.create([new PetResolver()])).rejects.toThrow(
         /Cannot build the "Pet" union: its member "StrayDog" is not registered as a @ObjectType\(\)\./,
       );
     });

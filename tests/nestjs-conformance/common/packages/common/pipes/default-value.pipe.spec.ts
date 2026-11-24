@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { DefaultValuePipe } from "../../../../../../packages/common/src";
+import { DefaultValuePipe } from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -26,7 +25,7 @@ describeConformance(
       });
 
       describe("when the default value is an array or a plain object", () => {
-        // BUNEST_BUG: DefaultValuePipe returns the shared defaultValue reference without cloning arrays/plain objects; expected [] on second call, actual ["first"] (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the shared defaultValue reference without cloning arrays/plain objects; expected [] on second call, actual ["first"] (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should return a new copy of it on every call", () => {
           const arrayTarget = new DefaultValuePipe<string[], string[]>([]);
           arrayTarget.transform(undefined).push("first");
@@ -34,7 +33,7 @@ describeConformance(
           expect(arrayTarget.transform(undefined)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe does not deep-clone nested arrays and plain objects; mutating returned object mutates stored default (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe does not deep-clone nested arrays and plain objects; mutating returned object mutates stored default (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should copy the arrays and plain objects nested in it", () => {
           const defaults = {
             sort: { order: "asc" },
@@ -54,7 +53,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of a cloned sparse array (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of a cloned sparse array (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should preserve the length of an array containing only empty slots", () => {
           const slots = new Array<string>(7);
           const result = new DefaultValuePipe<string[], string[]>(
@@ -66,7 +65,7 @@ describeConformance(
           expect(Object.keys(result)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of cloning while preserving trailing empty slots (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the exact same sparse array reference instead of cloning while preserving trailing empty slots (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should preserve trailing empty slots when copying an array", () => {
           const slots = new Array<string>(7);
           slots[1] = "open";
@@ -80,7 +79,7 @@ describeConformance(
           expect(result[1]).toBe("open");
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same nested sparse array reference instead of cloning it (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the exact same nested sparse array reference instead of cloning it (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should preserve the length of a nested sparse array", () => {
           const defaults = { slots: new Array<string>(7) };
           const result = new DefaultValuePipe<typeof defaults, typeof defaults>(
@@ -92,7 +91,7 @@ describeConformance(
           expect(Object.keys(result.slots)).toEqual([]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same null-prototype object reference instead of cloning it (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the exact same null-prototype object reference instead of cloning it (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should keep symbol keys and a null prototype", () => {
           const ne = Symbol("ne");
           const where = Object.assign(Object.create(null), {
@@ -107,7 +106,7 @@ describeConformance(
           expect(result.status[ne]).toBe("deleted");
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the same object reference without cloning own __proto__ property (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the same object reference without cloning own __proto__ property (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should copy an own __proto__ field without changing the prototype", () => {
           const value = JSON.parse(
             '{"__proto__":{"tags":["a"]},"enabled":true}',
@@ -126,7 +125,7 @@ describeConformance(
           expect(value.__proto__.tags).toEqual(["a"]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the same object/array references without cloning own __proto__ fields or preserving shared-object identity in the copy (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the same object/array references without cloning own __proto__ fields or preserving shared-object identity in the copy (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should copy own __proto__ fields on arrays and nested defaults", () => {
           const key = Symbol("shared");
           const shared = { tags: ["a"] };
@@ -151,7 +150,7 @@ describeConformance(
           expect(shared.tags).toEqual(["a"]);
         });
 
-        // BUNEST_BUG: DefaultValuePipe returns the exact same circular object reference instead of deep-cloning with cycle preservation (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: DefaultValuePipe returns the exact same circular object reference instead of deep-cloning with cycle preservation (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should preserve circular references", () => {
           const circular: Record<string, unknown> = {};
           circular.self = circular;

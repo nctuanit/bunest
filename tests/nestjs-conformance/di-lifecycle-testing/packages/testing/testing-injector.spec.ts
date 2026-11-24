@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it, mock } from "bun:test";
-import { Inject, Injectable, Scope } from "../../../../../packages/common/src";
+import { Inject, Injectable, Scope } from "../../../../../packages/core/src/common";
 import {
   ModuleMocker,
   Test,
@@ -20,143 +19,177 @@ describeConformance(
   },
   () => {
     describe("setMocker / useMocker registration", () => {
-      itAdapted("ADR-002", "should resolve existing provider without invoking mocker", async () => {
-        @Injectable()
-        class ExistingDep {
-          value() {
-            return "real";
+      itAdapted(
+        "ADR-002",
+        "should resolve existing provider without invoking mocker",
+        async () => {
+          @Injectable()
+          class ExistingDep {
+            value() {
+              return "real";
+            }
           }
-        }
 
-        @Injectable()
-        class Consumer {
-          constructor(public readonly dep: ExistingDep) {}
-        }
+          @Injectable()
+          class Consumer {
+            constructor(public readonly dep: ExistingDep) {}
+          }
 
-        const mocker = mock(() => ({ value: () => "mocked" }));
-        const mod = await Test.createTestingModule({
-          providers: [ExistingDep, Consumer],
-        })
-          .useMocker(mocker)
-          .compile();
-
-        expect(mod.get(Consumer).dep.value()).toBe("real");
-        expect(mocker).not.toHaveBeenCalled();
-        await mod.close();
-      });
-
-      itAdapted("ADR-002", "should throw when dependency is missing and no mocker is set", async () => {
-        @Injectable()
-        class MissingDep {}
-
-        @Injectable()
-        class Consumer {
-          constructor(public readonly dep: MissingDep) {}
-        }
-
-        await expect(
-          Test.createTestingModule({ providers: [Consumer] }).compile(),
-        ).rejects.toThrow();
-      });
-
-      itAdapted("ADR-002", "should invoke mocker when dependency is missing and inject returned mock", async () => {
-        @Injectable()
-        class MissingDep {}
-
-        @Injectable()
-        class Consumer {
-          constructor(public readonly dep: MissingDep) {}
-        }
-
-        const mockInstance = { mocked: true };
-        const mocker = mock(() => mockInstance);
-
-        const mod = await Test.createTestingModule({ providers: [Consumer] })
-          .useMocker(mocker)
-          .compile();
-
-        expect(mocker).toHaveBeenCalledWith(MissingDep);
-        expect(mod.get(Consumer).dep).toBe(mockInstance as unknown as MissingDep);
-        await mod.close();
-      });
-
-      itAdapted("ADR-002", "should not reuse mocks created by a replaced mocker", async () => {
-        @Injectable()
-        class MissingDep {}
-
-        @Injectable()
-        class Consumer {
-          constructor(public readonly dep: MissingDep) {}
-        }
-
-        const builder = Test.createTestingModule({ providers: [Consumer] });
-        builder.useMocker(() => ({ from: "first" }));
-        builder.useMocker(() => ({ from: "second" }));
-
-        const mod = await builder.compile();
-        expect(mod.get(Consumer).dep).toEqual({ from: "second" } as unknown as MissingDep);
-        await mod.close();
-      });
-
-      itAdapted("ADR-002", "should throw when mocker returns undefined for a required dependency", async () => {
-        @Injectable()
-        class MissingDep {}
-
-        @Injectable()
-        class Consumer {
-          constructor(public readonly dep: MissingDep) {}
-        }
-
-        const mocker = mock(() => undefined);
-
-        await expect(
-          Test.createTestingModule({ providers: [Consumer] })
+          const mocker = mock(() => ({ value: () => "mocked" }));
+          const mod = await Test.createTestingModule({
+            providers: [ExistingDep, Consumer],
+          })
             .useMocker(mocker)
-            .compile(),
-        ).rejects.toThrow();
-        expect(mocker).toHaveBeenCalledWith(MissingDep);
-      });
+            .compile();
 
-      itAdapted("ADR-002", "should mock string token dependencies via @Inject", async () => {
-        @Injectable()
-        class Consumer {
-          constructor(@Inject("CUSTOM_TOKEN") public readonly dep: unknown) {}
-        }
+          expect(mod.get(Consumer).dep.value()).toBe("real");
+          expect(mocker).not.toHaveBeenCalled();
+          await mod.close();
+        },
+      );
 
-        const mockInstance = { mocked: true };
-        const mocker = mock((token: unknown) =>
-          token === "CUSTOM_TOKEN" ? mockInstance : undefined,
-        );
+      itAdapted(
+        "ADR-002",
+        "should throw when dependency is missing and no mocker is set",
+        async () => {
+          @Injectable()
+          class MissingDep {}
 
-        const mod = await Test.createTestingModule({ providers: [Consumer] })
-          .useMocker(mocker)
-          .compile();
+          @Injectable()
+          class Consumer {
+            constructor(public readonly dep: MissingDep) {}
+          }
 
-        expect(mocker).toHaveBeenCalledWith("CUSTOM_TOKEN");
-        expect(mod.get(Consumer).dep).toBe(mockInstance);
-        await mod.close();
-      });
+          await expect(
+            Test.createTestingModule({ providers: [Consumer] }).compile(),
+          ).rejects.toThrow();
+        },
+      );
 
-      itAdapted("ADR-012", "should support auto-mocking missing dependencies of request-scoped providers", async () => {
-        @Injectable()
-        class MissingDep {}
+      itAdapted(
+        "ADR-002",
+        "should invoke mocker when dependency is missing and inject returned mock",
+        async () => {
+          @Injectable()
+          class MissingDep {}
 
-        @Injectable({ scope: Scope.REQUEST })
-        class ScopedConsumer {
-          constructor(public readonly dep: MissingDep) {}
-        }
+          @Injectable()
+          class Consumer {
+            constructor(public readonly dep: MissingDep) {}
+          }
 
-        const mockInstance = { scopedMock: true };
-        const mod = await Test.createTestingModule({
-          providers: [ScopedConsumer],
-        })
-          .useMocker((token) => (token === MissingDep ? mockInstance : undefined))
-          .compile();
+          const mockInstance = { mocked: true };
+          const mocker = mock(() => mockInstance);
 
-        const resolved = await mod.resolve(ScopedConsumer);
-        expect(resolved.dep).toBe(mockInstance as unknown as MissingDep);
-        await mod.close();
-      });
+          const mod = await Test.createTestingModule({ providers: [Consumer] })
+            .useMocker(mocker)
+            .compile();
+
+          expect(mocker).toHaveBeenCalledWith(MissingDep);
+          expect(mod.get(Consumer).dep).toBe(
+            mockInstance as unknown as MissingDep,
+          );
+          await mod.close();
+        },
+      );
+
+      itAdapted(
+        "ADR-002",
+        "should not reuse mocks created by a replaced mocker",
+        async () => {
+          @Injectable()
+          class MissingDep {}
+
+          @Injectable()
+          class Consumer {
+            constructor(public readonly dep: MissingDep) {}
+          }
+
+          const builder = Test.createTestingModule({ providers: [Consumer] });
+          builder.useMocker(() => ({ from: "first" }));
+          builder.useMocker(() => ({ from: "second" }));
+
+          const mod = await builder.compile();
+          expect(mod.get(Consumer).dep).toEqual({
+            from: "second",
+          } as unknown as MissingDep);
+          await mod.close();
+        },
+      );
+
+      itAdapted(
+        "ADR-002",
+        "should throw when mocker returns undefined for a required dependency",
+        async () => {
+          @Injectable()
+          class MissingDep {}
+
+          @Injectable()
+          class Consumer {
+            constructor(public readonly dep: MissingDep) {}
+          }
+
+          const mocker = mock(() => undefined);
+
+          await expect(
+            Test.createTestingModule({ providers: [Consumer] })
+              .useMocker(mocker)
+              .compile(),
+          ).rejects.toThrow();
+          expect(mocker).toHaveBeenCalledWith(MissingDep);
+        },
+      );
+
+      itAdapted(
+        "ADR-002",
+        "should mock string token dependencies via @Inject",
+        async () => {
+          @Injectable()
+          class Consumer {
+            constructor(@Inject("CUSTOM_TOKEN") public readonly dep: unknown) {}
+          }
+
+          const mockInstance = { mocked: true };
+          const mocker = mock((token: unknown) =>
+            token === "CUSTOM_TOKEN" ? mockInstance : undefined,
+          );
+
+          const mod = await Test.createTestingModule({ providers: [Consumer] })
+            .useMocker(mocker)
+            .compile();
+
+          expect(mocker).toHaveBeenCalledWith("CUSTOM_TOKEN");
+          expect(mod.get(Consumer).dep).toBe(mockInstance);
+          await mod.close();
+        },
+      );
+
+      itAdapted(
+        "ADR-012",
+        "should support auto-mocking missing dependencies of request-scoped providers",
+        async () => {
+          @Injectable()
+          class MissingDep {}
+
+          @Injectable({ scope: Scope.REQUEST })
+          class ScopedConsumer {
+            constructor(public readonly dep: MissingDep) {}
+          }
+
+          const mockInstance = { scopedMock: true };
+          const mod = await Test.createTestingModule({
+            providers: [ScopedConsumer],
+          })
+            .useMocker((token) =>
+              token === MissingDep ? mockInstance : undefined,
+            )
+            .compile();
+
+          const resolved = await mod.resolve(ScopedConsumer);
+          expect(resolved.dep).toBe(mockInstance as unknown as MissingDep);
+          await mod.close();
+        },
+      );
     });
 
     describe("ModuleMocker & createAutoMocker", () => {
@@ -175,7 +208,9 @@ describeConformance(
         const mocked = new MockCtor();
         expect(typeof mocked.greet).toBe("function");
         mocked.greet("bunest");
-        expect((mocked.greet as unknown as { calls?: unknown[] }).calls ?? []).toBeDefined();
+        expect(
+          (mocked.greet as unknown as { calls?: unknown[] }).calls ?? [],
+        ).toBeDefined();
       });
 
       it("should work seamlessly with createAutoMocker() in TestingModuleBuilder", async () => {

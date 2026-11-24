@@ -1,8 +1,11 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSyncPath,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -11,11 +14,20 @@ import {
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
 
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
+
 const expectedGatewaySource = (pascal: string): string =>
   "import {\n" +
   "  SubscribeMessage,\n" +
   "  WebSocketGateway,\n" +
-  '} from "@bunest/websockets";\n' +
+  '} from "@bunest/core/ws";\n' +
   "\n" +
   "@WebSocketGateway()\n" +
   `export class ${pascal}Gateway {\n` +
@@ -38,11 +50,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-gw-"));
+      tempDir = makeTempDir("bunest-cli-conf-gw-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     itAdapted(
@@ -71,7 +83,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.gateway.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo/foo.gateway.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo/foo.gateway.ts")),
         ).toEqual(expectedGatewaySource("Foo"));
       },
       "Bunest gateway imports from @bunest/websockets with strict unknown parameter types",
@@ -93,7 +105,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "bar/foo/foo.gateway.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar/foo/foo.gateway.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar/foo/foo.gateway.ts")),
         ).toEqual(expectedGatewaySource("Foo"));
       },
       "Bunest gateway uses @bunest/websockets",
@@ -115,7 +127,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.gateway.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "baz/foo/foo.gateway.ts"), "utf8"),
+          readTextSync(join(tempDir, "baz/foo/foo.gateway.ts")),
         ).toEqual(expectedGatewaySource("Foo"));
       },
       "Bunest uses dir option for base directory",
@@ -139,7 +151,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "foo-bar/foo-bar.gateway.ts"), "utf8"),
+          readTextSync(join(tempDir, "foo-bar/foo-bar.gateway.ts")),
         ).toEqual(expectedGatewaySource("FooBar"));
       },
       "Normalizes camelCase gateway name to kebab-case path and PascalCase class",
@@ -159,7 +171,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "_foo/_foo.gateway.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_foo/_foo.gateway.ts"), "utf8"),
+        readTextSync(join(tempDir, "_foo/_foo.gateway.ts")),
       ).toEqual(expectedGatewaySource("Foo"));
     });
 
@@ -181,7 +193,7 @@ describeConformance(
           ),
         ).toBeDefined();
         expect(
-          readFileSync(join(tempDir, "bar-baz/foo/foo.gateway.ts"), "utf8"),
+          readTextSync(join(tempDir, "bar-baz/foo/foo.gateway.ts")),
         ).toEqual(expectedGatewaySource("Foo"));
       },
       "Normalizes camelCase directory segment to kebab-case",
@@ -219,7 +231,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.gateway.spec.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.gateway.spec.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.gateway.spec.ts"))).toBe(true);
     });
 
     it("should create a spec file with custom file suffix", async () => {
@@ -239,8 +251,8 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.gateway.test.ts"),
       ).toBeDefined();
-      expect(existsSync(join(tempDir, "foo.gateway.spec.ts"))).toBe(false);
-      expect(existsSync(join(tempDir, "foo.gateway.test.ts"))).toBe(true);
+      expect(existsSyncPath(join(tempDir, "foo.gateway.spec.ts"))).toBe(false);
+      expect(existsSyncPath(join(tempDir, "foo.gateway.test.ts"))).toBe(true);
     });
 
     // BUNEST_BUG: generateSchematic("gateway") in packages/cli/src/commands/generate.ts does not auto-register FooGateway in src/app.module.ts providers[] (note: per ADR-001/ADR-002, Bunest ESM uses extensionless imports).
@@ -259,10 +271,7 @@ describeConformance(
         cwd: tempDir,
       });
 
-      const appModule = readFileSync(
-        join(tempDir, "src/app.module.ts"),
-        "utf8",
-      );
+      const appModule = readTextSync(join(tempDir, "src/app.module.ts"));
       expect(appModule).toContain(
         'import { FooGateway } from "./foo.gateway";',
       );
@@ -288,11 +297,8 @@ describeConformance(
           cwd: tempDir,
         });
 
-        const specContent = readFileSync(
-          join(tempDir, "src/foo.gateway.spec.ts"),
-          "utf8",
-        );
-        expect(specContent).toContain('import "reflect-metadata";');
+        const specContent = readTextSync(join(tempDir, "src/foo.gateway.spec.ts"));
+        expect(specContent).not.toContain('import "reflect-metadata";');
         expect(specContent).toContain(
           'import { describe, expect, it } from "bun:test";',
         );

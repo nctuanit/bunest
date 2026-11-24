@@ -17,11 +17,22 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === null || proto === Object.prototype;
 }
 
+export type EncodedKafkaValue = string | Buffer | Uint8Array | null;
+
+export interface SerializedKafkaMessage {
+  key?: EncodedKafkaValue;
+  value: EncodedKafkaValue;
+  headers: Record<string, unknown>;
+  partition?: number;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Pass-through serializer returning outgoing values unchanged.
  */
 export class IdentitySerializer implements Serializer {
-  serialize(value: any): any {
+  serialize<T = unknown>(value: T): T {
     return value;
   }
 }
@@ -30,8 +41,11 @@ export class IdentitySerializer implements Serializer {
  * Serializes outgoing Kafka payloads into `{ key?, value, headers, partition?, timestamp? }`
  * records compatible with KafkaJS / `KafkaProducerRecord`.
  */
-export class KafkaRequestSerializer implements Serializer<any, any> {
-  serialize(value: any): any {
+export class KafkaRequestSerializer implements Serializer<
+  unknown,
+  SerializedKafkaMessage
+> {
+  serialize(value: unknown): SerializedKafkaMessage {
     const isNotKafkaMessage =
       value === null ||
       value === undefined ||
@@ -39,7 +53,9 @@ export class KafkaRequestSerializer implements Serializer<any, any> {
       (!("key" in value) && !("value" in value)) ||
       Object.keys(value).some((field) => !KAFKA_MESSAGE_FIELDS.has(field));
 
-    const record = isNotKafkaMessage ? { value } : value;
+    const record: Record<string, unknown> = isNotKafkaMessage
+      ? { value }
+      : (value as Record<string, unknown>);
     const headers =
       record.headers &&
       typeof record.headers === "object" &&
@@ -57,15 +73,18 @@ export class KafkaRequestSerializer implements Serializer<any, any> {
       );
     }
 
-    const request = { ...record, headers: { ...headers } };
-    request.value = this.encode(request.value);
-    if (request.key !== null && request.key !== undefined) {
-      request.key = this.encode(request.key);
+    const request: SerializedKafkaMessage = {
+      ...record,
+      headers: { ...headers },
+      value: this.encode(record.value),
+    };
+    if (record.key !== null && record.key !== undefined) {
+      request.key = this.encode(record.key);
     }
     return request;
   }
 
-  encode(value: any): any {
+  encode(value: unknown): EncodedKafkaValue {
     const isObjectOrArray =
       value !== null &&
       value !== undefined &&
@@ -76,7 +95,7 @@ export class KafkaRequestSerializer implements Serializer<any, any> {
     if (isObjectOrArray) {
       return isPlainObject(value) ||
         Array.isArray(value) ||
-        value.toString === Object.prototype.toString
+        (value as { toString?: unknown }).toString === Object.prototype.toString
         ? JSON.stringify(value)
         : String(value);
     }

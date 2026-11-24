@@ -1,7 +1,6 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { BunestFactory } from "@bunest/core";
-import { WebSocketModule, type WsMessageFrame } from "@bunest/websockets";
+import { WebSocketModule, type WsMessageFrame } from "@bunest/core/ws";
 import { AppModule } from "../src/app.module";
 
 interface WsClientHelper {

@@ -2,11 +2,11 @@ import {
   MetadataRegistry,
   StreamableFile,
   getEntitySchema,
+  getValidationMetadatasForTarget,
   hasEntitySchema,
   type EntityColumnMetadata,
   type Type,
-} from "@bunest/common";
-import { getMetadataStorage } from "class-validator";
+} from "@bunest/core";
 import { SWAGGER_METADATA_KEYS } from "./constants";
 import type {
   ApiPropertyMetadata,
@@ -94,9 +94,7 @@ function isLazyTypeThunk(
 
 function hasClassValidatorMetadata(target: Function): boolean {
   try {
-    const storage = getMetadataStorage();
-    const metas = storage.getTargetValidationMetadatas(target, "", false, false);
-    return metas.length > 0;
+    return getValidationMetadatasForTarget(target, false, false).length > 0;
   } catch {
     return false;
   }
@@ -249,7 +247,9 @@ export function normalizeEnumValues(rawEnum: SwaggerEnumType): unknown[] {
   return values;
 }
 
-function inferEnumSchemaType(values: readonly unknown[]): OpenApiSchemaType | undefined {
+function inferEnumSchemaType(
+  values: readonly unknown[],
+): OpenApiSchemaType | undefined {
   if (values.length === 0) return undefined;
   if (values.every((v) => typeof v === "string")) return "string";
   if (values.every((v) => typeof v === "number")) return "number";
@@ -312,8 +312,7 @@ function extractClassValidatorHints(dto: Function): ExtractedValidatorHints {
   const optionalProperties = new Set<string>();
 
   try {
-    const storage = getMetadataStorage();
-    const metas = storage.getTargetValidationMetadatas(dto, "", false, false);
+    const metas = getValidationMetadatasForTarget(dto, false, false);
 
     for (let i = 0; i < metas.length; i++) {
       const meta = metas[i];
@@ -622,7 +621,9 @@ export class SchemaExplorer {
       SWAGGER_METADATA_KEYS.API_SCHEMA,
       dto,
     );
-    const entitySchema = hasEntitySchema(dto) ? getEntitySchema(dto) : undefined;
+    const entitySchema = hasEntitySchema(dto)
+      ? getEntitySchema(dto)
+      : undefined;
     const baseName = schemaMeta?.name || dto.name || "AnonymousSchema";
     let schemaName = baseName;
     let suffix = 2;
@@ -683,10 +684,14 @@ export class SchemaExplorer {
             const base = propertyMap.get(entry.propertyKey);
             const mergedEntry = base ? { ...base, ...entry } : entry;
             if (hasExplicitApiRequired(entry)) {
-              Object.defineProperty(mergedEntry, API_PROPERTY_EXPLICIT_REQUIRED, {
-                value: true,
-                enumerable: false,
-              });
+              Object.defineProperty(
+                mergedEntry,
+                API_PROPERTY_EXPLICIT_REQUIRED,
+                {
+                  value: true,
+                  enumerable: false,
+                },
+              );
             }
             propertyMap.set(entry.propertyKey, mergedEntry);
           }
@@ -745,12 +750,14 @@ export class SchemaExplorer {
       let isRequired: boolean;
       if (apiMeta !== undefined) {
         if (entityCol !== undefined && !hasExplicitApiRequired(apiMeta)) {
-          isRequired = !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
+          isRequired =
+            !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
         } else {
           isRequired = explicitReq && !isOptionalByValidator;
         }
       } else if (entityCol !== undefined) {
-        isRequired = !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
+        isRequired =
+          !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
       } else {
         isRequired = !isOptionalByValidator;
       }
@@ -1020,7 +1027,8 @@ export class SchemaExplorer {
       } else if (entityCol?.example !== undefined) {
         base.example = entityCol.example;
       }
-      if (apiMeta.deprecated !== undefined) base.deprecated = apiMeta.deprecated;
+      if (apiMeta.deprecated !== undefined)
+        base.deprecated = apiMeta.deprecated;
       return applyNullable31(base, apiMeta.nullable ?? entityCol?.nullable);
     }
 
@@ -1084,8 +1092,10 @@ export class SchemaExplorer {
         if (valHints.enum !== undefined && schema.enum === undefined) {
           schema.enum = valHints.enum;
         }
-        if (valHints.minItems !== undefined) schema.minItems = valHints.minItems;
-        if (valHints.maxItems !== undefined) schema.maxItems = valHints.maxItems;
+        if (valHints.minItems !== undefined)
+          schema.minItems = valHints.minItems;
+        if (valHints.maxItems !== undefined)
+          schema.maxItems = valHints.maxItems;
         if (valHints.uniqueItems !== undefined) {
           schema.uniqueItems = valHints.uniqueItems;
         }

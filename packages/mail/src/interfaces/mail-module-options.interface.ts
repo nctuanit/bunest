@@ -2,7 +2,7 @@ import type {
   ConfigurableModuleAsyncOptions,
   ModuleMetadata,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { MailTemplateEngine } from "../templates/mail-template.engine";
 import type { MailTransport } from "../transports/mail.transport";
 import type { MailAddressInput } from "./mail-message.interface";

@@ -200,14 +200,18 @@ describe("CLI Parser, Naming Utilities, and Info/Help/Version", () => {
     const unknownCap = createCapturedIO();
     const unknownRes = await runCli(["unknown-cmd"], unknownCap.io);
     expect(unknownRes.exitCode).toBe(1);
-    expect(unknownCap.stderr.join("\n")).toContain('Unknown command "unknown-cmd"');
+    expect(unknownCap.stderr.join("\n")).toContain(
+      'Unknown command "unknown-cmd"',
+    );
 
     const missingNewCap = createCapturedIO();
     expect((await runCli(["new"], missingNewCap.io)).exitCode).toBe(1);
     expect(missingNewCap.stderr.join("\n")).toContain("<project-name>");
 
     const missingGenCap = createCapturedIO();
-    expect((await runCli(["g", "controller"], missingGenCap.io)).exitCode).toBe(1);
+    expect((await runCli(["g", "controller"], missingGenCap.io)).exitCode).toBe(
+      1,
+    );
     expect(missingGenCap.stderr.join("\n")).toContain("<schematic> <name>");
   });
 });

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 
 export {
   DECORATORS,
@@ -214,4 +213,4 @@ export {
   OmitType,
   PartialType,
   PickType,
-} from "@bunest/common";
+} from "@bunest/core";

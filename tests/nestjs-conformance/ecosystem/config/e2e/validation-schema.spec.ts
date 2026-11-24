@@ -1,8 +1,6 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { join } from "node:path";
-import type { BunestApplication } from "../../../../../packages/core/src";
-import { ConfigService } from "../../../../../packages/config/src";
+import { join, type BunestApplication } from "../../../../../packages/core/src";
+import { ConfigService } from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 import { AppModule, fixturesDir } from "../_fixtures/app.module";
 
@@ -33,7 +31,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/config/src/validator.ts:194-197)
+    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
     it.skip("should validate loaded env variables", async () => {
       await expect(
         Test.createTestingModule({
@@ -45,7 +43,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/config/src/validator.ts:194-197)
+    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
     it.skip("should validate env variables even when ignoreEnvFile is true", async () => {
       await expect(
         Test.createTestingModule({
@@ -79,7 +77,7 @@ describeConformance(
       expect(configService.get("UNRELATED_VARIABLE")).toEqual("unrelated");
     });
 
-    // BUNEST_BUG: validateConfiguration() does not forward options.validationOptions to validationSchema["~standard"].validate(value, options) (and ConfigModuleOptions.validationOptions is typed only as ValidationPipeOptions, not StandardSchemaV1Options) (packages/config/src/validator.ts:186, packages/config/src/interfaces/config.interface.ts:138)
+    // BUNEST_BUG: validateConfiguration() does not forward options.validationOptions to validationSchema["~standard"].validate(value, options) (and ConfigModuleOptions.validationOptions is typed only as ValidationPipeOptions, not StandardSchemaV1Options) (packages/core/src/config/validator.ts:186, packages/core/src/config/interfaces/config.interface.ts:138)
     it.skip('should let "allowUnknown" be disabled through validationOptions', async () => {
       process.env.UNRELATED_VARIABLE = "unrelated";
 

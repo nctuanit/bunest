@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -15,7 +14,7 @@ import {
   UnauthorizedException,
   type ArgumentsHost,
   type ExceptionFilter,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -140,7 +139,10 @@ describeConformance(
         app = moduleRef.createNestApplication({ logger: false });
         app.use((req, _res, next) => {
           if (new URL(req.url).pathname === "/middleware-error") {
-            throw createHttpLikeError(503, "connect ECONNREFUSED 127.0.0.1:6379");
+            throw createHttpLikeError(
+              503,
+              "connect ECONNREFUSED 127.0.0.1:6379",
+            );
           }
           return next();
         });
@@ -152,7 +154,9 @@ describeConformance(
       });
 
       it("/GET", async () => {
-        const res = await request(app).get("/sync").expect(HttpStatus.BAD_REQUEST);
+        const res = await request(app)
+          .get("/sync")
+          .expect(HttpStatus.BAD_REQUEST);
         expect(res.body).toMatchObject({
           statusCode: 400,
           error: "Bad Request",
@@ -161,7 +165,9 @@ describeConformance(
       });
 
       it("/GET (Promise/async)", async () => {
-        const res = await request(app).get("/async").expect(HttpStatus.BAD_REQUEST);
+        const res = await request(app)
+          .get("/async")
+          .expect(HttpStatus.BAD_REQUEST);
         expect(res.body).toMatchObject({
           statusCode: 400,
           error: "Bad Request",
@@ -200,7 +206,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected middleware-thrown http-errors error ({ statusCode: 503, expose: false }) to return 503 "Service Unavailable" and log via Logger.prototype.error; actual returns 500 "Internal server error" because DefaultExceptionFilter/execution-pipeline do not handle http-errors-shaped errors (packages/http/src/pipeline/exception-handler.ts, packages/http/src/pipeline/execution-pipeline.ts).
+      // BUNEST_BUG: Expected middleware-thrown http-errors error ({ statusCode: 503, expose: false }) to return 503 "Service Unavailable" and log via Logger.prototype.error; actual returns 500 "Internal server error" because DefaultExceptionFilter/execution-pipeline do not handle http-errors-shaped errors (packages/core/src/http/pipeline/exception-handler.ts, packages/core/src/http/pipeline/execution-pipeline.ts).
       it.skip('/GET (ServiceUnavailable logged when a middleware raises an "http-errors" error)', async () => {
         const logError = stubMethod(Logger.prototype, "error");
         try {
@@ -344,7 +350,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: Expected 4xx http-errors-shaped error ({ statusCode: 413 }) thrown in middleware to be mapped to HttpException and caught by @Catch(HttpException) filter (returning 413 { caught: 413 }); actual bypasses @Catch(HttpException) and returns 500 "Internal server error" (packages/http/src/pipeline/execution-pipeline.ts, packages/http/src/pipeline/exception-handler.ts).
+      // BUNEST_BUG: Expected 4xx http-errors-shaped error ({ statusCode: 413 }) thrown in middleware to be mapped to HttpException and caught by @Catch(HttpException) filter (returning 413 { caught: 413 }); actual bypasses @Catch(HttpException) and returns 500 "Internal server error" (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/pipeline/exception-handler.ts).
       it.skip('/GET (a 4xx "http-errors" error from a middleware reaches the filter)', async () => {
         await request(app)
           .get("/middleware-error")

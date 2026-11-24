@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Inject,
@@ -6,7 +5,7 @@ import {
   Optional,
   Scope,
   UnauthorizedException,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   ContextIdFactory,
   ModuleRef,
@@ -155,8 +154,7 @@ describeConformance(
           },
           {
             provide: "FACTORY",
-            useFactory: (dependency?: unknown) =>
-              dependency ?? "DEFAULT_VALUE",
+            useFactory: (dependency?: unknown) => dependency ?? "DEFAULT_VALUE",
             inject: [{ token: "FAILING", optional: true }],
           },
         ],

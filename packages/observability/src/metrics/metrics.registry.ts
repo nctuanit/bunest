@@ -1,4 +1,4 @@
-import { Injectable } from "@bunest/common";
+import { Injectable } from "@bunest/core";
 
 export type MetricType = "counter" | "gauge" | "histogram";
 export type MetricLabels = Readonly<Record<string, string | number | boolean>>;
@@ -298,9 +298,9 @@ export class Histogram implements PrometheusMetric {
     this.labelNames = assertLabelNames(options.labelNames ?? [], true);
 
     const rawBuckets = options.buckets ?? DEFAULT_HTTP_BUCKETS;
-    const valid = [...new Set(rawBuckets.filter((b) => Number.isFinite(b)))].sort(
-      (a, b) => a - b,
-    );
+    const valid = [
+      ...new Set(rawBuckets.filter((b) => Number.isFinite(b))),
+    ].sort((a, b) => a - b);
     this.buckets = Object.freeze(valid);
   }
 
@@ -357,7 +357,9 @@ export class Histogram implements PrometheusMetric {
 
   get(
     labels?: MetricLabels,
-  ): { count: number; sum: number; buckets: Record<string, number> } | undefined {
+  ):
+    | { count: number; sum: number; buckets: Record<string, number> }
+    | undefined {
     const { key } = normalizeAndKeyLabels(this.labelNames, labels);
     const entry = this.entries.get(key);
     if (!entry) return undefined;

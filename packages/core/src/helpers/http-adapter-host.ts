@@ -1,5 +1,5 @@
-import { DecoratorRegistry, Injectable, type HttpServer } from "@bunest/common";
-import type { AbstractHttpAdapter, BunHttpAdapter } from "@bunest/http";
+import { DecoratorRegistry, Injectable, type HttpServer } from "../common/index";
+import type { AbstractHttpAdapter, BunHttpAdapter } from "../http/index";
 import type {
   Subscribable,
   SubscribableObserver,

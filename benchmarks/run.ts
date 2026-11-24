@@ -1,11 +1,14 @@
-import { resolve } from "node:path";
+import { resolve } from "../packages/core/src";
 import {
   renderResultsMarkdown,
   runAllBenchmarks,
   type RunBenchmarkOptions,
 } from "./http-benchmark";
 
-function parseNumberArg(argv: readonly string[], flag: string): number | undefined {
+function parseNumberArg(
+  argv: readonly string[],
+  flag: string,
+): number | undefined {
   const idx = argv.indexOf(flag);
   if (idx === -1 || idx + 1 >= argv.length) {
     return undefined;

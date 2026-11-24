@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   ParseBoolPipe,
   type ArgumentMetadata,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -47,7 +46,7 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseBoolPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/common/src/pipes/built-in.pipes.ts)
+        // BUNEST_BUG: ParseBoolPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/core/src/common/pipes/built-in.pipes.ts)
         it.skip("should throw an error", async () => {
           return expect(
             target.transform("123abc", {} as ArgumentMetadata),

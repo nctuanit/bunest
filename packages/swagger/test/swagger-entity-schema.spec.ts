@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   Body,
@@ -14,9 +13,9 @@ import {
   PrimaryKey,
   Query,
   UpdateDateColumn,
-} from "@bunest/common";
+} from "@bunest/core";
 import { BunestFactory } from "@bunest/core";
-import { IsEmail } from "class-validator";
+import { IsEmail } from "../../validation/src/validator";
 import {
   ApiBadRequestResponse,
   ApiHideProperty,
@@ -109,11 +108,16 @@ class AccountEntity {
   bio?: string | null;
 
   @Column({ minLength: 2 })
-  @ApiPropertyOptional({ description: "Marked optional via @ApiPropertyOptional" })
+  @ApiPropertyOptional({
+    description: "Marked optional via @ApiPropertyOptional",
+  })
   nickname?: string;
 
   @Column({ nullable: true })
-  @ApiProperty({ required: true, description: "Explicitly required in OpenAPI" })
+  @ApiProperty({
+    required: true,
+    description: "Explicitly required in OpenAPI",
+  })
   tenantCode!: string;
 
   @Column({ minLength: 8 })
@@ -123,7 +127,11 @@ class AccountEntity {
 
 @Entity("article_query_filters")
 class ArticleFilterEntity {
-  @Column({ enum: ["draft", "published"], nullable: true, description: "Filter by status" })
+  @Column({
+    enum: ["draft", "published"],
+    nullable: true,
+    description: "Filter by status",
+  })
   status?: string | null;
 
   @Column({ type: "integer", min: 1, max: 100, default: 20 })
@@ -293,7 +301,10 @@ describe("@bunest/swagger Entity Schema Auto-Generation & design:returntype Auto
       }
 
       @Get("explicit/override")
-      @ApiOkResponse({ type: SummaryDto, description: "Explicit response wins" })
+      @ApiOkResponse({
+        type: SummaryDto,
+        description: "Explicit response wins",
+      })
       explicitOverride(): ArticleEntity {
         return new ArticleEntity();
       }
@@ -317,7 +328,9 @@ describe("@bunest/swagger Entity Schema Auto-Generation & design:returntype Auto
     @Module({ controllers: [ArticlesController] })
     class ArticlesAppModule {}
 
-    const app = await BunestFactory.create(ArticlesAppModule, { logger: false });
+    const app = await BunestFactory.create(ArticlesAppModule, {
+      logger: false,
+    });
     try {
       const doc = SwaggerModule.createDocument(
         app,

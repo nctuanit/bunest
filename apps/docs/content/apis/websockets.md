@@ -1,16 +1,17 @@
 # WebSockets
 
-**`@bunest/websockets`** integrates Bun's native C++/Zig `Bun.serve({ websocket })` engine directly into Bunest with `@WebSocketGateway`, `@SubscribeMessage`, `@MessageBody`, `@ConnectedSocket`, `@Ack()`, rooms/pub-sub, handshake authentication, `maxConcurrentMessages`, and full WebSocket guards, pipes, interceptors, and exception filters.
+**`@bunest/core/ws`** integrates Bun's native C++/Zig `Bun.serve({ websocket })` engine directly into Bunest with `@WebSocketGateway`, `@SubscribeMessage`, `@MessageBody`, `@ConnectedSocket`, `@Ack()`, rooms/pub-sub, handshake authentication, `maxConcurrentMessages`, and full WebSocket guards, pipes, interceptors, and exception filters.
 
 ## Installation
 
 ```bash
-bun add @bunest/websockets
+bun add @bunest/core/ws
 ```
 
 ## Creating a Gateway
 
 @@filename(chat.gateway.ts)
+
 ```ts
 import {
   Ack,
@@ -21,7 +22,7 @@ import {
   WebSocketServer,
   type BunWsClient,
   type BunWsServer,
-} from "@bunest/websockets";
+} from "@bunest/core/ws";
 
 @WebSocketGateway({ path: "/ws/chat" })
 export class ChatGateway {

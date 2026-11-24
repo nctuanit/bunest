@@ -4,50 +4,54 @@
   "workspaces": {
     "": {
       "name": "bunest",
-      "dependencies": {
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.1",
-        "reflect-metadata": "^0.2.2",
-      },
       "devDependencies": {
         "@types/bun": "latest",
+        "class-transformer": "^0.5.1",
+        "class-validator": "^0.14.1",
         "typescript": "^7.0.2",
       },
     },
     "apps/docs": {
       "name": "@bunest/docs",
       "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+      },
     },
     "apps/playground": {
       "name": "@bunest/playground",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
         "@bunest/observability": "workspace:*",
-        "@bunest/sqlite": "workspace:*",
+        "@bunest/orm": "workspace:*",
         "@bunest/swagger": "workspace:*",
         "@bunest/validation": "workspace:*",
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.1",
-        "reflect-metadata": "^0.2.2",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
+      },
+    },
+    "apps/vscode-bunest": {
+      "name": "vscode-bunest",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/cli": "workspace:*",
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/vscode": "^1.95.0",
+        "typescript": "^7.0.2",
       },
     },
     "examples/auth-jwt-sqlite": {
       "name": "@bunest/example-auth-jwt-sqlite",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
+        "@bunest/orm": "workspace:*",
         "@bunest/security": "workspace:*",
-        "@bunest/sqlite": "workspace:*",
         "@bunest/validation": "workspace:*",
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.1",
-        "reflect-metadata": "^0.2.2",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -57,14 +61,11 @@
       "name": "@bunest/example-distributed-worker",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/cqrs": "workspace:*",
-        "@bunest/events": "workspace:*",
+        "@bunest/jobs": "workspace:*",
+        "@bunest/messaging": "workspace:*",
         "@bunest/observability": "workspace:*",
-        "@bunest/queues": "workspace:*",
-        "@bunest/sqlite": "workspace:*",
-        "reflect-metadata": "^0.2.2",
+        "@bunest/orm": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -74,9 +75,7 @@
       "name": "@bunest/example-hello-world",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "reflect-metadata": "^0.2.2",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -86,15 +85,24 @@
       "name": "@bunest/example-rest-crud",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
         "@bunest/swagger": "workspace:*",
         "@bunest/validation": "workspace:*",
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.1",
-        "reflect-metadata": "^0.2.2",
       },
       "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/vscode-extension-showcase": {
+      "name": "@bunest/example-vscode-extension-showcase",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/messaging": "workspace:*",
+        "@bunest/orm": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/cli": "workspace:*",
         "@bunest/testing": "workspace:*",
       },
     },
@@ -102,10 +110,7 @@
       "name": "@bunest/example-websocket-chat",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/websockets": "workspace:*",
-        "reflect-metadata": "^0.2.2",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -115,94 +120,17 @@
       "name": "@bunest/ai",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
         "@bunest/resilience": "workspace:*",
         "@bunest/testing": "workspace:*",
         "@bunest/workflows": "workspace:*",
       },
     },
-    "packages/apollo": {
-      "name": "@bunest/apollo",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/graphql": "workspace:*",
-        "graphql": "^16.10.0",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/authentication": {
-      "name": "@bunest/authentication",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/authorization": {
-      "name": "@bunest/authorization",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-      "peerDependencies": {
-        "@bunest/authentication": "workspace:*",
-      },
-      "optionalPeers": [
-        "@bunest/authentication",
-      ],
-    },
-    "packages/axios": {
-      "name": "@bunest/axios",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/core": "workspace:*",
-      },
-    },
-    "packages/bull": {
-      "name": "@bunest/bull",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/queues": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/bullmq": {
-      "name": "@bunest/bullmq",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/queues": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
     "packages/cache": {
       "name": "@bunest/cache",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
       },
     },
     "packages/cli": {
@@ -212,86 +140,21 @@
         "bunest": "./dist/cli.js",
       },
       "dependencies": {
-        "@bunest/common": "workspace:*",
-      },
-    },
-    "packages/common": {
-      "name": "@bunest/common",
-      "version": "0.1.0",
-      "dependencies": {
-        "reflect-metadata": "^0.2.2",
-      },
-    },
-    "packages/config": {
-      "name": "@bunest/config",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/validation": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
       },
     },
     "packages/core": {
       "name": "@bunest/core",
       "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/http": "workspace:*",
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
         "@bunest/validation": "workspace:*",
-        "reflect-metadata": "^0.2.2",
-      },
-    },
-    "packages/cqrs": {
-      "name": "@bunest/cqrs",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/devtools-integration": {
-      "name": "@bunest/devtools-integration",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/observability": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/drizzle": {
-      "name": "@bunest/drizzle",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/sql": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
       },
     },
     "packages/elasticsearch": {
       "name": "@bunest/elasticsearch",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-    },
-    "packages/events": {
-      "name": "@bunest/events",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
     },
@@ -299,189 +162,74 @@
       "name": "@bunest/graphql",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-        "graphql": "^16.10.0",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/http": {
-      "name": "@bunest/http",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-      },
-    },
-    "packages/http-client": {
-      "name": "@bunest/http-client",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
       },
     },
-    "packages/i18n": {
-      "name": "@bunest/i18n",
+    "packages/jobs": {
+      "name": "@bunest/jobs",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-        "@bunest/validation": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/idempotency": {
-      "name": "@bunest/idempotency",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-      },
-    },
-    "packages/jwt": {
-      "name": "@bunest/jwt",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/security": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/locks": {
-      "name": "@bunest/locks",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
       },
     },
     "packages/mail": {
       "name": "@bunest/mail",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
       },
     },
-    "packages/mapped-types": {
-      "name": "@bunest/mapped-types",
+    "packages/messaging": {
+      "name": "@bunest/messaging",
       "version": "0.1.0",
+      "bin": {
+        "nest-outbox": "./dist/outbox/sql/cli.js",
+        "nest-webhooks": "./dist/webhooks/cli.js",
+      },
       "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/validation": "workspace:*",
+        "@bunest/core": "workspace:*",
       },
       "devDependencies": {
-        "@bunest/swagger": "workspace:*",
+        "@bunest/orm": "workspace:*",
+        "@bunest/testing": "workspace:*",
       },
-    },
-    "packages/mcp": {
-      "name": "@bunest/mcp",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
+      "peerDependencies": {
+        "@bunest/orm": "workspace:*",
       },
+      "optionalPeers": [
+        "@bunest/orm",
+      ],
     },
     "packages/microservices": {
       "name": "@bunest/microservices",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/mongoose": {
-      "name": "@bunest/mongoose",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
       },
     },
     "packages/observability": {
       "name": "@bunest/observability",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
       },
     },
-    "packages/observe": {
-      "name": "@bunest/observe",
-      "version": "0.1.0",
-      "bin": {
-        "observe": "./dist/cli/observe-cli.js",
-      },
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-        "@bunest/observability": "workspace:*",
-      },
-    },
-    "packages/outbox": {
-      "name": "@bunest/outbox",
-      "version": "0.1.0",
-      "bin": {
-        "nest-outbox": "./dist/sql/cli.js",
-      },
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/store-kit": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/passport": {
-      "name": "@bunest/passport",
+    "packages/orm": {
+      "name": "@bunest/orm",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/security": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/prisma": {
-      "name": "@bunest/prisma",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/sql": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/queues": {
-      "name": "@bunest/queues",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
       "devDependencies": {
@@ -492,69 +240,16 @@
       "name": "@bunest/resilience",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
-    },
-    "packages/scheduler": {
-      "name": "@bunest/scheduler",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
       },
     },
     "packages/security": {
       "name": "@bunest/security",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/sequelize": {
-      "name": "@bunest/sequelize",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/serve-static": {
-      "name": "@bunest/serve-static",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/http": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/sql": {
-      "name": "@bunest/sql",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/sqlite": {
-      "name": "@bunest/sqlite",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
       },
       "devDependencies": {
@@ -565,34 +260,14 @@
       "name": "@bunest/storage",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
       },
-    },
-    "packages/store-kit": {
-      "name": "@bunest/store-kit",
-      "version": "0.1.0",
     },
     "packages/swagger": {
       "name": "@bunest/swagger",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/terminus": {
-      "name": "@bunest/terminus",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/observability": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -602,69 +277,17 @@
       "name": "@bunest/testing",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-      },
-    },
-    "packages/throttler": {
-      "name": "@bunest/throttler",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/security": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/typeorm": {
-      "name": "@bunest/typeorm",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
       },
     },
     "packages/validation": {
       "name": "@bunest/validation",
       "version": "0.1.0",
       "dependencies": {
-        "@bunest/common": "workspace:*",
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.1",
-      },
-    },
-    "packages/webhooks": {
-      "name": "@bunest/webhooks",
-      "version": "0.1.0",
-      "bin": {
-        "nest-webhooks": "./dist/cli.js",
-      },
-      "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-        "@bunest/outbox": "workspace:*",
-        "@bunest/store-kit": "workspace:*",
       },
       "devDependencies": {
-        "@bunest/testing": "workspace:*",
-      },
-    },
-    "packages/websockets": {
-      "name": "@bunest/websockets",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bunest/common": "workspace:*",
-        "@bunest/core": "workspace:*",
-        "@bunest/http": "workspace:*",
-      },
-      "devDependencies": {
-        "@bunest/testing": "workspace:*",
+        "@bunest/swagger": "workspace:*",
       },
     },
     "packages/workflows": {
@@ -674,10 +297,9 @@
         "nest-workflows": "./dist/cli.js",
       },
       "dependencies": {
-        "@bunest/common": "workspace:*",
         "@bunest/core": "workspace:*",
-        "@bunest/cqrs": "workspace:*",
-        "@bunest/store-kit": "workspace:*",
+        "@bunest/messaging": "workspace:*",
+        "@bunest/orm": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -687,39 +309,15 @@
   "packages": {
     "@bunest/ai": ["@bunest/ai@workspace:packages/ai"],
 
-    "@bunest/apollo": ["@bunest/apollo@workspace:packages/apollo"],
-
-    "@bunest/authentication": ["@bunest/authentication@workspace:packages/authentication"],
-
-    "@bunest/authorization": ["@bunest/authorization@workspace:packages/authorization"],
-
-    "@bunest/axios": ["@bunest/axios@workspace:packages/axios"],
-
-    "@bunest/bull": ["@bunest/bull@workspace:packages/bull"],
-
-    "@bunest/bullmq": ["@bunest/bullmq@workspace:packages/bullmq"],
-
     "@bunest/cache": ["@bunest/cache@workspace:packages/cache"],
 
     "@bunest/cli": ["@bunest/cli@workspace:packages/cli"],
 
-    "@bunest/common": ["@bunest/common@workspace:packages/common"],
-
-    "@bunest/config": ["@bunest/config@workspace:packages/config"],
-
     "@bunest/core": ["@bunest/core@workspace:packages/core"],
-
-    "@bunest/cqrs": ["@bunest/cqrs@workspace:packages/cqrs"],
-
-    "@bunest/devtools-integration": ["@bunest/devtools-integration@workspace:packages/devtools-integration"],
 
     "@bunest/docs": ["@bunest/docs@workspace:apps/docs"],
 
-    "@bunest/drizzle": ["@bunest/drizzle@workspace:packages/drizzle"],
-
     "@bunest/elasticsearch": ["@bunest/elasticsearch@workspace:packages/elasticsearch"],
-
-    "@bunest/events": ["@bunest/events@workspace:packages/events"],
 
     "@bunest/example-auth-jwt-sqlite": ["@bunest/example-auth-jwt-sqlite@workspace:examples/auth-jwt-sqlite"],
 
@@ -729,79 +327,37 @@
 
     "@bunest/example-rest-crud": ["@bunest/example-rest-crud@workspace:examples/rest-crud"],
 
+    "@bunest/example-vscode-extension-showcase": ["@bunest/example-vscode-extension-showcase@workspace:examples/vscode-extension-showcase"],
+
     "@bunest/example-websocket-chat": ["@bunest/example-websocket-chat@workspace:examples/websocket-chat"],
 
     "@bunest/graphql": ["@bunest/graphql@workspace:packages/graphql"],
 
-    "@bunest/http": ["@bunest/http@workspace:packages/http"],
-
-    "@bunest/http-client": ["@bunest/http-client@workspace:packages/http-client"],
-
-    "@bunest/i18n": ["@bunest/i18n@workspace:packages/i18n"],
-
-    "@bunest/idempotency": ["@bunest/idempotency@workspace:packages/idempotency"],
-
-    "@bunest/jwt": ["@bunest/jwt@workspace:packages/jwt"],
-
-    "@bunest/locks": ["@bunest/locks@workspace:packages/locks"],
+    "@bunest/jobs": ["@bunest/jobs@workspace:packages/jobs"],
 
     "@bunest/mail": ["@bunest/mail@workspace:packages/mail"],
 
-    "@bunest/mapped-types": ["@bunest/mapped-types@workspace:packages/mapped-types"],
-
-    "@bunest/mcp": ["@bunest/mcp@workspace:packages/mcp"],
+    "@bunest/messaging": ["@bunest/messaging@workspace:packages/messaging"],
 
     "@bunest/microservices": ["@bunest/microservices@workspace:packages/microservices"],
 
-    "@bunest/mongoose": ["@bunest/mongoose@workspace:packages/mongoose"],
-
     "@bunest/observability": ["@bunest/observability@workspace:packages/observability"],
 
-    "@bunest/observe": ["@bunest/observe@workspace:packages/observe"],
-
-    "@bunest/outbox": ["@bunest/outbox@workspace:packages/outbox"],
-
-    "@bunest/passport": ["@bunest/passport@workspace:packages/passport"],
+    "@bunest/orm": ["@bunest/orm@workspace:packages/orm"],
 
     "@bunest/playground": ["@bunest/playground@workspace:apps/playground"],
 
-    "@bunest/prisma": ["@bunest/prisma@workspace:packages/prisma"],
-
-    "@bunest/queues": ["@bunest/queues@workspace:packages/queues"],
-
     "@bunest/resilience": ["@bunest/resilience@workspace:packages/resilience"],
-
-    "@bunest/scheduler": ["@bunest/scheduler@workspace:packages/scheduler"],
 
     "@bunest/security": ["@bunest/security@workspace:packages/security"],
 
-    "@bunest/sequelize": ["@bunest/sequelize@workspace:packages/sequelize"],
-
-    "@bunest/serve-static": ["@bunest/serve-static@workspace:packages/serve-static"],
-
-    "@bunest/sql": ["@bunest/sql@workspace:packages/sql"],
-
-    "@bunest/sqlite": ["@bunest/sqlite@workspace:packages/sqlite"],
-
     "@bunest/storage": ["@bunest/storage@workspace:packages/storage"],
-
-    "@bunest/store-kit": ["@bunest/store-kit@workspace:packages/store-kit"],
 
     "@bunest/swagger": ["@bunest/swagger@workspace:packages/swagger"],
 
-    "@bunest/terminus": ["@bunest/terminus@workspace:packages/terminus"],
-
     "@bunest/testing": ["@bunest/testing@workspace:packages/testing"],
 
-    "@bunest/throttler": ["@bunest/throttler@workspace:packages/throttler"],
-
-    "@bunest/typeorm": ["@bunest/typeorm@workspace:packages/typeorm"],
-
     "@bunest/validation": ["@bunest/validation@workspace:packages/validation"],
-
-    "@bunest/webhooks": ["@bunest/webhooks@workspace:packages/webhooks"],
-
-    "@bunest/websockets": ["@bunest/websockets@workspace:packages/websockets"],
 
     "@bunest/workflows": ["@bunest/workflows@workspace:packages/workflows"],
 
@@ -810,6 +366,8 @@
     "@types/node": ["@types/node@26.6.6", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog=="],
 
     "@types/validator": ["@types/validator@13.15.10", "", {}, "sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA=="],
+
+    "@types/vscode": ["@types/vscode@1.146.0", "", {}, "sha512-OtU25faeM997QQsW+D07FN9cX06j+EEI4aQaPw/UO3HWlCM39N1W7fG8ewhdZKluut31KffyMsmDzJzgMu6t8Q=="],
 
     "@typescript/typescript-aix-ppc64": ["@typescript/typescript-aix-ppc64@7.0.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ=="],
 
@@ -857,17 +415,15 @@
 
     "class-validator": ["class-validator@0.14.4", "", { "dependencies": { "@types/validator": "^13.15.3", "libphonenumber-js": "^1.11.1", "validator": "^13.15.22" } }, "sha512-AwNusCCam51q703dW82x95tOqQp6oC9HNUl724KxJJOfnKscI8dOloXFgyez7LbTTKWuRBA37FScqVbJEoq8Yw=="],
 
-    "graphql": ["graphql@16.15.0", "", {}, "sha512-32kz9FecohDiC/tgcViwnRXM7HFBVTPiW7pHO+DikKOI5KjhU/jNULOReXsrFqt2WAYbE9xFXsTffJw6iTO8qw=="],
-
     "libphonenumber-js": ["libphonenumber-js@1.13.17", "", {}, "sha512-V92dxRHhYTsHF5B6IjR8rtKW6qL7xKuERPFFqZt7XQl8A+NikbwEzjhxGpM+R6JnWjaL7/wokWSdTG/eyYAscQ=="],
-
-    "reflect-metadata": ["reflect-metadata@0.2.2", "", {}, "sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q=="],
 
     "typescript": ["typescript@7.0.2", "", { "optionalDependencies": { "@typescript/typescript-aix-ppc64": "7.0.2", "@typescript/typescript-darwin-arm64": "7.0.2", "@typescript/typescript-darwin-x64": "7.0.2", "@typescript/typescript-freebsd-arm64": "7.0.2", "@typescript/typescript-freebsd-x64": "7.0.2", "@typescript/typescript-linux-arm": "7.0.2", "@typescript/typescript-linux-arm64": "7.0.2", "@typescript/typescript-linux-loong64": "7.0.2", "@typescript/typescript-linux-mips64el": "7.0.2", "@typescript/typescript-linux-ppc64": "7.0.2", "@typescript/typescript-linux-riscv64": "7.0.2", "@typescript/typescript-linux-s390x": "7.0.2", "@typescript/typescript-linux-x64": "7.0.2", "@typescript/typescript-netbsd-arm64": "7.0.2", "@typescript/typescript-netbsd-x64": "7.0.2", "@typescript/typescript-openbsd-arm64": "7.0.2", "@typescript/typescript-openbsd-x64": "7.0.2", "@typescript/typescript-sunos-x64": "7.0.2", "@typescript/typescript-win32-arm64": "7.0.2", "@typescript/typescript-win32-x64": "7.0.2" }, "bin": { "tsc": "bin/tsc" } }, "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA=="],
 
     "undici-types": ["undici-types@8.12.4", "", {}, "sha512-GNCQH3MbVGB8OAVAoTiLH8pu4wx5Ni3DWKpnBzGj3WDsi8EwmK0aOVBooNEt+g5YL1eHPxcS9XUTouwFU6j1kQ=="],
 
     "validator": ["validator@13.15.35", "", {}, "sha512-TQ5pAGhd5whStmqWvYF4OjQROlmv9SMFVt37qoCBdqRffuuklWYQlCNnEs2ZaIBD1kZRNnikiZOS1eqgkar0iw=="],
+
+    "vscode-bunest": ["vscode-bunest@workspace:apps/vscode-bunest"],
 
     "@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
   }

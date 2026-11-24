@@ -1,6 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { Test, TestingModuleBuilder, describeConformance } from "../../../_helpers";
+import {
+  Test,
+  TestingModuleBuilder,
+  describeConformance,
+} from "../../../_helpers";
 
 describeConformance(
   "Test",
@@ -15,10 +18,7 @@ describeConformance(
     });
 
     it("createTestingModule should accept options and return a TestingModuleBuilder", () => {
-      const builder = Test.createTestingModule(
-        {},
-        { logger: false },
-      );
+      const builder = Test.createTestingModule({}, { logger: false });
       expect(builder).toBeInstanceOf(TestingModuleBuilder);
     });
   },

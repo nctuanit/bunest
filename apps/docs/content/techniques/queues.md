@@ -1,32 +1,22 @@
-# Queues, Bull & BullMQ
+# Queues & BullMQ API
 
-Bunest provides background job processing through **`@bunest/queues`** along with 100% API-compatible drop-in packages **`@bunest/bull`** (`@nestjs/bull`) and **`@bunest/bullmq`** (`@nestjs/bullmq`). All three run natively on Bun with zero external runtime dependencies—supporting both in-memory development/testing (`MemoryQueueDriver`) and atomic Lua-scripted Redis (`RedisQueueDriver`) with lock leases, stalled job recovery, retries, backoff, delayed jobs, and dead-letter queues (DLQ).
+Bunest provides background job processing directly through **`@bunest/jobs/queues`**, which includes both native `QueueModule` and BullMQ-compatible `BullModule` / `BullMQModule` (`WorkerHost`, `FlowProducer`, `QueueEventsHost`). It runs natively on Bun with zero external runtime dependencies—supporting both in-memory development/testing (`MemoryQueueDriver`) and atomic Lua-scripted Redis (`RedisQueueDriver`) with lock leases, stalled job recovery, retries, backoff, delayed jobs, and dead-letter queues (DLQ).
 
 ## Installation
 
-@@tab(@bunest/queues)
 ```bash
-bun add @bunest/queues
-```
-@@switch
-@@tab(@bunest/bull)
-```bash
-bun add @bunest/bull
-```
-@@switch
-@@tab(@bunest/bullmq)
-```bash
-bun add @bunest/bullmq
+bun add @bunest/jobs/queues
 ```
 
-## Native `@bunest/queues`
+## Native `@bunest/jobs/queues`
 
 Register `QueueModule.forRoot()` and queue names with `QueueModule.registerQueue()`:
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { MemoryQueueDriver, QueueModule } from "@bunest/queues";
+import { MemoryQueueDriver, QueueModule } from "@bunest/jobs/queues";
 import { EmailProcessor } from "./email.processor";
 
 @Module({
@@ -44,9 +34,16 @@ export class AppModule {}
 Define a worker with `@Processor()` and `@Process()`, and enqueue jobs via `@InjectQueue()`:
 
 @@filename(email.processor.ts)
+
 ```ts
 import { Injectable } from "@bunest/core";
-import { InjectQueue, Process, Processor, type Job, type Queue } from "@bunest/queues";
+import {
+  InjectQueue,
+  Process,
+  Processor,
+  type Job,
+  type Queue,
+} from "@bunest/jobs/queues";
 
 @Processor("emails")
 export class EmailProcessor {
@@ -62,19 +59,24 @@ export class SignupService {
   constructor(@InjectQueue("emails") private readonly emailQueue: Queue) {}
 
   async enqueueWelcome(to: string) {
-    await this.emailQueue.add("welcome", { to }, { attempts: 3, backoff: { type: "exponential", delay: 500 } });
+    await this.emailQueue.add(
+      "welcome",
+      { to },
+      { attempts: 3, backoff: { type: "exponential", delay: 500 } },
+    );
   }
 }
 ```
 
-## Drop-In `@bunest/bull` & `@bunest/bullmq`
+## BullMQ-Compatible `BullModule` & `WorkerHost`
 
-Teams migrating from NestJS can keep `@nestjs/bull` or `@nestjs/bullmq` patterns verbatim:
+Teams migrating from `@nestjs/bullmq` can use `BullModule` and `WorkerHost` directly from `@bunest/jobs/queues`:
 
 @@filename(audio.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { BullModule, Processor, WorkerHost, type Job } from "@bunest/bullmq";
+import { BullModule, Processor, WorkerHost, type Job } from "@bunest/jobs/queues";
 
 @Processor("audio")
 export class AudioConsumer extends WorkerHost {

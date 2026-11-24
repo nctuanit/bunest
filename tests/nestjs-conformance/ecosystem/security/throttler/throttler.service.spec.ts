@@ -1,6 +1,5 @@
-import "reflect-metadata";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { ContextStorage } from "../../../../../packages/core/src";
 import {
   ThrottlerStorage,
   ThrottlerStorageService,
@@ -80,9 +79,7 @@ describeConformance(
         const ttl = 1000;
         const results: ThrottlerStorageRecord[] = [];
         for (let i = 0; i < 5; i++) {
-          results.push(
-            await service.increment("no-block", ttl, 2, 0, "test"),
-          );
+          results.push(await service.increment("no-block", ttl, 2, 0, "test"));
         }
         expect(results.map((result) => result.isBlocked)).toEqual([
           false,
@@ -195,7 +192,7 @@ describeConformance(
           protected override readonly sweepIntervalMs = 10;
         }
         const storage = new FastSweepStorage();
-        const als = new AsyncLocalStorage<{ request: string }>();
+        const als = new ContextStorage<{ request: string }>();
         let storeSeenBySweep: unknown = "sweep never ran";
         const sweepTarget = storage as unknown as {
           sweepExpired: () => void;

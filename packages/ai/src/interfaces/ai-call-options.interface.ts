@@ -1,15 +1,15 @@
-import type { AiSchema } from './ai-schema.interface';
-import type { AiCaller, AiToolSelection } from './ai-tool.interface';
-import type { AiUsageEvent } from './ai-usage.interface';
-import type { AiBudget, AiCallSettings } from './ai-module-options.interface';
-import type { LanguageModel, ModelMessage } from './ai-types.interface';
+import type { AiSchema } from "./ai-schema.interface";
+import type { AiCaller, AiToolSelection } from "./ai-tool.interface";
+import type { AiUsageEvent } from "./ai-usage.interface";
+import type { AiBudget, AiCallSettings } from "./ai-module-options.interface";
+import type { LanguageModel, ModelMessage } from "./ai-types.interface";
 
 export type AiToolChoice =
-  | 'auto'
-  | 'none'
-  | 'required'
+  | "auto"
+  | "none"
+  | "required"
   | {
-      type: 'tool';
+      type: "tool";
       toolName: string;
     };
 
@@ -52,8 +52,9 @@ export interface AiCallOptions extends AiCallSettings {
 }
 
 /** The options of `generateObject()`. */
-export interface AiObjectCallOptions<S extends AiSchema = AiSchema>
-  extends AiCallOptions {
+export interface AiObjectCallOptions<
+  S extends AiSchema = AiSchema,
+> extends AiCallOptions {
   /** What the answer must be. */
   schema: S;
   /** A name and a description of the object. */

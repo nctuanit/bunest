@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -12,7 +11,7 @@ import {
   type ExecutionContext,
   type PipeTransform,
   type Type,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   MessagePattern,
@@ -29,7 +28,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketModule,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance } from "../../../_helpers";
 
 @Injectable({ scope: Scope.REQUEST })
@@ -454,7 +453,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter eagerly resolves @MessageBody(SocketPipe) at gateway registration time without a per-connection RequestContainer (packages/websockets/src/explorer/ws-gateway.explorer.ts:78 & packages/websockets/src/adapter/bun-ws.adapter.ts:355); throws "Request-scoped token Symbol(bunest:token:request) requested by SocketPipe requires an active RequestContainer".
+    // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter eagerly resolves @MessageBody(SocketPipe) at gateway registration time without a per-connection RequestContainer (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/ws/adapter/bun-ws.adapter.ts:355); throws "Request-scoped token Symbol(bunest:token:request) requested by SocketPipe requires an active RequestContainer".
     describe.skip("gateway", () => {
       let app: BunestApplication;
       const sockets: WebSocket[] = [];
@@ -491,10 +490,7 @@ describeConformance(
 
       const sendWs = async (ws: WebSocket, event: string, label: string) => {
         const reply = new Promise<any>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("WS timeout")),
-            2000,
-          );
+          const timer = setTimeout(() => reject(new Error("WS timeout")), 2000);
           ws.addEventListener(
             "message",
             (e) => {

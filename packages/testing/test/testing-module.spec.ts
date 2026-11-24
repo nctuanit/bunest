@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -27,7 +26,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
   type PipeTransform,
-} from "@bunest/common";
+} from "@bunest/core";
 import { UnknownDependencyException } from "@bunest/core";
 import { Test } from "../src";
 
@@ -87,10 +86,7 @@ class UppercasePipe implements PipeTransform<string, string> {
 
 @Injectable()
 class WrapInterceptor implements BunestInterceptor {
-  async intercept(
-    _ctx: ExecutionContext,
-    next: CallHandler,
-  ): Promise<unknown> {
+  async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
     const data = await next.handle();
     return { wrapped: data };
   }
@@ -167,7 +163,10 @@ describe("Test.createTestingModule & TestingModuleBuilder", () => {
       .setLogger(false)
       .compile();
 
-    expect(mod1.get(UsersService).list()).toEqual(["test:mock-1", "test:mock-2"]);
+    expect(mod1.get(UsersService).list()).toEqual([
+      "test:mock-1",
+      "test:mock-2",
+    ]);
     await mod1.close();
 
     // 2. useClass (with DI dependency of its own)
@@ -330,7 +329,9 @@ describe("Test.createTestingModule & TestingModuleBuilder", () => {
 
     // PrivateSecretService is only visible inside SecretModule
     const secretScope = mod.select(SecretModule);
-    expect(secretScope.get(PrivateSecretService).getSecret()).toBe("top-secret");
+    expect(secretScope.get(PrivateSecretService).getSecret()).toBe(
+      "top-secret",
+    );
 
     // Not visible strictly inside DemoFeatureModule
     const featureScope = mod.select(DemoFeatureModule);
@@ -387,7 +388,12 @@ describe("Test.createTestingModule & TestingModuleBuilder", () => {
 
     await app.close("SIGTERM");
     await mod.close("SIGTERM");
-    expect(events).toEqual(["init", "bootstrap", "destroy", "shutdown:SIGTERM"]);
+    expect(events).toEqual([
+      "init",
+      "bootstrap",
+      "destroy",
+      "shutdown:SIGTERM",
+    ]);
 
     // Also verify calling ONLY moduleRef.close() closes live listening app + fires shutdown once
     events.length = 0;

@@ -1,12 +1,13 @@
 # Logger
 
-`@bunest/common` (re-exported by `@bunest/core`) includes a zero-dependency structured **`Logger`** supporting log levels, context labels, JSON output mode for log aggregators, and **automatic deep immutable secret redaction**.
+`@bunest/core` (re-exported by `@bunest/core`) includes a zero-dependency structured **`Logger`** supporting log levels, context labels, JSON output mode for log aggregators, and **automatic deep immutable secret redaction**.
 
 ## Basic Usage
 
 Instantiate `new Logger(ContextName)` inside any service, controller, guard, or interceptor:
 
 @@filename(orders.service.ts)
+
 ```ts
 import { Injectable, Logger } from "@bunest/core";
 
@@ -33,6 +34,7 @@ Text mode output:
 Pass `LoggerOptions` for machine-readable JSON logging (ideal for Datadog, Loki, OpenTelemetry, or CloudWatch):
 
 @@filename(logger.config.ts)
+
 ```ts
 import { Logger, type LoggerOptions } from "@bunest/core";
 

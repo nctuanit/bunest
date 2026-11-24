@@ -1,8 +1,18 @@
-import type { AiUsage } from '../interfaces/ai-usage.interface';
+import type {
+  LanguageModelCallOptions,
+  LanguageModelContentPart,
+  LanguageModelGenerateResult,
+  LanguageModelPromptMessage,
+  LanguageModelStreamPart,
+  LanguageModelStreamResult,
+  LanguageModelToolResultPart,
+  LanguageModelToolSpec,
+} from "../interfaces/ai-types.interface";
+import type { AiUsage } from "../interfaces/ai-usage.interface";
 import {
   createProviderApiError,
   type ProviderApiCallError,
-} from '../providers/http-provider';
+} from "../providers/http-provider";
 
 /** A tool call the fake model makes. */
 export interface FakeToolCall {
@@ -24,7 +34,7 @@ export interface FakeTurn {
   usage?: Partial<
     Pick<
       AiUsage,
-      'inputTokens' | 'outputTokens' | 'cachedInputTokens' | 'reasoningTokens'
+      "inputTokens" | "outputTokens" | "cachedInputTokens" | "reasoningTokens"
     >
   >;
   /** Default `tool-calls` with tool calls, else `stop`. */
@@ -55,7 +65,7 @@ export interface FakeModelCall {
     output: unknown;
   }>;
   tools: string[];
-  options: any;
+  options: LanguageModelCallOptions;
 }
 
 /**
@@ -63,15 +73,14 @@ export interface FakeModelCall {
  * (text, tool calls, objects, errors, delays), and records the calls.
  */
 export class FakeModel {
-  readonly specificationVersion = 'v4';
+  readonly specificationVersion = "v4";
   readonly provider: string;
   readonly modelId: string;
   readonly supportedUrls:
-    | Record<string, RegExp[]>
-    | PromiseLike<Record<string, RegExp[]>> = {};
+    Record<string, RegExp[]> | PromiseLike<Record<string, RegExp[]>> = {};
   readonly calls: FakeModelCall[] = [];
-  readonly doGenerateCalls: any[] = [];
-  readonly doStreamCalls: any[] = [];
+  readonly doGenerateCalls: LanguageModelCallOptions[] = [];
+  readonly doStreamCalls: LanguageModelCallOptions[] = [];
   private readonly answers: FakeAnswer[];
   private readonly answerAll?: (
     call: FakeModelCall,
@@ -83,14 +92,14 @@ export class FakeModel {
       | FakeAnswer[]
       | ((call: FakeModelCall) => FakeAnswer | Promise<FakeAnswer>) = [],
     {
-      provider = 'fake',
-      modelId = 'fake-model',
+      provider = "fake",
+      modelId = "fake-model",
     }: { modelId?: string; provider?: string } = {},
   ) {
     this.provider = provider;
     this.modelId = modelId;
     this.answers = Array.isArray(answers) ? [...answers] : [];
-    this.answerAll = typeof answers === 'function' ? answers : undefined;
+    this.answerAll = typeof answers === "function" ? answers : undefined;
   }
 
   /** Adds answers, after the ones not used yet. */
@@ -104,19 +113,26 @@ export class FakeModel {
     return this.calls[this.calls.length - 1];
   }
 
-  async doGenerate(options: any): Promise<any> {
+  async doGenerate(
+    options: LanguageModelCallOptions,
+  ): Promise<LanguageModelGenerateResult> {
     this.doGenerateCalls.push(options);
     const turn = await this.answer(options, false);
     return this.generate(turn, options);
   }
 
-  async doStream(options: any): Promise<any> {
+  async doStream(
+    options: LanguageModelCallOptions,
+  ): Promise<LanguageModelStreamResult> {
     this.doStreamCalls.push(options);
     const turn = await this.answer(options, true);
     return this.stream(turn, options);
   }
 
-  private async answer(options: any, stream: boolean): Promise<FakeTurn> {
+  private async answer(
+    options: LanguageModelCallOptions,
+    stream: boolean,
+  ): Promise<FakeTurn> {
     const call = describeCall(options, stream);
     this.calls.push(call);
     let answer: FakeAnswer | undefined = this.answerAll ?? this.answers.shift();
@@ -125,26 +141,32 @@ export class FakeModel {
         `FakeModel: no answer left for call ${this.calls.length}. Give it more answers.`,
       );
     }
-    while (typeof answer === 'function') {
+    while (typeof answer === "function") {
       answer = await answer(call);
     }
     if (answer instanceof Error) {
       throw answer;
     }
     const turn: FakeTurn =
-      typeof answer === 'string' ? { text: answer } : answer;
+      typeof answer === "string" ? { text: answer } : answer;
     if (turn.delay) {
       await sleep(turn.delay, options.abortSignal);
     }
     return turn;
   }
 
-  private generate(turn: FakeTurn, options: any): any {
+  private generate(
+    turn: FakeTurn,
+    options: LanguageModelCallOptions,
+  ): LanguageModelGenerateResult {
     options.abortSignal?.throwIfAborted();
     const text = textOf(turn);
     const toolCalls = this.makeToolCalls(turn);
     return {
-      content: [...(text ? [{ type: 'text', text }] : []), ...toolCalls],
+      content: [
+        ...(text ? [{ type: "text" as const, text }] : []),
+        ...toolCalls,
+      ],
       finishReason: finishOf(turn, toolCalls.length),
       usage: usageOf(turn),
       warnings: [],
@@ -156,31 +178,34 @@ export class FakeModel {
     };
   }
 
-  private stream(turn: FakeTurn, options: any): any {
+  private stream(
+    turn: FakeTurn,
+    options: LanguageModelCallOptions,
+  ): LanguageModelStreamResult {
     const text = textOf(turn);
     const toolCalls = this.makeToolCalls(turn);
-    const parts: any[] = [
-      { type: 'stream-start', warnings: [] },
+    const parts: LanguageModelStreamPart[] = [
+      { type: "stream-start", warnings: [] },
       {
-        type: 'response-metadata',
+        type: "response-metadata",
         id: `response-${this.calls.length}`,
         modelId: this.modelId,
         timestamp: new Date(0),
       },
     ];
     if (text) {
-      parts.push({ type: 'text-start', id: 'text-0' });
+      parts.push({ type: "text-start", id: "text-0" });
       for (const delta of text.match(/\S+\s*|\s+/g) ?? []) {
-        parts.push({ type: 'text-delta', id: 'text-0', delta });
+        parts.push({ type: "text-delta", id: "text-0", delta });
       }
-      parts.push({ type: 'text-end', id: 'text-0' });
+      parts.push({ type: "text-end", id: "text-0" });
     }
     parts.push(...toolCalls);
     if (turn.streamError !== undefined) {
-      parts.push({ type: 'error', error: turn.streamError });
+      parts.push({ type: "error", error: turn.streamError });
     } else {
       parts.push({
-        type: 'finish',
+        type: "finish",
         finishReason: finishOf(turn, toolCalls.length),
         usage: usageOf(turn),
       });
@@ -189,7 +214,7 @@ export class FakeModel {
     const signal: AbortSignal | undefined = options.abortSignal;
     let index = 0;
     return {
-      stream: new ReadableStream({
+      stream: new ReadableStream<LanguageModelStreamPart>({
         pull: async (controller) => {
           if (index > 0 && turn.chunkDelay) {
             try {
@@ -208,7 +233,7 @@ export class FakeModel {
             controller.close();
           } else {
             controller.enqueue(part);
-            if (part.type === 'error') {
+            if (part.type === "error") {
               controller.close();
             }
           }
@@ -217,9 +242,11 @@ export class FakeModel {
     };
   }
 
-  private makeToolCalls(turn: FakeTurn): any[] {
+  private makeToolCalls(
+    turn: FakeTurn,
+  ): Array<Extract<LanguageModelContentPart, { type: "tool-call" }>> {
     return (turn.toolCalls ?? []).map((call) => ({
-      type: 'tool-call',
+      type: "tool-call" as const,
       toolCallId: call.id ?? `call-${++this.toolCallCount}`,
       toolName: call.name,
       input: JSON.stringify(call.input ?? {}),
@@ -242,11 +269,11 @@ export function providerError(
 ): ProviderApiCallError {
   return createProviderApiError({
     message: message ?? `The provider answered ${status}`,
-    url: 'https://fake-provider.test/v1/messages',
+    url: "https://fake-provider.test/v1/messages",
     requestBodyValues: {},
     statusCode: status,
     ...(retryAfter !== undefined && {
-      responseHeaders: { 'retry-after': String(retryAfter) },
+      responseHeaders: { "retry-after": String(retryAfter) },
     }),
   });
 }
@@ -254,11 +281,11 @@ export function providerError(
 function textOf(turn: FakeTurn): string {
   return turn.object !== undefined
     ? JSON.stringify(turn.object)
-    : (turn.text ?? '');
+    : (turn.text ?? "");
 }
 
 function finishOf(turn: FakeTurn, toolCalls: number) {
-  const unified = turn.finishReason ?? (toolCalls > 0 ? 'tool-calls' : 'stop');
+  const unified = turn.finishReason ?? (toolCalls > 0 ? "tool-calls" : "stop");
   return { unified, raw: unified };
 }
 
@@ -278,54 +305,81 @@ function usageOf(turn: FakeTurn) {
   };
 }
 
-function describeCall(options: any, stream: boolean): FakeModelCall {
-  const prompt: any[] = options.prompt ?? [];
+function isTextContentPart(part: unknown): part is { type: "text"; text: string } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as { type?: unknown }).type === "text" &&
+    typeof (part as { text?: unknown }).text === "string"
+  );
+}
+
+function isToolResultPart(part: unknown): part is LanguageModelToolResultPart {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as { type?: unknown }).type === "tool-result"
+  );
+}
+
+function describeCall(
+  options: LanguageModelCallOptions,
+  stream: boolean,
+): FakeModelCall {
+  const prompt: LanguageModelPromptMessage[] = options.prompt ?? [];
   const system = prompt
-    .filter((message) => message.role === 'system')
+    .filter((message) => message.role === "system")
     .map((message) =>
-      typeof message.content === 'string'
+      typeof message.content === "string"
         ? message.content
         : Array.isArray(message.content)
           ? message.content
-              .filter((p: any) => p.type === 'text')
-              .map((p: any) => p.text)
-              .join('')
-          : '',
+              .filter(isTextContentPart)
+              .map((p) => p.text)
+              .join("")
+          : "",
     );
   const lastUser = [...prompt]
     .reverse()
-    .find((message) => message.role === 'user');
-  const trailingTools: any[] = [];
-  for (let i = prompt.length - 1; i >= 0 && prompt[i]?.role === 'tool'; i--) {
-    trailingTools.unshift(prompt[i]);
+    .find((message) => message.role === "user");
+  const trailingTools: LanguageModelPromptMessage[] = [];
+  for (let i = prompt.length - 1; i >= 0 && prompt[i]?.role === "tool"; i--) {
+    trailingTools.unshift(prompt[i]!);
   }
-  const toolsList: any[] = options.tools ?? options.mode?.tools ?? [];
+  const toolsList: LanguageModelToolSpec[] =
+    options.tools ?? options.mode?.tools ?? [];
   return {
     stream,
-    ...(system.length > 0 && { instructions: system.join('\n') }),
+    ...(system.length > 0 && { instructions: system.join("\n") }),
     ...(lastUser && {
       lastUserMessage:
-        typeof lastUser.content === 'string'
+        typeof lastUser.content === "string"
           ? lastUser.content
           : Array.isArray(lastUser.content)
             ? lastUser.content
-                .filter((part: any) => part.type === 'text')
-                .map((part: any) => part.text)
-                .join('')
-            : '',
+                .filter(isTextContentPart)
+                .map((part) => part.text)
+                .join("")
+            : "",
     }),
     toolResults: trailingTools.flatMap((message) =>
       Array.isArray(message.content)
-        ? message.content
-            .filter((part: any) => part.type === 'tool-result')
-            .map((part: any) => ({
-              toolName: part.toolName,
-              toolCallId: part.toolCallId,
-              output: part.output?.value ?? part.output,
-            }))
+        ? message.content.filter(isToolResultPart).map((part) => {
+            const outputObj =
+              typeof part.output === "object" &&
+              part.output !== null &&
+              "value" in part.output
+                ? (part.output as { value?: unknown }).value
+                : part.output;
+            return {
+              toolName: part.toolName ?? "",
+              toolCallId: part.toolCallId ?? "",
+              output: outputObj,
+            };
+          })
         : [],
     ),
-    tools: toolsList.map((tool: any) => tool.name),
+    tools: toolsList.map((tool) => tool.name),
     options,
   };
 }
@@ -337,13 +391,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       return;
     }
     const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
+      signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
       reject(signal?.reason);
     };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BadRequestException,
   HttpException,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   createSandbox,
   createSpy,
@@ -101,7 +100,8 @@ function createMockChannel(options?: {
       queue: string,
       onMessage: (msg: RabbitMqMessageLike) => Promise<void> | void,
       opts?: Record<string, unknown>,
-    ) => Promise<{ consumerTag?: string } | void> | { consumerTag?: string } | void
+    ) =>
+      Promise<{ consumerTag?: string } | void> | { consumerTag?: string } | void
   >((queue, onMessage, opts) => {
     const tag = `amq.ctag-${++tagSeq}`;
     const list = consumers.get(queue) ?? [];
@@ -144,9 +144,10 @@ function createMockChannel(options?: {
   });
 
   const ack = createStub<(msg: RabbitMqMessageLike) => void>();
-  const nack = createStub<
-    (msg: RabbitMqMessageLike, allUpTo?: boolean, requeue?: boolean) => void
-  >();
+  const nack =
+    createStub<
+      (msg: RabbitMqMessageLike, allUpTo?: boolean, requeue?: boolean) => void
+    >();
   const cancel = createStub<(consumerTag: string) => Promise<void> | void>(
     (consumerTag) => {
       for (const list of consumers.values()) {
@@ -242,7 +243,9 @@ function makeEventMsg(
 
 function parseResponse(content: Uint8Array | string): RpcResponseEnvelope {
   const text =
-    typeof content === "string" ? content : Buffer.from(content).toString("utf8");
+    typeof content === "string"
+      ? content
+      : Buffer.from(content).toString("utf8");
   return JSON.parse(text) as RpcResponseEnvelope;
 }
 
@@ -262,7 +265,9 @@ describeConformance(
     let activeClients: RabbitMqClientProxy[];
     let sandbox: SpySandbox;
 
-    const trackServer = (s: RabbitMqTransportServer): RabbitMqTransportServer => {
+    const trackServer = (
+      s: RabbitMqTransportServer,
+    ): RabbitMqTransportServer => {
       activeServers.push(s);
       return s;
     };
@@ -330,9 +335,9 @@ describeConformance(
         server.addMessageHandler("1.0", numStrHandler);
 
         expect(server.getMessageHandler("user.get")).toBe(strHandler);
-        expect(
-          server.getMessageHandler({ cmd: "create", role: "user" }),
-        ).toBe(objHandler);
+        expect(server.getMessageHandler({ cmd: "create", role: "user" })).toBe(
+          objHandler,
+        );
         expect(server.getMessageHandler(/^order\.\d+$/)).toBe(regexHandler);
         expect(server.getMessageHandler("1.0")).toBe(numStrHandler);
         expect(server.getRegisteredPatterns().messagePatterns).toEqual([
@@ -350,9 +355,9 @@ describeConformance(
         );
 
         server.addMessageHandler({ b: 2, a: 1 }, () => 1);
-        expect(() =>
-          server.addMessageHandler({ a: 1, b: 2 }, () => 2),
-        ).toThrow(/Duplicate @MessagePattern/);
+        expect(() => server.addMessageHandler({ a: 1, b: 2 }, () => 2)).toThrow(
+          /Duplicate @MessagePattern/,
+        );
       });
 
       it("should register multiple event handlers for the same string or object pattern", () => {
@@ -414,7 +419,9 @@ describeConformance(
       });
 
       it("should remain not listening and allow retry when assertQueue or consume rejects", async () => {
-        harness.assertQueue.onFirstCall().rejects(new Error("PRECONDITION_FAILED"));
+        harness.assertQueue
+          .onFirstCall()
+          .rejects(new Error("PRECONDITION_FAILED"));
         await expect(server.listen()).rejects.toThrow("PRECONDITION_FAILED");
         expect(server.isListening).toBe(false);
         expect(harness.consume.notCalled).toBe(true);
@@ -630,12 +637,12 @@ describeConformance(
         );
 
         expect(harness.sendToQueue.callCount).toBe(2);
-        expect(parseResponse(harness.sendToQueue.firstCall!.args[1]).response).toBe(
-          "hi:thế-giới",
-        );
-        expect(parseResponse(harness.sendToQueue.secondCall!.args[1]).response).toBe(
-          "hi:world",
-        );
+        expect(
+          parseResponse(harness.sendToQueue.firstCall!.args[1]).response,
+        ).toBe("hi:thế-giới");
+        expect(
+          parseResponse(harness.sendToQueue.secondCall!.args[1]).response,
+        ).toBe("hi:world");
       });
 
       it("should ignore response envelopes delivered to the request queue without invoking handlers", async () => {
@@ -703,7 +710,8 @@ describeConformance(
           });
 
           expect(harness.sendToQueue.calledOnce).toBe(true);
-          const [replyQueue, rawBody, sendOpts] = harness.sendToQueue.firstCall!.args;
+          const [replyQueue, rawBody, sendOpts] =
+            harness.sendToQueue.firstCall!.args;
           expect(replyQueue).toBe("client.reply.1");
           expect(sendOpts).toEqual({ correlationId: "corr_1" });
           expect(parseResponse(rawBody)).toEqual({
@@ -750,7 +758,9 @@ describeConformance(
         await harness.deliver("tasks.queue", msg);
 
         expect(handler.calledOnce).toBe(true);
-        expect(parseResponse(harness.sendToQueue.firstCall!.args[1]).response).toEqual({
+        expect(
+          parseResponse(harness.sendToQueue.firstCall!.args[1]).response,
+        ).toEqual({
           received: { name: "Ada" },
         });
       });
@@ -816,15 +826,20 @@ describeConformance(
       it("should reply with 404 RpcException error envelope when no message handler is registered", async () => {
         await server.listen();
 
-        const msg = makeRequestMsg("missing.pattern", { a: 1 }, {
-          id: "m1",
-          correlationId: "corr_missing",
-          replyTo: "reply.missing",
-        });
+        const msg = makeRequestMsg(
+          "missing.pattern",
+          { a: 1 },
+          {
+            id: "m1",
+            correlationId: "corr_missing",
+            replyTo: "reply.missing",
+          },
+        );
         await harness.deliver("tasks.queue", msg);
 
         expect(harness.sendToQueue.calledOnce).toBe(true);
-        const [replyQueue, rawBody, sendOpts] = harness.sendToQueue.firstCall!.args;
+        const [replyQueue, rawBody, sendOpts] =
+          harness.sendToQueue.firstCall!.args;
         expect(replyQueue).toBe("reply.missing");
         expect(sendOpts).toEqual({ correlationId: "corr_missing" });
         const res = parseResponse(rawBody);
@@ -848,29 +863,37 @@ describeConformance(
 
         await harness.deliver(
           "missing.noack.q",
-          makeRequestMsg("unknown.cmd", {}, {
-            id: "u1",
-            correlationId: "u1",
-            replyTo: "reply.u1",
-          }),
+          makeRequestMsg(
+            "unknown.cmd",
+            {},
+            {
+              id: "u1",
+              correlationId: "u1",
+              replyTo: "reply.u1",
+            },
+          ),
         );
 
         expect(harness.nack.notCalled).toBe(true);
         expect(harness.sendToQueue.calledOnce).toBe(true);
-        expect(parseResponse(harness.sendToQueue.firstCall!.args[1]).error?.status).toBe(
-          404,
-        );
+        expect(
+          parseResponse(harness.sendToQueue.firstCall!.args[1]).error?.status,
+        ).toBe(404);
       });
 
       // BUNEST_BUG: When no @MessagePattern handler exists and `noAck` is `false`, RabbitMqTransportServer.onMessage() calls `channel.ack(msg)` instead of `channel.nack(msg, false, false)` (upstream ServerRMQ nacks without requeue on missing handlers) (packages/microservices/src/transports/broker.transports.ts).
       it.skip("should negative acknowledge without requeue when message handler does not exist and noAck is false", async () => {
         await server.listen();
 
-        const msg = makeRequestMsg("unknown.cmd", {}, {
-          id: "m_nack",
-          correlationId: "m_nack",
-          replyTo: "reply.m_nack",
-        });
+        const msg = makeRequestMsg(
+          "unknown.cmd",
+          {},
+          {
+            id: "m_nack",
+            correlationId: "m_nack",
+            replyTo: "reply.m_nack",
+          },
+        );
         await harness.deliver("tasks.queue", msg);
 
         expect(harness.nack.calledOnceWith(msg, false, false)).toBe(true);
@@ -883,7 +906,11 @@ describeConformance(
           throw new RpcException("bad rpc input");
         });
         server.addMessageHandler("err.rpc.obj", () => {
-          throw new RpcException({ status: 409, code: "CONFLICT", message: "Duplicate" });
+          throw new RpcException({
+            status: 409,
+            code: "CONFLICT",
+            message: "Duplicate",
+          });
         });
         server.addMessageHandler("err.http", () => {
           throw new BadRequestException("invalid field");
@@ -910,7 +937,11 @@ describeConformance(
         for (const p of patterns) {
           await harness.deliver(
             "tasks.queue",
-            makeRequestMsg(p, null, { id: p, correlationId: p, replyTo: "reply.err" }),
+            makeRequestMsg(p, null, {
+              id: p,
+              correlationId: p,
+              replyTo: "reply.err",
+            }),
           );
         }
 
@@ -968,7 +999,9 @@ describeConformance(
         expect(harness.nack.calledOnceWith(msg1, false, false)).toBe(true);
         expect(harness.ack.notCalled).toBe(true);
 
-        harness.sendToQueue.onSecondCall().throws(new Error("Sync write error"));
+        harness.sendToQueue
+          .onSecondCall()
+          .throws(new Error("Sync write error"));
         const msg2 = makeRequestMsg("reply.boom", null, {
           id: "b2",
           correlationId: "b2",
@@ -1033,7 +1066,8 @@ describeConformance(
           }),
         );
 
-        const [replyQueue, rawBody, sendOpts] = harness.sendToQueue.firstCall!.args;
+        const [replyQueue, rawBody, sendOpts] =
+          harness.sendToQueue.firstCall!.args;
         expect(replyQueue).toBe("reply.rec");
         expect(parseResponse(rawBody)).toEqual({
           type: "response",
@@ -1142,9 +1176,12 @@ describeConformance(
           }),
         );
         const received: unknown[] = [];
-        noAckServer.addEventHandler({ entity: "user", action: "deleted" }, (d) => {
-          received.push(d);
-        });
+        noAckServer.addEventHandler(
+          { entity: "user", action: "deleted" },
+          (d) => {
+            received.push(d);
+          },
+        );
         await noAckServer.listen();
 
         await harness.deliver(
@@ -1175,7 +1212,9 @@ describeConformance(
       it("should invoke setPreRequestHook via super.dispatchMessage before executing message handler", async () => {
         const order: string[] = [];
         const returned = server.setPreRequestHook(({ pattern, data, ctx }) => {
-          order.push(`hook:${pattern}:${JSON.stringify(data)}:${ctx.transport}`);
+          order.push(
+            `hook:${pattern}:${JSON.stringify(data)}:${ctx.transport}`,
+          );
         });
         expect(returned).toBe(server);
 
@@ -1196,9 +1235,9 @@ describeConformance(
           'hook:work.run:{"step":1}:RABBITMQ',
           'handler:{"step":1}',
         ]);
-        expect(parseResponse(harness.sendToQueue.firstCall!.args[1]).response).toBe(
-          "completed",
-        );
+        expect(
+          parseResponse(harness.sendToQueue.firstCall!.args[1]).response,
+        ).toBe("completed");
 
         // Clearing the hook stops invocations
         server.setPreRequestHook(undefined);
@@ -1272,19 +1311,27 @@ describeConformance(
 
         await harness.deliver(
           "topic.q",
-          makeRequestMsg("user.created", { id: 1 }, {
-            id: "w1",
-            correlationId: "w1",
-            replyTo: "reply.w",
-          }),
+          makeRequestMsg(
+            "user.created",
+            { id: 1 },
+            {
+              id: "w1",
+              correlationId: "w1",
+              replyTo: "reply.w",
+            },
+          ),
         );
         await harness.deliver(
           "topic.q",
-          makeRequestMsg("app.db.pool.error", { code: 500 }, {
-            id: "w2",
-            correlationId: "w2",
-            replyTo: "reply.w",
-          }),
+          makeRequestMsg(
+            "app.db.pool.error",
+            { code: 500 },
+            {
+              id: "w2",
+              correlationId: "w2",
+              replyTo: "reply.w",
+            },
+          ),
         );
 
         expect(singleWildcard.calledOnce).toBe(true);

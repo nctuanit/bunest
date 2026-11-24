@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type DynamicModule,
   Injectable,
   Module,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   GraphQLModule,
@@ -181,7 +180,9 @@ describeConformance(
             .set("Accept", "text/html")
             .expect(200);
           expect(res.headers["content-type"]).toContain("text/html");
-          expect(res.text).toContain("<title>Bunest GraphQL Playground</title>");
+          expect(res.text).toContain(
+            "<title>Bunest GraphQL Playground</title>",
+          );
         },
         "zero-CDN built-in Playground HTML",
       );
@@ -212,7 +213,9 @@ describeConformance(
             .set("Accept", "text/html")
             .expect(200);
           expect(res.headers["content-type"]).toContain("text/html");
-          expect(res.text).toContain("<title>Bunest GraphQL Playground</title>");
+          expect(res.text).toContain(
+            "<title>Bunest GraphQL Playground</title>",
+          );
         },
         "zero-CDN built-in Playground HTML",
       );
@@ -244,7 +247,9 @@ describeConformance(
             .expect(200);
           expect(res.headers["content-type"]).toContain("text/html");
           expect(res.text).toContain("<!DOCTYPE html>");
-          expect(res.text).toContain("<title>Bunest GraphQL Playground</title>");
+          expect(res.text).toContain(
+            "<title>Bunest GraphQL Playground</title>",
+          );
           expect(res.text).toContain("POST /graphql");
         },
         "zero-CDN built-in Playground HTML",
@@ -341,7 +346,9 @@ describeConformance(
             .get("/graphql")
             .set("Accept", "text/html")
             .expect(400);
-          expect(res.text).not.toContain("<title>Bunest GraphQL Playground</title>");
+          expect(res.text).not.toContain(
+            "<title>Bunest GraphQL Playground</title>",
+          );
           expect(res.text).not.toContain("<title>GraphiQL</title>");
         },
         "returns HTTP 400 missing query param instead of Apollo 406",
@@ -372,7 +379,9 @@ describeConformance(
             .get("/graphql")
             .set("Accept", "text/html")
             .expect(400);
-          expect(res.text).not.toContain("<title>Bunest GraphQL Playground</title>");
+          expect(res.text).not.toContain(
+            "<title>Bunest GraphQL Playground</title>",
+          );
           expect(res.text).not.toContain("<title>GraphiQL</title>");
         },
         "returns HTTP 400 missing query param instead of Apollo 406",
@@ -403,7 +412,9 @@ describeConformance(
           .get("/graphql")
           .set("Accept", "text/html");
         expect(res.status).not.toBe(200);
-        expect(res.text).not.toContain("<title>Bunest GraphQL Playground</title>");
+        expect(res.text).not.toContain(
+          "<title>Bunest GraphQL Playground</title>",
+        );
         expect(res.text).not.toContain("<title>GraphiQL</title>");
       });
 

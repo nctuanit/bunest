@@ -7,6 +7,7 @@ Bunest integrates directly with Bun's native `req.cookies` (`CookieMap`), RFC-co
 Extract all cookies as a key-value map or read a single cookie directly via `@Cookies()`:
 
 @@filename(session.controller.ts)
+
 ```ts
 import { Controller, Cookies, Get, Post, Res } from "@bunest/core";
 import type { ResponseContext } from "@bunest/core";
@@ -14,8 +15,14 @@ import type { ResponseContext } from "@bunest/core";
 @Controller("session")
 export class SessionController {
   @Get()
-  inspect(@Cookies("session_id") sessionId?: string, @Cookies() all?: Record<string, string>) {
-    return { sessionId: sessionId ?? null, count: Object.keys(all ?? {}).length };
+  inspect(
+    @Cookies("session_id") sessionId?: string,
+    @Cookies() all?: Record<string, string>,
+  ) {
+    return {
+      sessionId: sessionId ?? null,
+      count: Object.keys(all ?? {}).length,
+    };
   }
 
   @Post("login")
@@ -46,6 +53,7 @@ export class SessionController {
 Enable Cross-Origin Resource Sharing via `app.enableCors(options)` or `BunestApplicationOptions.cors`:
 
 @@filename(main.ts)
+
 ```ts
 const app = await BunestFactory.create(AppModule, {
   cors: {

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional, type Type } from "@bunest/common";
+import { Inject, Injectable, Optional, type Type } from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
 import { MailError } from "./errors/mail.error";
 import { MailMessageError } from "./errors/mail-message.error";
@@ -59,7 +59,10 @@ import {
 @Injectable()
 export class Mailer {
   private readonly retry: ResolvedRetry;
-  private readonly mails = new Map<Type<Mailable<any>>, Promise<Mailable<any>>>();
+  private readonly mails = new Map<
+    Type<Mailable<any>>,
+    Promise<Mailable<any>>
+  >();
   private readonly inFlight = new Set<Promise<unknown>>();
 
   constructor(
@@ -84,9 +87,12 @@ export class Mailer {
   ): Promise<MailSendResult>;
   send(
     target: MailSendOptions | Type<Mailable<any>>,
-    options?: any,
+    options?: MailableSendOptions<unknown>,
   ): Promise<MailSendResult> {
-    const run = this.compose(target, options ?? {}).then((message) =>
+    const run = this.compose(
+      target,
+      options ?? ({} as MailableSendOptions<unknown>),
+    ).then((message) =>
       this.deliver(
         message,
         typeof target === "function" ? (options ?? {}) : target,
@@ -110,10 +116,13 @@ export class Mailer {
   render(message: MailRenderOptions): Promise<MailMessage>;
   render(
     target: MailRenderOptions | Type<Mailable<any>>,
-    options?: any,
+    options?: MailableRenderOptions<unknown>,
   ): Promise<MailMessage> {
     if (typeof target === "function") {
-      return this.renderMail(target, options ?? {});
+      return this.renderMail(
+        target,
+        (options ?? {}) as MailableSendOptions<unknown>,
+      );
     }
     return this.renderInline(target);
   }
@@ -127,7 +136,7 @@ export class Mailer {
 
   private async compose(
     target: MailSendOptions | Type<Mailable<any>>,
-    options: MailableSendOptions<any>,
+    options: MailableSendOptions<unknown>,
   ): Promise<MailMessage> {
     const message =
       typeof target === "function"
@@ -149,7 +158,7 @@ export class Mailer {
 
   private async renderMail(
     type: Type<Mailable<any>>,
-    options: MailableSendOptions<any>,
+    options: MailableSendOptions<unknown>,
   ): Promise<MailMessage> {
     const mail = await this.resolve(type);
     const to = parseAddressList(options.to, "to");

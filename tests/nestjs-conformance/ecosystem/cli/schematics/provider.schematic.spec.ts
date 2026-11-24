@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function expectedProviderSource(pascal: string): string {
   return `import { Injectable } from "@bunest/core";
@@ -39,16 +50,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -81,7 +92,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.spec.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "src/foo.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "src/foo.ts"))).toEqual(
           expectedProviderSource("Foo"),
         );
       },
@@ -127,7 +138,7 @@ describeConformance(
           flat: true,
           cwd,
         });
-        expect(readFileSync(join(cwd, "src/bar/foo.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "src/bar/foo.ts"))).toEqual(
           expectedProviderSource("Foo"),
         );
       },
@@ -152,7 +163,7 @@ describeConformance(
         expect(
           result.files.find((f) => f.relativePath === "foo.spec.ts"),
         ).toBeDefined();
-        expect(readFileSync(join(cwd, "bar/foo.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "bar/foo.ts"))).toEqual(
           expectedProviderSource("Foo"),
         );
       },
@@ -181,7 +192,7 @@ describeConformance(
           flat: true,
           cwd,
         });
-        expect(readFileSync(join(cwd, "src/bar-foo.ts"), "utf8")).toEqual(
+        expect(readTextSync(join(cwd, "src/bar-foo.ts"))).toEqual(
           expectedProviderSource("BarFoo"),
         );
       },
@@ -211,9 +222,9 @@ describeConformance(
           parseSchematicName("foo"),
           { flat: true, spec: true },
         );
-        expect(
-          planned.every((file) => file.relativePath.endsWith(".ts")),
-        ).toBe(true);
+        expect(planned.every((file) => file.relativePath.endsWith(".ts"))).toBe(
+          true,
+        );
         expect(findFile(planned, "foo.js")).toBeUndefined();
         expect(findFile(planned, "foo.spec.js")).toBeUndefined();
         expect(findFile(planned, "foo.ts")?.content).toEqual(
@@ -239,7 +250,7 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
       expect(appModule).toContain('import { Foo } from "./foo";');
       expect(appModule).toContain("providers: [AppService, Foo]");
     });
@@ -266,10 +277,7 @@ describeConformance(
         cwd,
       });
 
-      const fooModule = readFileSync(
-        join(cwd, "src/foo/foo.module.ts"),
-        "utf8",
-      );
+      const fooModule = readTextSync(join(cwd, "src/foo/foo.module.ts"));
       expect(fooModule).toContain('import { Foo } from "./foo";');
       expect(fooModule).toContain("providers: [Foo]");
     });
@@ -336,7 +344,7 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
       expect(appModule).toContain('import { Foo } from "./foo";');
       expect(appModule).toContain("providers: [AppService, Foo]");
     });
@@ -360,9 +368,8 @@ describeConformance(
           cwd,
         });
 
-        expect(readFileSync(join(cwd, "src/foo.spec.ts"), "utf8")).toEqual(
-          `import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+        expect(readTextSync(join(cwd, "src/foo.spec.ts"))).toEqual(
+          `import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import { Foo } from "./foo";
 

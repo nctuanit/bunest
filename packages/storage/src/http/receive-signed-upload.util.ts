@@ -2,7 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   PayloadTooLargeException,
-} from "@bunest/common";
+} from "@bunest/core";
 import type { StorageDisk } from "../disks/storage.disk";
 import type {
   ReceiveSignedUploadOptions,
@@ -10,7 +10,12 @@ import type {
   StorageWriteResult,
 } from "../interfaces/storage-types";
 import { toChunks } from "../utils/body.util";
-import { requestHeaders, setHeader, toHttpError, verify } from "./serve-file.util";
+import {
+  requestHeaders,
+  setHeader,
+  toHttpError,
+  verify,
+} from "./serve-file.util";
 
 function extractBodySource(req: unknown): StorageBody {
   if (req instanceof Request) {
@@ -21,13 +26,21 @@ function extractBodySource(req: unknown): StorageBody {
   }
   if (req && typeof req === "object") {
     const r = req as Record<string, unknown>;
-    if (r.raw && typeof r.raw === "object" && Symbol.asyncIterator in (r.raw as object)) {
+    if (
+      r.raw &&
+      typeof r.raw === "object" &&
+      Symbol.asyncIterator in (r.raw as object)
+    ) {
       return r.raw as AsyncIterable<Uint8Array>;
     }
     if (Symbol.asyncIterator in r) {
       return r as unknown as AsyncIterable<Uint8Array>;
     }
-    if (r.body instanceof Uint8Array || typeof r.body === "string" || r.body instanceof ReadableStream) {
+    if (
+      r.body instanceof Uint8Array ||
+      typeof r.body === "string" ||
+      r.body instanceof ReadableStream
+    ) {
       return r.body as StorageBody;
     }
   }

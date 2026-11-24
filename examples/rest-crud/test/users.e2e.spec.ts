@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
 import {
@@ -62,7 +61,9 @@ describe("REST CRUD Example (E2E)", () => {
       // 4. GET /users/:id -> 200
       const getRes = await client.get(`/users/${created.id}`);
       expect(getRes.status).toBe(200);
-      expect((await getRes.json() as UserRecord).email).toBe("ada@bunest.dev");
+      expect(((await getRes.json()) as UserRecord).email).toBe(
+        "ada@bunest.dev",
+      );
 
       // 5. PATCH /users/:id -> 200
       const patchRes = await client.patch(`/users/${created.id}`, {

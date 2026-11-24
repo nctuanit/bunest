@@ -1,9 +1,21 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ConfigModule, ConfigService } from "../../../../../packages/config/src";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+} from "bun:test";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
+import {
+  ConfigModule,
+  ConfigService,
+} from "../../../../../packages/core/src/config";
 import { describeConformance, Test } from "../../../_helpers/index";
 
 describeConformance(
@@ -18,9 +30,13 @@ describeConformance(
     let originalEnv: NodeJS.ProcessEnv;
 
     beforeAll(() => {
-      tmpDir = fs.mkdtempSync(join(tmpdir(), "bunest-config-override-exp-"));
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-config-override-exp-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(tmpDir);
       envFilePath = join(tmpDir, ".env.override-expand-test");
-      fs.writeFileSync(
+      writeTextSync(
         envFilePath,
         ["EXISTING_VAR=file_value", "DERIVED_VAR=${EXISTING_VAR}_derived"].join(
           "\n",
@@ -28,8 +44,8 @@ describeConformance(
       );
     });
 
-    afterAll(() => {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+    afterAll(async () => {
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -86,7 +102,7 @@ describeConformance(
         tmpDir,
         ".env.override-expand-process-test",
       );
-      fs.writeFileSync(
+      writeTextSync(
         extraEnvFilePath,
         "FROM_PROCESS=${ONLY_IN_PROCESS_ENV}_expanded",
       );
@@ -106,7 +122,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: expandEnvEntries() reads options.processEnv for lookups but never writes expanded values back into the custom processEnv target (expected processEnv.EXISTING_VAR="file_value", received "custom_value"; packages/config/src/env-parser.ts:326-375)
+    // BUNEST_BUG: expandEnvEntries() reads options.processEnv for lookups but never writes expanded values back into the custom processEnv target (expected processEnv.EXISTING_VAR="file_value", received "custom_value"; packages/core/src/config/env-parser.ts:326-375)
     it.skip('should write the expanded values to a custom "processEnv" target when "override" is true', async () => {
       const processEnv: Record<string, string> = {
         EXISTING_VAR: "custom_value",
@@ -127,14 +143,14 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: expandEnvEntries() seeds visiting with `new Set([key])` at line 365, causing resolveVariable() at line 301 to return "" for self-references before calling lookup(key), making the override self-reference branch at line 335 dead code (expected "/opt/app/plugins:/usr/plugins", received "/opt/app/plugins:"; packages/config/src/env-parser.ts:301-303,335-337,365)
+    // BUNEST_BUG: expandEnvEntries() seeds visiting with `new Set([key])` at line 365, causing resolveVariable() at line 301 to return "" for self-references before calling lookup(key), making the override self-reference branch at line 335 dead code (expected "/opt/app/plugins:/usr/plugins", received "/opt/app/plugins:"; packages/core/src/config/env-parser.ts:301-303,335-337,365)
     it.skip('should expand a self-reference to the previous value when "override" is true', async () => {
       process.env.PLUGIN_PATH = "/usr/plugins";
       const prependEnvFilePath = join(
         tmpDir,
         ".env.override-expand-prepend-test",
       );
-      fs.writeFileSync(
+      writeTextSync(
         prependEnvFilePath,
         [
           "PLUGIN_PATH=/opt/app/plugins:$PLUGIN_PATH",
@@ -167,7 +183,7 @@ describeConformance(
         tmpDir,
         ".env.override-expand-self-reference-test",
       );
-      fs.writeFileSync(
+      writeTextSync(
         selfReferenceEnvFilePath,
         ["SELF_REF=$SELF_REF", "DEPENDS_ON_SELF_REF=$SELF_REF/z"].join("\n"),
       );

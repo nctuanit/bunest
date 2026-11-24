@@ -3,34 +3,18 @@ import type {
   CacheStore,
   CacheTtlOrOptions,
 } from "../interfaces/cache.interface";
+import {
+  createBunRedisClient,
+  type RedisClientLike,
+} from "./bun-redis.adapter";
 
-/**
- * Pluggable Redis client interface compatible with Bun's native `RedisClient`,
- * `ioredis`, `node-redis` wrappers, and in-memory test doubles.
- */
-export interface RedisClientLike {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ...args: any[]): Promise<unknown>;
-  del(...keys: string[]): Promise<number>;
-  exists?(key: string): Promise<number | boolean>;
-  pttl?(key: string): Promise<number>;
-  ttl?(key: string): Promise<number>;
-  mget?(...keys: string[]): Promise<Array<string | null>>;
-  scan?(
-    cursor: string | number,
-    ...args: any[]
-  ): Promise<readonly [string | number, readonly string[]]>;
-  keys?(pattern: string): Promise<string[]>;
-  sadd?(key: string, ...members: string[]): Promise<number>;
-  smembers?(key: string): Promise<string[]>;
-  flushdb?(): Promise<unknown>;
-  quit?(): Promise<unknown>;
-  close?(): Promise<void> | void;
-  disconnect?(): void;
-}
+export type { RedisClientLike };
 
 export interface RedisCacheStoreOptions {
-  client: RedisClientLike;
+  /** Pluggable Redis client or native `Bun.RedisClient`. Optional when `url` is provided (or falls back to `Bun.redis`). */
+  client?: RedisClientLike | Bun.RedisClient;
+  /** Redis connection URL for Bun's native `Bun.RedisClient` (e.g. `"redis://localhost:6379"`). */
+  url?: string;
   /**
    * Key namespace prefix applied to all stored keys (e.g. `"bunest:"`).
    * @default ""
@@ -80,8 +64,15 @@ export class RedisCacheStore implements CacheStore {
   private readonly serialize: (value: unknown) => string;
   private readonly deserialize: (raw: string) => unknown;
 
-  constructor(options: RedisCacheStoreOptions) {
-    this.client = options.client;
+  constructor(options: RedisCacheStoreOptions = {}) {
+    if (options.client) {
+      this.client =
+        options.client instanceof Bun.RedisClient
+          ? createBunRedisClient(options.client)
+          : options.client;
+    } else {
+      this.client = createBunRedisClient(options.url);
+    }
     this.keyPrefix = options.keyPrefix ?? "";
     this.defaultTtlMs = options.defaultTtlMs ?? options.ttl ?? 0;
     this.scanCount = options.scanCount ?? 100;

@@ -1,9 +1,8 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   ConsoleLogger,
   type LogLevel,
-} from "../../../../../../../packages/common/src";
+} from "../../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../../_helpers";
 
 function isLogLevelEnabledViaConsoleLogger(
@@ -39,7 +38,10 @@ describeConformance(
       { inputArgs: ["log", ["error", "log"]], expectedReturnValue: true },
       { inputArgs: ["warn", ["warn", "error"]], expectedReturnValue: true },
       { inputArgs: ["debug", ["warn", "debug"]], expectedReturnValue: true },
-      { inputArgs: ["verbose", ["error", "verbose"]], expectedReturnValue: true },
+      {
+        inputArgs: ["verbose", ["error", "verbose"]],
+        expectedReturnValue: true,
+      },
       /** not explicitly included + log level is higher than target */
       { inputArgs: ["log", ["error", "warn"]], expectedReturnValue: false },
       { inputArgs: ["verbose", ["warn"]], expectedReturnValue: false },
@@ -68,7 +70,7 @@ describeConformance(
     });
 
     describe("when target level is more severe than highest configured level", () => {
-      // BUNEST_BUG: ConsoleLogger.isLevelEnabled() checks exact `levels.includes(level)` instead of NestJS severity hierarchy (`targetLevelValue >= highestLogLevelValue`), so `logLevels: ['warn']` returns `false` for `'error'` (packages/common/src/logger/console-logger.ts:221-224)
+      // BUNEST_BUG: ConsoleLogger.isLevelEnabled() checks exact `levels.includes(level)` instead of NestJS severity hierarchy (`targetLevelValue >= highestLogLevelValue`), so `logLevels: ['warn']` returns `false` for `'error'` (packages/core/src/common/logger/console-logger.ts:221-224)
       it.skip("should enable higher-severity levels (e.g. error when logLevels = ['warn'])", () => {
         expect(
           new ConsoleLogger({ logLevels: ["warn"] }).isLevelEnabled("error"),

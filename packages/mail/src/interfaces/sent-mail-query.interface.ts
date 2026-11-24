@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/common";
+import type { Type } from "@bunest/core";
 import type { SentMail } from "../transports/sent-mail";
 
 /**

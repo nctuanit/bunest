@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { MetadataScanner } from "../../../../../packages/core/src";
 import { describeConformance } from "../../../_helpers";
@@ -42,12 +41,7 @@ describeConformance(
 
       it("should return only methods", () => {
         const methods = scanner.getAllMethodNames(Test.prototype);
-        expect(methods).toEqual([
-          "test",
-          "test2",
-          "testParent",
-          "testParent2",
-        ]);
+        expect(methods).toEqual(["test", "test2", "testParent", "testParent2"]);
       });
 
       // BUNEST_BUG: MetadataScanner.getAllMethodNames() does not cache/memoize the method names array per prototype (packages/core/src/discovery/metadata-scanner.ts:13); repeated calls return distinct array instances.

@@ -1,7 +1,7 @@
-import "reflect-metadata";
+import "./common/metadata/reflect-shim";
 
 // Re-export @bunest/common (includes canonical runtime `ShutdownSignal` enum & `ConfigurableModuleBuilder`)
-export * from "@bunest/common";
+export * from "./common/index";
 
 // Re-export @bunest/http public APIs (includes `AbstractHttpAdapter` -> 54/54 @nestjs/core parity!)
 export {
@@ -53,7 +53,10 @@ export {
   type DiskUploadedFileInfo,
   type ExtendedStaticAssetsOptions,
   type GlobalPrefixOptions,
+  type HttpIncomingHeaders,
+  type HttpIncomingMessageLike,
   type HttpRuntimeBridge,
+  type HttpServerResponseLike,
   type ListenOptions,
   type ListeningServerInfo,
   type MiddlewareEntry,
@@ -68,19 +71,7 @@ export {
   type SupportedCompressionEncoding,
   type WebSocketHandlerRegistration,
   type WebSocketUpgradeHandler,
-} from "@bunest/http";
-
-// Re-export @bunest/validation public APIs (only validation-specific symbols to avoid duplicate re-export conflicts with @bunest/common)
-export {
-  SchemaValidationPipe,
-  type SchemaSafeParseFailure,
-  type SchemaSafeParseResult,
-  type SchemaSafeParseSuccess,
-  type SchemaValidationErrorLike,
-  type SchemaValidationIssue,
-  type SchemaValidationPipeOptions,
-  type SchemaValidator,
-} from "@bunest/validation";
+} from "./http/index";
 
 // Core Errors
 export {
@@ -178,6 +169,8 @@ export { ModuleNode } from "./module/module-node";
 export {
   MULTI_PROVIDER_TOKENS,
   ModuleScanner,
+  expandAutoModules,
+  expandSingleAutoModule,
   getInjectableScope,
   isInjectableDurable,
   isProviderObject,
@@ -185,6 +178,37 @@ export {
   type ModuleScanOptions,
   type ScannedModuleGraph,
 } from "./module/module-scanner";
+
+// Smart @AutoModule Extended Metadata & Conditional Beans (@RegisterIf*, @Profile)
+export {
+  AUTO_MODULE_METADATA_KEY,
+  DEFAULT_AUTO_MODULE_EXCLUDES,
+  extractCallerDir,
+  getAutoModuleMetadata,
+  type AutoModuleManifestLoader,
+  type AutoModuleMetadata,
+  type StoredAutoModuleMetadata,
+} from "./common/decorators/core.decorators";
+export {
+  CONDITION_METADATA_KEY,
+  Profile,
+  RegisterIf,
+  RegisterIfEnv,
+  RegisterIfMissing,
+  evaluateDeferredProviderConditions,
+  evaluateEagerProviderConditions,
+  evaluateProviderConditions,
+  getProviderConditionTarget,
+  getProviderConditions,
+  hasDeferredConditions,
+  parseProfilesList,
+  resolveActiveProfiles,
+  type ConditionContext,
+  type EnvConditionMatcher,
+  type PartialConditionContext,
+  type ProviderCondition,
+  type ResolveActiveProfilesOptions,
+} from "./common/decorators/conditional.decorators";
 
 // DI Container, ContextIdFactory, Request Scope & ModuleRef
 export { ContextIdFactory, createContextId } from "./di/context-id.factory";
@@ -232,7 +256,9 @@ export { InitializeOnPreviewAllowlist } from "./inspector/initialize-on-preview.
 export {
   createReplContext,
   repl,
+  type BunestReplServer,
   type ReplContextFunctions,
+  type ReplOptions,
 } from "./repl/repl";
 
 // Lifecycle Manager
@@ -241,7 +267,47 @@ export {
   type ModuleInstanceGroup,
 } from "./lifecycle/lifecycle-manager";
 
-// Service-Layer AOP Method Aspect Weaver
+// Service-Layer AOP Phases, Pipelines, Typed Aspects, Pointcuts & Weaver
+export {
+  AspectPhase,
+  collectPrototypeMethodNames,
+  resolveAspectOrder,
+  stableSortMethodAspects,
+  type AspectOrderInput,
+  type AspectOrderOptions,
+  type AspectPhaseName,
+  type AspectPhaseValue,
+} from "./common/decorators/method-aspect.decorator";
+export {
+  AOP_POINTCUTS_TOKEN,
+  AopModule,
+  clearGlobalPointcuts,
+  createTypedAspect,
+  defineAspectPipeline,
+  getAllEffectiveMethodAspects,
+  getEffectiveMethodAspects,
+  getGlobalPointcuts,
+  getGlobalPointcutsVersion,
+  getMatchingPointcutAspects,
+  hasMatchingPointcuts,
+  matchesPointcutClass,
+  matchesPointcutMethod,
+  registerGlobalPointcuts,
+  unregisterGlobalPointcut,
+  type AopModuleOptions,
+  type AspectPipelineStep,
+  type AspectPipelineStepSpec,
+  type AsyncTypedAspectConfig,
+  type AsyncTypedMethodDecorator,
+  type PointcutAspectEntry,
+  type PointcutMatcher,
+  type PointcutRule,
+  type TypedAspectConfig,
+  type TypedAspectConfigBase,
+  type TypedAspectDecoratorFactory,
+  type TypedMethodAspectContext,
+  type TypedMethodDecorator,
+} from "./aop/aop-pipeline";
 export {
   collectClassAspectTokens,
   isMethodAspectClass,

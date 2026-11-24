@@ -1,4 +1,4 @@
-import type { ModuleMetadata } from "@bunest/common";
+import type { ModuleMetadata } from "@bunest/core";
 import type { TestingModuleOptions } from "./interfaces/testing.interface";
 import { TestingModuleBuilder } from "./testing-module.builder";
 

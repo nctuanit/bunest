@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   Global,
@@ -12,7 +11,7 @@ import {
   type ExecutionContext,
   type NestInterceptor,
   type Type,
-} from "../../../../../../../packages/common/src";
+} from "../../../../../../../packages/core/src/common";
 import {
   DiscoveryService,
   LazyModuleLoader,
@@ -456,7 +455,8 @@ describeConformance(
             providers: [
               {
                 provide: "Z_PROVIDER",
-                useFactory: () => new Promise((resolve) => setTimeout(resolve, 20)),
+                useFactory: () =>
+                  new Promise((resolve) => setTimeout(resolve, 20)),
               },
             ],
           })

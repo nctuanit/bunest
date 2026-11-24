@@ -1,20 +1,11 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, it } from "bun:test";
-import {
-  Controller,
-  Get,
-  Module,
-} from "../../../../../packages/common/src";
+import { Controller, Get, Module } from "../../../../../packages/core/src/common";
 import {
   RouterModule,
   type BunestApplication,
   type Routes,
 } from "../../../../../packages/core/src";
-import {
-  Test,
-  describeConformance,
-  request,
-} from "../../../_helpers";
+import { Test, describeConformance, request } from "../../../_helpers";
 
 describeConformance(
   "RouterModule",

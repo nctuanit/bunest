@@ -5,7 +5,7 @@ import type {
   ScheduleSave,
   ScheduleStore,
   ScheduleWrite,
-} from '../interfaces/schedule-store.interface';
+} from "../interfaces/schedule-store.interface";
 
 /**
  * A `ScheduleStore` in this process's memory: for tests, and for a package's in-memory store (the in-memory workflow
@@ -18,11 +18,18 @@ import type {
  * ```
  */
 export class InMemoryScheduleStore implements ScheduleStore {
-  private readonly schedules = new Map<string, { record: ScheduleRecord; leaseToken: string | null }>();
+  private readonly schedules = new Map<
+    string,
+    { record: ScheduleRecord; leaseToken: string | null }
+  >();
 
   async saveSchedule(save: ScheduleSave): Promise<ScheduleRecord | null> {
     const existing = this.schedules.get(save.id);
-    if (save.expectRevision === null ? existing !== undefined : existing?.record.revision !== save.expectRevision) {
+    if (
+      save.expectRevision === null
+        ? existing !== undefined
+        : existing?.record.revision !== save.expectRevision
+    ) {
       return null;
     }
     const { expectRevision: _expect, releaseLease, now, ...fields } = save;
@@ -34,7 +41,10 @@ export class InMemoryScheduleStore implements ScheduleStore {
       createdAt: existing?.record.createdAt ?? now,
       updatedAt: now,
     };
-    this.schedules.set(save.id, { record, leaseToken: releaseLease ? null : (existing?.leaseToken ?? null) });
+    this.schedules.set(save.id, {
+      record,
+      leaseToken: releaseLease ? null : (existing?.leaseToken ?? null),
+    });
     return copy(record);
   }
 
@@ -48,7 +58,8 @@ export class InMemoryScheduleStore implements ScheduleStore {
       .map((schedule) => schedule.record)
       .filter(
         (record) =>
-          (query.target === undefined || record.target === query.target) && (query.declared === undefined || record.declared === query.declared),
+          (query.target === undefined || record.target === query.target) &&
+          (query.declared === undefined || record.declared === query.declared),
       )
       .sort((a, b) => compare(a.id, b.id))
       .slice(query.offset, query.offset + query.limit)
@@ -57,13 +68,18 @@ export class InMemoryScheduleStore implements ScheduleStore {
 
   async deleteSchedule(id: string, revision?: number): Promise<boolean> {
     const schedule = this.schedules.get(id);
-    if (!schedule || (revision !== undefined && schedule.record.revision !== revision)) {
+    if (
+      !schedule ||
+      (revision !== undefined && schedule.record.revision !== revision)
+    ) {
       return false;
     }
     return this.schedules.delete(id);
   }
 
-  async claimSchedules(request: ScheduleClaimRequest): Promise<ScheduleRecord[]> {
+  async claimSchedules(
+    request: ScheduleClaimRequest,
+  ): Promise<ScheduleRecord[]> {
     const targets = new Set(request.targets);
     const due = [...this.schedules.values()]
       .filter(
@@ -74,7 +90,11 @@ export class InMemoryScheduleStore implements ScheduleStore {
           (record.leaseUntil === null || record.leaseUntil < request.now) &&
           targets.has(record.target),
       )
-      .sort((a, b) => a.record.wakeAt! - b.record.wakeAt! || compare(a.record.id, b.record.id))
+      .sort(
+        (a, b) =>
+          a.record.wakeAt! - b.record.wakeAt! ||
+          compare(a.record.id, b.record.id),
+      )
       .slice(0, request.limit);
     for (const schedule of due) {
       schedule.leaseToken = request.token;
@@ -84,9 +104,17 @@ export class InMemoryScheduleStore implements ScheduleStore {
     return due.map((schedule) => copy(schedule.record));
   }
 
-  async writeSchedule(id: string, token: string, write: ScheduleWrite): Promise<boolean> {
+  async writeSchedule(
+    id: string,
+    token: string,
+    write: ScheduleWrite,
+  ): Promise<boolean> {
     const schedule = this.schedules.get(id);
-    if (!schedule || schedule.leaseToken === null || schedule.leaseToken !== token) {
+    if (
+      !schedule ||
+      schedule.leaseToken === null ||
+      schedule.leaseToken !== token
+    ) {
       return false;
     }
     const { record } = schedule;

@@ -1,11 +1,11 @@
 # Authentication
 
-**`@bunest/authentication`** is a full-featured, zero-dependency identity and authentication module for Bunest supporting stateful sessions, JWT/JWKS tokens, refresh-token rotation families (with reuse detection), TOTP MFA, magic links, OIDC/OAuth2, API keys, and Argon2id password hashing.
+**`@bunest/security/auth`** is a full-featured, zero-dependency identity and authentication module for Bunest supporting stateful sessions, JWT/JWKS tokens, refresh-token rotation families (with reuse detection), TOTP MFA, magic links, OIDC/OAuth2, API keys, and Argon2id password hashing.
 
 ## Installation
 
 ```bash
-bun add @bunest/authentication
+bun add @bunest/security/auth
 ```
 
 ## Key Capabilities
@@ -14,14 +14,15 @@ bun add @bunest/authentication
 - **Refresh-token families:** Automatic rotation and compromised-family revocation on token reuse.
 - **Request context & guards:** `AuthenticationGuard`, `@Authenticate()`, and `AuthenticationContext` for accessing the authenticated principal anywhere in the request lifecycle.
 - **Lifecycle events:** `AuthenticationEvents` for auditing logins, logouts, MFA challenges, and token revocations.
-- **Contract test suite (`@bunest/authentication/testing`):** Verify custom session/token stores against the official store contract.
+- **Contract test suite (`@bunest/security/testing`):** Verify custom session/token stores against the official store contract.
 
 ## Quick Start
 
 @@filename(app.module.ts)
+
 ```ts
 import { Module } from "@bunest/core";
-import { AuthenticationModule } from "@bunest/authentication";
+import { AuthenticationModule } from "@bunest/security/auth";
 
 @Module({
   imports: [

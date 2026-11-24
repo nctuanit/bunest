@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import { BunestFactory, Module } from "@bunest/core";
 import {
@@ -6,6 +5,7 @@ import {
   EventLoopHealthIndicator,
   HealthModule,
   MemoryHealthIndicator,
+  OrmHealthIndicator,
   QueueHealthIndicator,
   SqlHealthIndicator,
 } from "../src";
@@ -127,6 +127,73 @@ describe("HealthModule & Built-in Health Indicators", () => {
       expect(failBody.error.queue.status).toBe("down");
       expect(failBody.error.queue.message).toContain("deadLetter");
       expect(failBody.error.memory_rss.status).toBe("down");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("supports OrmHealthIndicator and SqlHealthIndicator with @bunest/orm DataSource ping() and query()", async () => {
+    const executedQueries: string[] = [];
+    const dataSource = {
+      name: "primary",
+      dialect: "sqlite",
+      isInitialized: true,
+      ping: async () => true,
+      query: async (sql: string) => {
+        executedQueries.push(sql);
+        return [{ "1": 1 }];
+      },
+    };
+
+    const orm = new OrmHealthIndicator(dataSource);
+    const directRes = await orm.check("orm_db");
+    expect(directRes.orm_db.status).toBe("up");
+    expect(directRes.orm_db.dialect).toBe("sqlite");
+    expect(directRes.orm_db.dataSource).toBe("primary");
+
+    // Terminus-style pingCheck() with query probe
+    const queryProbeRes = await orm.pingCheck("orm_query", dataSource, {
+      useQueryProbe: true,
+      probeQuery: "SELECT 1",
+    });
+    expect(queryProbeRes.orm_query.status).toBe("up");
+    expect(executedQueries).toEqual(["SELECT 1"]);
+
+    // Uninitialized DataSource reports down
+    const uninitRes = await orm.check("uninit_db", {
+      name: "secondary",
+      isInitialized: false,
+      ping: async () => true,
+    });
+    expect(uninitRes.uninit_db.status).toBe("down");
+    expect(uninitRes.uninit_db.message).toContain("not initialized");
+
+    // ping() returning false reports down
+    const downPingRes = await orm.pingCheck("down_db", {
+      name: "replica",
+      isInitialized: true,
+      ping: async () => false,
+    });
+    expect(downPingRes.down_db.status).toBe("down");
+    expect(downPingRes.down_db.message).toContain("ping() returned false");
+
+    // Backward-compatible SqlHealthIndicator also supports DataSource.ping()
+    const sqlWithDataSource = new SqlHealthIndicator(dataSource);
+    const sqlPingRes = await sqlWithDataSource.check("sql_via_orm");
+    expect(sqlPingRes.sql_via_orm.status).toBe("up");
+
+    // Injectable from HealthModule DI container
+    @Module({
+      imports: [HealthModule.forRoot({ exposeEndpoints: false })],
+    })
+    class OrmHealthApp {}
+
+    const app = await BunestFactory.create(OrmHealthApp, { logger: false });
+    try {
+      const injectedOrm = await app.resolve(OrmHealthIndicator);
+      expect(injectedOrm).toBeInstanceOf(OrmHealthIndicator);
+      const diRes = await injectedOrm.pingCheck("di_orm", dataSource);
+      expect(diRes.di_orm.status).toBe("up");
     } finally {
       await app.close();
     }

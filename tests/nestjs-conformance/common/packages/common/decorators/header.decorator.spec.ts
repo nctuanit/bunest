@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect } from "bun:test";
 import {
   Header,
   METADATA_KEYS,
   MetadataRegistry,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(

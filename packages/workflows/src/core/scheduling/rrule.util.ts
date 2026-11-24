@@ -1,15 +1,35 @@
-import { fromWallTime, recentClockChange, toWallTime } from './time-zone.util';
+import { fromWallTime, recentClockChange, toWallTime } from "./time-zone.util";
 
 const SECOND = 1_000;
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const IDLE_PERIODS = 10_000;
-const FREQUENCIES = ['SECONDLY', 'MINUTELY', 'HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
-const PARTS = ['FREQ', 'INTERVAL', 'COUNT', 'UNTIL', 'WKST', 'BYMONTH', 'BYMONTHDAY', 'BYDAY', 'BYHOUR', 'BYMINUTE', 'BYSECOND'];
-const WEEKDAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const FREQUENCIES = [
+  "SECONDLY",
+  "MINUTELY",
+  "HOURLY",
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "YEARLY",
+] as const;
+const PARTS = [
+  "FREQ",
+  "INTERVAL",
+  "COUNT",
+  "UNTIL",
+  "WKST",
+  "BYMONTH",
+  "BYMONTHDAY",
+  "BYDAY",
+  "BYHOUR",
+  "BYMINUTE",
+  "BYSECOND",
+];
+const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const ALL_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-const UNITS: Record<'DAILY' | 'HOURLY' | 'MINUTELY' | 'SECONDLY', number> = {
+const UNITS: Record<"DAILY" | "HOURLY" | "MINUTELY" | "SECONDLY", number> = {
   DAILY: DAY,
   HOURLY: HOUR,
   MINUTELY: MINUTE,
@@ -29,7 +49,7 @@ export interface RRuleWeekday {
 export interface RRuleUntil {
   /** A wall time in the schedule's zone (midnight of the day for `date`), or an instant for `utc`. */
   readonly time: number;
-  readonly form: 'date' | 'local' | 'utc';
+  readonly form: "date" | "local" | "utc";
 }
 
 /** A parsed RRULE; a missing BYxxx part is null. */
@@ -70,17 +90,24 @@ interface Plan {
  * Throws a TypeError for anything else, for a repeated part, and for a rule that never matches (BYMONTH=2;BYMONTHDAY=30).
  */
 export function parseRRule(rule: string): RRule {
-  if (typeof rule !== 'string') {
-    throw new TypeError(`Invalid RRULE ${JSON.stringify(rule)}. Use a string, such as "FREQ=WEEKLY;BYDAY=MO;BYHOUR=8".`);
+  if (typeof rule !== "string") {
+    throw new TypeError(
+      `Invalid RRULE ${JSON.stringify(rule)}. Use a string, such as "FREQ=WEEKLY;BYDAY=MO;BYHOUR=8".`,
+    );
   }
   const parts = new Map<string, string>();
-  for (const part of rule.trim().replace(/^RRULE:/i, '').split(';')) {
-    if (part.trim() === '') {
+  for (const part of rule
+    .trim()
+    .replace(/^RRULE:/i, "")
+    .split(";")) {
+    if (part.trim() === "") {
       continue;
     }
     const match = /^([A-Za-z][A-Za-z0-9-]*)=(.*)$/.exec(part.trim());
     if (!match) {
-      throw new TypeError(`Invalid RRULE part "${part}" in "${rule}": use NAME=VALUE parts separated by ";", such as FREQ=DAILY;BYHOUR=8.`);
+      throw new TypeError(
+        `Invalid RRULE part "${part}" in "${rule}": use NAME=VALUE parts separated by ";", such as FREQ=DAILY;BYHOUR=8.`,
+      );
     }
     const name = match[1]!.toUpperCase();
     if (!PARTS.includes(name)) {
@@ -89,52 +116,81 @@ export function parseRRule(rule: string): RRule {
       );
     }
     if (parts.has(name)) {
-      throw new TypeError(`Invalid RRULE "${rule}": ${name} is given twice; give each part once.`);
+      throw new TypeError(
+        `Invalid RRULE "${rule}": ${name} is given twice; give each part once.`,
+      );
     }
     parts.set(name, match[2]!.trim().toUpperCase());
   }
-  const invalid = (reason: string) => new TypeError(`Invalid RRULE "${rule}": ${reason}.`);
+  const invalid = (reason: string) =>
+    new TypeError(`Invalid RRULE "${rule}": ${reason}.`);
   const failIn =
     (name: string) =>
     (reason: string): never => {
-      throw new TypeError(`Invalid RRULE part "${name}=${parts.get(name)}" in "${rule}": ${reason}.`);
+      throw new TypeError(
+        `Invalid RRULE part "${name}=${parts.get(name)}" in "${rule}": ${reason}.`,
+      );
     };
-  const freq = FREQUENCIES.find((frequency) => frequency === parts.get('FREQ'));
-  if (!parts.has('FREQ')) {
-    throw invalid('FREQ is required, such as FREQ=DAILY');
+  const freq = FREQUENCIES.find((frequency) => frequency === parts.get("FREQ"));
+  if (!parts.has("FREQ")) {
+    throw invalid("FREQ is required, such as FREQ=DAILY");
   }
   if (freq === undefined) {
     throw new TypeError(
-      `Invalid RRULE part "FREQ=${parts.get('FREQ')}" in "${rule}": use SECONDLY, MINUTELY, HOURLY, DAILY, WEEKLY, MONTHLY or YEARLY.`,
+      `Invalid RRULE part "FREQ=${parts.get("FREQ")}" in "${rule}": use SECONDLY, MINUTELY, HOURLY, DAILY, WEEKLY, MONTHLY or YEARLY.`,
     );
   }
-  if (parts.has('COUNT') && parts.has('UNTIL')) {
-    throw invalid('use COUNT or UNTIL, not both');
+  if (parts.has("COUNT") && parts.has("UNTIL")) {
+    throw invalid("use COUNT or UNTIL, not both");
   }
   const parsed: RRule = {
     source: rule,
     freq,
-    interval: parts.has('INTERVAL') ? positive(parts.get('INTERVAL')!, failIn('INTERVAL')) : 1,
-    count: parts.has('COUNT') ? positive(parts.get('COUNT')!, failIn('COUNT')) : null,
-    until: parts.has('UNTIL') ? parseUntil(parts.get('UNTIL')!, failIn('UNTIL')) : null,
-    weekStart: parts.has('WKST') ? weekday(parts.get('WKST')!, failIn('WKST')) : 1,
-    byMonth: numbers(parts.get('BYMONTH'), 1, 12, false, failIn('BYMONTH')),
-    byMonthDay: numbers(parts.get('BYMONTHDAY'), 1, 31, true, failIn('BYMONTHDAY')),
-    byDay: weekdays(parts.get('BYDAY'), failIn('BYDAY')),
-    byHour: numbers(parts.get('BYHOUR'), 0, 23, false, failIn('BYHOUR')),
-    byMinute: numbers(parts.get('BYMINUTE'), 0, 59, false, failIn('BYMINUTE')),
-    bySecond: numbers(parts.get('BYSECOND'), 0, 59, false, failIn('BYSECOND')),
+    interval: parts.has("INTERVAL")
+      ? positive(parts.get("INTERVAL")!, failIn("INTERVAL"))
+      : 1,
+    count: parts.has("COUNT")
+      ? positive(parts.get("COUNT")!, failIn("COUNT"))
+      : null,
+    until: parts.has("UNTIL")
+      ? parseUntil(parts.get("UNTIL")!, failIn("UNTIL"))
+      : null,
+    weekStart: parts.has("WKST")
+      ? weekday(parts.get("WKST")!, failIn("WKST"))
+      : 1,
+    byMonth: numbers(parts.get("BYMONTH"), 1, 12, false, failIn("BYMONTH")),
+    byMonthDay: numbers(
+      parts.get("BYMONTHDAY"),
+      1,
+      31,
+      true,
+      failIn("BYMONTHDAY"),
+    ),
+    byDay: weekdays(parts.get("BYDAY"), failIn("BYDAY")),
+    byHour: numbers(parts.get("BYHOUR"), 0, 23, false, failIn("BYHOUR")),
+    byMinute: numbers(parts.get("BYMINUTE"), 0, 59, false, failIn("BYMINUTE")),
+    bySecond: numbers(parts.get("BYSECOND"), 0, 59, false, failIn("BYSECOND")),
   };
-  if (parsed.byMonthDay !== null && parsed.freq === 'WEEKLY') {
-    throw invalid("BYMONTHDAY doesn't go with FREQ=WEEKLY (RFC 5545); use BYDAY");
+  if (parsed.byMonthDay !== null && parsed.freq === "WEEKLY") {
+    throw invalid(
+      "BYMONTHDAY doesn't go with FREQ=WEEKLY (RFC 5545); use BYDAY",
+    );
   }
-  if (parsed.byDay?.some(({ nth }) => nth !== 0) && parsed.freq !== 'MONTHLY' && parsed.freq !== 'YEARLY') {
-    throw invalid('a numbered BYDAY (such as 1MO or -1FR) needs FREQ=MONTHLY or FREQ=YEARLY');
+  if (
+    parsed.byDay?.some(({ nth }) => nth !== 0) &&
+    parsed.freq !== "MONTHLY" &&
+    parsed.freq !== "YEARLY"
+  ) {
+    throw invalid(
+      "a numbered BYDAY (such as 1MO or -1FR) needs FREQ=MONTHLY or FREQ=YEARLY",
+    );
   }
   // Probed without INTERVAL, whose phase depends on the start: this catches BYxxx parts that can never meet.
   const probe: RRule = { ...parsed, interval: 1, count: null, until: null };
-  if (rruleOccurrences(probe, null, 'UTC', Number.NEGATIVE_INFINITY).next().done) {
-    throw invalid('it never matches, as no date fits all of its BYxxx parts');
+  if (
+    rruleOccurrences(probe, null, "UTC", Number.NEGATIVE_INFINITY).next().done
+  ) {
+    throw invalid("it never matches, as no date fits all of its BYxxx parts");
   }
   return parsed;
 }
@@ -152,9 +208,16 @@ export function parseRRule(rule: string): RRule {
  * that instant already occurs), one repeated by clocks going back runs once, the first time. HOURLY, MINUTELY and
  * SECONDLY periods count wall time, so FREQ=HOURLY runs once in the hour clocks repeat.
  */
-export function rruleOccurrences(rule: RRule, start: number | null, tz: string, after: number): Generator<number> {
+export function rruleOccurrences(
+  rule: RRule,
+  start: number | null,
+  tz: string,
+  after: number,
+): Generator<number> {
   if (rule.count !== null && start === null) {
-    throw new TypeError(`The RRULE "${rule.source}" has a COUNT, which counts from the schedule's start: give it one.`);
+    throw new TypeError(
+      `The RRULE "${rule.source}" has a COUNT, which counts from the schedule's start: give it one.`,
+    );
   }
   return occurrences(rule, start, tz, after);
 }
@@ -164,16 +227,34 @@ export function rruleCounts(rule: RRule): boolean {
   return rule.count !== null;
 }
 
-function* occurrences(rule: RRule, start: number | null, tz: string, after: number): Generator<number> {
-  const dtstart = start === null ? Date.UTC(1970, 0, 1) : Math.floor(toWallTime(start, tz) / SECOND) * SECOND;
+function* occurrences(
+  rule: RRule,
+  start: number | null,
+  tz: string,
+  after: number,
+): Generator<number> {
+  const dtstart =
+    start === null
+      ? Date.UTC(1970, 0, 1)
+      : Math.floor(toWallTime(start, tz) / SECOND) * SECOND;
   const first = start ?? fromWallTime(dtstart, tz);
   const until = rule.until === null ? null : untilInstant(rule.until, tz);
   // Right after clocks went forward a skipped wall time can still land after `after`; right after they went back, a
   // wall time past UNTIL's own can still be before it. Both widen the wall times scanned by the clocks' jump.
-  const lastWall = until === null ? Infinity : toWallTime(until, tz) + Math.max(0, -recentClockChange(until, tz));
-  const from = rule.count !== null || after < first ? dtstart : toWallTime(after, tz) - Math.max(0, recentClockChange(after, tz));
+  const lastWall =
+    until === null
+      ? Infinity
+      : toWallTime(until, tz) + Math.max(0, -recentClockChange(until, tz));
+  const from =
+    rule.count !== null || after < first
+      ? dtstart
+      : toWallTime(after, tz) - Math.max(0, recentClockChange(after, tz));
   let counted = 0;
-  for (const instant of ascending(wallTimes(plan(rule, dtstart), dtstart, from), tz, lastWall)) {
+  for (const instant of ascending(
+    wallTimes(plan(rule, dtstart), dtstart, from),
+    tz,
+    lastWall,
+  )) {
     if (instant < first) {
       continue;
     }
@@ -195,11 +276,18 @@ function* occurrences(rule: RRule, start: number | null, tz: string, after: numb
  * DTSTART's period). Expansion follows RFC 5545's table: a BYxxx part coarser than FREQ limits, a finer one expands.
  * Stops after 10,000 periods in a row without one.
  */
-function* wallTimes(plan: Plan, dtstart: number, from: number): Generator<number> {
+function* wallTimes(
+  plan: Plan,
+  dtstart: number,
+  from: number,
+): Generator<number> {
   const origin = periodOf(plan, dtstart);
-  const onGrid = (period: number) => origin + Math.ceil((period - origin) / plan.interval) * plan.interval;
-  let period = origin + Math.floor((periodOf(plan, from) - origin) / plan.interval) * plan.interval;
-  for (let idle = 0; idle < IDLE_PERIODS; ) {
+  const onGrid = (period: number) =>
+    origin + Math.ceil((period - origin) / plan.interval) * plan.interval;
+  let period =
+    origin +
+    Math.floor((periodOf(plan, from) - origin) / plan.interval) * plan.interval;
+  for (let idle = 0; idle < IDLE_PERIODS;) {
     const { walls, next } = expand(plan, period);
     idle = walls.length === 0 ? idle + 1 : 0;
     yield* walls;
@@ -211,7 +299,11 @@ function* wallTimes(plan: Plan, dtstart: number, from: number): Generator<number
  * The instants of `walls`, ascending and each once. A wall time in a gap lands that much later, possibly after the
  * instants of the wall times that follow it, so each instant waits until the walls pass where it landed.
  */
-function* ascending(walls: Generator<number>, tz: string, lastWall: number): Generator<number> {
+function* ascending(
+  walls: Generator<number>,
+  tz: string,
+  lastWall: number,
+): Generator<number> {
   const pending: { instant: number; landed: number }[] = [];
   let last = Number.NEGATIVE_INFINITY;
   for (const wall of walls) {
@@ -239,11 +331,19 @@ function* ascending(walls: Generator<number>, tz: string, lastWall: number): Gen
 /** The wall times of `period`, and the period to look at next (a later one when a limit rules out a whole day or month). */
 function expand(plan: Plan, period: number): { walls: number[]; next: number } {
   switch (plan.freq) {
-    case 'YEARLY':
-      return { walls: (plan.months ?? ALL_MONTHS).flatMap((month) => monthWalls(plan, period, month)), next: period + 1 };
-    case 'MONTHLY':
-      return { walls: monthWalls(plan, Math.floor(period / 12), (period % 12) + 1), next: period + 1 };
-    case 'WEEKLY':
+    case "YEARLY":
+      return {
+        walls: (plan.months ?? ALL_MONTHS).flatMap((month) =>
+          monthWalls(plan, period, month),
+        ),
+        next: period + 1,
+      };
+    case "MONTHLY":
+      return {
+        walls: monthWalls(plan, Math.floor(period / 12), (period % 12) + 1),
+        next: period + 1,
+      };
+    case "WEEKLY":
       return { walls: weekWalls(plan, period), next: period + 1 };
     default:
       return unitWalls(plan, period, UNITS[plan.freq]);
@@ -264,20 +364,38 @@ function weekWalls(plan: Plan, week: number): number[] {
   const firstDay = 7 * week - 4 + plan.weekStart;
   for (let day = firstDay; day < firstDay + 7; day++) {
     const date = new Date(day * DAY);
-    walls.push(...dayWalls(plan, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()));
+    walls.push(
+      ...dayWalls(
+        plan,
+        date.getUTCFullYear(),
+        date.getUTCMonth() + 1,
+        date.getUTCDate(),
+      ),
+    );
   }
   return walls;
 }
 
-function dayWalls(plan: Plan, year: number, month: number, day: number): number[] {
+function dayWalls(
+  plan: Plan,
+  year: number,
+  month: number,
+  day: number,
+): number[] {
   if (!dayMatches(plan, year, month, day)) {
     return [];
   }
-  return times(plan.hours!, plan.minutes!, plan.seconds!).map((time) => Date.UTC(year, month - 1, day) + time);
+  return times(plan.hours!, plan.minutes!, plan.seconds!).map(
+    (time) => Date.UTC(year, month - 1, day) + time,
+  );
 }
 
 /** DAILY, HOURLY, MINUTELY or SECONDLY: `period` counts `unit`s of wall time since 1970, and fixes the fields down to it. */
-function unitWalls(plan: Plan, period: number, unit: number): { walls: number[]; next: number } {
+function unitWalls(
+  plan: Plan,
+  period: number,
+  unit: number,
+): { walls: number[]; next: number } {
   const date = new Date(period * unit);
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
@@ -285,37 +403,89 @@ function unitWalls(plan: Plan, period: number, unit: number): { walls: number[];
   const hour = date.getUTCHours();
   const minute = date.getUTCMinutes();
   const second = date.getUTCSeconds();
-  const skipTo = (wall: number) => ({ walls: [] as number[], next: wall / unit });
+  const skipTo = (wall: number) => ({
+    walls: [] as number[],
+    next: wall / unit,
+  });
   if (plan.months !== null && !plan.months.includes(month)) {
     const nextMonth = following(plan.months, month + 1);
-    return skipTo(nextMonth === undefined ? Date.UTC(year + 1, plan.months[0]! - 1) : Date.UTC(year, nextMonth - 1));
+    return skipTo(
+      nextMonth === undefined
+        ? Date.UTC(year + 1, plan.months[0]! - 1)
+        : Date.UTC(year, nextMonth - 1),
+    );
   }
   if (!dayMatches(plan, year, month, day)) {
     return skipTo(Date.UTC(year, month - 1, day + 1));
   }
   if (unit < DAY && plan.hours !== null && !plan.hours.includes(hour)) {
     const nextHour = following(plan.hours, hour + 1);
-    return skipTo(Date.UTC(year, month - 1, nextHour === undefined ? day + 1 : day, nextHour ?? 0));
+    return skipTo(
+      Date.UTC(
+        year,
+        month - 1,
+        nextHour === undefined ? day + 1 : day,
+        nextHour ?? 0,
+      ),
+    );
   }
   if (unit < HOUR && plan.minutes !== null && !plan.minutes.includes(minute)) {
     const nextMinute = following(plan.minutes, minute + 1);
-    return skipTo(Date.UTC(year, month - 1, day, nextMinute === undefined ? hour + 1 : hour, nextMinute ?? 0));
+    return skipTo(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        nextMinute === undefined ? hour + 1 : hour,
+        nextMinute ?? 0,
+      ),
+    );
   }
-  if (unit < MINUTE && plan.seconds !== null && !plan.seconds.includes(second)) {
+  if (
+    unit < MINUTE &&
+    plan.seconds !== null &&
+    !plan.seconds.includes(second)
+  ) {
     const nextSecond = following(plan.seconds, second + 1);
-    return skipTo(Date.UTC(year, month - 1, day, hour, nextSecond === undefined ? minute + 1 : minute, nextSecond ?? 0));
+    return skipTo(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        hour,
+        nextSecond === undefined ? minute + 1 : minute,
+        nextSecond ?? 0,
+      ),
+    );
   }
-  const walls = times(unit < DAY ? [hour] : plan.hours!, unit < HOUR ? [minute] : plan.minutes!, unit < MINUTE ? [second] : plan.seconds!);
-  return { walls: walls.map((time) => Date.UTC(year, month - 1, day) + time), next: period + 1 };
+  const walls = times(
+    unit < DAY ? [hour] : plan.hours!,
+    unit < HOUR ? [minute] : plan.minutes!,
+    unit < MINUTE ? [second] : plan.seconds!,
+  );
+  return {
+    walls: walls.map((time) => Date.UTC(year, month - 1, day) + time),
+    next: period + 1,
+  };
 }
 
-function dayMatches(plan: Plan, year: number, month: number, day: number): boolean {
+function dayMatches(
+  plan: Plan,
+  year: number,
+  month: number,
+  day: number,
+): boolean {
   if (plan.months !== null && !plan.months.includes(month)) {
     return false;
   }
   // A negative day counts from the month's end; a day the month doesn't have (February 30) never matches.
   const length = daysIn(year, month);
-  if (plan.monthDays !== null && !plan.monthDays.some((monthDay) => (monthDay > 0 ? monthDay : length + 1 + monthDay) === day)) {
+  if (
+    plan.monthDays !== null &&
+    !plan.monthDays.some(
+      (monthDay) => (monthDay > 0 ? monthDay : length + 1 + monthDay) === day,
+    )
+  ) {
     return false;
   }
   if (plan.weekdays === null) {
@@ -323,11 +493,19 @@ function dayMatches(plan: Plan, year: number, month: number, day: number): boole
   }
   const date = Date.UTC(year, month - 1, day);
   const weekday = weekdayOf(date);
-  const position = plan.withinYear ? (date - Date.UTC(year, 0, 1)) / DAY + 1 : day;
-  const span = plan.withinYear ? (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / DAY : length;
+  const position = plan.withinYear
+    ? (date - Date.UTC(year, 0, 1)) / DAY + 1
+    : day;
+  const span = plan.withinYear
+    ? (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / DAY
+    : length;
   return plan.weekdays.some(
     ({ weekday: wanted, nth }) =>
-      wanted === weekday && (nth === 0 || (nth > 0 ? Math.ceil(position / 7) === nth : Math.ceil((span - position + 1) / 7) === -nth)),
+      wanted === weekday &&
+      (nth === 0 ||
+        (nth > 0
+          ? Math.ceil(position / 7) === nth
+          : Math.ceil((span - position + 1) / 7) === -nth)),
   );
 }
 
@@ -339,29 +517,42 @@ function dayMatches(plan: Plan, year: number, month: number, day: number): boole
 function plan(rule: RRule, dtstart: number): Plan {
   const date = new Date(dtstart);
   const noDays = rule.byMonthDay === null && rule.byDay === null;
-  const coarser = (unit: RRuleFrequency) => FREQUENCIES.indexOf(rule.freq) > FREQUENCIES.indexOf(unit);
+  const coarser = (unit: RRuleFrequency) =>
+    FREQUENCIES.indexOf(rule.freq) > FREQUENCIES.indexOf(unit);
   return {
     freq: rule.freq,
     interval: rule.interval,
     weekStart: rule.weekStart,
-    months: rule.byMonth ?? (noDays && rule.freq === 'YEARLY' ? [date.getUTCMonth() + 1] : null),
-    monthDays: rule.byMonthDay ?? (noDays && (rule.freq === 'YEARLY' || rule.freq === 'MONTHLY') ? [date.getUTCDate()] : null),
-    weekdays: rule.byDay ?? (noDays && rule.freq === 'WEEKLY' ? [{ weekday: date.getUTCDay(), nth: 0 }] : null),
-    withinYear: rule.freq === 'YEARLY' && rule.byMonth === null,
-    hours: rule.byHour ?? (coarser('HOURLY') ? [date.getUTCHours()] : null),
-    minutes: rule.byMinute ?? (coarser('MINUTELY') ? [date.getUTCMinutes()] : null),
-    seconds: rule.bySecond ?? (coarser('SECONDLY') ? [date.getUTCSeconds()] : null),
+    months:
+      rule.byMonth ??
+      (noDays && rule.freq === "YEARLY" ? [date.getUTCMonth() + 1] : null),
+    monthDays:
+      rule.byMonthDay ??
+      (noDays && (rule.freq === "YEARLY" || rule.freq === "MONTHLY")
+        ? [date.getUTCDate()]
+        : null),
+    weekdays:
+      rule.byDay ??
+      (noDays && rule.freq === "WEEKLY"
+        ? [{ weekday: date.getUTCDay(), nth: 0 }]
+        : null),
+    withinYear: rule.freq === "YEARLY" && rule.byMonth === null,
+    hours: rule.byHour ?? (coarser("HOURLY") ? [date.getUTCHours()] : null),
+    minutes:
+      rule.byMinute ?? (coarser("MINUTELY") ? [date.getUTCMinutes()] : null),
+    seconds:
+      rule.bySecond ?? (coarser("SECONDLY") ? [date.getUTCSeconds()] : null),
   };
 }
 
 function periodOf(plan: Plan, wall: number): number {
   const date = new Date(wall);
   switch (plan.freq) {
-    case 'YEARLY':
+    case "YEARLY":
       return date.getUTCFullYear();
-    case 'MONTHLY':
+    case "MONTHLY":
       return date.getUTCFullYear() * 12 + date.getUTCMonth();
-    case 'WEEKLY':
+    case "WEEKLY":
       // 1 January 1970, day 0, is a Thursday (4): weeks start on the WKST day.
       return Math.floor((Math.floor(wall / DAY) + 4 - plan.weekStart) / 7);
     default:
@@ -370,80 +561,132 @@ function periodOf(plan: Plan, wall: number): number {
 }
 
 /** Times of day (ms), ascending. */
-function times(hours: readonly number[], minutes: readonly number[], seconds: readonly number[]): number[] {
-  return hours.flatMap((hour) => minutes.flatMap((minute) => seconds.map((second) => hour * HOUR + minute * MINUTE + second * SECOND)));
+function times(
+  hours: readonly number[],
+  minutes: readonly number[],
+  seconds: readonly number[],
+): number[] {
+  return hours.flatMap((hour) =>
+    minutes.flatMap((minute) =>
+      seconds.map((second) => hour * HOUR + minute * MINUTE + second * SECOND),
+    ),
+  );
 }
 
 function untilInstant(until: RRuleUntil, tz: string): number {
   switch (until.form) {
-    case 'utc':
+    case "utc":
       return until.time;
-    case 'local':
+    case "local":
       return fromWallTime(until.time, tz);
     default:
       return fromWallTime(until.time + DAY, tz) - 1;
   }
 }
 
-function parseUntil(value: string, fail: (reason: string) => never): RRuleUntil {
-  const match = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z?))?$/.exec(value);
+function parseUntil(
+  value: string,
+  fail: (reason: string) => never,
+): RRuleUntil {
+  const match = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z?))?$/.exec(
+    value,
+  );
   const year = Number(match?.[1] ?? 0);
   const month = Number(match?.[2] ?? 0);
   const day = Number(match?.[3] ?? 0);
   const hour = Number(match?.[4] ?? 0);
   const minute = Number(match?.[5] ?? 0);
   const second = Number(match?.[6] ?? 0);
-  if (!match || month < 1 || month > 12 || day < 1 || day > daysIn(year, month) || hour > 23 || minute > 59 || second > 59) {
-    fail("UNTIL is a date, YYYYMMDD, or a date and time, YYYYMMDDTHHMMSS in the schedule's time zone or YYYYMMDDTHHMMSSZ in UTC");
+  if (
+    !match ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysIn(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    fail(
+      "UNTIL is a date, YYYYMMDD, or a date and time, YYYYMMDDTHHMMSS in the schedule's time zone or YYYYMMDDTHHMMSSZ in UTC",
+    );
   }
   return {
     time: Date.UTC(year, month - 1, day, hour, minute, second),
-    form: match[4] === undefined ? 'date' : match[7] === 'Z' ? 'utc' : 'local',
+    form: match[4] === undefined ? "date" : match[7] === "Z" ? "utc" : "local",
   };
 }
 
 function positive(value: string, fail: (reason: string) => never): number {
-  if (!/^\d+$/.test(value) || !(Number(value) >= 1) || !Number.isSafeInteger(Number(value))) {
-    fail('use a positive whole number');
+  if (
+    !/^\d+$/.test(value) ||
+    !(Number(value) >= 1) ||
+    !Number.isSafeInteger(Number(value))
+  ) {
+    fail("use a positive whole number");
   }
   return Number(value);
 }
 
 function weekday(value: string, fail: (reason: string) => never): number {
   if (!WEEKDAYS.includes(value)) {
-    fail('use SU, MO, TU, WE, TH, FR or SA');
+    fail("use SU, MO, TU, WE, TH, FR or SA");
   }
   return WEEKDAYS.indexOf(value);
 }
 
 /** A list of whole numbers from `min` to `max`, ascending; `signed`: also -`max` to -`min`. */
-function numbers(value: string | undefined, min: number, max: number, signed: boolean, fail: (reason: string) => never): number[] | null {
+function numbers(
+  value: string | undefined,
+  min: number,
+  max: number,
+  signed: boolean,
+  fail: (reason: string) => never,
+): number[] | null {
   if (value === undefined) {
     return null;
   }
-  const items = value.split(',');
-  const inRange = (item: string) => (signed ? /^[+-]?\d+$/ : /^\d+$/).test(item) && Math.abs(Number(item)) >= min && Math.abs(Number(item)) <= max;
+  const items = value.split(",");
+  const inRange = (item: string) =>
+    (signed ? /^[+-]?\d+$/ : /^\d+$/).test(item) &&
+    Math.abs(Number(item)) >= min &&
+    Math.abs(Number(item)) <= max;
   if (!items.every(inRange)) {
-    fail(signed ? `use ${min} to ${max}, or -${max} to -${min} to count from the end` : `use ${min} to ${max}`);
+    fail(
+      signed
+        ? `use ${min} to ${max}, or -${max} to -${min} to count from the end`
+        : `use ${min} to ${max}`,
+    );
   }
   return [...new Set(items.map(Number))].sort((a, b) => a - b);
 }
 
-function weekdays(value: string | undefined, fail: (reason: string) => never): RRuleWeekday[] | null {
+function weekdays(
+  value: string | undefined,
+  fail: (reason: string) => never,
+): RRuleWeekday[] | null {
   if (value === undefined) {
     return null;
   }
-  return value.split(',').map((item) => {
+  return value.split(",").map((item) => {
     const match = /^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/.exec(item);
     const nth = Number(match?.[1] ?? 0);
-    if (!match || (match[1] !== undefined && (nth === 0 || Math.abs(nth) > 53))) {
-      fail('use SU, MO, TU, WE, TH, FR or SA, numbered 1 to 53 or -1 to -53 for the n-th of the month or year (1MO, -1FR)');
+    if (
+      !match ||
+      (match[1] !== undefined && (nth === 0 || Math.abs(nth) > 53))
+    ) {
+      fail(
+        "use SU, MO, TU, WE, TH, FR or SA, numbered 1 to 53 or -1 to -53 for the n-th of the month or year (1MO, -1FR)",
+      );
     }
     return { weekday: WEEKDAYS.indexOf(match[2]!), nth };
   });
 }
 
-function following(values: readonly number[], from: number): number | undefined {
+function following(
+  values: readonly number[],
+  from: number,
+): number | undefined {
   for (const value of values) {
     if (value >= from) {
       return value;

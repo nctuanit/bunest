@@ -1,4 +1,4 @@
-import type { CanActivate, ExecutionContext, Type } from "@bunest/common";
+import type { CanActivate, ExecutionContext, Type } from "@bunest/core";
 
 export type { Type };
 
@@ -10,8 +10,8 @@ export type WithoutCallback<T extends any[]> = T extends any
     : T
   : never;
 
-export type AllConstructorParameters<T> = T extends {
-  new (...o: infer U): void;
+type CtorParams7To5<T, Fallback> = T extends {
+  new (...o: infer U1): void;
   new (...o: infer U2): void;
   new (...o: infer U3): void;
   new (...o: infer U4): void;
@@ -19,47 +19,52 @@ export type AllConstructorParameters<T> = T extends {
   new (...o: infer U6): void;
   new (...o: infer U7): void;
 }
-  ? U | U2 | U3 | U4 | U5 | U6 | U7
+  ? U1 | U2 | U3 | U4 | U5 | U6 | U7
   : T extends {
-        new (...o: infer U): void;
+        new (...o: infer U1): void;
         new (...o: infer U2): void;
         new (...o: infer U3): void;
         new (...o: infer U4): void;
         new (...o: infer U5): void;
         new (...o: infer U6): void;
       }
-    ? U | U2 | U3 | U4 | U5 | U6
+    ? U1 | U2 | U3 | U4 | U5 | U6
     : T extends {
-          new (...o: infer U): void;
+          new (...o: infer U1): void;
           new (...o: infer U2): void;
           new (...o: infer U3): void;
           new (...o: infer U4): void;
           new (...o: infer U5): void;
         }
-      ? U | U2 | U3 | U4 | U5
-      : T extends {
-            new (...o: infer U): void;
-            new (...o: infer U2): void;
-            new (...o: infer U3): void;
-            new (...o: infer U4): void;
-          }
-        ? U | U2 | U3 | U4
-        : T extends {
-              new (...o: infer U): void;
-              new (...o: infer U2): void;
-              new (...o: infer U3): void;
-            }
-          ? U | U2 | U3
-          : T extends {
-                new (...o: infer U): void;
-                new (...o: infer U2): void;
-              }
-            ? U | U2
-            : T extends {
-                  new (...o: infer U): void;
-                }
-              ? U
-              : never;
+      ? U1 | U2 | U3 | U4 | U5
+      : Fallback;
+
+type CtorParams4To2<T, Fallback> = T extends {
+  new (...o: infer U1): void;
+  new (...o: infer U2): void;
+  new (...o: infer U3): void;
+  new (...o: infer U4): void;
+}
+  ? U1 | U2 | U3 | U4
+  : T extends {
+        new (...o: infer U1): void;
+        new (...o: infer U2): void;
+        new (...o: infer U3): void;
+      }
+    ? U1 | U2 | U3
+    : T extends {
+          new (...o: infer U1): void;
+          new (...o: infer U2): void;
+        }
+      ? U1 | U2
+      : Fallback;
+
+type CtorParams1<T> = T extends { new (...o: infer U): void } ? U : never;
+
+export type AllConstructorParameters<T> = CtorParams7To5<
+  T,
+  CtorParams4To2<T, CtorParams1<T>>
+>;
 
 export interface AuthGuardAuthenticateOptions {
   session?: boolean;
@@ -73,7 +78,7 @@ export interface AuthGuardAuthenticateOptions {
   state?: string;
   prompt?: string;
   defaultStrategy?: never;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export type IAuthGuard = CanActivate & {
@@ -81,11 +86,11 @@ export type IAuthGuard = CanActivate & {
     request: TRequest,
   ): Promise<void>;
   handleRequest<TUser = any>(
-    err: any,
-    user: any,
-    info: any,
+    err: unknown,
+    user: unknown,
+    info: unknown,
     context: ExecutionContext,
-    status?: any,
+    status?: unknown,
   ): TUser;
   getAuthenticateOptions(
     context: ExecutionContext,
@@ -98,31 +103,40 @@ export type IAuthGuard = CanActivate & {
 
 export type SerializeUserFn = (
   user: any,
-  done: (err: any, id?: any) => void,
-) => any;
+  done: (err: unknown, id?: unknown) => void,
+) => unknown;
 
 export type DeserializeUserFn = (
   payload: any,
-  done: (err: any, user?: any) => void,
-) => any;
+  done: (err: unknown, user?: unknown) => void,
+) => unknown;
+
+export interface PassportStrategyLike {
+  readonly name?: string;
+  authenticate?(req: unknown, options?: Record<string, unknown>): unknown;
+  validate?(...args: any[]): unknown;
+}
 
 /**
  * Zero-dependency Bunest-native Passport-compatible strategy & serializer registry.
  */
 export class BunestPassportInstance {
-  private readonly strategies = new Map<string, any>();
+  private readonly strategies = new Map<string, PassportStrategyLike>();
   private readonly serializers: SerializeUserFn[] = [];
   private readonly deserializers: DeserializeUserFn[] = [];
 
-  use(name: string, strategy: any): this;
-  use(strategy: any): this;
-  use(nameOrStrategy: string | any, maybeStrategy?: any): this {
+  use(name: string, strategy: PassportStrategyLike): this;
+  use(strategy: PassportStrategyLike): this;
+  use(
+    nameOrStrategy: string | PassportStrategyLike,
+    maybeStrategy?: PassportStrategyLike,
+  ): this {
     if (typeof nameOrStrategy === "string") {
       const name = nameOrStrategy.trim();
       if (!name) {
         throw new Error("Strategy name must be a non-empty string");
       }
-      this.strategies.set(name, maybeStrategy);
+      this.strategies.set(name, maybeStrategy!);
       return this;
     }
 
@@ -140,7 +154,7 @@ export class BunestPassportInstance {
     return this;
   }
 
-  getStrategy(name: string): any | undefined {
+  getStrategy(name: string): PassportStrategyLike | undefined {
     return this.strategies.get(name);
   }
 
@@ -168,16 +182,16 @@ export class BunestPassportInstance {
     return this.deserializers.length > 0;
   }
 
-  async serialize(user: any): Promise<any> {
+  async serialize(user: unknown): Promise<unknown> {
     if (this.serializers.length === 0) {
       return user;
     }
     let lastErr: unknown;
     for (const fn of this.serializers) {
       try {
-        const result = await new Promise<any>((resolve, reject) => {
+        const result = await new Promise<unknown>((resolve, reject) => {
           let settled = false;
-          const done = (err: any, id?: any) => {
+          const done = (err: unknown, id?: unknown) => {
             if (settled) return;
             settled = true;
             if (err && err !== "pass") {
@@ -189,8 +203,11 @@ export class BunestPassportInstance {
             }
           };
           const maybePromise = fn(user, done);
-          if (maybePromise && typeof maybePromise.then === "function") {
-            maybePromise.catch((err: unknown) => {
+          if (
+            maybePromise &&
+            typeof (maybePromise as PromiseLike<unknown>).then === "function"
+          ) {
+            Promise.resolve(maybePromise).catch((err: unknown) => {
               if (!settled) {
                 settled = true;
                 reject(err);
@@ -211,16 +228,16 @@ export class BunestPassportInstance {
     return user;
   }
 
-  async deserialize(payload: any): Promise<any> {
+  async deserialize(payload: unknown): Promise<unknown> {
     if (this.deserializers.length === 0) {
       return payload;
     }
     let lastErr: unknown;
     for (const fn of this.deserializers) {
       try {
-        const result = await new Promise<any>((resolve, reject) => {
+        const result = await new Promise<unknown>((resolve, reject) => {
           let settled = false;
-          const done = (err: any, user?: any) => {
+          const done = (err: unknown, user?: unknown) => {
             if (settled) return;
             settled = true;
             if (err && err !== "pass") {
@@ -232,8 +249,11 @@ export class BunestPassportInstance {
             }
           };
           const maybePromise = fn(payload, done);
-          if (maybePromise && typeof maybePromise.then === "function") {
-            maybePromise.catch((err: unknown) => {
+          if (
+            maybePromise &&
+            typeof (maybePromise as PromiseLike<unknown>).then === "function"
+          ) {
+            Promise.resolve(maybePromise).catch((err: unknown) => {
               if (!settled) {
                 settled = true;
                 reject(err);
@@ -266,12 +286,12 @@ const PASS_SENTINEL = Symbol("bunest:passport:pass");
 export const defaultPassportInstance = new BunestPassportInstance();
 
 export abstract class AbstractStrategy {
-  abstract validate(...args: any[]): any;
+  abstract validate(...args: any[]): unknown;
 }
 
 export abstract class PassportSerializer {
-  abstract serializeUser(user: any, done: Function): any;
-  abstract deserializeUser(payload: any, done: Function): any;
+  abstract serializeUser(user: any, done: Function): unknown;
+  abstract deserializeUser(payload: any, done: Function): unknown;
 
   constructor() {
     const passportInstance = this.getPassportInstance();

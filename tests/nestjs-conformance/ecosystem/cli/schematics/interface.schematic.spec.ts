@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   resolveSchematicType,
 } from "../../../../../packages/cli/src";
 import { describeConformance } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 describeConformance(
   "Interface Schematic Factory",
@@ -24,11 +35,11 @@ describeConformance(
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-itf-"));
+      tempDir = makeTempDir("bunest-cli-conf-itf-");
     });
 
-    afterEach(() => {
-      rmSync(tempDir, { recursive: true, force: true });
+    afterEach(async () => {
+      await removePath(tempDir, { recursive: true, force: true });
     });
 
     it("should manage name only", async () => {
@@ -51,7 +62,7 @@ describeConformance(
       expect(
         result.files.find((f) => f.relativePath === "foo.interface.ts"),
       ).toBeDefined();
-      expect(readFileSync(join(tempDir, "foo.interface.ts"), "utf8")).toEqual(
+      expect(readTextSync(join(tempDir, "foo.interface.ts"))).toEqual(
         "export interface Foo {}\n",
       );
     });
@@ -69,7 +80,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "bar/foo.interface.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "bar/foo.interface.ts"), "utf8"),
+        readTextSync(join(tempDir, "bar/foo.interface.ts")),
       ).toEqual("export interface Foo {}\n");
     });
 
@@ -86,7 +97,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "foo.interface.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "baz/foo.interface.ts"), "utf8"),
+        readTextSync(join(tempDir, "baz/foo.interface.ts")),
       ).toEqual("export interface Foo {}\n");
     });
 
@@ -103,7 +114,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "foo-bar.interface.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "foo-bar.interface.ts"), "utf8"),
+        readTextSync(join(tempDir, "foo-bar.interface.ts")),
       ).toEqual("export interface FooBar {}\n");
     });
 
@@ -120,7 +131,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "bar-baz/foo.interface.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "bar-baz/foo.interface.ts"), "utf8"),
+        readTextSync(join(tempDir, "bar-baz/foo.interface.ts")),
       ).toEqual("export interface Foo {}\n");
     });
 
@@ -138,7 +149,7 @@ describeConformance(
         result.files.find((f) => f.relativePath === "_bar/_foo.interface.ts"),
       ).toBeDefined();
       expect(
-        readFileSync(join(tempDir, "_bar/_foo.interface.ts"), "utf8"),
+        readTextSync(join(tempDir, "_bar/_foo.interface.ts")),
       ).toEqual("export interface Foo {}\n");
     });
 

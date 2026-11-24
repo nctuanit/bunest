@@ -1,12 +1,13 @@
-import "reflect-metadata";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
-  createPrivateKey,
-  createPublicKey,
-  createSecretKey,
-  generateKeyPairSync,
-  type KeyObject,
-} from "node:crypto";
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  spyOn,
+} from "bun:test";
 import {
   JwtModule,
   JwtSecretRequestType,
@@ -16,6 +17,7 @@ import {
   type JwtPayload,
   type JwtSignOptions,
 } from "../../../../../packages/security/src";
+import type { CryptoKeyObjectLike } from "../../../../../packages/security/src/jwt/jwt.interface";
 import {
   Test,
   type TestingModule,
@@ -30,17 +32,62 @@ type Equal<A, B> =
     : false;
 type Assert<T extends true> = T;
 
-const rsaMain = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-});
+function derToPem(der: ArrayBuffer, label: string): string {
+  const base64 = Buffer.from(der).toString("base64");
+  const lines = base64.match(/.{1,64}/g)?.join("\n") ?? base64;
+  return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----\n`;
+}
 
-const rsaCustom = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-});
+async function generateRsaKeyPairPem(): Promise<{
+  publicKey: string;
+  privateKey: string;
+}> {
+  const pair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const [spki, pkcs8] = await Promise.all([
+    crypto.subtle.exportKey("spki", pair.publicKey),
+    crypto.subtle.exportKey("pkcs8", pair.privateKey),
+  ]);
+  return {
+    publicKey: derToPem(spki, "PUBLIC KEY"),
+    privateKey: derToPem(pkcs8, "PRIVATE KEY"),
+  };
+}
+
+function createPrivateKeyObject(pem: string): CryptoKeyObjectLike {
+  return {
+    type: "private",
+    asymmetricKeyType: "rsa",
+    export: () => pem,
+  };
+}
+
+function createPublicKeyObject(pem: string): CryptoKeyObjectLike {
+  return {
+    type: "public",
+    asymmetricKeyType: "rsa",
+    export: () => pem,
+  };
+}
+
+function createSecretKeyObject(bytes: Uint8Array): CryptoKeyObjectLike {
+  return {
+    type: "secret",
+    symmetricKeySize: bytes.byteLength,
+    export: () => bytes,
+  };
+}
+
+const rsaMain = await generateRsaKeyPairPem();
+const rsaCustom = await generateRsaKeyPairPem();
 
 const setup = async (
   config: JwtModuleOptions,
@@ -73,14 +120,17 @@ describeConformance(
       "Upstream commit 47e5bb6322 (@nestjs/jwt@12.0.5). Bunest JwtService uses pure WebCrypto (crypto.subtle) with zero jsonwebtoken dependency; sign() and verify() are async Promises and tests verify real cryptographic signing/verification key selection instead of spying on jsonwebtoken.",
   },
   () => {
-    const getRandomString = () => `payload_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const getRandomString = () =>
+      `payload_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
     // Standalone verifier helpers bound to specific secrets/keys to prove which key was selected
     const signVerifier = new JwtService({ secret: "sign_secret" });
     const verifySecretSigner = new JwtService({ secret: "verify_secret" });
     const defaultSecretService = new JwtService({ secret: "default_secret" });
     const customSecretService = new JwtService({ secret: "custom_secret" });
-    const deprecatedSecretService = new JwtService({ secret: "deprecated_key" });
+    const deprecatedSecretService = new JwtService({
+      secret: "deprecated_key",
+    });
     const mainRsaService = new JwtService({
       privateKey: rsaMain.privateKey,
       publicKey: rsaMain.publicKey,
@@ -265,8 +315,12 @@ describeConformance(
     });
 
     describe("should allow KeyObject for privateKey and publicKey", () => {
-      const privKeyAsObject: KeyObject = createPrivateKey(rsaMain.privateKey);
-      const pubKeyAsObject: KeyObject = createPublicKey(rsaMain.publicKey);
+      const privKeyAsObject: CryptoKeyObjectLike = createPrivateKeyObject(
+        rsaMain.privateKey,
+      );
+      const pubKeyAsObject: CryptoKeyObjectLike = createPublicKeyObject(
+        rsaMain.publicKey,
+      );
       const testPayload = { foo: "bar" };
 
       let jwtService: JwtService;
@@ -304,9 +358,13 @@ describeConformance(
     });
 
     describe("should allow KeyObject for secret, privateKey and publicKey in options", () => {
-      const privKeyAsObject: KeyObject = createPrivateKey(rsaMain.privateKey);
-      const pubKeyAsObject: KeyObject = createPublicKey(rsaMain.publicKey);
-      const secretAsObject: KeyObject = createSecretKey(
+      const privKeyAsObject: CryptoKeyObjectLike = createPrivateKeyObject(
+        rsaMain.privateKey,
+      );
+      const pubKeyAsObject: CryptoKeyObjectLike = createPublicKeyObject(
+        rsaMain.publicKey,
+      );
+      const secretAsObject: CryptoKeyObjectLike = createSecretKeyObject(
         Buffer.from("the secret key"),
       );
       const testPayload = { foo: "bar" };
@@ -472,7 +530,7 @@ describeConformance(
     });
 
     describe("should allow KeyObject for secret", () => {
-      const secretB64: KeyObject = createSecretKey(
+      const secretB64: CryptoKeyObjectLike = createSecretKeyObject(
         Buffer.from("ThisIsARandomSecret", "base64"),
       );
       const testPayload = { foo: "bar" };

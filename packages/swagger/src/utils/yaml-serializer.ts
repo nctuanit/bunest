@@ -26,8 +26,7 @@ const NUMERIC_LIKE_RE =
 
 const DATE_LIKE_RE = /^\d{4}-\d{2}-\d{2}(?:[tT ]\d{2}:\d{2}:\d{2})?/;
 
-const UNSAFE_PLAIN_CHAR_RE =
-  /[:#\[\]{}&*!|>'"%@`,?\\\r\n\t\x00-\x1f\x7f]/;
+const UNSAFE_PLAIN_CHAR_RE = /[:#\[\]{}&*!|>'"%@`,?\\\r\n\t\x00-\x1f\x7f]/;
 
 function needsQuotes(str: string, isKey = false): boolean {
   if (str.length === 0) return true;
@@ -46,7 +45,11 @@ function needsQuotes(str: string, isKey = false): boolean {
   return false;
 }
 
-function formatScalarString(str: string, indent: number, isKey = false): string {
+function formatScalarString(
+  str: string,
+  indent: number,
+  isKey = false,
+): string {
   if (
     !isKey &&
     str.includes("\n") &&
@@ -61,11 +64,7 @@ function formatScalarString(str: string, indent: number, isKey = false): string 
     }
     const needsExplicitIndent = firstNonEmpty.startsWith(" ");
     const indentIndicator = needsExplicitIndent ? "2" : "";
-    const chomp = str.endsWith("\n\n")
-      ? "+"
-      : str.endsWith("\n")
-        ? ""
-        : "-";
+    const chomp = str.endsWith("\n\n") ? "+" : str.endsWith("\n") ? "" : "-";
     const pad = " ".repeat(indent + 2);
     const contentLines = str.endsWith("\n") ? lines.slice(0, -1) : lines;
     const body = contentLines

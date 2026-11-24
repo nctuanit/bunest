@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   METADATA_KEYS,
   MetadataRegistry,
   RequestMethod,
   Sse,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance } from "../../../../_helpers";
 
 describeConformance(
@@ -88,7 +87,7 @@ describeConformance(
       expect(method).toEqual(RequestMethod.GET);
     });
 
-    // BUNEST_BUG: Sse() / Sse("") in packages/common/src/decorators/http.decorators.ts:184 stores "" instead of normalizing default/empty path to "/" in METADATA_KEYS.ROUTE_PATH (though controller scanner normalizes "" -> "/").
+    // BUNEST_BUG: Sse() / Sse("") in packages/core/src/common/decorators/http.decorators.ts:184 stores "" instead of normalizing default/empty path to "/" in METADATA_KEYS.ROUTE_PATH (though controller scanner normalizes "" -> "/").
     it.skip('should set path on "/" by default', () => {
       class TestWithoutPath {
         @Sse()

@@ -4,7 +4,7 @@ import type {
   ModuleMetadata,
   OnModuleDestroy,
   Type,
-} from "@bunest/common";
+} from "@bunest/core";
 
 export const THROTTLER_OPTIONS = Symbol.for(
   "bunest:security:throttler_options",
@@ -21,8 +21,7 @@ export const getOptionsToken = (): symbol => THROTTLER_OPTIONS;
 export const getStorageToken = (): symbol => THROTTLER_STORAGE;
 
 export type Resolvable<T extends number | string | boolean> =
-  | T
-  | ((context: ExecutionContext) => T | Promise<T>);
+  T | ((context: ExecutionContext) => T | Promise<T>);
 
 export type ThrottlerGetTrackerFunction = (
   req: any,
@@ -122,8 +121,7 @@ export interface ThrottlerModuleOptionsObject {
 }
 
 export type ThrottlerModuleOptions =
-  | readonly ThrottlerOptions[]
-  | ThrottlerModuleOptionsObject;
+  readonly ThrottlerOptions[] | ThrottlerModuleOptionsObject;
 
 export function isThrottlerOptionsArray(
   options: ThrottlerModuleOptions,
@@ -133,8 +131,7 @@ export function isThrottlerOptionsArray(
 
 export interface ThrottlerOptionsFactory {
   createThrottlerOptions():
-    | Promise<ThrottlerModuleOptions>
-    | ThrottlerModuleOptions;
+    Promise<ThrottlerModuleOptions> | ThrottlerModuleOptions;
 }
 
 export interface ThrottlerAsyncOptions {

@@ -1,12 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { join } from "node:path";
-import type { BunestApplication } from "../../../../../packages/core/src";
+import { join, type BunestApplication } from "../../../../../packages/core/src";
 import {
   ConfigModule,
   ConfigService,
   type ConfigModuleOptions,
-} from "../../../../../packages/config/src";
+} from "../../../../../packages/core/src/config";
 import {
   describeConformance,
   Test,
@@ -99,7 +97,7 @@ describeConformance(
         expect(definedEnv).toEqual("defined");
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables referencing the mutated key (expected "support@yourapp.test", received "support@myapp.test"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables referencing the mutated key (expected "support@yourapp.test", received "support@myapp.test"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should return updated value with interpolation after set", async () => {
         const prevUrl = moduleRef.get(ConfigService).get("URL");
         const prevEmail = moduleRef.get(ConfigService).get("EMAIL");
@@ -134,7 +132,7 @@ describeConformance(
         expect(updatedFallback).toEqual("yourapp.test");
       });
 
-      // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally ConfigService.set() does not update process.env or re-expand dependent variables (packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally ConfigService.set() does not update process.env or re-expand dependent variables (packages/core/src/config/config.service.ts:342-369)
       it.skip("should return updated process.env property after set", async () => {
         await ConfigModule.envVariablesLoaded;
 
@@ -150,7 +148,7 @@ describeConformance(
         expect(envVars.FALLBACK).toEqual("yourapp.test");
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables (expected "http://yourapp.test:3000/api", received "http://myapp.test:3000/api"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables (expected "http://yourapp.test:3000/api", received "http://myapp.test:3000/api"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should expand all references of dependent variable after set", async () => {
         moduleRef.get(ConfigService).set("URL", "yourapp.test");
         expect(moduleRef.get(ConfigService).get("API_URL")).toEqual(
@@ -163,7 +161,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables (expected "support@pa$$word", received "support@myapp.test"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables (expected "support@pa$$word", received "support@myapp.test"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should safely handle special replacement patterns in new value", async () => {
         moduleRef.get(ConfigService).set("URL", "pa$$word");
         expect(moduleRef.get(ConfigService).get("EMAIL")).toEqual(
@@ -201,12 +199,14 @@ describeConformance(
       });
 
       describe.each(variants)("$name", ({ options }) => {
-        // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables across cache/validate/validationSchema modes (expected "support@yourapp.test", received "support@myapp.test"; packages/config/src/config.service.ts:342-369)
+        // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables across cache/validate/validationSchema modes (expected "support@yourapp.test", received "support@myapp.test"; packages/core/src/config/config.service.ts:342-369)
         it.skip("should return updated value with interpolation after set", async () => {
           const configService = await createConfigService(options);
           expect(configService.get("EMAIL")).toEqual("support@myapp.test");
           expect(configService.get("URL_PORT")).toEqual("myapp.test:8080");
-          expect(configService.get("DEEP")).toEqual("host=myapp.test:8080/path");
+          expect(configService.get("DEEP")).toEqual(
+            "host=myapp.test:8080/path",
+          );
 
           configService.set("URL", "yourapp.test");
 
@@ -218,7 +218,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables and does not expand predefined raw template or empty predefined variables (expected "yourapp.test:8080", received "${URL}:8080"; packages/config/src/config.service.ts:342-369, packages/config/src/env-parser.ts:351)
+      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables and does not expand predefined raw template or empty predefined variables (expected "yourapp.test:8080", received "${URL}:8080"; packages/core/src/config/config.service.ts:342-369, packages/core/src/config/env-parser.ts:351)
       it.skip("should not overwrite variable that was set before env file was loaded", async () => {
         process.env.EMAIL = "shell@myapp.test";
         process.env.URL_PORT = "${URL}:8080";
@@ -263,7 +263,7 @@ describeConformance(
         expect(() => configService.set("URL", "yourapp.test")).not.toThrow();
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand chained dependent .env variables (expected COPY="2", received "1"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not re-expand chained dependent .env variables (expected COPY="2", received "1"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should update chain of variables in order of the first env file", async () => {
         const configService = await createConfigService({
           envFilePath: chainEnvFilePaths,
@@ -278,7 +278,7 @@ describeConformance(
         expect(configService.get("SUFFIXED")).toEqual("2-suffix");
       });
 
-      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables loaded by an earlier bootstrap (expected "support@yourapp.test", received "support@myapp.test"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables loaded by an earlier bootstrap (expected "support@yourapp.test", received "support@myapp.test"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should update variables loaded by an earlier bootstrap in the same process", async () => {
         await createConfigService({});
         await app?.close();
@@ -292,7 +292,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConfigService.set() does not write updated expanded values back to process.env or update dependent non-converted variables (expected process.env.COPY="2", received "1"; packages/config/src/config.service.ts:342-369)
+      // BUNEST_BUG: ConfigService.set() does not write updated expanded values back to process.env or update dependent non-converted variables (expected process.env.COPY="2", received "1"; packages/core/src/config/config.service.ts:342-369)
       it.skip("should keep type converted by validation schema of dependent variable", async () => {
         const configService = await createConfigService({
           envFilePath: chainEnvFilePaths,

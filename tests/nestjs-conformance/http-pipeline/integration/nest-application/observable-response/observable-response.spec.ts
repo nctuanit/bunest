@@ -1,6 +1,4 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect } from "bun:test";
-import * as http from "node:http";
 import {
   Catch,
   Controller,
@@ -16,17 +14,13 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type SseMessageEvent,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   APP_FILTER,
   HttpAdapterHost,
   type BunestApplication,
 } from "../../../../../../packages/core/src";
-import {
-  Test,
-  describeConformance,
-  itAdapted,
-} from "../../../../_helpers";
+import { Test, describeConformance, itAdapted } from "../../../../_helpers";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -62,52 +56,41 @@ async function waitFor(
 }
 
 function startRequest(port: number, path: string): () => void {
-  const req = http.get({ host: "127.0.0.1", port, path }, (res) => {
-    res.on("data", () => undefined);
-    res.on("error", () => undefined);
-  });
-  req.on("error", () => undefined);
-  return () => req.destroy();
+  const controller = new AbortController();
+  void fetch(`http://127.0.0.1:${port}${path}`, { signal: controller.signal })
+    .then(async (res) => {
+      const reader = res.body?.getReader();
+      if (!reader) {
+        return;
+      }
+      try {
+        while (true) {
+          const { done } = await reader.read();
+          if (done) {
+            break;
+          }
+        }
+      } catch {
+        // Expected on client abort
+      }
+    })
+    .catch(() => undefined);
+  return () => controller.abort();
 }
 
-function requestAndAbort(
+async function requestAndAbort(
   port: number,
   path: string,
   killAfterMs: number,
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const req = http.get({ host: "127.0.0.1", port, path }, (res) => {
-      res.on("data", () => undefined);
-      res.on("error", () => undefined);
-    });
-    req.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code !== "ECONNRESET") {
-        reject(err);
-      }
-    });
-    setTimeout(() => {
-      req.destroy();
-      resolve();
-    }, killAfterMs);
-  });
+  const abort = startRequest(port, path);
+  await Bun.sleep(killAfterMs);
+  abort();
 }
 
-function getJson<T = unknown>(port: number, path: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    http
-      .get({ host: "127.0.0.1", port, path }, (res) => {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(body) as T);
-          } catch (err) {
-            reject(err);
-          }
-        });
-      })
-      .on("error", reject);
-  });
+async function getJson<T = unknown>(port: number, path: string): Promise<T> {
+  const res = await fetch(`http://127.0.0.1:${port}${path}`);
+  return (await res.json()) as T;
 }
 
 @Catch()
@@ -117,11 +100,7 @@ class RecordingExceptionFilter implements ExceptionFilter {
   catch(exception: Error, host: ArgumentsHost) {
     events.push(`filter:${exception.message}`);
     const response = host.switchToHttp().getResponse();
-    return this.adapterHost.httpAdapter.reply(
-      response,
-      { failed: true },
-      500,
-    );
+    return this.adapterHost.httpAdapter.reply(response, { failed: true }, 500);
   }
 }
 

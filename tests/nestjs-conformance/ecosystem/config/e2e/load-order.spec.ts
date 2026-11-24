@@ -1,16 +1,17 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-import { Inject, Injectable, Module } from "../../../../../packages/common/src";
+import {
+  join,
+  mkdirSyncPath,
+  removePath,
+  writeTextSync,
+} from "../../../../../packages/core/src";
+import { Inject, Injectable, Module } from "../../../../../packages/core/src/common";
 import {
   ConditionalModule,
   ConfigModule,
   ConfigService,
   registerAs,
-} from "../../../../../packages/config/src";
+} from "../../../../../packages/core/src/config";
 import { describeConformance, itAdapted, Test } from "../../../_helpers/index";
 import { createStandardSchema } from "../_fixtures/schema-helpers";
 
@@ -32,25 +33,29 @@ describeConformance(
 
     beforeEach(() => {
       originalEnv = { ...process.env };
-      tmpDir = fs.mkdtempSync(join(tmpdir(), "bunest-config-"));
+      tmpDir = join(
+        Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+        `bunest-config-${crypto.randomUUID()}`,
+      );
+      mkdirSyncPath(tmpDir);
       envFilePath = join(tmpDir, ".env");
-      fs.writeFileSync(
+      writeTextSync(
         envFilePath,
         ["JWT_SECRET=from-env-file", "ENABLE_DEBUG=false"].join("\n"),
       );
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       process.env = originalEnv;
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await removePath(tmpDir, { recursive: true, force: true });
     });
 
     const loadSecrets = async () => {
-      await delay(20);
+      await Bun.sleep(20);
       return { JWT_SECRET: "from-secret-store" };
     };
 
-    // BUNEST_BUG: Plain `ConfigModule` (without .forRoot()) declares empty `@Module({})` instead of providing/exporting `ConfigService` via a shared ConfigHostModule, throwing UnknownDependencyException for ConfigService in AuthModule (packages/config/src/config.module.ts:27)
+    // BUNEST_BUG: Plain `ConfigModule` (without .forRoot()) declares empty `@Module({})` instead of providing/exporting `ConfigService` via a shared ConfigHostModule, throwing UnknownDependencyException for ConfigService in AuthModule (packages/core/src/config/config.module.ts:27)
     it.skip('should provide ConfigService to a plain "ConfigModule" import once async "load" factories are merged', async () => {
       @Module({
         imports: [ConfigModule],
@@ -77,10 +82,10 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: ConfigModule.forFeature() only exports configFactory.KEY and does not provide/export ConfigService (nor wait for async feature factory before ConfigService is injected in non-global setups), throwing UnknownDependencyException for ConfigService in AuthModule (packages/config/src/config.module.ts:209-233)
+    // BUNEST_BUG: ConfigModule.forFeature() only exports configFactory.KEY and does not provide/export ConfigService (nor wait for async feature factory before ConfigService is injected in non-global setups), throwing UnknownDependencyException for ConfigService in AuthModule (packages/core/src/config/config.module.ts:209-233)
     it.skip('should provide ConfigService of "forFeature" once its async factory is merged', async () => {
       const authConfig = registerAs("auth", async () => {
-        await delay(20);
+        await Bun.sleep(20);
         return { secret: "from-secret-store" };
       });
 
@@ -106,7 +111,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: Plain `ConfigModule` declares `@Module({})` without providing/exporting `ConfigService`, throwing UnknownDependencyException when imported without .forRoot() (packages/config/src/config.module.ts:27)
+    // BUNEST_BUG: Plain `ConfigModule` declares `@Module({})` without providing/exporting `ConfigService`, throwing UnknownDependencyException when imported without .forRoot() (packages/core/src/config/config.module.ts:27)
     it.skip('should provide ConfigService to a plain "ConfigModule" import without "forRoot"', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [ConfigModule],
@@ -194,7 +199,7 @@ describeConformance(
             }),
             ConfigModule.forRoot({
               envFilePath,
-              load: [delay(150).then(() => () => ({}))],
+              load: [Bun.sleep(150).then(() => () => ({}))],
             }),
           ],
         }).compile();

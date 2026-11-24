@@ -7,7 +7,7 @@ Unified observability suite for **Bunest** with zero external runtime dependenci
 - **Distributed W3C Tracing**: `AsyncLocalStorage`-backed `TraceContextStorage`, W3C `traceparent`/`tracestate`/`baggage` propagation, `Tracer`, `TracingMiddleware`, `TracingInterceptor`, and `@Trace()` / `@Span()` / `@TraceSpan()` decorators.
 - **Span Exporters**: `OtlpHttpSpanExporter` (native `fetch()`), `ConsoleSpanExporter`, and `InMemorySpanExporter`.
 - **Prometheus Metrics**: `MetricsRegistry`, `Counter`, `Gauge`, `Histogram`, `HttpMetricsInterceptor`, `@Counted()`, and `@Timed()` with standard Prometheus text exposition (`PROMETHEUS_CONTENT_TYPE`).
-- **Health & Readiness Checks**: `HealthModule` / `TerminusModule`, `HealthCheckService`, `HealthIndicatorService`, `@HealthCheck()`, and built-in indicators (`HttpHealthIndicator`, `FetchHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `SqlHealthIndicator`, `PrismaHealthIndicator`, `QueueHealthIndicator`, `MicroserviceHealthIndicator`, `GRPCHealthIndicator`, `CustomHealthIndicator`).
+- **Health & Readiness Checks**: `HealthModule` / `TerminusModule`, `HealthCheckService`, `HealthIndicatorService`, `@HealthCheck()`, and built-in indicators (`HttpHealthIndicator`, `FetchHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `OrmHealthIndicator`, `SqlHealthIndicator`, `PrismaHealthIndicator`, `QueueHealthIndicator`, `MicroserviceHealthIndicator`, `GRPCHealthIndicator`, `CustomHealthIndicator`).
 - **Correlated Logging & Devtools**: `ObservabilityLogger` with automatic trace/span ID injection, plus `DevtoolsModule`, `DevtoolsService`, and `GraphPublisher`.
 
 ## Installation
@@ -68,7 +68,7 @@ export class AppModule {}
 - **Tracing**: `Tracer`, `TraceContextStorage`, `traceContextStorage`, `TracingMiddleware`, `TracingInterceptor`, `OtlpHttpSpanExporter`, `ConsoleSpanExporter`, `InMemorySpanExporter`, `extractTraceContext`, `injectTraceContext`, `formatTraceParent`, `parseTraceParent`
 - **Metrics**: `MetricsRegistry`, `Counter`, `Gauge`, `Histogram`, `HttpMetricsInterceptor`, `DEFAULT_HTTP_BUCKETS`, `PROMETHEUS_CONTENT_TYPE`
 - **Decorators & Aspects**: `Span`, `Trace`, `TraceSpan`, `Counted`, `Timed`, `HealthCheck`, `SpanAspectHandler`, `CountedAspectHandler`, `TimedAspectHandler`
-- **Health Checks**: `HealthCheckService`, `HealthIndicatorService`, `HealthIndicator`, `HealthIndicatorSession`, `HealthCheckError`, `HealthCheckException`, `HttpHealthIndicator`, `FetchHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `SqlHealthIndicator`, `PrismaHealthIndicator`, `QueueHealthIndicator`, `MicroserviceHealthIndicator`, `GRPCHealthIndicator`, `CustomHealthIndicator`
+- **Health Checks**: `HealthCheckService`, `HealthIndicatorService`, `HealthIndicator`, `HealthIndicatorSession`, `HealthCheckError`, `HealthCheckException`, `HttpHealthIndicator`, `FetchHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `OrmHealthIndicator`, `SqlHealthIndicator`, `PrismaHealthIndicator`, `QueueHealthIndicator`, `MicroserviceHealthIndicator`, `GRPCHealthIndicator`, `CustomHealthIndicator`
 - **Logging & Devtools**: `ObservabilityLogger`, `DevtoolsService`, `GraphPublisher`, `TRACER_OPTIONS`, `METRICS_MODULE_OPTIONS`, `HEALTH_MODULE_OPTIONS`, `TERMINUS_MODULE_OPTIONS`, `OBSERVABILITY_LOGGER_OPTIONS`, `DEVTOOLS_OPTIONS`
 
 ## Documentation

@@ -1,12 +1,14 @@
-import type { ExecutionContext } from "@bunest/common";
+import type { ExecutionContext } from "@bunest/core";
 import type { RetryOptions } from "./retry-options.interface";
 
 /** Decorators for entrypoints (controllers, resolvers, gateways, message handlers), on the class or a handler. */
 export type EntrypointDecorator = MethodDecorator & ClassDecorator;
 
 /** `@Retry()` options: the retry vocabulary, plus the handler author's `idempotent` statement. */
-export interface EntrypointRetryOptions
-  extends Omit<RetryOptions, "retryOnResult"> {
+export interface EntrypointRetryOptions extends Omit<
+  RetryOptions,
+  "retryOnResult"
+> {
   /**
    * Declares the handler safe to run more than once. Without it, retries only
    * happen where the protocol says repeating is safe: HTTP GET, HEAD and

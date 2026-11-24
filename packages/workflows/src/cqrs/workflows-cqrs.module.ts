@@ -1,4 +1,4 @@
-import { Module } from "@bunest/common";
+import { Module } from "@bunest/core";
 import { DiscoveryModule } from "@bunest/core";
 import { WorkflowEventPublisher } from "./workflow-event.publisher";
 import { WorkflowEventsExplorer } from "./workflow-events.explorer";

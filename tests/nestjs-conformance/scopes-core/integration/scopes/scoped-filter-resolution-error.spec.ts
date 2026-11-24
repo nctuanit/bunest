@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -14,7 +13,7 @@ import {
   UseFilters,
   type ArgumentsHost,
   type ExceptionFilter,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Test,
@@ -179,7 +178,7 @@ describeConformance(
       expect(log.entries).toEqual(["No invoices for acme"]);
     });
 
-    // BUNEST_BUG: executeFullCompiledRoute() eagerly resolves request-scoped controller @UseFilters() BEFORE resolving the request-scoped controller (packages/http/src/pipeline/execution-pipeline.ts:567-587,751-756), so RequestScopedFilter intercepts Tenant's BadRequestException instead of leaving it to DefaultExceptionFilter.
+    // BUNEST_BUG: executeFullCompiledRoute() eagerly resolves request-scoped controller @UseFilters() BEFORE resolving the request-scoped controller (packages/core/src/http/pipeline/execution-pipeline.ts:567-587,751-756), so RequestScopedFilter intercepts Tenant's BadRequestException instead of leaving it to DefaultExceptionFilter.
     it.skip("should leave the error to the built-in filter instead of a request-scoped filter that was not created", async () => {
       const res = await request(app)
         .get("/scoped")

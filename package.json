@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "workspaces": [
     "packages/*",
@@ -18,18 +18,19 @@
     "build": "bun run --workspaces --if-present build",
     "bench": "bun run benchmarks/run.ts",
     "lint": "bun check",
+    "type:audit": "bun run scripts/type-tools/audit-any.ts",
+    "type:audit:generics": "bun run scripts/type-tools/audit-generic-defaults.ts",
+    "type:coverage": "bun run scripts/type-tools/check-type-coverage.ts",
+    "type:gen": "bun run scripts/type-tools/generate-global-types.ts",
     "verify:release": "bun run scripts/verify-release.ts",
     "docs:dev": "bun run --cwd apps/docs dev",
     "docs:build": "bun run --cwd apps/docs build",
     "docs:preview": "bun run --cwd apps/docs preview"
   },
-  "dependencies": {
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "reflect-metadata": "^0.2.2"
-  },
   "devDependencies": {
     "@types/bun": "latest",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "typescript": "^7.0.2"
   }
 }

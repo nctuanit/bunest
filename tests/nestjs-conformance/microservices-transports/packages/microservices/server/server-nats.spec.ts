@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   createSandbox,
@@ -11,7 +10,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   NatsClientProxy,
   NatsRecordBuilder,
@@ -140,7 +139,9 @@ describeConformance(
     describe("constructor & handler registration", () => {
       it("sets Transport.NATS and exposes NatsServer and NatsTransportAdapter.Server aliases", () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
 
         expect(server.transport).toBe(Transport.NATS);
         expect(server.isListening).toBe(false);
@@ -151,7 +152,9 @@ describeConformance(
 
       it("registers string, RegExp, and structured object patterns and rejects duplicate message handlers", () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
 
         const sumHandler = () => 1;
         const regexHandler = () => 2;
@@ -210,7 +213,9 @@ describeConformance(
 
       it("unsubscribes all stored subscriptions on close(), resets isListening, and supports re-listening", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
 
         server.addMessageHandler("ping", () => "pong");
         server.addEventHandler("tick", () => {});
@@ -319,7 +324,9 @@ describeConformance(
 
       it("falls back to client.publish(msg.reply, ...) when msg.respond is absent", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         server.addMessageHandler("math.double", (n) => (n as number) * 2);
         await server.listen();
 
@@ -346,7 +353,9 @@ describeConformance(
 
       it("silently drops reply when neither msg.respond nor msg.reply is present", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const handlerSpy = sandbox.spy(() => "computed");
         server.addMessageHandler("fire.and.drop", handlerSpy);
         await server.listen();
@@ -368,7 +377,9 @@ describeConformance(
       it("decodes Uint8Array request payloads cleanly", async () => {
         const encoder = new TextEncoder();
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         server.addMessageHandler("bin.echo", (data) => ({ echoed: data }));
         await server.listen();
 
@@ -398,7 +409,9 @@ describeConformance(
 
       it("ignores malformed JSON, non-envelope payloads, and response envelopes without invoking handlers", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const handlerSpy = sandbox.spy(() => "should-not-run");
         server.addMessageHandler("test", handlerSpy);
         await server.listen();
@@ -431,7 +444,9 @@ describeConformance(
 
       it("replies with 404 RpcException when no message handler exists for a request pattern", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         // Only register an event handler so the subject is subscribed
         const eventSpy = sandbox.spy();
         server.addEventHandler("only.event", eventSpy);
@@ -464,7 +479,9 @@ describeConformance(
       // BUNEST_BUG: NatsTransportServer.onMessage() checks `typeof msg.respond === "function"` without verifying `msg.reply` is defined, so real NATS Msg instances with a `.respond()` method but `reply: undefined` still get `msg.respond()` called (packages/microservices/src/transports/broker.transports.ts).
       it.skip("does not call msg.respond() when msg.reply is undefined", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         server.addMessageHandler("no.reply", () => "result");
         await server.listen();
 
@@ -487,7 +504,9 @@ describeConformance(
       // BUNEST_BUG: NatsTransportServer.onMessage() does not unwrap NatsRecord returned from a message handler; it serializes the raw { data, headers } wrapper inside response and does not forward headers to msg.respond() (packages/microservices/src/transports/broker.transports.ts).
       it.skip("unwraps NatsRecord returned by a message handler into response data and headers", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const headers = { "x-source": "nats-srv" };
         server.addMessageHandler("record.op", () =>
           new NatsRecordBuilder({ value: "ok" }).setHeaders(headers).build(),
@@ -518,7 +537,9 @@ describeConformance(
       // BUNEST_BUG: NatsTransportServer lacks NATS wildcard subject matching/precedence; when both wildcard ("orders.*") and exact ("orders.get") handlers receive a matching request, both execute and send duplicate replies (packages/microservices/src/transports/broker.transports.ts).
       it.skip("prefers exact message handler over wildcard subscription without duplicate replies", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const wildcardSpy = sandbox.spy(() => "wildcard");
         const exactSpy = sandbox.spy(() => "exact");
         server.addMessageHandler("orders.*", wildcardSpy);
@@ -550,19 +571,28 @@ describeConformance(
     describe("onMessage() — error serialization", () => {
       it("serializes RpcException (string & object), HttpException, Error, and non-Error values", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
 
         server.addMessageHandler("err.rpc.str", () => {
           throw new RpcException("rpc-string-error");
         });
         server.addMessageHandler("err.rpc.obj", () => {
-          throw new RpcException({ status: 409, message: "conflict", field: "id" });
+          throw new RpcException({
+            status: 409,
+            message: "conflict",
+            field: "id",
+          });
         });
         server.addMessageHandler("err.http", () => {
           throw new BadRequestException("bad request payload");
         });
         server.addMessageHandler("err.http.custom", () => {
-          throw new HttpException({ reason: "teapot" }, HttpStatus.I_AM_A_TEAPOT);
+          throw new HttpException(
+            { reason: "teapot" },
+            HttpStatus.I_AM_A_TEAPOT,
+          );
         });
         server.addMessageHandler("err.generic", () => {
           throw new TypeError("invalid type");
@@ -572,7 +602,9 @@ describeConformance(
         });
         await server.listen();
 
-        const invoke = async (pattern: string): Promise<RpcResponseEnvelope> => {
+        const invoke = async (
+          pattern: string,
+        ): Promise<RpcResponseEnvelope> => {
           const respondSpy = sandbox.spy();
           await broker.deliverToSubject(pattern, {
             subject: pattern,
@@ -634,7 +666,9 @@ describeConformance(
     describe("onMessage() — event dispatch & error isolation", () => {
       it("dispatches events to all registered handlers in order and isolates thrown/rejected errors", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const log: string[] = [];
 
         server.addEventHandler("user.updated", (data, ctx) => {
@@ -677,7 +711,9 @@ describeConformance(
 
       it("silently ignores event envelopes delivered to a message-only pattern", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const msgSpy = sandbox.spy(() => "msg");
         server.addMessageHandler("rpc.only", msgSpy);
         await server.listen();
@@ -698,7 +734,9 @@ describeConformance(
     describe("setPreRequestHook()", () => {
       it("runs preRequestHook before message handler and serializes hook failures as RPC errors", async () => {
         const broker = createMockNatsBroker();
-        const server = track(new NatsTransportServer({ client: broker.client }));
+        const server = track(
+          new NatsTransportServer({ client: broker.client }),
+        );
         const order: string[] = [];
 
         const chained = server.setPreRequestHook(({ pattern, data, ctx }) => {
@@ -730,8 +768,11 @@ describeConformance(
 
         expect(order).toEqual(["hook:secure.op:NATS:allow", "handler:allow"]);
         expect(
-          (JSON.parse(String(okRespond.firstCall?.args[0])) as RpcResponseEnvelope)
-            .response,
+          (
+            JSON.parse(
+              String(okRespond.firstCall?.args[0]),
+            ) as RpcResponseEnvelope
+          ).response,
         ).toEqual({ granted: "allow" });
 
         const denyRespond = sandbox.spy();

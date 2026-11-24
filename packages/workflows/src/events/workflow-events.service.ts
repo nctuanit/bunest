@@ -1,4 +1,4 @@
-import { Injectable, type OnApplicationShutdown } from "@bunest/common";
+import { Injectable, type OnApplicationShutdown } from "@bunest/core";
 import type {
   Subscribable,
   SubscribableObserver,
@@ -152,11 +152,12 @@ class ZeroRxEventStream<T> implements Subscribable<T>, AsyncIterable<T> {
 export class WorkflowEvents implements OnApplicationShutdown {
   private readonly subject = new ZeroRxEventStream<WorkflowEvent>();
 
-  readonly events$: Subscribable<WorkflowEvent> & AsyncIterable<WorkflowEvent> = {
-    subscribe: (observerOrNext, error, complete) =>
-      this.subject.subscribe(observerOrNext, error, complete),
-    [Symbol.asyncIterator]: () => this.subject[Symbol.asyncIterator](),
-  };
+  readonly events$: Subscribable<WorkflowEvent> & AsyncIterable<WorkflowEvent> =
+    {
+      subscribe: (observerOrNext, error, complete) =>
+        this.subject.subscribe(observerOrNext, error, complete),
+      [Symbol.asyncIterator]: () => this.subject[Symbol.asyncIterator](),
+    };
 
   emit(event: WorkflowEvent): void {
     const target = channelFor(event.type);

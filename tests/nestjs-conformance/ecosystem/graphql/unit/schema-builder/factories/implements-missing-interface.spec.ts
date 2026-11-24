@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import {
   Field,

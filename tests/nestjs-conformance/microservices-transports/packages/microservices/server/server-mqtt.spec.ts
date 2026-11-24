@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   describeConformance,
   itAdapted,
   createSpy,
 } from "../../../../_helpers";
-import { HttpException } from "../../../../../../packages/common/src";
+import { HttpException } from "../../../../../../packages/core/src/common";
 import {
   MqttContext,
   MqttRecordBuilder,
@@ -189,7 +188,10 @@ describeConformance(
             false,
           );
           expect(
-            matchMqttTopic("root/+/grandchild", "root/invalid/child/grandchild"),
+            matchMqttTopic(
+              "root/+/grandchild",
+              "root/invalid/child/grandchild",
+            ),
           ).toBe(false);
 
           // Empty topic levels
@@ -249,7 +251,10 @@ describeConformance(
         () => {
           expect(matchMqttTopic("a/#/b", "a/x/b")).toBe(false);
           expect(
-            matchMqttTopic("root/#/grandchild", "root/invalid/child/grandchild"),
+            matchMqttTopic(
+              "root/#/grandchild",
+              "root/invalid/child/grandchild",
+            ),
           ).toBe(false);
           expect(matchMqttTopic("a/b#", "a/bc")).toBe(false);
           expect(matchMqttTopic("a/#b", "a/xb")).toBe(false);
@@ -459,7 +464,9 @@ describeConformance(
           expect((await call("other/topic", "5")).response).toBe("root-hash");
 
           // Verify reply publish options use server qos and retain: false
-          expect(harness.published[0]!.topic).toBe("devices/d1/command/reply/c1");
+          expect(harness.published[0]!.topic).toBe(
+            "devices/d1/command/reply/c1",
+          );
           expect(harness.published[0]!.options).toEqual({
             qos: 1,
             retain: false,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   Controller,
@@ -9,7 +8,7 @@ import {
   type MiddlewareConsumer,
   type NextFunction,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { Test, describeConformance, request } from "../../../_helpers";
 
@@ -81,7 +80,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment param+literal patterns like ":user-avatar@2x.png" or ":sku-color=:color" (packages/http/src/router/fallback-radix-router.ts:35-38, 159-204).
+    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment param+literal patterns like ":user-avatar@2x.png" or ":sku-color=:color" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
     it.skip("should run the middleware of a route for its plain path", async () => {
       const avatar = await request(app).get("/avatars/alice-avatar@2x.png");
       const sku = await request(app).get("/skus/42-color=red");
@@ -94,7 +93,7 @@ describeConformance(
       expect(sku.headers["x-middleware"]).toBe("ran");
     });
 
-    // BUNEST_BUG: Router does not support sub-segment params (":user-avatar@2x.png", ":sku-color=:color") or percent-decoded static segment matching ("/discounts/100%25" vs "/discounts/100%") (packages/http/src/router/fallback-radix-router.ts:670, 817, 863).
+    // BUNEST_BUG: Router does not support sub-segment params (":user-avatar@2x.png", ":sku-color=:color") or percent-decoded static segment matching ("/discounts/100%25" vs "/discounts/100%") (packages/core/src/http/router/fallback-radix-router.ts:670, 817, 863).
     it.skip.each([
       "/avatars/alice-avatar%402x.png",
       "/skus/42-color%3Dred",

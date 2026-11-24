@@ -3,14 +3,14 @@ import {
   Logger,
   type OnApplicationBootstrap,
   type OnModuleInit,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   EventBus,
   UnhandledExceptionBus,
   type AsyncContext,
   type IEvent,
   type IEventPublisher,
-} from "@bunest/cqrs";
+} from "@bunest/messaging/cqrs";
 import { isPriority, MAX_PRIORITY } from "../core/limits/limits";
 import { canonical } from "../core/utils/canonical.util";
 import { WorkflowClient } from "../services/workflow-client.service";

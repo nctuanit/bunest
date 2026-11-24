@@ -1,1 +1,5 @@
-export { WorkflowSignal, assertSignalName, signalName } from "./workflow.signal";
+export {
+  WorkflowSignal,
+  assertSignalName,
+  signalName,
+} from "./workflow.signal";

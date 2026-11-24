@@ -1,4 +1,4 @@
-import { MetadataRegistry, PartialType, type Type } from "@bunest/common";
+import { MetadataRegistry, PartialType, type Type } from "@bunest/core";
 import { SWAGGER_METADATA_KEYS } from "../constants";
 import type {
   ApiPropertyMetadata,
@@ -98,10 +98,13 @@ function buildDeepPartialType<T>(
     );
   }
 
-  // Handle `skipNullProperties: false` if class-validator storage is present
+  // Handle `skipNullProperties: false` across both native & upstream validation storages
   if (options?.skipNullProperties === false) {
-    const cvStorage = (globalThis as Record<PropertyKey, unknown>)
-      .classValidatorMetadataStorage as
+    const g = globalThis as Record<PropertyKey, unknown>;
+    const storages = [
+      g[Symbol.for("bunest:class-validator:storage")],
+      g.classValidatorMetadataStorage,
+    ] as Array<
       | {
           getTargetValidationMetadatas?: (
             target: Function,
@@ -116,19 +119,28 @@ function buildDeepPartialType<T>(
             constraints?: unknown[];
           }>;
         }
-      | undefined;
-    if (cvStorage?.getTargetValidationMetadatas) {
-      const metas = cvStorage.getTargetValidationMetadatas(
-        PartialBase,
-        "",
-        false,
-        false,
-      );
-      for (const meta of metas) {
-        if (meta.type === "conditionalValidation" && meta.name === "isOptional") {
-          meta.constraints = [
-            (_object: unknown, value: unknown) => value !== undefined,
-          ];
+      | undefined
+    >;
+    const seenStorages = new Set<unknown>();
+    for (const cvStorage of storages) {
+      if (!cvStorage || seenStorages.has(cvStorage)) continue;
+      seenStorages.add(cvStorage);
+      if (cvStorage.getTargetValidationMetadatas) {
+        const metas = cvStorage.getTargetValidationMetadatas(
+          PartialBase,
+          "",
+          false,
+          false,
+        );
+        for (const meta of metas) {
+          if (
+            meta.type === "conditionalValidation" &&
+            meta.name === "isOptional"
+          ) {
+            meta.constraints = [
+              (_object: unknown, value: unknown) => value !== undefined,
+            ];
+          }
         }
       }
     }

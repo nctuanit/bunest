@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   toBytes,
@@ -13,7 +12,8 @@ describeConformance(
   {
     upstreamPath: "terminus/lib/utils/units.spec.ts",
     category: "DIRECT_PORT",
-    notes: "Direct port of upstream @nestjs/terminus duration and byte size unit parser tests.",
+    notes:
+      "Direct port of upstream @nestjs/terminus duration and byte size unit parser tests.",
   },
   () => {
     describe("toMs", () => {

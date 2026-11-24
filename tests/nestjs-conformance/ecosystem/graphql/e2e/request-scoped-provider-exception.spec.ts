@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { GraphQLError } from "../../../../../packages/graphql/node_modules/graphql";
+import { GraphQLError } from "../../../../../packages/graphql/src";
 import {
   APP_FILTER,
   Catch,
@@ -10,7 +9,7 @@ import {
   REQUEST,
   Scope,
   UseFilters,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type GqlExceptionFilter,

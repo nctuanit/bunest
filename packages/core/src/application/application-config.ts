@@ -12,8 +12,8 @@ import type {
   RouteResolutionStrategy,
   VersioningOptions,
   WebSocketAdapter,
-} from "@bunest/common";
-import type { CookieSigner, GlobalPrefixOptions } from "@bunest/http";
+} from "../common/index";
+import type { CookieSigner, GlobalPrefixOptions } from "../http/index";
 import type { InstanceWrapper } from "../discovery/discovery.service";
 
 /**
@@ -28,8 +28,10 @@ export class ApplicationConfig {
   private globalInterceptors: InterceptorLike[] = [];
   private globalGuards: GuardLike[] = [];
   private readonly globalRequestPipes: InstanceWrapper<PipeTransform>[] = [];
-  private readonly globalRequestFilters: InstanceWrapper<ExceptionFilter>[] = [];
-  private readonly globalRequestInterceptors: InstanceWrapper<NestInterceptor>[] = [];
+  private readonly globalRequestFilters: InstanceWrapper<ExceptionFilter>[] =
+    [];
+  private readonly globalRequestInterceptors: InstanceWrapper<NestInterceptor>[] =
+    [];
   private readonly globalRequestGuards: InstanceWrapper<CanActivate>[] = [];
   private readonly globalPreRequestHooks: PreRequestHook[] = [];
   private versioningOptions?: VersioningOptions;
@@ -118,9 +120,7 @@ export class ApplicationConfig {
     return [...this.globalInterceptors];
   }
 
-  addGlobalRequestInterceptor(
-    wrapper: InstanceWrapper<NestInterceptor>,
-  ): void {
+  addGlobalRequestInterceptor(wrapper: InstanceWrapper<NestInterceptor>): void {
     this.globalRequestInterceptors.push(wrapper);
   }
 

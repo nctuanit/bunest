@@ -1,6 +1,8 @@
-import "reflect-metadata";
-import { Transform } from "class-transformer";
-import { IsBoolean, MinLength } from "class-validator";
+import { Transform } from "../../../../../../../../packages/validation/src/transformer";
+import {
+  IsBoolean,
+  MinLength,
+} from "../../../../../../../../packages/validation/src/validator";
 import {
   Directive,
   Extensions,

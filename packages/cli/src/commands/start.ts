@@ -1,15 +1,16 @@
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, statPath } from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveEntryFile,
 } from "../config/configuration.loader";
+import { startTypegenWatcher, type TypegenWatcherHandle } from "../typegen";
 import type {
   CliIO,
   SpawnFn,
   StartCommandOptions,
   StartCommandResult,
 } from "../types";
+import { resolveTypegenConfig } from "./typegen";
 
 const defaultSpawn: SpawnFn = async (cmd, options) => {
   const proc = Bun.spawn(cmd, {
@@ -42,7 +43,9 @@ export async function runStartCommand(
 
   if (
     options.port !== undefined &&
-    (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535)
+    (!Number.isInteger(options.port) ||
+      options.port < 0 ||
+      options.port > 65535)
   ) {
     throw new Error(
       `Invalid port "${String(options.port)}": expected an integer between 0 and 65535.`,
@@ -50,7 +53,7 @@ export async function runStartCommand(
   }
 
   try {
-    const info = await stat(entry);
+    const info = await statPath(entry);
     if (!info.isFile()) {
       throw new Error(`Start entry path is not a file: ${entry}`);
     }
@@ -64,7 +67,9 @@ export async function runStartCommand(
   const watch = options.watch === true;
   const debug = options.debug;
   const envFiles = options.envFile
-    ? (Array.isArray(options.envFile) ? [...options.envFile] : [options.envFile])
+    ? Array.isArray(options.envFile)
+      ? [...options.envFile]
+      : [options.envFile]
     : [];
   const execBinary = options.exec ?? config.exec;
 
@@ -96,24 +101,58 @@ export async function runStartCommand(
   const displayCmd = [execBinary ?? "bun", ...args];
   const spawnCmd = [execBinary ?? process.execPath, ...args];
   const env: Record<string, string | undefined> = {
-    ...process.env,
+    ...Bun.env,
     ...(options.port !== undefined ? { PORT: String(options.port) } : {}),
-    ...(options.preserveWatchOutput ? { BUNEST_PRESERVE_WATCH_OUTPUT: "1" } : {}),
+    ...(options.preserveWatchOutput
+      ? { BUNEST_PRESERVE_WATCH_OUTPUT: "1" }
+      : {}),
   };
+
+  const { enabled: configTypegenEnabled, config: typegenCfg } =
+    resolveTypegenConfig(config.typegen);
+  const typegenEnabled = watch
+    ? options.typegen !== undefined
+      ? options.typegen
+      : configTypegenEnabled
+    : options.typegen === true;
+
+  let watcher: TypegenWatcherHandle | undefined;
+  if (typegenEnabled) {
+    watcher = await startTypegenWatcher(
+      {
+        cwd,
+        sourceRoot: options.sourceRoot ?? config.sourceRoot ?? "src",
+        outDir: options.typegenOutDir ?? typegenCfg.outDir ?? ".bunest/types",
+        fileName: typegenCfg.fileName ?? "bunest.d.ts",
+        tsconfigPath:
+          typegenCfg.tsconfigPath ?? config.compilerOptions?.tsConfigPath,
+        envFiles: envFiles.length > 0 ? envFiles : typegenCfg.envFiles,
+        include: typegenCfg.include,
+        includeGlobalNamespace: typegenCfg.includeGlobalNamespace,
+        debounceMs: typegenCfg.debounceMs,
+        silent: options.silent,
+      },
+      io,
+    );
+  }
 
   if (io && !options.silent) {
     io.stdout(`Starting Bunest application: ${displayCmd.join(" ")}`);
   }
 
   const spawn = options.spawn ?? defaultSpawn;
-  const { exitCode } = await spawn(spawnCmd, { cwd, env });
-
-  return {
-    exitCode,
-    command: displayCmd,
-    entry,
-    watch,
-    debug,
-    envFiles,
-  };
+  try {
+    const { exitCode } = await spawn(spawnCmd, { cwd, env });
+    return {
+      exitCode,
+      command: displayCmd,
+      entry,
+      watch,
+      debug,
+      envFiles,
+      ...(watcher ? { typegen: watcher.initialResult } : {}),
+    };
+  } finally {
+    await watcher?.close();
+  }
 }

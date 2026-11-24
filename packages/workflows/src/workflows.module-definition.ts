@@ -1,4 +1,4 @@
-import { ConfigurableModuleBuilder } from "@bunest/common";
+import { ConfigurableModuleBuilder } from "@bunest/core";
 import type { WorkflowsModuleOptions } from "./interfaces/workflows-module-options.interface";
 
 export const {

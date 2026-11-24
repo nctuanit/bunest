@@ -16,6 +16,7 @@ CircularDependencyException: Circular dependency detected:
 Wrap both sides of a singleton class dependency cycle using `@Inject(forwardRef(() => Target))`:
 
 @@filename(auth.service.ts)
+
 ```ts
 import { Inject, Injectable, forwardRef } from "@bunest/core";
 import { UsersService } from "./users.service";
@@ -34,6 +35,7 @@ export class AuthService {
 ```
 
 @@filename(users.service.ts)
+
 ```ts
 import { Inject, Injectable, forwardRef } from "@bunest/core";
 import { AuthService } from "./auth.service";
@@ -60,6 +62,7 @@ export class UsersService {
 If `AuthModule` imports `UsersModule` and `UsersModule` imports `AuthModule`, wrap `forwardRef(() => ...)` inside `imports`:
 
 @@filename(auth.module.ts)
+
 ```ts
 import { Module, forwardRef } from "@bunest/core";
 import { UsersModule } from "../users/users.module";
@@ -74,5 +77,6 @@ export class AuthModule {}
 ```
 
 > warning **Limitations of `forwardRef()` (ADR-007)**
+>
 > - Never eagerly invoke methods on a `forwardRef` peer inside a `constructor()` body—use `onModuleInit()` instead so both singletons finish allocation first.
 > - Circular `useFactory` provider invocations cannot be deferred and still fail fast at bootstrap.

@@ -1,7 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { ensureDir, join, removePath } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   FileTemplateEngine,
@@ -17,31 +15,34 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
   let dir: string;
 
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), "bunest-mail-tpl-"));
-    await mkdir(join(dir, "partials"), { recursive: true });
-    await mkdir(join(dir, "nested"), { recursive: true });
+    dir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-mail-tpl-${crypto.randomUUID()}`,
+    );
+    await ensureDir(join(dir, "partials"));
+    await ensureDir(join(dir, "nested"));
 
-    await writeFile(
+    await Bun.write(
       join(dir, "layout.html"),
       "<!doctype html><html><body><header>{{ title }}</header><main>{{{ body }}}</main>{{> footer}}</body></html>",
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "layout.txt"),
       "=== {{ title }} ===\n{{ body }}\n{{> footer}}",
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "partials", "footer.html"),
       "<footer>Thanks, {{ company }}</footer>",
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "partials", "footer.txt"),
       "-- Thanks, {{ company }}",
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "partials", "footer.pl.html"),
       "<footer>Dziękujemy, {{ company }}</footer>",
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "order.html"),
       [
         "{{! comment ignored }}",
@@ -61,10 +62,10 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
         "  <li>Empty</li>",
         "{{/each}}",
         "</ul>",
-        '<div>{{{ rawHtml }}}</div><div>{{ safeHtml }}</div>',
+        "<div>{{{ rawHtml }}}</div><div>{{ safeHtml }}</div>",
       ].join("\n"),
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "order.txt"),
       [
         "Hi {{ customer.name }}",
@@ -73,42 +74,24 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
         "{{/each}}",
       ].join("\n"),
     );
-    await writeFile(
+    await Bun.write(
       join(dir, "order.pl.html"),
       "<p>Cześć {{ customer.name }}</p>",
     );
-    await writeFile(
-      join(dir, "bad-attr.html"),
-      "<a href={{ url }}>Click</a>",
-    );
-    await writeFile(
-      join(dir, "unclosed.html"),
-      "{{#if ok}}<p>hi</p>",
-    );
-    await writeFile(
-      join(dir, "mismatch.html"),
-      "{{#if ok}}\n{{/each}}",
-    );
-    await writeFile(
-      join(dir, "partials", "loop-a.html"),
-      "{{> loop-b}}",
-    );
-    await writeFile(
-      join(dir, "partials", "loop-b.html"),
-      "{{> loop-a}}",
-    );
-    await writeFile(
-      join(dir, "cycle.html"),
-      "{{> loop-a}}",
-    );
-    await writeFile(
+    await Bun.write(join(dir, "bad-attr.html"), "<a href={{ url }}>Click</a>");
+    await Bun.write(join(dir, "unclosed.html"), "{{#if ok}}<p>hi</p>");
+    await Bun.write(join(dir, "mismatch.html"), "{{#if ok}}\n{{/each}}");
+    await Bun.write(join(dir, "partials", "loop-a.html"), "{{> loop-b}}");
+    await Bun.write(join(dir, "partials", "loop-b.html"), "{{> loop-a}}");
+    await Bun.write(join(dir, "cycle.html"), "{{> loop-a}}");
+    await Bun.write(
       join(dir, "nested", "proto.html"),
       "<p>{{ constructor }}-{{ toString }}-\\{{ literal }}</p>",
     );
   });
 
   afterAll(async () => {
-    await rm(dir, { recursive: true, force: true });
+    await removePath(dir, { recursive: true, force: true });
   });
 
   it("renders HTML and TXT templates with layout, partials, blocks, loops, escaping, and SafeHtml", async () => {
@@ -134,9 +117,15 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
     expect(out.html).toContain("<p>Hi &lt;Ada&gt;</p>");
     expect(out.html).toContain("<p>Pending</p>");
     expect(out.html).toContain("<span>Active</span>");
-    expect(out.html).toContain('data-idx="0" data-first="true" data-last="false">Widget (USD / Acme)</li>');
-    expect(out.html).toContain('data-idx="1" data-first="false" data-last="true">Gadget (USD / Acme)</li>');
-    expect(out.html).toContain("<div><strong>RAW</strong></div><div><em>&lt;safe&gt;</em></div>");
+    expect(out.html).toContain(
+      'data-idx="0" data-first="true" data-last="false">Widget (USD / Acme)</li>',
+    );
+    expect(out.html).toContain(
+      'data-idx="1" data-first="false" data-last="true">Gadget (USD / Acme)</li>',
+    );
+    expect(out.html).toContain(
+      "<div><strong>RAW</strong></div><div><em>&lt;safe&gt;</em></div>",
+    );
     expect(out.html).toContain("<footer>Thanks, Acme</footer>");
 
     expect(out.text).toBeDefined();
@@ -168,7 +157,11 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
 
     // Unquoted attribute value
     try {
-      await engine.render("bad-attr", { url: "https://x.test" }, { locale: undefined });
+      await engine.render(
+        "bad-attr",
+        { url: "https://x.test" },
+        { locale: undefined },
+      );
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(MailTemplateError);
@@ -179,9 +172,9 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
     }
 
     // Unclosed block
-    await expect(engine.render("unclosed", {}, { locale: undefined })).rejects.toThrow(
-      MailTemplateError,
-    );
+    await expect(
+      engine.render("unclosed", {}, { locale: undefined }),
+    ).rejects.toThrow(MailTemplateError);
 
     // Mismatched close tag with line 2
     try {
@@ -193,36 +186,44 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
     }
 
     // Recursive partials stopped at MAX_PARTIAL_DEPTH
-    await expect(engine.render("cycle", {}, { locale: undefined })).rejects.toThrow(
-      MailTemplateError,
-    );
+    await expect(
+      engine.render("cycle", {}, { locale: undefined }),
+    ).rejects.toThrow(MailTemplateError);
 
     // Invalid template name / path traversal
-    await expect(engine.render("../secret", {}, { locale: undefined })).rejects.toThrow(
-      MailTemplateError,
-    );
+    await expect(
+      engine.render("../secret", {}, { locale: undefined }),
+    ).rejects.toThrow(MailTemplateError);
 
     // Invalid locale
-    await expect(engine.render("order", {}, { locale: "../bad" })).rejects.toThrow(
-      MailTemplateError,
-    );
+    await expect(
+      engine.render("order", {}, { locale: "../bad" }),
+    ).rejects.toThrow(MailTemplateError);
 
     // Missing template
-    await expect(engine.render("does-not-exist", {}, { locale: undefined })).rejects.toThrow(
-      MailTemplateError,
-    );
+    await expect(
+      engine.render("does-not-exist", {}, { locale: undefined }),
+    ).rejects.toThrow(MailTemplateError);
   });
 
   it("re-reads modified files when cache: false", async () => {
     const dynamicFile = join(dir, "dynamic.html");
-    await writeFile(dynamicFile, "<p>v1 {{ x }}</p>");
+    await Bun.write(dynamicFile, "<p>v1 {{ x }}</p>");
     const engine = new FileTemplateEngine({ dir, cache: false });
 
-    const first = await engine.render("dynamic", { x: "a" }, { locale: undefined });
+    const first = await engine.render(
+      "dynamic",
+      { x: "a" },
+      { locale: undefined },
+    );
     expect(first.html).toBe("<p>v1 a</p>");
 
-    await writeFile(dynamicFile, "<p>v2 {{ x }}</p>");
-    const second = await engine.render("dynamic", { x: "a" }, { locale: undefined });
+    await Bun.write(dynamicFile, "<p>v2 {{ x }}</p>");
+    const second = await engine.render(
+      "dynamic",
+      { x: "a" },
+      { locale: undefined },
+    );
     expect(second.html).toBe("<p>v2 a</p>");
   });
 
@@ -243,10 +244,18 @@ describe("FileTemplateEngine & MailTemplateEngine", () => {
       to: "user@example.com",
       subject: "Your Order",
       template: "order",
-      context: { title: "Hi", company: "Acme", customer: { name: "Ada" }, items: [] },
+      context: {
+        title: "Hi",
+        company: "Acme",
+        customer: { name: "Ada" },
+        items: [],
+      },
     });
 
-    const sent = transport.assertSent({ template: "order", to: "user@example.com" });
+    const sent = transport.assertSent({
+      template: "order",
+      to: "user@example.com",
+    });
     expect(sent.html).toContain("<li>Empty</li>");
     await mod.close();
 

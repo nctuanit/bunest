@@ -1,10 +1,5 @@
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  DOCS_ROOT,
-  loadAllDocs,
-  loadSinglePage,
-} from "./content-loader";
+import { join } from "@bunest/core";
+import { DOCS_ROOT, loadAllDocs, loadSinglePage } from "./content-loader";
 import {
   getConfiguredBasePath,
   normalizeBasePath,
@@ -12,7 +7,7 @@ import {
 } from "./navigation";
 import { renderNotFoundHtml, renderPageHtml } from "./template";
 
-const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+const SRC_DIR = import.meta.dirname;
 const DIST_DIR = join(DOCS_ROOT, "dist");
 const STYLES_PATH = join(SRC_DIR, "styles.css");
 const CLIENT_JS_PATH = join(SRC_DIR, "client.js");
@@ -55,7 +50,10 @@ export function createDocsServer(
       const url = new URL(req.url);
       let pathname = url.pathname;
 
-      if (basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`))) {
+      if (
+        basePath &&
+        (pathname === basePath || pathname.startsWith(`${basePath}/`))
+      ) {
         pathname = pathname.slice(basePath.length) || "/";
       }
 

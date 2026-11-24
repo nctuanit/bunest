@@ -1,4 +1,4 @@
-import type { InjectionToken, Type } from "@bunest/common";
+import type { InjectionToken, Type } from "../common/index";
 import type { NormalizedProvider } from "../interfaces/core-types.interface";
 
 /**

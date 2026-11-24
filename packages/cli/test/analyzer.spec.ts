@@ -1,0 +1,562 @@
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  dirname,
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+  writeTextSync,
+} from "@bunest/core";
+import {
+  BunestStaticAnalyzer,
+  buildAddProviderToModuleEdit,
+  buildCollapseLoggerBoilerplateEdit,
+  buildConvertDerivedToQueryEdit,
+  buildConvertTypeImportEdit,
+  buildDelombokEdit,
+  buildGenerateRepositorySource,
+  buildSyncDiConstructorEdit,
+  buildWrapMongooseRefEdit,
+  emitBunestDeclaration,
+  getRepositoryDerivedCompletions,
+  parseDerivedMethodName,
+  resolveClassMacroMembers,
+  runCli,
+  scanSqlPlaceholders,
+  type CliIO,
+} from "../src";
+
+const TMP_DIR = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+const tempDirs: string[] = [];
+
+function createTempProject(files: Record<string, string>): string {
+  const dir = join(
+    TMP_DIR,
+    `bunest-analyzer-${crypto.randomUUID().slice(0, 8)}`,
+  );
+  mkdirSyncPath(dir);
+  tempDirs.push(dir);
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = join(dir, rel);
+    mkdirSyncPath(dirname(abs));
+    writeTextSync(abs, content);
+  }
+  return dir;
+}
+
+afterEach(async () => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop()!;
+    await removePath(dir, { recursive: true, force: true });
+  }
+});
+
+describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-string", () => {
+  it("parses derived queries, previews SQLite/Postgres/MySQL SQL, and suggests chained completions", () => {
+    const cwd = createTempProject({
+      "src/user.entity.ts": `
+        function Entity(_n?: string): ClassDecorator { return () => {}; }
+        function PrimaryGeneratedColumn(): PropertyDecorator { return () => {}; }
+        function Column(_o?: any): PropertyDecorator { return () => {}; }
+        function Unique(): PropertyDecorator { return () => {}; }
+        function Index(): PropertyDecorator { return () => {}; }
+
+        @Entity("users")
+        export class UserEntity {
+          @PrimaryGeneratedColumn()
+          id!: number;
+
+          @Column()
+          @Unique()
+          email!: string;
+
+          @Column()
+          @Index()
+          age!: number;
+
+          @Column()
+          active!: boolean;
+
+          @Column()
+          createdAt!: Date;
+        }
+      `,
+      "src/user.repository.ts": `
+        import { UserEntity } from "./user.entity";
+        function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+        function Query(_sql: string): MethodDecorator { return () => {}; }
+        function SqlParam(_n: string): ParameterDecorator { return () => {}; }
+        abstract class CrudRepository<T, K = number> {}
+
+        @OrmRepository(UserEntity)
+        export abstract class UserRepository extends CrudRepository<UserEntity, number> {
+          abstract findAllByAgeGreaterThanEqualAndActiveIsTrueOrderByCreatedAtDesc(age: number): Promise<UserEntity[]>;
+          abstract findByEmial(email: string): Promise<UserEntity | null>;
+          abstract findByAgeBetween(min: number): Promise<UserEntity[]>;
+          abstract findByAge(age: string): Promise<UserEntity | null>;
+          abstract existsByEmail(email: string): Promise<string>;
+          abstract findByAgeContaining(age: number): Promise<UserEntity[]>;
+
+          @Query("UPDATE users SET active = 0 WHERE email = :email")
+          deactivate(@SqlParam("wrong") _email: string): Promise<void> {
+            throw new Error("proxy");
+          }
+        }
+
+        export abstract class MissingDecRepo extends CrudRepository<UserEntity, number> {}
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+
+    expect(snap.entities.length).toBe(1);
+    expect(snap.repositories.length).toBe(2);
+
+    const userRepo = snap.repositories.find((r) => r.className === "UserRepository")!;
+    const goodMethod = userRepo.methods.find(
+      (m) => m.name === "findAllByAgeGreaterThanEqualAndActiveIsTrueOrderByCreatedAtDesc",
+    )!;
+    expect(goodMethod.derived?.sqlByDialect.sqlite).toBe(
+      'SELECT * FROM "users" WHERE "age" >= ? AND "active" = 1 ORDER BY "created_at" DESC',
+    );
+    expect(goodMethod.derived?.sqlByDialect.postgres).toBe(
+      'SELECT * FROM "users" WHERE "age" >= $1 AND "active" = 1 ORDER BY "created_at" DESC',
+    );
+    expect(goodMethod.derived?.sqlByDialect.mysql).toBe(
+      "SELECT * FROM `users` WHERE `age` >= ? AND `active` = 1 ORDER BY `created_at` DESC",
+    );
+
+    // Chained completions
+    const propCompletions = getRepositoryDerivedCompletions(userRepo, "findAllBy");
+    expect(propCompletions.some((c) => c.label === "Email")).toBe(true);
+    expect(propCompletions.some((c) => c.label === "Age")).toBe(true);
+
+    const ageOps = getRepositoryDerivedCompletions(userRepo, "findAllByAge");
+    expect(ageOps.some((c) => c.label === "GreaterThanEqual")).toBe(true);
+    expect(ageOps.some((c) => c.label === "Between")).toBe(true);
+    // String-only operators should NOT be offered on number column `age`!
+    expect(ageOps.some((c) => c.label === "Containing")).toBe(false);
+
+    // Verify all 7 BUNEST_REPO001..007 rules triggered
+    const codes = new Set(snap.diagnostics.map((d) => d.code));
+    expect(codes.has("BUNEST_REPO001")).toBe(true); // Emial -> Email
+    expect(codes.has("BUNEST_REPO002")).toBe(true); // Between needs 2 args
+    expect(codes.has("BUNEST_REPO003")).toBe(true); // age: string vs number
+    expect(codes.has("BUNEST_REPO004")).toBe(true); // existsBy returns string
+    expect(codes.has("BUNEST_REPO005")).toBe(true); // Containing on number
+    expect(codes.has("BUNEST_REPO006")).toBe(true); // UPDATE without @Modifying + :email mismatch
+    expect(codes.has("BUNEST_REPO007")).toBe(true); // MissingDecRepo without @OrmRepository
+
+    const repo001 = snap.diagnostics.find((d) => d.code === "BUNEST_REPO001")!;
+    expect(repo001.message).toContain('Did you mean "Email"?');
+
+    // SQL placeholder scanner skips strings, comments & Postgres casts
+    const scanned = scanSqlPlaceholders(
+      "SELECT id::text, ':notParam' FROM users -- :comment\n WHERE email = :email AND age > :minAge",
+    );
+    expect(scanned.namedPlaceholders).toEqual(["email", "minAge"]);
+    expect(scanned.isWriteSql).toBe(false);
+
+    // Derived -> @Query magic-string edit preserves surrounding code
+    const sf = analyzer.getSourceFile(userRepo.sourceFile)!;
+    const converted = buildConvertDerivedToQueryEdit({
+      filePath: userRepo.sourceFile,
+      sourceText: sf.getFullText(),
+      method: goodMethod,
+      repo: userRepo,
+    });
+    expect(converted.changed).toBe(true);
+    expect(converted.updated).toContain('@Query("SELECT * FROM \\"users\\" WHERE \\"age\\" >= :age');
+    expect(converted.updated).toContain('@SqlParam("age") age: number');
+
+    // Entity -> CrudRepository generator targets @bunest/orm (ZERO Jpa prefix!)
+    const generatedRepo = buildGenerateRepositorySource({
+      entity: snap.entities[0]!,
+      entityImportPath: "./user.entity",
+    });
+    expect(generatedRepo.fileName).toBe("user.repository.ts");
+    expect(generatedRepo.content).toContain('import { CrudRepository, OrmRepository } from "@bunest/orm";');
+    expect(generatedRepo.content).toContain("@OrmRepository(UserEntity)");
+    expect(generatedRepo.content).toContain("extends CrudRepository<UserEntity, number>");
+    expect(generatedRepo.content).toContain("abstract findByEmail(email: string): Promise<UserEntity | null>;");
+    expect(generatedRepo.content).toContain("abstract findAllByAge(age: number): Promise<UserEntity[]>;");
+    expect(generatedRepo.content).not.toContain("Jpa");
+  });
+
+  it("analyzes Class Macros, emits interface+namespace augmentation, detects BUNEST_MACRO001..005, and runs Delombok", () => {
+    const cwd = createTempProject({
+      "src/models.ts": `
+        function Data(_o?: any): ClassDecorator { return () => {}; }
+        function Value(_o?: any): ClassDecorator { return () => {}; }
+        function Builder(_o?: any): ClassDecorator { return () => {}; }
+        function Setter(_o?: any): ClassDecorator & PropertyDecorator { return () => {}; }
+        function Secret(_o?: any): PropertyDecorator { return () => {}; }
+        function Singular(_n?: string): PropertyDecorator { return () => {}; }
+        function FieldNameConstants(_o?: any): ClassDecorator { return () => {}; }
+        function WithLogger(_o?: any): ClassDecorator { return () => {}; }
+        function Delegate(_o?: any): PropertyDecorator { return () => {}; }
+        function UtilityClass(): ClassDecorator { return () => {}; }
+
+        export class Printer {
+          print(text: string): string { return text; }
+        }
+
+        @Data({ exclude: ["passwrod"] })
+        @Builder({ toBuilder: true })
+        @FieldNameConstants()
+        export class Account {
+          id!: number;
+          email!: string;
+          @Secret()
+          password!: string;
+          @Singular()
+          roles!: string[];
+          @Singular()
+          badSingular!: number;
+        }
+
+        @Value()
+        @Setter()
+        export class ConflictValue {
+          amount!: number;
+        }
+
+        @WithLogger()
+        export class ShadowedLoggerService {
+          logger = null;
+          @Delegate()
+          printer = new Printer();
+          @Delegate()
+          primitiveDel = 123;
+        }
+
+        @UtilityClass()
+        export class BadUtil {
+          instanceMethod() {}
+        }
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+
+    expect(snap.scan.classMacros.length).toBe(4);
+    const dts = emitBunestDeclaration(snap.scan, {
+      outputPath: join(cwd, ".bunest/types/bunest.d.ts"),
+      cwd,
+    });
+    expect(dts).toContain("interface Account");
+    expect(dts).toContain("interface AccountBuilder");
+    expect(dts).toContain("namespace Account");
+    expect(dts).toContain("role(item: string): this;");
+    expect(dts).toContain("clearRoles(): this;");
+    expect(dts).toContain("export const Fields:");
+    expect(dts).toContain("print(text: string): string;");
+
+    const accountMacro = snap.scan.classMacros.find((m) => m.className === "Account")!;
+    const members = resolveClassMacroMembers(accountMacro);
+    expect(members.some((m) => m.name === "builder" && m.kind === "static")).toBe(true);
+    expect(members.some((m) => m.name === "toBuilder" && m.kind === "instance")).toBe(true);
+
+    const codes = new Set(snap.diagnostics.map((d) => d.code));
+    expect(codes.has("BUNEST_MACRO001")).toBe(true); // passwrod -> password
+    expect(codes.has("BUNEST_MACRO002")).toBe(true); // @Value + @Setter / @UtilityClass instance method
+    expect(codes.has("BUNEST_MACRO003")).toBe(true); // Shadowed logger
+    expect(codes.has("BUNEST_MACRO004")).toBe(true); // @Singular on number
+    expect(codes.has("BUNEST_MACRO005")).toBe(true); // @Delegate on primitive 123
+
+    // Delombok expands @Data / @Builder cleanly preserving formatting
+    const sf = analyzer.getSourceFile(accountMacro.sourceFile)!;
+    const delomboked = buildDelombokEdit({
+      sourceFile: sf,
+      classDecl: sf.getClass("Account")!,
+      macro: accountMacro,
+      targetDecorator: "FieldNameConstants",
+    });
+    expect(delomboked.changed).toBe(true);
+    expect(delomboked.updated).not.toContain("@FieldNameConstants()");
+    expect(delomboked.updated).toContain("static readonly Fields = {");
+  });
+
+  it("detects core diagnostics BUNEST001..007 and executes magic-string Quick Fixes cleanly", () => {
+    const cwd = createTempProject({
+      "src/logger.service.ts": `
+        export class Logger { constructor(_ctx?: string) {} }
+      `,
+      "src/dep.service.ts": `
+        function Injectable(_o?: any): ClassDecorator { return () => {}; }
+        @Injectable({ scope: Scope.REQUEST })
+        export class ReqDep {}
+        const Scope = { REQUEST: 1 };
+      `,
+      "src/cycle-a.ts": `
+        import { CycleB } from "./cycle-b";
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class CycleA { constructor(private readonly b: CycleB) {} }
+      `,
+      "src/cycle-b.ts": `
+        import { CycleA } from "./cycle-a";
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class CycleB { constructor(private readonly a: CycleA) {} }
+      `,
+      "src/app.service.ts": `
+        import type { ReqDep } from "./dep.service";
+        import { Logger } from "./logger.service";
+        function Injectable(): ClassDecorator { return () => {}; }
+        function Controller(_p?: string): ClassDecorator { return () => {}; }
+        function Get(_p?: string): MethodDecorator { return () => {}; }
+        function Schema(): ClassDecorator { return () => {}; }
+        function Prop(_o?: any): PropertyDecorator { return () => {}; }
+        function EmitEvent(_n: string): MethodDecorator { return () => {}; }
+
+        @Schema()
+        export class Post {
+          @Prop({ ref: "User" })
+          authorId!: string;
+          @Prop()
+          meta!: string | number;
+        }
+
+        @Injectable()
+        export class AppService {
+          private readonly logger = new Logger(AppService.name);
+          private readonly dep!: ReqDep;
+          constructor(private readonly reqDep: ReqDep) {}
+
+          @EmitEvent("orphan.event")
+          fire() { return 1; }
+        }
+
+        @Controller("items")
+        export class ItemsController {
+          @Get("list")
+          listA() { return []; }
+          @Get("list")
+          listB() { return []; }
+        }
+      `,
+      "src/app.module.ts": `
+        import { AppService, ItemsController } from "./app.service";
+        function Module(_m: any): ClassDecorator { return () => {}; }
+
+        @Module({
+          controllers: [ItemsController],
+          providers: [AppService],
+        })
+        export class AppModule {}
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+    const codes = new Set(snap.diagnostics.map((d) => d.code));
+
+    expect(codes.has("BUNEST001")).toBe(true); // ReqDep missing from AppModule
+    expect(codes.has("BUNEST002")).toBe(true); // CycleA <-> CycleB
+    expect(codes.has("BUNEST003")).toBe(true); // SINGLETON AppService -> REQUEST ReqDep
+    expect(codes.has("BUNEST004")).toBe(true); // import type { ReqDep }
+    expect(codes.has("BUNEST005")).toBe(true); // duplicate GET /items/list
+    expect(codes.has("BUNEST006")).toBe(true); // bare ref & union @Prop
+    expect(codes.has("BUNEST007")).toBe(true); // orphan.event
+
+    // Test magic-string edits
+    const modSf = analyzer.getSourceFile(join(cwd, "src/app.module.ts"))!;
+    const addProv = buildAddProviderToModuleEdit({
+      sourceFile: modSf,
+      moduleClassName: "AppModule",
+      symbolName: "ReqDep",
+      arrayProperty: "providers",
+      importSpecifier: "./dep.service",
+    });
+    expect(addProv.updated).toContain('import { ReqDep } from "./dep.service";');
+    expect(addProv.updated).toContain("providers: [AppService, ReqDep]");
+
+    const svcSf = analyzer.getSourceFile(join(cwd, "src/app.service.ts"))!;
+    const fixTypeImp = buildConvertTypeImportEdit({
+      sourceFile: svcSf,
+      symbolName: "ReqDep",
+    });
+    expect(fixTypeImp.updated).toContain('import { ReqDep } from "./dep.service";');
+
+    const collapseLogger = buildCollapseLoggerBoilerplateEdit({
+      sourceFile: svcSf,
+      classDecl: svcSf.getClass("AppService")!,
+    });
+    expect(collapseLogger.changed).toBe(true);
+    expect(collapseLogger.updated).toContain("@WithLogger()");
+    expect(collapseLogger.updated).not.toContain("new Logger(AppService.name)");
+
+    const syncCtor = buildSyncDiConstructorEdit({
+      sourceFile: svcSf,
+      classDecl: svcSf.getClass("AppService")!,
+    });
+    expect(syncCtor.changed).toBe(true);
+    expect(syncCtor.updated).toContain("private readonly dep: ReqDep");
+
+    const refDiag = snap.diagnostics.find(
+      (d) => d.code === "BUNEST006" && d.fixData?.kind === "wrapMongooseRef",
+    )!;
+    const wrapRef = buildWrapMongooseRefEdit({
+      filePath: svcSf.getFilePath(),
+      sourceText: svcSf.getFullText(),
+      decoratorStart: refDiag.fixData!.decoratorStart as number,
+      decoratorEnd: refDiag.fixData!.decoratorEnd as number,
+    });
+    expect(wrapRef.updated).toContain("type: Schema.Types.ObjectId, ref:");
+  });
+
+  it("supports CLI commands: bunest check [--fix], generate repository, delombok, and codemod", async () => {
+    const cwd = createTempProject({
+      "src/order.entity.ts": `
+        function Entity(_t?: string): ClassDecorator { return () => {}; }
+        function PrimaryGeneratedColumn(): PropertyDecorator { return () => {}; }
+        function Column(): PropertyDecorator { return () => {}; }
+        function Unique(): PropertyDecorator { return () => {}; }
+        function FieldNameConstants(): ClassDecorator { return () => {}; }
+
+        @Entity("orders")
+        @FieldNameConstants()
+        export class OrderEntity {
+          @PrimaryGeneratedColumn()
+          id!: number;
+          @Column()
+          @Unique()
+          code!: string;
+        }
+      `,
+      "src/order.repo.ts": `
+        import { OrderEntity } from "./order.entity";
+        function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+        abstract class CrudRepository<T, K = number> {}
+
+        @OrmRepository(OrderEntity)
+        export abstract class BrokenOrderRepo extends CrudRepository<OrderEntity, number> {
+          abstract findByCdoe(code: string): Promise<OrderEntity | null>;
+        }
+      `,
+    });
+
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io: CliIO = {
+      cwd,
+      stdout: (m) => stdout.push(m),
+      stderr: (m) => stderr.push(m),
+    };
+
+    // 1. bunest check --format json catches BUNEST_REPO001 typo "Cdoe"
+    const check1 = await runCli(["check", "--format", "json"], io);
+    expect(check1.exitCode).toBe(1);
+    expect(stdout.join("\n")).toContain("BUNEST_REPO001");
+
+    // 2. bunest check --fix auto-fixes Cdoe -> Code
+    const checkFix = await runCli(["check", "--fix"], io);
+    expect(checkFix.exitCode).toBe(0);
+    expect(readTextSync(join(cwd, "src/order.repo.ts"))).toContain(
+      "abstract findByCode(code: string)",
+    );
+
+    // 3. bunest g repo OrderEntity generates @bunest/orm order.repository.ts
+    const genRepo = await runCli(
+      ["g", "repo", "OrderEntity"],
+      io,
+    );
+    expect(genRepo.exitCode).toBe(0);
+    const repoSource = readTextSync(join(cwd, "src/order.repository.ts"));
+    expect(repoSource).toContain('from "@bunest/orm"');
+    expect(repoSource).toContain("@OrmRepository(OrderEntity)");
+    expect(repoSource).toContain("extends CrudRepository<OrderEntity, number>");
+    expect(repoSource).toContain("abstract findByCode(code: string)");
+
+    // 4. bunest codemod derived-to-query converts findByCode -> @Query
+    const codemodRes = await runCli(
+      ["codemod", "derived-to-query", "src/order.repository.ts", "--method", "findByCode"],
+      io,
+    );
+    expect(codemodRes.exitCode).toBe(0);
+    expect(readTextSync(join(cwd, "src/order.repository.ts"))).toContain(
+      "@Query(",
+    );
+
+    // 5. bunest delombok expands @FieldNameConstants() on OrderEntity
+    const delombokRes = await runCli(["delombok", "OrderEntity"], io);
+    expect(delombokRes.exitCode).toBe(0);
+    const entityAfter = readTextSync(join(cwd, "src/order.entity.ts"));
+    expect(entityAfter).not.toContain("@FieldNameConstants()");
+    expect(entityAfter).toContain("static readonly Fields = {");
+  });
+
+  it("recognizes OrmModule.forFeature([UserRepository]), @DeclarativeRepository, and @bunest/orm DI providers cleanly", () => {
+    const cwd = createTempProject({
+      "src/user.entity.ts": `
+        function Entity(_o?: any): ClassDecorator { return () => {}; }
+        function PrimaryColumn(): PropertyDecorator { return () => {}; }
+        function Column(): PropertyDecorator { return () => {}; }
+
+        @Entity({ tableName: "app_users" })
+        export class UserEntity {
+          @PrimaryColumn()
+          id!: string;
+
+          @Column()
+          email!: string;
+        }
+      `,
+      "src/user.repository.ts": `
+        import { UserEntity } from "./user.entity";
+        function DeclarativeRepository(_e?: any): ClassDecorator { return () => {}; }
+        abstract class CrudRepository<T, K = string> {}
+
+        @DeclarativeRepository(UserEntity)
+        export abstract class UserRepository extends CrudRepository<UserEntity, string> {
+          abstract findByEmail(email: string): Promise<UserEntity | null>;
+        }
+      `,
+      "src/user.service.ts": `
+        import { UserRepository } from "./user.repository";
+        function Injectable(): ClassDecorator { return () => {}; }
+        class DataSource {}
+        class OrmMigrationRunner {}
+
+        @Injectable()
+        export class UserService {
+          constructor(
+            private readonly users: UserRepository,
+            private readonly dataSource: DataSource,
+            private readonly migrations: OrmMigrationRunner,
+          ) {}
+        }
+      `,
+      "src/app.module.ts": `
+        import { UserEntity } from "./user.entity";
+        import { UserRepository } from "./user.repository";
+        import { UserService } from "./user.service";
+        function Module(_m: any): ClassDecorator { return () => {}; }
+        const OrmModule = { forFeature: (_t: any[]) => ({}) };
+
+        @Module({
+          imports: [OrmModule.forFeature([UserEntity, UserRepository])],
+          providers: [UserService],
+        })
+        export class AppModule {}
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+
+    expect(snap.entities.length).toBe(1);
+    expect(snap.entities[0]!.tableName).toBe("app_users");
+    expect(snap.entities[0]!.idTsType).toBe("string");
+
+    expect(snap.repositories.length).toBe(1);
+    expect(snap.repositories[0]!.driver).toBe("orm");
+    expect(snap.repositories[0]!.tableName).toBe("app_users");
+
+    const errors = snap.diagnostics.filter((d) => d.severity === "error");
+    expect(errors).toHaveLength(0);
+  });
+});

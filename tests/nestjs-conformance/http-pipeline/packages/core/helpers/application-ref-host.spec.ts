@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeEach, expect, it } from "bun:test";
 import { HttpAdapterHost } from "../../../../../../packages/core/src";
 import { describeConformance, itAdapted } from "../../../../_helpers";

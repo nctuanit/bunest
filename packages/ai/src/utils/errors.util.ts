@@ -1,8 +1,8 @@
-import { HttpException } from '@bunest/common';
-import { AiToolError } from '../errors/ai.errors';
+import { HttpException } from "@bunest/core";
+import { AiToolError } from "../errors/ai.errors";
 
 /** What the model is told about an error that is not meant for it. */
-export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
+export const INTERNAL_ERROR_MESSAGE = "Internal server error";
 
 /**
  * The message of an `HttpException`, as its response body carries it: a string response, the body's `message`
@@ -10,14 +10,14 @@ export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
  */
 export function httpExceptionMessage(exception: HttpException): string {
   const response = exception.getResponse();
-  if (typeof response === 'string') {
+  if (typeof response === "string") {
     return response;
   }
   const message = (response as { message?: unknown })?.message;
   if (Array.isArray(message)) {
-    return message.map(String).join('; ');
+    return message.map(String).join("; ");
   }
-  return typeof message === 'string' ? message : exception.message;
+  return typeof message === "string" ? message : exception.message;
 }
 
 /**
@@ -39,6 +39,7 @@ export function toToolError(error: unknown, toolName: string): AiToolError {
 export function isAbortError(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (error.name === 'AbortError' || (error as { code?: string }).code === 'ABORT_ERR')
+    (error.name === "AbortError" ||
+      (error as { code?: string }).code === "ABORT_ERR")
   );
 }

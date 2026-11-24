@@ -1,9 +1,6 @@
-import type { Readable } from "node:stream";
-
 /** Milliseconds, or a string such as `"250ms"`, `"30s"`, `"15m"`, `"6h"`, `"3d"`, `"1w"`. */
 export type Duration =
-  | number
-  | `${number}${"ms" | "s" | "m" | "h" | "d" | "w"}`;
+  number | `${number}${"ms" | "s" | "m" | "h" | "d" | "w"}`;
 
 /** How long to wait between attempts. */
 export interface StorageBackoffOptions {
@@ -23,8 +20,7 @@ export interface StorageRetryOptions {
   attempts?: number;
   /** A function gets the attempt that just failed (1-based) and its error. */
   backoff?:
-    | StorageBackoffOptions
-    | ((attempt: number, error: unknown) => Duration);
+    StorageBackoffOptions | ((attempt: number, error: unknown) => Duration);
   /** Asked about every failure that would be retried; return `false` to stop. */
   retryIf?: (error: unknown, attempt: number) => boolean;
 }
@@ -88,7 +84,6 @@ export type StorageBody =
   | Buffer
   | Uint8Array
   | string
-  | Readable
   | ReadableStream<Uint8Array>
   | AsyncIterable<Uint8Array>;
 
@@ -122,9 +117,9 @@ export type StorageRange =
       suffix: number;
     };
 
-/** What `get()` resolves to: the metadata and the body as a Node `Readable`. */
+/** What `get()` resolves to: the metadata and the body as a Web `ReadableStream<Uint8Array>`. */
 export interface StorageDownload extends StorageFile {
-  body: Readable;
+  body: ReadableStream<Uint8Array>;
   range?: {
     start: number;
     end: number;
@@ -207,8 +202,10 @@ export interface ServeFileOptions {
   cacheControl?: string;
 }
 
-export interface ServeSignedUrlOptions
-  extends Omit<ServeFileOptions, "filename" | "disposition"> {
+export interface ServeSignedUrlOptions extends Omit<
+  ServeFileOptions,
+  "filename" | "disposition"
+> {
   req: unknown;
 }
 
@@ -240,13 +237,13 @@ export interface StoredUpload {
 
 export interface UploadStorageEngine {
   _handleFile(
-    req: any,
-    file: any,
-    callback: (error?: any, info?: Partial<StoredUpload>) => void,
+    req: unknown,
+    file: unknown,
+    callback: (error?: unknown, info?: Partial<StoredUpload>) => void,
   ): void;
   _removeFile(
-    req: any,
-    file: any,
+    req: unknown,
+    file: unknown,
     callback: (error: Error | null) => void,
   ): void;
 }

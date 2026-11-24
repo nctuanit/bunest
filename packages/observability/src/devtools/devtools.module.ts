@@ -6,7 +6,7 @@ import {
   type DynamicModule,
   type Provider,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   DEVTOOLS_OPTIONS,
   DevtoolsService,
@@ -99,8 +99,7 @@ export class DevtoolsModule {
    * NestJS `@nestjs/devtools-integration` compatible synchronous registration.
    */
   static register(options: DevtoolsModuleOptions = {}): DynamicModule {
-    const exposeEndpoints =
-      options.exposeEndpoints ?? options.http ?? true;
+    const exposeEndpoints = options.exposeEndpoints ?? options.http ?? true;
     const basePath = options.path ?? "/_devtools";
 
     const controllers: Type<unknown>[] = exposeEndpoints
@@ -123,8 +122,7 @@ export class DevtoolsModule {
    * NestJS `@nestjs/devtools-integration` compatible asynchronous registration.
    */
   static registerAsync(options: DevtoolsModuleAsyncOptions): DynamicModule {
-    const exposeEndpoints =
-      options.exposeEndpoints ?? options.http ?? true;
+    const exposeEndpoints = options.exposeEndpoints ?? options.http ?? true;
     const basePath = options.path ?? "/_devtools";
 
     const controllers: Type<unknown>[] = exposeEndpoints

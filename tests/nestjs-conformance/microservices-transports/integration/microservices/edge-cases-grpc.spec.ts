@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { Controller } from "../../../../../packages/common/src";
+import { Controller } from "../../../../../packages/core/src/common";
 import {
   GrpcClientProxy,
   GrpcException,
@@ -117,7 +116,12 @@ describeConformance(
     it.skip("fails a unary call whose handler completes without a response", async () => {
       let caught: unknown;
       try {
-        await client.call("Edge", "CompleteEmpty", { value: 1 }, { timeoutMs: 2000 });
+        await client.call(
+          "Edge",
+          "CompleteEmpty",
+          { value: 1 },
+          { timeoutMs: 2000 },
+        );
       } catch (err) {
         caught = err;
       }
@@ -176,7 +180,9 @@ describeConformance(
         }
 
         expect(caught).toBeInstanceOf(GrpcException);
-        expect((caught as GrpcException).code).toBe(GrpcStatus.INVALID_ARGUMENT);
+        expect((caught as GrpcException).code).toBe(
+          GrpcStatus.INVALID_ARGUMENT,
+        );
         expect((caught as GrpcException).details).toBe("echo rejected");
       },
     );
@@ -187,13 +193,20 @@ describeConformance(
       async () => {
         let caught: unknown;
         try {
-          await client.call("Edge", "CollectThrow", { value: 1 }, { timeoutMs: 2000 });
+          await client.call(
+            "Edge",
+            "CollectThrow",
+            { value: 1 },
+            { timeoutMs: 2000 },
+          );
         } catch (err) {
           caught = err;
         }
 
         expect(caught).toBeInstanceOf(GrpcException);
-        expect((caught as GrpcException).code).toBe(GrpcStatus.INVALID_ARGUMENT);
+        expect((caught as GrpcException).code).toBe(
+          GrpcStatus.INVALID_ARGUMENT,
+        );
         expect((caught as GrpcException).details).toBe("collect rejected");
       },
     );
@@ -219,7 +232,9 @@ describeConformance(
 
         expect(received).toEqual([{ value: 1 }]);
         expect(caught).toBeInstanceOf(GrpcException);
-        expect((caught as GrpcException).code).toBe(GrpcStatus.INVALID_ARGUMENT);
+        expect((caught as GrpcException).code).toBe(
+          GrpcStatus.INVALID_ARGUMENT,
+        );
         expect((caught as GrpcException).details).toBe("echo rejected");
         expect(moduleRef.get(EdgeController).echoRejectRequestEvents).toEqual([
           "complete",

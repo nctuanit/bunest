@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, removePath } from "@bunest/core";
 import { buildStaticSite } from "../src/build";
 import { loadAllDocs } from "../src/content-loader";
 import { renderMarkdown } from "../src/markdown";
@@ -118,7 +116,11 @@ describe("@bunest/docs engine", () => {
       expect(await ctrlRes.text()).toContain("@Controller");
 
       expect(jsonRes.status).toBe(200);
-      const pageJson = (await jsonRes.json()) as { slug: string; title: string; toc: unknown[] };
+      const pageJson = (await jsonRes.json()) as {
+        slug: string;
+        title: string;
+        toc: unknown[];
+      };
       expect(pageJson.slug).toBe("overview/controllers");
       expect(pageJson.title).toBe("Controllers");
       expect(pageJson.toc.length).toBeGreaterThan(3);
@@ -131,7 +133,9 @@ describe("@bunest/docs engine", () => {
       expect(cssRes.headers.get("content-type")).toContain("text/css");
 
       expect(jsRes.status).toBe(200);
-      expect(jsRes.headers.get("content-type")).toContain("application/javascript");
+      expect(jsRes.headers.get("content-type")).toContain(
+        "application/javascript",
+      );
 
       expect(notFoundRes.status).toBe(404);
     } finally {
@@ -140,7 +144,11 @@ describe("@bunest/docs engine", () => {
   });
 
   test("builds GitHub Pages static bundle with custom basePath, .nojekyll, and prefixed links/assets", async () => {
-    const outDir = join(tmpdir(), `bunest-docs-ghpages-${Date.now()}`);
+    const tmpDir = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+    const outDir = join(
+      tmpDir,
+      `bunest-docs-ghpages-${Date.now()}-${crypto.randomUUID()}`,
+    );
     try {
       const result = await buildStaticSite({
         basePath: "/bunest",
@@ -152,8 +160,12 @@ describe("@bunest/docs engine", () => {
 
       expect(await Bun.file(join(outDir, ".nojekyll")).exists()).toBe(true);
       expect(await Bun.file(join(outDir, "404.html")).exists()).toBe(true);
-      expect(await Bun.file(join(outDir, "assets", "client.js")).exists()).toBe(true);
-      expect(await Bun.file(join(outDir, "assets", "styles.css")).exists()).toBe(true);
+      expect(await Bun.file(join(outDir, "assets", "client.js")).exists()).toBe(
+        true,
+      );
+      expect(
+        await Bun.file(join(outDir, "assets", "styles.css")).exists(),
+      ).toBe(true);
 
       const indexHtml = await Bun.file(join(outDir, "index.html")).text();
       expect(indexHtml).toContain('data-base-path="/bunest"');
@@ -172,12 +184,16 @@ describe("@bunest/docs engine", () => {
 
       const controllersJson = (await Bun.file(
         join(outDir, "data", "overview", "controllers.json"),
-      ).json()) as { href: string; prev?: { href: string }; next?: { href: string } };
+      ).json()) as {
+        href: string;
+        prev?: { href: string };
+        next?: { href: string };
+      };
       expect(controllersJson.href).toBe("/bunest/overview/controllers");
       expect(controllersJson.prev?.href.startsWith("/bunest/")).toBe(true);
       expect(controllersJson.next?.href.startsWith("/bunest/")).toBe(true);
     } finally {
-      await rm(outDir, { recursive: true, force: true });
+      await removePath(outDir, { recursive: true, force: true });
     }
   });
 });

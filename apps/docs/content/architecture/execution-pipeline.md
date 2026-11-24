@@ -31,14 +31,14 @@ Incoming Request
 
 ## Precedence Rules Matrix
 
-| Mechanism | Execution Order | Short-Circuit / Override Semantics |
-|---|---|---|
-| **Middleware** | Global &rarr; Module (topological order) | Returning `Response` or throwing stops downstream stages |
-| **Guards** | Global &rarr; Controller &rarr; Method | All must pass; first `false` (403) or throw stops pipeline before body parsing |
-| **Interceptors (before)** | Global &rarr; Controller &rarr; Method | Outer wraps inner; skipping `next.handle()` bypasses handler |
-| **Pipes** | Global &rarr; Controller &rarr; Method &rarr; Parameter | Chained sequentially per parameter (`v0 -> p1 -> p2 -> ... -> vn`) |
-| **Interceptors (after)** | Method &rarr; Controller &rarr; Global | Inner unwinds and transforms result before outer |
-| **Exception Filters** | **Method &rarr; Controller &rarr; Global &rarr; Default** | **Most-specific first**; first `@Catch(...)` `instanceof` match wins |
+| Mechanism                 | Execution Order                                           | Short-Circuit / Override Semantics                                             |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Middleware**            | Global &rarr; Module (topological order)                  | Returning `Response` or throwing stops downstream stages                       |
+| **Guards**                | Global &rarr; Controller &rarr; Method                    | All must pass; first `false` (403) or throw stops pipeline before body parsing |
+| **Interceptors (before)** | Global &rarr; Controller &rarr; Method                    | Outer wraps inner; skipping `next.handle()` bypasses handler                   |
+| **Pipes**                 | Global &rarr; Controller &rarr; Method &rarr; Parameter   | Chained sequentially per parameter (`v0 -> p1 -> p2 -> ... -> vn`)             |
+| **Interceptors (after)**  | Method &rarr; Controller &rarr; Global                    | Inner unwinds and transforms result before outer                               |
+| **Exception Filters**     | **Method &rarr; Controller &rarr; Global &rarr; Default** | **Most-specific first**; first `@Catch(...)` `instanceof` match wins           |
 
 ## Compile-at-Bootstrap Hot Path
 

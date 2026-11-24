@@ -45,17 +45,9 @@ export type HtmlValue =
 /** What follows a `<` that opens a tag, an end tag, a comment or a declaration. */
 const TAG_START = /[A-Za-z/!?]/;
 
-const ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** Escapes `& < > " '`, which makes text safe in element content and in quoted attribute values. */
+/** Escapes `& < > " '`, which makes text safe in element content and in quoted attribute values (via SIMD `Bun.escapeHTML`). */
 export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ESCAPES[c]!);
+  return Bun.escapeHTML(text);
 }
 
 /**

@@ -1,5 +1,5 @@
-import type { ServerResponse } from 'node:http';
-import { AiConfigurationError } from '../errors/ai.errors';
+import type { HttpServerResponseLike as ServerResponse } from "@bunest/core";
+import { AiConfigurationError } from "../errors/ai.errors";
 
 interface FastifyReplyLike {
   hijack(): void;
@@ -10,16 +10,16 @@ interface FastifyReplyLike {
 function isFastifyReply(value: unknown): value is FastifyReplyLike {
   const reply = value as FastifyReplyLike | null | undefined;
   return (
-    typeof reply?.hijack === 'function' &&
-    typeof reply.raw?.writeHead === 'function'
+    typeof reply?.hijack === "function" &&
+    typeof reply.raw?.writeHead === "function"
   );
 }
 
 function isServerResponse(value: unknown): value is ServerResponse {
   const response = value as ServerResponse | null | undefined;
   return (
-    typeof response?.writeHead === 'function' &&
-    typeof response.on === 'function'
+    typeof response?.writeHead === "function" &&
+    typeof response.on === "function"
   );
 }
 
@@ -39,7 +39,7 @@ export function toNodeResponse(response: unknown): {
         response.hijack();
         for (const [name, value] of Object.entries(headers)) {
           if (value !== undefined && !response.raw.hasHeader?.(name)) {
-            response.raw.setHeader(name, value as any);
+            response.raw.setHeader(name, value);
           }
         }
       },
@@ -49,7 +49,7 @@ export function toNodeResponse(response: unknown): {
     return { res: response, open: () => {} };
   }
   throw new AiConfigurationError(
-    'Pass the response that @Res() injects (Node ServerResponse or Fastify reply) to pipeUIMessageStreamToResponse() and pipeTextStreamToResponse().',
+    "Pass the response that @Res() injects (Node ServerResponse or Fastify reply) to pipeUIMessageStreamToResponse() and pipeTextStreamToResponse().",
   );
 }
 
@@ -67,16 +67,16 @@ export async function writeWebResponse(
   }
   const headers: Record<string, string | string[]> = {};
   response.headers.forEach((value, name) => {
-    if (name !== 'set-cookie') {
+    if (name !== "set-cookie") {
       headers[name] = value;
     }
   });
   const cookies =
-    typeof response.headers.getSetCookie === 'function'
+    typeof response.headers.getSetCookie === "function"
       ? response.headers.getSetCookie()
       : [];
   if (cookies.length > 0) {
-    headers['set-cookie'] = cookies;
+    headers["set-cookie"] = cookies;
   }
   for (const [name, value] of Object.entries(headers)) {
     res.setHeader(name, value);
@@ -97,7 +97,7 @@ export async function writeWebResponse(
       reader.cancel().catch(() => {});
     }
   };
-  res.once('close', onClose);
+  res.once("close", onClose);
   try {
     for (;;) {
       const next = await reader.read();
@@ -107,7 +107,7 @@ export async function writeWebResponse(
       if (!res.write(next.value)) {
         await new Promise<void>((resolve) => {
           release = resolve;
-          res.once('drain', resolve);
+          res.once("drain", resolve);
         });
         release = undefined;
       }
@@ -120,6 +120,6 @@ export async function writeWebResponse(
   } catch {
     res.destroy();
   } finally {
-    res.off('close', onClose);
+    res.off("close", onClose);
   }
 }

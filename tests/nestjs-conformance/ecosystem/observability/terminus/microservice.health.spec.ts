@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { Transport } from "../../../../../packages/microservices/src";
 import {
@@ -113,12 +111,13 @@ describeConformance(
 
     it("adds the error code to a failed result (a real TCP client on a closed port)", async () => {
       // A port that was just free and is closed again
-      const server = net.createServer();
-      await new Promise<void>((resolve) =>
-        server.listen(0, "127.0.0.1", resolve),
-      );
-      const { port } = server.address() as net.AddressInfo;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const server = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: { data() {} },
+      });
+      const { port } = server;
+      server.stop(true);
 
       const result = await microservice.pingCheck("tcp", {
         transport: Transport.TCP,
@@ -181,11 +180,12 @@ describeConformance(
         ["ADR-001"],
         "probes RMQ transport urls without asserting a queue",
         async () => {
-          const server = net.createServer();
-          await new Promise<void>((resolve) =>
-            server.listen(0, "127.0.0.1", resolve),
-          );
-          const { port } = server.address() as net.AddressInfo;
+          const server = Bun.listen({
+            hostname: "127.0.0.1",
+            port: 0,
+            socket: { data() {} },
+          });
+          const { port } = server;
           try {
             const result = await microservice.pingCheck("rmq", {
               transport: Transport.RMQ,
@@ -195,7 +195,7 @@ describeConformance(
               rmq: { status: "up", responseTime: expect.any(Number) },
             });
           } finally {
-            await new Promise<void>((resolve) => server.close(() => resolve()));
+            server.stop(true);
           }
         },
         "Zero-dep MicroserviceHealthIndicator extracts host:port from options.urls for raw TCP probe without amqplib queue assertion",
@@ -205,11 +205,12 @@ describeConformance(
         ["ADR-001"],
         "probes RMQ transport urls when queue is undefined",
         async () => {
-          const server = net.createServer();
-          await new Promise<void>((resolve) =>
-            server.listen(0, "127.0.0.1", resolve),
-          );
-          const { port } = server.address() as net.AddressInfo;
+          const server = Bun.listen({
+            hostname: "127.0.0.1",
+            port: 0,
+            socket: { data() {} },
+          });
+          const { port } = server;
           try {
             const result = await microservice.pingCheck("rmq", {
               transport: Transport.RMQ,
@@ -217,7 +218,7 @@ describeConformance(
             });
             expect(result.rmq.status).toBe("up");
           } finally {
-            await new Promise<void>((resolve) => server.close(() => resolve()));
+            server.stop(true);
           }
         },
         "Zero-dep raw TCP probe over options.urls with queue: undefined",

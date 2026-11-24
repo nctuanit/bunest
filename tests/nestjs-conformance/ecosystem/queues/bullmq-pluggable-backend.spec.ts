@@ -1,15 +1,10 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
 import {
   BullModule,
   getFlowProducerToken,
   getQueueToken,
-} from "../../../../packages/queues/src";
-import {
-  Test,
-  TestingModule,
-  describeConformance,
-} from "../../_helpers/index";
+} from "../../../../packages/jobs/src/queues";
+import { Test, TestingModule, describeConformance } from "../../_helpers/index";
 
 const queueCtorSpy = mock((..._args: unknown[]) => {});
 const workerCtorSpy = mock((..._args: unknown[]) => {});
@@ -74,7 +69,7 @@ describeConformance(
       BullModule.flowProducerClass = undefined;
     });
 
-    // BUNEST_BUG: Expected BullModule.queueClass constructor to receive `backendFactory` as the 3rd argument `(name, opts, backendFactory)`, actual passes only 2 args `(name, merged)` (3rd arg is `undefined`) in buildQueueInstance() (packages/queues/src/adapters/bullmq.adapter.ts).
+    // BUNEST_BUG: Expected BullModule.queueClass constructor to receive `backendFactory` as the 3rd argument `(name, opts, backendFactory)`, actual passes only 2 args `(name, merged)` (3rd arg is `undefined`) in buildQueueInstance() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
     it.skip("should pass backendFactory to Queue constructor when configured in registerQueue", async () => {
       const mockBackendFactory = mock(() => ({}));
       const queueName = "postgres-queue";
@@ -101,7 +96,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected BullModule.registerQueue({ backendFactory, processors: [callback] }) to instantiate BullModule.workerClass with `(queueName, callback, opts, backendFactory)`, actual never instantiates workerClass for inline processors in buildQueueInstance() (packages/queues/src/adapters/bullmq.adapter.ts).
+    // BUNEST_BUG: Expected BullModule.registerQueue({ backendFactory, processors: [callback] }) to instantiate BullModule.workerClass with `(queueName, callback, opts, backendFactory)`, actual never instantiates workerClass for inline processors in buildQueueInstance() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
     it.skip("should pass backendFactory to Worker constructor when configured in queue processors", async () => {
       const mockBackendFactory = mock(() => ({}));
       const queueName = "postgres-worker-queue";
@@ -127,7 +122,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected BullModule.flowProducerClass constructor to receive `backendFactory` as the 2nd argument `(opts, backendFactory)`, actual passes only 1 arg `(merged)` (2nd arg is `undefined`) in BullModule.registerFlowProducer() (packages/queues/src/adapters/bullmq.adapter.ts).
+    // BUNEST_BUG: Expected BullModule.flowProducerClass constructor to receive `backendFactory` as the 2nd argument `(opts, backendFactory)`, actual passes only 1 arg `(merged)` (2nd arg is `undefined`) in BullModule.registerFlowProducer() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
     it.skip("should pass backendFactory to FlowProducer constructor when configured in registerFlowProducer", async () => {
       const mockBackendFactory = mock(() => ({}));
       const flowName = "postgres-flow";
@@ -155,7 +150,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected backendFactory from BullModule.forRoot() to be passed as the 3rd argument to BullModule.queueClass constructor `(name, opts, backendFactory)`, actual passes only 2 args `(name, merged)` (3rd arg is `undefined`) in buildQueueInstance() (packages/queues/src/adapters/bullmq.adapter.ts).
+    // BUNEST_BUG: Expected backendFactory from BullModule.forRoot() to be passed as the 3rd argument to BullModule.queueClass constructor `(name, opts, backendFactory)`, actual passes only 2 args `(name, merged)` (3rd arg is `undefined`) in buildQueueInstance() (packages/jobs/src/queues/adapters/bullmq.adapter.ts).
     it.skip("should propagate backendFactory from root module options to registered queues", async () => {
       const mockBackendFactory = mock(() => ({}));
       const queueName = "inherited-backend-queue";

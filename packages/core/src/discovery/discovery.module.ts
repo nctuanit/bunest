@@ -1,4 +1,4 @@
-import { Global, Module } from "@bunest/common";
+import { Global, Module } from "../common/index";
 
 /**
  * Convenience global module exported for NestJS migration parity.

@@ -35,7 +35,11 @@ async function makeMessage(overrides: Record<string, unknown> = {}) {
     headers: { "X-Ref": "123" },
     attachments: [
       { cid: "logo", content: Buffer.from("png"), contentType: "image/png" },
-      { filename: "inv.pdf", content: Buffer.from("pdf"), contentType: "application/pdf" },
+      {
+        filename: "inv.pdf",
+        content: Buffer.from("pdf"),
+        contentType: "application/pdf",
+      },
     ],
     ...overrides,
   });
@@ -46,7 +50,10 @@ async function makeMessage(overrides: Record<string, unknown> = {}) {
 describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
   it("ResendTransport sends expected payload, idempotency key, and maps errors", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
-    const mockFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const mockFetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
       calls.push({ url: String(url), init: init ?? {} });
       return new Response(JSON.stringify({ id: "re_msg_123" }), {
         status: 200,
@@ -54,7 +61,10 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
       });
     }) as unknown as typeof fetch;
 
-    const transport = new ResendTransport({ apiKey: "re_test_key", fetch: mockFetch });
+    const transport = new ResendTransport({
+      apiKey: "re_test_key",
+      fetch: mockFetch,
+    });
     const msg = await makeMessage();
     const res = await transport.send(msg, {
       signal: new AbortController().signal,
@@ -82,12 +92,18 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
       apiKey: "re_k",
       fetch: (async () =>
         new Response(
-          JSON.stringify({ name: "concurrent_idempotent_requests", message: "busy" }),
+          JSON.stringify({
+            name: "concurrent_idempotent_requests",
+            message: "busy",
+          }),
           { status: 409, headers: { "retry-after": "3" } },
         )) as unknown as typeof fetch,
     });
     try {
-      await errTransport.send(msg, { signal: new AbortController().signal, attempt: 1 });
+      await errTransport.send(msg, {
+        signal: new AbortController().signal,
+        attempt: 1,
+      });
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(MailProviderError);
@@ -96,14 +112,24 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
     }
 
     // Missing `to` fails with MailMessageError
-    const noTo = await makeMessage({ to: undefined, bcc: "only-bcc@example.com" });
+    const noTo = await makeMessage({
+      to: undefined,
+      bcc: "only-bcc@example.com",
+    });
     await expect(
-      transport.send(noTo, { signal: new AbortController().signal, attempt: 1 }),
+      transport.send(noTo, {
+        signal: new AbortController().signal,
+        attempt: 1,
+      }),
     ).rejects.toThrow(MailMessageError);
 
     // Non-HTTPS baseUrl rejected for non-localhost
     expect(
-      () => new ResendTransport({ apiKey: "k", baseUrl: "http://evil.example.com" }),
+      () =>
+        new ResendTransport({
+          apiKey: "k",
+          baseUrl: "http://evil.example.com",
+        }),
     ).toThrow(TypeError);
   });
 
@@ -116,16 +142,23 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
       fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
         capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
         capturedBody = JSON.parse(String(init?.body));
-        return new Response(JSON.stringify({ MessageID: "pm_id_1" }), { status: 200 });
+        return new Response(JSON.stringify({ MessageID: "pm_id_1" }), {
+          status: 200,
+        });
       }) as unknown as typeof fetch,
     });
 
     const msg = await makeMessage();
-    const res = await transport.send(msg, { signal: new AbortController().signal, attempt: 1 });
+    const res = await transport.send(msg, {
+      signal: new AbortController().signal,
+      attempt: 1,
+    });
     expect(res.providerMessageId).toBe("pm_id_1");
     expect(capturedHeaders["x-postmark-server-token"]).toBe("pm-tok");
     expect(capturedBody.MessageStream).toBe("broadcast");
-    expect((capturedBody.Attachments as Array<{ ContentID?: string }>)[0]?.ContentID).toBe("cid:logo");
+    expect(
+      (capturedBody.Attachments as Array<{ ContentID?: string }>)[0]?.ContentID,
+    ).toBe("cid:logo");
 
     const failTransport = new PostmarkTransport({
       serverToken: "pm-tok",
@@ -135,7 +168,10 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
         })) as unknown as typeof fetch,
     });
     try {
-      await failTransport.send(msg, { signal: new AbortController().signal, attempt: 1 });
+      await failTransport.send(msg, {
+        signal: new AbortController().signal,
+        attempt: 1,
+      });
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(MailProviderError);
@@ -159,23 +195,30 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
     });
 
     const msg = await makeMessage();
-    const res = await transport.send(msg, { signal: new AbortController().signal, attempt: 1 });
+    const res = await transport.send(msg, {
+      signal: new AbortController().signal,
+      attempt: 1,
+    });
     expect(res.providerMessageId).toBe("sg_mid_42");
-    expect((capturedBody.content as Array<{ type: string }>).map((c) => c.type)).toEqual([
-      "text/plain",
-      "text/html",
-    ]);
+    expect(
+      (capturedBody.content as Array<{ type: string }>).map((c) => c.type),
+    ).toEqual(["text/plain", "text/html"]);
 
     const errTransport = new SendGridTransport({
       apiKey: "sg_key",
       fetch: (async () =>
         new Response(
-          JSON.stringify({ errors: [{ field: "from", message: "unverified" }] }),
+          JSON.stringify({
+            errors: [{ field: "from", message: "unverified" }],
+          }),
           { status: 403 },
         )) as unknown as typeof fetch,
     });
     await expect(
-      errTransport.send(msg, { signal: new AbortController().signal, attempt: 1 }),
+      errTransport.send(msg, {
+        signal: new AbortController().signal,
+        attempt: 1,
+      }),
     ).rejects.toThrow(/from: unverified/);
   });
 
@@ -196,14 +239,21 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
         capturedUrl = String(url);
         capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
         capturedBody = JSON.parse(String(init?.body));
-        return new Response(JSON.stringify({ MessageId: "ses-mid-99" }), { status: 200 });
+        return new Response(JSON.stringify({ MessageId: "ses-mid-99" }), {
+          status: 200,
+        });
       }) as unknown as typeof fetch,
     });
 
     const msg = await makeMessage();
-    const res = await transport.send(msg, { signal: new AbortController().signal, attempt: 1 });
+    const res = await transport.send(msg, {
+      signal: new AbortController().signal,
+      attempt: 1,
+    });
     expect(res.providerMessageId).toBe("ses-mid-99");
-    expect(capturedUrl).toBe("https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails");
+    expect(capturedUrl).toBe(
+      "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails",
+    );
     expect(capturedHeaders["x-amz-security-token"]).toBe("SESSION_TOK");
     expect(capturedHeaders["x-amz-date"]).toMatch(/^\d{8}T\d{6}Z$/);
     expect(capturedHeaders.authorization).toMatch(
@@ -255,11 +305,16 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
         })) as unknown as typeof fetch,
     });
     try {
-      await throttled.send(msg, { signal: new AbortController().signal, attempt: 1 });
+      await throttled.send(msg, {
+        signal: new AbortController().signal,
+        attempt: 1,
+      });
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(MailProviderError);
-      expect((err as MailProviderError).providerCode).toBe("ThrottlingException");
+      expect((err as MailProviderError).providerCode).toBe(
+        "ThrottlingException",
+      );
       expect((err as MailProviderError).permanent).toBe(false);
     }
   });
@@ -272,7 +327,9 @@ describe("HTTP Provider Transports (Resend, Postmark, SendGrid, SES)", () => {
       timeout: "30ms",
       fetch: (async (_url: string | URL | Request, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
         })) as unknown as typeof fetch,
     });
     await expect(

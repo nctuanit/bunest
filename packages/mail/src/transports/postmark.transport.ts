@@ -98,8 +98,7 @@ export class PostmarkTransport extends HttpProviderTransport {
         headers.get("x-pm-apierrorcode") ??
         undefined,
       detail:
-        field(body, "Message") ??
-        (typeof body === "string" ? body : undefined),
+        field(body, "Message") ?? (typeof body === "string" ? body : undefined),
       retryAfterMs,
     });
   }

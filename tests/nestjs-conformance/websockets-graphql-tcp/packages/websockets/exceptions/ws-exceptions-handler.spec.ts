@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type ArgumentsHost,
@@ -7,7 +6,7 @@ import {
   type ExceptionFilter,
   type LoggerService,
   UseFilters,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import {
   BaseWsExceptionFilter,
   type BunServerWebSocketLike,
@@ -19,7 +18,7 @@ import {
   WebSocketGateway,
   WsException,
   WsExecutionContext,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import {
   createSpy,
   createStub,
@@ -141,7 +140,11 @@ describeConformance(
       });
 
       it("should correlate error frame with frameId when provided", () => {
-        filter.catch(new WsException("Unauthorized"), executionContext, "req-9");
+        filter.catch(
+          new WsException("Unauthorized"),
+          executionContext,
+          "req-9",
+        );
 
         expect(
           emitStub.calledOnceWithExactly(
@@ -153,7 +156,11 @@ describeConformance(
       });
 
       it("should emit structured HttpException payload without crashing socket", () => {
-        filter.catch(new BadRequestException("Invalid payload"), executionContext, "req-2");
+        filter.catch(
+          new BadRequestException("Invalid payload"),
+          executionContext,
+          "req-2",
+        );
 
         expect(emitStub.calledOnce).toBe(true);
         expect(emitStub.firstCall?.args[0]).toBe("error");
@@ -215,7 +222,7 @@ describeConformance(
           expect(loggerErrorSpy.notCalled).toBe(true);
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter.catch() in packages/websockets/src/filters/base-ws-exception.filter.ts spreads `...errPayload` when `WsException` wraps an `Error` instance (which is typeof "object"), leaking own enumerable sensitive properties (e.g. `config.headers.Authorization`) instead of logging the error and emitting generic `{ status: "error", message: "Internal server error" }`.
+        // BUNEST_BUG: BaseWsExceptionFilter.catch() in packages/core/src/ws/filters/base-ws-exception.filter.ts spreads `...errPayload` when `WsException` wraps an `Error` instance (which is typeof "object"), leaking own enumerable sensitive properties (e.g. `config.headers.Authorization`) instead of logging the error and emitting generic `{ status: "error", message: "Internal server error" }`.
         it.skip("should emit the unknown error payload and log the error when WsException holds an Error instance", () => {
           const error = Object.assign(new Error("Request failed"), {
             config: { headers: { Authorization: "Bearer secret" } },
@@ -312,7 +319,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/websockets/src/filters/base-ws-exception.filter.ts does not treat Error instances wrapped inside WsException as unknown errors on native send path (leaks enumerable properties).
+        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not treat Error instances wrapped inside WsException as unknown errors on native send path (leaks enumerable properties).
         it.skip('should send the unknown error payload via "send" for WsException with error', () => {
           const error = Object.assign(new Error("Request failed"), {
             config: { headers: { Authorization: "Bearer secret" } },
@@ -334,13 +341,18 @@ describeConformance(
       });
 
       describe("NestJS v12 cause / includeCause / causeFactory / binary & circular sanitization", () => {
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/websockets/src/filters/base-ws-exception.filter.ts does not implement NestJS v12 WsExceptionsHandlerOptions (`includeCause`, `causeFactory`), `cause: { pattern, data }` emission, binary-data stripping (`Buffer`, `ArrayBuffer`, typed arrays, `DataView`, `Blob`, 100k-deep objects), or circular-JSON retry without cause.
+        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not implement NestJS v12 WsExceptionsHandlerOptions (`includeCause`, `causeFactory`), `cause: { pattern, data }` emission, binary-data stripping (`Buffer`, `ArrayBuffer`, typed arrays, `DataView`, `Blob`, 100k-deep objects), or circular-JSON retry without cause.
         it.skip("should include cause { pattern, data } by default and support includeCause: false & custom causeFactory without mutating caller options", () => {
           const options = Object.freeze({ includeCause: true });
-          const filterWithOpts = new (BaseWsExceptionFilter as unknown as new (
-            opts?: Record<string, unknown>,
-          ) => BaseWsExceptionFilter)(options);
-          filterWithOpts.catch(new WsException("Unauthorized"), executionContext);
+          const filterWithOpts = new (
+            BaseWsExceptionFilter as unknown as new (
+              opts?: Record<string, unknown>,
+            ) => BaseWsExceptionFilter
+          )(options);
+          filterWithOpts.catch(
+            new WsException("Unauthorized"),
+            executionContext,
+          );
           expect(emitStub.firstCall?.args[1]).toEqual({
             status: "error",
             message: "Unauthorized",
@@ -348,7 +360,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/websockets/src/filters/base-ws-exception.filter.ts does not strip binary payloads (Buffer, ArrayBuffer, Float32Array, DataView, Blob, or deeply nested objects) from error causes because cause emission is not implemented.
+        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not strip binary payloads (Buffer, ArrayBuffer, Float32Array, DataView, Blob, or deeply nested objects) from error causes because cause emission is not implemented.
         it.skip("should omit binary data (Buffer/ArrayBuffer/TypedArray/DataView/Blob/deeply nested) from emitted cause", () => {
           const binaryValues: unknown[] = [
             Buffer.from("x"),
@@ -374,11 +386,13 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/websockets/src/filters/base-ws-exception.filter.ts does not catch circular-reference JSON serialization failures or retry emit() without cause when emit throws.
+        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not catch circular-reference JSON serialization failures or retry emit() without cause when emit throws.
         it.skip("should drop cause and retry when payload data is circular or emit throws", () => {
           const circular: Record<string, unknown> = {};
           circular.self = circular;
-          emitStub.onFirstCall().throws(new RangeError("Maximum call stack size exceeded"));
+          emitStub
+            .onFirstCall()
+            .throws(new RangeError("Maximum call stack size exceeded"));
           const ctx = new WsExecutionContext(
             client,
             circular,
@@ -419,7 +433,10 @@ describeConformance(
             class SyncCustomFilter implements ExceptionFilter<MatchedException> {
               catch(exception: MatchedException, host: ArgumentsHost) {
                 syncFilterSpy(exception, host);
-                return { event: "sync_caught", data: { msg: exception.message } };
+                return {
+                  event: "sync_caught",
+                  data: { msg: exception.message },
+                };
               }
             }
 
@@ -428,7 +445,10 @@ describeConformance(
               async catch(exception: MatchedException, host: ArgumentsHost) {
                 await Promise.resolve();
                 asyncFilterSpy(exception, host);
-                return { event: "async_caught", data: { msg: exception.message } };
+                return {
+                  event: "async_caught",
+                  data: { msg: exception.message },
+                };
               }
             }
 
@@ -456,17 +476,27 @@ describeConformance(
             const { logger } = createLoggerStub();
             adapter = new BunWebSocketAdapter({}, undefined, logger);
             await adapter.registerGateway(new FilterUnitGateway());
-            const info = await adapter.listen({ port: 0, hostname: "127.0.0.1" });
+            const info = await adapter.listen({
+              port: 0,
+              hostname: "127.0.0.1",
+            });
 
-            const ws = new WebSocket(`ws://127.0.0.1:${info.port}/ws/filter-unit`);
-            const frames: Array<{ event: string; data?: unknown; id?: string }> = [];
+            const ws = new WebSocket(
+              `ws://127.0.0.1:${info.port}/ws/filter-unit`,
+            );
+            const frames: Array<{
+              event: string;
+              data?: unknown;
+              id?: string;
+            }> = [];
             const waitFrame = (id: string) =>
               new Promise<{ event: string; data?: unknown; id?: string }>(
                 (resolve, reject) => {
                   const existing = frames.find((f) => f.id === id);
                   if (existing) return resolve(existing);
                   const timer = setTimeout(
-                    () => reject(new Error(`Timed out waiting for frame ${id}`)),
+                    () =>
+                      reject(new Error(`Timed out waiting for frame ${id}`)),
                     2000,
                   );
                   const onMsg = (ev: MessageEvent) => {

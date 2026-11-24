@@ -6,7 +6,7 @@ import {
   type CanActivate,
   type ExecutionContext,
   type Type,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
 import {
   POLICIES_KEY,

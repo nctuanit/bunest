@@ -1,12 +1,11 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import {
   Ack,
   WS_METADATA_KEYS,
   getGatewayMethodParams,
   type WsParamMetadata,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import { describeConformance } from "../../../../_helpers/index";
 
 class AckTest {

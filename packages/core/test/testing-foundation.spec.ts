@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   APP_FILTER,
@@ -41,7 +40,7 @@ import {
   type PipeTransform,
   type ResponseContext,
   type Type,
-} from "@bunest/common";
+} from "../src/common/index";
 import {
   BunestApplication,
   BunestApplicationContext,
@@ -273,13 +272,17 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
 
         constructor(
           @Inject(MISSING_A) public readonly depA: { kind: string },
-          @Optional() @Inject(OPTIONAL_MISSING) public readonly optParam?: string,
+          @Optional()
+          @Inject(OPTIONAL_MISSING)
+          public readonly optParam?: string,
         ) {}
       }
 
       @Injectable({ scope: Scope.TRANSIENT })
       class TransientConsumer {
-        constructor(@Inject(MISSING_A) public readonly depA: { kind: string }) {}
+        constructor(
+          @Inject(MISSING_A) public readonly depA: { kind: string },
+        ) {}
       }
 
       @Injectable({ scope: Scope.REQUEST })
@@ -414,7 +417,8 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
               RealAppGuard,
               makeFactoryOverride(
                 (priv: string, rootFlag: string): CanActivate => ({
-                  canActivate: () => priv === "priv-ok" && rootFlag === "root-ok",
+                  canActivate: () =>
+                    priv === "priv-ok" && rootFlag === "root-ok",
                 }),
                 [PRIVATE_SECRET, ROOT_FLAG],
               ),
@@ -521,10 +525,7 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
               }),
             ],
             // @UseFilters useClass(CatchAllReplacementFilter) MUST read replacement's @Catch() (empty catch-all)!
-            [
-              MethodDomainAFilter,
-              makeClassOverride(CatchAllReplacementFilter),
-            ],
+            [MethodDomainAFilter, makeClassOverride(CatchAllReplacementFilter)],
           ]),
         },
       });
@@ -708,8 +709,14 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
         logger: false,
         overrides: {
           providers: new Map<any, any>([
-            [DualClass, { provide: DualClass, useValue: { source: "mock-provider" } }],
-            [ShouldNotConstruct, { provide: ShouldNotConstruct, useValue: undefined }],
+            [
+              DualClass,
+              { provide: DualClass, useValue: { source: "mock-provider" } },
+            ],
+            [
+              ShouldNotConstruct,
+              { provide: ShouldNotConstruct, useValue: undefined },
+            ],
             [NullTarget, { provide: NullTarget, useValue: null }],
             [
               LIFECYCLE_TOK,
@@ -759,7 +766,9 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
       const guardOrder: string[] = [];
 
       @Injectable()
-      class TrackedService implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
+      class TrackedService
+        implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy
+      {
         onModuleInit() {
           hooks.push("init");
         }
@@ -970,9 +979,9 @@ describe("Core & HTTP Testing Foundation (overrideModule, useMocker, 5 Bug Fixes
 
       // flushLogs() replays buffered 500 error into customLogger!
       app.flushLogs();
-      expect(captured.some((e) => e.level === "error" && e.msg === "boom-unhandled")).toBe(
-        true,
-      );
+      expect(
+        captured.some((e) => e.level === "error" && e.msg === "boom-unhandled"),
+      ).toBe(true);
 
       // Subsequent 500 errors log directly to customLogger
       const prevLen = captured.length;

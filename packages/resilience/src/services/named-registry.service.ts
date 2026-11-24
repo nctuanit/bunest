@@ -55,10 +55,7 @@ export abstract class NamedRegistry<
     const existing = this.declarations.get(name);
     if (existing) {
       if (
-        !sameOptions(
-          this.normalize(existing.options),
-          this.normalize(options),
-        )
+        !sameOptions(this.normalize(existing.options), this.normalize(options))
       ) {
         throw new Error(
           `${this.kind} "${name}" is configured differently by ${existing.source} and ${source}. ` +
@@ -104,7 +101,9 @@ export abstract class NamedRegistry<
   }
 
   names(): string[] {
-    return [...new Set([...this.instances.keys(), ...this.declarations.keys()])];
+    return [
+      ...new Set([...this.instances.keys(), ...this.declarations.keys()]),
+    ];
   }
 }
 

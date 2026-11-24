@@ -6,7 +6,7 @@ import {
   createMethodAspectDecorator,
   type MethodAspectContext,
   type MethodAspectHandler,
-} from "@bunest/common";
+} from "../common/index";
 import {
   CLS_MODULE_OPTIONS,
   ClsService,
@@ -19,8 +19,7 @@ export interface WithClsOptions {
    * Accepts a static record or a factory receiving the method's arguments.
    */
   readonly initial?:
-    | Record<string, unknown>
-    | ((args: unknown[]) => Record<string, unknown>);
+    Record<string, unknown> | ((args: unknown[]) => Record<string, unknown>);
   /**
    * When true, reuses an existing active CLS context if present instead of
    * starting a fresh nested store.
@@ -30,10 +29,7 @@ export interface WithClsOptions {
   /**
    * Optional setup hook invoked inside the active CLS store before the method runs.
    */
-  readonly setup?: (
-    cls: ClsService,
-    args: unknown[],
-  ) => void | Promise<void>;
+  readonly setup?: (cls: ClsService, args: unknown[]) => void | Promise<void>;
 }
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {
@@ -49,9 +45,9 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  * background workers, cron jobs, event listeners, and standalone invocations.
  */
 @Injectable()
-export class WithClsAspect
-  implements MethodAspectHandler<WithClsOptions | undefined>
-{
+export class WithClsAspect implements MethodAspectHandler<
+  WithClsOptions | undefined
+> {
   constructor(
     @Optional()
     private readonly cls?: ClsService,

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   APP_FILTER,
@@ -35,7 +34,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
   type PipeTransform,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   BunHttpAdapter,
   UnknownDependencyException,
@@ -79,7 +78,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       }
 
       @Module({
-        providers: [{ provide: RealService, useClass: FakeService }, FakeService],
+        providers: [
+          { provide: RealService, useClass: FakeService },
+          FakeService,
+        ],
         exports: [RealService, FakeService],
       })
       class FakeModule {}
@@ -275,7 +277,9 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       try {
         expect(mod.get(AProvider).name).toBe("A");
         expect(mod.get(MockBProvider).name).toBe("MockB");
-        expect(() => mod.get(RealBProvider)).toThrow(UnknownDependencyException);
+        expect(() => mod.get(RealBProvider)).toThrow(
+          UnknownDependencyException,
+        );
       } finally {
         await mod.close();
       }
@@ -460,7 +464,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
 
       // 1. createMockFn spy API
       const spy = createMockFn<[number], number>();
-      spy.mockReturnValue(10).mockReturnValueOnce(1).mockImplementationOnce((x) => x * 3);
+      spy
+        .mockReturnValue(10)
+        .mockReturnValueOnce(1)
+        .mockImplementationOnce((x) => x * 3);
       expect(spy(2)).toBe(1);
       expect(spy(4)).toBe(12);
       expect(spy(5)).toBe(10);
@@ -474,7 +481,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       expect(spy(9)).toBeUndefined();
 
       const asyncSpy = createMockFn<[], Promise<string>>();
-      asyncSpy.mockResolvedValueOnce("first").mockRejectedValueOnce(new Error("boom")).mockResolvedValue("rest");
+      asyncSpy
+        .mockResolvedValueOnce("first")
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockResolvedValue("rest");
       expect(await asyncSpy()).toBe("first");
       await expect(asyncSpy()).rejects.toThrow("boom");
       expect(await asyncSpy()).toBe("rest");
@@ -504,7 +514,8 @@ describe("@bunest/testing Parity & Regression Suite", () => {
         constructor(
           readonly repo: UsersRepo,
           @Inject(CUSTOM_TOKEN) readonly custom: string,
-          @Inject(PROXY_TOKEN) readonly proxySvc: { run: (v: string) => string },
+          @Inject(PROXY_TOKEN)
+          readonly proxySvc: { run: (v: string) => string },
         ) {}
       }
 
@@ -688,7 +699,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       @Injectable()
       class RealAppFilter implements ExceptionFilter<AppDomainError> {
         catch(err: AppDomainError) {
-          return Response.json({ from: "real", msg: err.message }, { status: 418 });
+          return Response.json(
+            { from: "real", msg: err.message },
+            { status: 418 },
+          );
         }
       }
 
@@ -764,9 +778,11 @@ describe("@bunest/testing Parity & Regression Suite", () => {
           .get("/app-enh/ok/hi")
           .expect(200, { secret: "priv42", data: { word: "hi:priv42" } });
 
-        await request(app)
-          .get("/app-enh/err")
-          .expect(422, { from: "factory-filter", secret: "priv42", msg: "oops" });
+        await request(app).get("/app-enh/err").expect(422, {
+          from: "factory-filter",
+          secret: "priv42",
+          msg: "oops",
+        });
       } finally {
         await mod.close();
       }
@@ -780,7 +796,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       @Injectable()
       class FilterA implements ExceptionFilter<DomainAError> {
         catch(err: DomainAError) {
-          return Response.json({ filter: "realA", msg: err.message }, { status: 409 });
+          return Response.json(
+            { filter: "realA", msg: err.message },
+            { status: 409 },
+          );
         }
       }
 
@@ -788,7 +807,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       @Injectable()
       class FilterB implements ExceptionFilter<DomainBError> {
         catch(err: DomainBError) {
-          return Response.json({ filter: "classB", msg: err.message }, { status: 410 });
+          return Response.json(
+            { filter: "classB", msg: err.message },
+            { status: 410 },
+          );
         }
       }
 
@@ -818,13 +840,18 @@ describe("@bunest/testing Parity & Regression Suite", () => {
         .overrideFilter(FilterA)
         .useValue({
           catch: (err: DomainAError) =>
-            Response.json({ filter: "valA", msg: err.message }, { status: 418 }),
+            Response.json(
+              { filter: "valA", msg: err.message },
+              { status: 418 },
+            ),
         })
         .compile();
 
       try {
         const app = modVal.createNestApplication();
-        await request(app).get("/filters/a").expect(418, { filter: "valA", msg: "err-a" });
+        await request(app)
+          .get("/filters/a")
+          .expect(418, { filter: "valA", msg: "err-a" });
         // BadRequestException must fall through to DefaultExceptionFilter -> 400 (NOT caught by valA!)
         await request(app)
           .get("/filters/bad")
@@ -856,7 +883,10 @@ describe("@bunest/testing Parity & Regression Suite", () => {
         .overrideFilter(FilterA)
         .useValue({
           catch: (err: DomainAError) =>
-            Response.json({ filter: "appValA", msg: err.message }, { status: 418 }),
+            Response.json(
+              { filter: "appValA", msg: err.message },
+              { status: 418 },
+            ),
         })
         .compile();
 
@@ -886,7 +916,9 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       try {
         const app = modCls.createNestApplication();
         // DomainBError is now caught by FilterB -> 410
-        await request(app).get("/filters/b").expect(410, { filter: "classB", msg: "err-b" });
+        await request(app)
+          .get("/filters/b")
+          .expect(410, { filter: "classB", msg: "err-b" });
         // DomainAError is NO LONGER caught by FilterB -> unhandled 500
         await request(app).get("/filters/a").expect(500);
       } finally {
@@ -975,7 +1007,9 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       }
 
       @Injectable()
-      class DualGuardPipe implements CanActivate, PipeTransform<string, string> {
+      class DualGuardPipe
+        implements CanActivate, PipeTransform<string, string>
+      {
         canActivate() {
           return false;
         }
@@ -1018,8 +1052,12 @@ describe("@bunest/testing Parity & Regression Suite", () => {
 
       try {
         const app = modA.createNestApplication();
-        await request(app).get("/dual/pg").expect(200, { tag: "mock-provider" });
-        await request(app).get("/dual/gp/x").expect(200, { val: "mock-pipe:x" });
+        await request(app)
+          .get("/dual/pg")
+          .expect(200, { tag: "mock-provider" });
+        await request(app)
+          .get("/dual/gp/x")
+          .expect(200, { val: "mock-pipe:x" });
       } finally {
         await modA.close();
       }
@@ -1041,8 +1079,12 @@ describe("@bunest/testing Parity & Regression Suite", () => {
 
       try {
         const app = modB.createNestApplication();
-        await request(app).get("/dual/pg").expect(200, { tag: "mock-provider-b" });
-        await request(app).get("/dual/gp/y").expect(200, { val: "mock-pipe-b:y" });
+        await request(app)
+          .get("/dual/pg")
+          .expect(200, { tag: "mock-provider-b" });
+        await request(app)
+          .get("/dual/gp/y")
+          .expect(200, { val: "mock-pipe-b:y" });
       } finally {
         await modB.close();
       }
@@ -1069,7 +1111,9 @@ describe("@bunest/testing Parity & Regression Suite", () => {
 
       const mod = await Test.createTestingModule({
         controllers: [ExistingEnhController],
-        providers: [{ provide: ALT_GUARD, useValue: { canActivate: () => true } }],
+        providers: [
+          { provide: ALT_GUARD, useValue: { canActivate: () => true } },
+        ],
       })
         .overrideGuard(DenyGuard)
         .useExisting(ALT_GUARD)
@@ -1077,7 +1121,9 @@ describe("@bunest/testing Parity & Regression Suite", () => {
 
       try {
         const app = mod.createNestApplication();
-        await request(app).get("/existing-enh/open").expect(200, { opened: true });
+        await request(app)
+          .get("/existing-enh/open")
+          .expect(200, { opened: true });
       } finally {
         await mod.close();
       }
@@ -1128,12 +1174,16 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       expect(found).toBeDefined();
       expect(found?.context).toBeUndefined(); // stack trace not misclassified as context
 
-      expect(logger.assertLogged("Server ready", "log").context).toBe("Bootstrap");
+      expect(logger.assertLogged("Server ready", "log").context).toBe(
+        "Bootstrap",
+      );
       expect(logger.assertLogged(/Cache miss/, "warn")).toBeDefined();
       logger.assertNotLogged("Something else");
       logger.assertNotLogged("Server ready", "error");
 
-      expect(() => logger.assertLogged("Never logged")).toThrow(/Expected a log entry/);
+      expect(() => logger.assertLogged("Never logged")).toThrow(
+        /Expected a log entry/,
+      );
       expect(() => logger.assertNotLogged("Server ready", "log")).toThrow(
         /Expected no log entry/,
       );
@@ -1229,19 +1279,37 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       try {
         // Chainable select on static + DynamicModule
         expect(mod.select(ParentAModule).get<string>(TAG)).toBe("parent-a");
-        expect(mod.select(ParentAModule).select(dynA).get<string>(TAG)).toBe("dyn-a");
-        expect(mod.select(ParentBModule).select(dynB).get<string>(TAG)).toBe("dyn-b");
+        expect(mod.select(ParentAModule).select(dynA).get<string>(TAG)).toBe(
+          "dyn-a",
+        );
+        expect(mod.select(ParentBModule).select(dynB).get<string>(TAG)).toBe(
+          "dyn-b",
+        );
 
         // { each: true } returns all matching registrations across modules
         const allSync = mod.get<string>(TAG, { each: true });
-        expect(allSync.sort()).toEqual(["dyn-a", "dyn-b", "parent-a", "parent-b"]);
+        expect(allSync.sort()).toEqual([
+          "dyn-a",
+          "dyn-b",
+          "parent-a",
+          "parent-b",
+        ]);
 
-        const allAsync = await mod.resolve<string>(TAG, undefined, { each: true });
-        expect(allAsync.sort()).toEqual(["dyn-a", "dyn-b", "parent-a", "parent-b"]);
+        const allAsync = await mod.resolve<string>(TAG, undefined, {
+          each: true,
+        });
+        expect(allAsync.sort()).toEqual([
+          "dyn-a",
+          "dyn-b",
+          "parent-a",
+          "parent-b",
+        ]);
 
         // strict + each narrows to selected module
         expect(
-          mod.select(ParentAModule).get<string>(TAG, { strict: true, each: true }),
+          mod
+            .select(ParentAModule)
+            .get<string>(TAG, { strict: true, each: true }),
         ).toEqual(["parent-a"]);
       } finally {
         await mod.close();
@@ -1294,7 +1362,11 @@ describe("@bunest/testing Parity & Regression Suite", () => {
       expect(wsCtx.switchToWs().getClient()).toBe(wsClient);
       expect(wsCtx.switchToWs().getData()).toEqual({ event: "chat" });
       expect(wsCtx.switchToWs().getPattern()).toBe("chat.send");
-      expect(wsCtx.getArgs()).toEqual([wsClient, { event: "chat" }, "chat.send"]);
+      expect(wsCtx.getArgs()).toEqual([
+        wsClient,
+        { event: "chat" },
+        "chat.send",
+      ]);
       expect(wsCtx.getArgByIndex(0)).not.toBeInstanceOf(Request);
 
       const rpcCtx = createMockExecutionContext({

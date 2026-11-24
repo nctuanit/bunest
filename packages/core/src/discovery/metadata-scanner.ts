@@ -1,4 +1,4 @@
-import { DecoratorRegistry, Injectable } from "@bunest/common";
+import { DecoratorRegistry, Injectable } from "../common/index";
 
 /**
  * Reflection helper for discovering method names across a class prototype chain

@@ -1,11 +1,14 @@
-import { mkdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  dirname,
+  ensureDir as mkdir,
+  join,
+  removePath as rm,
+} from "@bunest/core";
 import { DOCS_ROOT, loadAllDocs } from "./content-loader";
 import { getConfiguredBasePath, normalizeBasePath } from "./navigation";
 import { renderNotFoundHtml, renderPageHtml } from "./template";
 
-const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+const SRC_DIR = import.meta.dirname;
 const DEFAULT_DIST_DIR = join(DOCS_ROOT, "dist");
 
 export interface BuildStaticSiteOptions {
@@ -64,10 +67,7 @@ export async function buildStaticSite(
 
     if (page.slug === "") {
       await Bun.write(join(outDir, "index.html"), html);
-      await Bun.write(
-        join(outDir, "data", "index.json"),
-        JSON.stringify(page),
-      );
+      await Bun.write(join(outDir, "data", "index.json"), JSON.stringify(page));
     } else {
       const htmlTarget = join(outDir, page.slug, "index.html");
       const jsonTarget = join(outDir, "data", `${page.slug}.json`);

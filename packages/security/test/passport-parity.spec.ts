@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -10,7 +9,7 @@ import {
   Req,
   UseGuards,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   AbstractStrategy,
@@ -102,7 +101,11 @@ describe("@nestjs/passport v12 Parity (PassportModule, PassportStrategy, IAuthGu
       @Get("me")
       me(
         @CurrentUser() currentUser: { id: string; name: string },
-        @Req() req: Request & { account?: { id: string; name: string }; authInfo?: unknown },
+        @Req()
+        req: Request & {
+          account?: { id: string; name: string };
+          authInfo?: unknown;
+        },
       ) {
         return {
           currentUser,
@@ -224,7 +227,11 @@ describe("@nestjs/passport v12 Parity (PassportModule, PassportStrategy, IAuthGu
     const mod = await Test.createTestingModule({
       imports: [PassportModule.register({ defaultStrategy: "scoped-token" })],
       controllers: [GuardHooksController],
-      providers: [ScopedPassportStrategy, OptionalAuthGuard, StrictForbiddenGuard],
+      providers: [
+        ScopedPassportStrategy,
+        OptionalAuthGuard,
+        StrictForbiddenGuard,
+      ],
     }).compile();
 
     const client = mod.createTestClient();

@@ -1,13 +1,12 @@
-import { statfs } from "node:fs/promises";
-import { createConnection } from "node:net";
 import {
   Inject,
   Injectable,
   Optional,
+  statFs as statfs,
   type LoggerService,
   type OnApplicationShutdown,
   type OnModuleInit,
-} from "@bunest/common";
+} from "@bunest/core";
 import {
   HealthCheckAttempt,
   HealthIndicatorService,
@@ -206,12 +205,14 @@ export class CustomHealthIndicator extends HealthIndicator {
 
 export interface SqlHealthTarget {
   healthCheck?(): Promise<boolean> | boolean;
-  query?(sql: string): Promise<unknown> | unknown;
+  ping?(): Promise<boolean> | boolean;
+  query?(sql: string, parameters?: readonly unknown[]): Promise<unknown> | unknown;
   queryOne?(sql: string): Promise<unknown> | unknown;
+  readonly isInitialized?: boolean;
 }
 
 /**
- * Checks connectivity of any `@bunest/sql`, `@bunest/sqlite`, or custom SQL adapter.
+ * Checks connectivity of any `@bunest/orm` `DataSource` or structurally compatible SQL client.
  */
 export class SqlHealthIndicator extends HealthIndicator {
   constructor(
@@ -221,33 +222,192 @@ export class SqlHealthIndicator extends HealthIndicator {
     super();
   }
 
-  async check(key = "database"): Promise<HealthIndicatorResult> {
+  async check<Key extends string = "database">(
+    key: Key = "database" as Key,
+  ): Promise<HealthIndicatorResult<Key>> {
     const start = performance.now();
     try {
+      if (this.target.isInitialized === false) {
+        throw new Error("Database client is not initialized");
+      }
+
       let ok = true;
+      let failureMessage = "Database healthCheck() returned false";
       if (typeof this.target.healthCheck === "function") {
         ok = Boolean(await this.target.healthCheck());
+      } else if (typeof this.target.ping === "function") {
+        ok = Boolean(await this.target.ping());
+        failureMessage = "Database ping() returned false";
       } else if (typeof this.target.queryOne === "function") {
         await this.target.queryOne(this.probeQuery);
       } else if (typeof this.target.query === "function") {
         await this.target.query(this.probeQuery);
       } else {
         throw new Error(
-          "SqlHealthIndicator target must implement healthCheck(), queryOne(), or query()",
+          "SqlHealthIndicator target must implement healthCheck(), ping(), queryOne(), or query()",
         );
       }
 
       const latencyMs = Number((performance.now() - start).toFixed(2));
       return this.getStatus(key, ok, {
         latencyMs,
-        ...(ok ? {} : { message: "Database healthCheck() returned false" }),
-      });
+        ...(ok ? {} : { message: failureMessage }),
+      }) as HealthIndicatorResult<Key>;
     } catch (err) {
       const latencyMs = Number((performance.now() - start).toFixed(2));
       return this.getStatus(key, false, {
         latencyMs,
         message: formatErrorMessage(err),
-      });
+      }) as HealthIndicatorResult<Key>;
+    }
+  }
+}
+
+export interface OrmHealthTarget {
+  readonly name?: string;
+  readonly dialect?: string;
+  readonly isInitialized?: boolean;
+  ping?(): Promise<boolean> | boolean;
+  query?(sql: string, parameters?: readonly unknown[]): Promise<unknown> | unknown;
+}
+
+export interface OrmPingCheckOptions {
+  /** Optional SQL probe query used when `ping()` is unavailable or `useQueryProbe` is true. Defaults to `"SELECT 1"`. */
+  probeQuery?: string;
+  /** Timeout in milliseconds for `pingCheck()`. Defaults to `1000`. */
+  timeout?: number;
+  /** Execute `query(probeQuery)` instead of `ping()` even when `ping()` is available. */
+  useQueryProbe?: boolean;
+}
+
+/**
+ * Checks connectivity of a `@bunest/orm` `DataSource` (or any structurally compatible
+ * ORM client implementing `ping()` and/or `query()`). Zero external runtime dependencies.
+ *
+ * Supports both DI-injected Terminus checks (`orm.pingCheck("db", dataSource)`)
+ * and standalone checks (`new OrmHealthIndicator(dataSource).check("db")`).
+ */
+@Injectable()
+export class OrmHealthIndicator extends HealthIndicator {
+  private readonly indicatorService: HealthIndicatorService;
+  private readonly defaultTarget?: OrmHealthTarget;
+  private readonly defaultProbeQuery: string;
+
+  constructor(
+    @Optional()
+    healthIndicatorServiceOrTarget?: HealthIndicatorService | OrmHealthTarget,
+    @Optional()
+    probeQuery = "SELECT 1",
+  ) {
+    super();
+    if (healthIndicatorServiceOrTarget instanceof HealthIndicatorService) {
+      this.indicatorService = healthIndicatorServiceOrTarget;
+    } else {
+      this.indicatorService = new HealthIndicatorService();
+      this.defaultTarget = healthIndicatorServiceOrTarget;
+    }
+    this.defaultProbeQuery = probeQuery;
+  }
+
+  private async probeTarget(
+    target: OrmHealthTarget,
+    options: Pick<OrmPingCheckOptions, "probeQuery" | "useQueryProbe"> = {},
+  ): Promise<void> {
+    if (target.isInitialized === false) {
+      throw new Error(
+        `ORM DataSource "${target.name ?? "default"}" is not initialized`,
+      );
+    }
+
+    const probeQuery = options.probeQuery ?? this.defaultProbeQuery;
+
+    if (!options.useQueryProbe && typeof target.ping === "function") {
+      const ok = Boolean(await target.ping());
+      if (!ok) {
+        throw new Error(
+          `ORM DataSource "${target.name ?? "default"}" ping() returned false`,
+        );
+      }
+      return;
+    }
+
+    if (typeof target.query === "function") {
+      await target.query(probeQuery);
+      return;
+    }
+
+    if (typeof target.ping === "function") {
+      const ok = Boolean(await target.ping());
+      if (!ok) {
+        throw new Error(
+          `ORM DataSource "${target.name ?? "default"}" ping() returned false`,
+        );
+      }
+      return;
+    }
+
+    throw new Error(
+      "OrmHealthIndicator target must implement ping() or query()",
+    );
+  }
+
+  pingCheck<Key extends string = string>(
+    key: Key,
+    target: OrmHealthTarget,
+    options: OrmPingCheckOptions = {},
+  ): HealthCheckAttempt<
+    Key,
+    void,
+    { dialect?: string; dataSource?: string },
+    undefined,
+    { code?: string | number }
+  > {
+    const metadata: { dialect?: string; dataSource?: string } = {};
+    if (target.dialect !== undefined) metadata.dialect = target.dialect;
+    if (target.name !== undefined) metadata.dataSource = target.name;
+
+    return this.indicatorService
+      .check(key)
+      .attempt(() => this.probeTarget(target, options))
+      .withData(metadata)
+      .withFailureData((error) => {
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? (error as { code?: string | number }).code
+            : undefined;
+        return { code };
+      })
+      .withTimeout(options.timeout ?? 1000);
+  }
+
+  async check<Key extends string = "database">(
+    key: Key = "database" as Key,
+    target?: OrmHealthTarget,
+    options?: Pick<OrmPingCheckOptions, "probeQuery" | "useQueryProbe">,
+  ): Promise<HealthIndicatorResult<Key>> {
+    const resolvedTarget = target ?? this.defaultTarget;
+    const start = performance.now();
+    try {
+      if (!resolvedTarget) {
+        throw new Error(
+          "OrmHealthIndicator.check() requires a DataSource target passed to constructor or check()",
+        );
+      }
+      await this.probeTarget(resolvedTarget, options);
+      const latencyMs = Number((performance.now() - start).toFixed(2));
+      return this.getStatus(key, true, {
+        latencyMs,
+        ...(resolvedTarget.dialect ? { dialect: resolvedTarget.dialect } : {}),
+        ...(resolvedTarget.name ? { dataSource: resolvedTarget.name } : {}),
+      }) as HealthIndicatorResult<Key>;
+    } catch (err) {
+      const latencyMs = Number((performance.now() - start).toFixed(2));
+      return this.getStatus(key, false, {
+        latencyMs,
+        ...(resolvedTarget?.dialect ? { dialect: resolvedTarget.dialect } : {}),
+        ...(resolvedTarget?.name ? { dataSource: resolvedTarget.name } : {}),
+        message: formatErrorMessage(err),
+      }) as HealthIndicatorResult<Key>;
     }
   }
 }
@@ -270,7 +430,7 @@ export interface QueueHealthThresholds {
 }
 
 /**
- * Checks queue depth and dead-letter thresholds against any `@bunest/queues` queue/driver.
+ * Checks queue depth and dead-letter thresholds against any `@bunest/jobs/queues` queue/driver.
  */
 export class QueueHealthIndicator extends HealthIndicator {
   constructor(
@@ -554,7 +714,13 @@ export class HttpHealthIndicator
     url: URL | string,
     options: HttpHealthCheckRequestOptions = {},
   ): Promise<HealthIndicatorResult<Key>> {
-    const { timeout = 1000, method = "GET", headers, fetch, httpClient } = options;
+    const {
+      timeout = 1000,
+      method = "GET",
+      headers,
+      fetch,
+      httpClient,
+    } = options;
 
     if (httpClient && typeof httpClient.request === "function") {
       return (await this.indicatorService
@@ -683,8 +849,7 @@ export type DiskOptionsWithThresholdPercent = DiskOptionsBase & {
 };
 
 export type DiskHealthIndicatorOptions =
-  | DiskOptionsWithThreshold
-  | DiskOptionsWithThresholdPercent;
+  DiskOptionsWithThreshold | DiskOptionsWithThresholdPercent;
 
 export async function defaultCheckDiskSpace(
   targetPath: string,
@@ -890,7 +1055,8 @@ function parseHostPortFromOptions(
   if (!opts) return undefined;
   if (typeof opts.port === "number" && opts.port > 0) {
     return {
-      host: typeof opts.host === "string" && opts.host ? opts.host : "127.0.0.1",
+      host:
+        typeof opts.host === "string" && opts.host ? opts.host : "127.0.0.1",
       port: opts.port,
     };
   }
@@ -919,6 +1085,49 @@ function parseHostPortFromOptions(
   return undefined;
 }
 
+function normalizeBunSocketError(
+  err: unknown,
+  host: string,
+  port: number,
+): unknown {
+  if (err && typeof err === "object") {
+    const code = (err as { code?: unknown }).code;
+    const message =
+      err instanceof Error ? err.message : String((err as { message?: unknown }).message ?? "");
+    if (code === "ECONNREFUSED" || code === "ConnectionRefused") {
+      return Object.assign(
+        new Error(
+          message.includes("ECONNREFUSED")
+            ? message
+            : `connect ECONNREFUSED ${host}:${port}`,
+        ),
+        {
+          code: "ECONNREFUSED",
+          cause: err,
+        },
+      );
+    }
+    if (
+      code === "ECONNRESET" ||
+      code === "ConnectionReset" ||
+      code === "ConnectionClosed"
+    ) {
+      return Object.assign(
+        new Error(
+          message.includes("ECONNRESET")
+            ? message
+            : `connect ECONNRESET ${host}:${port}`,
+        ),
+        {
+          code: "ECONNRESET",
+          cause: err,
+        },
+      );
+    }
+  }
+  return err;
+}
+
 async function probeTcpConnection(
   host: string,
   port: number,
@@ -930,13 +1139,17 @@ async function probeTcpConnection(
       return;
     }
 
-    const socket = createConnection({ host, port });
     let settled = false;
+    let activeSocket: { end(): void } | undefined;
 
     const cleanup = () => {
       signal.removeEventListener("abort", onAbort);
-      socket.removeAllListeners();
-      socket.destroy();
+      try {
+        activeSocket?.end();
+      } catch {
+        // Ignore close race
+      }
+      activeSocket = undefined;
     };
 
     const onAbort = () => {
@@ -948,19 +1161,47 @@ async function probeTcpConnection(
 
     signal.addEventListener("abort", onAbort, { once: true });
 
-    socket.once("connect", () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve();
-    });
-
-    socket.once("error", (err) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err);
-    });
+    Bun.connect({
+      hostname: host,
+      port,
+      socket: {
+        open(socket) {
+          activeSocket = socket;
+          if (settled) {
+            socket.end();
+            return;
+          }
+          settled = true;
+          cleanup();
+          resolve();
+        },
+        data() {},
+        error(_socket, err) {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(normalizeBunSocketError(err, host, port));
+        },
+        connectError(_socket, err) {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(normalizeBunSocketError(err, host, port));
+        },
+      },
+    })
+      .then((socket) => {
+        activeSocket = socket;
+        if (settled) {
+          socket.end();
+        }
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(normalizeBunSocketError(err, host, port));
+      });
   });
 }
 
@@ -988,7 +1229,8 @@ export class MicroserviceHealthIndicator
   }
 
   pingCheck<
-    MicroserviceClientOptions extends MicroserviceOptionsLike = MicroserviceOptionsLike,
+    MicroserviceClientOptions extends MicroserviceOptionsLike =
+      MicroserviceOptionsLike,
     Key extends string = string,
   >(
     key: Key,
@@ -1044,7 +1286,7 @@ const GrpcServingStatus: Record<number, string> = {
 export type HealthServiceCheck = (
   healthService: any,
   service: string,
-) => Promise<any>;
+) => Promise<{ status: number | string }>;
 
 export interface GrpcClientOptionsLike {
   transport?: number | string;
@@ -1149,7 +1391,11 @@ export class GRPCHealthIndicator
           typeof (serviceObj as { check?: unknown }).check === "function"
         ) {
           response = await (
-            serviceObj as { check: (req: { service: string }) => Promise<any> }
+            serviceObj as {
+              check: (req: {
+                service: string;
+              }) => Promise<{ status: number | string }>;
+            }
           ).check({ service });
         } else if (typeof options.url === "string" && options.url.length > 0) {
           const endpoint = parseHostPortFromOptions({ url: options.url });
@@ -1175,7 +1421,8 @@ export class GRPCHealthIndicator
                   ? 3
                   : 0;
         const servingStatus =
-          GrpcServingStatus[statusCode] ?? String(response?.status ?? "UNKNOWN");
+          GrpcServingStatus[statusCode] ??
+          String(response?.status ?? "UNKNOWN");
 
         if (statusCode !== 1) {
           throw new NotServingError(statusCode, servingStatus);

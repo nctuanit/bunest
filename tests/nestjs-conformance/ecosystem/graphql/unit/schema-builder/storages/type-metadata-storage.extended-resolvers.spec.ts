@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { beforeAll, expect, it } from "bun:test";
 import {
   Query,
@@ -54,8 +53,7 @@ describeConformance(
       TypeMetadataStorage.getQueriesMetadata().find(
         (query) => query.schemaName === schemaName,
       ) as
-        | { target: Function; classMetadata?: { target: Function } }
-        | undefined;
+        { target: Function; classMetadata?: { target: Function } } | undefined;
 
     // BUNEST_BUG: Expected midQuery.target and classMetadata.target to be LeafResolver after TypeMetadataStorage.compile(), got target=MidResolver and classMetadata=undefined; packages/graphql/src/schema/type-metadata.storage.ts (compile:349-357) does not re-attribute base resolver queries to derived resolvers or attach classMetadata.
     it.skip("should re-attribute a query declared on a base resolver to the derived resolver", () => {

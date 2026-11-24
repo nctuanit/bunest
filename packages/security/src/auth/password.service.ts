@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/common";
+import { Inject, Injectable, Optional } from "@bunest/core";
 
 export const PASSWORD_OPTIONS = Symbol.for("bunest:security:password_options");
 

@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
-import { MetadataRegistry } from "../../../../../../packages/common/src";
+import { MetadataRegistry } from "../../../../../../packages/core/src/common";
 import { ValidationPipe } from "../../../../../../packages/validation/src";
 import {
   ConnectedSocket,
@@ -8,7 +7,7 @@ import {
   WS_METADATA_KEYS,
   getGatewayMethodParams,
   type WsParamMetadata,
-} from "../../../../../../packages/websockets/src";
+} from "../../../../../../packages/core/src/ws";
 import { describeConformance } from "../../../../_helpers/index";
 
 class MessagePayloadTest {
@@ -107,9 +106,11 @@ describeConformance(
         },
       };
 
-      // BUNEST_BUG: @MessageBody() in packages/websockets/src/decorators/ws.decorators.ts does not support NestJS v12 ParameterDecoratorOptions ({ schema: StandardSchemaV1, pipes?: PipeLike[] }) unlike @bunest/common @Body()/@Query()/@Param(); passing { schema } puts the options object into `pipes` instead of setting `schema`.
+      // BUNEST_BUG: @MessageBody() in packages/core/src/ws/decorators/ws.decorators.ts does not support NestJS v12 ParameterDecoratorOptions ({ schema: StandardSchemaV1, pipes?: PipeLike[] }) unlike @bunest/common @Body()/@Query()/@Param(); passing { schema } puts the options object into `pipes` instead of setting `schema`.
       it.skip("should enhance param with schema when options passed as the only argument", () => {
-        const messageBodyAny = MessageBody as (...args: unknown[]) => ParameterDecorator;
+        const messageBodyAny = MessageBody as (
+          ...args: unknown[]
+        ) => ParameterDecorator;
         class Test {
           public test(@messageBodyAny({ schema: mockSchema }) _body: unknown) {}
         }
@@ -125,9 +126,11 @@ describeConformance(
         expect(params[0]?.pipes ?? []).toEqual([]);
       });
 
-      // BUNEST_BUG: @MessageBody() in packages/websockets/src/decorators/ws.decorators.ts does not unwrap `{ schema, pipes }` ParameterDecoratorOptions.
+      // BUNEST_BUG: @MessageBody() in packages/core/src/ws/decorators/ws.decorators.ts does not unwrap `{ schema, pipes }` ParameterDecoratorOptions.
       it.skip("should enhance param with pipes when options with pipes passed as the only argument", () => {
-        const messageBodyAny = MessageBody as (...args: unknown[]) => ParameterDecorator;
+        const messageBodyAny = MessageBody as (
+          ...args: unknown[]
+        ) => ParameterDecorator;
         class Test {
           public test(
             @messageBodyAny({ schema: mockSchema, pipes: [ValidationPipe] })
@@ -146,9 +149,11 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: @MessageBody('data', { schema }) in packages/websockets/src/decorators/ws.decorators.ts does not unwrap ParameterDecoratorOptions as the second argument after property key.
+      // BUNEST_BUG: @MessageBody('data', { schema }) in packages/core/src/ws/decorators/ws.decorators.ts does not unwrap ParameterDecoratorOptions as the second argument after property key.
       it.skip("should enhance param with schema when options passed as second argument with property", () => {
-        const messageBodyAny = MessageBody as (...args: unknown[]) => ParameterDecorator;
+        const messageBodyAny = MessageBody as (
+          ...args: unknown[]
+        ) => ParameterDecorator;
         class Test {
           public test(
             @messageBodyAny("data", { schema: mockSchema }) _data: unknown,

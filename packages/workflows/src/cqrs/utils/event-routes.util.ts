@@ -1,13 +1,14 @@
-import type { Type } from "@bunest/common";
+import { MetadataRegistry, type Type } from "@bunest/core";
 import { WORKFLOW_EVENT_ROUTES_METADATA } from "../../workflows.constants";
 import type { WorkflowEventRoute } from "../interfaces/workflow-event-route.interface";
 
 /** The class's own routes, in declaration order (decorators apply bottom-up). */
 export function eventRoutesOf(target: Function): WorkflowEventRoute[] {
   return (
-    (Reflect.getOwnMetadata(WORKFLOW_EVENT_ROUTES_METADATA, target) as
-      | WorkflowEventRoute[]
-      | undefined) ?? []
+    MetadataRegistry.getOwn<WorkflowEventRoute[]>(
+      WORKFLOW_EVENT_ROUTES_METADATA,
+      target,
+    ) ?? []
   );
 }
 
@@ -15,7 +16,7 @@ export function addEventRoute(
   target: Function,
   route: WorkflowEventRoute,
 ): void {
-  Reflect.defineMetadata(
+  MetadataRegistry.define(
     WORKFLOW_EVENT_ROUTES_METADATA,
     [route, ...eventRoutesOf(target)],
     target,

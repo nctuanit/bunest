@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { expect, it } from "bun:test";
 import {
   Catch,
   METADATA_KEYS,
   MetadataRegistry,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
@@ -26,9 +25,9 @@ describeConformance(
       "ADR-002",
       "should enhance component with catch metadata",
       () => {
-        expect(
-          MetadataRegistry.has(METADATA_KEYS.CATCH_EXCEPTIONS, Test),
-        ).toBe(true);
+        expect(MetadataRegistry.has(METADATA_KEYS.CATCH_EXCEPTIONS, Test)).toBe(
+          true,
+        );
       },
       "METADATA_KEYS.CATCH_EXCEPTIONS presence instead of separate CATCH_WATERMARK",
     );
@@ -41,7 +40,7 @@ describeConformance(
       expect(metadata).toEqual(exceptions);
     });
 
-    // BUNEST_BUG: Catch() in packages/common/src/decorators/core.decorators.ts:212 only defines METADATA_KEYS.CATCH_EXCEPTIONS on `target` (the constructor), not on `target.prototype`.
+    // BUNEST_BUG: Catch() in packages/core/src/common/decorators/core.decorators.ts:212 only defines METADATA_KEYS.CATCH_EXCEPTIONS on `target` (the constructor), not on `target.prototype`.
     it.skip("should enhance the prototype of the class with expected exceptions array", () => {
       const metadata = MetadataRegistry.getOwn(
         METADATA_KEYS.CATCH_EXCEPTIONS,

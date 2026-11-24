@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Controller,
   Get,
   Module,
   type Type,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { BunestFactory } from "../../../../../../packages/core/src";
 import {
   ApiHeader,
@@ -23,7 +22,10 @@ async function getHeaderParams(
   class TestModule {}
   const app = await BunestFactory.create(TestModule, { logger: false });
   try {
-    const doc = SwaggerModule.createDocument(app, new DocumentBuilder().build());
+    const doc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().build(),
+    );
     return (doc.paths[path]?.get?.parameters ?? []).filter(
       (p) => p.in === "header",
     );

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect } from "bun:test";
 import {
   Catch,
@@ -11,7 +10,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
   type ResponseContext,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   REQUEST,
   type BunestApplication,
@@ -132,7 +131,11 @@ describeConformance(
     }
 
     @Module({
-      providers: [JwtStrategyService, ConfigService, AuthenticatedTenantProvider],
+      providers: [
+        JwtStrategyService,
+        ConfigService,
+        AuthenticatedTenantProvider,
+      ],
       exports: [AuthenticatedTenant],
     })
     class AuthModule {}

@@ -1,11 +1,11 @@
 {
   "name": "@bunest/core",
   "version": "0.1.0",
-  "description": "Core DI container, module graph, lifecycle manager, and application factory for Bunest",
+  "description": "Bun-native core DI container, module graph, common decorators/exceptions/pipes, Bun.serve HTTP engine, ConfigModule, fetch HTTP client, native WebSocket gateways, and I18n for Bunest",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.5"
   },
   "repository": {
     "type": "git",
@@ -23,19 +23,54 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./common": {
+      "types": "./src/common/index.ts",
+      "bun": "./src/common/index.ts",
+      "import": "./dist/common/index.js",
+      "default": "./dist/common/index.js"
+    },
+    "./http": {
+      "types": "./src/http/index.ts",
+      "bun": "./src/http/index.ts",
+      "import": "./dist/http/index.js",
+      "default": "./dist/http/index.js"
+    },
+    "./config": {
+      "types": "./src/config/index.ts",
+      "bun": "./src/config/index.ts",
+      "import": "./dist/config/index.js",
+      "default": "./dist/config/index.js"
+    },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "bun": "./src/client/index.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./ws": {
+      "types": "./src/ws/index.ts",
+      "bun": "./src/ws/index.ts",
+      "import": "./dist/ws/index.js",
+      "default": "./dist/ws/index.js"
+    },
+    "./i18n": {
+      "types": "./src/i18n/index.ts",
+      "bun": "./src/i18n/index.ts",
+      "import": "./dist/i18n/index.js",
+      "default": "./dist/i18n/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/common --external @bunest/http --external @bunest/validation --external reflect-metadata --external class-validator --external class-transformer",
+    "build": "bun build ./src/index.ts ./src/common/index.ts ./src/http/index.ts ./src/config/index.ts ./src/client/index.ts ./src/ws/index.ts ./src/i18n/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting",
     "test": "bun test",
     "typecheck": "bun check"
   },
-  "dependencies": {
-    "@bunest/common": "workspace:*",
-    "@bunest/http": "workspace:*",
-    "@bunest/validation": "workspace:*",
-    "reflect-metadata": "^0.2.2"
+  "devDependencies": {
+    "@bunest/testing": "workspace:*",
+    "@bunest/validation": "workspace:*"
   }
 }

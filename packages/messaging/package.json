@@ -1,0 +1,115 @@
+{
+  "name": "@bunest/messaging",
+  "version": "0.1.0",
+  "description": "EventEmitter, CQRS, Transactional Outbox/Inbox, and Outbound/Inbound Webhooks with PostgreSQL & MySQL stores for Bunest",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunest/bunest.git",
+    "directory": "packages/messaging"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "bin": {
+    "nest-outbox": "./dist/outbox/sql/cli.js",
+    "nest-webhooks": "./dist/webhooks/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./events": {
+      "types": "./src/events/index.ts",
+      "bun": "./src/events/index.ts",
+      "import": "./dist/events/index.js",
+      "default": "./dist/events/index.js"
+    },
+    "./cqrs": {
+      "types": "./src/cqrs/index.ts",
+      "bun": "./src/cqrs/index.ts",
+      "import": "./dist/cqrs/index.js",
+      "default": "./dist/cqrs/index.js"
+    },
+    "./outbox": {
+      "types": "./src/outbox/index.ts",
+      "bun": "./src/outbox/index.ts",
+      "import": "./dist/outbox/index.js",
+      "default": "./dist/outbox/index.js"
+    },
+    "./outbox/testing": {
+      "types": "./src/outbox/testing/index.ts",
+      "bun": "./src/outbox/testing/index.ts",
+      "import": "./dist/outbox/testing/index.js",
+      "default": "./dist/outbox/testing/index.js"
+    },
+    "./outbox/postgres": {
+      "types": "./src/outbox/postgres/index.ts",
+      "bun": "./src/outbox/postgres/index.ts",
+      "import": "./dist/outbox/postgres/index.js",
+      "default": "./dist/outbox/postgres/index.js"
+    },
+    "./outbox/mysql": {
+      "types": "./src/outbox/mysql/index.ts",
+      "bun": "./src/outbox/mysql/index.ts",
+      "import": "./dist/outbox/mysql/index.js",
+      "default": "./dist/outbox/mysql/index.js"
+    },
+    "./webhooks": {
+      "types": "./src/webhooks/index.ts",
+      "bun": "./src/webhooks/index.ts",
+      "import": "./dist/webhooks/index.js",
+      "default": "./dist/webhooks/index.js"
+    },
+    "./webhooks/testing": {
+      "types": "./src/webhooks/testing/index.ts",
+      "bun": "./src/webhooks/testing/index.ts",
+      "import": "./dist/webhooks/testing/index.js",
+      "default": "./dist/webhooks/testing/index.js"
+    },
+    "./webhooks/postgres": {
+      "types": "./src/webhooks/postgres/index.ts",
+      "bun": "./src/webhooks/postgres/index.ts",
+      "import": "./dist/webhooks/postgres/index.js",
+      "default": "./dist/webhooks/postgres/index.js"
+    },
+    "./webhooks/mysql": {
+      "types": "./src/webhooks/mysql/index.ts",
+      "bun": "./src/webhooks/mysql/index.ts",
+      "import": "./dist/webhooks/mysql/index.js",
+      "default": "./dist/webhooks/mysql/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/events/index.ts ./src/cqrs/index.ts ./src/outbox/index.ts ./src/outbox/testing/index.ts ./src/outbox/postgres/index.ts ./src/outbox/mysql/index.ts ./src/outbox/sql/cli.ts ./src/webhooks/index.ts ./src/webhooks/testing/index.ts ./src/webhooks/postgres/index.ts ./src/webhooks/mysql/index.ts ./src/webhooks/cli.ts --root ./src --outdir ./dist --target bun --format esm --splitting --external @bunest/core --external @bunest/orm --external @bunest/orm/store --external @bunest/orm/postgres --external @bunest/orm/mysql --external @bunest/orm/testing --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@bunest/orm": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@bunest/orm": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@bunest/orm": "workspace:*",
+    "@bunest/testing": "workspace:*"
+  }
+}

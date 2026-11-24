@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   PartialGraphHost,
@@ -32,8 +31,9 @@ describeConformance(
     describe("toJSON", () => {
       // BUNEST_BUG: PartialGraphHost initializes static partialGraph to an empty SerializedGraph rather than undefined (packages/core/src/inspector/partial-graph.host.ts:8)
       it.skip("should return undefined when no graph is registered", () => {
-        (PartialGraphHost as unknown as { partialGraph: unknown }).partialGraph =
-          undefined;
+        (
+          PartialGraphHost as unknown as { partialGraph: unknown }
+        ).partialGraph = undefined;
         expect(PartialGraphHost.toJSON()).toBeUndefined();
       });
 
@@ -52,8 +52,9 @@ describeConformance(
     describe("toString", () => {
       // BUNEST_BUG: PartialGraphHost initializes static partialGraph to an empty SerializedGraph rather than undefined (packages/core/src/inspector/partial-graph.host.ts:8)
       it.skip("should return undefined when no graph is registered", () => {
-        (PartialGraphHost as unknown as { partialGraph: unknown }).partialGraph =
-          undefined;
+        (
+          PartialGraphHost as unknown as { partialGraph: unknown }
+        ).partialGraph = undefined;
         expect(PartialGraphHost.toString()).toBeUndefined();
       });
 

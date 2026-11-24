@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, expect } from "bun:test";
-import type { Type } from "../../../../../packages/common/src";
+import type { Type } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   Ack,
@@ -10,7 +9,7 @@ import {
   WebSocketModule,
   type WsAckCallback,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import { Test, describeConformance, itAdapted } from "../../../_helpers";
 
 @WebSocketGateway({ path: "/ws" })

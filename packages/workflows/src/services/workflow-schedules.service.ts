@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@bunest/common";
+import { Inject, Injectable } from "@bunest/core";
 import type { ScheduleRecord } from "../core/interfaces/schedule-store.interface";
 import {
   assertScheduleId,
@@ -107,7 +107,9 @@ export class WorkflowSchedules {
     return record ? this.scheduler.view(record) : null;
   }
 
-  async list(filter: WorkflowScheduleListFilter = {}): Promise<WorkflowSchedule[]> {
+  async list(
+    filter: WorkflowScheduleListFilter = {},
+  ): Promise<WorkflowSchedule[]> {
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
     if (

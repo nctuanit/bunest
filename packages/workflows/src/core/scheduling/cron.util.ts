@@ -1,4 +1,4 @@
-import { fromWallTime, recentClockChange, toWallTime } from './time-zone.util';
+import { fromWallTime, recentClockChange, toWallTime } from "./time-zone.util";
 
 /** `n#k` in the day-of-week field: the `nth` (1-5) `weekday` (0-6, Sunday is 0) of the month. */
 export interface CronNthWeekday {
@@ -42,32 +42,63 @@ const HORIZON_YEARS = 50;
 // Any fixed wall time does: a cron that matches at all does so within 50 years of it (February 29 within 8 years,
 // the fifth Monday of February within 40, as 2100 isn't a leap year).
 const REFERENCE = Date.UTC(2000, 0, 1);
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const LONGEST_MONTHS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const NICKNAMES: Record<string, string> = {
-  '@yearly': '0 0 1 1 *',
-  '@annually': '0 0 1 1 *',
-  '@monthly': '0 0 1 * *',
-  '@weekly': '0 0 * * 0',
-  '@daily': '0 0 * * *',
-  '@midnight': '0 0 * * *',
-  '@hourly': '0 * * * *',
+  "@yearly": "0 0 1 1 *",
+  "@annually": "0 0 1 1 *",
+  "@monthly": "0 0 1 * *",
+  "@weekly": "0 0 * * 0",
+  "@daily": "0 0 * * *",
+  "@midnight": "0 0 * * *",
+  "@hourly": "0 * * * *",
 };
-const SECONDS: FieldSpec = { min: 0, max: 59, accepts: 'seconds are 0-59' };
-const MINUTES: FieldSpec = { min: 0, max: 59, accepts: 'minutes are 0-59' };
-const HOURS: FieldSpec = { min: 0, max: 23, accepts: 'hours are 0-23' };
-const DAYS_OF_MONTH: FieldSpec = { min: 1, max: 31, accepts: 'days of the month are 1-31 or L (the last day)' };
+const SECONDS: FieldSpec = { min: 0, max: 59, accepts: "seconds are 0-59" };
+const MINUTES: FieldSpec = { min: 0, max: 59, accepts: "minutes are 0-59" };
+const HOURS: FieldSpec = { min: 0, max: 23, accepts: "hours are 0-23" };
+const DAYS_OF_MONTH: FieldSpec = {
+  min: 1,
+  max: 31,
+  accepts: "days of the month are 1-31 or L (the last day)",
+};
 const MONTHS: FieldSpec = {
   min: 1,
   max: 12,
-  names: ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'],
-  accepts: 'months are 1-12 or JAN-DEC',
+  names: [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ],
+  accepts: "months are 1-12 or JAN-DEC",
 };
 const DAYS_OF_WEEK: FieldSpec = {
   min: 0,
   max: 7,
-  names: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'],
-  accepts: 'days of the week are 0-7 (0 and 7 are Sunday) or SUN-SAT, nL (5L is the last Friday) or n#k (1#1 is the first Monday)',
+  names: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"],
+  accepts:
+    "days of the week are 0-7 (0 and 7 are Sunday) or SUN-SAT, nL (5L is the last Friday) or n#k (1#1 is the first Monday)",
 };
 
 /**
@@ -86,34 +117,35 @@ const DAYS_OF_WEEK: FieldSpec = {
  * Throws a TypeError for a malformed expression and for one that never matches (February 30).
  */
 export function parseCron(expression: string): CronExpression {
-  if (typeof expression !== 'string') {
-    throw new TypeError(`Invalid cron expression ${JSON.stringify(expression)}. Use a string, such as "0 9 * * MON-FRI".`);
+  if (typeof expression !== "string") {
+    throw new TypeError(
+      `Invalid cron expression ${JSON.stringify(expression)}. Use a string, such as "0 9 * * MON-FRI".`,
+    );
   }
   const trimmed = expression.trim();
-  const text = trimmed.startsWith('@') ? NICKNAMES[trimmed.toLowerCase()] : trimmed;
+  const text = trimmed.startsWith("@")
+    ? NICKNAMES[trimmed.toLowerCase()]
+    : trimmed;
   if (text === undefined) {
     throw new TypeError(
       `Invalid cron expression "${expression}": use @yearly, @annually, @monthly, @weekly, @daily, @midnight or @hourly, or 5 or 6 fields.`,
     );
   }
-  const fields = text === '' ? [] : text.split(/\s+/);
+  const fields = text === "" ? [] : text.split(/\s+/);
   if (fields.length !== 5 && fields.length !== 6) {
     throw new TypeError(
       `Invalid cron expression "${expression}": use 5 fields (minute hour day-of-month month day-of-week) or 6 (second first), not ${fields.length}.`,
     );
   }
-  const [second, minute, hour, dayOfMonth, month, dayOfWeek] = (fields.length === 6 ? fields : ['0', ...fields]) as [
-    string,
-    string,
-    string,
-    string,
-    string,
-    string,
-  ];
+  const [second, minute, hour, dayOfMonth, month, dayOfWeek] = (
+    fields.length === 6 ? fields : ["0", ...fields]
+  ) as [string, string, string, string, string, string];
   const failIn =
     (field: string) =>
     (reason: string): never => {
-      throw new TypeError(`Invalid cron field "${field}" in "${expression}": ${reason}.`);
+      throw new TypeError(
+        `Invalid cron field "${field}" in "${expression}": ${reason}.`,
+      );
     };
   const cron: CronExpression = {
     source: expression,
@@ -127,7 +159,9 @@ export function parseCron(expression: string): CronExpression {
     dayOfWeekRestricted: !/^[*?]/.test(dayOfWeek),
   };
   if (nextMatch(cron, REFERENCE, addYears(REFERENCE, HORIZON_YEARS)) === null) {
-    throw new TypeError(`Invalid cron expression "${expression}": it never matches${neverReason(cron)}.`);
+    throw new TypeError(
+      `Invalid cron expression "${expression}": it never matches${neverReason(cron)}.`,
+    );
   }
   return cron;
 }
@@ -138,13 +172,27 @@ export function parseCron(expression: string): CronExpression {
  * clocks go forward a skipped 02:30 runs at 03:30 (once, even when 03:30 matches too); on the day they go back a
  * repeated 02:30 runs once, the first time (so an every-minute cron skips the repeated hour's second pass).
  */
-export function nextCron(cron: CronExpression, after: number, tz: string): number | null {
+export function nextCron(
+  cron: CronExpression,
+  after: number,
+  tz: string,
+): number | null {
   // Right after clocks went forward, a skipped wall time that lands later is still ahead, though its wall time is
   // before `after`'s: search from as far back as they jumped.
-  const from = Math.floor((toWallTime(after, tz) - Math.max(0, recentClockChange(after, tz))) / SECOND) * SECOND + SECOND;
+  const from =
+    Math.floor(
+      (toWallTime(after, tz) - Math.max(0, recentClockChange(after, tz))) /
+        SECOND,
+    ) *
+      SECOND +
+    SECOND;
   let until = addYears(from, HORIZON_YEARS);
   let next: number | null = null;
-  for (let wall = nextMatch(cron, from, until); wall !== null; wall = nextMatch(cron, wall + SECOND, until)) {
+  for (
+    let wall = nextMatch(cron, from, until);
+    wall !== null;
+    wall = nextMatch(cron, wall + SECOND, until)
+  ) {
     const instant = fromWallTime(wall, tz);
     if (instant > after && (next === null || instant < next)) {
       next = instant;
@@ -157,14 +205,26 @@ export function nextCron(cron: CronExpression, after: number, tz: string): numbe
 }
 
 /** Occurrences strictly after `after`, ascending, strictly increasing (no duplicate instants), in `tz`. */
-export function* cronOccurrences(cron: CronExpression, after: number, tz: string): Generator<number> {
-  for (let next = nextCron(cron, after, tz); next !== null; next = nextCron(cron, next, tz)) {
+export function* cronOccurrences(
+  cron: CronExpression,
+  after: number,
+  tz: string,
+): Generator<number> {
+  for (
+    let next = nextCron(cron, after, tz);
+    next !== null;
+    next = nextCron(cron, next, tz)
+  ) {
     yield next;
   }
 }
 
 /** The first wall time at or after `from` (a whole second) that every field allows, or null past `until`. */
-function nextMatch(cron: CronExpression, from: number, until: number): number | null {
+function nextMatch(
+  cron: CronExpression,
+  from: number,
+  until: number,
+): number | null {
   let wall = from;
   // A field that doesn't allow its value moves to its next allowed one, resetting the fields below; when none is
   // left, it moves the field above instead.
@@ -178,7 +238,10 @@ function nextMatch(cron: CronExpression, from: number, until: number): number | 
     const second = date.getUTCSeconds();
     const nextMonth = following(cron.months, month);
     if (nextMonth !== month) {
-      wall = nextMonth === undefined ? Date.UTC(year + 1, cron.months[0]! - 1, 1) : Date.UTC(year, nextMonth - 1, 1);
+      wall =
+        nextMonth === undefined
+          ? Date.UTC(year + 1, cron.months[0]! - 1, 1)
+          : Date.UTC(year, nextMonth - 1, 1);
       continue;
     }
     if (!dayMatches(cron, year, month, day, date.getUTCDay())) {
@@ -187,18 +250,26 @@ function nextMatch(cron: CronExpression, from: number, until: number): number | 
     }
     const nextHour = following(cron.hours, hour);
     if (nextHour !== hour) {
-      wall = nextHour === undefined ? Date.UTC(year, month - 1, day + 1) : Date.UTC(year, month - 1, day, nextHour);
+      wall =
+        nextHour === undefined
+          ? Date.UTC(year, month - 1, day + 1)
+          : Date.UTC(year, month - 1, day, nextHour);
       continue;
     }
     const nextMinute = following(cron.minutes, minute);
     if (nextMinute !== minute) {
-      wall = nextMinute === undefined ? Date.UTC(year, month - 1, day, hour + 1) : Date.UTC(year, month - 1, day, hour, nextMinute);
+      wall =
+        nextMinute === undefined
+          ? Date.UTC(year, month - 1, day, hour + 1)
+          : Date.UTC(year, month - 1, day, hour, nextMinute);
       continue;
     }
     const nextSecond = following(cron.seconds, second);
     if (nextSecond !== second) {
       wall =
-        nextSecond === undefined ? Date.UTC(year, month - 1, day, hour, minute + 1) : Date.UTC(year, month - 1, day, hour, minute, nextSecond);
+        nextSecond === undefined
+          ? Date.UTC(year, month - 1, day, hour, minute + 1)
+          : Date.UTC(year, month - 1, day, hour, minute, nextSecond);
       continue;
     }
     return wall;
@@ -206,34 +277,53 @@ function nextMatch(cron: CronExpression, from: number, until: number): number | 
   return null;
 }
 
-function dayMatches(cron: CronExpression, year: number, month: number, day: number, weekday: number): boolean {
+function dayMatches(
+  cron: CronExpression,
+  year: number,
+  month: number,
+  day: number,
+  weekday: number,
+): boolean {
   const length = daysIn(year, month);
-  const byMonthDay = cron.daysOfMonth.includes(day) || (cron.lastDayOfMonth && day === length);
+  const byMonthDay =
+    cron.daysOfMonth.includes(day) || (cron.lastDayOfMonth && day === length);
   const byWeekday =
     cron.daysOfWeek.includes(weekday) ||
     (cron.lastWeekdays.includes(weekday) && day + 7 > length) ||
-    cron.nthWeekdays.some((nth) => nth.weekday === weekday && Math.ceil(day / 7) === nth.nth);
-  return cron.dayOfMonthRestricted && cron.dayOfWeekRestricted ? byMonthDay || byWeekday : byMonthDay && byWeekday;
+    cron.nthWeekdays.some(
+      (nth) => nth.weekday === weekday && Math.ceil(day / 7) === nth.nth,
+    );
+  return cron.dayOfMonthRestricted && cron.dayOfWeekRestricted
+    ? byMonthDay || byWeekday
+    : byMonthDay && byWeekday;
 }
 
 function parseDaysOfMonth(
   text: string,
   fail: (reason: string) => never,
 ): { daysOfMonth: number[]; lastDayOfMonth: boolean } {
-  const items = text.split(',');
-  const lastDayOfMonth = items.some((item) => item.toUpperCase() === 'L');
-  const rest = items.filter((item) => item.toUpperCase() !== 'L');
-  return { daysOfMonth: rest.length > 0 ? parseList(rest.join(','), DAYS_OF_MONTH, fail) : [], lastDayOfMonth };
+  const items = text.split(",");
+  const lastDayOfMonth = items.some((item) => item.toUpperCase() === "L");
+  const rest = items.filter((item) => item.toUpperCase() !== "L");
+  return {
+    daysOfMonth:
+      rest.length > 0 ? parseList(rest.join(","), DAYS_OF_MONTH, fail) : [],
+    lastDayOfMonth,
+  };
 }
 
 function parseDaysOfWeek(
   text: string,
   fail: (reason: string) => never,
-): { daysOfWeek: number[]; lastWeekdays: number[]; nthWeekdays: CronNthWeekday[] } {
+): {
+  daysOfWeek: number[];
+  lastWeekdays: number[];
+  nthWeekdays: CronNthWeekday[];
+} {
   const lastWeekdays = new Set<number>();
   const nthWeekdays: CronNthWeekday[] = [];
   const rest: string[] = [];
-  for (const item of text.split(',')) {
+  for (const item of text.split(",")) {
     const last = /^(\w+)L$/i.exec(item);
     const nth = /^(\w+)#(.*)$/.exec(item);
     if (last) {
@@ -242,21 +332,35 @@ function parseDaysOfWeek(
       if (!/^[1-5]$/.test(nth[2]!)) {
         fail(`k in n#k is 1-5 (1#1 is the first Monday of the month)`);
       }
-      nthWeekdays.push({ weekday: parseValue(nth[1]!, DAYS_OF_WEEK, fail) % 7, nth: Number(nth[2]) });
+      nthWeekdays.push({
+        weekday: parseValue(nth[1]!, DAYS_OF_WEEK, fail) % 7,
+        nth: Number(nth[2]),
+      });
     } else {
       rest.push(item);
     }
   }
-  const daysOfWeek = rest.length > 0 ? parseList(rest.join(','), DAYS_OF_WEEK, fail).map((day) => day % 7) : [];
-  return { daysOfWeek: [...new Set(daysOfWeek)].sort((a, b) => a - b), lastWeekdays: [...lastWeekdays].sort((a, b) => a - b), nthWeekdays };
+  const daysOfWeek =
+    rest.length > 0
+      ? parseList(rest.join(","), DAYS_OF_WEEK, fail).map((day) => day % 7)
+      : [];
+  return {
+    daysOfWeek: [...new Set(daysOfWeek)].sort((a, b) => a - b),
+    lastWeekdays: [...lastWeekdays].sort((a, b) => a - b),
+    nthWeekdays,
+  };
 }
 
 /** The values a list of `*`, `?`, values, ranges and steps allows, ascending. */
-function parseList(text: string, field: FieldSpec, fail: (reason: string) => never): number[] {
+function parseList(
+  text: string,
+  field: FieldSpec,
+  fail: (reason: string) => never,
+): number[] {
   const values = new Set<number>();
-  for (const item of text.split(',')) {
-    if (item === '') {
-      fail('a list item is empty');
+  for (const item of text.split(",")) {
+    if (item === "") {
+      fail("a list item is empty");
     }
     const match = /^(?:([*?])|([^-/]+)(?:-([^-/]+))?)(?:\/(.*))?$/.exec(item);
     if (!match) {
@@ -264,14 +368,20 @@ function parseList(text: string, field: FieldSpec, fail: (reason: string) => nev
     }
     const [, any, low, high, step] = match;
     if (step !== undefined && !/^\d+$/.test(step)) {
-      fail('a step is a whole number, such as */15');
+      fail("a step is a whole number, such as */15");
     }
     const by = step === undefined ? 1 : Number(step);
     if (by === 0) {
-      fail('a step of 0 never moves; use a positive one, such as */15');
+      fail("a step of 0 never moves; use a positive one, such as */15");
     }
     const from = any ? field.min : parseValue(low!, field, fail);
-    const to = any ? field.max : high !== undefined ? parseValue(high, field, fail) : step !== undefined ? field.max : from;
+    const to = any
+      ? field.max
+      : high !== undefined
+        ? parseValue(high, field, fail)
+        : step !== undefined
+          ? field.max
+          : from;
     if (from > to) {
       fail(`the range ${low}-${high} is reversed; put the lower bound first`);
     }
@@ -282,12 +392,20 @@ function parseList(text: string, field: FieldSpec, fail: (reason: string) => nev
   return [...values].sort((a, b) => a - b);
 }
 
-function parseValue(text: string, field: FieldSpec, fail: (reason: string) => never): number {
+function parseValue(
+  text: string,
+  field: FieldSpec,
+  fail: (reason: string) => never,
+): number {
   const named = field.names?.indexOf(text.toUpperCase()) ?? -1;
   if (named >= 0) {
     return field.min + named;
   }
-  if (!/^\d+$/.test(text) || Number(text) < field.min || Number(text) > field.max) {
+  if (
+    !/^\d+$/.test(text) ||
+    Number(text) < field.min ||
+    Number(text) > field.max
+  ) {
     fail(field.accepts);
   }
   return Number(text);
@@ -296,14 +414,21 @@ function parseValue(text: string, field: FieldSpec, fail: (reason: string) => ne
 /** Why a cron never matches, when it's because every day of the month it allows is past the end of its months. */
 function neverReason(cron: CronExpression): string {
   const [first] = cron.daysOfMonth;
-  if (cron.lastDayOfMonth || first === undefined || cron.months.some((month) => LONGEST_MONTHS[month - 1]! >= first)) {
-    return '';
+  if (
+    cron.lastDayOfMonth ||
+    first === undefined ||
+    cron.months.some((month) => LONGEST_MONTHS[month - 1]! >= first)
+  ) {
+    return "";
   }
   const months = cron.months.map((month) => MONTH_NAMES[month - 1]!);
-  return ` (${join(months, 'and')} ${months.length === 1 ? 'has' : 'have'} no ${join(cron.daysOfMonth.map(ordinal), 'or')})`;
+  return ` (${join(months, "and")} ${months.length === 1 ? "has" : "have"} no ${join(cron.daysOfMonth.map(ordinal), "or")})`;
 }
 
-function following(values: readonly number[], from: number): number | undefined {
+function following(
+  values: readonly number[],
+  from: number,
+): number | undefined {
   for (const value of values) {
     if (value >= from) {
       return value;
@@ -323,10 +448,15 @@ function addYears(wall: number, years: number): number {
 }
 
 function ordinal(n: number): string {
-  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  const suffix =
+    n % 100 >= 11 && n % 100 <= 13
+      ? "th"
+      : (["th", "st", "nd", "rd"][n % 10] ?? "th");
   return `${n}${suffix}`;
 }
 
 function join(items: string[], conjunction: string): string {
-  return items.length === 1 ? items[0]! : `${items.slice(0, -1).join(', ')} ${conjunction} ${items[items.length - 1]!}`;
+  return items.length === 1
+    ? items[0]!
+    : `${items.slice(0, -1).join(", ")} ${conjunction} ${items[items.length - 1]!}`;
 }

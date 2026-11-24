@@ -98,7 +98,9 @@ export const OAuth2Providers = {
       userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
       revocationUrl: "https://oauth2.googleapis.com/revoke",
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
-      scopes: options.scopes ? [...options.scopes] : ["openid", "email", "profile"],
+      scopes: options.scopes
+        ? [...options.scopes]
+        : ["openid", "email", "profile"],
       ...(Object.keys(extraAuthorizationParams).length > 0
         ? { extraAuthorizationParams }
         : {}),
@@ -119,7 +121,9 @@ export const OAuth2Providers = {
       authorizationUrl: `${base}/login/oauth/authorize`,
       tokenUrl: `${base}/login/oauth/access_token`,
       userInfoUrl: `${apiBase}/user`,
-      scopes: options.scopes ? [...options.scopes] : ["read:user", "user:email"],
+      scopes: options.scopes
+        ? [...options.scopes]
+        : ["read:user", "user:email"],
     };
   },
 

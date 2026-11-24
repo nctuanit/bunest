@@ -20,7 +20,7 @@ const ENVELOPE_KEYS = new Set([
  * Pass-through deserializer returning incoming values unchanged.
  */
 export class IdentityDeserializer implements Deserializer {
-  deserialize(value: any): any {
+  deserialize<T = unknown>(value: T): T {
     return value;
   }
 }
@@ -31,25 +31,28 @@ export class IdentityDeserializer implements Deserializer {
  */
 export class IncomingRequestDeserializer implements ConsumerDeserializer {
   deserialize(
-    value: any,
-    options?: Record<string, any>,
+    value: unknown,
+    options?: Record<string, unknown>,
   ): IncomingRequest | IncomingEvent {
-    return this.isExternal(value) ? this.mapToSchema(value, options) : value;
+    return this.isExternal(value)
+      ? this.mapToSchema(value, options)
+      : (value as IncomingRequest | IncomingEvent);
   }
 
-  isExternal(value: any): boolean {
-    if (!value) {
+  isExternal(value: unknown): boolean {
+    if (!value || typeof value !== "object") {
       return true;
     }
-    if (value.pattern !== undefined || value.data !== undefined) {
+    const record = value as Record<string, unknown>;
+    if (record.pattern !== undefined || record.data !== undefined) {
       return false;
     }
     return true;
   }
 
   mapToSchema(
-    value: any,
-    options?: Record<string, any>,
+    value: unknown,
+    options?: Record<string, unknown>,
   ): IncomingRequest | IncomingEvent {
     if (!options) {
       return {
@@ -69,11 +72,16 @@ export class IncomingRequestDeserializer implements ConsumerDeserializer {
  * `{ id, response, isDisposed: true }`.
  */
 export class IncomingResponseDeserializer implements ProducerDeserializer {
-  deserialize(value: any, _options?: Record<string, any>): IncomingResponse {
-    return this.isExternal(value) ? this.mapToSchema(value) : value;
+  deserialize(
+    value: unknown,
+    _options?: Record<string, unknown>,
+  ): IncomingResponse {
+    return this.isExternal(value)
+      ? this.mapToSchema(value)
+      : (value as IncomingResponse);
   }
 
-  isExternal(value: any): boolean {
+  isExternal(value: unknown): boolean {
     if (!value || typeof value !== "object") {
       return true;
     }
@@ -84,9 +92,15 @@ export class IncomingResponseDeserializer implements ProducerDeserializer {
     return keys.some((key) => !ENVELOPE_KEYS.has(key));
   }
 
-  mapToSchema(value: any): IncomingResponse {
+  mapToSchema(value: unknown): IncomingResponse {
+    const id =
+      value && typeof value === "object"
+        ? (value as { id?: string }).id
+        : value
+          ? undefined
+          : (value as string);
     return {
-      id: value && value.id,
+      id: id as string,
       response: value,
       isDisposed: true,
     };
@@ -98,8 +112,8 @@ export class IncomingResponseDeserializer implements ProducerDeserializer {
  */
 export class KafkaRequestDeserializer extends IncomingRequestDeserializer {
   override mapToSchema(
-    data: any,
-    options?: Record<string, any>,
+    data: unknown,
+    options?: Record<string, unknown>,
   ): IncomingRequest | IncomingEvent {
     if (!options) {
       return {
@@ -107,9 +121,13 @@ export class KafkaRequestDeserializer extends IncomingRequestDeserializer {
         data: undefined,
       };
     }
+    const rawValue =
+      data !== null && typeof data === "object" && "value" in data
+        ? (data as { value?: unknown }).value
+        : undefined;
     return {
       pattern: options.channel,
-      data: data?.value !== undefined ? data.value : data,
+      data: rawValue !== undefined ? rawValue : data,
     };
   }
 }
@@ -117,13 +135,21 @@ export class KafkaRequestDeserializer extends IncomingRequestDeserializer {
 /**
  * Deserializes Kafka reply messages using `KafkaHeaders` correlation/error/disposed headers.
  */
-export class KafkaResponseDeserializer
-  implements Deserializer<any, IncomingResponse>
-{
-  deserialize(message: any, _options?: Record<string, any>): IncomingResponse {
-    const headers = message?.headers ?? {};
+export class KafkaResponseDeserializer implements Deserializer<
+  unknown,
+  IncomingResponse
+> {
+  deserialize(
+    message: unknown,
+    _options?: Record<string, unknown>,
+  ): IncomingResponse {
+    const msg =
+      message !== null && typeof message === "object"
+        ? (message as { headers?: Record<string, unknown>; value?: unknown })
+        : undefined;
+    const headers = msg?.headers ?? {};
     const rawId = headers[KafkaHeaders.CORRELATION_ID];
-    const id = rawId !== undefined && rawId !== null ? rawId.toString() : "";
+    const id = rawId !== undefined && rawId !== null ? String(rawId) : "";
 
     if (headers[KafkaHeaders.NEST_ERR] !== undefined) {
       return {
@@ -139,14 +165,14 @@ export class KafkaResponseDeserializer
       }
       return {
         id,
-        response: message.value,
+        response: msg?.value,
         isDisposed: true,
       };
     }
 
     return {
       id,
-      response: message.value,
+      response: msg?.value,
       isDisposed: false,
     };
   }
@@ -154,13 +180,17 @@ export class KafkaResponseDeserializer
 
 const sharedResponseDeserializer = new IncomingResponseDeserializer();
 
-function isNatsReplyPacket(value: any): boolean {
+function isNatsReplyPacket(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const packet = value as Record<string, unknown>;
   return (
     !sharedResponseDeserializer.isExternal(value) &&
-    value?.id !== undefined &&
-    (value.response !== undefined ||
-      value.err !== undefined ||
-      value.isDisposed !== undefined)
+    packet.id !== undefined &&
+    (packet.response !== undefined ||
+      packet.err !== undefined ||
+      packet.isDisposed !== undefined)
   );
 }
 
@@ -169,15 +199,21 @@ function isNatsReplyPacket(value: any): boolean {
  */
 export class NatsRequestJSONDeserializer extends IncomingRequestDeserializer {
   override deserialize(
-    value: any,
-    options?: Record<string, any>,
+    value: unknown,
+    options?: Record<string, unknown>,
   ): IncomingRequest | IncomingEvent {
-    const decodedRequest =
-      typeof value?.json === "function" ? value.json() : value;
+    const hasJson =
+      value !== null &&
+      typeof value === "object" &&
+      "json" in value &&
+      typeof (value as { json?: unknown }).json === "function";
+    const decodedRequest = hasJson
+      ? (value as { json: () => unknown }).json()
+      : value;
     return super.deserialize(decodedRequest, options);
   }
 
-  override isExternal(value: any): boolean {
+  override isExternal(value: unknown): boolean {
     return super.isExternal(value) && !isNatsReplyPacket(value);
   }
 }
@@ -187,11 +223,17 @@ export class NatsRequestJSONDeserializer extends IncomingRequestDeserializer {
  */
 export class NatsResponseJSONDeserializer extends IncomingResponseDeserializer {
   override deserialize(
-    value: any,
-    options?: Record<string, any>,
+    value: unknown,
+    options?: Record<string, unknown>,
   ): IncomingResponse {
-    const decodedResponse =
-      typeof value?.json === "function" ? value.json() : value;
+    const hasJson =
+      value !== null &&
+      typeof value === "object" &&
+      "json" in value &&
+      typeof (value as { json?: unknown }).json === "function";
+    const decodedResponse = hasJson
+      ? (value as { json: () => unknown }).json()
+      : value;
     return super.deserialize(decodedResponse, options);
   }
 }

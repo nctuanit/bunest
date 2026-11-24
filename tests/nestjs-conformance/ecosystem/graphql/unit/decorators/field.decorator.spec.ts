@@ -1,10 +1,9 @@
-import "reflect-metadata";
 import { afterAll, expect, it } from "bun:test";
 import {
   GraphQLNonNull,
   type GraphQLObjectType,
   graphql,
-} from "../../../../../../packages/graphql/node_modules/graphql";
+} from "../../../../../../packages/graphql/src";
 import {
   Field,
   type FieldMiddleware,

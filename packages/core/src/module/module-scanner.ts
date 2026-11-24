@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   APP_FILTER,
   APP_GUARD,
@@ -9,8 +8,10 @@ import {
   MetadataRegistry,
   Module,
   Scope,
+  isAbsolute,
   isDynamicModule,
   isForwardReference,
+  resolve,
   type AutoDiscoverOptions,
   type ClassProvider,
   type DynamicModule,
@@ -24,7 +25,19 @@ import {
   type Provider,
   type Type,
   type ValueProvider,
-} from "@bunest/common";
+} from "../common/index";
+import {
+  evaluateDeferredProviderConditions,
+  evaluateEagerProviderConditions,
+  getProviderConditionTarget,
+  hasDeferredConditions,
+  resolveActiveProfiles,
+} from "../common/decorators/conditional.decorators";
+import {
+  DEFAULT_AUTO_MODULE_EXCLUDES,
+  getAutoModuleMetadata,
+  type StoredAutoModuleMetadata,
+} from "../common/decorators/core.decorators";
 import {
   AmbiguousProviderException,
   CircularDependencyException,
@@ -78,7 +91,10 @@ function hashDynamicModuleDefinition(
     exports: (dynamicMeta.exports ?? []).map(tokenName),
     importsCount: (dynamicMeta.imports ?? []).length,
   });
-  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+  return new Bun.CryptoHasher("sha256")
+    .update(payload)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 export const MULTI_PROVIDER_TOKENS: ReadonlySet<InjectionToken> = new Set([
@@ -188,6 +204,281 @@ export function normalizeProvider<T = unknown>(
   );
 }
 
+function normalizeRelativeGlobPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function collectDecoratedExportsFromNamespace(
+  modNamespace: unknown,
+  discovered: Set<Type<unknown>>,
+): void {
+  if (!modNamespace || typeof modNamespace !== "object") {
+    return;
+  }
+  const values = Object.values(modNamespace as Record<string, unknown>);
+  for (let i = 0; i < values.length; i++) {
+    const val = values[i];
+    if (typeof val !== "function") {
+      continue;
+    }
+    if (MetadataRegistry.has(METADATA_KEYS.MODULE, val)) {
+      continue;
+    }
+    if (
+      MetadataRegistry.has(METADATA_KEYS.CONTROLLER, val) ||
+      MetadataRegistry.has(METADATA_KEYS.INJECTABLE, val) ||
+      DecoratorRegistry.has("controller", val) ||
+      DecoratorRegistry.has("injectable", val)
+    ) {
+      discovered.add(val as Type<unknown>);
+    }
+  }
+}
+
+async function loadAndCollectAutoModuleClasses(
+  loader: () => Promise<unknown>,
+  discovered: Set<Type<unknown>>,
+): Promise<void> {
+  const beforeControllers = new Set<Function>(
+    DecoratorRegistry.getControllers(),
+  );
+  const beforeInjectables = new Set<Function>(
+    DecoratorRegistry.getInjectables(),
+  );
+
+  const modNamespace = await loader();
+  collectDecoratedExportsFromNamespace(modNamespace, discovered);
+
+  const afterControllers = DecoratorRegistry.getControllers();
+  for (let i = 0; i < afterControllers.length; i++) {
+    const cls = afterControllers[i]!;
+    if (
+      !beforeControllers.has(cls) &&
+      !DecoratorRegistry.isInternal(cls) &&
+      !MetadataRegistry.has(METADATA_KEYS.MODULE, cls)
+    ) {
+      discovered.add(cls);
+    }
+  }
+
+  const afterInjectables = DecoratorRegistry.getInjectables();
+  for (let i = 0; i < afterInjectables.length; i++) {
+    const cls = afterInjectables[i]!;
+    if (
+      !beforeInjectables.has(cls) &&
+      !DecoratorRegistry.isInternal(cls) &&
+      !MetadataRegistry.has(METADATA_KEYS.MODULE, cls)
+    ) {
+      discovered.add(cls);
+    }
+  }
+}
+
+/**
+ * Expands a single `@AutoModule({ scan, manifest, exclude, cwd })` definition
+ * into the deduplicated list of `@Controller()` / `@Injectable()` classes
+ * discovered strictly from the matched files or static manifest loaders.
+ *
+ * When `manifest` is present, it takes precedence over runtime `Bun.Glob`
+ * scanning so `bun build --compile` single-file executables work seamlessly.
+ */
+export async function expandSingleAutoModule(
+  autoMeta: StoredAutoModuleMetadata,
+): Promise<Type<unknown>[]> {
+  const discovered = new Set<Type<unknown>>();
+
+  if (autoMeta.manifest !== undefined) {
+    for (let i = 0; i < autoMeta.manifest.length; i++) {
+      const loader = autoMeta.manifest[i];
+      if (typeof loader === "function") {
+        await loadAndCollectAutoModuleClasses(loader, discovered);
+      }
+    }
+    return [...discovered];
+  }
+
+  if (autoMeta.scan !== undefined && autoMeta.scan.length > 0) {
+    const fallbackBase = autoMeta.callerDir ?? process.cwd();
+    const baseDir =
+      autoMeta.cwd !== undefined
+        ? isAbsolute(autoMeta.cwd)
+          ? autoMeta.cwd
+          : resolve(fallbackBase, autoMeta.cwd)
+        : fallbackBase;
+
+    const excludePatterns = autoMeta.exclude ?? DEFAULT_AUTO_MODULE_EXCLUDES;
+    const excludeGlobs: Bun.Glob[] = [];
+    for (let i = 0; i < excludePatterns.length; i++) {
+      const pattern = normalizeRelativeGlobPath(excludePatterns[i]!);
+      if (pattern.length > 0) {
+        excludeGlobs.push(new Bun.Glob(pattern));
+      }
+    }
+
+    const matchedRelPaths = new Set<string>();
+    for (let i = 0; i < autoMeta.scan.length; i++) {
+      const rawPattern = autoMeta.scan[i];
+      if (!rawPattern) {
+        continue;
+      }
+      const normalizedPattern = normalizeRelativeGlobPath(rawPattern);
+      const glob = new Bun.Glob(normalizedPattern);
+      for await (const rawRelPath of glob.scan({
+        cwd: baseDir,
+        onlyFiles: true,
+      })) {
+        const relPath = normalizeRelativeGlobPath(rawRelPath);
+        let excluded = false;
+        for (let e = 0; e < excludeGlobs.length; e++) {
+          if (excludeGlobs[e]!.match(relPath)) {
+            excluded = true;
+            break;
+          }
+        }
+        if (!excluded) {
+          matchedRelPaths.add(relPath);
+        }
+      }
+    }
+
+    const sortedRelPaths = [...matchedRelPaths].sort();
+    for (let i = 0; i < sortedRelPaths.length; i++) {
+      const absPath = resolve(baseDir, sortedRelPaths[i]!);
+      await loadAndCollectAutoModuleClasses(() => import(absPath), discovered);
+    }
+  }
+
+  return [...discovered];
+}
+
+function resolveOverrideTarget(
+  target: unknown,
+  moduleOverrides?: Map<
+    Type<unknown> | DynamicModule,
+    Type<unknown> | DynamicModule
+  >,
+): unknown {
+  if (!moduleOverrides || moduleOverrides.size === 0) {
+    return target;
+  }
+  let current = target;
+  const visited = new Set<unknown>();
+  while (current !== undefined && current !== null && !visited.has(current)) {
+    visited.add(current);
+    if (isDynamicModule(current)) {
+      if (moduleOverrides.has(current)) {
+        current = moduleOverrides.get(current)!;
+        continue;
+      }
+      if (moduleOverrides.has(current.module)) {
+        current = moduleOverrides.get(current.module)!;
+        continue;
+      }
+      break;
+    }
+    if (typeof current === "function") {
+      const asType = current as Type<unknown>;
+      if (moduleOverrides.has(asType)) {
+        current = moduleOverrides.get(asType)!;
+        continue;
+      }
+      break;
+    }
+    break;
+  }
+  return current;
+}
+
+/**
+ * Recursively walks the module import graph starting at `rootModule` before
+ * `ModuleScanner.scan()`, expanding any `@AutoModule({ scan, manifest })`
+ * definitions asynchronously so matched files are imported and scoped cleanly
+ * to each module without leaking unrelated global `DecoratorRegistry` entries.
+ */
+export async function expandAutoModules(
+  rootModule: IEntryNestModule,
+  moduleOverrides?: Map<
+    Type<unknown> | DynamicModule,
+    Type<unknown> | DynamicModule
+  >,
+): Promise<Map<Type<unknown>, readonly Type<unknown>[]>> {
+  const expanded = new Map<Type<unknown>, readonly Type<unknown>[]>();
+  const visited = new Set<object>();
+
+  const visit = async (raw: unknown): Promise<void> => {
+    let target = await raw;
+    if (isForwardReference(target)) {
+      target = target.forwardRef();
+    }
+    if (target instanceof Promise) {
+      target = await target;
+    }
+    target = resolveOverrideTarget(target, moduleOverrides);
+    if (target instanceof Promise) {
+      target = await target;
+      target = resolveOverrideTarget(target, moduleOverrides);
+    }
+
+    if (!target || (typeof target !== "function" && typeof target !== "object")) {
+      return;
+    }
+
+    let metatype: Type<unknown> | undefined;
+    let dynamicMeta: DynamicModule | undefined;
+    let staticMeta: ModuleMetadata | undefined;
+    let identityKey: object;
+
+    if (isDynamicModule(target)) {
+      dynamicMeta = target;
+      metatype = target.module;
+      staticMeta =
+        typeof metatype === "function"
+          ? MetadataRegistry.get<ModuleMetadata>(METADATA_KEYS.MODULE, metatype)
+          : undefined;
+      identityKey = target;
+    } else if (typeof target === "function") {
+      metatype = target as Type<unknown>;
+      staticMeta = MetadataRegistry.get<ModuleMetadata>(
+        METADATA_KEYS.MODULE,
+        metatype,
+      );
+      identityKey = metatype;
+    } else if (isPlainModuleMetadata(target)) {
+      staticMeta = target;
+      identityKey = target;
+    } else {
+      return;
+    }
+
+    if (visited.has(identityKey)) {
+      return;
+    }
+    visited.add(identityKey);
+
+    if (metatype && !expanded.has(metatype)) {
+      const autoMeta = getAutoModuleMetadata(metatype);
+      if (
+        autoMeta &&
+        (autoMeta.manifest !== undefined || autoMeta.scan !== undefined)
+      ) {
+        const classes = await expandSingleAutoModule(autoMeta);
+        expanded.set(metatype, classes);
+      }
+    }
+
+    const imports: ModuleImport[] = [
+      ...(staticMeta?.imports ?? []),
+      ...(dynamicMeta?.imports ?? []),
+    ];
+    for (let i = 0; i < imports.length; i++) {
+      await visit(imports[i]);
+    }
+  };
+
+  await visit(rootModule);
+  return expanded;
+}
+
 export interface ModuleScanOptions {
   moduleOverrides?: Map<
     Type<unknown> | DynamicModule,
@@ -212,6 +503,20 @@ export interface ModuleScanOptions {
    * @default "reference"
    */
   moduleIdGeneratorAlgorithm?: "deep-hash" | "reference";
+  /**
+   * Active runtime profiles for evaluating `@Profile(...)` conditional beans.
+   */
+  profiles?: readonly string[];
+  /**
+   * Pre-expanded `@AutoModule({ scan, manifest })` class map produced by
+   * `expandAutoModules(...)`.
+   */
+  expandedAutoModules?: ReadonlyMap<Type<unknown>, readonly Type<unknown>[]>;
+  /**
+   * Optional environment map override for `@RegisterIfEnv` / `@Profile` evaluation
+   * (defaults to `Bun.env`).
+   */
+  env?: Record<string, string | undefined>;
 }
 
 export interface ScannedModuleGraph {
@@ -247,6 +552,27 @@ export class ModuleScanner {
   private idPrefix = "";
   private dynamicCounter = 0;
   private idAlgorithm: "deep-hash" | "reference" = "reference";
+  private env: Record<string, string | undefined> = {};
+  private explicitProfiles?: readonly string[];
+  private explicitProfilesSet?: ReadonlySet<string>;
+  private rootAutoProfilesSet?: ReadonlySet<string>;
+  private defaultEnvProfilesSet: ReadonlySet<string> = new Set();
+  private readonly expandedAutoModules = new Map<
+    Type<unknown>,
+    readonly Type<unknown>[]
+  >();
+  private readonly deferredProviders: Array<{
+    readonly node: ModuleNode;
+    readonly provider: Provider;
+  }> = [];
+  private readonly deferredControllers: Array<{
+    readonly node: ModuleNode;
+    readonly controller: Type<unknown>;
+  }> = [];
+  private readonly conditionallySkippedTokens = new Map<
+    ModuleNode,
+    Set<InjectionToken>
+  >();
 
   async scan(
     rootModule: IEntryNestModule,
@@ -255,6 +581,27 @@ export class ModuleScanner {
     this.moduleOverrides = options?.moduleOverrides;
     this.idPrefix = options?.idPrefix ?? "";
     this.idAlgorithm = options?.moduleIdGeneratorAlgorithm ?? "reference";
+    this.env = options?.env ?? (Bun.env as Record<string, string | undefined>);
+    this.explicitProfiles = options?.profiles;
+    this.explicitProfilesSet =
+      options?.profiles !== undefined
+        ? resolveActiveProfiles({
+            explicitProfiles: options.profiles,
+            env: this.env,
+          })
+        : undefined;
+    this.defaultEnvProfilesSet = resolveActiveProfiles({ env: this.env });
+    this.rootAutoProfilesSet = undefined;
+    this.expandedAutoModules.clear();
+    this.deferredProviders.length = 0;
+    this.deferredControllers.length = 0;
+    this.conditionallySkippedTokens.clear();
+
+    if (options?.expandedAutoModules) {
+      for (const [cls, list] of options.expandedAutoModules.entries()) {
+        this.expandedAutoModules.set(cls, list);
+      }
+    }
 
     if (options?.existingStaticNodes) {
       for (const [cls, node] of options.existingStaticNodes.entries()) {
@@ -279,6 +626,22 @@ export class ModuleScanner {
       resolvedRoot = InlineRootModule;
     }
 
+    // Resolve root @AutoModule({ profiles }) fallback if no explicit createOptions.profiles
+    const rootClass = isDynamicModule(resolvedRoot)
+      ? resolvedRoot.module
+      : typeof resolvedRoot === "function"
+        ? (resolvedRoot as Type<unknown>)
+        : undefined;
+    if (rootClass) {
+      const rootAutoMeta = getAutoModuleMetadata(rootClass);
+      if (rootAutoMeta?.profiles !== undefined) {
+        this.rootAutoProfilesSet = resolveActiveProfiles({
+          moduleProfiles: rootAutoMeta.profiles,
+          env: this.env,
+        });
+      }
+    }
+
     const rootNode = await this.scanModule(
       resolvedRoot as ModuleImport,
       [],
@@ -288,8 +651,11 @@ export class ModuleScanner {
     // Second pass: link deferred forwardRef imports now that nodes exist
     await this.linkDeferredForwardRefImports();
 
-    // Pass 2.5: expand @AutoModule / autoDiscover modules from DecoratorRegistry
-    this.applyAutoDiscovery();
+    // Pass 2.5: expand @AutoModule / autoDiscover modules (including glob scan / manifest)
+    await this.applyAutoDiscovery();
+
+    // Pass 2.75: evaluate deferred @RegisterIfMissing conditional beans after unconditional/eager beans
+    this.applyDeferredConditionalRegistrations();
 
     // Third pass: register & validate exports across all scanned modules
     await this.processAndValidateExports();
@@ -307,6 +673,138 @@ export class ModuleScanner {
     };
   }
 
+  private getProfilesForNode(node: ModuleNode): ReadonlySet<string> {
+    if (this.explicitProfilesSet !== undefined) {
+      return this.explicitProfilesSet;
+    }
+    const autoMeta = getAutoModuleMetadata(node.metatype);
+    if (autoMeta?.profiles !== undefined) {
+      return resolveActiveProfiles({
+        moduleProfiles: autoMeta.profiles,
+        env: this.env,
+      });
+    }
+    if (this.rootAutoProfilesSet !== undefined) {
+      return this.rootAutoProfilesSet;
+    }
+    return this.defaultEnvProfilesSet;
+  }
+
+  private markConditionallySkipped(
+    node: ModuleNode,
+    token: InjectionToken,
+  ): void {
+    let skipped = this.conditionallySkippedTokens.get(node);
+    if (!skipped) {
+      skipped = new Set<InjectionToken>();
+      this.conditionallySkippedTokens.set(node, skipped);
+    }
+    skipped.add(token);
+  }
+
+  private collectVisibleRegisteredTokens(
+    node: ModuleNode,
+    includeControllers = false,
+  ): Set<InjectionToken> {
+    const tokens = new Set<InjectionToken>();
+
+    for (const token of node.providers.keys()) {
+      tokens.add(token);
+    }
+    for (const token of node.multiProviders.keys()) {
+      tokens.add(token);
+    }
+    if (includeControllers) {
+      for (const ctrl of node.controllers) {
+        tokens.add(ctrl);
+      }
+    }
+
+    const collectExportedFromModule = (
+      mod: ModuleNode,
+      visited: Set<ModuleNode>,
+    ): void => {
+      if (visited.has(mod)) {
+        return;
+      }
+      visited.add(mod);
+
+      const work = this.pendingWork.get(mod);
+      if (work) {
+        for (let i = 0; i < work.rawExports.length; i++) {
+          let exp: unknown = work.rawExports[i];
+          if (isForwardReference(exp)) {
+            exp = exp.forwardRef();
+          }
+          if (exp instanceof Promise) {
+            continue;
+          }
+          if (isDynamicModule(exp)) {
+            const imported = this.findImportedModule(mod, exp);
+            if (imported) {
+              collectExportedFromModule(imported, visited);
+            }
+            continue;
+          }
+          if (isProviderObject(exp)) {
+            if (mod.providers.has(exp.provide)) {
+              tokens.add(exp.provide);
+            }
+            continue;
+          }
+          if (
+            typeof exp === "function" &&
+            MetadataRegistry.has(METADATA_KEYS.MODULE, exp)
+          ) {
+            const imported = this.findImportedModule(
+              mod,
+              exp as Type<unknown>,
+            );
+            if (imported) {
+              collectExportedFromModule(imported, visited);
+            }
+            continue;
+          }
+          if (
+            typeof exp === "function" ||
+            typeof exp === "string" ||
+            typeof exp === "symbol"
+          ) {
+            const tok = exp as InjectionToken;
+            if (mod.providers.has(tok) || mod.multiProviders.has(tok)) {
+              tokens.add(tok);
+            } else {
+              for (const subImp of mod.imports) {
+                const subBefore = tokens.size;
+                collectExportedFromModule(subImp, visited);
+                if (tokens.size !== subBefore && tokens.has(tok)) {
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } else {
+        for (const tok of mod.getEffectiveExports().keys()) {
+          tokens.add(tok);
+        }
+      }
+    };
+
+    const visitedImports = new Set<ModuleNode>([node]);
+    for (const imp of node.imports) {
+      collectExportedFromModule(imp, visitedImports);
+    }
+
+    for (const candidate of this.allNodes.values()) {
+      if (candidate.isGlobal && candidate !== node) {
+        collectExportedFromModule(candidate, visitedImports);
+      }
+    }
+
+    return tokens;
+  }
+
   private resolveModuleOverride(target: unknown): unknown {
     if (!this.moduleOverrides || this.moduleOverrides.size === 0) {
       return target;
@@ -315,11 +813,7 @@ export class ModuleScanner {
     let current = target;
     const visited = new Set<unknown>();
 
-    while (
-      current !== undefined &&
-      current !== null &&
-      !visited.has(current)
-    ) {
+    while (current !== undefined && current !== null && !visited.has(current)) {
       visited.add(current);
 
       if (isDynamicModule(current)) {
@@ -452,7 +946,7 @@ export class ModuleScanner {
 
     const isGlobal = Boolean(
       dynamicMeta?.global ||
-        MetadataRegistry.get<boolean>(METADATA_KEYS.GLOBAL_MODULE, metatype),
+      MetadataRegistry.get<boolean>(METADATA_KEYS.GLOBAL_MODULE, metatype),
     );
     const id =
       this.idAlgorithm === "deep-hash"
@@ -489,17 +983,50 @@ export class ModuleScanner {
       ...(dynamicMeta?.exports ?? []),
     ];
 
-    // Register controllers (deduplicated per module)
+    // Register controllers (deduplicated per module, evaluating eager conditions in pass 1)
+    const nodeProfiles = this.getProfilesForNode(node);
     const seenControllers = new Set<Type<unknown>>();
     for (const ctrl of mergedControllers) {
-      if (!seenControllers.has(ctrl)) {
-        seenControllers.add(ctrl);
-        node.controllers.push(ctrl);
+      if (seenControllers.has(ctrl)) {
+        continue;
       }
+      seenControllers.add(ctrl);
+      const eagerOk = evaluateEagerProviderConditions(ctrl, {
+        env: this.env,
+        profiles: nodeProfiles,
+        registeredTokens: new Set<InjectionToken>([
+          ...node.providers.keys(),
+          ...node.controllers,
+        ]),
+      });
+      if (!eagerOk) {
+        continue;
+      }
+      if (hasDeferredConditions(ctrl)) {
+        this.deferredControllers.push({ node, controller: ctrl });
+        continue;
+      }
+      node.controllers.push(ctrl);
     }
 
-    // Register local providers (detect duplicates for non-multi tokens)
+    // Register local providers (evaluating eager conditions in pass 1, deferring @RegisterIfMissing to pass 2)
     for (const rawProvider of mergedProviders) {
+      const eagerOk = evaluateEagerProviderConditions(rawProvider, {
+        env: this.env,
+        profiles: nodeProfiles,
+        registeredTokens: new Set<InjectionToken>(node.providers.keys()),
+      });
+      if (!eagerOk) {
+        this.markConditionallySkipped(
+          node,
+          getProviderConditionTarget(rawProvider).provideToken,
+        );
+        continue;
+      }
+      if (hasDeferredConditions(rawProvider)) {
+        this.deferredProviders.push({ node, provider: rawProvider });
+        continue;
+      }
       this.registerProviderOnNode(node, rawProvider);
     }
 
@@ -515,10 +1042,7 @@ export class ModuleScanner {
       ...(autoDiscover !== undefined ? { autoDiscover } : {}),
     });
 
-    const nextStack = [
-      ...activeStack,
-      { key: identityKey, name: node.name },
-    ];
+    const nextStack = [...activeStack, { key: identityKey, name: node.name }];
 
     // Scan eager (non-forwardRef) imports immediately; defer forwardRef imports to pass 2
     for (const imp of mergedImports) {
@@ -566,7 +1090,7 @@ export class ModuleScanner {
     }
   }
 
-  private applyAutoDiscovery(): void {
+  private async applyAutoDiscovery(): Promise<void> {
     const autoModules: PendingModuleWork[] = [];
     for (const work of this.pendingWork.values()) {
       if (work.autoDiscover) {
@@ -575,6 +1099,22 @@ export class ModuleScanner {
     }
     if (autoModules.length === 0) {
       return;
+    }
+
+    // Lazily expand any @AutoModule({ scan, manifest }) not pre-expanded by BunestFactory
+    for (let i = 0; i < autoModules.length; i++) {
+      const metatype = autoModules[i]!.node.metatype;
+      if (this.expandedAutoModules.has(metatype)) {
+        continue;
+      }
+      const autoMeta = getAutoModuleMetadata(metatype);
+      if (
+        autoMeta &&
+        (autoMeta.manifest !== undefined || autoMeta.scan !== undefined)
+      ) {
+        const classes = await expandSingleAutoModule(autoMeta);
+        this.expandedAutoModules.set(metatype, classes);
+      }
     }
 
     const declaredControllers = new Set<Type<unknown>>();
@@ -600,59 +1140,172 @@ export class ModuleScanner {
       }
     }
 
+    // Also avoid duplicating explicit deferred providers from the same module
+    const queuedDeferredTargets = new Set<Function>();
+    for (let i = 0; i < this.deferredProviders.length; i++) {
+      const targetClass = getProviderConditionTarget(
+        this.deferredProviders[i]!.provider,
+      ).targetClass;
+      if (targetClass) {
+        queuedDeferredTargets.add(targetClass);
+      }
+    }
+    for (let i = 0; i < this.deferredControllers.length; i++) {
+      queuedDeferredTargets.add(this.deferredControllers[i]!.controller);
+    }
+
     for (const work of autoModules) {
       const opts: AutoDiscoverOptions =
-        work.autoDiscover === true ? {} : (work.autoDiscover as AutoDiscoverOptions);
+        work.autoDiscover === true
+          ? {}
+          : (work.autoDiscover as AutoDiscoverOptions);
+      const autoMeta = getAutoModuleMetadata(work.node.metatype);
+      const filterFn = autoMeta?.filter;
+      const nodeProfiles = this.getProfilesForNode(work.node);
       const discoverControllers = opts.controllers !== false;
       const discoverProviders = opts.providers !== false;
       const excludeSet = new Set<Function>(opts.exclude ?? []);
       const hasIncludeFilter = opts.include !== undefined;
       const includeList = opts.include ?? [];
+      const includeSet = hasIncludeFilter ? new Set<Function>(includeList) : undefined;
+      const hasScannedScope = this.expandedAutoModules.has(work.node.metatype);
+      const scannedClasses = hasScannedScope
+        ? this.expandedAutoModules.get(work.node.metatype)!
+        : undefined;
 
       if (discoverControllers) {
-        const candidateControllers: Type<unknown>[] = hasIncludeFilter
-          ? includeList.filter((cls) =>
-              MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls),
+        const candidateControllers: Type<unknown>[] = hasScannedScope
+          ? scannedClasses!.filter(
+              (cls) =>
+                MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls) &&
+                (!includeSet || includeSet.has(cls)),
             )
-          : DecoratorRegistry.getControllers();
+          : hasIncludeFilter
+            ? includeList.filter((cls) =>
+                MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls),
+              )
+            : DecoratorRegistry.getControllers();
 
         for (let i = 0; i < candidateControllers.length; i++) {
           const ctrl = candidateControllers[i]!;
           if (
             excludeSet.has(ctrl) ||
-            (!hasIncludeFilter && DecoratorRegistry.isInternal(ctrl)) ||
+            (!hasIncludeFilter &&
+              !hasScannedScope &&
+              DecoratorRegistry.isInternal(ctrl)) ||
             declaredControllers.has(ctrl) ||
-            MetadataRegistry.has(METADATA_KEYS.MODULE, ctrl)
+            queuedDeferredTargets.has(ctrl) ||
+            MetadataRegistry.has(METADATA_KEYS.MODULE, ctrl) ||
+            (filterFn !== undefined && !filterFn(ctrl))
           ) {
             continue;
           }
+
+          const eagerOk = evaluateEagerProviderConditions(ctrl, {
+            env: this.env,
+            profiles: nodeProfiles,
+            registeredTokens: declaredProviders,
+          });
+          if (!eagerOk) {
+            continue;
+          }
+          if (hasDeferredConditions(ctrl)) {
+            this.deferredControllers.push({ node: work.node, controller: ctrl });
+            queuedDeferredTargets.add(ctrl);
+            continue;
+          }
+
           work.node.controllers.push(ctrl);
           declaredControllers.add(ctrl);
         }
       }
 
       if (discoverProviders) {
-        const candidateProviders: Type<unknown>[] = hasIncludeFilter
-          ? includeList.filter(
-              (cls) => !MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls),
+        const candidateProviders: Type<unknown>[] = hasScannedScope
+          ? scannedClasses!.filter(
+              (cls) =>
+                !MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls) &&
+                (!includeSet || includeSet.has(cls)),
             )
-          : DecoratorRegistry.getInjectables();
+          : hasIncludeFilter
+            ? includeList.filter(
+                (cls) => !MetadataRegistry.has(METADATA_KEYS.CONTROLLER, cls),
+              )
+            : DecoratorRegistry.getInjectables();
 
         for (let i = 0; i < candidateProviders.length; i++) {
           const prov = candidateProviders[i]!;
           if (
             excludeSet.has(prov) ||
-            (!hasIncludeFilter && DecoratorRegistry.isInternal(prov)) ||
+            (!hasIncludeFilter &&
+              !hasScannedScope &&
+              DecoratorRegistry.isInternal(prov)) ||
             declaredProviders.has(prov) ||
             declaredControllers.has(prov) ||
+            queuedDeferredTargets.has(prov) ||
             MetadataRegistry.has(METADATA_KEYS.CONTROLLER, prov) ||
-            MetadataRegistry.has(METADATA_KEYS.MODULE, prov)
+            MetadataRegistry.has(METADATA_KEYS.MODULE, prov) ||
+            (filterFn !== undefined && !filterFn(prov))
           ) {
             continue;
           }
+
+          const eagerOk = evaluateEagerProviderConditions(prov, {
+            env: this.env,
+            profiles: nodeProfiles,
+            registeredTokens: declaredProviders,
+          });
+          if (!eagerOk) {
+            this.markConditionallySkipped(work.node, prov);
+            continue;
+          }
+          if (hasDeferredConditions(prov)) {
+            this.deferredProviders.push({ node: work.node, provider: prov });
+            queuedDeferredTargets.add(prov);
+            continue;
+          }
+
           this.registerProviderOnNode(work.node, prov);
           declaredProviders.add(prov);
         }
+      }
+    }
+  }
+
+  private applyDeferredConditionalRegistrations(): void {
+    for (let i = 0; i < this.deferredProviders.length; i++) {
+      const { node, provider } = this.deferredProviders[i]!;
+      const visibleTokens = this.collectVisibleRegisteredTokens(node, false);
+      const nodeProfiles = this.getProfilesForNode(node);
+      const shouldRegister = evaluateDeferredProviderConditions(provider, {
+        env: this.env,
+        profiles: nodeProfiles,
+        registeredTokens: visibleTokens,
+      });
+      if (!shouldRegister) {
+        this.markConditionallySkipped(
+          node,
+          getProviderConditionTarget(provider).provideToken,
+        );
+        continue;
+      }
+      this.registerProviderOnNode(node, provider);
+    }
+
+    for (let i = 0; i < this.deferredControllers.length; i++) {
+      const { node, controller } = this.deferredControllers[i]!;
+      if (node.controllers.includes(controller)) {
+        continue;
+      }
+      const visibleTokens = this.collectVisibleRegisteredTokens(node, true);
+      const nodeProfiles = this.getProfilesForNode(node);
+      const shouldRegister = evaluateDeferredProviderConditions(controller, {
+        env: this.env,
+        profiles: nodeProfiles,
+        registeredTokens: visibleTokens,
+      });
+      if (shouldRegister) {
+        node.controllers.push(controller);
       }
     }
   }
@@ -698,10 +1351,7 @@ export class ModuleScanner {
         // Case 2: Provider object directly listed in exports (ADR-007 §2.3)
         if (isProviderObject(rawExp)) {
           const normalized = normalizeProvider(rawExp);
-          if (
-            !normalized.isMulti &&
-            !node.providers.has(normalized.token)
-          ) {
+          if (!normalized.isMulti && !node.providers.has(normalized.token)) {
             node.providers.set(normalized.token, normalized);
           } else if (normalized.isMulti) {
             const list = node.multiProviders.get(normalized.token) ?? [];
@@ -769,6 +1419,10 @@ export class ModuleScanner {
       }
 
       if (!foundInImports) {
+        if (this.conditionallySkippedTokens.get(node)?.has(token)) {
+          node.exportedTokens.delete(token);
+          continue;
+        }
         throw new InvalidExportException(
           token,
           node.name,

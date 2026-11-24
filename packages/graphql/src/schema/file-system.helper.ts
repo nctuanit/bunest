@@ -1,6 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, sep } from "node:path";
-import { Injectable } from "@bunest/common";
+import { dirname, ensureDir, Injectable, sep } from "@bunest/core";
 
 /**
  * Filesystem helper used by `GraphQLSchemaFactory` / `GraphQLDefinitionsFactory`
@@ -13,11 +11,11 @@ export class FileSystemHelper {
     if (dir && dir !== ".") {
       await this.mkdirRecursive(dir);
     }
-    await writeFile(filePath, content, "utf8");
+    await Bun.write(filePath, content);
   }
 
   async mkdirRecursive(dirPath: string): Promise<void> {
-    await mkdir(dirPath, { recursive: true });
+    await ensureDir(dirPath);
   }
 
   getDirs(filePath: string): string[] {

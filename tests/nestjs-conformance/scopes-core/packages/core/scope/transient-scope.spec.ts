@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   INQUIRER,
   Inject,
   Injectable,
   Scope,
-} from "../../../../../../packages/common/src";
+} from "../../../../../../packages/core/src/common";
 import { ModuleRef } from "../../../../../../packages/core/src";
 import { Test, describeConformance } from "../../../../_helpers";
 

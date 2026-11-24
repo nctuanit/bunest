@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
   BadRequestException,
@@ -21,7 +20,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   HttpAdapterHost,
   type BunestApplication,
@@ -203,7 +202,11 @@ describeConformance(
     );
 
     it("runs exception filters for a QUERY route", async () => {
-      const { statusCode, json } = await sendQuery("/items/reject", "QUERY", {});
+      const { statusCode, json } = await sendQuery(
+        "/items/reject",
+        "QUERY",
+        {},
+      );
 
       expect(statusCode).toBe(HttpStatus.BAD_REQUEST);
       expect(json).toEqual({ handledBy: "RejectFilter" });

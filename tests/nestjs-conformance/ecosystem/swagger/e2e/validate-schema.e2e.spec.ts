@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   Controller,
@@ -6,7 +5,7 @@ import {
   Module,
   Query,
   VersioningType,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BunestFactory,
   type BunestApplication,
@@ -178,11 +177,9 @@ describeConformance(
           ?.test,
       ).toEqual("test*2");
       expect(
-        (
-          api.paths["/api/cats"]?.post?.callbacks?.myEvent as any
-        )?.["{$request.body#/callbackUrl}"]?.post?.requestBody?.content?.[
-          "application/json"
-        ]?.schema,
+        (api.paths["/api/cats"]?.post?.callbacks?.myEvent as any)?.[
+          "{$request.body#/callbackUrl}"
+        ]?.post?.requestBody?.content?.["application/json"]?.schema,
       ).toBeDefined();
       expect(
         (api.paths["/api/cats"]?.get as any)?.["x-codeSamples"]?.[0]?.lang,
@@ -322,7 +319,9 @@ describeConformance(
 
     it("should consider explicit config over auto-detected schema", () => {
       const document = SwaggerModule.createDocument(app, options);
-      expect(document.paths["/api/cats/download"]?.get?.responses["200"]).toEqual({
+      expect(
+        document.paths["/api/cats/download"]?.get?.responses["200"],
+      ).toEqual({
         description: "binary file for download",
         content: {
           "application/pdf": {
@@ -492,7 +491,8 @@ describeConformance(
         SwaggerModule.createDocument(app, { ...options, openapi: "3.1.0" });
 
       const getCreateCatDtoProperties = (document: OpenAPIObject) =>
-        (document.components?.schemas?.CreateCatDto as SchemaObject).properties!;
+        (document.components?.schemas?.CreateCatDto as SchemaObject)
+          .properties!;
 
       it("should emit a type union for a nullable primitive", () => {
         const properties = getCreateCatDtoProperties(createOas31Document());

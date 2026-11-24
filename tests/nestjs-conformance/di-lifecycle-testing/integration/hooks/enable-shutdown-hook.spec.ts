@@ -1,11 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   Injectable,
   Module,
   type BeforeApplicationShutdown,
   type OnApplicationShutdown,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   NestFactory,
   type BunestApplication,
@@ -60,8 +59,7 @@ describeConformance(
       // Invoke only the last registered SIGTERM listener (owned by this app)
       const listeners = process.listeners("SIGTERM");
       const listener = listeners[listeners.length - 1] as
-        | (() => void)
-        | undefined;
+        (() => void) | undefined;
       listener?.();
 
       await new Promise((r) => setTimeout(r, 30));
@@ -80,8 +78,7 @@ describeConformance(
 
       const listeners = process.listeners("SIGINT");
       const listener = listeners[listeners.length - 1] as
-        | (() => void)
-        | undefined;
+        (() => void) | undefined;
       listener?.();
 
       await new Promise((r) => setTimeout(r, 30));

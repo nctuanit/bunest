@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   Controller,
@@ -7,7 +6,7 @@ import {
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
-} from "@bunest/common";
+} from "@bunest/core";
 import { Test } from "@bunest/testing";
 import {
   Auth,

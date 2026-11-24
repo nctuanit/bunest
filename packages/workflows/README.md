@@ -30,7 +30,10 @@ import {
 } from "@bunest/workflows";
 
 @Workflow("order-fulfillment")
-export class OrderWorkflow implements WorkflowRunner<{ orderId: string }, string> {
+export class OrderWorkflow implements WorkflowRunner<
+  { orderId: string },
+  string
+> {
   async run(ctx: WorkflowContext, input: { orderId: string }) {
     const paymentId = await ctx.step("charge", () => `pay_${input.orderId}`, {
       compensate: async (_id) => {
@@ -61,13 +64,13 @@ export class AppModule {
 
 - `@bunest/workflows/core` — Reusable clock, duration, retries, codecs, limits, result waiter, scheduler, and leased worker primitives.
 - `@bunest/workflows/cqrs` — `WorkflowsCqrsModule`, `@StartOn()`, and `@SignalOn()` bridge for `@bunest/cqrs`.
-- `@bunest/workflows/postgres` — `PostgresWorkflowStore` over `@bunest/store-kit/postgres`.
-- `@bunest/workflows/mysql` — `MySqlWorkflowStore` over `@bunest/store-kit/mysql`.
+- `@bunest/workflows/postgres` — `PostgresWorkflowStore` over `@bunest/orm/postgres`.
+- `@bunest/workflows/mysql` — `MySqlWorkflowStore` over `@bunest/orm/mysql`.
 - `@bunest/workflows/testing` — `workflowStoreContract()` and `scheduleStoreContract()` compliance test suites.
 
 ## CLI
 
-`@bunest/workflows` ships the `nest-workflows` migration CLI powered by `@bunest/store-kit`:
+`@bunest/workflows` ships the `nest-workflows` migration CLI powered by `@bunest/orm/store`:
 
 ```bash
 bunx nest-workflows migrate --url postgres://localhost:5432/app

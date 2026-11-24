@@ -1,4 +1,4 @@
-import { ConfigurableModuleBuilder } from "@bunest/common";
+import { ConfigurableModuleBuilder } from "@bunest/core";
 import type { ResilienceModuleOptions } from "./interfaces/resilience-module-options.interface";
 
 export const {
@@ -20,8 +20,7 @@ export const {
 /** What a class passed to `forRootAsync({ useClass })` implements. */
 export interface ResilienceOptionsFactory {
   createResilienceOptions():
-    | ResilienceModuleOptions
-    | Promise<ResilienceModuleOptions>;
+    ResilienceModuleOptions | Promise<ResilienceModuleOptions>;
 }
 
 /** What `ResilienceModule.forRootAsync()` takes. */

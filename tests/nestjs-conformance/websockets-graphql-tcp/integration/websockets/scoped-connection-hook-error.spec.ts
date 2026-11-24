@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
 import {
   type ArgumentsHost,
@@ -10,7 +9,7 @@ import {
   REQUEST,
   Scope,
   UseFilters,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import {
   type BunWsClient,
@@ -19,7 +18,7 @@ import {
   WebSocketModule,
   WsException,
   type WsMessageFrame,
-} from "../../../../../packages/websockets/src";
+} from "../../../../../packages/core/src/ws";
 import {
   Test,
   describeConformance,
@@ -206,7 +205,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: WsGatewayExplorer skips @WebSocketGateway({ scope: Scope.REQUEST }) providers AND BunWebSocketAdapter.handleOpen() swallows handleConnection() errors instead of emitting error frames (packages/websockets/src/explorer/ws-gateway.explorer.ts#L122, packages/websockets/src/adapter/bun-ws.adapter.ts#L679-L688).
+    // BUNEST_BUG: WsGatewayExplorer skips @WebSocketGateway({ scope: Scope.REQUEST }) providers AND BunWebSocketAdapter.handleOpen() swallows handleConnection() errors instead of emitting error frames (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
     it.skip("should send the exception to a ws client [ADR-001, ADR-012]", async () => {
       const port = await start([ConnectionState, RejectingGateway]);
       const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -236,7 +235,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways and BunWebSocketAdapter.handleOpen() does not invoke @UseFilters (nor resolve Scope.REQUEST filters per connection) when handleConnection() throws (packages/websockets/src/explorer/ws-gateway.explorer.ts#L122, packages/websockets/src/adapter/bun-ws.adapter.ts#L679-L688).
+    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways and BunWebSocketAdapter.handleOpen() does not invoke @UseFilters (nor resolve Scope.REQUEST filters per connection) when handleConnection() throws (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
     it.skip("should run a request-scoped filter with the instance of the connection [ADR-001, ADR-012]", async () => {
       const port = await start([Session, SessionGateway]);
       const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -247,7 +246,7 @@ describeConformance(
       expect(reason).toBe("Unauthorized");
     });
 
-    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways and BunWebSocketAdapter has no per-connection gateway resolution error handling through @UseFilters (packages/websockets/src/explorer/ws-gateway.explorer.ts#L122, packages/websockets/src/adapter/bun-ws.adapter.ts#L679-L688).
+    // BUNEST_BUG: WsGatewayExplorer skips Scope.REQUEST gateways and BunWebSocketAdapter has no per-connection gateway resolution error handling through @UseFilters (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
     it.skip("should run a request-scoped filter when the gateway fails to resolve [ADR-001, ADR-012]", async () => {
       const port = await start([Session, CurrentUser, UserGateway]);
       const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -258,7 +257,7 @@ describeConformance(
       expect(reason).toBe("Unauthorized");
     });
 
-    // BUNEST_BUG: BunWebSocketAdapter.handleOpen() catches and only logs handleConnection() errors instead of routing them through gateway-level @UseFilters(AuditFilter) (packages/websockets/src/adapter/bun-ws.adapter.ts#L679-L688).
+    // BUNEST_BUG: BunWebSocketAdapter.handleOpen() catches and only logs handleConnection() errors instead of routing them through gateway-level @UseFilters(AuditFilter) (packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
     it.skip("should run a transient filter of a default-scoped gateway with its dependencies [ADR-001]", async () => {
       const port = await start([AuditLog, AuditedGateway]);
       const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);

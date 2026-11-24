@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import { afterEach, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  join,
+  mkdirSyncPath,
+  readTextSync,
+  removePath,
+} from "../../../../../packages/core/src";
 import {
   buildSchematicFiles,
   generateSchematic,
@@ -10,6 +12,15 @@ import {
   type PlannedFile,
 } from "../../../../../packages/cli/src";
 import { describeConformance, itAdapted } from "../../../_helpers/index";
+
+function makeTempDir(prefix: string): string {
+  const dir = join(
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+    `${prefix}${crypto.randomUUID()}`,
+  );
+  mkdirSyncPath(dir, { recursive: true });
+  return dir;
+}
 
 function expectedModuleSource(pascal: string): string {
   return `import { Module } from "@bunest/core";
@@ -44,16 +55,16 @@ describeConformance(
     const tempDirs: string[] = [];
 
     function createTempDir(): string {
-      const dir = mkdtempSync(join(tmpdir(), "bunest-cli-conf-"));
+      const dir = makeTempDir("bunest-cli-conf-");
       tempDirs.push(dir);
       return dir;
     }
 
-    afterEach(() => {
+    afterEach(async () => {
       while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
-          rmSync(dir, { recursive: true, force: true });
+          await removePath(dir, { recursive: true, force: true });
         }
       }
     });
@@ -82,7 +93,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.module.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(cwd, "src/foo/foo.module.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo/foo.module.ts")),
         ).toEqual(expectedModuleSource("Foo"));
       },
       "emits @bunest/core @Module decorator template",
@@ -108,7 +119,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar/foo/foo.module.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar/foo/foo.module.ts")),
         ).toEqual(expectedModuleSource("Foo"));
       },
       "emits @bunest/core module under nested folder path",
@@ -129,7 +140,7 @@ describeConformance(
           result.files.find((f) => f.relativePath === "foo/foo.module.ts"),
         ).toBeDefined();
         expect(
-          readFileSync(join(cwd, "bar/foo/foo.module.ts"), "utf8"),
+          readTextSync(join(cwd, "bar/foo/foo.module.ts")),
         ).toEqual(expectedModuleSource("Foo"));
       },
       "writes module into custom target dir",
@@ -155,7 +166,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/foo-bar/foo-bar.module.ts"), "utf8"),
+          readTextSync(join(cwd, "src/foo-bar/foo-bar.module.ts")),
         ).toEqual(expectedModuleSource("FooBar"));
       },
       "normalizes camelCase name to kebab-case file and PascalCase module class",
@@ -181,9 +192,9 @@ describeConformance(
           flat: true,
           cwd,
         });
-        expect(readFileSync(join(cwd, "src/foo-bar.module.ts"), "utf8")).toEqual(
-          expectedModuleSource("FooBar"),
-        );
+        expect(
+          readTextSync(join(cwd, "src/foo-bar.module.ts")),
+        ).toEqual(expectedModuleSource("FooBar"));
       },
       "places module directly inside target dir when flat: true",
     );
@@ -208,7 +219,7 @@ describeConformance(
           cwd,
         });
         expect(
-          readFileSync(join(cwd, "src/bar-baz/foo/foo.module.ts"), "utf8"),
+          readTextSync(join(cwd, "src/bar-baz/foo/foo.module.ts")),
         ).toEqual(expectedModuleSource("Foo"));
       },
       "normalizes camelCase directory segment to kebab-case",
@@ -235,9 +246,9 @@ describeConformance(
           parseSchematicName("foo"),
           { flat: false, spec: true },
         );
-        expect(
-          planned.every((file) => file.relativePath.endsWith(".ts")),
-        ).toBe(true);
+        expect(planned.every((file) => file.relativePath.endsWith(".ts"))).toBe(
+          true,
+        );
         expect(findFile(planned, "foo/foo.module.js")).toBeUndefined();
         expect(findFile(planned, "foo/foo.module.ts")?.content).toEqual(
           expectedModuleSource("Foo"),
@@ -261,8 +272,10 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
-      expect(appModule).toContain('import { FooModule } from "./foo/foo.module";');
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
+      expect(appModule).toContain(
+        'import { FooModule } from "./foo/foo.module";',
+      );
       expect(appModule).toContain("imports: [FooModule]");
     });
 
@@ -286,11 +299,10 @@ describeConformance(
         cwd,
       });
 
-      const barModule = readFileSync(
-        join(cwd, "src/bar/bar.module.ts"),
-        "utf8",
+      const barModule = readTextSync(join(cwd, "src/bar/bar.module.ts"));
+      expect(barModule).toContain(
+        'import { FooModule } from "./foo/foo.module";',
       );
-      expect(barModule).toContain('import { FooModule } from "./foo/foo.module";');
       expect(barModule).toContain("imports: [FooModule]");
     });
 
@@ -309,8 +321,10 @@ describeConformance(
         cwd,
       });
 
-      const appModule = readFileSync(join(cwd, "src/app.module.ts"), "utf8");
-      expect(appModule).toContain('import { FooModule } from "./foo/foo.module";');
+      const appModule = readTextSync(join(cwd, "src/app.module.ts"));
+      expect(appModule).toContain(
+        'import { FooModule } from "./foo/foo.module";',
+      );
       expect(appModule).toContain("imports: [FooModule]");
     });
   },

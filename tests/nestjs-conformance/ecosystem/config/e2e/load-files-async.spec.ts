@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import type { BunestApplication } from "../../../../../packages/core/src";
 import { describeConformance, Test } from "../../../_helpers/index";
@@ -30,7 +29,7 @@ describeConformance(
       expect(host).toEqual("host");
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally ConfigModule.forRoot() only registers namespace KEY providers for synchronous load entries and omits Promise-wrapped NamespacedConfigFactory entries like Promise.resolve(databaseConfig) (packages/config/src/config.module.ts:93-96,185-194)
+    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally ConfigModule.forRoot() only registers namespace KEY providers for synchronous load entries and omits Promise-wrapped NamespacedConfigFactory entries like Promise.resolve(databaseConfig) (packages/core/src/config/config.module.ts:93-96,185-194)
     it.skip("should return loaded configuration (injected through constructor)", () => {
       const config = app.get(AppModule).getDatabaseConfig();
       expect(config.host).toEqual("host");

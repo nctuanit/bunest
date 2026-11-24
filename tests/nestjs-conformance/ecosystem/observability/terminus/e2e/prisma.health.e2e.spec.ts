@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { afterEach, describe, expect, it } from "bun:test";
-import { Controller, Get } from "../../../../../../packages/common/src";
+import { Controller, Get } from "../../../../../../packages/core/src/common";
 import {
   HealthCheck,
   HealthCheckService,
@@ -113,7 +112,7 @@ describeConformance(
           "Uses in-process duck-typed MongoDB Prisma client ($runCommandRaw)",
         );
 
-        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
         it.skip(
           adaptedTitle(
             ["ADR-001"],
@@ -186,7 +185,7 @@ describeConformance(
           "Uses in-process duck-typed SQL Prisma client ($queryRawUnsafe)",
         );
 
-        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/common/src/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
+        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
         it.skip(
           adaptedTitle(
             ["ADR-001"],

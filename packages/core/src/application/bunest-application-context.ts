@@ -2,12 +2,13 @@ import {
   Logger,
   ShutdownSignal,
   isDynamicModule,
+  type BunestTokenRegistry,
   type DynamicModule,
   type InjectionToken,
   type LogLevel,
   type LoggerService,
   type Type,
-} from "@bunest/common";
+} from "../common/index";
 import { DIContainer } from "../di/di-container";
 import type {
   BunestApplicationContextOptions,
@@ -29,11 +30,7 @@ interface BufferedLogEntry {
 function resolveLoggerService(
   option: BunestApplicationContextOptions["logger"],
 ): LoggerService {
-  if (
-    option &&
-    typeof option === "object" &&
-    !Array.isArray(option)
-  ) {
+  if (option && typeof option === "object" && !Array.isArray(option)) {
     return option;
   }
   if (option === false) {
@@ -178,8 +175,9 @@ export class BunestApplicationContext {
       }
       for (const group of groups) {
         for (const instance of group.instances) {
-          const hook = (instance as { onModuleInit?: () => Promise<void> | void })
-            .onModuleInit;
+          const hook = (
+            instance as { onModuleInit?: () => Promise<void> | void }
+          ).onModuleInit;
           if (typeof hook === "function") {
             await hook.call(instance);
           }
@@ -210,6 +208,14 @@ export class BunestApplicationContext {
     return this;
   }
 
+  get<K extends keyof BunestTokenRegistry>(
+    token: K,
+    options: { strict?: boolean; each: true },
+  ): BunestTokenRegistry[K][];
+  get<K extends keyof BunestTokenRegistry>(
+    token: K,
+    options?: { strict?: boolean; each?: false },
+  ): BunestTokenRegistry[K];
   get<TInput = unknown, TResult = TInput>(
     token: InjectionToken<TInput>,
     options: { strict?: boolean; each: true },
@@ -237,6 +243,16 @@ export class BunestApplicationContext {
     );
   }
 
+  resolve<K extends keyof BunestTokenRegistry>(
+    token: K,
+    contextIdOrContainer: ContextId | RequestScopeContainer | undefined,
+    options: { strict?: boolean; each: true },
+  ): Promise<BunestTokenRegistry[K][]>;
+  resolve<K extends keyof BunestTokenRegistry>(
+    token: K,
+    contextIdOrContainer?: ContextId | RequestScopeContainer,
+    options?: { strict?: boolean; each?: false },
+  ): Promise<BunestTokenRegistry[K]>;
   resolve<TInput = unknown, TResult = TInput>(
     token: InjectionToken<TInput>,
     contextIdOrContainer: ContextId | RequestScopeContainer | undefined,
@@ -328,8 +344,7 @@ export class BunestApplicationContext {
 
   selectContextModule(): void {
     const graph = this.container.getGraph();
-    this.contextModule =
-      graph.modules.get(this.scopeModuleId) ?? graph.root;
+    this.contextModule = graph.modules.get(this.scopeModuleId) ?? graph.root;
     this.scopeModuleId = this.contextModule.id;
   }
 

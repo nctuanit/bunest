@@ -95,7 +95,10 @@ function isRedirectStatus(status: number): boolean {
   );
 }
 
-function resolveDispatcher(target: SupertestTarget, options: TestClientOptions): {
+function resolveDispatcher(
+  target: SupertestTarget,
+  options: TestClientOptions,
+): {
   dispatcher: FetchCapable;
   baseUrl: string;
   isLiveNetwork: boolean;
@@ -103,8 +106,7 @@ function resolveDispatcher(target: SupertestTarget, options: TestClientOptions):
   if (typeof target === "string") {
     return {
       dispatcher: {
-        fetch: (req: Request) =>
-          globalThis.fetch(req, { redirect: "manual" }),
+        fetch: (req: Request) => globalThis.fetch(req, { redirect: "manual" }),
       },
       baseUrl: target,
       isLiveNetwork: true,
@@ -122,8 +124,7 @@ function resolveDispatcher(target: SupertestTarget, options: TestClientOptions):
   ) {
     return {
       dispatcher: {
-        fetch: (req: Request) =>
-          globalThis.fetch(req, { redirect: "manual" }),
+        fetch: (req: Request) => globalThis.fetch(req, { redirect: "manual" }),
       },
       baseUrl: target.url.toString(),
       isLiveNetwork: true,
@@ -363,11 +364,7 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
   }
 
   send(body: unknown): this {
-    if (
-      this.hasRawBody &&
-      isPlainRecord(this.rawBody) &&
-      isPlainRecord(body)
-    ) {
+    if (this.hasRawBody && isPlainRecord(this.rawBody) && isPlainRecord(body)) {
       this.rawBody = { ...this.rawBody, ...body };
     } else {
       this.rawBody = body;
@@ -378,11 +375,7 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
 
   field(
     name: string,
-    value:
-      | string
-      | number
-      | boolean
-      | ReadonlyArray<string | number | boolean>,
+    value: string | number | boolean | ReadonlyArray<string | number | boolean>,
   ): this {
     if (Array.isArray(value)) {
       for (const item of value) {
@@ -479,19 +472,14 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
 
   then<TResult1 = SupertestResponse, TResult2 = never>(
     onfulfilled?:
-      | ((value: SupertestResponse) => TResult1 | PromiseLike<TResult1>)
-      | null,
-    onrejected?:
-      | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
-      | null,
+      ((value: SupertestResponse) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     return this.execute().then(onfulfilled, onrejected);
   }
 
   catch<TResult = never>(
-    onrejected?:
-      | ((reason: unknown) => TResult | PromiseLike<TResult>)
-      | null,
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
   ): Promise<SupertestResponse | TResult> {
     return this.execute().catch(onrejected);
   }
@@ -607,7 +595,10 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
     }
 
     // URL-encoded form serialization when .type("form") is set
-    if (/application\/x-www-form-urlencoded/i.test(contentType) && isPlainRecord(payload)) {
+    if (
+      /application\/x-www-form-urlencoded/i.test(contentType) &&
+      isPlainRecord(payload)
+    ) {
       const formParams = new URLSearchParams();
       for (const [k, v] of Object.entries(payload)) {
         if (v !== undefined) {
@@ -649,7 +640,9 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
       const existing = headers.get("cookie");
       headers.set(
         "cookie",
-        existing ? `${existing}; ${cookiePairs.join("; ")}` : cookiePairs.join("; "),
+        existing
+          ? `${existing}; ${cookiePairs.join("; ")}`
+          : cookiePairs.join("; "),
       );
     }
 

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { afterEach, expect } from "bun:test";
 import {
   BadRequestException,
@@ -19,7 +18,7 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type PipeTransform,
-} from "../../../../../packages/common/src";
+} from "../../../../../packages/core/src/common";
 import {
   BaseExceptionFilter,
   HttpAdapterHost,
@@ -281,9 +280,7 @@ describeConformance(
       ["ADR-001", "ADR-008"],
       "answers the requests an inherited CatchEverythingFilter cannot",
       async () => {
-        await connect(
-          (a) => new CatchEverythingFilter(a.get(HttpAdapterHost)),
-        );
+        await connect((a) => new CatchEverythingFilter(a.get(HttpAdapterHost)));
         await expectEveryRequestAnswered();
       },
       "Bunest TCP error serialization + Promise pipeline",

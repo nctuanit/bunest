@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { describe, expect, it } from "bun:test";
 import {
   Body,
@@ -20,10 +19,10 @@ import {
   type ResponseContext,
   type UploadedFileInfo,
   type ValidationErrorResponse,
-} from "@bunest/common";
+} from "@bunest/core";
 import { ClassSerializerInterceptor, ValidationPipe } from "@bunest/core";
-import { Exclude, Expose } from "class-transformer";
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { Exclude, Expose } from "../../validation/src/transformer";
+import { IsEmail, IsString, MinLength } from "../../validation/src/validator";
 import { Test, TestClient } from "../src";
 
 class CreateAccountDto {
@@ -235,7 +234,10 @@ describe("TestClient & TestResponse (in-memory & live HTTP)", () => {
       json: { name: "Alice III" },
     });
     patchRes.expectStatus(200);
-    expect(await patchRes.json()).toEqual({ id: "acc_1", patched: "Alice III" });
+    expect(await patchRes.json()).toEqual({
+      id: "acc_1",
+      patched: "Alice III",
+    });
 
     const headRes = await client.head("/accounts/set-cookies");
     headRes.expectStatus(200);
