@@ -36,9 +36,16 @@ const ALL_METHODS_ALLOW_HEADER = CORE_METHODS_ALLOW_HEADER;
 const PARAM_WITH_REGEX_RE = /^:([A-Za-z_][A-Za-z0-9_]*)\((.+)\)(\?)?$/;
 const OPTIONAL_PARAM_RE = /^:([A-Za-z_][A-Za-z0-9_]*)\?$/;
 const SIMPLE_PARAM_RE = /^:([A-Za-z_][A-Za-z0-9_]*)$/;
+const NAMED_WILDCARD_RE = /^\*([A-Za-z_][A-Za-z0-9_]*)$/;
 
 type SegmentKind =
   | { readonly kind: "static"; readonly literal: string }
+  | {
+      readonly kind: "mixed";
+      readonly regexKey: string;
+      readonly regex: RegExp;
+      readonly names: readonly string[];
+    }
   | { readonly kind: "param"; readonly name: string; readonly regex?: RegExp }
   | {
       readonly kind: "optional-param";
@@ -46,7 +53,7 @@ type SegmentKind =
       readonly regex?: RegExp;
     }
   | { readonly kind: "mid-wildcard" }
-  | { readonly kind: "trailing-wildcard" };
+  | { readonly kind: "trailing-wildcard"; readonly name?: string };
 
 interface HostMatcher {
   readonly rules: ReadonlyArray<string | RegExp>;
@@ -74,6 +81,13 @@ interface HostRouteBucket {
 
 interface RadixNode {
   readonly staticChildren: Map<string, RadixNode>;
+  readonly mixedSegmentChildren: Array<{
+    readonly regexKey: string;
+    readonly regex: RegExp;
+    readonly groupCount: number;
+    readonly node: RadixNode;
+    readonly order: number;
+  }>;
   readonly regexParamChildren: Array<{
     readonly regexKey: string;
     readonly regex: RegExp;
@@ -87,14 +101,18 @@ interface RadixNode {
   }>;
   midWildcardChild?: RadixNode;
   trailingWildcardChild?: RadixNode;
+  trailingSlashChild?: RadixNode;
+  minOrder: number;
   readonly buckets: HostRouteBucket[];
 }
 
 function createNode(): RadixNode {
   return {
     staticChildren: new Map(),
+    mixedSegmentChildren: [],
     regexParamChildren: [],
     optionalParamChildren: [],
+    minOrder: Number.MAX_SAFE_INTEGER,
     buckets: [],
   };
 }
@@ -145,15 +163,89 @@ function safeDecodeSegment(segment: string): string {
   }
 }
 
+function escapeRegexLiteral(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function expandOptionalPathVariants(rawPath: string): string[] {
+  const openIdx = rawPath.indexOf("{");
+  if (openIdx === -1) {
+    const collapsed = rawPath.replace(/\/+/g, "/");
+    return [collapsed || "/"];
+  }
+  let depth = 0;
+  let closeIdx = -1;
+  for (let i = openIdx; i < rawPath.length; i++) {
+    if (rawPath[i] === "{") depth++;
+    else if (rawPath[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        closeIdx = i;
+        break;
+      }
+    }
+  }
+  if (closeIdx === -1) {
+    return [rawPath];
+  }
+  const before = rawPath.slice(0, openIdx);
+  const inside = rawPath.slice(openIdx + 1, closeIdx);
+  const after = rawPath.slice(closeIdx + 1);
+  const withGroup = expandOptionalPathVariants(before + inside + after);
+  const withoutGroup = expandOptionalPathVariants(before + after);
+  const out: string[] = [];
+  for (const v of withGroup) {
+    if (!out.includes(v)) out.push(v);
+  }
+  for (const v of withoutGroup) {
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+function parseMixedSegment(
+  raw: string,
+): { regexKey: string; regex: RegExp; names: string[] } | null {
+  if (!raw.includes(":")) return null;
+  const names: string[] = [];
+  let pattern = "^";
+  let i = 0;
+  while (i < raw.length) {
+    if (
+      raw[i] === ":" &&
+      i + 1 < raw.length &&
+      /[A-Za-z_]/.test(raw[i + 1]!)
+    ) {
+      let j = i + 1;
+      while (j < raw.length && /[A-Za-z0-9_]/.test(raw[j]!)) j++;
+      names.push(raw.slice(i + 1, j));
+      pattern += "([^/]+)";
+      i = j;
+    } else {
+      pattern += escapeRegexLiteral(raw[i]!);
+      i++;
+    }
+  }
+  if (names.length === 0) return null;
+  pattern += "$";
+  return { regexKey: pattern, regex: new RegExp(pattern), names };
+}
+
 function parseRouteSegments(normalizedPath: string): {
   segments: SegmentKind[];
   paramNames: string[];
+  requireTrailingSlash: boolean;
 } {
   if (normalizedPath === "/") {
-    return { segments: [], paramNames: [] };
+    return { segments: [], paramNames: [], requireTrailingSlash: false };
   }
 
-  const rawSegments = normalizedPath.slice(1).split("/");
+  const requireTrailingSlash =
+    normalizedPath.length > 1 && normalizedPath.endsWith("/");
+  const trimmed = requireTrailingSlash
+    ? normalizedPath.slice(1, -1)
+    : normalizedPath.slice(1);
+  const rawSegments = trimmed.length === 0 ? [] : trimmed.split("/");
   const segments: SegmentKind[] = [];
   const paramNames: string[] = [];
 
@@ -164,6 +256,18 @@ function parseRouteSegments(normalizedPath: string): {
     if (raw === "*") {
       if (i === rawSegments.length - 1) {
         segments.push({ kind: "trailing-wildcard" });
+      } else {
+        segments.push({ kind: "mid-wildcard" });
+      }
+      continue;
+    }
+
+    const namedWildMatch = NAMED_WILDCARD_RE.exec(raw);
+    if (namedWildMatch) {
+      const name = namedWildMatch[1]!;
+      if (i === rawSegments.length - 1) {
+        paramNames.push(name);
+        segments.push({ kind: "trailing-wildcard", name });
       } else {
         segments.push({ kind: "mid-wildcard" });
       }
@@ -201,10 +305,24 @@ function parseRouteSegments(normalizedPath: string): {
       continue;
     }
 
+    const mixed = parseMixedSegment(raw);
+    if (mixed) {
+      for (const n of mixed.names) {
+        paramNames.push(n);
+      }
+      segments.push({
+        kind: "mixed",
+        regexKey: mixed.regexKey,
+        regex: mixed.regex,
+        names: mixed.names,
+      });
+      continue;
+    }
+
     segments.push({ kind: "static", literal: raw });
   }
 
-  return { segments, paramNames };
+  return { segments, paramNames, requireTrailingSlash };
 }
 
 export function computeAllowHeader(
@@ -365,9 +483,9 @@ function matchHostConstraint(
 
 function buildParamsRecord(
   paramNames: readonly string[],
-  paramValues: ReadonlyArray<string | undefined>,
+  paramValues: ReadonlyArray<string | string[] | undefined>,
 ): Record<string, string> {
-  const params: Record<string, string> = {};
+  const params: Record<string, unknown> = {};
   const len = Math.min(paramNames.length, paramValues.length);
   for (let i = 0; i < len; i++) {
     const name = paramNames[i];
@@ -376,7 +494,7 @@ function buildParamsRecord(
       params[name] = value;
     }
   }
-  return params;
+  return params as Record<string, string>;
 }
 
 export type FallbackMatchResult =
@@ -419,10 +537,29 @@ export class FallbackRadixRouter {
   }
 
   addRoute(compiled: CompiledRoute): void {
-    const { fullPath, method, host } = compiled.route;
-    const { segments, paramNames } = parseRouteSegments(fullPath);
+    const { fullPath } = compiled.route;
+    const variants = fullPath.includes("{")
+      ? expandOptionalPathVariants(fullPath)
+      : [fullPath];
+    const order = this.routeCount;
+    for (const variant of variants) {
+      this.addConcreteVariant(compiled, variant, order);
+    }
+    this.routeCount++;
+  }
+
+  private addConcreteVariant(
+    compiled: CompiledRoute,
+    variantPath: string,
+    order: number,
+  ): void {
+    const { method, host } = compiled.route;
+    const { segments, paramNames, requireTrailingSlash } =
+      parseRouteSegments(variantPath);
 
     let node = this.root;
+    if (order < node.minOrder) node.minOrder = order;
+
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       if (!seg) continue;
@@ -434,6 +571,23 @@ export class FallbackRadixRouter {
           node.staticChildren.set(seg.literal, next);
         }
         node = next;
+      } else if (seg.kind === "mixed") {
+        let child = node.mixedSegmentChildren.find(
+          (c) => c.regexKey === seg.regexKey,
+        );
+        if (!child) {
+          child = {
+            regexKey: seg.regexKey,
+            regex: seg.regex,
+            groupCount: seg.names.length,
+            node: createNode(),
+            order,
+          };
+          node.mixedSegmentChildren.push(child);
+          // More capture groups (e.g. `:name.:locale.:ext`) before fewer (`:name.:ext`)
+          node.mixedSegmentChildren.sort((a, b) => b.groupCount - a.groupCount);
+        }
+        node = child.node;
       } else if (seg.kind === "param" && seg.regex) {
         const regexKey = seg.regex.source;
         let child = node.regexParamChildren.find(
@@ -470,6 +624,15 @@ export class FallbackRadixRouter {
         }
         node = node.trailingWildcardChild;
       }
+      if (order < node.minOrder) node.minOrder = order;
+    }
+
+    if (requireTrailingSlash) {
+      if (!node.trailingSlashChild) {
+        node.trailingSlashChild = createNode();
+      }
+      node = node.trailingSlashChild;
+      if (order < node.minOrder) node.minOrder = order;
     }
 
     const hostKey = serializeHostKey(host);
@@ -519,8 +682,10 @@ export class FallbackRadixRouter {
       );
     } else {
       if (method === "ALL") {
-        bucket.allHandler = slot;
-      } else {
+        if (!bucket.allHandler) {
+          bucket.allHandler = slot;
+        }
+      } else if (!bucket.methods[method]) {
         bucket.methods[method] = slot;
       }
       bucket.allowHeader = computeAllowHeader(
@@ -528,7 +693,6 @@ export class FallbackRadixRouter {
         bucket.allHandler !== undefined,
       );
     }
-    this.routeCount++;
   }
 
   match(pathname: string, req: Request): FallbackMatchResult {
@@ -553,7 +717,7 @@ export class FallbackRadixRouter {
     let methodNotAllowedCandidate:
       { allowHeader: string; hostParams: Record<string, string> } | undefined;
 
-    const capturedValues: Array<string | undefined> = [];
+    const capturedValues: Array<string | string[] | undefined> = [];
 
     const resolveAtNode = (node: RadixNode): FallbackMatchResult | null => {
       if (node.buckets.length === 0) {
@@ -658,6 +822,12 @@ export class FallbackRadixRouter {
           }
         }
 
+        // Exact trailing-slash routes (e.g. `/docs{/}` -> `/docs/`, `/named/{*path}` -> `/named/`)
+        if (hasTrailingSlash && node.trailingSlashChild) {
+          const hit = resolveAtNode(node.trailingSlashChild);
+          if (hit) return hit;
+        }
+
         // Trailing wildcard `/api/*` matches `/api/` (empty trailing segment), misses bare `/api`
         if (hasTrailingSlash && node.trailingWildcardChild) {
           const hit = resolveAtNode(node.trailingWildcardChild);
@@ -670,49 +840,95 @@ export class FallbackRadixRouter {
       const rawSegment = rawSegments[segIndex]!;
       const decodedSegment = safeDecodeSegment(rawSegment);
 
-      // 1. Static segment (highest precedence)
-      const staticNext = node.staticChildren.get(rawSegment);
+      // 1. Static segment vs mixed segment (respecting declaration order when mixed precedes static)
+      const staticNext =
+        node.staticChildren.get(rawSegment) ??
+        (decodedSegment !== rawSegment
+          ? node.staticChildren.get(decodedSegment)
+          : undefined);
+      const staticOrder = staticNext ? staticNext.minOrder : Number.MAX_SAFE_INTEGER;
+
+      if (rawSegment.length > 0 && node.mixedSegmentChildren.length > 0) {
+        for (let i = 0; i < node.mixedSegmentChildren.length; i++) {
+          const child = node.mixedSegmentChildren[i]!;
+          if (child.order >= staticOrder) continue;
+          const m = child.regex.exec(decodedSegment);
+          if (m) {
+            for (let g = 1; g <= child.groupCount; g++) {
+              capturedValues.push(m[g]);
+            }
+            const hit = search(child.node, segIndex + 1);
+            for (let g = 0; g < child.groupCount; g++) {
+              capturedValues.pop();
+            }
+            if (hit) return hit;
+          }
+        }
+      }
+
       if (staticNext) {
         const hit = search(staticNext, segIndex + 1);
         if (hit) return hit;
       }
 
-      // 2. Regex-constrained param segments
-      for (let i = 0; i < node.regexParamChildren.length; i++) {
-        const child = node.regexParamChildren[i];
-        if (!child) continue;
-        if (child.regex.test(decodedSegment)) {
+      // 1b. Remaining mixed segments (declared after static or no static match)
+      if (rawSegment.length > 0 && node.mixedSegmentChildren.length > 0) {
+        for (let i = 0; i < node.mixedSegmentChildren.length; i++) {
+          const child = node.mixedSegmentChildren[i]!;
+          if (child.order < staticOrder) continue;
+          const m = child.regex.exec(decodedSegment);
+          if (m) {
+            for (let g = 1; g <= child.groupCount; g++) {
+              capturedValues.push(m[g]);
+            }
+            const hit = search(child.node, segIndex + 1);
+            for (let g = 0; g < child.groupCount; g++) {
+              capturedValues.pop();
+            }
+            if (hit) return hit;
+          }
+        }
+      }
+
+      // Empty path segments (e.g. from double slashes `/users//posts`) never match param/optional segments
+      if (rawSegment.length > 0) {
+        // 2. Regex-constrained param segments
+        for (let i = 0; i < node.regexParamChildren.length; i++) {
+          const child = node.regexParamChildren[i];
+          if (!child) continue;
+          if (child.regex.test(decodedSegment)) {
+            capturedValues.push(decodedSegment);
+            const hit = search(child.node, segIndex + 1);
+            capturedValues.pop();
+            if (hit) return hit;
+          }
+        }
+
+        // 3. Simple `:param` segment
+        if (node.paramChild) {
           capturedValues.push(decodedSegment);
-          const hit = search(child.node, segIndex + 1);
+          const hit = search(node.paramChild, segIndex + 1);
           capturedValues.pop();
           if (hit) return hit;
         }
-      }
 
-      // 3. Simple `:param` segment
-      if (node.paramChild) {
-        capturedValues.push(decodedSegment);
-        const hit = search(node.paramChild, segIndex + 1);
-        capturedValues.pop();
-        if (hit) return hit;
-      }
+        // 4. Optional `:param?` segment (try consuming 1 segment, then skipping 0 segments)
+        for (let i = 0; i < node.optionalParamChildren.length; i++) {
+          const child = node.optionalParamChildren[i];
+          if (!child) continue;
 
-      // 4. Optional `:param?` segment (try consuming 1 segment, then skipping 0 segments)
-      for (let i = 0; i < node.optionalParamChildren.length; i++) {
-        const child = node.optionalParamChildren[i];
-        if (!child) continue;
+          if (!child.regex || child.regex.test(decodedSegment)) {
+            capturedValues.push(decodedSegment);
+            const consumedHit = search(child.node, segIndex + 1);
+            capturedValues.pop();
+            if (consumedHit) return consumedHit;
+          }
 
-        if (!child.regex || child.regex.test(decodedSegment)) {
-          capturedValues.push(decodedSegment);
-          const consumedHit = search(child.node, segIndex + 1);
+          capturedValues.push(undefined);
+          const skippedHit = search(child.node, segIndex);
           capturedValues.pop();
-          if (consumedHit) return consumedHit;
+          if (skippedHit) return skippedHit;
         }
-
-        capturedValues.push(undefined);
-        const skippedHit = search(child.node, segIndex);
-        capturedValues.pop();
-        if (skippedHit) return skippedHit;
       }
 
       // 5. Mid-path wildcard `*` (matches 1 or more segments up to remaining suffix)
@@ -727,9 +943,14 @@ export class FallbackRadixRouter {
         }
       }
 
-      // 6. Trailing wildcard `/*` (matches remaining 1+ segments)
+      // 6. Trailing wildcard `/*` or `/*splat` (matches remaining 1+ segments; splits before decoding)
       if (node.trailingWildcardChild) {
+        const splatSegments = rawSegments
+          .slice(segIndex)
+          .map(safeDecodeSegment);
+        capturedValues.push(splatSegments);
         const hit = resolveAtNode(node.trailingWildcardChild);
+        capturedValues.pop();
         if (hit) return hit;
       }
 

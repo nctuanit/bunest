@@ -94,8 +94,11 @@ function normalizeConflictLevels(policy: RouteConflictPolicy | undefined): {
 }
 
 function segmentKindRank(segment: string): number {
-  if (segment === "*" || segment.includes("*")) return 2;
-  if (segment.startsWith(":")) return 1;
+  if (segment === "*" || segment.includes("*")) return 3;
+  const requiredPart = segment.replace(/\{[^}]*\}/g, "");
+  if (/^:[A-Za-z0-9_]+(?:\([^)]*\))?\??$/.test(requiredPart)) return 2;
+  if (requiredPart.includes(":")) return 1;
+  if (segment.includes("{")) return 1;
   return 0;
 }
 
@@ -109,34 +112,366 @@ function compareRouteSpecificity(a: ScannedRoute, b: ScannedRoute): number {
       return rankDiff;
     }
   }
+  if (segA.length === segB.length) {
+    return 0;
+  }
+  // A shorter path ending in a wildcard (e.g. /files/*rest) can absorb longer paths
+  // (/files/*rest/:action), so the longer path is more specific.
+  if (minLen > 0 && segmentKindRank(segA[minLen - 1]!) === 3) {
+    return segB.length - segA.length;
+  }
+  // End-of-path has rank 0.5: static continuation (0) beats exact parent (0.5),
+  // while exact parent (0.5) beats mixed (1), param (2), and wildcard (3).
+  const rankA = segA.length > minLen ? segmentKindRank(segA[minLen]!) : 0.5;
+  const rankB = segB.length > minLen ? segmentKindRank(segB[minLen]!) : 0.5;
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
   return segB.length - segA.length;
 }
 
-function canEarlierPatternShadowLater(earlier: string, later: string): boolean {
-  if (earlier === later) return false;
-  const eSegs = earlier.split("/").filter(Boolean);
-  const lSegs = later.split("/").filter(Boolean);
+function expandOptionalGroups(pattern: string): string[] {
+  const openIdx = pattern.indexOf("{");
+  if (openIdx === -1) {
+    const cleaned = pattern.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+    return [cleaned];
+  }
+  let depth = 0;
+  let closeIdx = -1;
+  for (let i = openIdx; i < pattern.length; i++) {
+    if (pattern[i] === "{") depth++;
+    else if (pattern[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        closeIdx = i;
+        break;
+      }
+    }
+  }
+  if (closeIdx === -1) {
+    return [pattern];
+  }
+  const before = pattern.slice(0, openIdx);
+  const inside = pattern.slice(openIdx + 1, closeIdx);
+  const after = pattern.slice(closeIdx + 1);
+  const withoutGroup = expandOptionalGroups(before + after);
+  const withGroup = expandOptionalGroups(before + inside + after);
+  const out: string[] = [];
+  for (const v of withGroup) {
+    if (!out.includes(v)) out.push(v);
+  }
+  for (const v of withoutGroup) {
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
 
-  for (let i = 0; i < eSegs.length; i++) {
-    const es = eSegs[i]!;
-    if (es === "*" || es.includes("*")) {
-      return i < lSegs.length;
+interface SegmentToken {
+  readonly kind: "lit" | "param" | "wild";
+  readonly value: string;
+}
+
+function tokenizeSegment(seg: string): SegmentToken[] {
+  const tokens: SegmentToken[] = [];
+  let i = 0;
+  let litBuf = "";
+  const flushLit = () => {
+    if (litBuf.length > 0) {
+      tokens.push({ kind: "lit", value: litBuf });
+      litBuf = "";
     }
-    const ls = lSegs[i];
-    if (ls === undefined) {
-      return false;
+  };
+  while (i < seg.length) {
+    const ch = seg[i]!;
+    if (ch === "*") {
+      flushLit();
+      let j = i + 1;
+      while (j < seg.length && /[A-Za-z0-9_]/.test(seg[j]!)) j++;
+      tokens.push({ kind: "wild", value: seg.slice(i, j) });
+      i = j;
+    } else if (ch === ":" && i + 1 < seg.length && /[A-Za-z0-9_]/.test(seg[i + 1]!)) {
+      flushLit();
+      let j = i + 1;
+      while (j < seg.length && /[A-Za-z0-9_]/.test(seg[j]!)) j++;
+      if (j < seg.length && seg[j] === "(") {
+        let d = 0;
+        while (j < seg.length) {
+          if (seg[j] === "(") d++;
+          else if (seg[j] === ")") {
+            d--;
+            if (d === 0) {
+              j++;
+              break;
+            }
+          }
+          j++;
+        }
+      }
+      if (j < seg.length && seg[j] === "?") j++;
+      tokens.push({ kind: "param", value: seg.slice(i, j) });
+      i = j;
+    } else {
+      litBuf += ch;
+      i++;
     }
-    if (es.startsWith(":")) {
-      continue;
-    }
-    if (ls.startsWith(":") || ls === "*" || ls.includes("*")) {
-      return false;
-    }
-    if (es !== ls) {
+  }
+  flushLit();
+  return tokens;
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function segmentMatchesLiteral(tokens: readonly SegmentToken[], literal: string): boolean {
+  let re = "^";
+  for (const t of tokens) {
+    if (t.kind === "lit") re += escapeRegExp(t.value);
+    else if (t.kind === "param") re += "[^/]+";
+    else re += ".*";
+  }
+  re += "$";
+  return new RegExp(re).test(literal);
+}
+
+function segmentsOverlap(segA: string, segB: string): boolean {
+  if (segA === segB) return true;
+  const tokA = tokenizeSegment(segA);
+  const tokB = tokenizeSegment(segB);
+  const aIsLit = tokA.every((t) => t.kind === "lit");
+  const bIsLit = tokB.every((t) => t.kind === "lit");
+  if (aIsLit && bIsLit) return segA === segB;
+  if (aIsLit) return segmentMatchesLiteral(tokB, segA);
+  if (bIsLit) return segmentMatchesLiteral(tokA, segB);
+
+  const aIsWildOrPlainParam =
+    tokA.length === 1 && (tokA[0]!.kind === "param" || tokA[0]!.kind === "wild");
+  const bIsWildOrPlainParam =
+    tokB.length === 1 && (tokB[0]!.kind === "param" || tokB[0]!.kind === "wild");
+  if (aIsWildOrPlainParam || bIsWildOrPlainParam) return true;
+
+  // Both are mixed segments: check leading and trailing literal compatibility
+  const aFirst = tokA[0];
+  const bFirst = tokB[0];
+  if (aFirst?.kind === "lit" && bFirst?.kind === "lit") {
+    if (
+      !aFirst.value.startsWith(bFirst.value) &&
+      !bFirst.value.startsWith(aFirst.value)
+    ) {
       return false;
     }
   }
-  return eSegs.length === lSegs.length;
+  const aLast = tokA[tokA.length - 1];
+  const bLast = tokB[tokB.length - 1];
+  if (aLast?.kind === "lit" && bLast?.kind === "lit") {
+    if (
+      !aLast.value.endsWith(bLast.value) &&
+      !bLast.value.endsWith(aLast.value)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function concretePatternsOverlap(a: string, b: string): boolean {
+  const segsA = a.split("/").filter(Boolean);
+  const segsB = b.split("/").filter(Boolean);
+  const memo = new Map<string, boolean>();
+
+  const dfs = (i: number, j: number): boolean => {
+    if (i === segsA.length && j === segsB.length) return true;
+    if (i === segsA.length || j === segsB.length) return false;
+    const key = `${i}:${j}`;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+
+    const sa = segsA[i]!;
+    const sb = segsB[j]!;
+    const aHasWild = sa.includes("*");
+    const bHasWild = sb.includes("*");
+
+    let result = false;
+    if (aHasWild || bHasWild) {
+      // Wildcard segment matches >= 1 segment, and must respect any leading literal before '*'
+      const wildCompatible = segmentsOverlap(sa, sb);
+      if (wildCompatible) {
+        // Consume 1 segment on both, or wildcard consumes another segment from the other side
+        result =
+          dfs(i + 1, j + 1) ||
+          (aHasWild && j + 1 < segsB.length && dfs(i, j + 1)) ||
+          (bHasWild && i + 1 < segsA.length && dfs(i + 1, j));
+      }
+    } else if (segmentsOverlap(sa, sb)) {
+      result = dfs(i + 1, j + 1);
+    }
+
+    memo.set(key, result);
+    return result;
+  };
+
+  return dfs(0, 0);
+}
+
+function canPatternsOverlap(patternA: string, patternB: string): boolean {
+  const varsA = expandOptionalGroups(patternA);
+  const varsB = expandOptionalGroups(patternB);
+  for (const va of varsA) {
+    for (const vb of varsB) {
+      if (concretePatternsOverlap(va, vb)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function expandHostOptionalGroups(pattern: string): string[] {
+  const openIdx = pattern.indexOf("{");
+  if (openIdx === -1) return [pattern];
+  const closeIdx = pattern.indexOf("}", openIdx + 1);
+  if (closeIdx === -1) return [pattern];
+  const before = pattern.slice(0, openIdx);
+  const inside = pattern.slice(openIdx + 1, closeIdx);
+  const after = pattern.slice(closeIdx + 1);
+  return [
+    ...expandHostOptionalGroups(before + inside + after),
+    ...expandHostOptionalGroups(before + after),
+  ];
+}
+
+function hostPatternMatchesString(pattern: string, target: string): boolean {
+  const varsA = expandHostOptionalGroups(pattern);
+  const varsB = expandHostOptionalGroups(target);
+  for (const va of varsA) {
+    for (const vb of varsB) {
+      const pLabels = va.toLowerCase().split(".");
+      const tLabels = vb.toLowerCase().split(".");
+      if (pLabels.length !== tLabels.length) continue;
+      let match = true;
+      for (let i = 0; i < pLabels.length; i++) {
+        const pl = pLabels[i]!;
+        const tl = tLabels[i]!;
+        if (pl.startsWith(":") || tl.startsWith(":")) continue;
+        if (pl !== tl) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+  }
+  return false;
+}
+
+function singleHostsOverlap(
+  a: string | RegExp,
+  b: string | RegExp,
+): boolean {
+  if (typeof a === "string" && typeof b === "string") {
+    return hostPatternMatchesString(a, b);
+  }
+  if (a instanceof RegExp && typeof b === "string") {
+    const nonGlobal = new RegExp(a.source, a.flags.replace(/g/g, ""));
+    for (const v of expandHostOptionalGroups(b)) {
+      // For parameterized hosts like `:tenant.example.com`, substitute a sample label to test RegExp
+      const sample = v.replace(/:[A-Za-z0-9_]+/g, "sample");
+      if (nonGlobal.test(v) || nonGlobal.test(sample)) return true;
+    }
+    return false;
+  }
+  if (typeof a === "string" && b instanceof RegExp) {
+    const nonGlobal = new RegExp(b.source, b.flags.replace(/g/g, ""));
+    for (const v of expandHostOptionalGroups(a)) {
+      const sample = v.replace(/:[A-Za-z0-9_]+/g, "sample");
+      if (nonGlobal.test(v) || nonGlobal.test(sample)) return true;
+    }
+    return false;
+  }
+  if (a instanceof RegExp && b instanceof RegExp) {
+    return a.source === b.source && a.flags === b.flags;
+  }
+  return false;
+}
+
+function compareHostConstraints(
+  hostA: string | RegExp | Array<string | RegExp> | undefined,
+  hostB: string | RegExp | Array<string | RegExp> | undefined,
+): { same: boolean; overlaps: boolean } {
+  const listA =
+    hostA === undefined ? [] : Array.isArray(hostA) ? hostA : [hostA];
+  const listB =
+    hostB === undefined ? [] : Array.isArray(hostB) ? hostB : [hostB];
+
+  if (listA.length === 0 && listB.length === 0) {
+    return { same: true, overlaps: true };
+  }
+  if (listA.length === 0 || listB.length === 0) {
+    // Hostless vs host-specific: overlaps (shadow), NOT same
+    return { same: false, overlaps: true };
+  }
+
+  const toExactHostKey = (item: string | RegExp): string =>
+    item instanceof RegExp
+      ? `regex:${item.source}/${item.flags}`
+      : `host:${item
+          .split(".")
+          .map((label) => (label.startsWith(":") ? ":_" : label))
+          .join(".")}`;
+
+  const keysA = new Set(listA.map(toExactHostKey));
+  const keysB = new Set(listB.map(toExactHostKey));
+  let same = keysA.size === keysB.size;
+  if (same) {
+    for (const k of keysA) {
+      if (!keysB.has(k)) {
+        same = false;
+        break;
+      }
+    }
+  }
+  if (same) {
+    return { same: true, overlaps: true };
+  }
+
+  for (const ha of listA) {
+    for (const hb of listB) {
+      if (singleHostsOverlap(ha, hb)) {
+        return { same: false, overlaps: true };
+      }
+    }
+  }
+  return { same: false, overlaps: false };
+}
+
+function compareRouteVersions(
+  vA: readonly (string | typeof VERSION_NEUTRAL)[] | undefined,
+  vB: readonly (string | typeof VERSION_NEUTRAL)[] | undefined,
+): { same: boolean; overlaps: boolean } {
+  if (!vA && !vB) return { same: true, overlaps: true };
+  if (!vA || !vB) return { same: false, overlaps: true };
+  const setA = new Set(vA);
+  const setB = new Set(vB);
+  let same = setA.size === setB.size;
+  if (same) {
+    for (const v of setA) {
+      if (!setB.has(v)) {
+        same = false;
+        break;
+      }
+    }
+  }
+  if (same) return { same: true, overlaps: true };
+  // Sharing an explicit concrete version string (e.g. "1" vs ["1", "2"]) is a duplicate conflict
+  for (const v of setA) {
+    if (v !== VERSION_NEUTRAL && setB.has(v)) {
+      return { same: true, overlaps: true };
+    }
+  }
+  if (setA.has(VERSION_NEUTRAL) || setB.has(VERSION_NEUTRAL)) {
+    return { same: false, overlaps: true };
+  }
+  return { same: false, overlaps: false };
 }
 
 function normalizeHostCollisionKeys(
@@ -234,10 +569,8 @@ export function scanControllers(
   options: ScanControllersOptions = {},
 ): ScannedRoute[] {
   const scanned: ScannedRoute[] = [];
-  const collisionRegistry = new Map<
-    string,
-    { path: string; controller: string; index: number }
-  >();
+  const allDeclared: Array<{ entry: ScannedRoute; versionLabel?: string }> = [];
+  const exactRouteRegistry = new Set<string>();
   const versioning = options.versioning;
   const conflictLevels = normalizeConflictLevels(options.routeConflictPolicy);
   const resolutionStrategy = options.routeResolutionStrategy ?? "declaration";
@@ -345,46 +678,14 @@ export function scanControllers(
               entry: ScannedRoute,
               duplicateVersionLabel?: string,
             ) => {
-              let duplicateIdx: number | undefined;
-              for (const collisionKey of collisionKeys) {
-                const existing = collisionRegistry.get(collisionKey);
-                if (existing) {
-                  if (conflictLevels.duplicate === "error") {
-                    throw new DuplicateRouteException({
-                      method: routeMeta.method,
-                      path: entry.fullPath,
-                      canonicalPath: entry.canonicalPath,
-                      host: entry.host ? String(entry.host) : undefined,
-                      version: duplicateVersionLabel,
-                      existingPath: existing.path,
-                      existingController: existing.controller,
-                      attemptedController: `${controllerName}.${String(routeMeta.handlerKey)}`,
-                    });
-                  }
-                  if (conflictLevels.duplicate === "warn") {
-                    options.logger?.warn(
-                      `Duplicate route ${routeMeta.method} ${entry.fullPath} (${controllerName}.${String(routeMeta.handlerKey)} overrides ${existing.controller})`,
-                    );
-                  }
-                  duplicateIdx = existing.index;
-                }
-              }
+              allDeclared.push({ entry, versionLabel: duplicateVersionLabel });
 
-              let targetIdx: number;
-              if (duplicateIdx !== undefined) {
-                scanned[duplicateIdx] = entry;
-                targetIdx = duplicateIdx;
-              } else {
-                targetIdx = scanned.length;
+              // Keep the first declaration in `scanned` when exact duplicates occur
+              // (NestJS duplicate=off/warn first-declaration-wins semantics).
+              const exactKey = [...collisionKeys].sort().join("||");
+              if (!exactRouteRegistry.has(exactKey)) {
+                exactRouteRegistry.add(exactKey);
                 scanned.push(entry);
-              }
-
-              for (const collisionKey of collisionKeys) {
-                collisionRegistry.set(collisionKey, {
-                  path: entry.fullPath,
-                  controller: `${controllerName}.${String(routeMeta.handlerKey)}`,
-                  index: targetIdx,
-                });
               }
             };
 
@@ -548,13 +849,31 @@ export function scanControllers(
 
   if (resolutionStrategy === "specificity") {
     scanned.sort(compareRouteSpecificity);
+    allDeclared.sort((a, b) => compareRouteSpecificity(a.entry, b.entry));
   }
 
-  if (conflictLevels.shadow !== "off" && scanned.length > 1) {
-    for (let i = 0; i < scanned.length; i++) {
-      const earlier = scanned[i]!;
-      for (let j = i + 1; j < scanned.length; j++) {
-        const later = scanned[j]!;
+  if (
+    (conflictLevels.duplicate !== "off" || conflictLevels.shadow !== "off") &&
+    allDeclared.length > 1
+  ) {
+    interface DetectedConflict {
+      readonly kind: "duplicate" | "shadow";
+      readonly message: string;
+      readonly earlier: ScannedRoute;
+      readonly later: ScannedRoute;
+      readonly versionLabel?: string;
+    }
+
+    const conflicts: DetectedConflict[] = [];
+
+    for (let i = 0; i < allDeclared.length; i++) {
+      const earlierItem = allDeclared[i]!;
+      const earlier = earlierItem.entry;
+      for (let j = i + 1; j < allDeclared.length; j++) {
+        const laterItem = allDeclared[j]!;
+        const later = laterItem.entry;
+
+        // 1. Method overlap
         if (
           earlier.method !== later.method &&
           earlier.method !== "ALL" &&
@@ -562,31 +881,95 @@ export function scanControllers(
         ) {
           continue;
         }
-        if (String(earlier.host ?? "") !== String(later.host ?? "")) {
+
+        // 2. Version overlap (URI versioning already baked into fullPath)
+        const versionCmp =
+          versioning && versioning.type !== VersioningType.URI
+            ? compareRouteVersions(earlier.versions, later.versions)
+            : { same: true, overlaps: true };
+        if (!versionCmp.overlaps) {
           continue;
         }
-        if (
-          earlier.canonicalPath !== later.canonicalPath &&
-          canEarlierPatternShadowLater(earlier.fullPath, later.fullPath)
-        ) {
-          const earlierCtrl = `${earlier.controller.name}.${String(earlier.handlerKey)}`;
-          const laterCtrl = `${later.controller.name}.${String(later.handlerKey)}`;
-          const message = `Shadowed route detected: ${earlier.method} ${earlier.fullPath} (${earlierCtrl}) shadows ${later.method} ${later.fullPath} (${laterCtrl})`;
-          if (conflictLevels.shadow === "error") {
-            const err = new DuplicateRouteException({
-              method: later.method,
-              path: later.fullPath,
-              canonicalPath: later.canonicalPath,
-              existingPath: earlier.fullPath,
-              existingController: earlierCtrl,
-              attemptedController: laterCtrl,
+
+        // 3. Host overlap
+        const hostCmp = compareHostConstraints(earlier.host, later.host);
+        if (!hostCmp.overlaps) {
+          continue;
+        }
+
+        // 4. Path overlap
+        const samePath = earlier.canonicalPath === later.canonicalPath;
+        if (!samePath && !canPatternsOverlap(earlier.fullPath, later.fullPath)) {
+          continue;
+        }
+
+        const isDuplicate =
+          samePath &&
+          earlier.method === later.method &&
+          hostCmp.same &&
+          versionCmp.same;
+
+        const earlierCtrl = `${earlier.controller.name}.${String(earlier.handlerKey)}`;
+        const laterCtrl = `${later.controller.name}.${String(later.handlerKey)}`;
+
+        if (isDuplicate) {
+          if (conflictLevels.duplicate !== "off") {
+            conflicts.push({
+              kind: "duplicate",
+              message: `Duplicate route ${later.method} ${later.fullPath} (${laterCtrl} duplicates ${earlierCtrl})`,
+              earlier,
+              later,
+              versionLabel: laterItem.versionLabel,
             });
-            err.message = message;
-            throw err;
           }
-          options.logger?.warn(message);
+        } else if (conflictLevels.shadow !== "off") {
+          // If earlier is strictly more specific than later (e.g. /users/me before /users/:id
+          // after specificity sorting), earlier does not shadow later.
+          if (!samePath && compareRouteSpecificity(earlier, later) < 0) {
+            continue;
+          }
+          conflicts.push({
+            kind: "shadow",
+            message: `Shadowed route detected: ${earlier.method} ${earlier.fullPath} (${earlierCtrl}) shadows ${later.method} ${later.fullPath} (${laterCtrl})`,
+            earlier,
+            later,
+            versionLabel: laterItem.versionLabel,
+          });
         }
       }
+    }
+
+    const errorConflicts: DetectedConflict[] = [];
+    for (const conflict of conflicts) {
+      const level =
+        conflict.kind === "duplicate"
+          ? conflictLevels.duplicate
+          : conflictLevels.shadow;
+      if (level === "warn") {
+        options.logger?.warn(conflict.message);
+      } else if (level === "error") {
+        errorConflicts.push(conflict);
+      }
+    }
+
+    if (errorConflicts.length > 0) {
+      const first = errorConflicts[0]!;
+      const earlierCtrl = `${first.earlier.controller.name}.${String(first.earlier.handlerKey)}`;
+      const laterCtrl = `${first.later.controller.name}.${String(first.later.handlerKey)}`;
+      const err = new DuplicateRouteException({
+        method: first.later.method,
+        path: first.later.fullPath,
+        canonicalPath: first.later.canonicalPath,
+        host: first.later.host ? String(first.later.host) : undefined,
+        version: first.versionLabel,
+        existingPath: first.earlier.fullPath,
+        existingController: earlierCtrl,
+        attemptedController: laterCtrl,
+      });
+      if (errorConflicts.length > 1 || first.kind === "shadow") {
+        err.message = errorConflicts.map((c) => c.message).join("\n");
+      }
+      throw err;
     }
   }
 

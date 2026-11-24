@@ -46,6 +46,12 @@ export function canonicalizePath(normalizedPath: string): string {
   }
   const segments = normalizedPath.slice(1).split("/");
   const canonicalSegments = segments.map((segment) => {
+    if (/^\*[A-Za-z_][A-Za-z0-9_]*$/.test(segment)) {
+      return "*";
+    }
+    if (/^\{\*[A-Za-z_][A-Za-z0-9_]*\}$/.test(segment)) {
+      return "{*}";
+    }
     const match = PARAM_PREFIX_RE.exec(segment);
     if (match) {
       return `:_` + (match[2] ?? "");
@@ -87,12 +93,16 @@ export function isNativeBunRoutePath(normalizedPath: string): boolean {
       continue;
     }
 
-    // Reject inline regex/glob/optional metacharacters in static segments
+    // Reject inline regex/glob/optional/sub-segment param/percent metacharacters in static segments
     if (
       segment.includes("*") ||
       segment.includes("?") ||
       segment.includes("(") ||
-      segment.includes(")")
+      segment.includes(")") ||
+      segment.includes("{") ||
+      segment.includes("}") ||
+      segment.includes(":") ||
+      segment.includes("%")
     ) {
       return false;
     }

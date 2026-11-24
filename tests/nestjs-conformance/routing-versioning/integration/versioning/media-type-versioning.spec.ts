@@ -61,8 +61,7 @@ describeConformance(
             .expect("Hello World V2!");
         });
 
-        // BUNEST_BUG: Expected Accept `application/json;v="\2"` to unescape RFC 9110 quoted-pair `\2` -> `"2"` and return 200 "Hello World V2!", but got 404. packages/core/src/http/scanner/version-resolver.ts:177-183 strips outer quotes without unescaping backslash quoted-pairs.
-        it.skip('V2 with quoted parameters: application/json;v="\\2"', async () => {
+        it('V2 with quoted parameters: application/json;v="\\2"', async () => {
           await request(app)
             .get("/")
             .set({ Accept: 'application/json;v="\\2"' })
@@ -70,8 +69,7 @@ describeConformance(
             .expect("Hello World V2!");
         });
 
-        // BUNEST_BUG: Expected unterminated quoted parameters in Accept header (`application/json;note="a;v=2` and `text/html;note="a,application/json;v=2`) to ignore `v=2` inside the unclosed quote and return 404, but got 200 "Hello World V2!". packages/core/src/http/scanner/version-resolver.ts:164-175 splits Accept on `,` and `;` naively without quote-aware lexing.
-        it.skip.each([
+        it.each([
           'application/json;note="a;v=2',
           'text/html;note="a,application/json;v=2',
         ])(
