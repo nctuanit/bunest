@@ -220,8 +220,7 @@ describeConformance(
       await removePath(schemaPath, { force: true });
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) writes autoSchemaFile via direct `node:fs` `writeFileSync` instead of DI `FileSystemHelper.writeFile()` (0 calls instead of 1), and emits raw `printSchema(schema)` without Federation v2 `extend schema @link(url: "https://specs.apollo.dev/federation/v2...", import: [...])` or `@key`/`@extends`/`@external` directives.
-    it.skip("should link the federation 2 spec in the generated SDL file", () => {
+    it("should link the federation 2 spec in the generated SDL file", () => {
       expect(writeFileMock).toHaveBeenCalledTimes(1);
       expect(writeFileMock.mock.calls[0]?.[0]).toBe(schemaPath);
 
@@ -243,8 +242,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) bypasses DI `FileSystemHelper.writeFile()` and emits raw `printSchema(schema)` lacking Federation v2 `@link` and `@key` directives required for subgraph composition.
-    it.skip("should write an SDL file that composes with other federation 2 subgraphs", async () => {
+    it("should write an SDL file that composes with other federation 2 subgraphs", async () => {
       const fileContent = writeFileMock.mock.calls[0]?.[1] ?? "";
       expect(fileContent.length).toBeGreaterThan(0);
 

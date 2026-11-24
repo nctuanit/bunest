@@ -264,8 +264,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts) sets `_service.sdl = printSchema(schema)`, omitting Federation v2 directives (@shareable, @link, @inaccessible, @override), stripping @Directive() annotations (@key, @extends, @external), leaking _service/_entities/_Any/_Entity, and omitting interface @ResolveField() fields (Character.friends / Human.friends).
-    it.skip("should return query result", async () => {
+    it("should return query result", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({
@@ -369,8 +368,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts) does not attach @ResolveField() declared on an @InterfaceType() resolver (@Resolver(() => Character) -> friends) to the interface or implementing @ObjectType() (Human), returning HTTP 400 `Cannot query field "friends" on type "Human".`.
-    it.skip("should return the human result with resolve interface", async () => {
+    it("should return the human result with resolve interface", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({

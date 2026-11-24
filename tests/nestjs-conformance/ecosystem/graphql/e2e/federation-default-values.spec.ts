@@ -178,8 +178,7 @@ describeConformance(
       return res.body.data as Record<string, unknown>;
     }
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) stores @Directive() annotations only in `field.extensions.directives` without creating AST `field.astNode.directives`, so directive argument defaults cannot be resolved (`authDirectiveArgs.salary` is `undefined` instead of `{ requires: Role.ADMIN, until: new Date(0) }`).
-    it.skip("should keep the declared defaults of directive arguments", () => {
+    it("should keep the declared defaults of directive arguments", () => {
       expect(authDirectiveArgs.salary?.requires).toBe(Role.ADMIN);
       expect(authDirectiveArgs.salary?.until).toEqual(new Date(0));
       expect(authDirectiveArgs.bonus?.requires).toBe(Role.USER);

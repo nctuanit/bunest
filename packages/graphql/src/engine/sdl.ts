@@ -782,6 +782,229 @@ function printSchemaDefinition(schema: GraphQLSchema): string | undefined {
   );
 }
 
+export interface PrintSubgraphSchemaOptions {
+  /** Include Federation v2 directive definitions (used for `_service { sdl }`). */
+  readonly includeFederationDirectives?: boolean;
+  /** Emit `extend schema @link(url: ..., import: [...])` header for Federation v2 SDL files. */
+  readonly emitFederationLink?: boolean;
+}
+
+const FEDERATION_V2_DIRECTIVE_NAMES = new Set([
+  "key",
+  "requires",
+  "provides",
+  "external",
+  "extends",
+  "shareable",
+  "inaccessible",
+  "override",
+  "tag",
+  "composeDirective",
+  "interfaceObject",
+]);
+
+const FEDERATION_INTERNAL_TYPES = new Set(["_Any", "_Entity", "_Service"]);
+const FEDERATION_INTERNAL_QUERY_FIELDS = new Set(["_service", "_entities"]);
+
+const FEDERATION_V2_DIRECTIVE_SDL = [
+  "directive @key(fields: String!, resolvable: Boolean = true) repeatable on OBJECT | INTERFACE",
+  "directive @requires(fields: String!) on FIELD_DEFINITION",
+  "directive @provides(fields: String!) on FIELD_DEFINITION",
+  "directive @external on OBJECT | FIELD_DEFINITION",
+  "directive @extends on OBJECT | INTERFACE",
+  "directive @shareable on FIELD_DEFINITION | OBJECT",
+  "directive @inaccessible on FIELD_DEFINITION | OBJECT | INTERFACE | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION",
+  "directive @override(from: String!) on FIELD_DEFINITION",
+  "directive @tag(name: String!) repeatable on FIELD_DEFINITION | INTERFACE | OBJECT | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION",
+  "directive @link(url: String, as: String, for: String, import: [String]) repeatable on SCHEMA",
+];
+
+function printAstDirectives(
+  astNode: { readonly directives?: readonly { readonly kind: typeof Kind.DIRECTIVE; readonly name: { readonly value: string } }[] } | null | undefined,
+  usedFederationDirectives?: Set<string>,
+): string {
+  const dirs = astNode?.directives;
+  if (!dirs || dirs.length === 0) return "";
+  const printed: string[] = [];
+  for (const dir of dirs) {
+    if (dir.name.value === "deprecated") continue;
+    if (
+      usedFederationDirectives &&
+      FEDERATION_V2_DIRECTIVE_NAMES.has(dir.name.value)
+    ) {
+      usedFederationDirectives.add(`@${dir.name.value}`);
+    }
+    printed.push(print(dir as any));
+  }
+  return printed.length > 0 ? ` ${printed.join(" ")}` : "";
+}
+
+function printSubgraphFields(
+  type: GraphQLObjectType | GraphQLInterfaceType,
+  isQueryType: boolean,
+  usedFederationDirectives?: Set<string>,
+): string {
+  const fields = Object.values(type.getFields()).filter(
+    (f) => !isQueryType || !FEDERATION_INTERNAL_QUERY_FIELDS.has(f.name),
+  );
+  if (fields.length === 0) {
+    return "";
+  }
+  return (
+    " {\n" +
+    fields
+      .map(
+        (f: GraphQLField<any, any>, i) =>
+          printDescription(f, "  ", i === 0) +
+          `  ${f.name}${printArgs(f.args, "  ")}: ${String(f.type)}` +
+          printDeprecated(f.deprecationReason) +
+          printAstDirectives(f.astNode, usedFederationDirectives),
+      )
+      .join("\n") +
+    "\n}"
+  );
+}
+
+function printSubgraphType(
+  type: GraphQLNamedType,
+  isQueryType: boolean,
+  usedFederationDirectives?: Set<string>,
+): string {
+  if (isScalarType(type)) {
+    return (
+      printDescription(type) +
+      `scalar ${type.name}` +
+      printSpecifiedByURL(type) +
+      printAstDirectives(type.astNode, usedFederationDirectives)
+    );
+  }
+  if (isObjectType(type)) {
+    const body = printSubgraphFields(type, isQueryType, usedFederationDirectives);
+    if (isQueryType && !body) {
+      return "";
+    }
+    return (
+      printDescription(type) +
+      `type ${type.name}` +
+      printImplementedInterfaces(type) +
+      printAstDirectives(type.astNode, usedFederationDirectives) +
+      body
+    );
+  }
+  if (isInterfaceType(type)) {
+    return (
+      printDescription(type) +
+      `interface ${type.name}` +
+      printImplementedInterfaces(type) +
+      printAstDirectives(type.astNode, usedFederationDirectives) +
+      printSubgraphFields(type, false, usedFederationDirectives)
+    );
+  }
+  if (isUnionType(type)) {
+    const types = type.getTypes();
+    const possibleTypes = types.length
+      ? ` = ${types.map((t) => t.name).join(" | ")}`
+      : "";
+    return (
+      printDescription(type) +
+      `union ${type.name}` +
+      printAstDirectives(type.astNode, usedFederationDirectives) +
+      possibleTypes
+    );
+  }
+  if (isEnumType(type)) {
+    const values = type
+      .getValues()
+      .map(
+        (v, i) =>
+          printDescription(v, "  ", i === 0) +
+          `  ${v.name}` +
+          printDeprecated(v.deprecationReason) +
+          printAstDirectives(v.astNode, usedFederationDirectives),
+      );
+    const body = values.length > 0 ? ` {\n${values.join("\n")}\n}` : "";
+    return (
+      printDescription(type) +
+      `enum ${type.name}` +
+      printAstDirectives(type.astNode, usedFederationDirectives) +
+      body
+    );
+  }
+  if (isInputObjectType(type)) {
+    const fields = Object.values(type.getFields()).map(
+      (f, i) =>
+        printDescription(f, "  ", i === 0) +
+        `  ${printInputValue(f)}` +
+        printAstDirectives(f.astNode, usedFederationDirectives),
+    );
+    const oneOf = type.isOneOf ? " @oneOf" : "";
+    const body = fields.length > 0 ? ` {\n${fields.join("\n")}\n}` : "";
+    return (
+      printDescription(type) +
+      `input ${type.name}${oneOf}` +
+      printAstDirectives(type.astNode, usedFederationDirectives) +
+      body
+    );
+  }
+  return printType(type);
+}
+
+export function printSubgraphSchema(
+  schema: GraphQLSchema,
+  options: PrintSubgraphSchemaOptions = {},
+): string {
+  const usedFederationDirectives = new Set<string>();
+  const queryType = schema.getQueryType();
+  const directives = schema
+    .getDirectives()
+    .filter((d) => !isSpecifiedDirective(d));
+  const types = Object.values(schema.getTypeMap()).filter(
+    (t) =>
+      !isSpecifiedScalarType(t) &&
+      !isIntrospectionType(t) &&
+      !FEDERATION_INTERNAL_TYPES.has(t.name),
+  );
+
+  const printedTypes = types
+    .map((t) =>
+      printSubgraphType(t, t === queryType, usedFederationDirectives),
+    )
+    .filter((b): b is string => Boolean(b));
+
+  const blocks: string[] = [];
+
+  if (options.emitFederationLink) {
+    const imports = [...usedFederationDirectives].sort();
+    const importList =
+      imports.length > 0
+        ? `, import: [${imports.map((d) => `"${d}"`).join(", ")}]`
+        : "";
+    blocks.push(
+      `extend schema @link(url: "https://specs.apollo.dev/federation/v2.3"${importList})`,
+    );
+  }
+
+  const schemaDef = printSchemaDefinition(schema);
+  if (schemaDef) blocks.push(schemaDef);
+
+  if (options.includeFederationDirectives) {
+    const existingNames = new Set(directives.map((d) => d.name));
+    for (const fedDir of FEDERATION_V2_DIRECTIVE_SDL) {
+      const m = /^directive @(\w+)/.exec(fedDir);
+      if (!m || !existingNames.has(m[1]!)) {
+        blocks.push(fedDir);
+      }
+    }
+  }
+
+  for (const d of directives) {
+    blocks.push(printDirective(d));
+  }
+
+  blocks.push(...printedTypes);
+  return blocks.join("\n\n");
+}
+
 export function printSchema(schema: GraphQLSchema): string {
   const directives = schema
     .getDirectives()

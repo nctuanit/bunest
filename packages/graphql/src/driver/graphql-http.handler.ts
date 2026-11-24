@@ -56,6 +56,7 @@ import type {
   GraphQLRequestPayload,
   GraphQLWsOptions,
 } from "../interfaces/graphql.interface";
+import { FileSystemHelper } from "../schema/file-system.helper";
 import { GraphQLDefinitionsFactory } from "../schema/graphql-definitions.factory";
 import {
   createRequestScopedResolverProxy,
@@ -458,6 +459,14 @@ export class GraphQLService
     }
 
     const moduleRef = this.moduleRef;
+    let fsHelper: FileSystemHelper | undefined;
+    if (moduleRef) {
+      try {
+        fsHelper = moduleRef.get(FileSystemHelper, { strict: false });
+      } catch {
+        // Fallback to default FileSystemHelper
+      }
+    }
     const factory = new GraphQLSchemaFactory(
       async <T>(enhancer: Type<T> | T): Promise<T> => {
         if (typeof enhancer !== "function") {
@@ -504,6 +513,7 @@ export class GraphQLService
           return id;
         },
       },
+      fsHelper,
     );
 
     const builtSchema = await factory.create(resolverInstances, this.options);
