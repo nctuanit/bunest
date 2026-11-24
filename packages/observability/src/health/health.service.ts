@@ -4,6 +4,7 @@ import {
   Optional,
   ServiceUnavailableException,
   type BeforeApplicationShutdown,
+  type HttpExceptionResponse,
   type LoggerService,
 } from "@bunest/core";
 import {
@@ -39,13 +40,13 @@ export class HealthCheckException extends ServiceUnavailableException {
     this.result = result;
   }
 
-  override toJSON(): Record<string, unknown> {
+  override toJSON(): HttpExceptionResponse {
     return {
       status: this.result.status,
       info: this.result.info,
       error: this.result.error,
       details: this.result.details,
-    };
+    } as unknown as HttpExceptionResponse;
   }
 }
 

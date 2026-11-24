@@ -1000,7 +1000,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
               wrapper.moduleRef.registerRequestByContextId(job, contextId);
               const durableCtxId = contextId.getParent?.({
                 isTreeDurable: true,
-                isTreeStatic: false,
+                host: wrapper.token,
               });
               if (durableCtxId && durableCtxId !== contextId) {
                 wrapper.moduleRef.registerRequestByContextId(
@@ -1040,7 +1040,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
             wrapper.moduleRef.registerRequestByContextId(job, contextId);
             const durableCtxId = contextId.getParent?.({
               isTreeDurable: true,
-              isTreeStatic: false,
+              host: wrapper.token,
             });
             if (durableCtxId && durableCtxId !== contextId) {
               wrapper.moduleRef.registerRequestByContextId(
@@ -1156,7 +1156,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
         ...(queueOptsRec.telemetry !== undefined
           ? { telemetry: queueOptsRec.telemetry }
           : {}),
-        ...(queueOptsRec.skipVersionCheck !== undefined
+        ...(typeof queueOptsRec.skipVersionCheck === "boolean"
           ? { skipVersionCheck: queueOptsRec.skipVersionCheck }
           : {}),
         ...processorMeta.workerOptions,
@@ -1522,7 +1522,7 @@ function createInlineWorkerInstances(
     if (typeof proc === "function" || typeof proc === "string" || proc instanceof URL) {
       target = proc;
     } else if (typeof proc === "object" && proc !== null) {
-      const rec = proc as Record<string, unknown>;
+      const rec = proc as unknown as Record<string, unknown>;
       if ("callback" in rec && typeof rec.callback === "function") {
         const {
           callback,
