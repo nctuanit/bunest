@@ -477,6 +477,10 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
       }
     }
 
+    if (this.stripProtoKeys !== ValidationPipe.prototype.stripProtoKeys) {
+      this.stripProtoKeys(value);
+    }
+
     this.closeArrayGaps(value);
 
     const useDynamicTransformer =
@@ -508,6 +512,17 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         },
       };
       throw this.exceptionFactory([rootError]);
+    }
+
+    if (!this.validatorPackageOverride) {
+      const nestedBinaryErrors = this.findNestedBinaryValues(
+        entity,
+        new Map(),
+        metatype as Type<unknown>,
+      );
+      if (nestedBinaryErrors.length > 0) {
+        throw this.exceptionFactory(nestedBinaryErrors);
+      }
     }
 
     let errors: ValidationError[];
@@ -767,36 +782,164 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
   protected findNestedBinaryValues(
     object: unknown,
     metadataCache = new Map<unknown, unknown[]>(),
+    explicitTarget?: Type<unknown>,
+    activePath: Set<object> = new Set(),
   ): ValidationError[] {
     if (typeof object !== "object" || object === null) {
       return [];
     }
+    if (activePath.has(object)) {
+      return [];
+    }
+
+    const targetCtor =
+      explicitTarget ??
+      (object.constructor && object.constructor !== Object
+        ? (object.constructor as Type<unknown>)
+        : undefined);
+    if (!targetCtor) {
+      return [];
+    }
+
+    let metas = metadataCache.get(targetCtor) as
+      | ReadonlyArray<{
+          type: string;
+          propertyName: string;
+          constraints?: unknown[];
+          message?: string | ((args: { property: string; value: unknown }) => string);
+        }>
+      | undefined;
+    if (!metas) {
+      metas = getValidationMetadatasForTarget(
+        targetCtor,
+        false,
+        false,
+      ) as unknown as NonNullable<typeof metas>;
+      metadataCache.set(targetCtor, [...metas]);
+    }
+    if (!metas || metas.length === 0) {
+      return [];
+    }
+
+    const nestedMetas = metas.filter((m) => m.type === "nestedValidation");
+    if (nestedMetas.length === 0) {
+      return [];
+    }
+
+    const condMetasByProp = new Map<string, Array<(obj: unknown, val: unknown) => boolean>>();
+    for (const m of metas) {
+      if (m.type === "conditionalValidation" && typeof m.constraints?.[0] === "function") {
+        const list = condMetasByProp.get(m.propertyName) ?? [];
+        list.push(m.constraints[0] as (obj: unknown, val: unknown) => boolean);
+        condMetasByProp.set(m.propertyName, list);
+      }
+    }
+
+    activePath.add(object);
     const errors: ValidationError[] = [];
-    for (const [key, val] of Object.entries(object)) {
+    const seenProps = new Set<string>();
+
+    const checkValue = (
+      val: unknown,
+      propKey: string,
+      message: string,
+    ): ValidationError | undefined => {
+      if (val === undefined || val === null) {
+        return undefined;
+      }
       if (this.isBinary(val)) {
-        const err = this.toNestedBinaryError(
-          key,
-          val,
-          `nested property ${key} must be either object or array`,
-          metadataCache,
-        );
+        return this.toNestedBinaryError(propKey, val, message, metadataCache);
+      }
+      if (typeof val !== "object") {
+        return undefined;
+      }
+      if (activePath.has(val)) {
+        return undefined;
+      }
+      if (Array.isArray(val) || val instanceof Set || val instanceof Map) {
+        activePath.add(val);
+        const childErrors: ValidationError[] = [];
+        try {
+          if (val instanceof Map) {
+            for (const [k, item] of val.entries()) {
+              const childErr = checkValue(item, String(k), message);
+              if (childErr) childErrors.push(childErr);
+            }
+          } else {
+            const arr = val instanceof Set ? Array.from(val) : val;
+            for (let idx = 0; idx < arr.length; idx++) {
+              const childErr = checkValue(arr[idx], String(idx), message);
+              if (childErr) childErrors.push(childErr);
+            }
+          }
+        } finally {
+          activePath.delete(val);
+        }
+        if (childErrors.length > 0) {
+          return {
+            property: propKey,
+            children: childErrors,
+          };
+        }
+        return undefined;
+      }
+
+      const childErrors = this.findNestedBinaryValues(
+        val,
+        metadataCache,
+        undefined,
+        activePath,
+      );
+      if (childErrors.length > 0) {
+        return {
+          property: propKey,
+          children: childErrors,
+        };
+      }
+      return undefined;
+    };
+
+    try {
+      const record = object as Record<string, unknown>;
+      for (const meta of nestedMetas) {
+        const prop = meta.propertyName;
+        if (seenProps.has(prop)) continue;
+        seenProps.add(prop);
+        if (!Object.prototype.hasOwnProperty.call(object, prop)) continue;
+
+        const val = record[prop];
+        const conds = condMetasByProp.get(prop);
+        if (conds && conds.some((fn) => !fn(object, val))) {
+          continue;
+        }
+
+        const message =
+          typeof meta.message === "string"
+            ? meta.message.replace(/\$property/g, prop)
+            : typeof meta.message === "function"
+              ? meta.message({ property: prop, value: val })
+              : `nested property ${prop} must be either object or array`;
+
+        const err = checkValue(val, prop, message);
         if (err) {
           errors.push(err);
         }
       }
+    } finally {
+      activePath.delete(object);
     }
+
     return errors;
   }
 
   protected toNestedBinaryError(
     property: string,
-    value: unknown,
+    _value: unknown,
     message: string,
     _metadataCache: Map<unknown, unknown[]>,
   ): ValidationError | undefined {
     return {
       property,
-      value,
       children: [],
       constraints: {
         nestedValidation: message,

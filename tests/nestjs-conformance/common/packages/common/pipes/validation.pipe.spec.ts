@@ -1380,8 +1380,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard; emits `"items must be an array; an unknown value was passed to the validate function"` instead of `itemsMessage` (packages/validation/src/validation.pipe.ts)
-      it.skip("should throw an error for a binary value in place of the items or in a nested array", async () => {
+      it("should throw an error for a binary value in place of the items or in a nested array", async () => {
         target = nestCompatibleValidationPipe();
         await expect(
           target.transform({ items: Buffer.alloc(0) }, nestedMetadata),
@@ -1482,8 +1481,7 @@ describeConformance(
         expect(await target.transform(value, nestedMetadata)).toBe(value);
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 nested-binary guard; emits `{ "": ["an unknown value was passed to the validate function"] }` instead of `{ "items.0": [itemsMessage] }` (packages/validation/src/validation.pipe.ts)
-      it.skip("should report a binary sibling inside a self-circular plain object without leaking constructor", async () => {
+      it("should report a binary sibling inside a self-circular plain object without leaking constructor", async () => {
         target = nestCompatibleValidationPipe({
           errorFormat: "grouped",
           transformerPackage: {
@@ -1528,8 +1526,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: ValidationPipe lacks NestJS v12 cycle-safe nested-binary guard for shared circular Array/Set/Map collections; emits `{ "": ["an unknown value was passed to the validate function"] }` (packages/validation/src/validation.pipe.ts)
-      it.skip.each([
+      it.each([
         [
           "array",
           () => {
@@ -2079,7 +2076,7 @@ describeConformance(
     });
 
     describe("subclass compatibility", () => {
-      // BUNEST_BUG: ValidationPipe does not expose NestJS `protected stripProtoKeys(value)` subclass hook (uses standalone `findDangerousKeys` rejection instead) (packages/validation/src/validation.pipe.ts)
+      // BUNEST_BUG: bun:test expect(value).not.toHaveProperty("constructor") checks the prototype chain rather than own properties (unlike Chai's own.property) (packages/core/src/common/pipes/validation.pipe.ts)
       it.skip("should allow subclasses to call super.stripProtoKeys", () => {
         class CustomPipe extends ValidationPipe {
           public callSuperStripProtoKeys(value: unknown) {
@@ -2096,8 +2093,7 @@ describeConformance(
         expect(value).not.toHaveProperty("constructor");
       });
 
-      // BUNEST_BUG: ValidationPipe does not invoke an overridden `protected stripProtoKeys(value)` hook during transform (packages/validation/src/validation.pipe.ts)
-      it.skip("should invoke an overridden stripProtoKeys during transform", async () => {
+      it("should invoke an overridden stripProtoKeys during transform", async () => {
         let called = false;
         class CustomPipe extends ValidationPipe {
           protected override stripProtoKeys(value: unknown) {
