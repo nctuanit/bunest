@@ -588,8 +588,7 @@ describeConformance(
         }
       };
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should deny the message with a transient guard bound by class (arrow)", async () => {
+      it("should deny the message with a transient guard bound by class (arrow)", async () => {
         const reply = await send("arrow");
 
         // ADR-001: BunWebSocketAdapter emits `{ event: "error", data: ... }` for WS exceptions.
@@ -597,8 +596,7 @@ describeConformance(
         expect(reply.data?.message ?? reply.message).toContain("Forbidden");
       });
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should deny the message with a transient guard bound by class (method)", async () => {
+      it("should deny the message with a transient guard bound by class (method)", async () => {
         const reply = await send("method");
 
         // ADR-001: BunWebSocketAdapter emits `{ event: "error", data: ... }` for WS exceptions.

@@ -453,8 +453,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter eagerly resolves @MessageBody(SocketPipe) at gateway registration time without a per-connection RequestContainer (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/ws/adapter/bun-ws.adapter.ts:355); throws "Request-scoped token Symbol(bunest:token:request) requested by SocketPipe requires an active RequestContainer".
-    describe.skip("gateway", () => {
+    describe("gateway", () => {
       let app: BunestApplication;
       const sockets: WebSocket[] = [];
 
