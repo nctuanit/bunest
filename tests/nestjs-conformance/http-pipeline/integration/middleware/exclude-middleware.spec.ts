@@ -326,8 +326,7 @@ describeConformance(
         expect(response.body).toBe(RETURN_VALUE);
       });
 
-      // BUNEST_BUG: Expected raw request target "/profiles/1#/avatar" to route to "/profiles/:id" and run middleware ("middleware"), got "test". Native Bun.serve({ routes }) in packages/core/src/http/router/route-compiler.ts matches "/profiles/1#/avatar" against "/profiles/:id/avatar" (excluded) instead of stripping the "#" fragment before matching.
-      it.skip(`should not exclude "/profiles/1#/avatar", which the router serves with "/profiles/:id"`, async () => {
+      it(`should not exclude "/profiles/1#/avatar", which the router serves with "/profiles/:id"`, async () => {
         const response = await sendRawRequest("/profiles/1#/avatar");
         expect(response.body).toBe(MIDDLEWARE_VALUE);
       });

@@ -4333,7 +4333,7 @@ export class DIContainer
     provider: NormalizedProvider,
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     const key = this.makeInstanceKey(owner, provider.token);
     const allowRoot = this.overriddenProviderKeys.has(key);
@@ -4439,7 +4439,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     if (provider.kind === "value") {
       return provider.useValue;
@@ -4517,6 +4517,7 @@ export class DIContainer
       }
       if (provider.inject) {
         const deps = this.getProviderDependencies(provider);
+        const inquirerObj = Object.create(provider.useClass.prototype) as object;
         const args: unknown[] = [];
         for (const dep of deps) {
           args.push(
@@ -4527,7 +4528,7 @@ export class DIContainer
               requestContainer,
               activeInstantiations,
               allowRootFallback,
-              dep.token === INQUIRER ? inquirer : provider.useClass,
+              dep.token === INQUIRER ? inquirer : inquirerObj,
             ),
           );
         }
@@ -4576,10 +4577,11 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     const allDeps = this.getClassDependencies(target);
     const ctorDeps = allDeps.filter((d) => d.index !== undefined);
+    const inquirerObj = Object.create(target.prototype) as object;
     const args: unknown[] = [];
 
     for (const dep of ctorDeps) {
@@ -4591,7 +4593,7 @@ export class DIContainer
           requestContainer,
           activeInstantiations,
           allowRootFallback,
-          dep.token === INQUIRER ? inquirer : target,
+          dep.token === INQUIRER ? inquirer : inquirerObj,
         ),
       );
     }
@@ -4624,7 +4626,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<void> {
     const propDeps = this.getClassDependencies(target).filter(
       (d) => d.propertyKey !== undefined,
@@ -4637,7 +4639,7 @@ export class DIContainer
         requestContainer,
         activeInstantiations,
         allowRootFallback,
-        dep.token === INQUIRER ? inquirer : target,
+        dep.token === INQUIRER ? inquirer : instance,
       );
       if (
         dep.propertyKey !== undefined &&
@@ -4655,7 +4657,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     if (dep.token === undefined) {
       if (dep.optional) {

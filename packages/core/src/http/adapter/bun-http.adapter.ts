@@ -170,6 +170,18 @@ function parseBodyLimit(value: unknown): number | undefined {
   }
 }
 
+function hasMalformedPercentEncoding(pathname: string): boolean {
+  if (!pathname.includes("%")) {
+    return false;
+  }
+  try {
+    decodeURIComponent(pathname);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function extractPathname(rawUrl: string): string {
   const schemeIdx = rawUrl.indexOf("://");
   const pathStart =
@@ -1832,6 +1844,25 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       const table = await this.ensureCompiled();
       const pathname = extractPathname(req.url);
 
+      if (hasMalformedPercentEncoding(pathname)) {
+        const ctx = new RequestContext({
+          request: req,
+          server,
+          pathname,
+          trustProxy: this.trustProxy,
+          maxBodyBytes: this.bodyLimit,
+          bodyParser: this.bodyParserEnabled,
+          captureRawBody: this.rawBodyEnabled,
+          multipart: this.multipartOptions,
+          cookieSecrets: this.cookieSecrets,
+        });
+        return executeFallbackException(
+          new BadRequestException("Failed to decode param"),
+          ctx,
+          table.runtime,
+        );
+      }
+
       // 1. WebSocket upgrade check (when server is available)
       if (server && this.websocketRegistrations.size > 0) {
         const wsResult = await this.tryWebSocketUpgrade(pathname, req, server);
@@ -1874,6 +1905,25 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   ): Promise<Response | undefined> {
     const table = await this.ensureCompiled();
     const pathname = extractPathname(req.url);
+
+    if (hasMalformedPercentEncoding(pathname)) {
+      const ctx = new RequestContext({
+        request: req,
+        server,
+        pathname,
+        trustProxy: this.trustProxy,
+        maxBodyBytes: this.bodyLimit,
+        bodyParser: this.bodyParserEnabled,
+        captureRawBody: this.rawBodyEnabled,
+        multipart: this.multipartOptions,
+        cookieSecrets: this.cookieSecrets,
+      });
+      return executeFallbackException(
+        new BadRequestException("Failed to decode param"),
+        ctx,
+        table.runtime,
+      );
+    }
 
     // 1. WebSocket upgrade check
     if (this.websocketRegistrations.size > 0) {
@@ -2198,10 +2248,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     };
 
     for (const [path, handler] of Object.entries(table.bunRoutes)) {
+      const safeHandler = async (req: Request, server: BunServerLike) => {
+        if (req.url.includes("#") || req.url.includes("%")) {
+          const pathname = extractPathname(req.url);
+          if (req.url.includes("#") || hasMalformedPercentEncoding(pathname)) {
+            return this.fetch(req, server);
+          }
+        }
+        return handler(req, server);
+      };
       const wrappedHandler =
         this.rawRoutes.length > 0
           ? async (req: Request, server: BunServerLike) => {
-              const res = await handler(req, server);
+              const res = await safeHandler(req, server);
               if (res && res.status === 405 && this.rawRoutes.length > 0) {
                 const rawRes = await this.tryDispatchRawRoutes(
                   table,
@@ -2215,7 +2274,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
               }
               return res;
             }
-          : handler;
+          : safeHandler;
 
       if (this.websocketRegistrations.has(path)) {
         serveRoutes[path] = wrapForClosing(async (req, server) => {

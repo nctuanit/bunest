@@ -64,20 +64,17 @@ describeConformance(
         service = await moduleRef.create(DynamicService);
       });
 
-      // BUNEST_BUG: DIContainer.instantiateClass() injects the parent class constructor function instead of the parent instance/object for INQUIRER (packages/core/src/di/di-container.ts:3503,3571-3573); inquirer.constructor.name returns "Function" instead of "RegularService".
-      it.skip("should be able to inject a regular dependency", async () => {
+      it("should be able to inject a regular dependency", async () => {
         expect(service.regular.token).toBe("some-value");
         expect(service.regular.transient.context).toBe(RegularService.name);
       });
 
-      // BUNEST_BUG: DIContainer.instantiateClass() injects the parent class constructor function instead of the parent instance/object for INQUIRER (packages/core/src/di/di-container.ts:3503,3571-3573); inquirer.constructor.name returns "Function" instead of "DynamicService".
-      it.skip("should be able to inject a transient-scoped dependency", async () => {
+      it("should be able to inject a transient-scoped dependency", async () => {
         expect(service.transient.token).toBe("some-value");
         expect(service.transient.context).toBe(DynamicService.name);
       });
 
-      // BUNEST_BUG: DIContainer.instantiateClass() injects the parent class constructor function instead of the parent instance/object for INQUIRER (packages/core/src/di/di-container.ts:3503,3571-3573); inquirer.constructor.name returns "Function" instead of "RegularService"/"AnotherDynamicService".
-      it.skip("should work correctly when there is another class that injects the same dependency", async () => {
+      it("should work correctly when there is another class that injects the same dependency", async () => {
         @Injectable()
         class AnotherDynamicService {
           constructor(

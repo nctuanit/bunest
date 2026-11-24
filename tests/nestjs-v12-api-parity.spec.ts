@@ -533,7 +533,7 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
       @Injectable({ scope: Scope.TRANSIENT })
       class ScopedLogger {
         constructor(
-          @Inject(INQUIRER) public readonly parentClass: Function | undefined,
+          @Inject(INQUIRER) public readonly parentInstance: object | undefined,
         ) {}
       }
 
@@ -580,7 +580,7 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         @Get("parent")
         parent() {
           return {
-            parent: this.svc.logger.parentClass?.name,
+            parent: this.svc.logger.parentInstance?.constructor?.name,
             hasAdapter: Boolean(this.svc.adapterHost.httpAdapter),
             introspect: this.svc.moduleRef.introspect(ScopedLogger),
             modulesCount: this.svc.modulesContainer.size,

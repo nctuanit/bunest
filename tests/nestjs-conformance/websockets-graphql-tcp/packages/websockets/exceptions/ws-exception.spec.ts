@@ -41,8 +41,7 @@ describeConformance(
         const error = { test: true };
         const instance = new WS(error);
 
-        // BUNEST_BUG: WsException in packages/core/src/ws/exceptions/ws.exception.ts hardcodes "WebSocket exception" instead of falling back to "Error" when subclass name (e.g. `WS`) cannot be split into PascalCase words.
-        it.skip('should fallback error message to "Error"', () => {
+        it('should fallback error message to "Error"', () => {
           expect(instance.message).toEqual("Error");
         });
       });

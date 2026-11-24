@@ -27,7 +27,7 @@ export class WsException extends Error {
     } else if (this.constructor) {
       this.message =
         this.constructor.name.match(/[A-Z][a-z]+|[0-9]+/g)?.join(" ") ??
-        "WebSocket exception";
+        "Error";
     }
   }
 
