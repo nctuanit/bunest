@@ -3287,6 +3287,13 @@ export class DIContainer
             results.push(ctrl as unknown as T);
           }
         }
+        for (const m of this.graph.modules.values()) {
+          if (m.metatype === token && m.instance !== undefined) {
+            if (!strict || m === mod) {
+              results.push(m.instance as unknown as T);
+            }
+          }
+        }
       }
 
       if (MULTI_PROVIDER_TOKENS.has(token)) {
@@ -3330,13 +3337,23 @@ export class DIContainer
       return results;
     }
 
-    // Check controller singletons first
+    // Check controller singletons and module class instances first
     if (typeof token === "function") {
       const ctrl = this.controllerSingletons.get(token as Type<unknown>);
       if (ctrl) {
         const owner = this.controllerOwner.get(token as Type<unknown>);
         if (!strict || owner === mod) {
           return ctrl as unknown as T;
+        }
+      }
+      if (mod.metatype === token && mod.instance !== undefined) {
+        return mod.instance as unknown as T;
+      }
+      if (!strict) {
+        for (const m of this.graph.modules.values()) {
+          if (m.metatype === token && m.instance !== undefined) {
+            return m.instance as unknown as T;
+          }
         }
       }
     }

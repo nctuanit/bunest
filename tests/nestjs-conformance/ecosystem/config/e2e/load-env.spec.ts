@@ -24,8 +24,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException because DIContainer.getSync() never checks module class instances (mod.instance) (packages/core/src/di/di-container.ts:1201,2626-2731)
-    it.skip("should return loaded env variables", async () => {
+    it("should return loaded env variables", async () => {
       await ConfigModule.envVariablesLoaded;
 
       const envVars = app.get(AppModule).getEnvVariables();

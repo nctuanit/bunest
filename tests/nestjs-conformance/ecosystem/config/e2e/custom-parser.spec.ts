@@ -24,8 +24,7 @@ describeConformance(
       process.env = originalEnv;
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException because DIContainer.getSync() never checks module class instances (mod.instance) registered during instantiateModuleSingletons() (packages/core/src/di/di-container.ts:1201,2626-2731)
-    it.skip("should use dotenv parser by default", async () => {
+    it("should use dotenv parser by default", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [AppModule.withEnvVars()],
       }).compile();
@@ -38,8 +37,7 @@ describeConformance(
       expect(envVars.PORT).toEqual("4000");
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException because DIContainer.getSync() never checks module class instances (mod.instance) (packages/core/src/di/di-container.ts:1201,2626-2731)
-    it.skip("should use custom parser when provided", async () => {
+    it("should use custom parser when provided", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
           {

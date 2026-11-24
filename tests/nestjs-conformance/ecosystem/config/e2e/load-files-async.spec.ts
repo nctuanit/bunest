@@ -23,8 +23,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException because DIContainer.getSync() never checks module class instances (mod.instance) (packages/core/src/di/di-container.ts:1201,2626-2731)
-    it.skip("should return loaded configuration", () => {
+    it("should return loaded configuration", () => {
       const host = app.get(AppModule).getDatabaseHost();
       expect(host).toEqual("host");
     });
