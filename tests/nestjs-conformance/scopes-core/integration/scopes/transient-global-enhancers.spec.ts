@@ -443,8 +443,7 @@ describeConformance(
         host = undefined;
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_GUARD global enhancers (packages/microservices/src/microservice-host.ts:329-342).
-      it.skip("should deny the message when the global guard is transient", async () => {
+      it("should deny the message when the global guard is transient", async () => {
         await listen([{ provide: APP_GUARD, useClass: TransientDenyGuard }]);
 
         await expect(client!.send("read", {})).rejects.toThrow(
@@ -452,15 +451,13 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_PIPE global enhancers (packages/microservices/src/microservice-host.ts:345-356).
-      it.skip("should transform the payload when the global pipe is transient", async () => {
+      it("should transform the payload when the global pipe is transient", async () => {
         await listen([{ provide: APP_PIPE, useClass: SuffixPipe }]);
 
         await expect(client!.send("echo", "nest")).resolves.toBe("nest-piped");
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_INTERCEPTOR global enhancers (packages/microservices/src/microservice-host.ts:360-375).
-      it.skip("should wrap the response when the global interceptor is transient", async () => {
+      it("should wrap the response when the global interceptor is transient", async () => {
         await listen([
           { provide: APP_INTERCEPTOR, useClass: PrefixInterceptor },
         ]);
@@ -468,8 +465,7 @@ describeConformance(
         await expect(client!.send("read", {})).resolves.toBe("intercepted:ok");
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_FILTER global enhancers (packages/microservices/src/microservice-host.ts:379-392).
-      it.skip("should handle the error when the global filter is transient", async () => {
+      it("should handle the error when the global filter is transient", async () => {
         await listen([{ provide: APP_FILTER, useClass: RecoveringRpcFilter }]);
 
         await expect(client!.send("fail", {})).resolves.toBe("recovered");

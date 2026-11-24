@@ -130,8 +130,7 @@ describeConformance(
       ["REQUEST", Scope.REQUEST],
       ["TRANSIENT", Scope.TRANSIENT],
     ] as const) {
-      // BUNEST_BUG: MicroserviceHost skips Scope.REQUEST controllers (ReportsController) and does not register/run DI APP_FILTER global filters or per-message RequestContainer (packages/microservices/src/microservice-host.ts:59-78,379-392).
-      it.skip(`should apply a global filter of scope ${label} to the error of a failing provider`, async () => {
+      it(`should apply a global filter of scope ${label} to the error of a failing provider`, async () => {
         await start({ provide: APP_FILTER, useClass: OpaqueFilter, scope });
 
         await expect(call("reports.get", "known")).resolves.toBe(
@@ -147,8 +146,7 @@ describeConformance(
       });
     }
 
-    // BUNEST_BUG: MicroserviceHost skips Scope.REQUEST controllers (ReportsController) and does not register/run DI APP_FILTER global filters or per-message RequestContainer (packages/microservices/src/microservice-host.ts:59-78,379-392).
-    it.skip("should leave the error to the default filter when the filter fails to resolve too", async () => {
+    it("should leave the error to the default filter when the filter fails to resolve too", async () => {
       await start({ provide: APP_FILTER, useClass: DependentFilter });
 
       await expect(call("reports.get", "known")).resolves.toBe("known_schema");

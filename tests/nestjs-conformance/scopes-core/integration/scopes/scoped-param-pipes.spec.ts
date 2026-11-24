@@ -303,8 +303,7 @@ describeConformance(
       const send = (pattern: string, data: object): Promise<any> =>
         client.send(pattern, data);
 
-      // BUNEST_BUG: MicroserviceHost.compileHandler() does not create a per-message RequestContainer or register REQUEST (packages/microservices/src/microservice-host.ts:318-395,479-489); throws "Request-scoped token Symbol(bunest:token:request) requested by CountingPipe requires an active RequestContainer".
-      it.skip("should build a request-scoped @Payload() pipe for each message", async () => {
+      it("should build a request-scoped @Payload() pipe for each message", async () => {
         const first = await send("count", { label: "one" });
         const second = await send("count", { label: "two" });
 
@@ -326,8 +325,7 @@ describeConformance(
         expect(second.seenId).not.toBe(first.seenId);
       });
 
-      // BUNEST_BUG: MicroserviceHost.compileHandler() does not create a per-message RequestContainer or register REQUEST (packages/microservices/src/microservice-host.ts:318-395,479-489).
-      it.skip("should not share a request-scoped pipe between handlers", async () => {
+      it("should not share a request-scoped pipe between handlers", async () => {
         const first = await send("count", { label: "one" });
         const other = await send("count-again", { label: "two" });
 
@@ -344,8 +342,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: MicroserviceHost.compileHandler() does not create a per-message RequestContainer or register REQUEST (packages/microservices/src/microservice-host.ts:318-395,479-489).
-      it.skip("should keep request-scoped pipes of overlapping messages apart", async () => {
+      it("should keep request-scoped pipes of overlapping messages apart", async () => {
         gate = new Promise((resolve) => (releaseGate = resolve));
         entered = new Promise((resolve) => (markEntered = resolve));
 
@@ -368,8 +365,7 @@ describeConformance(
         expect(next.pipeId).not.toBe(first.pipeId);
       });
 
-      // BUNEST_BUG: MicroserviceHost.resolveArgs() only inspects RPC_PARAM_METADATA (@Payload/@Ctx) and ignores createParamDecorator() custom parameter decorators and their pipes (packages/microservices/src/microservice-host.ts:398-455).
-      it.skip("should build a request-scoped pipe of a custom decorator for each message", async () => {
+      it("should build a request-scoped pipe of a custom decorator for each message", async () => {
         const first = await send("custom", { label: "one" });
         const second = await send("custom", { label: "two" });
 
@@ -386,8 +382,7 @@ describeConformance(
         expect(second.pipeId).not.toBe(first.pipeId);
       });
 
-      // BUNEST_BUG: MicroserviceHost.resolveEnhancer() calls moduleRef.create(cls) on every message for unregistered default-scoped pipe classes without caching (packages/microservices/src/microservice-host.ts:479-489); expected SuffixPipe.n === 1, received 2.
-      it.skip("should construct a default-scoped class pipe once", async () => {
+      it("should construct a default-scoped class pipe once", async () => {
         expect(await send("suffix", { label: "one" })).toEqual({
           label: "one",
           suffix: "ok",
@@ -410,8 +405,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: MicroserviceHost.compileHandler() does not create a per-message RequestContainer or register REQUEST (packages/microservices/src/microservice-host.ts:318-395,479-489).
-      it.skip("should build a request-scoped @UsePipes() pipe for each message", async () => {
+      it("should build a request-scoped @UsePipes() pipe for each message", async () => {
         const first = await send("method", { label: "one" });
         const second = await send("method", { label: "two" });
 
@@ -435,8 +429,7 @@ describeConformance(
         await host?.close();
       });
 
-      // BUNEST_BUG: MicroserviceHost.resolveEnhancer() re-instantiates Scope.TRANSIENT pipes on every RPC message instead of caching one instance per static controller (packages/microservices/src/microservice-host.ts:479-489); received pipeId=2, hits=1 instead of pipeId=1, hits=2.
-      it.skip("should use the instance created for that controller", async () => {
+      it("should use the instance created for that controller", async () => {
         const first = await client.send<any>("transient", { label: "one" });
         const second = await client.send<any>("transient", { label: "two" });
 
