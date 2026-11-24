@@ -292,6 +292,8 @@ export class BunestApplication extends BunestApplicationContext {
   }> = [];
   private readonly microservices: MicroserviceInstance[] = [];
   private readonly startedMicroservices = new WeakSet<MicroserviceInstance>();
+  private readonly deferredInitMicroservices =
+    new WeakSet<MicroserviceInstance>();
   private readonly inheritedConfigMicroservices =
     new Set<MicroserviceInstance>();
   private wsAdapter?: WebSocketAdapter;
@@ -835,6 +837,12 @@ export class BunestApplication extends BunestApplicationContext {
     if (hybridOptions?.inheritAppConfig) {
       this.inheritedConfigMicroservices.add(server);
     }
+    if (
+      (hybridOptions as { deferInitialization?: boolean } | undefined)
+        ?.deferInitialization === true
+    ) {
+      this.deferredInitMicroservices.add(server);
+    }
     return server;
   }
 
@@ -843,7 +851,10 @@ export class BunestApplication extends BunestApplicationContext {
    * microservice transport servers.
    */
   async startAllMicroservices(): Promise<this> {
-    if (!this.isInitialized) {
+    const allDeferred =
+      this.microservices.length > 0 &&
+      this.microservices.every((ms) => this.deferredInitMicroservices.has(ms));
+    if (!this.isInitialized && !allDeferred) {
       await this.init();
     }
     const appCfg = this.container.getApplicationConfig();

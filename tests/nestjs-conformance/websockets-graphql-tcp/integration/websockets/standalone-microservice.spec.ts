@@ -117,8 +117,7 @@ describeConformance(
       "native BunWsServerImpl non-listening server",
     );
 
-    // BUNEST_BUG: BunestMicroserviceApplication does not implement useWebSocketAdapter() (declared optional on INestMicroservice) and WsGatewayExplorer hardcodes `new BunWebSocketAdapter()` instead of accepting an application-supplied adapter (packages/core/src/application/bunest-factory.ts#L44-L80, packages/core/src/ws/explorer/ws-gateway.explorer.ts#L66).
-    it.skip("should set up such a server through the adapter of the application", async () => {
+    it("should set up such a server through the adapter of the application", async () => {
       @Module({
         imports: [WebSocketModule.forRoot()],
         providers: [Tracker, BroadcastingGateway],

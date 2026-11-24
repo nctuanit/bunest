@@ -481,8 +481,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: BunestApplicationContext.close() awaits lifecycle hooks before calling stopTransport()/TcpServer.close(), so a same-tick Bun.connect() races with listener.stop(false) and receives ECONNRESET instead of ECONNREFUSED (packages/core/src/application/bunest-application-context.ts).
-      it.skip("should refuse new connections while it waits", async () => {
+      it("should refuse new connections while it waits", async () => {
         const server = await createServer({ gracefulShutdown: true });
         const { request } = await connect();
         request(1, 500);
