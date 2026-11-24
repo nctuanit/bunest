@@ -198,6 +198,11 @@ export class BunestApplicationContext {
     );
     this.logger = this.loggerAdapter;
 
+    if (options.bufferLogs === true) {
+      Logger.overrideLogger(this.loggerAdapter);
+      Logger.attachBuffer();
+    }
+
     if (options.shutdownHooks) {
       this.enableShutdownHooks();
     }
@@ -374,6 +379,9 @@ export class BunestApplicationContext {
 
   flushLogs(): void {
     this.loggerAdapter.flush();
+    if (this.options.bufferLogs === true) {
+      Logger.flush();
+    }
   }
 
   flushLogsOnOverride(): void {

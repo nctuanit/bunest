@@ -68,8 +68,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected app.use(['/css', '/js'], middleware) to scope middleware to the listed mount paths; actual BunestApplication.use() only accepts (...middlewares: MiddlewareEntry[]) and treats the string[] array as a middleware entry causing 500 at runtime (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip.each(["/css/site.css", "/js/app.js"])(
+    it.each(["/css/site.css", "/js/app.js"])(
       "should run the middleware under %s",
       async (path) => {
         const res = await request(app).get(path);
@@ -79,8 +78,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected app.use(['/css', '/js'], middleware) not to run under /api/users (200 without X-Middleware); actual fails with 500 because string[] mount paths are treated as a middleware entry (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should not run the middleware under another path", async () => {
+    it("should not run the middleware under another path", async () => {
       const res = await request(app).get("/api/users");
 
       expect(res.status).toBe(200);

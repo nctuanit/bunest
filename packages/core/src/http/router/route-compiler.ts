@@ -117,6 +117,11 @@ export interface RouteCompilerInput {
   readonly defaultFilter: DefaultExceptionFilter;
   readonly onRequestHook?: Function;
   readonly onResponseHook?: Function;
+  readonly onVersionNotFound?: (
+    req: Request,
+    server: BunServerLike | undefined,
+    pathname: string,
+  ) => Promise<Response | null>;
   readonly onRouteTriggered?: (
     requestMethod: RequestMethod,
     path: string,
@@ -556,6 +561,36 @@ export async function compileRoutes(
     // Pre-match module middlewares at bootstrap (zero per-request path matching for static routes;
     // runtime guard only when dynamic exclude or runtime-versioned include/exclude applies)
     const matchedModuleMiddlewares: MiddlewareEntry[] = [];
+    const matchedMiddlewareFilters: ExceptionFilterLike[] = [];
+    const collectMwFilters = (mw: MiddlewareEntry): void => {
+      if (!isMiddlewareClassCtor(mw)) return;
+      const useFn = (mw as { prototype?: { use?: unknown } }).prototype?.use;
+      if (typeof useFn === "function") {
+        const methodFilters = MetadataRegistry.get<ExceptionFilterLike[]>(
+          METADATA_KEYS.EXCEPTION_FILTERS,
+          useFn,
+        );
+        if (methodFilters && methodFilters.length > 0) {
+          matchedMiddlewareFilters.push(...methodFilters);
+        }
+      }
+      const classFilters = MetadataRegistry.get<ExceptionFilterLike[]>(
+        METADATA_KEYS.EXCEPTION_FILTERS,
+        mw,
+      );
+      if (classFilters && classFilters.length > 0) {
+        matchedMiddlewareFilters.push(...classFilters);
+      }
+    };
+    const isMiddlewareTransient = (mw: MiddlewareEntry): boolean => {
+      if (!isMiddlewareClassCtor(mw)) return false;
+      const meta = MetadataRegistry.get<InjectableMetadata>(
+        METADATA_KEYS.INJECTABLE,
+        mw,
+      );
+      return meta?.scope === Scope.TRANSIENT;
+    };
+
     for (let m = 0; m < moduleMiddlewares.length; m++) {
       const cfg = moduleMiddlewares[m];
       if (!cfg) continue;
@@ -568,19 +603,24 @@ export async function compileRoutes(
         runtimeVersioning,
       );
       if (mode === "always") {
+        collectMwFilters(cfg.middleware);
         matchedModuleMiddlewares.push(cfg.middleware);
       } else if (mode === "runtime") {
-        const innerMw = await resolveMiddlewareSingleton(
-          cfg.middleware,
-          bridge,
-          route.controller,
-        );
+        collectMwFilters(cfg.middleware);
+        const transientMw = isMiddlewareTransient(cfg.middleware);
+        const innerMw = transientMw
+          ? undefined
+          : await resolveMiddlewareSingleton(
+              cfg.middleware,
+              bridge,
+              route.controller,
+            );
         const rawPrefixLen =
           route.fullPath !== route.rawPathWithoutPrefix &&
           route.fullPath.endsWith(route.rawPathWithoutPrefix)
             ? route.fullPath.length - route.rawPathWithoutPrefix.length
             : 0;
-        const wrappedMw: MiddlewareEntry = (req, res, next) => {
+        const wrappedMw: MiddlewareEntry = async (req, res, next) => {
           const url = new URL(req.url);
           const rawPathname = url.pathname;
           let decodedPathname: string;
@@ -636,6 +676,16 @@ export async function compileRoutes(
             }
           }
 
+          if (transientMw) {
+            const freshMw = await resolveMiddlewareSingleton(
+              cfg.middleware,
+              bridge,
+              route.controller,
+            );
+            return typeof freshMw === "function"
+              ? freshMw(req, res, next)
+              : freshMw.use(req, res, next);
+          }
           if (innerMw) {
             return typeof innerMw === "function"
               ? innerMw(req, res, next)
@@ -670,8 +720,9 @@ export async function compileRoutes(
       ...route.controllerPipes,
       ...route.methodPipes,
     ];
-    // Exception Filters: Method -> Controller -> Global (most specific first)
+    // Exception Filters: Middleware -> Method -> Controller -> Global (most specific first)
     const filterSpecs = [
+      ...matchedMiddlewareFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.methodFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.controllerFilters.map((f) =>
         buildFilterSpecWithBridge(f, bridge),
@@ -710,11 +761,12 @@ export async function compileRoutes(
         middlewareSpecs.some(
           (mw) =>
             isMiddlewareClassCtor(mw) &&
-            bridge.requiresEnhancerRequestScope!(
-              mw,
-              undefined,
-              route.controller,
-            ),
+            (isMiddlewareTransient(mw) ||
+              bridge.requiresEnhancerRequestScope!(
+                mw,
+                undefined,
+                route.controller,
+              )),
         ) ||
         guardSpecs.some((g) =>
           bridge.requiresEnhancerRequestScope!(g, "guard", route.controller),
@@ -1110,6 +1162,19 @@ export async function compileRoutes(
             runtime,
             versionAllow,
           );
+        }
+
+        if (input.onVersionNotFound) {
+          const mwRes = await input.onVersionNotFound(
+            req,
+            server,
+            ctx.pathname,
+          );
+          if (mwRes !== null) {
+            return securityHeaders
+              ? applySecurityHeaders(mwRes, securityHeaders)
+              : mwRes;
+          }
         }
 
         return executeFallbackException(

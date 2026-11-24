@@ -2639,6 +2639,17 @@ export class DIContainer
       return instance;
     }
 
+    // Validate enhancer prototype shape when binding a class directly (e.g. @UseGuards(AbstractGuard)).
+    if (
+      kind === "guard" &&
+      typeof (cls as { prototype?: { canActivate?: unknown } }).prototype
+        ?.canActivate !== "function"
+    ) {
+      throw new Error(
+        `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
+      );
+    }
+
     // Separate provider overrides from enhancer resolution: if `cls` was overridden via
     // overrideProvider(cls) without a matching enhancer override, instantiate `cls` directly
     // as an enhancer instead of returning the provider mock!

@@ -757,30 +757,45 @@ async function executeFullCompiledRoute(
           return await finalizeResponse(earlySent);
         }
 
-        // Resolve per-request filters first if request-scoped so exceptions in stages 3-11
-        // hit method/controller filters properly.
+        // Resolve non-request-scoped filters upfront so exceptions during controller DI
+        // resolution hit singleton/transient filters, while deferring request-scoped
+        // filters until after the request-scoped controller resolves successfully.
+        const deferRequestScopedFilters =
+          compiled.requiresRequestScope &&
+          compiled.singletonController === undefined;
+
         if (compiled.requiresRequestScope) {
-        const resolvedFilters: CompiledExceptionFilter[] = [];
-        for (let i = 0; i < compiled.filterSpecs.length; i++) {
-          const item = compiled.filterSpecs[i];
-          if (!item) continue;
-          const instance =
-            await runtime.bridge.resolveEnhancer<ExceptionFilter>(
-              item.spec,
-              requestContainer,
-              "filter",
-              route.controller,
-            );
-          const catchTypes =
-            runtime.bridge.resolveFilterCatchTypes?.(item.spec, instance) ??
-            item.catchTypes;
-          resolvedFilters.push({
-            filter: instance,
-            catchTypes,
-          });
+          const resolvedFilters: CompiledExceptionFilter[] = [];
+          for (let i = 0; i < compiled.filterSpecs.length; i++) {
+            const item = compiled.filterSpecs[i];
+            if (!item) continue;
+            if (
+              deferRequestScopedFilters &&
+              runtime.bridge.requiresEnhancerRequestScope?.(
+                item.spec,
+                "filter",
+                route.controller,
+              )
+            ) {
+              continue;
+            }
+            const instance =
+              await runtime.bridge.resolveEnhancer<ExceptionFilter>(
+                item.spec,
+                requestContainer,
+                "filter",
+                route.controller,
+              );
+            const catchTypes =
+              runtime.bridge.resolveFilterCatchTypes?.(item.spec, instance) ??
+              item.catchTypes;
+            resolvedFilters.push({
+              filter: instance,
+              catchTypes,
+            });
+          }
+          activeFilters = resolvedFilters;
         }
-        activeFilters = resolvedFilters;
-      }
 
       // Stage 3: Security / CORS Pre-Processing
       if (runtime.cors) {
@@ -981,6 +996,29 @@ async function executeFullCompiledRoute(
               route.controller,
               requestContainer,
             ));
+
+          if (deferRequestScopedFilters && compiled.filterSpecs.length > 0) {
+            const allFilters: CompiledExceptionFilter[] = [];
+            for (let i = 0; i < compiled.filterSpecs.length; i++) {
+              const item = compiled.filterSpecs[i];
+              if (!item) continue;
+              const instance =
+                await runtime.bridge.resolveEnhancer<ExceptionFilter>(
+                  item.spec,
+                  requestContainer,
+                  "filter",
+                  route.controller,
+                );
+              const catchTypes =
+                runtime.bridge.resolveFilterCatchTypes?.(item.spec, instance) ??
+                item.catchTypes;
+              allFilters.push({
+                filter: instance,
+                catchTypes,
+              });
+            }
+            activeFilters = allFilters;
+          }
 
           const handlerMethod =
             compiled.singletonHandler ??

@@ -326,8 +326,7 @@ describeConformance(
           .expect(200, MIDDLEWARE_VALUE);
       });
 
-      // BUNEST_BUG: CoreMiddlewareConsumer.toRouteInfos() (packages/core/src/module/middleware-consumer.ts:59-64) strips `version` from RouteInfo objects passed to forRoutes().
-      it.skip(`forRoutes({ path: '*', version: '1' }) should not run for another version`, async () => {
+      it(`forRoutes({ path: '*', version: '1' }) should not run for another version`, async () => {
         await createApp(
           { type: VersioningType.URI, defaultVersion: "1" },
           { path: "*", method: RequestMethod.ALL, version: "1" },

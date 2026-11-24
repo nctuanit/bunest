@@ -96,8 +96,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: CoreMiddlewareConsumer.toRouteInfos() (packages/core/src/module/middleware-consumer.ts:59-64) strips `version` from RouteInfo objects passed to exclude()/forRoutes().
-    it.skip("should skip the middleware for the excluded version only", async () => {
+    it("should skip the middleware for the excluded version only", async () => {
       await createApp(MiddlewareModule);
       await request(app!)
         .get("/reports")
@@ -109,8 +108,7 @@ describeConformance(
         .expect(200, MIDDLEWARE_VALUE);
     });
 
-    // BUNEST_BUG: CoreMiddlewareConsumer.toRouteInfos() (packages/core/src/module/middleware-consumer.ts:59-64) strips `version` from RouteInfo objects passed to exclude()/forRoutes().
-    it.skip("should read a quoted media type version, like the router does", async () => {
+    it("should read a quoted media type version, like the router does", async () => {
       await createApp(MiddlewareModule);
       await request(app!)
         .get("/reports")

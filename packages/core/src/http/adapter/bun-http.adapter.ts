@@ -1563,6 +1563,18 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       defaultFilter,
       onRequestHook: this.onRequestHookFn,
       onResponseHook: this.onResponseHookFn,
+      onVersionNotFound:
+        this.moduleMiddlewares.length > 0
+          ? async (req, server, pathname) => {
+              const tbl = await this.ensureCompiled();
+              return this.tryDispatchStandaloneModuleMiddlewares(
+                tbl,
+                pathname,
+                req,
+                server,
+              );
+            }
+          : undefined,
       onRouteTriggered: this.onRouteTriggered,
       securityHooks: this.securityHooks,
       mapException: (err) => this.mapException(err),
@@ -2054,7 +2066,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
             rule as string | VersionedRouteRule,
             reqMethod,
             matchTargets,
-            reqVersions,
+            reqVersions && reqVersions.length > 0 ? reqVersions : undefined,
             { allowStringPrefixMount: true },
           );
         });
