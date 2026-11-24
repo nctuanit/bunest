@@ -110,8 +110,7 @@ describeConformance(
         "Bunest native fetch HttpHealthIndicator records responseTime via HealthCheckAttempt",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-      it.skip(
+      it(
         adaptedTitle(
           ["ADR-001", "ADR-008"],
           "should check if correctly display a timeout error",
@@ -152,8 +151,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-      it.skip(
+      it(
         adaptedTitle(
           ["ADR-001"],
           "should display an error message when the address does not exist / is unreachable",
@@ -196,8 +194,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-      it.skip(
+      it(
         adaptedTitle(
           ["ADR-001", "ADR-008"],
           "should return an error if the address return 404",
@@ -267,8 +264,7 @@ describeConformance(
         "Native fetch responseCheck records responseTime via HealthCheckAttempt",
       );
 
-      // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) HttpHealthIndicator.responseCheck() throws "Response did not pass the check" instead of "Request failed with status code 400" on non-2xx responses failing callback (packages/observability/src/health/health.indicators.ts:643-649).
-      it.skip("should not be healthy if remote server returns 400 and status code 200 is expected", async () => {
+      it("should not be healthy if remote server returns 400 and status code 200 is expected", async () => {
         const remoteUrl = startRemoteServer(
           () =>
             new Response("Bad Request", {

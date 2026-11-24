@@ -27,8 +27,7 @@ describeConformance(
   },
   () => {
     describe('when a handler is also exposed through a "useExisting" alias', () => {
-      // BUNEST_BUG: Expected CqrsExplorer to deduplicate handlers exposed via useExisting aliases so handle() runs once, but packages/messaging/src/cqrs/cqrs.module.ts getAllLoadedWrappers() only deduplicates by InstanceWrapper reference (ignoring wrapper.isAlias / same instance), causing handle() to be invoked twice.
-      it.skip("should register and invoke the handler only once", async () => {
+      it("should register and invoke the handler only once", async () => {
         const moduleRef = await Test.createTestingModule({
           imports: [CqrsModule.forRoot()],
           providers: [

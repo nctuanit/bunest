@@ -66,7 +66,6 @@ export class SchedulerExplorer
     }
     this.initialDelayTimers.clear();
     this.explored = false;
-    this.registry.stopAll();
   }
 
   explore(): void {

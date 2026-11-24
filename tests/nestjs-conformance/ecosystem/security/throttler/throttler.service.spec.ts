@@ -45,8 +45,7 @@ describeConformance(
       expect(service).toBeDefined();
     });
 
-    // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts returns `timeToExpire` in milliseconds (1000) instead of NestJS @nestjs/throttler-standard seconds (1).
-    it.skip("should increment the request count", async () => {
+    it("should increment the request count", async () => {
       const result = await service.increment("test", 1000, 1, 0, "test");
       expect(result).toBeDefined();
       expect(result.totalHits).toBe(1);
@@ -74,8 +73,7 @@ describeConformance(
     });
 
     describe("without a block duration", () => {
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts (increment lines 106-127) leaves `isBlocked: false` and `timeToBlockExpire: 0` when `blockDuration === 0` and `hits.length >= limit`, instead of marking requests over limit as `isBlocked: true` with `timeToBlockExpire > 0`.
-      it.skip("rejects requests over the limit instead of resetting the counter", async () => {
+      it("rejects requests over the limit instead of resetting the counter", async () => {
         const ttl = 1000;
         const results: ThrottlerStorageRecord[] = [];
         for (let i = 0; i < 5; i++) {
@@ -92,8 +90,7 @@ describeConformance(
         expect(results[2]!.timeToBlockExpire).toBeGreaterThan(0);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts returns `isBlocked: false` and `timeToBlockExpire: 0` when `blockDuration === 0` (and returns ms rather than seconds for expiry fields).
-      it.skip("reports when the oldest hit expires as the time to wait", async () => {
+      it("reports when the oldest hit expires as the time to wait", async () => {
         const ttl = 10_000;
         await service.increment("oldest", ttl, 1, 0, "test");
         await sleep(1100);
@@ -102,15 +99,13 @@ describeConformance(
         expect(result.timeToBlockExpire).toBe(9);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts returns `isBlocked: false` and `timeToBlockExpire: 0` for `limit: 0, blockDuration: 0` instead of `isBlocked: true, timeToBlockExpire: 1` (in seconds).
-      it.skip("blocks every request for a limit of zero", async () => {
+      it("blocks every request for a limit of zero", async () => {
         const result = await service.increment("zero", 1000, 0, 0, "test");
         expect(result.isBlocked).toBe(true);
         expect(result.timeToBlockExpire).toBe(1);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts returns `isBlocked: false` and `timeToBlockExpire: 0` when `blockDuration === 0` (and ms rather than seconds) on the rejected 500,002nd hit.
-      it.skip("handles a window holding more hits than fit in a call stack", async () => {
+      it("handles a window holding more hits than fit in a call stack", async () => {
         const ttl = 60_000;
         const limit = 1_000_000;
         await service.increment("busy-key", ttl, limit, 0, "test");
@@ -143,8 +138,7 @@ describeConformance(
         expect(rejected.timeToBlockExpire).toBe(60);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts returns `isBlocked: false` on over-limit retries when `blockDuration === 0`.
-      it.skip("lets requests through again once the earlier hits expire", async () => {
+      it("lets requests through again once the earlier hits expire", async () => {
         const ttl = 100;
         await service.increment("no-block", ttl, 2, 0, "test");
         await service.increment("no-block", ttl, 2, 0, "test");
@@ -186,8 +180,7 @@ describeConformance(
         expect(result.isBlocked).toBe(false);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts (constructor lines 39-56) eagerly starts `setInterval` inside `constructor()` with the 60s default before subclass field `protected readonly sweepIntervalMs = 10` initializes, instead of lazily starting the sweep outside AsyncLocalStorage on first increment().
-      it.skip("does not start the sweep inside the request context", async () => {
+      it("does not start the sweep inside the request context", async () => {
         class FastSweepStorage extends ThrottlerStorageService {
           protected override readonly sweepIntervalMs = 10;
         }

@@ -113,8 +113,7 @@ describeConformance(
         await Bun.sleep(SHORT_TTL + 60);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/throttler.guard.ts (onModuleInit lines 128-141 & handleRequest lines 276-293, 408-418) sorts throttlers by ttl before naming unnamed rules (misnaming the unnamed default rule `"rule_1"` instead of `"default"`) and overwrites unsuffixed `X-RateLimit-Limit` with `state.primary` (`short`: `"1"`) instead of the default throttler's `"2"`.
-      it.skip("should get an error if we send two more requests within the default window", async () => {
+      it("should get an error if we send two more requests within the default window", async () => {
         const r1 = await ctx.request().get("/").expect(200);
         expect(r1.headers[remainingHeader()]).toBe("0");
         expect(r1.headers[limitHeader()]).toBe("2");
@@ -127,8 +126,7 @@ describeConformance(
         await Bun.sleep(DEFAULT_TTL + 60);
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/throttler.guard.ts (onModuleInit lines 128-141 & handleRequest lines 276-293, 408-418) misnames the unnamed default rule `"rule_1"` after TTL sorting and overwrites unsuffixed `X-RateLimit-Remaining` with the lowest remaining throttler (`short`: `"0"`) instead of default's `"1"`.
-      it.skip("should get an error if we smartly send 4 more requests within the long window", async () => {
+      it("should get an error if we smartly send 4 more requests within the long window", async () => {
         const r1 = await ctx.request().get("/").expect(200);
         expect(r1.headers[limitHeader(long)]).toBe("5");
         expect(r1.headers[remainingHeader(long)]).toBe("2");

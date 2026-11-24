@@ -218,8 +218,7 @@ describeConformance(
       ).toEqual(TEST_EVENT_MULTIPLE_PAYLOAD);
     });
 
-    // BUNEST_BUG: Expected EventEmitterExplorer to discover custom decorators setting EVENT_LISTENER_METADATA on method functions (including single non-array metadata objects), but getOnEventMetadata() in packages/messaging/src/events/decorators/on-event.decorator.ts & packages/messaging/src/events/event-emitter.explorer.ts only reads ON_EVENT_METADATA on constructors; customConsumer.isEmitted remained false.
-    it.skip("should work with non array metadata", async () => {
+    it("should work with non array metadata", async () => {
       await app.init();
 
       const emitter = app.get(EventEmitter2);
@@ -231,8 +230,7 @@ describeConformance(
       expect(customConsumer.isEmitted).toBeTruthy();
     });
 
-    // BUNEST_BUG: Expected @OnEvent() without explicit suppressErrors option to default to suppressErrors: true (recovering gracefully on sync emit), but packages/messaging/src/events/event-emitter.service.ts falls back to ignoreErrors (false) and throws "This is a test error".
-    it.skip("should be able to gracefully recover when an unexpected error occurs from provider", async () => {
+    it("should be able to gracefully recover when an unexpected error occurs from provider", async () => {
       const eventsConsumerRef = app.get(EventsProviderConsumer);
       await app.init();
 
@@ -274,8 +272,7 @@ describeConformance(
       expect(result).toBeTruthy();
     });
 
-    // BUNEST_BUG: Expected @OnEvent() on request-scoped provider without explicit suppressErrors to default suppressErrors to true and log (error.message, error.stack) via Logger, but packages/messaging/src/events/event-emitter.explorer.ts defaults suppress to false, rethrows to EventEmitterService.emit(), and logs a single prefixed string without stack trace.
-    it.skip("should log instead of rejecting when request scoped instantiation fails and suppressErrors is true", async () => {
+    it("should log instead of rejecting when request scoped instantiation fails and suppressErrors is true", async () => {
       await app.init();
       const errorSpy = spyOn(Logger.prototype, "error").mockImplementation(
         () => {},

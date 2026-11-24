@@ -112,8 +112,7 @@ describeConformance(
           "Uses in-process duck-typed MongoDB Prisma client ($runCommandRaw)",
         );
 
-        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-        it.skip(
+        it(
           adaptedTitle(
             ["ADR-001"],
             "should throw an error if runs into timeout error",
@@ -185,8 +184,7 @@ describeConformance(
           "Uses in-process duck-typed SQL Prisma client ($queryRawUnsafe)",
         );
 
-        // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-        it.skip(
+        it(
           adaptedTitle(
             ["ADR-001"],
             "should throw an error if runs into timeout error",

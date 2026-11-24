@@ -46,8 +46,7 @@ describeConformance(
         expect(diskSpace).toHaveBeenCalledWith("/data");
       });
 
-      // BUNEST_BUG: DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of upstream "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("is down above the threshold, with the same message as before", async () => {
+      it("is down above the threshold, with the same message as before", async () => {
         const result = await disk.checkStorage("disk", {
           path: "/",
           threshold: 30 * GB,
@@ -57,8 +56,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of upstream "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("accepts a size string as the threshold", async () => {
+      it("accepts a size string as the threshold", async () => {
         const up = await disk.checkStorage("disk", {
           path: "/",
           threshold: "50gb",
@@ -85,8 +83,7 @@ describeConformance(
         expect(result.disk.status).toBe("up");
       });
 
-      // BUNEST_BUG: DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of upstream "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("is down above thresholdPercent", async () => {
+      it("is down above thresholdPercent", async () => {
         const result = await disk.checkStorage("disk", {
           path: "/",
           thresholdPercent: 0.3,
@@ -94,8 +91,7 @@ describeConformance(
         expect(result.disk).toMatchObject({ status: "down", message });
       });
 
-      // BUNEST_BUG: DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of upstream "Used disk storage exceeded the set threshold" when size <= 0 (packages/observability/src/health/health.indicators.ts:738).
-      it.skip("is down when the disk size is 0", async () => {
+      it("is down when the disk size is 0", async () => {
         diskSpace.mockResolvedValueOnce({ free: 0, size: 0 });
         const result = await disk.checkStorage("disk", {
           path: "/",
@@ -119,8 +115,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: DiskHealthIndicator.checkStorage() throws "The used disk storage has exceeded the threshold" instead of upstream "Used disk storage exceeded the set threshold" (packages/observability/src/health/health.indicators.ts:747).
-      it.skip("is degraded instead of down with degradedOnFailure()", async () => {
+      it("is degraded instead of down with degradedOnFailure()", async () => {
         const result = await disk
           .checkStorage("disk", { path: "/", threshold: 30 * GB })
           .degradedOnFailure();

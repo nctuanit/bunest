@@ -382,6 +382,12 @@ export function AuthGuard(type?: string | readonly string[]): Type<IAuthGuard> {
       let matchedUser: unknown;
       let authenticated = false;
 
+      const {
+        defaultStrategy: _defaultStrategy,
+        property: _property,
+        ...strategyOptions
+      } = mergedOptions;
+
       for (const name of resolvedNames) {
         const strat =
           this.registry?.get(name) ?? defaultPassportInstance.getStrategy(name);
@@ -396,7 +402,7 @@ export function AuthGuard(type?: string | readonly string[]): Type<IAuthGuard> {
           strat,
           req,
           context,
-          mergedOptions,
+          strategyOptions,
         );
 
         if (outcome.err) {

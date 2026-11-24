@@ -3,6 +3,7 @@ import {
   Injectable,
   Optional,
   Reflector,
+  StreamableFile,
   type BunestInterceptor,
   type CallHandler,
   type ExecutionContext,
@@ -19,25 +20,6 @@ import type {
   CacheKeyMetadataValue,
   CacheTtlMetadataValue,
 } from "./interfaces/cache.interface";
-
-interface CachedHttpResponseEnvelope {
-  readonly __bunestCachedResponse: true;
-  readonly status: number;
-  readonly statusText: string;
-  readonly headers: ReadonlyArray<readonly [string, string]>;
-  readonly bodyBase64: string;
-}
-
-function isCachedResponseEnvelope(
-  value: unknown,
-): value is CachedHttpResponseEnvelope {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as Partial<CachedHttpResponseEnvelope>).__bunestCachedResponse ===
-      true
-  );
-}
 
 function hasCacheControlDirective(
   headerValue: string | null | undefined,
@@ -66,6 +48,12 @@ function isNonCacheableStreamOrBinary(value: unknown): boolean {
   if (typeof value !== "object" || value === null) {
     return false;
   }
+  if (value instanceof StreamableFile) {
+    return true;
+  }
+  if (typeof Response !== "undefined" && value instanceof Response) {
+    return true;
+  }
   if (
     typeof ReadableStream !== "undefined" &&
     value instanceof ReadableStream
@@ -86,14 +74,6 @@ function isNonCacheableStreamOrBinary(value: unknown): boolean {
     return true;
   }
   return false;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("base64");
-}
-
-function base64ToBytes(encoded: string): Uint8Array {
-  return new Uint8Array(Buffer.from(encoded, "base64"));
 }
 
 /**
@@ -124,10 +104,6 @@ export class CacheInterceptor implements BunestInterceptor {
     context: ExecutionContext,
     next: CallHandler,
   ): Promise<unknown> {
-    if (context.getType() !== "http") {
-      return await next.handle();
-    }
-
     const targets = [context.getHandler(), context.getClass()];
     const noCache = this.reflector.getAllAndOverride<boolean>(
       NO_CACHE_METADATA,
@@ -137,20 +113,27 @@ export class CacheInterceptor implements BunestInterceptor {
       return await next.handle();
     }
 
-    const http = context.switchToHttp();
-    const request = http.getRequest<Request>();
-    const responseContext = http.getResponse<ResponseContext>();
+    const isHttp = context.getType() === "http";
+    let responseContext: ResponseContext | undefined;
+    let bypassRead = false;
 
-    if (!request || !this.isRequestCacheable(context)) {
-      return await next.handle();
+    if (isHttp) {
+      const http = context.switchToHttp();
+      const request = http.getRequest<Request>();
+      responseContext = http.getResponse<ResponseContext>();
+
+      if (!request || !this.isRequestCacheable(context)) {
+        return await next.handle();
+      }
+
+      const reqCacheControl = request.headers.get("cache-control");
+      if (hasCacheControlDirective(reqCacheControl, "no-store")) {
+        return await next.handle();
+      }
+
+      bypassRead = hasCacheControlDirective(reqCacheControl, "no-cache");
     }
 
-    const reqCacheControl = request.headers.get("cache-control");
-    if (hasCacheControlDirective(reqCacheControl, "no-store")) {
-      return await next.handle();
-    }
-
-    const bypassRead = hasCacheControlDirective(reqCacheControl, "no-cache");
     const cacheKey = await this.trackBy(context);
     if (!cacheKey) {
       return await next.handle();
@@ -160,15 +143,6 @@ export class CacheInterceptor implements BunestInterceptor {
       const cached = await this.cacheManager.get(cacheKey);
       if (cached !== undefined) {
         this.setHeadersWhenHttp(context, cached);
-        if (isCachedResponseEnvelope(cached)) {
-          const headers = new Headers(cached.headers as [string, string][]);
-          headers.set("X-Cache", "HIT");
-          return new Response(base64ToBytes(cached.bodyBase64), {
-            status: cached.status,
-            statusText: cached.statusText,
-            headers,
-          });
-        }
         return cached;
       }
     }
@@ -176,6 +150,19 @@ export class CacheInterceptor implements BunestInterceptor {
     const result = await next.handle();
 
     if (result === undefined || isNonCacheableStreamOrBinary(result)) {
+      this.setHeadersWhenHttp(context, undefined);
+      if (
+        isHttp &&
+        typeof Response !== "undefined" &&
+        result instanceof Response &&
+        !result.headers.has("x-cache")
+      ) {
+        try {
+          result.headers.set("X-Cache", "MISS");
+        } catch {
+          // Response headers may be immutable
+        }
+      }
       return result;
     }
 
@@ -187,40 +174,6 @@ export class CacheInterceptor implements BunestInterceptor {
       typeof ttlMeta === "function" ? await ttlMeta(context) : ttlMeta;
 
     const responseHeaders = responseContext?.getHeaders?.();
-
-    if (typeof Response !== "undefined" && result instanceof Response) {
-      const resCacheControl = result.headers.get("cache-control");
-      const contentType = result.headers.get("content-type") ?? "";
-
-      if (
-        result.status < 200 ||
-        result.status >= 300 ||
-        hasSetCookieHeader(result.headers) ||
-        hasSetCookieHeader(responseHeaders) ||
-        hasCacheControlDirective(resCacheControl, "no-store") ||
-        hasCacheControlDirective(resCacheControl, "private") ||
-        contentType.toLowerCase().includes("text/event-stream")
-      ) {
-        return result;
-      }
-
-      const cloned = result.clone();
-      const bodyBytes = new Uint8Array(await cloned.arrayBuffer());
-      const headersList: Array<[string, string]> = [];
-      result.headers.forEach((v, k) => headersList.push([k, v]));
-
-      const envelope: CachedHttpResponseEnvelope = {
-        __bunestCachedResponse: true,
-        status: result.status,
-        statusText: result.statusText,
-        headers: headersList,
-        bodyBase64: bytesToBase64(bodyBytes),
-      };
-
-      await this.cacheManager.set(cacheKey, envelope, ttlMs);
-      this.setHeadersWhenHttp(context, undefined);
-      return result;
-    }
 
     const explicitStatus = responseContext?.getStatus?.();
     const resHeaderCacheControl = responseHeaders?.get("cache-control");
@@ -243,7 +196,6 @@ export class CacheInterceptor implements BunestInterceptor {
   protected async trackBy(
     context: ExecutionContext,
   ): Promise<string | undefined | null> {
-    const request = context.switchToHttp().getRequest<Request>();
     const customKey = this.reflector.getAllAndOverride<CacheKeyMetadataValue>(
       CACHE_KEY_METADATA,
       [context.getHandler(), context.getClass()],
@@ -256,6 +208,11 @@ export class CacheInterceptor implements BunestInterceptor {
       return customKey;
     }
 
+    if (context.getType() !== "http") {
+      return undefined;
+    }
+
+    const request = context.switchToHttp().getRequest<Request>();
     if (!request || !this.isRequestCacheable(context)) {
       return undefined;
     }

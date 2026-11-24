@@ -128,8 +128,7 @@ describeConformance(
         ContextIdFactory.reset();
       });
 
-      // BUNEST_BUG: Expected durable dependency instances (`durable1 === durable2`) to be reused via ContextIdFactory.apply() strategy while non-durable instances differ, actual creates distinct DurableDependency instances (counter 0 vs 1) because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`, bypassing active ContextIdStrategy.
-      it.skip("should load durable processor dependencies", async () => {
+      it("should load durable processor dependencies", async () => {
         bullExplorer.register();
         const processorFunction = workerCtorSpy.mock.calls[0]?.[1] as
           | ((
@@ -145,8 +144,7 @@ describeConformance(
         expect(nonDurable1).not.toBe(nonDurable2);
       });
 
-      // BUNEST_BUG: Expected `moduleRef.resolve(DurableDependency, durableContextId)` to resolve the cached durable dependency with `REQUEST` populated from the job payload attached via ContextIdStrategy, actual throws `Request-scoped token Symbol(bunest:token:request) requested by "DurableDependency" requires an active RequestContainer...` because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) calls `ContextIdFactory.create()` instead of `ContextIdFactory.getByRequest(job)`.
-      it.skip("should inject the request dependency", async () => {
+      it("should inject the request dependency", async () => {
         const durableDependency = await moduleRef.resolve(
           DurableDependency,
           durableContextId,

@@ -134,8 +134,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: MicroserviceHealthIndicator.pingCheck() does not fall back to "${key} is not available" when connect() rejects with a non-Error object; formatErrorMessage() returns "[object Object]" instead of "rmq is not available" (packages/observability/src/health/health.indicators.ts:1004-1010).
-    it.skip('falls back to "<key> is not available" when connect rejects with a non-Error', async () => {
+    it('falls back to "<key> is not available" when connect rejects with a non-Error', async () => {
       clientMock.connect.mockRejectedValue({
         err: "connectFailed",
         url: "amqp://x",

@@ -88,8 +88,7 @@ describeConformance(
       expect(interval).toBeDefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getInterval() missing-interval error message to match NestJS NO_SCHEDULER_FOUND ("No Interval was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No interval found with name "dynamic".'.
-    it.skip(`should delete dynamic interval`, async () => {
+    it(`should delete dynamic interval`, async () => {
       const service = app!.get(IntervalService);
       await app!.init();
       service.addInterval();
@@ -248,8 +247,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate interval error message to match NestJS DUPLICATE_SCHEDULER ("Interval with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Interval with name "<name>" already exists.'.
-    it.skip.each(["shared", "__proto__"])(
+    it.each(["shared", "__proto__"])(
       "should reject duplicate interval name %s",
       async (name) => {
         @Injectable()

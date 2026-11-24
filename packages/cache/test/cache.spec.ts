@@ -543,19 +543,20 @@ describe("@bunest/cache", () => {
         ).toEqual({ secret: 2 });
         expect(noStoreResCalls).toBe(2);
 
-        // 8. Cacheable native Response reconstructs fresh Response on HIT without Body already used
+        // 8. Native Web Response instances are treated as non-cacheable streams (NestJS conformance)
         const n1 = await app.fetch(
           new Request("http://localhost/catalog/native-json"),
         );
         expect(n1.status).toBe(200);
+        expect(n1.headers.get("x-cache")).toBe("MISS");
         expect(await n1.json()).toEqual({ native: 1 });
         const n2 = await app.fetch(
           new Request("http://localhost/catalog/native-json"),
         );
         expect(n2.status).toBe(200);
-        expect(n2.headers.get("x-cache")).toBe("HIT");
-        expect(await n2.json()).toEqual({ native: 1 });
-        expect(nativeResCalls).toBe(1);
+        expect(n2.headers.get("x-cache")).toBe("MISS");
+        expect(await n2.json()).toEqual({ native: 2 });
+        expect(nativeResCalls).toBe(2);
 
         // 9. Responses emitting Set-Cookie (via @Res() OR native Response) MUST NEVER be cached
         const c1 = await app.fetch(

@@ -225,7 +225,10 @@ export class EventEmitterExplorer
         continue;
       }
 
-      const listenerOptions = meta.options ?? {};
+      const listenerOptions: OnEventOptions = {
+        ...meta.options,
+        suppressErrors: meta.options?.suppressErrors ?? true,
+      };
       const handlerFn = method as (...params: unknown[]) => unknown;
       const useExternalContext = hasEventEnhancersOrParams(
         ctor,
@@ -279,7 +282,10 @@ export class EventEmitterExplorer
     }
 
     for (const meta of metadata) {
-      const listenerOptions = meta.options ?? {};
+      const listenerOptions: OnEventOptions = {
+        ...meta.options,
+        suppressErrors: meta.options?.suppressErrors ?? true,
+      };
 
       const scopedListener: EventListener = async (...args: unknown[]) => {
         const requestPayload = args.length > 1 ? args : args[0];
@@ -301,12 +307,13 @@ export class EventEmitterExplorer
           const suppress =
             listenerOptions.suppressErrors ??
             this.options.ignoreErrors ??
-            false;
+            true;
           if (!suppress) {
             throw error;
           }
           this.logger.error(
-            `Failed to resolve request-scoped listener for "${String(meta.methodName)}": ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.message : String(error),
+            error instanceof Error ? error.stack : undefined,
           );
           return undefined;
         }

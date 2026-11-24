@@ -108,7 +108,7 @@ export class NotServingError extends Error {
   public readonly servingStatus: string | number;
 
   constructor(statusCode: number, servingStatus: string | number) {
-    super(`The service is not serving (status: ${String(servingStatus)})`);
+    super(`serving status: ${String(servingStatus)}`);
     this.name = "NotServingError";
     this.statusCode = statusCode;
     this.servingStatus = servingStatus;

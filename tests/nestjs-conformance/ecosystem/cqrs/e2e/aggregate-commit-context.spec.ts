@@ -231,8 +231,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: Expected CommandBus.execute(cmd, asyncContext) to register asyncContext as the REQUEST provider for asyncContext.id before resolving Scope.REQUEST command handlers, but packages/messaging/src/cqrs/command-bus.ts calls ref.resolve() without ref.registerRequestByContextId(ctx, ctx.id).
-    it.skip("keeps the async context of a request-scoped handler", async () => {
+    it("keeps the async context of a request-scoped handler", async () => {
       const asyncContext = new AsyncContext();
       const transaction = { id: "tx-4" };
 

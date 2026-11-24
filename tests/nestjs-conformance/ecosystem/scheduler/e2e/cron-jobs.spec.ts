@@ -116,8 +116,7 @@ describeConformance(
       "native CronJob.isRunning()",
     );
 
-    // BUNEST_BUG: Expected CronJob.lastDate() to update on skipped ticks when waitForCompletion: true (00:02:00.000Z), matching upstream cron/schedule behavior, but packages/jobs/src/scheduler/cron/cron-job.ts fireOnce() returns early before setting this.lastRunDate when inFlight is true (remained 00:01:00.000Z).
-    it.skip(`should wait for "cron" to complete [ADR-001: native CronJob.isRunning() + Bun fake timers]`, async () => {
+    it(`should wait for "cron" to complete [ADR-001: native CronJob.isRunning() + Bun fake timers]`, async () => {
       const service = app!.get(CronService);
 
       await app!.init();
@@ -281,8 +280,7 @@ describeConformance(
       "native CronJob.isRunning()",
     );
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getCronJob() missing-job error message to match NestJS NO_SCHEDULER_FOUND ("No Cron Job was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No cron job found with name "dynamic".'.
-    it.skip(`should delete dynamic cron job`, async () => {
+    it(`should delete dynamic cron job`, async () => {
       const service = app!.get(CronService);
       await app!.init();
 
@@ -456,8 +454,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate cron error message to match NestJS DUPLICATE_SCHEDULER ("Cron Job with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Cron job with name "<name>" already exists.'.
-    it.skip.each(["shared", "__proto__"])(
+    it.each(["shared", "__proto__"])(
       "should reject duplicate cron name %s",
       async (name) => {
         @Injectable()

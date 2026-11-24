@@ -128,8 +128,7 @@ describeConformance(
       "Verifies SwaggerModule.createDocument() discovers @HealthCheck() endpoints",
     );
 
-    // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 only attaches HEALTH_CHECK_METADATA and Cache-Control header metadata; it does not wire Swagger @ApiExtraModels/@ApiResponse schemas, and SwaggerModule.createDocument() in packages/swagger/src/swagger-module.ts does not inspect HEALTH_CHECK_METADATA (expected document.components.schemas to include ["TerminusHealthCheckResult", "TerminusHealthIndicatorResult"], received []).
-    it.skip("registers the result and the indicator result as named schemas", () => {
+    it("registers the result and the indicator result as named schemas", () => {
       expect(Object.keys(document.components?.schemas ?? {})).toEqual(
         expect.arrayContaining([
           "TerminusHealthCheckResult",
@@ -139,8 +138,7 @@ describeConformance(
     });
 
     for (const path of ["/health", "/ready"] as const) {
-      // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 does not attach Swagger 200/503 response schemas referencing #/components/schemas/TerminusHealthCheckResult (received undefined for responseSchema(path, status).allOf).
-      it.skip(`references the named schema from the 200 and 503 response of ${path}`, () => {
+      it(`references the named schema from the 200 and 503 response of ${path}`, () => {
         for (const status of ["200", "503"] as const) {
           expect(responseSchema(path, status)?.allOf).toEqual([
             { $ref: "#/components/schemas/TerminusHealthCheckResult" },
@@ -149,8 +147,7 @@ describeConformance(
       });
     }
 
-    // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 does not emit 200 (["ok", "degraded"]) and 503 (["error", "shutting_down"]) response status enum schemas in OpenAPI output (received undefined).
-    it.skip("keeps the ok/error status enums distinct per response", () => {
+    it("keeps the ok/error status enums distinct per response", () => {
       expect(
         responseSchema("/health", "200")?.properties?.status?.enum,
       ).toEqual(["ok", "degraded"]);
@@ -160,8 +157,7 @@ describeConformance(
     });
 
     // An indicator can add its own data to its result (#2516)
-    // BUNEST_BUG: @HealthCheck() in packages/observability/src/health/health.decorator.ts:13-44 does not register TerminusHealthCheckResult / TerminusHealthIndicatorResult schemas with additionalProperties: true (received undefined).
-    it.skip("allows additional properties on an indicator result", () => {
+    it("allows additional properties on an indicator result", () => {
       const result: any =
         document.components?.schemas?.TerminusHealthCheckResult;
 

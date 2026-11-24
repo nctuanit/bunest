@@ -50,8 +50,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: CacheInterceptor.intercept() (packages/cache/src/cache.interceptor.ts:127) returns next.handle() immediately whenever context.getType() !== "http", bypassing caching for rpc/ws contexts even when @CacheKey() is explicitly set (received 1 on second invocation instead of cached 0).
-    it.skip.each(["rpc", "ws"] as const)(
+    it.each(["rpc", "ws"] as const)(
       "should cache %s handlers in an HTTP app",
       async (type) => {
         const interceptor = app.get(CacheInterceptor);

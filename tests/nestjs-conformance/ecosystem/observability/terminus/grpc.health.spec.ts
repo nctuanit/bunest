@@ -202,8 +202,7 @@ describeConformance(
         expect(grpcClientMock.close).toHaveBeenCalledTimes(1);
       });
 
-      // BUNEST_BUG: NotServingError formats message as "The service is not serving (status: NOT_SERVING)" instead of upstream "serving status: NOT_SERVING" (packages/observability/src/health/units.ts:111).
-      it.skip("should be down in case the health service returns a faulty response code", async () => {
+      it("should be down in case the health service returns a faulty response code", async () => {
         healthServiceMock.check.mockResolvedValueOnce({ status: 2 });
         const result = await grpc.checkService("grpc", "test", {
           client: grpcClientMock,
@@ -356,8 +355,7 @@ describeConformance(
         "Zero-dep url probe checks TCP reachability without @grpc/grpc-js",
       );
 
-      // BUNEST_BUG: NotServingError formats message as "The service is not serving (status: NOT_SERVING)" instead of upstream "serving status: NOT_SERVING" (packages/observability/src/health/units.ts:111).
-      it.skip("should add the serving status when the service is not serving", async () => {
+      it("should add the serving status when the service is not serving", async () => {
         const result = await grpc.checkService("grpc", "down", {
           healthService: {
             check: async ({ service }: { service: string }) => ({

@@ -288,7 +288,7 @@ describe("@bunest/events Phase 1 fixes (C1, C2) & declarative decorators (@EmitE
 
     @Injectable()
     class EnhancedEventListener {
-      @OnEvent("invoice.paid")
+      @OnEvent("invoice.paid", { suppressErrors: false })
       @UseGuards(AdminOnlyEventGuard)
       @UseInterceptors(AuditEventInterceptor)
       handleInvoice(

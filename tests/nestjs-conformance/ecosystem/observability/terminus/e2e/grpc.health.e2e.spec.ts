@@ -107,8 +107,7 @@ describeConformance(
       "Uses Promise-based healthService stub instead of @grpc/grpc-js server",
     );
 
-    // BUNEST_BUG: (1) HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41); (2) NotServingError formats message as "The service is not serving (status: NOT_SERVING)" instead of "serving status: NOT_SERVING" (packages/observability/src/health/units.ts:111).
-    it.skip("should be down when the service is NOT_SERVING", async () => {
+    it("should be down when the service is NOT_SERVING", async () => {
       ctx = await startApp({
         healthService: {
           check: async () => ({ status: 2 }),
@@ -133,8 +132,7 @@ describeConformance(
       expect(body.details).toEqual(details);
     });
 
-    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-    it.skip(
+    it(
       adaptedTitle(
         ["ADR-001", "ADR-008"],
         "should be down when it runs into the timeout",
@@ -170,8 +168,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-    it.skip(
+    it(
       adaptedTitle(
         ["ADR-001", "ADR-008"],
         "should be down when the service is not reachable",
