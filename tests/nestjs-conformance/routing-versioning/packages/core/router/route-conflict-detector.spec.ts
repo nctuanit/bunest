@@ -575,8 +575,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: Missing API — @bunest/core does not export RouteConflictDetector with internal `toComparableHost` host memoization helper (see packages/core/src/index.ts & packages/core/src/http/scanner/controller-scanner.ts).
-      it.skip("should read each distinct host once per run", () => {
+      it("should read each distinct host once per run", () => {
         const routes: TestRouteSpec[] = [
           ...Array.from({ length: 5 }, (_, index) => ({
             path: `/users/${index}`,
