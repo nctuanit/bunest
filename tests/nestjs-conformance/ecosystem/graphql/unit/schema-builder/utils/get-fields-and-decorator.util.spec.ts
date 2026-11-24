@@ -74,8 +74,7 @@ describeConformance(
       "Adapts GraphQLSchemaFactory.create() to pass resolver instances per @bunest/graphql API (ADR-013).",
   },
   () => {
-    // BUNEST_BUG: Expected getFieldsAndDecoratorForType(FieldsTestModel) for @Field(() => [String]) tags to return typeFn() === String and options.isArray === true, got typeFn() === [String] and options.isArray === undefined; packages/graphql/src/decorators/type.decorators.ts (getFieldsAndDecoratorForType:829-838) does not unwrap array type thunks into element typeFn + options.isArray/arrayDepth.
-    it.skip("should return own and inherited fields with their metadata", () => {
+    it("should return own and inherited fields with their metadata", () => {
       const { fields } = getFieldsAndDecoratorForType(FieldsTestModel);
 
       expect(fields.map((field) => field.name)).toEqual([
@@ -111,8 +110,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected printType(FieldsTestModelFilter) to contain 'tags: [String!]', got 'tags: [[String!]!]'; packages/graphql/src/decorators/type.decorators.ts (getFieldsAndDecoratorForType:829-838) returns raw [String] from tags.typeFn() instead of unwrapped String, causing custom mapped type FilterType(() => [typeRef]) to double-wrap list fields.
-    it.skip("should allow building a custom mapped type", async () => {
+    it("should allow building a custom mapped type", async () => {
       @InputType()
       class FieldsTestModelFilter extends FilterType(FieldsTestModel) {}
 

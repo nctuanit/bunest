@@ -41,8 +41,7 @@ describeConformance(
         TypeMetadataStorage.compile();
       });
 
-      // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 920-927) does not auto-apply @InputType() onto the generated mapped class when no 3rd `decorator` argument is passed, so TypeMetadataStorage.getInputTypesMetadata() contains 0 entries for PickPickSourceInput instead of 1.
-      it.skip("should register the picked input type exactly once", () => {
+      it("should register the picked input type exactly once", () => {
         const inputs = TypeMetadataStorage.getInputTypesMetadata();
         const pickAbstract = Object.getPrototypeOf(PickedInput) as Function;
         const matches = inputs.filter((item) => item.target === pickAbstract);

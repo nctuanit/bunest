@@ -888,10 +888,45 @@ export function getGraphQLExtensions(
  * Inheritance-safe reader collecting `@Field()` metadata from base -> derived class,
  * excluding any properties marked with `@HideField()`.
  */
-export function getGraphQLFields(target: Function): FieldMetadata[] {
+export const OMIT_DEFAULT_VALUES_METADATA = Symbol.for(
+  "bunest:graphql:omit_default_values",
+);
+const IS_MAPPED_TYPE_METADATA = Symbol.for("bunest:graphql:is_mapped_type");
+
+export function getGraphQLFields(
+  target: Function,
+  kind?: "object" | "input" | "interface" | "args",
+): FieldMetadata[] {
   const byProp = new Map<string, FieldMetadata>();
   const hidden = new Set<string>();
+  const isTargetInput =
+    kind === "input" ||
+    (kind === undefined &&
+      MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, target) &&
+      !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, target));
+  const isTargetObject =
+    kind === "object" ||
+    (kind === undefined &&
+      MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, target) &&
+      !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, target));
+
   for (const ctor of MetadataRegistry.getPrototypeChain(target)) {
+    if (ctor !== target && !MetadataRegistry.hasOwn(IS_MAPPED_TYPE_METADATA, ctor)) {
+      if (
+        isTargetInput &&
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, ctor) &&
+        !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, ctor)
+      ) {
+        continue;
+      }
+      if (
+        isTargetObject &&
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, ctor) &&
+        !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, ctor)
+      ) {
+        continue;
+      }
+    }
     const own = MetadataRegistry.getOwn<readonly FieldMetadata[]>(
       GRAPHQL_METADATA_KEYS.FIELDS,
       ctor,
@@ -923,6 +958,76 @@ export function getGraphQLFields(target: Function): FieldMetadata[] {
 
 type GqlDecoratorFactory =
   typeof ArgsType | typeof InterfaceType | typeof ObjectType | typeof InputType;
+
+function detectGqlDecoratorFactory(
+  objType: Function,
+): GqlDecoratorFactory | undefined {
+  if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, objType)) {
+    return InputType;
+  }
+  if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, objType)) {
+    return ObjectType;
+  }
+  if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, objType)) {
+    return InterfaceType;
+  }
+  if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.ARGS_TYPE, objType)) {
+    return ArgsType;
+  }
+  if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, objType)) {
+    return InputType;
+  }
+  if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, objType)) {
+    return ObjectType;
+  }
+  if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, objType)) {
+    return InterfaceType;
+  }
+  if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.ARGS_TYPE, objType)) {
+    return ArgsType;
+  }
+  return undefined;
+}
+
+function unwrapArrayTypeRef(raw: unknown): {
+  readonly base: unknown;
+  readonly arrayDepth: number;
+} {
+  let current = raw;
+  let arrayDepth = 0;
+  while (Array.isArray(current) && current.length > 0) {
+    arrayDepth++;
+    current = current[0];
+  }
+  return { base: current, arrayDepth };
+}
+
+function makePartialNullable(
+  nullable: FieldOptions["nullable"],
+): FieldOptions["nullable"] {
+  if (nullable === "items" || nullable === "itemsAndList") {
+    return "itemsAndList";
+  }
+  return true;
+}
+
+function mergeStricterNullable(
+  a: FieldOptions["nullable"],
+  b: FieldOptions["nullable"],
+): FieldOptions["nullable"] {
+  const aListNullable = a === true || a === "itemsAndList";
+  const bListNullable = b === true || b === "itemsAndList";
+  const aItemsNullable = a === "items" || a === "itemsAndList";
+  const bItemsNullable = b === "items" || b === "itemsAndList";
+
+  const listNullable = aListNullable && bListNullable;
+  const itemsNullable = aItemsNullable && bItemsNullable;
+
+  if (listNullable && itemsNullable) return "itemsAndList";
+  if (listNullable) return true;
+  if (itemsNullable) return "items";
+  return false;
+}
 
 /**
  * Returns the compiled `PropertyMetadata[]` and matching GraphQL class decorator
@@ -966,19 +1071,7 @@ export function getFieldsAndDecoratorForType<T>(
   }
 
   if (!decoratorFactory) {
-    if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, objType)) {
-      decoratorFactory = ObjectType;
-    } else if (
-      MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, objType)
-    ) {
-      decoratorFactory = InputType;
-    } else if (
-      MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, objType)
-    ) {
-      decoratorFactory = InterfaceType;
-    } else if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.ARGS_TYPE, objType)) {
-      decoratorFactory = ArgsType;
-    }
+    decoratorFactory = detectGqlDecoratorFactory(objType);
   }
 
   const rawFields = getGraphQLFields(objType);
@@ -986,28 +1079,61 @@ export function getFieldsAndDecoratorForType<T>(
     throw new UnableToFindFieldsError(objType?.name ?? String(objType));
   }
 
-  const fields: PropertyMetadata[] = rawFields.map((f) => ({
-    schemaName: f.name ?? f.propertyKey,
-    name: f.propertyKey,
-    typeFn: () =>
-      (f.typeFn ? f.typeFn() : (f.designType ?? String)) as GqlTypeReference,
-    target: objType,
-    options: {
-      nullable: f.nullable,
-      defaultValue: f.defaultValue,
-    },
-    description: f.description,
-    deprecationReason: f.deprecationReason,
-    directives: getGraphQLDirectives(objType, f.propertyKey),
-    extensions: getGraphQLExtensions(objType, f.propertyKey),
-    complexity: f.complexity,
-    middleware: [
-      ...(f.middleware ?? []),
-      ...getUseFieldMiddleware(objType, f.propertyKey),
-    ],
-  }));
+  const fields: PropertyMetadata[] = rawFields.map((f) => {
+    const rawRef = f.typeFn ? f.typeFn() : (f.designType ?? String);
+    const { base, arrayDepth } = unwrapArrayTypeRef(rawRef);
+    return {
+      schemaName: f.name ?? f.propertyKey,
+      name: f.propertyKey,
+      typeFn: () => base as GqlTypeReference,
+      target: objType,
+      options: {
+        nullable: f.nullable,
+        defaultValue: f.defaultValue,
+        ...(arrayDepth > 0 ? { isArray: true, arrayDepth } : {}),
+      },
+      description: f.description,
+      deprecationReason: f.deprecationReason,
+      directives: getGraphQLDirectives(objType, f.propertyKey).map((sdl) => ({
+        target: objType,
+        fieldName: f.propertyKey,
+        sdl,
+      })) as unknown as readonly string[],
+      extensions: getGraphQLExtensions(objType, f.propertyKey),
+      complexity: f.complexity,
+      middleware: [
+        ...(f.middleware ?? []),
+        ...getUseFieldMiddleware(objType, f.propertyKey),
+      ],
+    };
+  });
 
   return { fields, decoratorFactory };
+}
+
+let activeMappedTargetKind: "object" | "input" | "interface" | "args" | undefined;
+
+function decoratorToKind(
+  decorator?: GqlClassDecorator,
+): "object" | "input" | "interface" | "args" | undefined {
+  if (decorator === InputType) return "input";
+  if (decorator === ObjectType) return "object";
+  if (decorator === InterfaceType) return "interface";
+  if (decorator === ArgsType) return "args";
+  return undefined;
+}
+
+function withMappedTargetKind<R>(
+  decorator: GqlClassDecorator | undefined,
+  fn: () => R,
+): R {
+  const prev = activeMappedTargetKind;
+  activeMappedTargetKind = decoratorToKind(decorator);
+  try {
+    return fn();
+  } finally {
+    activeMappedTargetKind = prev;
+  }
 }
 
 // Register GraphQL `@Field()` metadata cloning hook with `@bunest/core` Mapped Types
@@ -1022,14 +1148,45 @@ registerMappedTypeMetadataHook((ctx) => {
     byProp.set(field.propertyKey, field);
   }
   const makeAllOptional = ctx.operation === "partial";
-  for (const field of getGraphQLFields(ctx.source)) {
+  const isIntersection = ctx.operation === "intersection";
+  for (const field of getGraphQLFields(ctx.source, activeMappedTargetKind)) {
     if (ctx.propertyFilter && !ctx.propertyFilter(field.propertyKey)) {
       continue;
     }
-    byProp.set(field.propertyKey, {
-      ...field,
-      ...(makeAllOptional ? { nullable: true } : {}),
-    });
+    const prev = byProp.get(field.propertyKey);
+    if (isIntersection && prev) {
+      const mergedNullable = mergeStricterNullable(
+        prev.nullable,
+        field.nullable,
+      );
+      const mergedFieldMw = Array.from(
+        new Set([...(prev.middleware ?? []), ...(field.middleware ?? [])]),
+      );
+      const mergedDefault =
+        field.defaultValue !== undefined
+          ? field.defaultValue
+          : prev.defaultValue;
+      const safeDefault =
+        mergedDefault === null &&
+        mergedNullable !== true &&
+        mergedNullable !== "itemsAndList"
+          ? undefined
+          : mergedDefault;
+      byProp.set(field.propertyKey, {
+        ...prev,
+        ...field,
+        nullable: mergedNullable,
+        defaultValue: safeDefault,
+        ...(mergedFieldMw.length > 0 ? { middleware: mergedFieldMw } : {}),
+      });
+    } else {
+      byProp.set(field.propertyKey, {
+        ...field,
+        ...(makeAllOptional
+          ? { nullable: makePartialNullable(field.nullable) }
+          : {}),
+      });
+    }
     const sourceUseMw = getUseFieldMiddleware(ctx.source, field.propertyKey);
     if (sourceUseMw.length > 0) {
       const existingMw =
@@ -1050,6 +1207,39 @@ registerMappedTypeMetadataHook((ctx) => {
         field.propertyKey,
       );
     }
+    const sourceDirectives = getGraphQLDirectives(
+      ctx.source,
+      field.propertyKey,
+    );
+    if (sourceDirectives.length > 0) {
+      const existingDirs =
+        MetadataRegistry.getOwn<readonly string[]>(
+          GRAPHQL_METADATA_KEYS.DIRECTIVES,
+          ctx.target,
+          field.propertyKey,
+        ) ?? [];
+      MetadataRegistry.define<string[]>(
+        GRAPHQL_METADATA_KEYS.DIRECTIVES,
+        Array.from(new Set([...existingDirs, ...sourceDirectives])),
+        ctx.target,
+        field.propertyKey,
+      );
+    }
+    const sourceExt = getGraphQLExtensions(ctx.source, field.propertyKey);
+    if (sourceExt) {
+      const existingExt =
+        MetadataRegistry.getOwn<Record<string, unknown>>(
+          GRAPHQL_METADATA_KEYS.EXTENSIONS,
+          ctx.target,
+          field.propertyKey,
+        ) ?? {};
+      MetadataRegistry.define<Record<string, unknown>>(
+        GRAPHQL_METADATA_KEYS.EXTENSIONS,
+        { ...existingExt, ...sourceExt },
+        ctx.target,
+        field.propertyKey,
+      );
+    }
   }
   if (byProp.size > 0) {
     MetadataRegistry.define(
@@ -1062,36 +1252,74 @@ registerMappedTypeMetadataHook((ctx) => {
 
 type GqlClassDecorator = ClassDecorator | GqlDecoratorFactory;
 
+export interface PartialTypeOptions {
+  readonly decorator?: GqlClassDecorator;
+  readonly omitDefaultValues?: boolean;
+  readonly skipNullProperties?: boolean;
+}
+
 function applyGqlTargetDecorator<T extends Type<any>>(
   cls: T,
   decorator?: GqlClassDecorator,
+  sourceClass?: Function,
 ): T {
-  if (decorator) {
+  MetadataRegistry.define(IS_MAPPED_TYPE_METADATA, true, cls);
+  const effectiveDecorator =
+    decorator ?? (sourceClass ? detectGqlDecoratorFactory(sourceClass) : undefined);
+  if (effectiveDecorator) {
     // Support both `@InputType()` (ClassDecorator) and `InputType` (decorator factory!)
     if (
-      decorator === ObjectType ||
-      decorator === InputType ||
-      decorator === InterfaceType ||
-      decorator === ArgsType
+      effectiveDecorator === ObjectType ||
+      effectiveDecorator === InputType ||
+      effectiveDecorator === InterfaceType ||
+      effectiveDecorator === ArgsType
     ) {
-      (decorator as () => ClassDecorator)()(cls);
+      (effectiveDecorator as () => ClassDecorator)()(cls);
     } else {
-      (decorator as ClassDecorator)(cls);
+      (effectiveDecorator as ClassDecorator)(cls);
     }
   }
   return cls;
 }
 
 /**
- * GraphQL-aware `PartialType` supporting optional `decorator` parameter
- * (e.g. `PartialType(User, InputType)` matching `@nestjs/graphql`).
+ * GraphQL-aware `PartialType` supporting optional `decorator` or `PartialTypeOptions`
+ * (e.g. `PartialType(User, InputType)` or `PartialType(User, { omitDefaultValues: true })`).
  */
 export function PartialType<T>(
   classRef: Type<T>,
-  decorator?: GqlClassDecorator,
+  decoratorOrOptions?: GqlClassDecorator | PartialTypeOptions,
 ) {
-  const derived = BasePartialType(classRef);
-  return applyGqlTargetDecorator(derived, decorator);
+  const isOptionsObj =
+    typeof decoratorOrOptions === "object" && decoratorOrOptions !== null;
+  const opts: PartialTypeOptions = isOptionsObj
+    ? decoratorOrOptions
+    : { decorator: decoratorOrOptions };
+
+  const derived = withMappedTargetKind(opts.decorator, () =>
+    BasePartialType(
+      classRef,
+      opts.skipNullProperties !== undefined
+        ? { skipNullProperties: opts.skipNullProperties }
+        : undefined,
+    ),
+  );
+  if (opts.omitDefaultValues) {
+    MetadataRegistry.define(OMIT_DEFAULT_VALUES_METADATA, true, derived);
+    const fields =
+      MetadataRegistry.getOwn<readonly FieldMetadata[]>(
+        GRAPHQL_METADATA_KEYS.FIELDS,
+        derived,
+      ) ?? [];
+    if (fields.length > 0) {
+      MetadataRegistry.define(
+        GRAPHQL_METADATA_KEYS.FIELDS,
+        fields.map(({ defaultValue: _removed, ...rest }) => rest),
+        derived,
+      );
+    }
+  }
+  return applyGqlTargetDecorator(derived, opts.decorator, classRef);
 }
 
 /**
@@ -1102,8 +1330,10 @@ export function PickType<T, K extends keyof T>(
   keys: readonly K[],
   decorator?: GqlClassDecorator,
 ) {
-  const derived = BasePickType(classRef, keys);
-  return applyGqlTargetDecorator(derived, decorator);
+  const derived = withMappedTargetKind(decorator, () =>
+    BasePickType(classRef, keys),
+  );
+  return applyGqlTargetDecorator(derived, decorator, classRef);
 }
 
 /**
@@ -1114,8 +1344,10 @@ export function OmitType<T, K extends keyof T>(
   keys: readonly K[],
   decorator?: GqlClassDecorator,
 ) {
-  const derived = BaseOmitType(classRef, keys);
-  return applyGqlTargetDecorator(derived, decorator);
+  const derived = withMappedTargetKind(decorator, () =>
+    BaseOmitType(classRef, keys),
+  );
+  return applyGqlTargetDecorator(derived, decorator, classRef);
 }
 
 /**
@@ -1126,6 +1358,8 @@ export function IntersectionType<A, B>(
   classBRef: Type<B>,
   decorator?: GqlClassDecorator,
 ) {
-  const derived = BaseIntersectionType(classARef, classBRef);
-  return applyGqlTargetDecorator(derived, decorator);
+  const derived = withMappedTargetKind(decorator, () =>
+    BaseIntersectionType(classARef, classBRef),
+  );
+  return applyGqlTargetDecorator(derived, decorator, classARef);
 }

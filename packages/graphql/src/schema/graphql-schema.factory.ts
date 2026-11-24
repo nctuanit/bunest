@@ -67,6 +67,7 @@ import {
   getRegisteredEnumType,
   getUseFieldMiddleware,
   isUnionTypeRef,
+  OMIT_DEFAULT_VALUES_METADATA,
   parseDirectiveNodes,
   resolveImplementedInterfaces,
 } from "../decorators/type.decorators";
@@ -460,6 +461,9 @@ function getInstanceDefaultValue(
   cls: Function,
   propertyKey: string,
 ): unknown {
+  if (MetadataRegistry.get<boolean>(OMIT_DEFAULT_VALUES_METADATA, cls) === true) {
+    return undefined;
+  }
   let inst = instanceDefaultCache.get(cls);
   if (inst === undefined) {
     try {
@@ -1970,7 +1974,7 @@ export class GraphQLSchemaFactory {
       ...(isOneOf ? { isOneOf: true } : {}),
       fields: () => {
         const fields: GraphQLInputFieldConfigMap = {};
-        for (const fieldMeta of getGraphQLFields(cls)) {
+        for (const fieldMeta of getGraphQLFields(cls, "input")) {
           const rawType = fieldMeta.typeFn
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);

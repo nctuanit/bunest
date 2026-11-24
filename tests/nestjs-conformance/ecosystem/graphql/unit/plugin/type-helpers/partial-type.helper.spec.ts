@@ -57,8 +57,7 @@ describeConformance(
       "Adapts out SWC MetadataLoader in favor of explicit @Field() on BaseType.meta (ADR-002, ADR-005).",
   },
   () => {
-    // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-915) does not auto-apply the source @ObjectType() decorator to the generated mapped class ("PartialCreateUserDto", causing getFieldsAndDecoratorForType to throw UnableToFindFieldsError) and does not clone @Directive()/@Extensions() metadata.
-    it.skip('should inherit all fields and set "nullable" to true', async () => {
+    it('should inherit all fields and set "nullable" to true', async () => {
       const prototype = Object.getPrototypeOf(UpdateUserDto);
       const { fields } = getFieldsAndDecoratorForType(prototype);
 
@@ -149,8 +148,7 @@ describeConformance(
     });
 
     describe("omitDefaultValues", () => {
-      // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 885-915) only accepts an optional ClassDecorator/GqlDecoratorFactory 2nd argument and does not support an options object ({ omitDefaultValues: true }), crashing with TypeError: decorator is not a function.
-      it.skip("should skip default values of inherited class", async () => {
+      it("should skip default values of inherited class", async () => {
         @ObjectType()
         class CreateFooDto {
           @Field({ defaultValue: "foo" })
@@ -172,8 +170,7 @@ describeConformance(
     });
 
     describe("skipNullProperties", () => {
-      // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 885-915) does not accept an options object ({ skipNullProperties }) or forward it to @bunest/common BasePartialType, crashing with TypeError: decorator is not a function.
-      it.skip("should apply @IsOptional to properties reflected by the plugin if option `skipNullProperties` is true", async () => {
+      it("should apply @IsOptional to properties reflected by the plugin if option `skipNullProperties` is true", async () => {
         class UpdateUserWithNullableDto extends PartialTypeWithOpts(
           CreateUserDto,
           {
@@ -186,8 +183,7 @@ describeConformance(
         expect(validationErrors).toHaveLength(0);
       });
 
-      // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 885-915) does not accept an options object ({ skipNullProperties: undefined }), crashing with TypeError: decorator is not a function.
-      it.skip("should apply @IsOptional to properties reflected by the plugin if option `skipNullProperties` is undefined", async () => {
+      it("should apply @IsOptional to properties reflected by the plugin if option `skipNullProperties` is undefined", async () => {
         class UpdateUserWithoutNullableDto extends PartialTypeWithOpts(
           CreateUserDto,
           {
@@ -200,8 +196,7 @@ describeConformance(
         expect(validationErrors).toHaveLength(0);
       });
 
-      // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 885-915) does not accept an options object ({ skipNullProperties: false }) or forward it to BasePartialType to apply @ValidateIf, crashing with TypeError: decorator is not a function.
-      it.skip("should apply @ValidateIf to properties reflected by the plugin if option `skipNullProperties` is false", async () => {
+      it("should apply @ValidateIf to properties reflected by the plugin if option `skipNullProperties` is false", async () => {
         class UpdateUserWithoutNullableDto extends PartialTypeWithOpts(
           CreateUserDto,
           {
@@ -236,8 +231,7 @@ describeConformance(
 
       class UpdateListDto extends PartialType(CreateListDto) {}
 
-      // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 869-872, 909-915) does not auto-apply @ObjectType() onto PartialCreateListDto (throwing UnableToFindFieldsError) and unconditionally sets nullable: true instead of upgrading nullable: "items" -> "itemsAndList" and preserving "itemsAndList".
-      it.skip("should keep nullable items and make the list itself nullable", () => {
+      it("should keep nullable items and make the list itself nullable", () => {
         const prototype = Object.getPrototypeOf(UpdateListDto);
         const { fields } = getFieldsAndDecoratorForType(prototype);
         const nullableOf = (name: string) =>

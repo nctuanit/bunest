@@ -47,8 +47,7 @@ describeConformance(
 
     class UpdateUserDto extends IntersectionType(ClassA, ClassB) {}
 
-    // BUNEST_BUG: IntersectionType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-951) does not auto-apply the source @ObjectType() decorator to the generated class (causing getFieldsAndDecoratorForType to throw UnableToFindFieldsError), does not clone @Directive()/@Extensions() onto mapped types, and getFieldsAndDecoratorForType does not populate options.isArray/arrayDepth or structured directive metadata.
-    it.skip("should inherit all fields from two types", () => {
+    it("should inherit all fields from two types", () => {
       const prototype = Object.getPrototypeOf(UpdateUserDto);
       const { fields } = getFieldsAndDecoratorForType(prototype);
       const loginField = fields.find((f) => f.name === "login");
