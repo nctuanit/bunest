@@ -77,6 +77,8 @@ import {
   registerLoadedPluginMetadata,
 } from "./plugin-metadata-store";
 import {
+  applyNullable30,
+  convertSchemaToOas31,
   isDtoConstructor,
   isSchemaDecoratedClass,
   normalizeEnumValues,
@@ -831,6 +833,7 @@ export class SwaggerModule {
       excludeDynamicDefaults: options.excludeDynamicDefaults,
       exampleMaxDepth: options.exampleMaxDepth,
       standardSchemaConverter: options.standardSchemaConverter,
+      openApiVersion: config.openapi || "3.1.0",
     });
     const builderExtras = getDocumentBuilderExtras(config);
 
@@ -1424,6 +1427,10 @@ export class SwaggerModule {
       transformDocumentSchemas(document, (s) =>
         stripDynamicDefaultsFromSchema(s),
       );
+    }
+
+    if (supportsWebhooks) {
+      transformDocumentSchemas(document, (s) => convertSchemaToOas31(s));
     }
 
     return document;
@@ -2700,14 +2707,7 @@ export class SwaggerModule {
       }
 
       if (schema && metaEntry.nullable) {
-        if (schema.$ref) {
-          const { $ref, ...siblings } = schema;
-          schema = { ...siblings, anyOf: [{ $ref }, { type: "null" }] };
-        } else if (typeof schema.type === "string") {
-          schema = { ...schema, type: [schema.type, "null"] };
-        } else {
-          schema = { ...schema, nullable: true };
-        }
+        schema = applyNullable30(schema, metaEntry.nullable);
       }
 
       if (entry.content !== undefined) {

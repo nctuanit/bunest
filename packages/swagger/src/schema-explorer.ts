@@ -333,52 +333,380 @@ function inferEnumSchemaType(
   if (values.every((v) => typeof v === "string")) return "string";
   if (values.every((v) => typeof v === "number")) return "number";
   if (values.every((v) => typeof v === "boolean")) return "boolean";
+  if (values.some((v) => typeof v === "string")) return "string";
   return undefined;
+}
+
+const OAS_ANNOTATION_KEYS = new Set<string>([
+  "title",
+  "description",
+  "default",
+  "deprecated",
+  "readOnly",
+  "writeOnly",
+  "example",
+  "examples",
+  "externalDocs",
+  "xml",
+  "discriminator",
+]);
+
+function isAnnotationKey(key: string): boolean {
+  return OAS_ANNOTATION_KEYS.has(key) || key.startsWith("x-");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function applyNullable30(
+  schema: OpenApiSchema,
+  nullable?: boolean,
+): OpenApiSchema {
+  if (nullable === false) {
+    const out = { ...schema };
+    delete out.nullable;
+    return out;
+  }
+  if (!nullable) {
+    return schema;
+  }
+  if (schema.$ref) {
+    const { $ref, ...siblings } = schema;
+    return {
+      ...siblings,
+      type: "object",
+      nullable: true,
+      allOf: [{ $ref }],
+    };
+  }
+  return { ...schema, nullable: true };
+}
+
+/**
+ * Recursively converts an OpenAPI 3.0 schema (with `nullable: true`, boolean
+ * `exclusiveMinimum`/`exclusiveMaximum`, single-element `allOf: [{ $ref }]`
+ * wrappers, etc.) into an OpenAPI 3.1 JSON Schema 2020-12 compliant schema.
+ */
+export function convertSchemaToOas31(
+  schema: OpenApiSchema,
+  seen = new WeakMap<object, OpenApiSchema>(),
+): OpenApiSchema {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+  if (seen.has(schema)) {
+    return seen.get(schema)!;
+  }
+
+  const out: Record<string, unknown> = {};
+  seen.set(schema, out as OpenApiSchema);
+
+  // 1. Copy fields and recurse into nested schema-valued positions
+  for (const [k, v] of Object.entries(schema)) {
+    if (
+      (k === "properties" || k === "patternProperties") &&
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v)
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] =
+          pv && typeof pv === "object"
+            ? convertSchemaToOas31(pv as OpenApiSchema, seen)
+            : pv;
+      }
+      out[k] = mapped;
+    } else if (k === "items" && v && typeof v === "object") {
+      out[k] = Array.isArray(v)
+        ? v.map((item) =>
+            item && typeof item === "object"
+              ? convertSchemaToOas31(item as OpenApiSchema, seen)
+              : item,
+          )
+        : convertSchemaToOas31(v as OpenApiSchema, seen);
+    } else if (
+      (k === "additionalProperties" || k === "not") &&
+      v &&
+      typeof v === "object"
+    ) {
+      out[k] = convertSchemaToOas31(v as OpenApiSchema, seen);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf") &&
+      Array.isArray(v)
+    ) {
+      out[k] = v.map((branch) =>
+        branch && typeof branch === "object"
+          ? convertSchemaToOas31(branch as OpenApiSchema, seen)
+          : branch,
+      );
+    } else {
+      out[k] = v;
+    }
+  }
+
+  // 2. Convert OAS 3.0 boolean exclusiveMinimum / exclusiveMaximum to OAS 3.1 numeric bounds
+  if (typeof out.exclusiveMinimum === "boolean") {
+    if (out.exclusiveMinimum === true && typeof out.minimum === "number") {
+      out.exclusiveMinimum = out.minimum;
+      delete out.minimum;
+    } else {
+      delete out.exclusiveMinimum;
+    }
+  }
+  if (typeof out.exclusiveMaximum === "boolean") {
+    if (out.exclusiveMaximum === true && typeof out.maximum === "number") {
+      out.exclusiveMaximum = out.maximum;
+      delete out.maximum;
+    } else {
+      delete out.exclusiveMaximum;
+    }
+  }
+
+  // 3. Handle `nullable`
+  const isNullable = out.nullable === true;
+  if ("nullable" in out) {
+    delete out.nullable;
+  }
+  if (!isNullable) {
+    return out as OpenApiSchema;
+  }
+
+  // 3a. Direct `$ref`
+  if (typeof out.$ref === "string") {
+    const { $ref, ...siblings } = out;
+    const res = { ...siblings, anyOf: [{ $ref }, { type: "null" }] } as OpenApiSchema;
+    seen.set(schema, res);
+    return res;
+  }
+
+  // 3b. Unwrap OAS 3.0 single-element `allOf: [{ $ref }]` wrapper (with optional `type: "object"`)
+  if (
+    Array.isArray(out.allOf) &&
+    out.allOf.length === 1 &&
+    out.allOf[0] &&
+    typeof out.allOf[0] === "object" &&
+    typeof (out.allOf[0] as Record<string, unknown>).$ref === "string" &&
+    (out.type === undefined || out.type === "object")
+  ) {
+    const refEntry = out.allOf[0] as Record<string, unknown>;
+    const siblings: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(out)) {
+      if (k !== "allOf" && k !== "type") {
+        siblings[k] = v;
+      }
+    }
+    const res = {
+      ...siblings,
+      anyOf: [refEntry, { type: "null" }],
+    } as OpenApiSchema;
+    seen.set(schema, res);
+    return res;
+  }
+
+  // 3c. Enum (with or without `type`)
+  if (Array.isArray(out.enum)) {
+    if (!out.enum.includes(null)) {
+      out.enum = [...out.enum, null];
+    }
+    if (typeof out.type === "string") {
+      out.type = [out.type, "null"];
+    } else if (Array.isArray(out.type) && !out.type.includes("null")) {
+      out.type = [...out.type, "null"];
+    }
+    return out as OpenApiSchema;
+  }
+
+  // 3d. Simple typed schema (no combinators)
+  const hasCombinator =
+    out.allOf !== undefined ||
+    out.oneOf !== undefined ||
+    out.anyOf !== undefined ||
+    out.not !== undefined;
+  if (!hasCombinator && typeof out.type === "string") {
+    out.type = [out.type, "null"];
+    return out as OpenApiSchema;
+  }
+  if (!hasCombinator && Array.isArray(out.type)) {
+    if (!out.type.includes("null")) {
+      out.type = [...out.type, "null"];
+    }
+    return out as OpenApiSchema;
+  }
+
+  // 3e. Separate annotation siblings from structural/validation keywords
+  const annotations: Record<string, unknown> = {};
+  const core: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(out)) {
+    if (isAnnotationKey(k)) {
+      annotations[k] = v;
+    } else {
+      core[k] = v;
+    }
+  }
+
+  // Pure annotation schema ({ description: "anything" }) asserts nothing -> drop nullable
+  if (Object.keys(core).length === 0) {
+    seen.set(schema, annotations as OpenApiSchema);
+    return annotations as OpenApiSchema;
+  }
+
+  const res = {
+    ...annotations,
+    anyOf: [core, { type: "null" }],
+  } as OpenApiSchema;
+  seen.set(schema, res);
+  return res;
 }
 
 function applyNullable31(
   schema: OpenApiSchema,
   nullable?: boolean,
 ): OpenApiSchema {
-  if (!nullable) {
-    return schema;
+  if (nullable === undefined) {
+    return convertSchemaToOas31(schema);
   }
-  if (schema.$ref) {
-    const { $ref, ...siblings } = schema;
-    return { ...siblings, anyOf: [{ $ref }, { type: "null" }] };
-  }
-  if (typeof schema.type === "string") {
-    return { ...schema, type: [schema.type, "null"] };
-  }
-  if (Array.isArray(schema.type)) {
-    return schema.type.includes("null")
-      ? schema
-      : { ...schema, type: [...schema.type, "null"] };
-  }
-  return { anyOf: [schema, { type: "null" }] };
+  return convertSchemaToOas31({ ...schema, nullable });
 }
 
 function truncateExampleDepth(
   value: unknown,
   maxDepth: number,
   currentDepth = 0,
+  ancestors = new WeakSet<object>(),
 ): unknown {
   if (value === null || typeof value !== "object") {
     return value;
   }
+  if (!Array.isArray(value) && !isPlainObject(value)) {
+    return value;
+  }
+  if (ancestors.has(value)) {
+    return Array.isArray(value) ? [] : {};
+  }
   if (currentDepth >= maxDepth) {
     return Array.isArray(value) ? [] : {};
   }
-  if (Array.isArray(value)) {
-    return value.map((item) =>
-      truncateExampleDepth(item, maxDepth, currentDepth + 1),
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((item) =>
+        truncateExampleDepth(item, maxDepth, currentDepth + 1, ancestors),
+      );
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = truncateExampleDepth(v, maxDepth, currentDepth + 1, ancestors);
+    }
+    return out;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function applyExampleMaxDepthToSchema(
+  schema: OpenApiSchema,
+  ownMaxDepth: number | undefined,
+  childMaxDepth: number | undefined = ownMaxDepth,
+  seen = new WeakSet<object>(),
+): void {
+  if (!schema || typeof schema !== "object") return;
+  if (seen.has(schema)) return;
+  seen.add(schema);
+
+  if (ownMaxDepth !== undefined) {
+    if (schema.example !== undefined) {
+      schema.example = truncateExampleDepth(schema.example, ownMaxDepth);
+    }
+    if (schema.examples !== undefined) {
+      if (Array.isArray(schema.examples)) {
+        schema.examples = schema.examples.map((ex) =>
+          truncateExampleDepth(ex, ownMaxDepth),
+        );
+      } else if (isPlainObject(schema.examples)) {
+        const mapped: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(schema.examples)) {
+          mapped[k] = truncateExampleDepth(v, ownMaxDepth);
+        }
+        schema.examples = mapped as any;
+      }
+    }
+  }
+  if (childMaxDepth === undefined) return;
+
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const prop of Object.values(schema.properties)) {
+      if (prop && typeof prop === "object") {
+        applyExampleMaxDepthToSchema(prop, childMaxDepth, childMaxDepth, seen);
+      }
+    }
+  }
+  if (schema.patternProperties && typeof schema.patternProperties === "object") {
+    for (const prop of Object.values(schema.patternProperties)) {
+      if (prop && typeof prop === "object") {
+        applyExampleMaxDepthToSchema(prop, childMaxDepth, childMaxDepth, seen);
+      }
+    }
+  }
+  if (schema.items && typeof schema.items === "object") {
+    if (Array.isArray(schema.items)) {
+      for (const item of schema.items) {
+        if (item && typeof item === "object") {
+          applyExampleMaxDepthToSchema(
+            item as OpenApiSchema,
+            childMaxDepth,
+            childMaxDepth,
+            seen,
+          );
+        }
+      }
+    } else {
+      applyExampleMaxDepthToSchema(
+        schema.items,
+        childMaxDepth,
+        childMaxDepth,
+        seen,
+      );
+    }
+  }
+  if (
+    schema.additionalProperties &&
+    typeof schema.additionalProperties === "object"
+  ) {
+    applyExampleMaxDepthToSchema(
+      schema.additionalProperties,
+      childMaxDepth,
+      childMaxDepth,
+      seen,
     );
   }
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = truncateExampleDepth(v, maxDepth, currentDepth + 1);
+  for (const key of ["allOf", "oneOf", "anyOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const branch of schema[key]!) {
+        if (branch && typeof branch === "object") {
+          applyExampleMaxDepthToSchema(
+            branch as OpenApiSchema,
+            childMaxDepth,
+            childMaxDepth,
+            seen,
+          );
+        }
+      }
+    }
   }
-  return out;
+  if (schema.not && typeof schema.not === "object") {
+    applyExampleMaxDepthToSchema(
+      schema.not,
+      childMaxDepth,
+      childMaxDepth,
+      seen,
+    );
+  }
 }
 
 interface ExtractedValidatorHints {
@@ -518,6 +846,7 @@ export interface SchemaExplorerOptions {
   readonly excludeDynamicDefaults?: boolean;
   readonly exampleMaxDepth?: number;
   readonly standardSchemaConverter?: StandardSchemaConverter;
+  readonly openApiVersion?: string;
 }
 
 /**
@@ -606,6 +935,24 @@ export class SchemaExplorer {
 
   constructor(options: SchemaExplorerOptions = {}) {
     this.options = options;
+  }
+
+  private isOas31(): boolean {
+    const ver = this.options.openApiVersion ?? "3.1.0";
+    const parts = ver.split(".").map((n) => Number.parseInt(n, 10));
+    const maj = parts[0] || 3;
+    const min = parts[1] || 0;
+    return maj > 3 || (maj === 3 && min >= 1);
+  }
+
+  private finalizeNullable(
+    schema: OpenApiSchema,
+    nullable?: boolean,
+  ): OpenApiSchema {
+    if (this.isOas31()) {
+      return applyNullable31(schema, nullable);
+    }
+    return applyNullable30(schema, nullable);
   }
 
   getSchemas(): Record<string, OpenApiSchema> {
@@ -941,7 +1288,7 @@ export class SchemaExplorer {
       schema = {};
     }
     this.applyApiPropertyOptionsToSchema(schema, opts);
-    return applyNullable31(schema, opts.nullable);
+    return this.finalizeNullable(schema, opts.nullable);
   }
 
   private applyApiPropertyOptionsToSchema(
@@ -975,7 +1322,25 @@ export class SchemaExplorer {
         : { ...apiMeta.examples };
     }
     if (apiMeta.enum !== undefined && !apiMeta.enumName) {
-      schema.enum = normalizeEnumValues(apiMeta.enum);
+      const enumVals = normalizeEnumValues(apiMeta.enum);
+      if (schema.type === "array" && schema.items && !("$ref" in schema.items)) {
+        const itemsObj = { ...schema.items };
+        itemsObj.enum = enumVals;
+        if (itemsObj.type === undefined || itemsObj.type === "object") {
+          const inferred = inferEnumSchemaType(enumVals);
+          if (inferred) itemsObj.type = inferred;
+        }
+        schema.items = itemsObj;
+      } else {
+        schema.enum = enumVals;
+        if (
+          apiMeta.type === undefined &&
+          (schema.type === undefined || schema.type === "object")
+        ) {
+          const inferred = inferEnumSchemaType(enumVals);
+          if (inferred) schema.type = inferred;
+        }
+      }
     }
     if (apiMeta["x-enumNames"] !== undefined) {
       schema["x-enumNames"] = [...apiMeta["x-enumNames"]];
@@ -1058,6 +1423,13 @@ export class SchemaExplorer {
         delete (schema as Record<string, unknown>)[key];
       }
       Object.assign(schema, cleaned);
+    }
+    if (maxDepth !== undefined || this.options.exampleMaxDepth !== undefined) {
+      applyExampleMaxDepthToSchema(
+        schema,
+        maxDepth,
+        this.options.exampleMaxDepth,
+      );
     }
   }
 
@@ -1153,8 +1525,17 @@ export class SchemaExplorer {
     entityCol?: EntityColumnMetadata,
   ): OpenApiSchema {
     if (apiMeta?.schema) {
-      return applyNullable31(
-        { ...apiMeta.schema },
+      const cloned = { ...apiMeta.schema };
+      const maxDepth = apiMeta.exampleMaxDepth ?? this.options.exampleMaxDepth;
+      if (maxDepth !== undefined || this.options.exampleMaxDepth !== undefined) {
+        applyExampleMaxDepthToSchema(
+          cloned,
+          maxDepth,
+          this.options.exampleMaxDepth,
+        );
+      }
+      return this.finalizeNullable(
+        cloned,
         apiMeta.nullable ?? entityCol?.nullable,
       );
     }
@@ -1187,7 +1568,10 @@ export class SchemaExplorer {
       }
       if (apiMeta.deprecated !== undefined)
         base.deprecated = apiMeta.deprecated;
-      return applyNullable31(base, apiMeta.nullable ?? entityCol?.nullable);
+      return this.finalizeNullable(
+        base,
+        apiMeta.nullable ?? entityCol?.nullable,
+      );
     }
 
     const reflectedDesignType =
@@ -1196,6 +1580,10 @@ export class SchemaExplorer {
       MetadataRegistry.getType(dto.prototype, propKey);
 
     const explicitType = apiMeta?.type;
+    const hasExplicitCombinator =
+      apiMeta?.oneOf !== undefined ||
+      apiMeta?.anyOf !== undefined ||
+      apiMeta?.allOf !== undefined;
     const isArray =
       apiMeta?.isArray === true ||
       Array.isArray(explicitType) ||
@@ -1206,6 +1594,8 @@ export class SchemaExplorer {
     let schema: OpenApiSchema;
     if (explicitType !== undefined) {
       schema = this.resolveTypeSchema(explicitType, apiMeta?.isArray === true);
+    } else if (hasExplicitCombinator && !isArray) {
+      schema = {};
     } else if (entityCol !== undefined) {
       schema = this.resolveEntityColumnBaseSchema(entityCol);
     } else if (
@@ -1267,7 +1657,7 @@ export class SchemaExplorer {
 
     const effectiveNullable =
       apiMeta?.nullable !== undefined ? apiMeta.nullable : entityCol?.nullable;
-    return applyNullable31(schema, effectiveNullable);
+    return this.finalizeNullable(schema, effectiveNullable);
   }
 }
 
