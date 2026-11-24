@@ -169,8 +169,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected app.getUrl() called before app.listen() to throw/reject with "app.listen() needs to be called before calling app.getUrl()"; actual synchronously returns undefined (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should throw an error for calling getUrl before listen", async () => {
+    it("should throw an error for calling getUrl before listen", async () => {
       const app = testModule.createNestApplication({ logger: false });
       try {
         await expect(

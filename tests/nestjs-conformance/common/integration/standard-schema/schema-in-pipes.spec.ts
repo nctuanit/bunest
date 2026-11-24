@@ -180,8 +180,7 @@ describeConformance(
       expect(SchemaCaptorPipe.lastMetadata!.data).toBe("id");
     });
 
-    // BUNEST_BUG: createParamDecorator() does not parse `{ schema, pipes }` options objects (packages/core/src/common/decorators/params.decorators.ts:296-331), and compileParameters() does not propagate `schema` onto ArgumentMetadata (packages/core/src/http/pipeline/param-extractor.ts)
-    it.skip("should pass schema to pipe via createParamDecorator(options)", async () => {
+    it("should pass schema to pipe via createParamDecorator(options)", async () => {
       await ctx.request().get("/schema-test/custom?key=val").expect(200);
 
       expect(SchemaCaptorPipe.lastMetadata).toBeDefined();

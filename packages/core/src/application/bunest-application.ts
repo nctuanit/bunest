@@ -257,6 +257,27 @@ class CoreHttpBridge implements HttpRuntimeBridge {
  * Full Bunest HTTP application uniting `@bunest/core`'s DI/Module/Lifecycle engine
  * with `@bunest/core/http`'s native `BunHttpAdapter`.
  */
+export interface InjectChain {
+  get(url?: string): InjectChain;
+  post(url?: string): InjectChain;
+  put(url?: string): InjectChain;
+  patch(url?: string): InjectChain;
+  delete(url?: string): InjectChain;
+  head(url?: string): InjectChain;
+  options(url?: string): InjectChain;
+  method(method: string): InjectChain;
+  url(url: string): InjectChain;
+  headers(headers: Record<string, string | string[]>): InjectChain;
+  query(
+    query: Record<string, string | number | boolean | readonly string[]>,
+  ): InjectChain;
+  payload(body: InjectBody): InjectChain;
+  body(body: InjectBody): InjectChain;
+  cookies(cookies: Record<string, string>): InjectChain;
+  remoteAddress(addr: string): InjectChain;
+  end(): Promise<InjectResponse>;
+}
+
 export class BunestApplication extends BunestApplicationContext {
   private readonly httpAdapter: BunHttpAdapter;
   private readonly controllers: Type<unknown>[] = [];
@@ -278,6 +299,7 @@ export class BunestApplication extends BunestApplicationContext {
   private routesDirty = true;
   private moduleMiddlewaresConfigured = false;
   private diEnhancersWired = false;
+  private hasListened = false;
 
   constructor(
     container: DIContainer,
@@ -480,7 +502,14 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   getUrl(): string | undefined {
-    return this.httpAdapter.getUrl();
+    const url = this.httpAdapter.getUrl();
+    if (url !== undefined) {
+      return url;
+    }
+    if (!this.hasListened) {
+      throw "app.listen() needs to be called before calling app.getUrl()";
+    }
+    return undefined;
   }
 
   useGlobalPipes(...pipes: PipeLike[]): this {
@@ -555,10 +584,37 @@ export class BunestApplication extends BunestApplicationContext {
     return this;
   }
 
-  use(...middlewares: MiddlewareEntry[]): this {
+  use(
+    pathOrMiddleware: string | readonly string[] | MiddlewareEntry,
+    ...rest: MiddlewareEntry[]
+  ): this {
+    let mountPaths: string[] | undefined;
+    let middlewares: MiddlewareEntry[];
+
+    if (
+      typeof pathOrMiddleware === "string" ||
+      Array.isArray(pathOrMiddleware)
+    ) {
+      const rawPaths = Array.isArray(pathOrMiddleware)
+        ? pathOrMiddleware
+        : [pathOrMiddleware];
+      mountPaths = rawPaths.map((p) => {
+        const trimmed = String(p).trim();
+        if (trimmed === "" || trimmed === "/") return "/";
+        const withLead = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+        return withLead.length > 1 && withLead.endsWith("/")
+          ? withLead.slice(0, -1)
+          : withLead;
+      });
+      middlewares = rest;
+    } else {
+      middlewares = [pathOrMiddleware, ...rest];
+    }
+
     const decorator = this.options.instrument?.instanceDecorator;
     const processed: MiddlewareEntry[] = [];
     for (const mw of middlewares) {
+      let prepared: MiddlewareEntry;
       if (
         typeof mw === "function" &&
         typeof (mw as { prototype?: { use?: unknown } }).prototype?.use ===
@@ -567,11 +623,33 @@ export class BunestApplication extends BunestApplicationContext {
         this.pendingGlobalEnhancerClasses.push({
           cls: mw as Type<unknown>,
         });
-        processed.push(mw);
+        prepared = mw;
       } else if (typeof mw === "function" && decorator) {
-        processed.push(decorator(mw) as MiddlewareEntry);
+        prepared = decorator(mw) as MiddlewareEntry;
       } else {
-        processed.push(mw);
+        prepared = mw;
+      }
+
+      if (mountPaths && mountPaths.length > 0 && typeof prepared === "function") {
+        const paths = mountPaths;
+        const inner = prepared;
+        const scopedMw: MiddlewareEntry = (req, res, next) => {
+          const pathname = new URL(req.url).pathname;
+          const matches = paths.some(
+            (p) => p === "/" || pathname === p || pathname.startsWith(`${p}/`),
+          );
+          if (!matches) {
+            return next();
+          }
+          return (inner as (r: Request, s: ResponseContext, n: () => unknown) => unknown)(
+            req,
+            res,
+            next,
+          );
+        };
+        processed.push(scopedMw);
+      } else {
+        processed.push(prepared);
       }
     }
     this.httpAdapter.use(...processed);
@@ -834,7 +912,89 @@ export class BunestApplication extends BunestApplicationContext {
    * Executes a NestJS/Fastify-style in-memory HTTP request directly against
    * `this.fetch()` without binding a network socket.
    */
-  async inject(input: string | InjectOptions): Promise<InjectResponse> {
+  inject(): InjectChain;
+  inject(input: string | InjectOptions): Promise<InjectResponse>;
+  inject(
+    input?: string | InjectOptions,
+  ): Promise<InjectResponse> | InjectChain {
+    if (input === undefined) {
+      return this.createInjectChain();
+    }
+    return this.executeInject(input);
+  }
+
+  private createInjectChain(): InjectChain {
+    let method = "GET";
+    let url = "/";
+    let headers: Record<string, string | string[]> | undefined;
+    let query: Record<string, string | number | boolean | readonly string[]> | undefined;
+    let payload: InjectBody | undefined;
+    let cookies: Record<string, string> | undefined;
+    let remoteAddress: string | undefined;
+
+    const setMethodUrl = (m: string, u?: string): InjectChain => {
+      method = m;
+      if (u !== undefined) url = u;
+      return chain;
+    };
+
+    const chain: InjectChain = {
+      get: (u?: string) => setMethodUrl("GET", u),
+      post: (u?: string) => setMethodUrl("POST", u),
+      put: (u?: string) => setMethodUrl("PUT", u),
+      patch: (u?: string) => setMethodUrl("PATCH", u),
+      delete: (u?: string) => setMethodUrl("DELETE", u),
+      head: (u?: string) => setMethodUrl("HEAD", u),
+      options: (u?: string) => setMethodUrl("OPTIONS", u),
+      method: (m: string) => {
+        method = m;
+        return chain;
+      },
+      url: (u: string) => {
+        url = u;
+        return chain;
+      },
+      headers: (h: Record<string, string | string[]>) => {
+        headers = { ...(headers ?? {}), ...h };
+        return chain;
+      },
+      query: (q: Record<string, string | number | boolean | readonly string[]>) => {
+        query = { ...(query ?? {}), ...q };
+        return chain;
+      },
+      payload: (body: InjectBody) => {
+        payload = body;
+        return chain;
+      },
+      body: (body: InjectBody) => {
+        payload = body;
+        return chain;
+      },
+      cookies: (c: Record<string, string>) => {
+        cookies = { ...(cookies ?? {}), ...c };
+        return chain;
+      },
+      remoteAddress: (addr: string) => {
+        remoteAddress = addr;
+        return chain;
+      },
+      end: () =>
+        this.executeInject({
+          method,
+          url,
+          headers,
+          query,
+          payload,
+          cookies,
+          remoteAddress,
+        }),
+    };
+    return chain;
+  }
+
+  private async executeInject(
+    input: string | InjectOptions,
+  ): Promise<InjectResponse> {
     const req = buildInjectRequest(input);
     const raw = await this.fetch(req);
     const rawPayload = new Uint8Array(await raw.arrayBuffer());
@@ -866,6 +1026,7 @@ export class BunestApplication extends BunestApplicationContext {
       hostnameOrCallback,
       callback,
     );
+    this.hasListened = true;
     this.container.getHttpAdapterHost().listening = true;
     return info;
   }
