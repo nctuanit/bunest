@@ -190,7 +190,7 @@ export class HttpClient {
       Boolean(retry) &&
       retry!.methods.includes(method) &&
       isReplayableBody(body);
-    const signal = options.signal;
+    const signal = options.signal ? anySignal(options.signal) : undefined;
     const interceptors = await this.resolveInterceptors();
 
     for (let attempt = 1; ; attempt++) {

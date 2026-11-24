@@ -21,10 +21,35 @@ export function createTimer(ms: number | undefined): AttemptTimer | undefined {
   };
 }
 
+function normalizeSignal(signal: AbortSignal): AbortSignal {
+  if (signal instanceof AbortSignal) {
+    return signal;
+  }
+  const controller = new AbortController();
+  const duck = signal as unknown as {
+    aborted?: boolean;
+    reason?: unknown;
+    addEventListener?: (type: string, listener: () => void) => void;
+    removeEventListener?: (type: string, listener: () => void) => void;
+  };
+  if (duck.aborted) {
+    controller.abort(duck.reason);
+    return controller.signal;
+  }
+  const onAbort = () => {
+    duck.removeEventListener?.("abort", onAbort);
+    controller.abort(duck.reason);
+  };
+  duck.addEventListener?.("abort", onAbort);
+  return controller.signal;
+}
+
 export function anySignal(
   ...signals: Array<AbortSignal | undefined>
 ): AbortSignal {
-  const present = signals.filter((s): s is AbortSignal => Boolean(s));
+  const present = signals
+    .filter((s): s is AbortSignal => Boolean(s))
+    .map(normalizeSignal);
   if (present.length === 0) {
     return new AbortController().signal;
   }

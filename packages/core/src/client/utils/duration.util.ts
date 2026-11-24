@@ -1,14 +1,6 @@
+import { parseDuration } from "../../common/utils/duration.util";
 import type { Duration } from "../types/duration.type";
 import { MAX_TIMER_MS } from "./timers.util";
-
-const UNITS: Record<"ms" | "s" | "m" | "h" | "d" | "w", number> = {
-  ms: 1,
-  s: 1_000,
-  m: 60_000,
-  h: 3_600_000,
-  d: 86_400_000,
-  w: 604_800_000,
-};
 
 /**
  * `toMs()` with the option's name in the error, e.g. "HttpClient `timeout`:
@@ -22,7 +14,7 @@ export function durationOption(
   const options = cause === undefined ? undefined : { cause };
   let ms: number;
   try {
-    ms = toMs(value);
+    ms = parseDuration(value);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new TypeError(`HttpClient \`${option}\`: ${msg}`, options);
@@ -36,21 +28,4 @@ export function durationOption(
   return ms;
 }
 
-export function toMs(duration: Duration): number {
-  if (typeof duration === "number") {
-    if (!Number.isFinite(duration) || duration < 0) {
-      throw new TypeError(
-        `Invalid duration ${duration}. Use a non-negative number of milliseconds.`,
-      );
-    }
-    return duration;
-  }
-  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d|w)$/.exec(String(duration));
-  if (!match) {
-    throw new TypeError(
-      `Invalid duration "${String(duration)}". Use milliseconds or a string such as "15m" or "3d".`,
-    );
-  }
-  const unit = match[2] as keyof typeof UNITS;
-  return Math.round(Number(match[1]) * UNITS[unit]);
-}
+export { parseDuration as toMs };
