@@ -117,8 +117,7 @@ describeConformance(
       expect(first.loader).not.toBe(second.loader);
     });
 
-    // BUNEST_BUG: DIContainer.resolveAsync() does not cache Scope.TRANSIENT instances per explicit contextId (packages/core/src/di/di-container.ts:3378-3390); resolve(LOADER, contextId) and resolve(TransientLoader, contextId) return distinct instances instead of the same instance for that contextId.
-    it.skip('should create an instance for each "resolve()" call', async () => {
+    it('should create an instance for each "resolve()" call', async () => {
       const first = await moduleRef.resolve(LOADER);
       const second = await moduleRef.resolve(LOADER_ALIAS);
       const contextId = ContextIdFactory.create();

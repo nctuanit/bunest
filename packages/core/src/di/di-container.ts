@@ -2061,28 +2061,43 @@ export class DIContainer
       return reqContainer;
     }
 
+    const payload =
+      ctxId.payload !== undefined
+        ? ctxId.payload
+        : parentCtxId.payload !== undefined
+          ? parentCtxId.payload
+          : reqContainer.getRequestValue(REQUEST);
+
     let durable = this.durableContainers.get(parentCtxId.id);
     if (!durable) {
       durable = new RequestContainer(
-        (token, rc) =>
-          this.resolveAsync(token, this.graph.root.id, rc, {
+        (tok, rc) =>
+          this.resolveAsync(tok, this.graph.root.id, rc, {
             strict: false,
           }),
         { contextId: parentCtxId, durable: true },
       );
-      const payload =
-        ctxId.payload !== undefined
-          ? ctxId.payload
-          : parentCtxId.payload !== undefined
-            ? parentCtxId.payload
-            : reqContainer.getRequestValue(REQUEST);
       if (payload !== undefined) {
         durable.registerRequestValue(REQUEST, payload);
       }
       this.durableContainers.set(parentCtxId.id, durable);
+    } else if (payload !== undefined) {
+      // Refresh REQUEST payload for any durable providers not yet constructed
+      // (e.g. after an earlier construction threw an error with a failing payload).
+      durable.registerRequestValue(REQUEST, payload);
     }
 
     return durable;
+  }
+
+  private evictEmptyDurableContainer(container: RequestContainer): void {
+    if (!container.isDurable() || container.hasAnyScopedInstance()) {
+      return;
+    }
+    const ctxId = container.getContextId();
+    if (ctxId && this.durableContainers.get(ctxId.id) === container) {
+      this.durableContainers.delete(ctxId.id);
+    }
   }
 
   private getEnhancerOverride(
@@ -2476,16 +2491,21 @@ export class DIContainer
           controllerToken,
         ) ?? reqContainer;
       const key = `ctrl:${ownerMod.id}:${this.getTokenId(controllerToken)}`;
-      return targetContainer.getOrCreateScopedInstance<object>(
-        key,
-        async () =>
-          (await this.instantiateClass(
-            controllerToken,
-            ownerMod,
-            targetContainer,
-            new Set(),
-          )) as object,
-      );
+      try {
+        return await targetContainer.getOrCreateScopedInstance<object>(
+          key,
+          async () =>
+            (await this.instantiateClass(
+              controllerToken,
+              ownerMod,
+              targetContainer,
+              new Set(),
+            )) as object,
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Transient controller
@@ -2794,15 +2814,30 @@ export class DIContainer
           `Cannot resolve REQUEST-scoped multi-provider ${formatToken(provider.token)} without an active RequestContainer.`,
         );
       }
-      return reqContainer.getOrCreateScopedInstance(cacheKey, () =>
-        this.instantiateProvider(
-          mod,
-          provider,
+      const isDurable =
+        provider.durable === true ||
+        (provider.useClass ? isInjectableDurable(provider.useClass) : false);
+      const targetContainer =
+        this.resolveDurableContainerFor(
+          provider.useClass ?? provider.token,
+          isDurable,
           reqContainer,
-          new Set(),
-          Boolean(allowRootFallback),
-        ),
-      );
+          provider.token,
+        ) ?? reqContainer;
+      try {
+        return await targetContainer.getOrCreateScopedInstance(cacheKey, () =>
+          this.instantiateProvider(
+            mod,
+            provider,
+            targetContainer,
+            new Set(),
+            Boolean(allowRootFallback),
+          ),
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Scope.TRANSIENT
@@ -3865,15 +3900,34 @@ export class DIContainer
     // NestJS parity: when an explicit ContextId/RequestContainer is provided,
     // Scope.TRANSIENT providers resolved via ModuleRef.resolve(token, contextId)
     // are cached per contextId so repeated resolve(token, sameContextId) calls
-    // return the same instance.
+    // (including via useExisting aliases) return the same instance.
     if (reqContainer && effScope === Scope.TRANSIENT) {
-      const transientKey = `transient-resolve:${this.makeInstanceKey(loc.owner, loc.provider.token)}`;
+      let targetOwner = loc.owner;
+      let targetProvider = loc.provider;
+      const visitedAliases = new Set<string>();
+      while (
+        targetProvider.kind === "existing" &&
+        targetProvider.useExisting !== undefined
+      ) {
+        const aliasKey = this.makeInstanceKey(targetOwner, targetProvider.token);
+        if (visitedAliases.has(aliasKey)) break;
+        visitedAliases.add(aliasKey);
+        const nextLoc = this.locateTokenForModuleRef(
+          targetOwner,
+          targetProvider.useExisting,
+          false,
+        );
+        if (!nextLoc) break;
+        targetOwner = nextLoc.owner;
+        targetProvider = nextLoc.provider;
+      }
+      const transientKey = `transient-resolve:${this.makeInstanceKey(targetOwner, targetProvider.token)}`;
       return await reqContainer.getOrCreateScopedInstance<T>(
         transientKey,
         async () =>
           (await this.resolveNormalizedProvider(
-            loc.owner,
-            loc.provider,
+            targetOwner,
+            targetProvider,
             reqContainer,
             new Set(),
           )) as T,
@@ -4698,16 +4752,21 @@ export class DIContainer
           requestContainer,
           provider.token,
         ) ?? requestContainer;
-      return targetContainer.getOrCreateScopedInstance(key, () =>
-        this.instantiateProvider(
-          owner,
-          provider,
-          targetContainer,
-          activeInstantiations,
-          allowRoot,
-          inquirer,
-        ),
-      );
+      try {
+        return await targetContainer.getOrCreateScopedInstance(key, () =>
+          this.instantiateProvider(
+            owner,
+            provider,
+            targetContainer,
+            activeInstantiations,
+            allowRoot,
+            inquirer,
+          ),
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Scope.TRANSIENT -> new instance per resolution
