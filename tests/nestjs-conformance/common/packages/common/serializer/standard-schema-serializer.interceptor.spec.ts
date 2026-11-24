@@ -173,8 +173,7 @@ describeConformance(
           "Promise CallHandler + @UseStandardSchema",
         );
 
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor does not read @SerializeOptions() via reflector.getAll(CLASS_SERIALIZER_OPTIONS), does not merge handler/class options key-by-key, and does not support or forward `validateOptions` to `schema["~standard"].validate()` (packages/validation/src/standard-schema-serializer.interceptor.ts)
-        it.skip("should keep the class schema when the handler only sets validateOptions", async () => {
+        it("should keep the class schema when the handler only sets validateOptions", async () => {
           const validateSpy = createSpy((value: any) => ({
             value: { id: value.id },
           }));
@@ -200,8 +199,7 @@ describeConformance(
           expect(validateSpy).toHaveBeenCalledWith(response, handlerOpts);
         });
 
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor does not read @SerializeOptions() via reflector.getAll(CLASS_SERIALIZER_OPTIONS), does not merge handler/class options key-by-key, and does not support or forward `validateOptions` to `schema["~standard"].validate()` (packages/validation/src/standard-schema-serializer.interceptor.ts)
-        it.skip("should use the handler schema with the class validateOptions", async () => {
+        it("should use the handler schema with the class validateOptions", async () => {
           const classSchema = createSchema((value) => ({
             value: { ...(value as Record<string, unknown>), fromClass: true },
           }));
@@ -315,8 +313,7 @@ describeConformance(
           ).getType = () => "http";
         });
 
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor passes Readable / ReadableStream / async generators through untouched over HTTP instead of mapping yielded objects through the schema (packages/validation/src/standard-schema-serializer.interceptor.ts:200)
-        it.skip.each<[string, (chunks: unknown[]) => unknown]>([
+        it.each<[string, (chunks: unknown[]) => unknown]>([
           [
             "a ReadableStream in object mode",
             (chunks) =>
@@ -380,8 +377,7 @@ describeConformance(
           expect(validate).toHaveBeenCalledWith(entity, validateOptions);
         });
 
-        // BUNEST_BUG: StandardSchemaSerializerInterceptor passes async generators through untouched over HTTP without validating yielded items (packages/validation/src/standard-schema-serializer.interceptor.ts:200)
-        it.skip("should fail the stream with the issues of an object it yields", async () => {
+        it("should fail the stream with the issues of an object it yields", async () => {
           interceptor = new StandardSchemaSerializerInterceptor(
             mockReflector as unknown as Reflector,
             {
@@ -673,8 +669,7 @@ describeConformance(
         expect(validateSpy).toHaveBeenCalledWith(response, opts);
       });
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` from `@SerializeOptions()` metadata or forward it to `schema["~standard"].validate()` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-      it.skip("should forward context validateOptions from @SerializeOptions()", async () => {
+      it("should forward context validateOptions from @SerializeOptions()", async () => {
         const validateSpy = createSpy(
           (_value: unknown, _options?: unknown) => ({
             value: { ok: true },
@@ -702,8 +697,7 @@ describeConformance(
         expect(validateSpy).toHaveBeenCalledWith(response, contextOpts);
       });
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor does not support `validateOptions` override between context and default options (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-      it.skip("should let context validateOptions override default", async () => {
+      it("should let context validateOptions override default", async () => {
         const validateSpy = createSpy(
           (_value: unknown, _options?: unknown) => ({
             value: { ok: true },

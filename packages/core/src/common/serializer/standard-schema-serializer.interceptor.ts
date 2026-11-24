@@ -211,6 +211,49 @@ export class StandardSchemaSerializerInterceptor implements BunestInterceptor {
     };
 
     const response = await next.handle();
+    if (schema && context.getType?.() === "http") {
+      if (
+        typeof ReadableStream !== "undefined" &&
+        response instanceof ReadableStream
+      ) {
+        const self = this;
+        return response.pipeThrough(
+          new TransformStream({
+            async transform(chunk, controller) {
+              controller.enqueue(
+                await self.serializeWithOptions(
+                  chunk,
+                  schema,
+                  validateOptions,
+                  errorOptions,
+                ),
+              );
+            },
+          }),
+        );
+      }
+      if (
+        response !== null &&
+        typeof response === "object" &&
+        !(response instanceof StreamableFile) &&
+        !(typeof Response !== "undefined" && response instanceof Response) &&
+        typeof (response as { [Symbol.asyncIterator]?: unknown })[
+          Symbol.asyncIterator
+        ] === "function"
+      ) {
+        const self = this;
+        return (async function* () {
+          for await (const chunk of response as AsyncIterable<unknown>) {
+            yield await self.serializeWithOptions(
+              chunk,
+              schema,
+              validateOptions,
+              errorOptions,
+            );
+          }
+        })();
+      }
+    }
     return this.serializeWithOptions(
       response,
       schema,
@@ -276,18 +319,30 @@ export class StandardSchemaSerializerInterceptor implements BunestInterceptor {
         )
       : undefined;
 
-    const handlerSerializeOpts = handler
-      ? this.reflector.get<StandardSchemaSerializerContextOptions>(
-          CLASS_SERIALIZER_OPTIONS,
-          handler,
-        )
-      : undefined;
-    const classSerializeOpts = controllerClass
-      ? this.reflector.get<StandardSchemaSerializerContextOptions>(
-          CLASS_SERIALIZER_OPTIONS,
-          controllerClass,
-        )
-      : undefined;
+    let handlerSerializeOpts: StandardSchemaSerializerContextOptions | undefined;
+    let classSerializeOpts: StandardSchemaSerializerContextOptions | undefined;
+    if (typeof this.reflector.getAll === "function") {
+      const all = this.reflector.getAll<
+        Array<StandardSchemaSerializerContextOptions | undefined>
+      >(CLASS_SERIALIZER_OPTIONS, [handler, controllerClass]);
+      if (Array.isArray(all)) {
+        handlerSerializeOpts = all[0];
+        classSerializeOpts = all[1];
+      }
+    } else {
+      handlerSerializeOpts = handler
+        ? this.reflector.get<StandardSchemaSerializerContextOptions>(
+            CLASS_SERIALIZER_OPTIONS,
+            handler,
+          )
+        : undefined;
+      classSerializeOpts = controllerClass
+        ? this.reflector.get<StandardSchemaSerializerContextOptions>(
+            CLASS_SERIALIZER_OPTIONS,
+            controllerClass,
+          )
+        : undefined;
+    }
 
     const handlerMerged: StandardSchemaSerializerContextOptions | undefined =
       handlerUseMeta || handlerSerializeOpts
@@ -390,11 +445,21 @@ export class StandardSchemaSerializerInterceptor implements BunestInterceptor {
       if (errorOptions.exceptionFactory) {
         throw errorOptions.exceptionFactory(result.issues, details);
       }
-      throw createValidationHttpException(
+      const err = createValidationHttpException(
         details,
         errorOptions.errorHttpStatusCode ?? HttpStatus.INTERNAL_SERVER_ERROR,
         errorOptions.disableErrorMessages ?? false,
       );
+      if (!errorOptions.disableErrorMessages) {
+        const issueSummary = result.issues
+          .map((i) => i.message)
+          .filter(Boolean)
+          .join("; ");
+        if (issueSummary) {
+          err.message = `Serialization failed: ${issueSummary}`;
+        }
+      }
+      throw err;
     }
 
     return result.value as PlainLiteralObject;

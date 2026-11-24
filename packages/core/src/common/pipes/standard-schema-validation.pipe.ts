@@ -261,14 +261,50 @@ export class StandardSchemaValidationPipe<
           details?: ValidationErrorDetail[],
         ) => {
           const resolvedDetails =
-            details ??
-            this.limitIssueDetails(formatStandardSchemaIssues(issues, ""));
+            details ?? this.buildLimitedDetails(issues, "");
           return createValidationHttpException(
             resolvedDetails,
             this.errorHttpStatusCode,
             this.disableErrorMessages,
           );
         };
+  }
+
+  private buildLimitedDetails(
+    issues: readonly StandardSchemaV1Issue[],
+    fallbackField: string,
+  ): ValidationErrorDetail[] {
+    if (issues.length === 0) {
+      return formatStandardSchemaIssues([], fallbackField);
+    }
+    const boundedIssues: StandardSchemaV1Issue[] = [];
+    let remainingLength = this.maxErrorMessagesLength;
+    let truncated = false;
+    for (const issue of issues) {
+      if (remainingLength <= 0) {
+        truncated = true;
+        break;
+      }
+      const field = formatStandardSchemaPath(issue.path, fallbackField);
+      const msg =
+        typeof issue.message === "string" && issue.message.length > 0
+          ? issue.message
+          : "Invalid value";
+      remainingLength -= field.length + msg.length;
+      boundedIssues.push({
+        message: msg,
+        path: field ? [field] : undefined,
+      });
+    }
+    const details = formatStandardSchemaIssues(boundedIssues, fallbackField);
+    if (truncated) {
+      details.push({
+        field: "...",
+        constraints: { omitted: OMITTED_ERRORS_MESSAGE },
+        messages: [OMITTED_ERRORS_MESSAGE],
+      });
+    }
+    return details;
   }
 
   protected formatIssueMessages(
@@ -343,9 +379,7 @@ export class StandardSchemaValidationPipe<
     if (result.issues) {
       const details = this.customExceptionFactory
         ? formatStandardSchemaIssues(result.issues, fallbackField)
-        : this.limitIssueDetails(
-            formatStandardSchemaIssues(result.issues, fallbackField),
-          );
+        : this.buildLimitedDetails(result.issues, fallbackField);
       throw this.buildException(result.issues, details);
     }
 

@@ -565,7 +565,7 @@ describe("StandardSchemaSerializerInterceptor & @UseStandardSchema", () => {
     ).toBe(rawResp);
     expect(
       await interceptor.intercept(profileCtx, makeCallHandler(rawStream)),
-    ).toBe(rawStream);
+    ).toBeInstanceOf(ReadableStream);
     expect(
       await interceptor.intercept(profileCtx, makeCallHandler(rawBlob)),
     ).toBe(rawBlob);
