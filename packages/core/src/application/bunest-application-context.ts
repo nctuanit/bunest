@@ -232,6 +232,10 @@ export class BunestApplicationContext {
         await this.lifecycle.callApplicationBootstrap(groups);
         this.isInitialized = true;
         return this;
+      } catch (err) {
+        this.flushLogsIfAutoFlushEnabled();
+        this.restoreGlobalLogger();
+        throw err;
       } finally {
         this.flushLogsIfAutoFlushEnabled();
       }
@@ -450,20 +454,12 @@ export class BunestApplicationContext {
     }
     this.isClosed = true;
     await this.prepareClose();
-    const restoreGlobalLogger = () => {
-      if (this.didOverrideGlobalLogger) {
-        this.didOverrideGlobalLogger = false;
-        Logger.detachBuffer();
-        Logger.overrideLogger(this.previousGlobalLogger ?? true);
-        this.previousGlobalLogger = undefined;
-      }
-    };
     if (this.lifecycle.getIsClosed()) {
       try {
         await this.dispose();
       } finally {
         await this.container.destroyContextContainers();
-        restoreGlobalLogger();
+        this.restoreGlobalLogger();
       }
       return;
     }
@@ -474,7 +470,16 @@ export class BunestApplicationContext {
         await this.container.destroyContextContainers();
       });
     } finally {
-      restoreGlobalLogger();
+      this.restoreGlobalLogger();
+    }
+  }
+
+  protected restoreGlobalLogger(): void {
+    if (this.didOverrideGlobalLogger) {
+      this.didOverrideGlobalLogger = false;
+      Logger.detachBuffer();
+      Logger.overrideLogger(this.previousGlobalLogger ?? true);
+      this.previousGlobalLogger = undefined;
     }
   }
 
