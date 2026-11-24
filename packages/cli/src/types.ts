@@ -91,6 +91,8 @@ export interface GenerateSchematicOptions {
   readonly specFileSuffix?: string;
   readonly language?: string;
   readonly collection?: string;
+  readonly skipImport?: boolean;
+  readonly module?: string;
   readonly cwd?: string;
   readonly flat?: boolean;
   readonly spec?: boolean;

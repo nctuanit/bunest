@@ -232,8 +232,7 @@ describeConformance(
       "Bunest is Bun-only native TypeScript with no JavaScript template variant",
     );
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/app.module.ts providers array (missing module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -253,8 +252,7 @@ describeConformance(
       expect(appModule).toContain("providers: [AppService, Foo]");
     });
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/foo/foo.module.ts providers array (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in foo module", async () => {
+    it("should manage declaration in foo module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -325,8 +323,7 @@ describeConformance(
       ).toBeDefined();
     });
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/app.module.ts providers array for ESM projects (missing module declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

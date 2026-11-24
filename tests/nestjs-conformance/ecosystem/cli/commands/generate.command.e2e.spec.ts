@@ -96,8 +96,7 @@ describeConformance(
         ).toContain("export class UsersController");
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated controllers (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated controller", async () => {
+      it("should update app.module.ts to import the generated controller", async () => {
         await runGen(["generate", "controller", "users"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("UsersController");
@@ -164,8 +163,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated services (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated service", async () => {
+      it("should update app.module.ts to import the generated service", async () => {
         await runGen(["generate", "service", "auth"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("AuthService");
@@ -200,8 +198,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to import generated modules (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated module", async () => {
+      it("should update app.module.ts to import the generated module", async () => {
         await runGen(["generate", "module", "payments"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("PaymentsModule");
@@ -441,8 +438,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: runCli generate only reads positionals[0] (<schematic>) and positionals[1] (<name>) and ignores the 3rd positional `[path]` argument (`generate controller health modules/health`) (packages/cli/src/runner.ts)
-      it.skip("should generate into a custom path passed as 3rd positional argument", async () => {
+      it("should generate into a custom path passed as 3rd positional argument", async () => {
         const res = await runGen([
           "generate",
           "controller",

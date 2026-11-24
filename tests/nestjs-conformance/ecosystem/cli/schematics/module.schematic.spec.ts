@@ -256,8 +256,7 @@ describeConformance(
       "Bunest is Bun-only native TypeScript with no JavaScript template variant",
     );
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-import generated modules into parent src/app.module.ts (missing AST module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -278,8 +277,7 @@ describeConformance(
       expect(appModule).toContain("imports: [FooModule]");
     });
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-import nested child modules into nearest parent module src/bar/bar.module.ts (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in bar module", async () => {
+    it("should manage declaration in bar module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -305,8 +303,7 @@ describeConformance(
       expect(barModule).toContain("imports: [FooModule]");
     });
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-declare FooModule in src/app.module.ts for ESM projects (missing module declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

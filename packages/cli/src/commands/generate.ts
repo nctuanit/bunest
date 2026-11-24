@@ -14,6 +14,10 @@ import type {
   SchematicType,
 } from "../types";
 import { writePlannedFiles } from "../utils/fs-writer";
+import {
+  declareInNearestModule,
+  getModuleDeclarationTarget,
+} from "../utils/module-declarator";
 import { parseSchematicName } from "../utils/naming";
 
 const WORKSPACE_ROOT_SCHEMATICS = new Set<SchematicType>([
@@ -100,6 +104,27 @@ export async function generateSchematic(
     dryRun,
     force,
   });
+
+  if (!dryRun && !options.skipImport) {
+    const declTarget = getModuleDeclarationTarget(schematic, parsedName);
+    if (declTarget) {
+      const primaryFile = files.find((f) =>
+        f.relativePath.endsWith(declTarget.fileSuffix),
+      );
+      if (primaryFile) {
+        const updatedModule = await declareInNearestModule({
+          schematic,
+          parsedName,
+          generatedFilePath: primaryFile.path,
+          rootBoundary: cwd,
+          explicitModule: options.module,
+        });
+        if (updatedModule && io) {
+          io.stdout(`  UPDATE ${updatedModule}`);
+        }
+      }
+    }
+  }
 
   if (io) {
     for (const file of files) {

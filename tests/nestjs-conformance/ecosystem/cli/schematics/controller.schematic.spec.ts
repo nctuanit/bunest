@@ -250,8 +250,7 @@ describeConformance(
       "Bunest targets TypeScript natively on Bun without JS output templates",
     );
 
-    // BUNEST_BUG: generateSchematic("controller") in packages/cli/src/commands/generate.ts does not auto-register generated controllers in src/app.module.ts (and GenerateSchematicOptions lacks skipImport/module options).
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",
@@ -274,8 +273,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: generateSchematic("controller") in packages/cli/src/commands/generate.ts does not locate and update the nearest module (src/foo/foo.module.ts) to import and declare FooController in controllers[].
-    it.skip("should manage declaration in foo module", async () => {
+    it("should manage declaration in foo module", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",
@@ -337,8 +335,7 @@ describeConformance(
       expect(existsSyncPath(join(tempDir, "foo.controller.test.ts"))).toBe(true);
     });
 
-    // BUNEST_BUG: generateSchematic("controller") in packages/cli/src/commands/generate.ts does not auto-register FooController into src/app.module.ts for ESM projects.
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",
@@ -355,8 +352,7 @@ describeConformance(
       expect(appModule).toContain("FooController");
     });
 
-    // BUNEST_BUG: generateSchematic("controller") in packages/cli/src/commands/generate.ts does not auto-register FooController into src/foo/foo.module.ts for ESM projects.
-    it.skip("should manage declaration in foo module for ESM projects", async () => {
+    it("should manage declaration in foo module for ESM projects", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",

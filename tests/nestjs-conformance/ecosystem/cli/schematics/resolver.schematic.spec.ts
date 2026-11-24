@@ -281,8 +281,7 @@ describeConformance(
       ).toBeDefined();
     });
 
-    // BUNEST_BUG: generateSchematic("resolver", ...) does not auto-register FooResolver in src/app.module.ts providers array (missing module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

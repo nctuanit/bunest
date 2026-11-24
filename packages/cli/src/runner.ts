@@ -286,7 +286,12 @@ export async function runCli(
         const isConfigSchematic =
           schematic !== undefined &&
           ["config", "configuration"].includes(schematic.trim().toLowerCase());
-        const name = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const baseName = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const extraPath = positionals[2]?.trim();
+        const name =
+          baseName && extraPath
+            ? `${extraPath.replace(/\/+$/, "")}/${baseName}`
+            : baseName;
 
         if (!schematic || !name) {
           io.stderr(
@@ -302,6 +307,14 @@ export async function runCli(
             : specFlag !== undefined
               ? specFlag
               : undefined;
+        const flatFlag = getBoolFlag(flags, "flat");
+        const noFlatFlag = getBoolFlag(flags, "no-flat");
+        const flat =
+          noFlatFlag === true
+            ? false
+            : flatFlag !== undefined
+              ? flatFlag
+              : undefined;
 
         const result = await generateSchematic(
           {
@@ -312,8 +325,12 @@ export async function runCli(
             project: getStringFlag(flags, "project"),
             config: getStringFlag(flags, "config"),
             specFileSuffix: getStringFlag(flags, "spec-file-suffix"),
+            language: getStringFlag(flags, "language"),
+            collection: getStringFlag(flags, "collection"),
+            skipImport: getBoolFlag(flags, "skip-import"),
+            module: getStringFlag(flags, "module"),
             cwd: io.cwd,
-            flat: getBoolFlag(flags, "flat"),
+            flat,
             spec,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             force: getBoolFlag(flags, "force") ?? false,

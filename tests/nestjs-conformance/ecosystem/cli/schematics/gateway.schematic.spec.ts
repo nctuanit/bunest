@@ -254,8 +254,7 @@ describeConformance(
       expect(existsSyncPath(join(tempDir, "foo.gateway.test.ts"))).toBe(true);
     });
 
-    // BUNEST_BUG: generateSchematic("gateway") in packages/cli/src/commands/generate.ts does not auto-register FooGateway in src/app.module.ts providers[] (note: per ADR-001/ADR-002, Bunest ESM uses extensionless imports).
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",
