@@ -96,6 +96,9 @@ export interface BuildSchematicOptions {
   readonly specFileSuffix?: string;
   readonly language?: string;
   readonly collection?: string;
+  readonly strict?: boolean;
+  readonly minimal?: boolean;
+  readonly packageName?: string;
 }
 
 function normalizeSpecFileSuffix(raw?: string): string {
@@ -586,7 +589,13 @@ describe("${pascal}Controller", () => {
 
     case "application": {
       const appFolder = flat ? subDir : joinRel(subDir, kebab);
-      const templateFiles = buildProjectTemplateFiles(kebab);
+      const pkgName = options.packageName ?? kebab;
+      const templateFiles = buildProjectTemplateFiles(pkgName, {
+        strict: options.strict,
+        spec,
+        specFileSuffix: specSuffix,
+        minimal: options.minimal,
+      });
       for (const f of templateFiles) {
         files.push({
           relativePath: joinRel(appFolder, f.relativePath),

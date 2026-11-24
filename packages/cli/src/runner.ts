@@ -231,7 +231,7 @@ export async function runCli(
         const result = await createProject(
           {
             projectName,
-            dir: getStringFlag(flags, "dir"),
+            dir: getStringFlag(flags, "dir") ?? getStringFlag(flags, "directory"),
             cwd: io.cwd,
             strict,
             skipGit: getBoolFlag(flags, "skip-git"),

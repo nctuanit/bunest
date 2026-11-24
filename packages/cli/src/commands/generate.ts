@@ -1,4 +1,4 @@
-import { resolve } from "@bunest/core";
+import { basename, existsSyncPath, join, resolve } from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveProjectConfiguration,
@@ -18,7 +18,107 @@ import {
   declareInNearestModule,
   getModuleDeclarationTarget,
 } from "../utils/module-declarator";
-import { parseSchematicName } from "../utils/naming";
+import {
+  parseSchematicName,
+  toCamelCase,
+  toKebabCase,
+  toPascalCase,
+  type ParsedSchematicName,
+} from "../utils/naming";
+
+const PRESERVABLE_APP_FILES = new Set(["README.md", ".gitignore"]);
+
+function normalizeAppSegment(segment: string): string {
+  const leadingUnderscores = /^_+/.exec(segment)?.[0] ?? "";
+  const rest = segment.slice(leadingUnderscores.length);
+  const normalizedRest = rest
+    .split(".")
+    .map((part) => toKebabCase(part))
+    .filter((part) => part.length > 0)
+    .join(".");
+  return `${leadingUnderscores}${normalizedRest}`;
+}
+
+function parseApplicationSchematicName(
+  input: string,
+  cwd: string,
+): {
+  readonly parsed: ParsedSchematicName;
+  readonly packageName: string;
+  readonly forceFlat?: boolean;
+} {
+  const trimmed = input.trim();
+  if (trimmed === ".") {
+    const folderName = basename(resolve(cwd)) || "bunest-app";
+    return {
+      parsed: {
+        subDir: "",
+        rawName: folderName,
+        kebab: folderName,
+        pascal: toPascalCase(folderName) || "App",
+        camel: toCamelCase(folderName) || "app",
+      },
+      packageName: folderName,
+      forceFlat: true,
+    };
+  }
+
+  if (trimmed.startsWith("@")) {
+    const slashIdx = trimmed.indexOf("/");
+    if (slashIdx === -1) {
+      throw new Error(`Invalid scoped application name "${input}".`);
+    }
+    const rawScope = trimmed.slice(0, slashIdx);
+    const rawPkg = trimmed.slice(slashIdx + 1);
+    const pkgKebab = normalizeAppSegment(rawPkg);
+    if (!pkgKebab) {
+      throw new Error(`Invalid scoped application name "${input}".`);
+    }
+    if (rawScope === "@") {
+      return {
+        parsed: {
+          subDir: "@",
+          rawName: rawPkg,
+          kebab: pkgKebab,
+          pascal: toPascalCase(rawPkg) || "App",
+          camel: toCamelCase(rawPkg) || "app",
+        },
+        packageName: pkgKebab,
+      };
+    }
+    const scopeBody = rawScope.slice(1);
+    const normScope = /^\s+$/.test(scopeBody)
+      ? "-"
+      : normalizeAppSegment(scopeBody);
+    const scopeDir = `@${normScope}`;
+    return {
+      parsed: {
+        subDir: scopeDir,
+        rawName: rawPkg,
+        kebab: pkgKebab,
+        pascal: toPascalCase(rawPkg) || "App",
+        camel: toCamelCase(rawPkg) || "app",
+      },
+      packageName: `${scopeDir}/${pkgKebab}`,
+    };
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return {
+      parsed: {
+        subDir: "",
+        rawName: trimmed,
+        kebab: trimmed,
+        pascal: `App${trimmed}`,
+        camel: `app${trimmed}`,
+      },
+      packageName: trimmed,
+    };
+  }
+
+  const parsed = parseSchematicName(trimmed);
+  return { parsed, packageName: parsed.kebab };
+}
 
 const WORKSPACE_ROOT_SCHEMATICS = new Set<SchematicType>([
   "configuration",
@@ -47,8 +147,12 @@ export async function generateSchematic(
   io?: CliIO,
 ): Promise<GenerateSchematicResult> {
   const schematic = resolveSchematicType(options.schematic);
-  const parsedName = parseSchematicName(options.name);
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
+  const appMeta =
+    schematic === "application"
+      ? parseApplicationSchematicName(options.name, cwd)
+      : undefined;
+  const parsedName = appMeta ? appMeta.parsed : parseSchematicName(options.name);
   const loadedConfig = await loadCliConfiguration(cwd, options.config);
   const { config } = loadedConfig;
   const project = resolveProjectConfiguration(config, options.project);
@@ -66,15 +170,24 @@ export async function generateSchematic(
       config.sourceRoot ??
       "src");
 
-  const targetDir = resolve(cwd, options.dir ?? defaultBaseDir);
+  const explicitDir = options.dir ?? options.directory;
+  const targetDir = resolve(cwd, explicitDir ?? defaultBaseDir);
   const configuredFlat =
     project?.generateOptions?.flat !== undefined
       ? project.generateOptions.flat
       : loadedConfig.found
         ? genOpts.flat
         : undefined;
+  const appDirFlat =
+    schematic === "application" &&
+    explicitDir !== undefined &&
+    options.flat === undefined
+      ? true
+      : undefined;
   const flat =
     options.flat ??
+    appMeta?.forceFlat ??
+    appDirFlat ??
     configuredFlat ??
     (io ? false : DEFAULT_FLAT_SCHEMATICS.has(schematic));
 
@@ -90,13 +203,29 @@ export async function generateSchematic(
   const dryRun = options.dryRun ?? false;
   const force = options.force ?? false;
 
-  const plannedFiles = buildSchematicFiles(schematic, parsedName, {
+  let plannedFiles = buildSchematicFiles(schematic, parsedName, {
     flat,
     spec,
     specFileSuffix,
     language: options.language,
     collection: options.collection,
+    strict: options.strict,
+    minimal: options.minimal,
+    packageName: appMeta?.packageName,
   });
+
+  if (schematic === "application" && !force && !dryRun) {
+    plannedFiles = plannedFiles.filter((file) => {
+      const base = basename(file.relativePath);
+      if (
+        PRESERVABLE_APP_FILES.has(base) &&
+        existsSyncPath(join(targetDir, file.relativePath))
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }
 
   const files = await writePlannedFiles({
     baseDir: targetDir,

@@ -85,12 +85,16 @@ export interface GenerateSchematicOptions {
   readonly schematic: string;
   readonly name: string;
   readonly dir?: string;
+  readonly directory?: string;
   readonly sourceRoot?: string;
   readonly project?: string;
   readonly config?: string;
   readonly specFileSuffix?: string;
   readonly language?: string;
   readonly collection?: string;
+  readonly strict?: boolean;
+  readonly packageManager?: string;
+  readonly minimal?: boolean;
   readonly skipImport?: boolean;
   readonly module?: string;
   readonly cwd?: string;
