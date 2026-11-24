@@ -71,8 +71,7 @@ describeConformance(
       "native Bun WS pre-upgrade authenticate hook",
     );
 
-    // BUNEST_BUG: BunWebSocketAdapter throws "Duplicate @WebSocketGateway() path" when two gateways share the same path instead of sharing one server configured with the first gateway's authenticate/verifyClient options (packages/core/src/ws/adapter/bun-ws.adapter.ts#L259-L263).
-    it.skip("should create the server with the options of the gateway declared first [ADR-001]", async () => {
+    it("should create the server with the options of the gateway declared first [ADR-001]", async () => {
       const testingModule = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],
         providers: [CheckedGateway, OtherGateway],
