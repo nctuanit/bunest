@@ -82,9 +82,58 @@ export function OnEvent(
  * that method without mutating parent metadata.
  */
 export function getOnEventMetadata(target: Function): OnEventMetadata[] {
-  return MetadataRegistry.getMergedMethodArray<OnEventMetadata>(
+  const fromClass = MetadataRegistry.getMergedMethodArray<OnEventMetadata>(
     ON_EVENT_METADATA,
     target,
     "methodName",
   );
+  const seenMethods = new Set<string | symbol>(
+    fromClass.map((entry) => entry.methodName),
+  );
+  const extra: OnEventMetadata[] = [];
+
+  let proto: object | null = target.prototype as object | null;
+  while (proto && proto !== Object.prototype) {
+    const keys: Array<string | symbol> = [
+      ...Object.getOwnPropertyNames(proto),
+      ...Object.getOwnPropertySymbols(proto),
+    ];
+    for (const key of keys) {
+      if (key === "constructor" || seenMethods.has(key)) {
+        continue;
+      }
+      const desc = Object.getOwnPropertyDescriptor(proto, key);
+      if (!desc || typeof desc.value !== "function") {
+        continue;
+      }
+      const raw = MetadataRegistry.get<
+        Partial<OnEventMetadata> | readonly Partial<OnEventMetadata>[]
+      >(EVENT_LISTENER_METADATA, desc.value);
+      if (!raw) {
+        continue;
+      }
+      seenMethods.add(key);
+      const items = Array.isArray(raw) ? raw : [raw];
+      for (const item of items) {
+        if (!item || item.event === undefined) {
+          continue;
+        }
+        const isArr = Array.isArray(item.event);
+        const events: readonly EventName[] =
+          item.events ??
+          (isArr
+            ? [...(item.event as readonly EventName[])]
+            : [item.event as EventName]);
+        extra.push({
+          event: item.event,
+          events,
+          methodName: key,
+          options: item.options ? { ...item.options } : {},
+        });
+      }
+    }
+    proto = Object.getPrototypeOf(proto) as object | null;
+  }
+
+  return extra.length > 0 ? [...fromClass, ...extra] : fromClass;
 }

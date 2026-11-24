@@ -229,8 +229,7 @@ describeConformance(
       expect(listener.calls).toEqual(["direct", "on-event"]);
     });
 
-    // BUNEST_BUG: Expected exact-match listener "user.login" (priority -5) to run before wildcard listener "user.*" (priority 100) matching eventemitter2 exact-before-wildcard semantics, but packages/messaging/src/events/event-emitter.service.ts getMatchingEntries() iterates listenerMap in priority-registration order, yielding ["wildcard", "exact"].
-    it.skip("does not order a wildcard listener against an exact event name", async () => {
+    it("does not order a wildcard listener against an exact event name", async () => {
       const { emitter, listener } = await init();
 
       emitter.emit("user.login");
