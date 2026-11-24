@@ -293,8 +293,7 @@ describeConformance(
       const execute = (query: string) =>
         request(app).post("/graphql").send({ query });
 
-      // BUNEST_BUG: Expected renamed @ArgsType/@InputType schema args (some_arg, inherited_arg, and) to be remapped back to TypeScript class property names (someArg, inheritedArg, $and); actual raw schema keys are passed unmapped in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should hand the resolver the property names declared by the args class", async () => {
+      it("should hand the resolver the property names declared by the args class", async () => {
         const res = await execute(`
           {
             getAnotherObject(
@@ -328,8 +327,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected nested @InputType renamed fields (and -> $and) of named @Args('filters') to be remapped; actual raw schema key "and" passed unmapped in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should map nested input types of a named argument as well", async () => {
+      it("should map nested input types of a named argument as well", async () => {
         const res = await execute(`
           {
             getByFilters(filters: { and: "d", nested: [{ and: "e" }] }) {
@@ -350,8 +348,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected @ResolveField @Args() with renamed @ArgsType field (some_arg -> someArg) to remap before invoking field resolver; actual args.someArg is undefined (resolvedField: null) in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should map the args of a field resolver too", async () => {
+      it("should map the args of a field resolver too", async () => {
         const res = await execute(`
           {
             getAnotherObject(some_arg: "a") {
@@ -366,8 +363,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected scalar/enum/list/null @ArgsType renamed fields (int_arg -> intArg, bool_arg -> boolArg, etc.) to be remapped; actual raw snake_case schema keys returned in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should map every scalar kind, falsy values and nulls included", async () => {
+      it("should map every scalar kind, falsy values and nulls included", async () => {
         const res = await execute(`
           {
             scalars(
@@ -396,8 +392,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected renamed @InputType property (and -> $and) to be remapped before ValidationPipe runs so valid input { and: "ok" } passes @MinLength(2) on $and; actual ValidationPipe receives { and: "ok" } with $and undefined and fails validation in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should run before the user pipes, so validation sees the class properties", async () => {
+      it("should run before the user pipes, so validation sees the class properties", async () => {
         const valid = await execute(`
           {
             validate(input: { and: "ok" }) {
@@ -423,8 +418,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Expected chained rename (a -> b, b -> c) to produce { b: "one", c: "two" }; actual raw { a: "one", b: "two" } passed unmapped in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should not let a chained rename overwrite another property", async () => {
+      it("should not let a chained rename overwrite another property", async () => {
         const res = await execute(`
           {
             chained(input: { a: "one", b: "two" })
@@ -437,8 +431,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected list-typed @InputType argument ([FiltersInput]) elements to remap { and } -> { $and }; actual [["and"],["and"]] in packages/graphql/src/schema/graphql-schema.factory.ts (createResolverFn).
-      it.skip("should map a list-typed named argument", async () => {
+      it("should map a list-typed named argument", async () => {
         const res = await execute(`
           {
             listOfFilters(filters: [{ and: "d" }, { and: "e" }])
@@ -479,8 +472,7 @@ describeConformance(
       const execute = (query: string) =>
         request(app).post("/graphql").send({ query });
 
-      // BUNEST_BUG: Expected global ValidationPipe registered via app.useGlobalPipes() to run after renamed-arg mapping (keys: ["$and"]); actual keys: ["and"] because packages/graphql/src/schema/graphql-schema.factory.ts does not remap renamed args AND packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) does not wire app.useGlobalPipes() / ApplicationConfig global pipes into GraphQLSchemaFactory.
-      it.skip("should map the args before a global ValidationPipe validates them", async () => {
+      it("should map the args before a global ValidationPipe validates them", async () => {
         const res = await execute(`
           {
             validateGlobally(input: { and: "ok" }) {
@@ -537,8 +529,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected @Subscription filter & resolve callbacks to receive mapped property names ({ some_arg: "a", someArg: "a" }) so payload "b" is filtered out and payload "a" is delivered; actual raw { some_arg: "a" } leaves variables.someArg undefined and lets payload "b" through in packages/graphql/src/schema/graphql-schema.factory.ts (createSubscriptionField).
-      it.skip('should hand the "filter" and "resolve" callbacks the property names too', async () => {
+      it('should hand the "filter" and "resolve" callbacks the property names too', async () => {
         const { schema } = app.get(GraphQLSchemaHost);
         const stream = (await subscribe({
           schema,

@@ -1,9 +1,15 @@
 import {
   APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_PIPE,
+  ApplicationConfig,
   type ExceptionFilterLike,
+  type GuardLike,
   HttpException,
   Inject,
   Injectable,
+  type InterceptorLike,
   Logger,
   type LoggerService,
   MetadataRegistry,
@@ -11,6 +17,7 @@ import {
   type OnApplicationShutdown,
   type OnModuleDestroy,
   Optional,
+  type PipeLike,
   type ResponseContext,
   type Type,
 } from "@bunest/core";
@@ -250,7 +257,24 @@ export class GraphQLService
     }
 
     const globalFilters: ExceptionFilterLike[] = [];
+    const globalPipes: PipeLike[] = [];
+    const globalGuards: GuardLike[] = [];
+    const globalInterceptors: InterceptorLike[] = [];
+
     if (this.moduleRef) {
+      try {
+        const appConfig = this.moduleRef.get(ApplicationConfig, {
+          strict: false,
+        });
+        if (appConfig) {
+          globalPipes.push(...appConfig.getGlobalPipes());
+          globalGuards.push(...appConfig.getGlobalGuards());
+          globalInterceptors.push(...appConfig.getGlobalInterceptors());
+          globalFilters.push(...appConfig.getGlobalFilters());
+        }
+      } catch {
+        // ApplicationConfig not registered (standalone testing module)
+      }
       try {
         const diFilters = this.moduleRef.get<
           ExceptionFilterLike,
@@ -261,6 +285,39 @@ export class GraphQLService
         }
       } catch {
         // No APP_FILTER multi-providers registered
+      }
+      try {
+        const diPipes = this.moduleRef.get<PipeLike, PipeLike>(APP_PIPE, {
+          strict: false,
+          each: true,
+        });
+        if (Array.isArray(diPipes)) {
+          globalPipes.push(...diPipes);
+        }
+      } catch {
+        // No APP_PIPE multi-providers registered
+      }
+      try {
+        const diGuards = this.moduleRef.get<GuardLike, GuardLike>(APP_GUARD, {
+          strict: false,
+          each: true,
+        });
+        if (Array.isArray(diGuards)) {
+          globalGuards.push(...diGuards);
+        }
+      } catch {
+        // No APP_GUARD multi-providers registered
+      }
+      try {
+        const diInterceptors = this.moduleRef.get<
+          InterceptorLike,
+          InterceptorLike
+        >(APP_INTERCEPTOR, { strict: false, each: true });
+        if (Array.isArray(diInterceptors)) {
+          globalInterceptors.push(...diInterceptors);
+        }
+      } catch {
+        // No APP_INTERCEPTOR multi-providers registered
       }
     }
 
@@ -281,6 +338,11 @@ export class GraphQLService
         return new cls();
       },
       globalFilters,
+      {
+        pipes: globalPipes,
+        guards: globalGuards,
+        interceptors: globalInterceptors,
+      },
     );
 
     const builtSchema = await factory.create(resolverInstances, this.options);

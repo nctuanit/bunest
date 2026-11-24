@@ -284,6 +284,94 @@ function resolveAutoSchemaFilePath(
   return undefined;
 }
 
+function remapInputValue(
+  value: unknown,
+  rawType: unknown,
+  keepOriginalKeys = false,
+): unknown {
+  if (value === null || value === undefined || rawType === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(rawType)) {
+    if (!Array.isArray(value)) {
+      return value;
+    }
+    const innerType = rawType[0];
+    return value.map((item) =>
+      remapInputValue(item, innerType, keepOriginalKeys),
+    );
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof rawType !== "function") {
+    return value;
+  }
+
+  const fields = getGraphQLFields(rawType);
+  if (fields.length === 0) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  const schemaNameToField = new Map<string, (typeof fields)[number]>();
+  for (const f of fields) {
+    schemaNameToField.set(f.name ?? f.propertyKey, f);
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(record)) {
+    if (keepOriginalKeys || !schemaNameToField.has(key)) {
+      result[key] = record[key];
+    }
+  }
+  for (const [schemaName, field] of schemaNameToField) {
+    if (Object.prototype.hasOwnProperty.call(record, schemaName)) {
+      const fieldRawType = field.typeFn ? field.typeFn() : field.designType;
+      result[field.propertyKey] = remapInputValue(
+        record[schemaName],
+        fieldRawType,
+        keepOriginalKeys,
+      );
+    }
+  }
+
+  return result;
+}
+
+function remapSubscriptionArgs(
+  args: Record<string, unknown>,
+  params: readonly GqlParamMetadata[],
+): Record<string, unknown> {
+  if (!args || params.length === 0) return args;
+  let mapped: Record<string, unknown> = { ...args };
+  for (const param of params) {
+    if (param.source !== "args") continue;
+    const rawType = param.typeFn ? param.typeFn() : param.metatype;
+    if (param.key !== undefined) {
+      if (Object.prototype.hasOwnProperty.call(mapped, param.key)) {
+        mapped[param.key] = remapInputValue(mapped[param.key], rawType, true);
+      }
+    } else {
+      mapped = remapInputValue(mapped, rawType, true) as Record<
+        string,
+        unknown
+      >;
+    }
+  }
+  return mapped;
+}
+
+export interface GqlGlobalEnhancers {
+  readonly pipes?: readonly PipeLike[];
+  readonly guards?: readonly GuardLike[];
+  readonly interceptors?: readonly InterceptorLike[];
+  readonly filters?: readonly ExceptionFilterLike[];
+}
+
 /**
  * Compiles code-first (`@ObjectType`, `@InterfaceType`, `createUnionType`,
  * `@InputType`, `@ArgsType`, `@Resolver`, `@Query`, `@Mutation`, `@Subscription`,
@@ -307,6 +395,9 @@ export class GraphQLSchemaFactory {
     }>
   >();
   private activeGlobalFilters: readonly ExceptionFilterLike[] = [];
+  private activeGlobalPipes: readonly PipeLike[] = [];
+  private activeGlobalGuards: readonly GuardLike[] = [];
+  private activeGlobalInterceptors: readonly InterceptorLike[] = [];
   private activeBuildSchemaOptions: BuildSchemaOptions = {};
   private activeFieldResolverEnhancers?: readonly Enhancer[];
   private readonly typesLoader = new GraphQLTypesLoader();
@@ -316,6 +407,8 @@ export class GraphQLSchemaFactory {
     private readonly resolveEnhancer: GqlEnhancerResolverFn = defaultEnhancerResolver,
     @Optional()
     private readonly defaultGlobalFilters: readonly ExceptionFilterLike[] = [],
+    @Optional()
+    private readonly defaultGlobalEnhancers: GqlGlobalEnhancers = {},
   ) {}
 
   async create(
@@ -334,7 +427,13 @@ export class GraphQLSchemaFactory {
     this.activeGlobalFilters = [
       ...(options.filters ?? []),
       ...this.defaultGlobalFilters,
+      ...(this.defaultGlobalEnhancers.filters ?? []),
       ...globalFilters,
+    ];
+    this.activeGlobalPipes = [...(this.defaultGlobalEnhancers.pipes ?? [])];
+    this.activeGlobalGuards = [...(this.defaultGlobalEnhancers.guards ?? [])];
+    this.activeGlobalInterceptors = [
+      ...(this.defaultGlobalEnhancers.interceptors ?? []),
     ];
     this.activeBuildSchemaOptions = options.buildSchemaOptions ?? {};
     this.activeFieldResolverEnhancers = options.fieldResolverEnhancers;
@@ -435,17 +534,33 @@ export class GraphQLSchemaFactory {
       : [];
 
     const guards: CanActivate[] = [];
-    for (const g of [...classGuards, ...methodGuards]) {
-      guards.push(await this.resolveEnhancer<CanActivate>(g));
+    if (enableGuards) {
+      for (const g of [
+        ...this.activeGlobalGuards,
+        ...classGuards,
+        ...methodGuards,
+      ]) {
+        guards.push(await this.resolveEnhancer<CanActivate>(g));
+      }
     }
 
     const interceptors: BunestInterceptor[] = [];
-    for (const ic of [...classInterceptors, ...methodInterceptors]) {
-      interceptors.push(await this.resolveEnhancer<BunestInterceptor>(ic));
+    if (enableInterceptors) {
+      for (const ic of [
+        ...this.activeGlobalInterceptors,
+        ...classInterceptors,
+        ...methodInterceptors,
+      ]) {
+        interceptors.push(await this.resolveEnhancer<BunestInterceptor>(ic));
+      }
     }
 
     const sharedPipes: PipeTransform[] = [];
-    for (const p of [...classPipes, ...methodPipes]) {
+    for (const p of [
+      ...this.activeGlobalPipes,
+      ...classPipes,
+      ...methodPipes,
+    ]) {
       sharedPipes.push(await this.resolveEnhancer<PipeTransform>(p));
     }
 
@@ -547,8 +662,11 @@ export class GraphQLSchemaFactory {
               }
 
               // `args` source
+              const rawArgType = param.typeFn ? param.typeFn() : param.metatype;
               let value =
-                param.key !== undefined ? argsObj[param.key] : { ...argsObj };
+                param.key !== undefined
+                  ? remapInputValue(argsObj[param.key], rawArgType)
+                  : remapInputValue({ ...argsObj }, rawArgType);
 
               const argMeta: ArgumentMetadata = {
                 type: "body",
@@ -672,7 +790,12 @@ export class GraphQLSchemaFactory {
             if (step.done) {
               return { value: undefined, done: true };
             }
-            const ok = await filterFn(step.value, args, contextValue, info);
+            const ok = await filterFn(
+              step.value,
+              remapSubscriptionArgs(args, compiled.params),
+              contextValue,
+              info,
+            );
             if (ok) {
               return { value: step.value, done: false };
             }
@@ -704,7 +827,13 @@ export class GraphQLSchemaFactory {
           args: Record<string, unknown>,
           contextValue: Record<string, unknown>,
           info: GraphQLResolveInfo,
-        ) => op.resolve!(payload, args, contextValue, info)
+        ) =>
+          op.resolve!(
+            payload,
+            remapSubscriptionArgs(args, compiled.params),
+            contextValue,
+            info,
+          )
       : (payload: unknown) => {
           if (
             payload !== null &&
