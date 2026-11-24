@@ -78,8 +78,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts) expands @ArgsType() fields without forwarding @Extensions() metadata (getGraphQLExtensions), leaving `includeDeleted.extensions` as `{}` instead of `{ role: "admin" }`.
-    it.skip("should keep the extensions of the arguments in the federated schema", () => {
+    it("should keep the extensions of the arguments in the federated schema", () => {
       const { schema } = app.get(GraphQLSchemaHost);
       const invoice = schema.getType("Invoice") as GraphQLObjectType;
       const queryType = schema.getQueryType()!;

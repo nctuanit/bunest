@@ -117,8 +117,7 @@ describeConformance(
       ["ClassifiedDocument", ClassifiedDocument, "redacted"],
       ["TopSecretDocument", TopSecretDocument, "redacted"],
     ] as const) {
-      // BUNEST_BUG: Expected ClassifiedDocument (extending @ObjectType({ implements: () => [Node] }) Document) to inherit Node interface implementation and resolve interface values to their most derived class, but GraphQL validation fails with 'Fragment cannot be spread here as objects of type "Node" can never be of type "ClassifiedDocument"'; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateObjectType:1021-1024 & resolveDefaultConcreteTypeName:825-829) and packages/graphql/src/decorators/type.decorators.ts (getInterfaceImplementors:58-72) do not inherit implements from parent @ObjectType() classes and return first instanceof match instead of most derived class.
-      it.skip(`should resolve an interface value to its most derived class (${typename})`, async () => {
+      it(`should resolve an interface value to its most derived class (${typename})`, async () => {
         resolver.nodeValue = create(type);
         const result = await graphql({
           schema,
@@ -132,8 +131,7 @@ describeConformance(
       });
     }
 
-    // BUNEST_BUG: Expected ParentFirst union containing [Document, ClassifiedDocument] to resolve new ClassifiedDocument() to 'ClassifiedDocument' with content 'redacted', got 'Document' with content 'secret'; packages/graphql/src/schema/graphql-schema.factory.ts (resolveDefaultConcreteTypeName:825-829) picks the first candidate passing instanceof instead of the most derived class.
-    it.skip("should resolve a union value to its most derived class", async () => {
+    it("should resolve a union value to its most derived class", async () => {
       resolver.parentFirstValue = create(ClassifiedDocument);
       const result = await graphql({
         schema,
@@ -152,8 +150,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Expected DraftDocument (not in schema) to fall back to Document when queried via Node interface, but query fails GraphQL validation because ClassifiedDocument does not inherit implements Node; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateObjectType:1021-1024) and packages/graphql/src/decorators/type.decorators.ts (getInterfaceImplementors:58-72).
-    it.skip("should fall back to a class in the schema for a class outside it", async () => {
+    it("should fall back to a class in the schema for a class outside it", async () => {
       expect(schema.getType("DraftDocument")).toBeUndefined();
 
       resolver.nodeValue = create(DraftDocument);

@@ -154,8 +154,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Expected PrivateFile and StoredFile to preserve PrivateNode.owner description/extensions/middleware, but schemaFactory.create throws 'Schema must contain uniquely named types but contains multiple types named "PrivateFile"'; packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf:791 & getOrCreateInterfaceType:850) uses prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn, misclassifying @ObjectType StoredFile extends @InterfaceType PrivateFile as a duplicate interface named "PrivateFile" (and getOrCreateInterfaceType omits field extensions).
-    it.skip("should keep the interface type parent declaration", async () => {
+    it("should keep the interface type parent declaration", async () => {
       const schema = await schemaFactory.create(
         [new AccountsResolver(), new StoredFileResolver()],
         { orphanedTypes: [PrivateFile] },

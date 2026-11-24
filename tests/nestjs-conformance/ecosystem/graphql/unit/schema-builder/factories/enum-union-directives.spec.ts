@@ -84,8 +84,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: registerEnumType (packages/graphql/src/decorators/type.decorators.ts:114-118) ignores `options.directives` when creating GraphQLEnumType, leaving `enumType.astNode` undefined (expected ["tag"], actual []).
-    it.skip("should attach directives to the generated enum type", async () => {
+    it("should attach directives to the generated enum type", async () => {
       const schema = await schemaFactory.create([new MediaResolver()]);
 
       const enumType = schema.getType("MovieGenre") as GraphQLEnumType;
@@ -96,8 +95,7 @@ describeConformance(
       expect(directiveNames).toContain("tag");
     });
 
-    // BUNEST_BUG: registerEnumType (packages/graphql/src/decorators/type.decorators.ts:102-111) does not support `valuesMap[key].directives` or populate `astNode.directives` on enum values (expected ["tag"], actual []).
-    it.skip("should attach directives to individual enum values", async () => {
+    it("should attach directives to individual enum values", async () => {
       const schema = await schemaFactory.create([new MediaResolver()]);
 
       const enumType = schema.getType("MovieGenre") as GraphQLEnumType;
@@ -112,8 +110,7 @@ describeConformance(
       expect(comedyValue!.astNode).toBeUndefined();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateUnionType (packages/graphql/src/schema/graphql-schema.factory.ts:906-921) ignores `ref.directives` when creating GraphQLUnionType, leaving `unionType.astNode` undefined (expected ["tag"], actual []).
-    it.skip("should attach directives to the generated union type", async () => {
+    it("should attach directives to the generated union type", async () => {
       const schema = await schemaFactory.create([new MediaResolver()]);
 
       const unionType = schema.getType("Media") as GraphQLUnionType;

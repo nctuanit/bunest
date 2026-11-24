@@ -179,8 +179,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: GqlSubscriptionService in packages/graphql/src/services/gql-subscription.service.ts (lines 44-48) ignores `options["graphql-ws"].server.options.path`, falling back to driver `options.path` ("/graphql") instead of "/subscriptions".
-      it.skip("should use custom WebSocketServer instance path when provided", () => {
+      it("should use custom WebSocketServer instance path when provided", () => {
         const customWss = createCustomWsServer({
           noServer: true,
           path: "/subscriptions",
@@ -201,8 +200,7 @@ describeConformance(
         expect(mockAdapter.registrations.has("/subscriptions")).toBe(true);
       });
 
-      // BUNEST_BUG: GqlSubscriptionService in packages/graphql/src/services/gql-subscription.service.ts (lines 37-50) does not validate that a custom `server` passed to `"graphql-ws"` has `options.noServer === true` and does not throw when `noServer: false`.
-      it.skip("should throw an error if custom server is not instantiated with noServer: true", () => {
+      it("should throw an error if custom server is not instantiated with noServer: true", () => {
         const invalidWss = createCustomWsServer({
           noServer: false,
           path: "/custom",
@@ -280,8 +278,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: GqlSubscriptionService in packages/graphql/src/services/gql-subscription.service.ts (lines 44-48) ignores `wsConfig.server?.options?.path` and registers under driver default `options.path` ("/graphql") instead of "/subscriptions".
-      it.skip("should prioritize custom server path over driver default path", () => {
+      it("should prioritize custom server path over driver default path", () => {
         const customWss = createCustomWsServer({
           noServer: true,
           path: "/subscriptions",
@@ -345,8 +342,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: GqlSubscriptionService in packages/graphql/src/services/gql-subscription.service.ts (line 48) unconditionally defaults `path` to "/graphql" when neither `wsConfig.path`, `wsConfig.server.options.path`, nor `options.path` is set, instead of failing closed.
-      it.skip("should fail closed and not handle upgrade if no path resolves", () => {
+      it("should fail closed and not handle upgrade if no path resolves", () => {
         const customWss = createCustomWsServer({ noServer: true });
 
         const options: GqlSubscriptionServiceOptions = {
@@ -602,8 +598,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: GqlSubscriptionService.initialize() in packages/graphql/src/services/gql-subscription.service.ts (lines 150-164) unconditionally registers a WebSocket handler on BunHttpAdapter even when `options["graphql-ws"]` is undefined or false.
-      it.skip("should not take over upgrades when graphql-ws is not enabled", () => {
+      it("should not take over upgrades when graphql-ws is not enabled", () => {
         const configs: GqlSubscriptionServiceOptions[] = [
           { schema: sampleSchema, path: "/graphql" },
           { schema: sampleSchema, path: "/graphql", "graphql-ws": false },

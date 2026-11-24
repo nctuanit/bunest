@@ -77,30 +77,26 @@ describeConformance(
       schema = await schemaFactory.create([new CategoryResolver()]);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts:1170,1221) does not translate enum key string defaultValue ("BOOKS") to the enum member value ("books"), causing printSchema(schema) to throw GraphQLError: Enum "Category" cannot represent value: "BOOKS".
-    it.skip("should emit the enum key when defaultValue is passed as the enum key string", () => {
+    it("should emit the enum key when defaultValue is passed as the enum key string", () => {
       const printed = printSchema(schema);
       expect(printed).toContain(
         "getCategory(category: Category! = BOOKS): String!",
       );
     });
 
-    // BUNEST_BUG: printSchema(schema) throws GraphQLError: Enum "Category" cannot represent value: "BOOKS" because GraphQLSchemaFactory (packages/graphql/src/schema/graphql-schema.factory.ts:1170,1221) fails to translate the sibling enum key defaultValue ("BOOKS") on the same schema.
-    it.skip("should emit the enum key when defaultValue is passed as the actual enum value", () => {
+    it("should emit the enum key when defaultValue is passed as the actual enum value", () => {
       const printed = printSchema(schema);
       expect(printed).toContain(
         "getCategoryAlreadyValue(category: Category! = MOVIES): String!",
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInputType (packages/graphql/src/schema/graphql-schema.factory.ts:1170) does not translate enum key string defaultValue ("BOOKS") on @InputType() fields to the enum member value ("books"), causing printSchema(schema) to throw.
-    it.skip("should translate enum key default values on input object fields", () => {
+    it("should translate enum key default values on input object fields", () => {
       const printed = printSchema(schema);
       expect(printed).toContain("category: Category! = BOOKS");
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1221) stores raw enum key "BOOKS" instead of resolved enum value Category.BOOKS ("books") on GraphQLArgument.defaultValue.
-    it.skip("should store the resolved enum value on the generated GraphQLEnumType", () => {
+    it("should store the resolved enum value on the generated GraphQLEnumType", () => {
       const queryType = schema.getQueryType();
       const fields = queryType!.getFields();
       const categoryArg = fields.getCategory!.args.find(

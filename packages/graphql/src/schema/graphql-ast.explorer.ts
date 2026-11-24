@@ -55,10 +55,13 @@ export class GraphQLAstExplorer {
     mode: "class" | "interface",
     options: DefinitionsGeneratorOptions = {},
   ): Promise<GeneratedSourceFile> {
-    const blocks: string[] = [DEFINITIONS_FILE_HEADER.trimStart()];
-    if (options.additionalHeader) {
-      blocks.push(options.additionalHeader);
-    }
+    const enumBlocks: string[] = [];
+    const inputBlocks: string[] = [];
+    const objectBlocks: string[] = [];
+    const rootBlocks: string[] = [];
+    const scalarAliasBlocks: string[] = [];
+    const otherAliasBlocks: string[] = [];
+    const schemaBlocks: string[] = [];
 
     for (const def of documentNode.definitions) {
       if (def.kind === Kind.SCHEMA_DEFINITION) {
@@ -66,7 +69,7 @@ export class GraphQLAstExplorer {
           def.operationTypes,
           mode,
         );
-        if (s.code) blocks.push(s.code);
+        if (s.code) schemaBlocks.push(s.code);
         continue;
       }
       if (
@@ -84,12 +87,63 @@ export class GraphQLAstExplorer {
         def.kind === Kind.UNION_TYPE_EXTENSION
       ) {
         const s = this.toDefinitionStructures(def, mode, options);
-        if (s.code) blocks.push(s.code);
+        if (!s.code) continue;
+        if (s.kind === "enum") {
+          enumBlocks.push(s.code);
+        } else if (s.kind === "type") {
+          if (
+            def.kind === Kind.SCALAR_TYPE_DEFINITION ||
+            def.kind === Kind.SCALAR_TYPE_EXTENSION
+          ) {
+            scalarAliasBlocks.push(s.code);
+          } else {
+            otherAliasBlocks.push(s.code);
+          }
+        } else if (
+          def.kind === Kind.INPUT_OBJECT_TYPE_DEFINITION ||
+          def.kind === Kind.INPUT_OBJECT_TYPE_EXTENSION
+        ) {
+          inputBlocks.push(s.code);
+        } else if (
+          (def.kind === Kind.OBJECT_TYPE_DEFINITION ||
+            def.kind === Kind.OBJECT_TYPE_EXTENSION) &&
+          (def.name.value === "Query" ||
+            def.name.value === "Mutation" ||
+            def.name.value === "Subscription")
+        ) {
+          rootBlocks.push(s.code);
+        } else {
+          objectBlocks.push(s.code);
+        }
       }
     }
 
-    blocks.push("type Nullable<T> = T | null;");
-    const fullText = `${blocks.join("\n\n")}\n`;
+    const bodySections = [
+      ...enumBlocks,
+      ...inputBlocks,
+      ...schemaBlocks,
+      ...objectBlocks,
+      ...rootBlocks,
+    ];
+    const trailingAliases = [
+      ...scalarAliasBlocks,
+      ...otherAliasBlocks,
+      "type Nullable<T> = T | null;",
+    ];
+    let fullText: string;
+    if (bodySections.length === 0) {
+      const top = options.additionalHeader
+        ? `${DEFINITIONS_FILE_HEADER}\n\n${options.additionalHeader}`
+        : DEFINITIONS_FILE_HEADER;
+      fullText = `${top}\n${trailingAliases.join("\n")}\n`;
+    } else {
+      const sections: string[] = [DEFINITIONS_FILE_HEADER];
+      if (options.additionalHeader) {
+        sections.push(options.additionalHeader);
+      }
+      sections.push(...bodySections, trailingAliases.join("\n"));
+      fullText = `${sections.join("\n\n")}\n`;
+    }
     const fsHelper = this.fsHelper;
 
     return {
@@ -201,17 +255,13 @@ export class GraphQLAstExplorer {
     }
 
     const bodyLines: string[] = [];
-    if (options.emitTypenameField && isObjectNode && !isRootType) {
+    if (options.emitTypenameField && isObjectNode) {
       bodyLines.push(`    __typename?: '${rawName}';`);
     }
 
     const fields = item.fields ?? [];
     for (const field of fields) {
-      const hasArgs =
-        field.kind === Kind.FIELD_DEFINITION &&
-        field.arguments &&
-        field.arguments.length > 0;
-      if ((isRootType || hasArgs) && !options.skipResolverArgs) {
+      if (isRootType && !options.skipResolverArgs) {
         const m = this.toMethodDeclarationStructure(field, mode, options);
         bodyLines.push(m.code);
       } else {
@@ -373,20 +423,37 @@ export class GraphQLAstExplorer {
     options: DefinitionsGeneratorOptions = {},
   ): GeneratedDefinitionStructure {
     const name = this.getTransformedTypeName(item.name.value, options);
-    const values = (item.values ?? []).map((v) => v.name.value);
+    const valueNodes = item.values ?? [];
+    const values = valueNodes.map((v) => v.name.value);
+    const enumDoc =
+      item.kind === Kind.ENUM_TYPE_DEFINITION
+        ? this.getDescriptionDocs(item.description?.value, options)
+        : undefined;
     if (options.enumsAsTypes) {
-      const union = values.map((v) => `'${v}'`).join(" | ") || "never";
+      const union = values.map((v) => `"${v}"`).join(" | ") || "never";
+      const code = `export type ${name} = ${union};`;
       return {
         kind: "type",
         name,
-        code: `export type ${name} = ${union};`,
+        code: enumDoc ? `${enumDoc}\n${code}` : code,
       };
     }
-    const members = values.map((v) => `    ${v} = "${v}"`).join(",\n");
+    const members = valueNodes
+      .map((v) => {
+        const memberDoc = this.getDescriptionDocs(
+          v.description?.value,
+          options,
+          "    ",
+        );
+        const line = `    ${v.name.value} = "${v.name.value}"`;
+        return memberDoc ? `${memberDoc}\n${line}` : line;
+      })
+      .join(",\n");
+    const code = `export enum ${name} {\n${members}\n}`;
     return {
       kind: "enum",
       name,
-      code: `export enum ${name} {\n${members}\n}`,
+      code: enumDoc ? `${enumDoc}\n${code}` : code,
     };
   }
 

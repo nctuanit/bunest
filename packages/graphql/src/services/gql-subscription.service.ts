@@ -33,6 +33,7 @@ function isAsyncIterable(
  */
 export class GqlSubscriptionService {
   private readonly wsHandler: GraphQLWsHandler;
+  private readonly resolvedPath: string | undefined;
 
   constructor(
     private readonly options: GqlSubscriptionServiceOptions,
@@ -46,7 +47,24 @@ export class GqlSubscriptionService {
       options["graphql-ws"] !== null
         ? options["graphql-ws"]
         : {};
-    const path = wsConfig.path ?? options.path ?? "/graphql";
+
+    const customServer = wsConfig.server as
+      | { options?: { noServer?: boolean; path?: string } }
+      | undefined;
+    if (
+      customServer &&
+      typeof customServer === "object" &&
+      customServer.options?.noServer !== true
+    ) {
+      throw new Error(
+        'Custom WebSocketServer passed to "graphql-ws" must be instantiated with "noServer: true".',
+      );
+    }
+
+    const resolvedPath =
+      wsConfig.path ?? customServer?.options?.path ?? options.path;
+    this.resolvedPath = resolvedPath;
+    const path = resolvedPath ?? "/graphql";
 
     const executor: GraphQLWsExecutor = {
       getPath: () => path,
@@ -159,6 +177,8 @@ export class GqlSubscriptionService {
   }
 
   private initialize(): void {
+    if (!this.options["graphql-ws"]) return;
+    if (!this.resolvedPath) return;
     if (!this.httpServer || typeof this.httpServer !== "object") return;
     const srv = this.httpServer as {
       registerWebsocketHandler?: unknown;

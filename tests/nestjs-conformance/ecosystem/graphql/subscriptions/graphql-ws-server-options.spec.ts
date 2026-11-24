@@ -177,16 +177,14 @@ describeConformance(
             );
           });
 
-        // BUNEST_BUG: GraphQLWsHandler never invokes the `subscriptions["graphql-ws"].onSubscribe` callback (declared in graphql.interface.ts:469), so `onSubscribe` is called 0 times instead of 1 (packages/graphql/src/subscriptions/graphql-ws.handler.ts:395-486).
-        it.skip("should execute valid operations", async () => {
+        it("should execute valid operations", async () => {
           expect(await overWebSocket("{ hello }")).toEqual({
             data: { hello: "world" },
           });
           expect(onSubscribe).toHaveBeenCalledTimes(1);
         });
 
-        // BUNEST_BUG: GraphQLModuleOptions and GraphQLService.getValidationRules() do not support custom `validationRules` (packages/graphql/src/driver/graphql-http.handler.ts:310-324), so custom rules like `NoSecretRule` are ignored over both HTTP and graphql-ws.
-        it.skip('should apply "validationRules" as over HTTP', async () => {
+        it('should apply "validationRules" as over HTTP', async () => {
           const httpResult = await overHttp("{ secret }");
           expect(httpResult.errors[0].message).toBe('"secret" is not allowed');
 

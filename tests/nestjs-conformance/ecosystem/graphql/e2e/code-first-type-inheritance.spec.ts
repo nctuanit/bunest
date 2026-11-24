@@ -163,8 +163,7 @@ describeConformance(
       ]);
     }
 
-    // BUNEST_BUG: Expected Author/StarAuthor/Editor to inherit parent User/Author @ResolveField("email") (nearest ancestor wins); actual returns 400 `Cannot query field "email" on type "StarAuthor"/"Editor"` because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1102) only looks up resolveFieldRegistry.get(typeName) for the exact class name without walking prototype ancestors.
-    it.skip("should bind the field resolvers of the parent type to its subtypes (nearest ancestor wins)", async () => {
+    it("should bind the field resolvers of the parent type to its subtypes (nearest ancestor wins)", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({
@@ -199,8 +198,7 @@ describeConformance(
       expectForbidden("{ user { ssn } }"));
 
     for (const queryName of ["author", "starAuthor", "editor"]) {
-      // BUNEST_BUG: Expected subtype to inherit User's @ResolveField("ssn") and its middleware throwing ForbiddenException; actual returns 400 `Cannot query field "ssn"` because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1102) does not inherit @ResolveField() handlers from parent @ObjectType() classes.
-      it.skip(`should apply the field middleware of the inherited field resolver (${queryName})`, () =>
+      it(`should apply the field middleware of the inherited field resolver (${queryName})`, () =>
         expectForbidden(`{ ${queryName} { ssn } }`));
     }
 
@@ -208,8 +206,7 @@ describeConformance(
       expectForbidden("{ user { phone } }"));
 
     for (const queryName of ["author", "starAuthor", "editor"]) {
-      // BUNEST_BUG: Expected subtype to inherit User's @ResolveField("phone") and its @UseGuards(DenyGuard); actual returns 400 `Cannot query field "phone"` because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1102) does not inherit @ResolveField() handlers from parent @ObjectType() classes.
-      it.skip(`should apply the guards of the inherited field resolver (${queryName})`, () =>
+      it(`should apply the guards of the inherited field resolver (${queryName})`, () =>
         expectForbidden(`{ ${queryName} { phone } }`));
     }
   },

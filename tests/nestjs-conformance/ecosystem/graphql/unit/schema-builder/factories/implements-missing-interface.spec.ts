@@ -56,8 +56,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInterfaceType (packages/graphql/src/schema/graphql-schema.factory.ts:844-898) does not verify that classes referenced in `implements` are decorated with @InterfaceType(), silently creating an interface instead of rejecting with a descriptive error.
-    it.skip("should throw a descriptive error when implements references a class without @InterfaceType", async () => {
+    it("should throw a descriptive error when implements references a class without @InterfaceType", async () => {
       await expect(
         schemaFactory.create([new HybridResolver()]),
       ).rejects.toThrow(

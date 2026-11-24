@@ -126,8 +126,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: getGraphQLExtensions (packages/graphql/src/decorators/type.decorators.ts:713-728) reads Reflect.getMetadata without merging ancestor class @Extensions(), so AuditEntry receives { role: "AUDITOR" } instead of { role: "AUDITOR", audited: true }.
-    it.skip("should inherit class-level extensions, letting the subclass override a key", async () => {
+    it("should inherit class-level extensions, letting the subclass override a key", async () => {
       const schema = await schemaFactory.create([new SampleResolver()]);
 
       expect(getType(schema, "Invoice").extensions).toEqual({ role: "ADMIN" });
@@ -140,8 +139,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Directive() (packages/graphql/src/decorators/type.decorators.ts:532) does not accept string[] SDL arrays, GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1004-1020) never populates astNode.directives (actual undefined), and stacked @Extensions() overwrites in reverse decorator order while also injecting `directives` into `extensions`.
-    it.skip("should keep stacked class directives and extensions in source order in every schema", async () => {
+    it("should keep stacked class directives and extensions in source order in every schema", async () => {
       for (let build = 0; build < 2; build++) {
         const schema = await schemaFactory.create([new SampleResolver()]);
         const stacked = getType(schema, "Stacked");

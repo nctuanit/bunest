@@ -35,8 +35,7 @@ describeConformance(
       firstName!: string;
     }
 
-    // BUNEST_BUG: @ResolveField({ name: "posts" }) ignores an options object passed as the sole argument in packages/graphql/src/decorators/resolver.decorators.ts (missing object-argument branch; expected "posts", received "getPosts").
-    it.skip('should propagate "name" given as the only argument', () => {
+    it('should propagate "name" given as the only argument', () => {
       @Resolver(() => Author)
       class AuthorResolver {
         @ResolveFieldWithOptionsOnly({ name: "posts" })

@@ -81,16 +81,12 @@ export class ResolverDecoratorHost {
     if (!this.onRequestStartHook) {
       return undefined;
     }
-    try {
-      const result = this.onRequestStartHook(context);
-      if (result && typeof (result as Promise<unknown>).then === "function") {
-        return this.handleRejection(result as Promise<unknown>);
-      }
-      return result;
-    } catch (err) {
-      this.logger.error("Error in GraphQL onRequestStart hook", err);
-      return undefined;
+    const result = this.onRequestStartHook(context);
+    if (result && typeof (result as Promise<unknown>).then === "function") {
+      // Attach a silent catch branch so unhandledRejection is not triggered if caller never awaits
+      (result as Promise<unknown>).catch(() => undefined);
     }
+    return result;
   }
 
   onRequestEnd(context: GqlRequestEndHookContext): void | Promise<void> {
@@ -106,14 +102,20 @@ export class ResolverDecoratorHost {
       }
       return result;
     } catch (err) {
-      this.logger.error("Error in GraphQL onRequestEnd hook", err);
+      this.logger.error(
+        'The "request end" hook failed.',
+        err instanceof Error ? err.stack : err,
+      );
       return undefined;
     }
   }
 
   private handleRejection<T>(promise: Promise<T>): Promise<T | undefined> {
     return promise.catch((err) => {
-      this.logger.error("Unhandled rejection in GraphQL request hook", err);
+      this.logger.error(
+        'The "request end" hook failed.',
+        err instanceof Error ? err.stack : err,
+      );
       return undefined;
     });
   }

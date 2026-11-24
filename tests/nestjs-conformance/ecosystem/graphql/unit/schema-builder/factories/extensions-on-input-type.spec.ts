@@ -59,8 +59,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInputType (packages/graphql/src/schema/graphql-schema.factory.ts:1167-1174) omits `extensions` from GraphQLInputFieldConfig, so @Extensions() on @InputType() fields is dropped (expected "value", actual undefined).
-    it.skip("exposes @Extensions on @Field for both @ObjectType and @InputType (parity)", async () => {
+    it("exposes @Extensions on @Field for both @ObjectType and @InputType (parity)", async () => {
       const schema = await schemaFactory.create([new ExtensionsResolver()], {
         buildSchemaOptions: { skipCheck: true },
       });

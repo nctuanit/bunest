@@ -1,9 +1,21 @@
 import {
   APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_PIPE,
+  ApplicationConfig,
+  type BunestInterceptor,
+  type CanActivate,
+  type ContextId,
+  ContextIdFactory,
+  type ExceptionFilter,
   type ExceptionFilterLike,
+  type GuardLike,
+  HttpAdapterHost,
   HttpException,
   Inject,
   Injectable,
+  type InterceptorLike,
   Logger,
   type LoggerService,
   MetadataRegistry,
@@ -11,6 +23,8 @@ import {
   type OnApplicationShutdown,
   type OnModuleDestroy,
   Optional,
+  type PipeLike,
+  type PipeTransform,
   type ResponseContext,
   type Type,
 } from "@bunest/core";
@@ -43,7 +57,14 @@ import type {
   GraphQLWsOptions,
 } from "../interfaces/graphql.interface";
 import { GraphQLDefinitionsFactory } from "../schema/graphql-definitions.factory";
-import { GraphQLSchemaFactory } from "../schema/graphql-schema.factory";
+import {
+  createRequestScopedResolverProxy,
+  createScopedEnhancer,
+  getGraphQLContextId,
+  GraphQLSchemaFactory,
+  type ScopedGqlEnhancer,
+  setGraphQLContextId,
+} from "../schema/graphql-schema.factory";
 import { createDepthLimitRule } from "../security/validation-rules";
 import { ResolverDecoratorHost } from "../services/resolver-decorator-host";
 import { GraphQLWsHandler } from "../subscriptions/graphql-ws.handler";
@@ -134,8 +155,37 @@ export class GraphQLService
     await this.ensureSchema();
 
     const wsConfig = resolveWsOptionsFromModule(this.options);
-    if (this.options.httpAdapter && wsConfig !== undefined) {
-      this.attachWebSocket(this.options.httpAdapter, wsConfig);
+    if (wsConfig !== undefined) {
+      let adapter: BunHttpAdapter | undefined = this.options.httpAdapter;
+      if (!adapter && this.moduleRef) {
+        try {
+          const host = this.moduleRef.get(HttpAdapterHost, { strict: false });
+          adapter = host?.httpAdapter as BunHttpAdapter | undefined;
+        } catch {
+          // HttpAdapterHost not registered
+        }
+      }
+      if (adapter) {
+        const mergedWsConfig: GraphQLWsOptions = {
+          ...wsConfig,
+          context:
+            wsConfig.context ??
+            (this.options.context
+              ? async (connCtx) => {
+                  const raw =
+                    typeof this.options.context === "function"
+                      ? await this.options.context({
+                          req: connCtx.request,
+                        })
+                      : this.options.context;
+                  return raw && typeof raw === "object"
+                    ? (raw as Record<string, unknown>)
+                    : {};
+                }
+              : undefined),
+        };
+        this.attachWebSocket(adapter, mergedWsConfig);
+      }
     }
   }
 
@@ -218,6 +268,19 @@ export class GraphQLService
   private async buildSchema(): Promise<GraphQLSchema> {
     const resolverInstances: object[] = [];
     const seen = new Set<object>();
+    const seenScopedTokens = new Set<unknown>();
+    const scopedEnhancerClasses = new Set<Function>();
+
+    const globalFilters: (
+      | ExceptionFilterLike
+      | ScopedGqlEnhancer<ExceptionFilter>
+    )[] = [];
+    const globalPipes: (PipeLike | ScopedGqlEnhancer<PipeTransform>)[] = [];
+    const globalGuards: (GuardLike | ScopedGqlEnhancer<CanActivate>)[] = [];
+    const globalInterceptors: (
+      | InterceptorLike
+      | ScopedGqlEnhancer<BunestInterceptor>
+    )[] = [];
 
     if (this.discoveryService) {
       const discoveryOpts =
@@ -229,28 +292,125 @@ export class GraphQLService
         ...this.discoveryService.getControllers(discoveryOpts),
       ];
       for (const wrapper of wrappers) {
-        const instance = wrapper.instance;
-        if (!instance || typeof instance !== "object" || seen.has(instance)) {
-          continue;
+        if (!wrapper.isDependencyTreeStatic && typeof wrapper.metatype === "function") {
+          scopedEnhancerClasses.add(wrapper.metatype);
         }
-        const ctor = (instance as { constructor?: Function }).constructor;
-        if (
-          typeof ctor === "function" &&
-          (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
-            MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
-        ) {
-          seen.add(instance);
-          if (this.metadataScanner) {
-            // Confirm prototype methods exist via public MetadataScanner
-            this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+
+        // Collect request-scoped APP_* global enhancers
+        if (!wrapper.isDependencyTreeStatic) {
+          const resolveToken =
+            typeof wrapper.metatype === "function"
+              ? (wrapper.metatype as Type<unknown>)
+              : undefined;
+          if (wrapper.token === APP_GUARD) {
+            globalGuards.push(
+              createScopedEnhancer<CanActivate>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<CanActivate>,
+                resolveToken,
+              ),
+            );
+            continue;
           }
-          resolverInstances.push(instance);
+          if (wrapper.token === APP_INTERCEPTOR) {
+            globalInterceptors.push(
+              createScopedEnhancer<BunestInterceptor>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<BunestInterceptor>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+          if (wrapper.token === APP_PIPE) {
+            globalPipes.push(
+              createScopedEnhancer<PipeTransform>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<PipeTransform>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+          if (wrapper.token === APP_FILTER) {
+            globalFilters.push(
+              createScopedEnhancer<ExceptionFilter>(
+                (ctxId) =>
+                  wrapper.moduleRef.resolve(wrapper.token, ctxId, {
+                    strict: false,
+                  }) as Promise<ExceptionFilter>,
+                resolveToken,
+              ),
+            );
+            continue;
+          }
+        }
+
+        const instance = wrapper.instance;
+        if (
+          instance &&
+          typeof instance === "object" &&
+          wrapper.isDependencyTreeStatic
+        ) {
+          if (seen.has(instance)) {
+            continue;
+          }
+          const ctor = (instance as { constructor?: Function }).constructor;
+          if (
+            typeof ctor === "function" &&
+            (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
+              MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
+          ) {
+            seen.add(instance);
+            if (this.metadataScanner) {
+              this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+            }
+            resolverInstances.push(instance);
+          }
+        } else if (typeof wrapper.metatype === "function") {
+          const ctor = wrapper.metatype;
+          if (
+            !seenScopedTokens.has(wrapper.token) &&
+            (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, ctor) ||
+              MetadataRegistry.has(GRAPHQL_METADATA_KEYS.SCALAR, ctor))
+          ) {
+            seenScopedTokens.add(wrapper.token);
+            if (this.metadataScanner) {
+              this.metadataScanner.getAllMethodNames(ctor.prototype as object);
+            }
+            const proxy = createRequestScopedResolverProxy(
+              ctor as Type<unknown>,
+              async (contextId: ContextId) =>
+                (await wrapper.moduleRef.resolve(wrapper.token, contextId, {
+                  strict: false,
+                })) as object,
+            );
+            resolverInstances.push(proxy);
+          }
         }
       }
     }
 
-    const globalFilters: ExceptionFilterLike[] = [];
     if (this.moduleRef) {
+      try {
+        const appConfig = this.moduleRef.get(ApplicationConfig, {
+          strict: false,
+        });
+        if (appConfig) {
+          globalPipes.push(...appConfig.getGlobalPipes());
+          globalGuards.push(...appConfig.getGlobalGuards());
+          globalInterceptors.push(...appConfig.getGlobalInterceptors());
+          globalFilters.push(...appConfig.getGlobalFilters());
+        }
+      } catch {
+        // ApplicationConfig not registered (standalone testing module)
+      }
       try {
         const diFilters = this.moduleRef.get<
           ExceptionFilterLike,
@@ -260,7 +420,40 @@ export class GraphQLService
           globalFilters.push(...diFilters);
         }
       } catch {
-        // No APP_FILTER multi-providers registered
+        // No static APP_FILTER multi-providers registered
+      }
+      try {
+        const diPipes = this.moduleRef.get<PipeLike, PipeLike>(APP_PIPE, {
+          strict: false,
+          each: true,
+        });
+        if (Array.isArray(diPipes)) {
+          globalPipes.push(...diPipes);
+        }
+      } catch {
+        // No static APP_PIPE multi-providers registered
+      }
+      try {
+        const diGuards = this.moduleRef.get<GuardLike, GuardLike>(APP_GUARD, {
+          strict: false,
+          each: true,
+        });
+        if (Array.isArray(diGuards)) {
+          globalGuards.push(...diGuards);
+        }
+      } catch {
+        // No static APP_GUARD multi-providers registered
+      }
+      try {
+        const diInterceptors = this.moduleRef.get<
+          InterceptorLike,
+          InterceptorLike
+        >(APP_INTERCEPTOR, { strict: false, each: true });
+        if (Array.isArray(diInterceptors)) {
+          globalInterceptors.push(...diInterceptors);
+        }
+      } catch {
+        // No static APP_INTERCEPTOR multi-providers registered
       }
     }
 
@@ -280,7 +473,37 @@ export class GraphQLService
         }
         return new cls();
       },
-      globalFilters,
+      [],
+      {
+        pipes: globalPipes,
+        guards: globalGuards,
+        interceptors: globalInterceptors,
+        filters: globalFilters,
+        isRequestScopedEnhancer: (enhancer) =>
+          typeof enhancer === "function" && scopedEnhancerClasses.has(enhancer),
+        resolveScopedEnhancer: async <T>(
+          enhancer: Type<T> | T,
+          contextId: ContextId,
+        ): Promise<T> => {
+          if (typeof enhancer !== "function") {
+            return enhancer;
+          }
+          const cls = enhancer as Type<T>;
+          if (moduleRef) {
+            return await moduleRef.resolve(cls, contextId, { strict: false });
+          }
+          return new cls();
+        },
+        ensureContextId: (ctx) => {
+          let id = getGraphQLContextId(ctx);
+          if (!id) {
+            id = ContextIdFactory.create();
+            setGraphQLContextId(ctx, id);
+            moduleRef?.registerRequestByContextId(ctx, id);
+          }
+          return id;
+        },
+      },
     );
 
     const builtSchema = await factory.create(resolverInstances, this.options);
@@ -314,6 +537,9 @@ export class GraphQLService
     if (this.options.maxDepth !== undefined && this.options.maxDepth > 0) {
       rules.push(createDepthLimitRule(this.options.maxDepth));
     }
+    if (Array.isArray(this.options.validationRules)) {
+      rules.push(...(this.options.validationRules as ValidationRule[]));
+    }
     return rules;
   }
 
@@ -322,24 +548,49 @@ export class GraphQLService
     const includeStack =
       this.options.includeStacktraceInErrorResponses ?? !isProd;
     const original = err.originalError;
+    const preserveHttp200 =
+      this.options.preserveHttpStatusForExecutionErrors !== false;
 
     let formatted: GraphQLFormattedError = err.toJSON();
 
-    if (original instanceof HttpException) {
+    const HTTP_STATUS_TO_GQL_CODE: Record<number, string> = {
+      400: "BAD_REQUEST",
+      401: "UNAUTHENTICATED",
+      403: "FORBIDDEN",
+      408: "REQUEST_TIMEOUT",
+      413: "PAYLOAD_TOO_LARGE",
+      415: "UNSUPPORTED_MEDIA_TYPE",
+      422: "UNPROCESSABLE_ENTITY",
+      429: "TOO_MANY_REQUESTS",
+      501: "NOT_IMPLEMENTED",
+      502: "BAD_GATEWAY",
+      503: "SERVICE_UNAVAILABLE",
+      504: "GATEWAY_TIMEOUT",
+    };
+
+    if (
+      original instanceof HttpException &&
+      this.options.autoTransformHttpErrors !== false
+    ) {
       const httpJson = original.toJSON();
+      const status = original.getStatus();
+      const rawResponse = original.getResponse();
+      const mappedCode = HTTP_STATUS_TO_GQL_CODE[status];
+      const ext: Record<string, unknown> = {
+        ...(formatted.extensions ?? {}),
+        code: mappedCode ?? "INTERNAL_SERVER_ERROR",
+        ...(mappedCode ? {} : { status }),
+        originalError: rawResponse,
+        ...(httpJson.details !== undefined
+          ? { details: httpJson.details }
+          : {}),
+      };
       formatted = {
         ...formatted,
         message: Array.isArray(httpJson.message)
           ? httpJson.message.join("; ")
           : httpJson.message,
-        extensions: {
-          ...(formatted.extensions ?? {}),
-          code: httpJson.error.toUpperCase().replace(/\s+/g, "_"),
-          statusCode: original.getStatus(),
-          ...(httpJson.details !== undefined
-            ? { details: httpJson.details }
-            : {}),
-        },
+        extensions: ext,
       };
     } else if (original !== undefined && original !== null) {
       // Unexpected resolver error
@@ -372,6 +623,12 @@ export class GraphQLService
       const cleaned = { ...formatted.extensions };
       delete cleaned.stacktrace;
       delete cleaned.stack;
+      formatted = { ...formatted, extensions: cleaned };
+    }
+
+    if (preserveHttp200 && formatted.extensions && "http" in formatted.extensions) {
+      const cleaned = { ...formatted.extensions };
+      delete cleaned.http;
       formatted = { ...formatted, extensions: cleaned };
     }
 
@@ -418,14 +675,55 @@ export class GraphQLService
     };
   }> {
     const schema = await this.ensureSchema();
+    const sanitizedVars =
+      params.variables && isPlainRecord(params.variables)
+        ? sanitizeObject(params.variables)
+        : undefined;
+
+    const hasHooks = this.resolverDecoratorHost?.hasRequestHooks() ?? false;
+    const hookBaseCtx = hasHooks
+      ? {
+          query: params.query,
+          operationName: params.operationName ?? undefined,
+          variables: sanitizedVars,
+          context: params.contextValue ?? {},
+        }
+      : undefined;
+
+    let hookState: unknown;
+    if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+      try {
+        hookState = await this.resolverDecoratorHost.onRequestStart(hookBaseCtx);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: undefined,
+          errors: [err as GraphQLError],
+        });
+        return {
+          status: 200,
+          result: { errors: [{ message }] },
+        };
+      }
+    }
+
     let document: DocumentNode;
     try {
       document = parse(params.query);
     } catch (err) {
+      const formatted = this.formatSingleError(err as GraphQLError);
+      if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: hookState,
+          errors: [err as GraphQLError],
+        });
+      }
       return {
         status: 400,
         result: {
-          errors: [this.formatSingleError(err as GraphQLError)],
+          errors: [formatted],
         },
       };
     }
@@ -436,10 +734,20 @@ export class GraphQLService
       this.getValidationRules(),
     );
     if (validationErrors.length > 0) {
+      const formattedErrors = validationErrors.map((e) =>
+        this.formatSingleError(e),
+      );
+      if (hasHooks && hookBaseCtx && this.resolverDecoratorHost) {
+        await this.resolverDecoratorHost.onRequestEnd({
+          ...hookBaseCtx,
+          state: hookState,
+          errors: validationErrors,
+        });
+      }
       return {
         status: 400,
         result: {
-          errors: validationErrors.map((e) => this.formatSingleError(e)),
+          errors: formattedErrors,
         },
       };
     }
@@ -470,24 +778,6 @@ export class GraphQLService
       };
     }
 
-    const sanitizedVars = params.variables
-      ? sanitizeObject(params.variables)
-      : undefined;
-
-    const hasHooks = this.resolverDecoratorHost?.hasRequestHooks() ?? false;
-    const hookBaseCtx = hasHooks
-      ? {
-          query: params.query,
-          operationName: params.operationName ?? undefined,
-          variables: sanitizedVars,
-          context: params.contextValue ?? {},
-        }
-      : undefined;
-    const hookState =
-      hasHooks && hookBaseCtx
-        ? await this.resolverDecoratorHost!.onRequestStart(hookBaseCtx)
-        : undefined;
-
     const execResult = await execute({
       schema,
       document,
@@ -504,9 +794,32 @@ export class GraphQLService
       });
     }
 
+    const formattedResult = this.formatExecutionResult(execResult);
+    let httpStatus = 200;
+    if (
+      this.options.preserveHttpStatusForExecutionErrors === false &&
+      execResult.errors &&
+      execResult.errors.length > 0
+    ) {
+      for (const err of execResult.errors) {
+        const httpExt = (
+          err.extensions as { http?: { status?: unknown } } | undefined
+        )?.http;
+        if (
+          httpExt &&
+          typeof httpExt.status === "number" &&
+          httpExt.status >= 100 &&
+          httpExt.status < 600
+        ) {
+          httpStatus = httpExt.status;
+          break;
+        }
+      }
+    }
+
     return {
-      status: 200,
-      result: this.formatExecutionResult(execResult),
+      status: httpStatus,
+      result: formattedResult,
     };
   }
 
@@ -670,12 +983,18 @@ export class GraphQLService
       const query = url.searchParams.get("query");
 
       if (!query) {
-        const playgroundEnabled =
-          this.options.playground ??
+        const graphiqlConfig =
           this.options.graphiql ??
+          this.options.playground ??
           !isProductionEnv();
-        if (playgroundEnabled && accept.includes("text/html")) {
-          const html = renderGraphiqlHtml(this.getPath());
+        if (graphiqlConfig && accept.includes("text/html")) {
+          const graphiqlOpts =
+            typeof graphiqlConfig === "object" ? graphiqlConfig : undefined;
+          const html = renderGraphiqlHtml(
+            this.getPath(),
+            undefined,
+            graphiqlOpts,
+          );
           return new Response(html, {
             status: 200,
             headers: {
@@ -824,14 +1143,29 @@ export class GraphQLService
     wantsSse: boolean,
     isGetRequest: boolean,
   ): Promise<Response> {
-    const contextValue: Record<string, unknown> = this.options.context
-      ? await this.options.context({ req, res })
-      : { req, res };
+    const rawContext =
+      typeof this.options.context === "function"
+        ? await this.options.context({ req, res })
+        : this.options.context && typeof this.options.context === "object"
+          ? this.options.context
+          : undefined;
+    const contextValue: Record<string, unknown> =
+      rawContext && typeof rawContext === "object"
+        ? Object.assign(
+            Object.create(Object.getPrototypeOf(rawContext) as object | null),
+            rawContext,
+          )
+        : {};
     if (!("req" in contextValue)) {
       contextValue.req = req;
     }
     if (res && !("res" in contextValue)) {
       contextValue.res = res;
+    }
+    if (this.moduleRef) {
+      const contextId = ContextIdFactory.create();
+      setGraphQLContextId(contextValue, contextId);
+      this.moduleRef.registerRequestByContextId(contextValue, contextId);
     }
 
     // Parse early to inspect operation kind (mutation over GET / subscription over SSE)

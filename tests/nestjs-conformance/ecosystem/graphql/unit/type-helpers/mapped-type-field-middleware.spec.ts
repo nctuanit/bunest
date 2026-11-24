@@ -51,8 +51,7 @@ describeConformance(
       "Tests GraphQL mapped types preserving @UseFieldMiddleware() metadata on inherited members (ADR-002, ADR-013).",
   },
   () => {
-    // BUNEST_BUG: GraphQL mapped types hook in packages/graphql/src/decorators/type.decorators.ts (lines 854-881) does not clone accumulated @UseFieldMiddleware() metadata (base + derived) onto mapped types; PickType only copies the nearest prototype's own metadata ([childMiddleware]) via copyReflectPropertyMetadata, while OmitType and PartialType return [] because @Field()-only members are not in inheritDtoMetadata's discoveredProps.
-    it.skip.each([
+    it.each([
       ["PickType", () => PickType(RestrictedEmployee, ["salary"] as const)],
       ["OmitType", () => OmitType(RestrictedEmployee, ["name"] as const)],
       ["PartialType", () => PartialType(RestrictedEmployee)],
@@ -65,8 +64,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: IntersectionType() + mapped-type hook in packages/graphql/src/decorators/type.decorators.ts (lines 854-881, 944-951) does not merge @UseFieldMiddleware() arrays from both source classes (returns [] instead of [parentMiddleware, childMiddleware, otherMiddleware]).
-    it.skip("IntersectionType should keep the middleware of both classes", () => {
+    it("IntersectionType should keep the middleware of both classes", () => {
       const type = IntersectionType(RestrictedEmployee, Badge);
       expect(getUseFieldMiddleware(type.prototype, "salary")).toEqual([
         parentMiddleware,

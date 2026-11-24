@@ -280,8 +280,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: Expected GraphQLModuleOptions.graphiql to accept a GraphiQLOptions object (headers, shouldPersistHeaders, isHeadersEditorEnabled) rendered into Playground HTML; actual GraphQLModuleOptions.graphiql is boolean-only in packages/graphql/src/interfaces/graphql.interface.ts and packages/graphql/src/driver/graphiql-ui.ts (renderGraphiqlHtml) ignores custom options.
-      it.skip("should render GraphiQL Playground with custom options", async () => {
+      it("should render GraphiQL Playground with custom options", async () => {
         const res = await request(app)
           .get("/graphql")
           .set("Accept", "text/html")
@@ -312,8 +311,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: Expected graphiql: { inputValueDeprecation: true } to emit inputValueDeprecation: true in rendered Playground HTML; actual packages/graphql/src/driver/graphiql-ui.ts (renderGraphiqlHtml) does not support GraphiQLOptions object configuration.
-      it.skip("should render GraphiQL Playground with inputValueDeprecation enabled", async () => {
+      it("should render GraphiQL Playground with inputValueDeprecation enabled", async () => {
         const res = await request(app)
           .get("/graphql")
           .set("Accept", "text/html")
@@ -406,8 +404,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: Expected graphiql: false to take precedence over deprecated playground: true alias (status !== 200, no Playground HTML); actual HTTP 200 serving Playground HTML because packages/graphql/src/driver/graphql-http.handler.ts evaluates `this.options.playground ?? this.options.graphiql` instead of `this.options.graphiql ?? this.options.playground`.
-      it.skip('should let "graphiql" take precedence over the deprecated alias', async () => {
+      it('should let "graphiql" take precedence over the deprecated alias', async () => {
         const res = await request(app)
           .get("/graphql")
           .set("Accept", "text/html");

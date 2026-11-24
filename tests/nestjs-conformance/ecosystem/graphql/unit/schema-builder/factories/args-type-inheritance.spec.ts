@@ -193,8 +193,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: getGraphQLFields (packages/graphql/src/decorators/type.decorators.ts:746) updates overridden fields in-place inside a Map preserving ancestor order (authorId, title, force) instead of placing the re-declared child field after inherited fields (title, authorId, force).
-    it.skip("should drop the schema name an ancestor gave a re-declared input field", () => {
+    it("should drop the schema name an ancestor gave a re-declared input field", () => {
       expect(printSchema(schema)).toContain(
         [
           "input ArchivePostsInput {",
@@ -206,8 +205,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1205-1209) omits `extensions` when expanding @ArgsType() fields into GraphQLArgumentConfig (expected { role: "admin" }, actual {}).
-    it.skip("should pass the extensions of an @ArgsType() property to the argument", () => {
+    it("should pass the extensions of an @ArgsType() property to the argument", () => {
       const invoicesField = schema.getQueryType()!.getFields().invoices!;
       expect(invoicesField.args[0]!.extensions).toEqual({ role: "admin" });
     });
@@ -218,8 +216,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1183-1230) silently overwrites colliding argument entries instead of throwing when two @Args() parameters declare the same argument with conflicting types or default values.
-    it.skip("should fail when two parameters declare an argument differently", async () => {
+    it("should fail when two parameters declare an argument differently", async () => {
       await expect(
         schemaFactory.create([new ConflictingTypesResolver()]),
       ).rejects.toThrow(
@@ -227,8 +224,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1183-1230) does not detect collisions between a renamed @ArgsType() property name ("role" exposed as "notify_role") and another @Args("role") parameter.
-    it.skip("should fail when a renamed property is named like another argument", async () => {
+    it("should fail when a renamed property is named like another argument", async () => {
       await expect(
         schemaFactory.create([new RenamedPropertyCollisionResolver()]),
       ).rejects.toThrow(

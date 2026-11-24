@@ -69,8 +69,7 @@ describeConformance(
       }
     }
 
-    // BUNEST_BUG: Bare @Resolver() on a subclass overwrites inherited parent resolver target with { of: undefined } in packages/graphql/src/decorators/resolver.decorators.ts (expected "User", received undefined).
-    it.skip('should keep the type of the parent resolver for a bare "@Resolver()"', async () => {
+    it('should keep the type of the parent resolver for a bare "@Resolver()"', async () => {
       @Resolver()
       class UsersResolver extends UserFieldsResolver {
         @Query(() => User)
@@ -88,8 +87,7 @@ describeConformance(
       expect(userType.getFields().iban?.resolve).toBeDefined();
     });
 
-    // BUNEST_BUG: @Resolver({ isAbstract: false }) does not support an options-only first argument and overwrites inherited parent resolver target in packages/graphql/src/decorators/resolver.decorators.ts (expected "User", received undefined).
-    it.skip('should keep the type of the parent resolver for "@Resolver({ ... })"', () => {
+    it('should keep the type of the parent resolver for "@Resolver({ ... })"', () => {
       const ResolverWithOptions = Resolver as unknown as (
         options: ResolverOptions,
       ) => ClassDecorator;
@@ -127,8 +125,7 @@ describeConformance(
       expect(adminType.getFields().iban?.resolve).toBeDefined();
     });
 
-    // BUNEST_BUG: @Resolver("Author") does not support method-level decoration or mark the host class as an entry/injectable provider in packages/graphql/src/decorators/resolver.decorators.ts (expected true, received false).
-    it.skip('should mark the class of a method decorated with "@Resolver()" as an entry provider', () => {
+    it('should mark the class of a method decorated with "@Resolver()" as an entry provider', () => {
       const MethodResolver = Resolver as unknown as (
         name: string,
       ) => MethodDecorator;
@@ -146,8 +143,7 @@ describeConformance(
       ).toBe(true);
     });
 
-    // BUNEST_BUG: @Query()/@Mutation()/@Subscription() on a class without @Resolver() does not register the class as an entry/injectable provider or discoverable resolver in packages/graphql/src/decorators/resolver.decorators.ts and packages/graphql/src/schema/graphql-schema.factory.ts (expected true, received false).
-    it.skip('should mark a class that declares root handlers without "@Resolver()" as an entry provider', async () => {
+    it('should mark a class that declares root handlers without "@Resolver()" as an entry provider', async () => {
       class HealthService {
         @Query(() => String)
         health() {

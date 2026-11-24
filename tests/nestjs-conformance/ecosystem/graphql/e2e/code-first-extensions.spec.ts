@@ -143,8 +143,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected statusField.extensions.isPublic to be true; actual is undefined because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1116-1134) drops existingField.extensions when attaching a @ResolveField() that has no complexity option.
-    it.skip("adds extensions to resolved field", async () => {
+    it("adds extensions to resolved field", async () => {
       const { schema } = app.get(GraphQLSchemaHost);
       const userObject = schema.getType("User") as GraphQLObjectType;
       expect(userObject).toBeTruthy();
@@ -156,8 +155,7 @@ describeConformance(
       expect(extensions.isPublic).toBe(true);
     });
 
-    // BUNEST_BUG: Expected statusField.description to be "Resolve Field Description"; actual is "DTO Description" because ResolveField (packages/graphql/src/decorators/resolver.decorators.ts:176-183) ignores the 3rd argument maybeOptions when the 2nd argument returnTypeOrOptions is undefined.
-    it.skip("applies the @ResolveField() options passed after an undefined type function", async () => {
+    it("applies the @ResolveField() options passed after an undefined type function", async () => {
       const { schema } = app.get(GraphQLSchemaHost);
       const userObject = schema.getType("User") as GraphQLObjectType;
       const statusField = userObject.getFields().status;

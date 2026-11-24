@@ -322,10 +322,26 @@ export class GraphQLWsHandler {
           : {};
         data.connectionParams = connectionParams;
 
+        const socketHandle = {
+          close: (code?: number, reason?: string) => {
+            if (!data.closed) {
+              this.closeSocketWithProtocolError(
+                ws,
+                code ?? 1000,
+                reason ?? "",
+              );
+            }
+          },
+        };
+        const extraWithSocket = {
+          ...data.extra,
+          socket: socketHandle,
+          request: data.request,
+        };
         const connCtx: GraphQLWsConnectionContext = {
           request: data.request,
           connectionParams,
-          extra: data.extra,
+          extra: extraWithSocket,
         };
 
         if (typeof this.options.onConnect === "function") {
@@ -355,8 +371,9 @@ export class GraphQLWsHandler {
             const closeCode =
               err instanceof ForbiddenException
                 ? GRAPHQL_WS_CLOSE_CODES.FORBIDDEN
-                : GRAPHQL_WS_CLOSE_CODES.UNAUTHORIZED;
-            const reason = err instanceof Error ? err.message : "Unauthorized";
+                : 4500;
+            const reason =
+              err instanceof Error ? err.message : "Internal Server Error";
             this.closeSocketWithProtocolError(
               ws,
               closeCode,
@@ -530,9 +547,41 @@ export class GraphQLWsHandler {
         extra: data.extra,
       };
 
-      const customContext = this.options.context
-        ? await this.options.context(connCtx, msg)
-        : {};
+      const onSubscribe = (
+        this.options as {
+          onSubscribe?: (
+            ctx: GraphQLWsConnectionContext,
+            message: GraphQLWsSubscribeMessage,
+          ) => unknown;
+        }
+      ).onSubscribe;
+      if (typeof onSubscribe === "function") {
+        const subHookResult = await onSubscribe(connCtx, msg);
+        if (entry.isCancelled()) {
+          releaseSlot();
+          return;
+        }
+        if (Array.isArray(subHookResult) && subHookResult.length > 0) {
+          releaseSlot();
+          this.sendJson(ws, {
+            id,
+            type: "error",
+            payload: subHookResult.map((e: unknown) =>
+              e && typeof e === "object" && "toJSON" in e
+                ? (e as { toJSON(): unknown }).toJSON()
+                : { message: e instanceof Error ? e.message : String(e) },
+            ),
+          });
+          return;
+        }
+      }
+
+      const customContext =
+        typeof this.options.context === "function"
+          ? await this.options.context(connCtx, msg)
+          : this.options.context && typeof this.options.context === "object"
+            ? (this.options.context as Record<string, unknown>)
+            : {};
 
       if (entry.isCancelled()) {
         releaseSlot();
@@ -540,10 +589,10 @@ export class GraphQLWsHandler {
       }
 
       const contextValue: Record<string, unknown> = {
-        ...data.extra,
-        ...customContext,
         req: data.request,
         connectionParams: data.connectionParams,
+        ...data.extra,
+        ...customContext,
       };
 
       if (opKind !== "subscription") {

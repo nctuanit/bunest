@@ -56,8 +56,7 @@ describeConformance(
         .create([new PayslipResolver()]);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInterfaceType (packages/graphql/src/schema/graphql-schema.factory.ts:859-891) omits `extensions` when creating GraphQLInterfaceType, so @Extensions() on @InterfaceType() classes is dropped (expected { role: "admin" }, actual {}).
-    it.skip("should add the extensions to the interface type, as for object types", () => {
+    it("should add the extensions to the interface type, as for object types", () => {
       expect(schema.getType("Payslip")!.extensions).toEqual({ role: "admin" });
       expect(schema.getType("InternalResource")!.extensions).toEqual({
         role: "admin",

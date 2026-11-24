@@ -88,16 +88,14 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected AddTodoPayload SDL to contain `query: Query!`; actual emits `query: String!` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:758-798) does not resolve string type references like `@Field(() => "Query")` and falls back to GraphQLString.
-    it.skip("should expose the root Query type on the mutation payload", () => {
+    it("should expose the root Query type on the mutation payload", () => {
       const { schema } = app.get(GraphQLSchemaHost);
       expect(printSchema(schema)).toContain(
         "type AddTodoPayload {\n  todo: Todo!\n  query: Query!\n}",
       );
     });
 
-    // BUNEST_BUG: Expected mutation payload `query { todoCount todos { title } }` to resolve root Query fields; actual returns 400 `Field "query" must not have a selection since type "String!" has no subfields.` because `@Field(() => "Query")` falls back to GraphQLString in GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:758-798).
-    it.skip("should resolve root queries through the mutation payload", async () => {
+    it("should resolve root queries through the mutation payload", async () => {
       const { body } = await request(app)
         .post("/graphql")
         .send({

@@ -103,8 +103,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInputType (packages/graphql/src/schema/graphql-schema.factory.ts:1163-1174) does not instantiate input classes to infer default values from prototype getters (expected `computed: String = "from-getter"`, actual `computed: String`).
-    it.skip("should still infer a default value from a prototype getter", () => {
+    it("should still infer a default value from a prototype getter", () => {
       const printed = printSchema(schema);
       expect(printed).toContain('computed: String = "from-getter"');
     });

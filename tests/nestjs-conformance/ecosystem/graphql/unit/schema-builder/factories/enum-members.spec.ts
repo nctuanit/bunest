@@ -78,8 +78,7 @@ describeConformance(
         .getValues()
         .map(({ name: memberName, value }) => [memberName, value]);
 
-    // BUNEST_BUG: registerEnumType (packages/graphql/src/decorators/type.decorators.ts:96-101) uses `!Number.isNaN(Number(key))` which misses TypeScript's `"NaN": "UNSET"` reverse mapping for `UNSET = NaN`, leaking `["NaN", "UNSET"]` into GraphQLEnumType values.
-    it.skip("should not turn the reverse mapping of a non-finite member into a value", () => {
+    it("should not turn the reverse mapping of a non-finite member into a value", () => {
       expect(getValues("PageSize")).toEqual([
         ["SMALL", 10],
         ["LARGE", 100],
@@ -88,16 +87,14 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: registerEnumType (packages/graphql/src/decorators/type.decorators.ts:94-112) registers all Object.entries(enumRef) without filtering non-primitive exports (functions, arrays, objects) from a merged TypeScript namespace (`isFinal`, `ALL`, `LABELS`).
-    it.skip("should not turn the exports of a merged namespace into values", () => {
+    it("should not turn the exports of a merged namespace into values", () => {
       expect(getValues("OrderStatus")).toEqual([
         ["PENDING", "PENDING"],
         ["SHIPPED", "SHIPPED"],
       ]);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1221) does not translate enum key defaultValue ("ALL") to its enum member value (Infinity); actual defaultValue is "ALL".
-    it.skip("should translate a default value given as the key of a member", () => {
+    it("should translate a default value given as the key of a member", () => {
       const [pageSize] = schema.getQueryType()!.getFields().orders!.args;
       expect(pageSize!.defaultValue).toBe(Infinity);
     });
