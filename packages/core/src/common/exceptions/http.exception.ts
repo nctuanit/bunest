@@ -225,7 +225,8 @@ export class HttpException extends Error {
     if (
       objectOrError === undefined ||
       objectOrError === null ||
-      objectOrError === ""
+      objectOrError === "" ||
+      objectOrError instanceof Error
     ) {
       return {
         message: description,
