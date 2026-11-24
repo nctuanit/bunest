@@ -1028,11 +1028,57 @@ export class BunestApplication extends BunestApplicationContext {
     this.moduleMiddlewaresConfigured = true;
 
     const compiledConfigs: CompiledMiddlewareConfig[] = [];
-    const controllerPrefixes = resolveRouterModulePrefixes(
-      this.container.getGraph(),
-    );
+    const graph = this.container.getGraph();
+    const controllerPrefixes = resolveRouterModulePrefixes(graph);
 
-    for (const mod of this.container.getGraph().topologicalOrder) {
+    // Order modules for middleware registration matching NestJS:
+    // 1. @Global() modules first (in discovery order)
+    // 2. Non-global modules in top-down importing-module-first order (ascending max depth from root),
+    //    tie-broken by imports array discovery order.
+    const discoveryOrder = new Map<string, number>();
+    const maxDepth = new Map<string, number>();
+    let visitIdx = 0;
+
+    const traverse = (
+      mod: (typeof graph.topologicalOrder)[number],
+      depth: number,
+      ancestors: Set<string>,
+    ): void => {
+      if (!discoveryOrder.has(mod.id)) {
+        discoveryOrder.set(mod.id, visitIdx++);
+      }
+      const prevDepth = maxDepth.get(mod.id);
+      if (prevDepth !== undefined && prevDepth >= depth) {
+        return;
+      }
+      maxDepth.set(mod.id, depth);
+      ancestors.add(mod.id);
+      for (const imp of mod.imports) {
+        if (!ancestors.has(imp.id)) {
+          traverse(imp, depth + 1, ancestors);
+        }
+      }
+      ancestors.delete(mod.id);
+    };
+    traverse(graph.root, 0, new Set());
+
+    const orderedModules = [...graph.topologicalOrder].sort((a, b) => {
+      if (a.isGlobal !== b.isGlobal) {
+        return a.isGlobal ? -1 : 1;
+      }
+      if (!a.isGlobal) {
+        const depthDiff = (maxDepth.get(a.id) ?? 0) - (maxDepth.get(b.id) ?? 0);
+        if (depthDiff !== 0) {
+          return depthDiff;
+        }
+      }
+      return (
+        (discoveryOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (discoveryOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      );
+    });
+
+    for (const mod of orderedModules) {
       if (!isConfigurableModule(mod.instance)) {
         continue;
       }
