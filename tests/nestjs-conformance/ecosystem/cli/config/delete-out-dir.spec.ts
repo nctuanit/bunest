@@ -136,8 +136,7 @@ describeConformance(
     });
 
     describe("path confinement", () => {
-      // BUNEST_BUG: buildProject() calls `rm(outdir, { recursive: true, force: true })` without checking path confinement against `cwd` or honoring `compilerOptions.allowOutsidePaths` (packages/cli/src/commands/build.ts:103-105)
-      it.skip("should refuse to delete an outDir outside the project by default", async () => {
+      it("should refuse to delete an outDir outside the project by default", async () => {
         const outsideDir = join(tmpDir, "outside-dist");
         mkdirSyncPath(outsideDir, { recursive: true });
         writeTextSync(join(outsideDir, "keep.txt"), "precious");
@@ -155,8 +154,7 @@ describeConformance(
         expect(existsSyncPath(join(outsideDir, "keep.txt"))).toBe(true);
       });
 
-      // BUNEST_BUG: buildProject() does not refuse `outdir: "."` when `deleteOutDir: true`, which would wipe the project root itself (packages/cli/src/commands/build.ts:103-105)
-      it.skip("should refuse to delete the project directory itself when outdir is '.'", async () => {
+      it("should refuse to delete the project directory itself when outdir is '.'", async () => {
         await expect(
           buildProject({
             cwd: projectDir,
@@ -191,8 +189,7 @@ describeConformance(
         expect(existsSyncPath(join(outsideDir, "main.js"))).toBe(true);
       });
 
-      // BUNEST_BUG: buildProject() does not inspect tsconfig `tsBuildInfoFile` / `incremental` to delete stale buildinfo files when `deleteOutDir: true` (packages/cli/src/commands/build.ts)
-      it.skip("should delete tsBuildInfoFile when deleteOutDir is enabled", async () => {
+      it("should delete tsBuildInfoFile when deleteOutDir is enabled", async () => {
         const infoPath = join(projectDir, "tsconfig.tsbuildinfo");
         writeTextSync(infoPath, "{}");
         writeTextSync(join(projectDir, "tsconfig.json"), JSON.stringify({

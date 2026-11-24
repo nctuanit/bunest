@@ -151,8 +151,7 @@ describeConformance(
           expect(response.headers["x-ratelimit-reset"]).toBeUndefined();
         });
 
-        // BUNEST_BUG: packages/security/src/throttler/throttler.module.ts omits @Global() on ThrottlerModule and sets `global: undefined` for array `forRoot([...])`, so root APP_GUARD ThrottlerGuard does not receive ControllerModule's THROTTLER_OPTIONS (including `ignoreUserAgents`) and silently falls back to default options.
-        it.skip("GET /ignore-user-agents", async () => {
+        it("GET /ignore-user-agents", async () => {
           const response = await ctx
             .request()
             .get("/ignore-user-agents")
@@ -214,8 +213,7 @@ describeConformance(
           expect(response.headers["x-ratelimit-reset"]).toMatch(/^\d+$/);
         };
 
-        // BUNEST_BUG: packages/security/src/throttler/memory-throttler.storage.ts (increment lines 78-127) does not clear pre-block hits after `blockedUntil` elapses; when `ttl > blockDuration` (1000ms > 300ms), the next request after block expiry immediately hits `bucket.hits.length >= limit` and re-blocks with 429 instead of returning 200.
-        it.skip("GET ", async () => {
+        it("GET ", async () => {
           await runLimitCase("", 2, 300);
         });
 
@@ -225,8 +223,7 @@ describeConformance(
       });
 
       describe("DefaultController", () => {
-        // BUNEST_BUG: packages/security/src/throttler/throttler.module.ts omits @Global() on ThrottlerModule so root APP_GUARD ThrottlerGuard misses ControllerModule's `ThrottlerModule.forRoot([...])` (`limit: 5`) and silently defaults to `limit: 60` (and memory-throttler.storage.ts also re-blocks after `blockDuration` when `ttl > blockDuration`).
-        it.skip("GET /default", async () => {
+        it("GET /default", async () => {
           const limit = 5;
           const blockDuration = 400;
           for (let i = 0; i < limit; i++) {
@@ -287,8 +284,7 @@ describeConformance(
     });
 
     describe("SkipIf suite", () => {
-      // BUNEST_BUG: packages/security/src/throttler/throttler.module.ts omits @Global() on ThrottlerModule, so `overrideProvider(THROTTLER_OPTIONS)` inside imported ControllerModule is not visible to root APP_GUARD ThrottlerGuard (which silently uses default options instead of `skipIf: () => true`).
-      it.skip("should skip throttling if skipIf returns true", async () => {
+      it("should skip throttling if skipIf returns true", async () => {
         const ctx = await createTestApp(
           {
             imports: [ControllerModule],
@@ -324,8 +320,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: packages/security/src/throttler/throttler.module.ts omits @Global() on ThrottlerModule, so `overrideProvider(THROTTLER_OPTIONS)` inside imported ControllerModule is not visible to root APP_GUARD ThrottlerGuard (which silently uses default options instead of async `skipIf`).
-      it.skip("should skip throttling if skipIf resolves true", async () => {
+      it("should skip throttling if skipIf resolves true", async () => {
         let skipCount = 0;
         const ctx = await createTestApp(
           {

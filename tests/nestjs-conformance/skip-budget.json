@@ -3,10 +3,10 @@
   "totals": {
     "files": 672,
     "tests": 6971,
-    "pass": 5190,
-    "skip": 1781,
+    "pass": 5212,
+    "skip": 1759,
     "fail": 0,
-    "assertions": 11940
+    "assertions": 12131
   },
   "buckets": {
     "_helpers": {
@@ -44,10 +44,10 @@
     "ecosystem/cli": {
       "files": 37,
       "tests": 514,
-      "pass": 382,
-      "skip": 132,
+      "pass": 389,
+      "skip": 125,
       "fail": 0,
-      "assertions": 1248
+      "assertions": 1257
     },
     "ecosystem/config": {
       "files": 29,
@@ -92,10 +92,10 @@
     "ecosystem/observability": {
       "files": 35,
       "tests": 537,
-      "pass": 487,
-      "skip": 50,
+      "pass": 489,
+      "skip": 48,
       "fail": 0,
-      "assertions": 1599
+      "assertions": 1602
     },
     "ecosystem/persistence": {
       "files": 17,
@@ -124,10 +124,10 @@
     "ecosystem/security": {
       "files": 12,
       "tests": 147,
-      "pass": 124,
-      "skip": 23,
+      "pass": 137,
+      "skip": 10,
       "fail": 0,
-      "assertions": 283
+      "assertions": 462
     },
     "ecosystem/swagger": {
       "files": 38,

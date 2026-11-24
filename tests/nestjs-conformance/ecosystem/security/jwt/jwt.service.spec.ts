@@ -237,16 +237,14 @@ describeConformance(
         await moduleRef.close();
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts (inferDefaultSignAlgorithm) checks `this.options.privateKey` before `this.options.secret`, so when both `secret` and `privateKey` are configured it signs with RS256/privateKey instead of HS256/secret.
-      it.skip("signing should use config.secret", async () => {
+      it("signing should use config.secret", async () => {
         const token = await jwtService.sign(testPayload);
         await expect(defaultSecretService.verify<string>(token)).resolves.toBe(
           testPayload,
         );
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts (inferDefaultSignAlgorithm) checks `this.options.privateKey` before `this.options.secret`, so when both `secret` and `privateKey` are configured `signAsync` signs with RS256/privateKey instead of HS256/secret.
-      it.skip("signing (async) should use config.secret", async () => {
+      it("signing (async) should use config.secret", async () => {
         const token = await jwtService.signAsync(testPayload);
         await expect(
           defaultSecretService.verifyAsync<string>(token),
@@ -418,8 +416,7 @@ describeConformance(
         await moduleRef.close();
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts has no `logger` property, emits no deprecation warning for `secretOrPrivateKey`, and places `secretOrPrivateKey` at lowest precedence behind `secretOrKeyProvider`/`secret`/`privateKey`.
-      it.skip("signing should use deprecated secretOrPrivateKey", async () => {
+      it("signing should use deprecated secretOrPrivateKey", async () => {
         const warnSpy = spyOn(
           (jwtService as unknown as { logger: { warn: (msg: string) => void } })
             .logger,
@@ -436,8 +433,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts has no `logger` property, emits no deprecation warning for `secretOrPrivateKey`, and places `secretOrPrivateKey` at lowest precedence behind `secretOrKeyProvider`/`secret`/`privateKey`.
-      it.skip("signing (async) should use deprecated secretOrPrivateKey", async () => {
+      it("signing (async) should use deprecated secretOrPrivateKey", async () => {
         const warnSpy = spyOn(
           (jwtService as unknown as { logger: { warn: (msg: string) => void } })
             .logger,
@@ -454,8 +450,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts has no `logger` property, emits no deprecation warning for `secretOrPrivateKey`, and places `secretOrPrivateKey` at lowest precedence behind `secretOrKeyProvider`/`secret`/`privateKey`.
-      it.skip("verifying should use deprecated secretOrPrivateKey", async () => {
+      it("verifying should use deprecated secretOrPrivateKey", async () => {
         const warnSpy = spyOn(
           (jwtService as unknown as { logger: { warn: (msg: string) => void } })
             .logger,
@@ -472,8 +467,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts has no `logger` property, emits no deprecation warning for `secretOrPrivateKey`, and places `secretOrPrivateKey` at lowest precedence behind `secretOrKeyProvider`/`secret`/`privateKey`.
-      it.skip("verifying (async) should use deprecated secretOrPrivateKey", async () => {
+      it("verifying (async) should use deprecated secretOrPrivateKey", async () => {
         const warnSpy = spyOn(
           (jwtService as unknown as { logger: { warn: (msg: string) => void } })
             .logger,
@@ -586,16 +580,14 @@ describeConformance(
         await moduleRef.close();
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts (inferDefaultSignAlgorithm) checks `this.options.privateKey` before per-call `opts.secret`, so calling `sign(payload, { secret })` when module config also has `privateKey` signs with RS256/privateKey instead of HS256/`opts.secret`.
-      it.skip("signing should use secret key from options", async () => {
+      it("signing should use secret key from options", async () => {
         const token = await jwtService.sign(testPayload, { secret });
         await expect(customSecretService.verify<string>(token)).resolves.toBe(
           testPayload,
         );
       });
 
-      // BUNEST_BUG: packages/security/src/jwt/jwt.service.ts (inferDefaultSignAlgorithm) checks `this.options.privateKey` before per-call `opts.secret`, so calling `signAsync(payload, { secret })` when module config also has `privateKey` signs with RS256/privateKey instead of HS256/`opts.secret`.
-      it.skip("signing (async) should use secret key from options", async () => {
+      it("signing (async) should use secret key from options", async () => {
         const token = await jwtService.signAsync(testPayload, { secret });
         await expect(
           customSecretService.verifyAsync<string>(token),

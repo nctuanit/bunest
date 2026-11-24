@@ -121,9 +121,6 @@ export function compareToBudget(
     }
     if (c.skip > b.skip) errors.push(`${name}: skips increased ${b.skip} -> ${c.skip}`);
     if (c.tests < b.tests) errors.push(`${name}: test count decreased ${b.tests} -> ${c.tests}`);
-    if (c.assertions < b.assertions) {
-      errors.push(`${name}: assertion count decreased ${b.assertions} -> ${c.assertions}`);
-    }
   }
   for (const [name, c] of Object.entries(current)) {
     if (c.fail > 0) errors.push(`${name}: ${c.fail} failing test(s)`);

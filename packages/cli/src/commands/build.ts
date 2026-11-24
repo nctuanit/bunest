@@ -19,6 +19,7 @@ import type {
   CliIO,
   SpawnFn,
 } from "../types";
+import { resolveSafeChildPath } from "../utils/naming";
 
 const VALID_TARGETS = new Set(["bun", "browser", "node"] as const);
 
@@ -109,7 +110,34 @@ export async function buildProject(
   }
 
   if (deleteOutDir) {
-    await removePath(outdir, { recursive: true, force: true });
+    const allowOutsidePaths =
+      (config.compilerOptions as { allowOutsidePaths?: boolean } | undefined)
+        ?.allowOutsidePaths === true;
+    const rawOutdir = options.outdir ?? "dist";
+    const safeOutdir = allowOutsidePaths
+      ? outdir
+      : resolveSafeChildPath(cwd, rawOutdir);
+    await removePath(safeOutdir, { recursive: true, force: true });
+
+    // Also remove stale TypeScript incremental buildinfo if declared in tsconfig
+    const tsconfigPath = resolve(cwd, options.path ?? "tsconfig.json");
+    if (await Bun.file(tsconfigPath).exists()) {
+      try {
+        const rawTsconfig = await Bun.file(tsconfigPath).text();
+        const parsed = Bun.JSONC.parse(rawTsconfig) as {
+          compilerOptions?: { tsBuildInfoFile?: string };
+        };
+        const buildInfo = parsed?.compilerOptions?.tsBuildInfoFile;
+        if (typeof buildInfo === "string" && buildInfo.trim().length > 0) {
+          const infoTarget = allowOutsidePaths
+            ? resolve(cwd, buildInfo)
+            : resolveSafeChildPath(cwd, buildInfo);
+          await removePath(infoTarget, { force: true });
+        }
+      } catch {
+        // Ignore malformed tsconfig during buildinfo cleanup
+      }
+    }
   }
 
   // Standalone single-file executable via `bun build --compile`

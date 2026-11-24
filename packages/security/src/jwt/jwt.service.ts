@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@bunest/core";
+import { Inject, Injectable, Logger, Optional } from "@bunest/core";
 import {
   base64UrlDecode,
   base64UrlDecodeUtf8,
@@ -178,6 +178,7 @@ function encodeStringWithEncoding(
  */
 @Injectable()
 export class JwtService {
+  private readonly logger = new Logger("JwtService");
   private readonly keyCache = new Map<string, Promise<CryptoKey>>();
 
   constructor(
@@ -586,17 +587,23 @@ export class JwtService {
       return undefined;
     };
 
+    if (opts.secret !== undefined) {
+      return inferFromKeyMaterial(opts.secret) ?? "HS256";
+    }
+    if (opts.privateKey !== undefined) {
+      return inferFromKeyMaterial(opts.privateKey) ?? "RS256";
+    }
+    if (this.options.secretOrPrivateKey !== undefined) {
+      return inferFromKeyMaterial(this.options.secretOrPrivateKey) ?? "HS256";
+    }
     if (providerKey !== undefined) {
       return inferFromKeyMaterial(providerKey) ?? "HS256";
     }
-
-    const explicitPrivate = opts.privateKey ?? this.options.privateKey;
-    if (explicitPrivate) {
-      return inferFromKeyMaterial(explicitPrivate) ?? "RS256";
+    if (this.options.secret !== undefined) {
+      return inferFromKeyMaterial(this.options.secret) ?? "HS256";
     }
-
-    if (this.options.secretOrPrivateKey) {
-      return inferFromKeyMaterial(this.options.secretOrPrivateKey) ?? "HS256";
+    if (this.options.privateKey !== undefined) {
+      return inferFromKeyMaterial(this.options.privateKey) ?? "RS256";
     }
 
     return "HS256";
@@ -668,12 +675,22 @@ export class JwtService {
     opts: JwtSignOptions,
     providerKey?: GetSecretKeyResult,
   ): Promise<CryptoKey> {
+    const useDeprecated =
+      opts.secret === undefined &&
+      opts.privateKey === undefined &&
+      this.options.secretOrPrivateKey !== undefined;
+    if (useDeprecated) {
+      this.logger.warn(
+        'secretOrPrivateKey has been deprecated, please use the new explicit option "secret" or use keys with "privateKey" and "publicKey" exclusively.',
+      );
+    }
+
     if (HMAC_ALGS.has(alg)) {
       const secret = normalizeSecretMaterial(
-        providerKey ??
-          opts.secret ??
-          this.options.secret ??
-          this.options.secretOrPrivateKey,
+        opts.secret ??
+          (useDeprecated ? this.options.secretOrPrivateKey : undefined) ??
+          providerKey ??
+          this.options.secret,
         "hmac",
       );
       if (!secret) {
@@ -685,10 +702,10 @@ export class JwtService {
     }
 
     const privateKey = normalizeSecretMaterial(
-      providerKey ??
-        opts.privateKey ??
-        this.options.privateKey ??
-        this.options.secretOrPrivateKey,
+      opts.privateKey ??
+        (useDeprecated ? this.options.secretOrPrivateKey : undefined) ??
+        providerKey ??
+        this.options.privateKey,
       "private",
     );
     if (!privateKey || privateKey instanceof Uint8Array) {
@@ -708,8 +725,23 @@ export class JwtService {
     opts: JwtVerifyOptions,
     token: string,
   ): Promise<CryptoKey> {
+    const useDeprecated =
+      opts.secret === undefined &&
+      opts.publicKey === undefined &&
+      this.options.secretOrPrivateKey !== undefined;
+    if (useDeprecated) {
+      this.logger.warn(
+        'secretOrPrivateKey has been deprecated, please use the new explicit option "secret" or use keys with "privateKey" and "publicKey" exclusively.',
+      );
+    }
+
     let providerKey: GetSecretKeyResult | undefined;
-    if (this.options.secretOrKeyProvider && !opts.secret && !opts.publicKey) {
+    if (
+      !useDeprecated &&
+      this.options.secretOrKeyProvider &&
+      !opts.secret &&
+      !opts.publicKey
+    ) {
       providerKey = await this.options.secretOrKeyProvider(
         JwtSecretRequestType.VERIFY,
         token,
@@ -729,10 +761,10 @@ export class JwtService {
     if (HMAC_ALGS.has(alg)) {
       // Strictly require symmetric secret — NEVER fall back to publicKey (prevents alg confusion!)
       const secret = normalizeSecretMaterial(
-        providerKey ??
-          opts.secret ??
-          this.options.secret ??
-          this.options.secretOrPrivateKey,
+        opts.secret ??
+          (useDeprecated ? this.options.secretOrPrivateKey : undefined) ??
+          providerKey ??
+          this.options.secret,
         "hmac",
       );
       if (!secret) {
@@ -750,7 +782,10 @@ export class JwtService {
     }
 
     const publicKey = normalizeSecretMaterial(
-      providerKey ?? opts.publicKey ?? this.options.publicKey,
+      opts.publicKey ??
+        (useDeprecated ? this.options.secretOrPrivateKey : undefined) ??
+        providerKey ??
+        this.options.publicKey,
       "public",
     );
     if (!publicKey || publicKey instanceof Uint8Array) {

@@ -1,4 +1,11 @@
-import { isAbsolute, relative, resolve } from "@bunest/core";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  realpathSyncOf,
+  relative,
+  resolve,
+} from "@bunest/core";
 
 const VALID_PROJECT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const VALID_SEGMENT_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
@@ -131,9 +138,37 @@ export function parseSchematicName(input: string): ParsedSchematicName {
   };
 }
 
+function isOutsideOrEqual(rel: string): boolean {
+  return (
+    rel === "" ||
+    rel === ".." ||
+    rel.startsWith("../") ||
+    rel.startsWith("..\\") ||
+    isAbsolute(rel)
+  );
+}
+
+function resolveRealPath(targetPath: string): string {
+  let probe = targetPath;
+  const suffixParts: string[] = [];
+  while (true) {
+    try {
+      const realProbe = realpathSyncOf(probe);
+      return suffixParts.length > 0
+        ? resolve(realProbe, ...suffixParts.reverse())
+        : realProbe;
+    } catch {
+      const parent = dirname(probe);
+      if (parent === probe) return targetPath;
+      suffixParts.push(basename(probe));
+      probe = parent;
+    }
+  }
+}
+
 /**
  * Resolves `relativePath` under `baseDir` and verifies the resulting path
- * cannot escape `baseDir`.
+ * cannot escape `baseDir` (lexically or via symlinks) and is not `baseDir` itself.
  */
 export function resolveSafeChildPath(
   baseDir: string,
@@ -143,10 +178,20 @@ export function resolveSafeChildPath(
   const resolvedTarget = resolve(resolvedBase, relativePath);
   const rel = relative(resolvedBase, resolvedTarget);
 
-  if (rel.startsWith("..") || isAbsolute(rel)) {
+  if (isOutsideOrEqual(rel)) {
     throw new Error(
-      `Unsafe target path "${relativePath}": escapes base directory "${resolvedBase}".`,
+      `Unsafe target path "${relativePath}": outside of or equal to the project directory "${resolvedBase}".`,
     );
   }
+
+  const realBase = resolveRealPath(resolvedBase);
+  const realTarget = resolveRealPath(resolvedTarget);
+  const realRel = relative(realBase, realTarget);
+  if (isOutsideOrEqual(realRel)) {
+    throw new Error(
+      `Unsafe target path "${relativePath}": resolves outside of or equal to the project directory "${resolvedBase}".`,
+    );
+  }
+
   return resolvedTarget;
 }

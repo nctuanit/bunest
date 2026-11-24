@@ -37,7 +37,7 @@ describe("Distributed Tracing, W3C Trace Context & Correlated Logging", () => {
     const formatted = formatTraceParent({ traceId, spanId, sampled: true });
     expect(formatted).toBe(`00-${traceId}-${spanId}-01`);
 
-    const parsed = parseTraceParent(formatted.toUpperCase());
+    const parsed = parseTraceParent(formatted);
     expect(parsed).toEqual({
       version: "00",
       traceId,
@@ -45,6 +45,8 @@ describe("Distributed Tracing, W3C Trace Context & Correlated Logging", () => {
       traceFlags: 1,
       sampled: true,
     });
+    // W3C Trace Context §3.2.2.1 mandates lowercase hex only
+    expect(parseTraceParent(formatted.toUpperCase())).toBeNull();
 
     // Future version 01 with extra fields is accepted per W3C spec
     expect(parseTraceParent(`01-${traceId}-${spanId}-00-extra`)?.sampled).toBe(

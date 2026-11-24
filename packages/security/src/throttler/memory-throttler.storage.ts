@@ -87,6 +87,13 @@ export class MemoryThrottlerStorage
       };
     }
 
+    // Once a block window has elapsed, clear pre-block hits so the next request
+    // starts a fresh window instead of immediately re-blocking.
+    if (bucket.blockedUntil > 0 && bucket.blockedUntil <= now) {
+      bucket.blockedUntil = 0;
+      bucket.hits.length = 0;
+    }
+
     // Prune timestamps outside the sliding window [now - windowMs, now]
     const cutoff = now - windowMs;
     if (bucket.hits.length > 0) {
