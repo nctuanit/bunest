@@ -206,8 +206,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected middleware-thrown http-errors error ({ statusCode: 503, expose: false }) to return 503 "Service Unavailable" and log via Logger.prototype.error; actual returns 500 "Internal server error" because DefaultExceptionFilter/execution-pipeline do not handle http-errors-shaped errors (packages/core/src/http/pipeline/exception-handler.ts, packages/core/src/http/pipeline/execution-pipeline.ts).
-      it.skip('/GET (ServiceUnavailable logged when a middleware raises an "http-errors" error)', async () => {
+      it('/GET (ServiceUnavailable logged when a middleware raises an "http-errors" error)', async () => {
         const logError = stubMethod(Logger.prototype, "error");
         try {
           const res = await request(app)
@@ -350,8 +349,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: Expected 4xx http-errors-shaped error ({ statusCode: 413 }) thrown in middleware to be mapped to HttpException and caught by @Catch(HttpException) filter (returning 413 { caught: 413 }); actual bypasses @Catch(HttpException) and returns 500 "Internal server error" (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/pipeline/exception-handler.ts).
-      it.skip('/GET (a 4xx "http-errors" error from a middleware reaches the filter)', async () => {
+      it('/GET (a 4xx "http-errors" error from a middleware reaches the filter)', async () => {
         await request(app)
           .get("/middleware-error")
           .expect(HttpStatus.PAYLOAD_TOO_LARGE)

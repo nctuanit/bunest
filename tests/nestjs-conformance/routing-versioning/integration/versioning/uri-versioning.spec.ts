@@ -68,16 +68,14 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /v1/param/hello to return "Parameter V1!" (AppV1Controller), but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) treats any target route param (`tSeg.startsWith(":")`) as matching any static middleware prefix (`pSeg === "middleware"`), causing MiddlewareController's middleware (`/middleware/*`) to bind to `/:param/hello` at compile time (packages/core/src/http/router/route-compiler.ts:475).
-        it.skip("V1", async () => {
+        it("V1", async () => {
           await request(app)
             .get("/v1/param/hello")
             .expect(200)
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /v2/param/hello to return "Parameter V2!" (AppV2Controller), but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
-        it.skip("V2", async () => {
+        it("V2", async () => {
           await request(app)
             .get("/v2/param/hello")
             .expect(200)
@@ -263,16 +261,14 @@ describeConformance(
       });
 
       describe("GET /:param", () => {
-        // BUNEST_BUG: Expected GET /v1/param/hello to return "Parameter V1!" (AppV1Controller), but got "Hello from middleware function!". packages/core/src/http/scanner/path-normalizer.ts (matchesPathPattern line 151) treats any target route param (`tSeg.startsWith(":")`) as matching any static middleware prefix (`pSeg === "middleware"`), causing MiddlewareController's middleware (`/middleware/*`) to bind to `/:param/hello` at compile time (packages/core/src/http/router/route-compiler.ts:475).
-        it.skip("V1", async () => {
+        it("V1", async () => {
           await request(app)
             .get("/v1/param/hello")
             .expect(200)
             .expect("Parameter V1!");
         });
 
-        // BUNEST_BUG: Expected GET /v2/param/hello to return "Parameter V2!" (AppV2Controller), but got "Hello from middleware function!" due to matchesPathPattern (`packages/core/src/http/scanner/path-normalizer.ts:151`) binding `/middleware/*` onto `/:param/hello`.
-        it.skip("V2", async () => {
+        it("V2", async () => {
           await request(app)
             .get("/v2/param/hello")
             .expect(200)

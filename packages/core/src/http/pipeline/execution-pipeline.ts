@@ -10,6 +10,7 @@ import {
   HttpStatus,
   type InterceptorLike,
   InternalServerErrorException,
+  Logger,
   type MiddlewareFunction,
   type NextFunction,
   type PipeLike,
@@ -28,6 +29,7 @@ import {
   type RequestContext,
   requestContextStorage,
 } from "../context/request-context";
+import { HttpResponseContext } from "../context/response-context";
 import type {
   HttpRuntimeBridge,
   RequestScopeContainer,
@@ -50,6 +52,7 @@ import {
   type DefaultExceptionFilter,
   executeExceptionFilters,
   extractFilterCatchTypes,
+  wrapHttpLikeMiddlewareError,
 } from "./exception-handler";
 import {
   type CompiledParameter,
@@ -60,6 +63,7 @@ import {
 import {
   mergeHeadersOntoNativeResponse,
   serializeResponse,
+  serializeResponseMaybeAsync,
 } from "./response-serializer";
 
 export type MiddlewareEntry =
@@ -178,7 +182,8 @@ function serializeFastOrFull(
   value: unknown,
   compiled: CompiledRoute,
   ctx: RequestContext,
-): Response {
+  runtime?: PipelineRuntimeConfig,
+): Response | Promise<Response> {
   if (
     compiled.isStandardResponse &&
     !ctx.hasResponseContext() &&
@@ -208,7 +213,11 @@ function serializeFastOrFull(
       }
     }
   }
-  return serializeResponse(value, compiled.route, ctx);
+  const out = serializeResponseMaybeAsync(value, compiled.route, ctx);
+  if (runtime && isThenable(out)) {
+    return out.catch((err) => handleFastError(err, compiled, ctx, runtime));
+  }
+  return out;
 }
 
 function handleFastError(
@@ -247,31 +256,33 @@ async function runSingleArgAsync(
   try {
     let val = isThenable(extracted) ? await extracted : extracted;
 
-    const delegatedToPipe =
-      (!param.skipHigherScopePipes &&
-        hasStandardSchemaValidationPipe(sharedPipes)) ||
-      hasStandardSchemaValidationPipe(paramPipes);
+    if (!(val instanceof HttpResponseContext)) {
+      const delegatedToPipe =
+        (!param.skipHigherScopePipes &&
+          hasStandardSchemaValidationPipe(sharedPipes)) ||
+        hasStandardSchemaValidationPipe(paramPipes);
 
-    if (param.schema && !delegatedToPipe) {
-      val = await runInlineStandardSchema(param.schema, val, param.metadata);
-    }
+      if (param.schema && !delegatedToPipe) {
+        val = await runInlineStandardSchema(param.schema, val, param.metadata);
+      }
 
-    if (!param.skipHigherScopePipes && sharedPipes.length > 0) {
-      for (let i = 0; i < sharedPipes.length; i++) {
-        const pipe = sharedPipes[i];
-        if (pipe) {
-          const transformed = pipe.transform(val, param.metadata);
-          val = isThenable(transformed) ? await transformed : transformed;
+      if (!param.skipHigherScopePipes && sharedPipes.length > 0) {
+        for (let i = 0; i < sharedPipes.length; i++) {
+          const pipe = sharedPipes[i];
+          if (pipe) {
+            const transformed = pipe.transform(val, param.metadata);
+            val = isThenable(transformed) ? await transformed : transformed;
+          }
         }
       }
-    }
 
-    if (paramPipes.length > 0) {
-      for (let i = 0; i < paramPipes.length; i++) {
-        const pipe = paramPipes[i];
-        if (pipe) {
-          const transformed = pipe.transform(val, param.metadata);
-          val = isThenable(transformed) ? await transformed : transformed;
+      if (paramPipes.length > 0) {
+        for (let i = 0; i < paramPipes.length; i++) {
+          const pipe = paramPipes[i];
+          if (pipe) {
+            const transformed = pipe.transform(val, param.metadata);
+            val = isThenable(transformed) ? await transformed : transformed;
+          }
         }
       }
     }
@@ -284,7 +295,7 @@ async function runSingleArgAsync(
       result = await result;
     }
 
-    return serializeFastOrFull(result, compiled, ctx);
+    return await serializeFastOrFull(result, compiled, ctx, runtime);
   } catch (err) {
     return handleFastError(err, compiled, ctx, runtime);
   }
@@ -305,14 +316,20 @@ async function runMultiArgAsync(
         )
       : (undefined as unknown as HttpExecutionContext);
 
-    const args = await resolveRouteArguments(
-      compiled.compiledParams,
-      compiled.argCount,
-      compiled.singletonSharedPipes!,
-      compiled.singletonParamPipes!,
-      ctx,
-      execCtx,
-    );
+    let args: unknown[];
+    try {
+      args = await resolveRouteArguments(
+        compiled.compiledParams,
+        compiled.argCount,
+        compiled.singletonSharedPipes!,
+        compiled.singletonParamPipes!,
+        ctx,
+        execCtx,
+      );
+    } catch (paramErr) {
+      await ctx.cleanupUploadedDiskFiles();
+      throw paramErr;
+    }
 
     let result = compiled.singletonHandler!.apply(
       compiled.singletonController,
@@ -322,7 +339,7 @@ async function runMultiArgAsync(
       result = await result;
     }
 
-    return serializeFastOrFull(result, compiled, ctx);
+    return await serializeFastOrFull(result, compiled, ctx, runtime);
   } catch (err) {
     return handleFastError(err, compiled, ctx, runtime);
   }
@@ -354,10 +371,10 @@ export function executeFastSingletonRoute(
         );
         if (isThenable(result)) {
           return Promise.resolve(result)
-            .then((val) => serializeFastOrFull(val, compiled, ctx))
+            .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
             .catch((err) => handleFastError(err, compiled, ctx, runtime));
         }
-        return serializeFastOrFull(result, compiled, ctx);
+        return serializeFastOrFull(result, compiled, ctx, runtime);
       }
 
       // 1-arg route fast path (e.g. GET /users/:id, POST /users, POST /users/validated)
@@ -392,10 +409,10 @@ export function executeFastSingletonRoute(
           );
           if (isThenable(result)) {
             return Promise.resolve(result)
-              .then((val) => serializeFastOrFull(val, compiled, ctx))
+              .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
               .catch((err) => handleFastError(err, compiled, ctx, runtime));
           }
-          return serializeFastOrFull(result, compiled, ctx);
+          return serializeFastOrFull(result, compiled, ctx, runtime);
         }
 
         return runSingleArgAsync(
@@ -503,7 +520,15 @@ async function executeMiddlewareChain(
       return nextPromise!;
     };
 
-    const result = await invokeMiddleware(mw, ctx, next);
+    let result: unknown;
+    try {
+      result = await invokeMiddleware(mw, ctx, next);
+    } catch (mwErr) {
+      if (!nextCalled) {
+        throw wrapHttpLikeMiddlewareError(mwErr);
+      }
+      throw mwErr;
+    }
 
     if (result instanceof Response) {
       return nextCalled ? result : finalizeShortCircuitResponse(result, ctx);
@@ -726,22 +751,15 @@ async function executeFullCompiledRoute(
     };
 
     try {
-      // Optional adapter onRequestHook (only executed when explicitly registered)
-      if (runtime.onRequestHook) {
-        await runAdapterOnRequestHook(
-          runtime.onRequestHook,
-          ctx.request,
-          ctx.responseContext,
-        );
+      const runDownstream = async (): Promise<Response> => {
         const earlySent = ctx.responseContext.getSentResponse();
         if (earlySent) {
           return await finalizeResponse(earlySent);
         }
-      }
 
-      // Resolve per-request filters first if request-scoped so exceptions in stages 3-11
-      // hit method/controller filters properly.
-      if (compiled.requiresRequestScope) {
+        // Resolve per-request filters first if request-scoped so exceptions in stages 3-11
+        // hit method/controller filters properly.
+        if (compiled.requiresRequestScope) {
         const resolvedFilters: CompiledExceptionFilter[] = [];
         for (let i = 0; i < compiled.filterSpecs.length; i++) {
           const item = compiled.filterSpecs[i];
@@ -934,14 +952,20 @@ async function executeFullCompiledRoute(
           }
 
           // Stages 7 & 8: Extract parameters & run pipes
-          const args = await resolveRouteArguments(
-            compiled.compiledParams,
-            compiled.argCount,
-            sharedPipes,
-            paramPipesList,
-            ctx,
-            executionContext,
-          );
+          let args: unknown[];
+          try {
+            args = await resolveRouteArguments(
+              compiled.compiledParams,
+              compiled.argCount,
+              sharedPipes,
+              paramPipesList,
+              ctx,
+              executionContext,
+            );
+          } catch (paramErr) {
+            await ctx.cleanupUploadedDiskFiles();
+            throw paramErr;
+          }
 
           // Stage 9: Invoke controller handler (+ optional onRouteTriggered hook)
           if (runtime.onRouteTriggered) {
@@ -964,9 +988,14 @@ async function executeFullCompiledRoute(
               route.handlerKey
             ] as (...a: unknown[]) => unknown);
 
-          return await handlerMethod.apply(controllerInstance, args);
+          const rawResult = await handlerMethod.apply(controllerInstance, args);
+          if (rawResult instanceof Response) {
+            innerHandlerResponse = rawResult;
+          }
+          return rawResult;
         };
 
+        let innerHandlerResponse: Response | undefined;
         let handlerResult: unknown;
         if (interceptors.length === 0) {
           handlerResult = await executeInnerStages();
@@ -984,6 +1013,31 @@ async function executeFullCompiledRoute(
             };
           }
           handlerResult = await nextHandler.handle();
+        }
+
+        // Preserve status & headers if an interceptor wrapped the handler's native Response (e.g. `{ data: response }`)
+        if (
+          innerHandlerResponse &&
+          !(handlerResult instanceof Response) &&
+          handlerResult !== null &&
+          typeof handlerResult === "object"
+        ) {
+          const vals = Object.values(handlerResult as Record<string, unknown>);
+          if (vals.includes(innerHandlerResponse)) {
+            if (ctx.responseContext.getStatus() === undefined) {
+              ctx.responseContext.status(innerHandlerResponse.status);
+            }
+            const existingHeaders = ctx.responseContext.getHeadersIfInitialized();
+            innerHandlerResponse.headers.forEach((v, k) => {
+              if (k.toLowerCase() === "content-type") return;
+              if (!existingHeaders || !existingHeaders.has(k)) {
+                ctx.responseContext.header(k, v);
+              }
+            });
+            if (innerHandlerResponse.body) {
+              void innerHandlerResponse.body.cancel().catch(() => {});
+            }
+          }
         }
 
         // Stage 11: Response Serialization (ADR-010) + optional @Render() + Security Headers
@@ -1011,13 +1065,80 @@ async function executeFullCompiledRoute(
           );
           response = serializeResponse(html, route, ctx);
         } else {
-          response = serializeResponse(handlerResult, route, ctx);
+          response = await serializeResponseMaybeAsync(
+            handlerResult,
+            route,
+            ctx,
+          );
         }
         return await finalizeResponse(response);
       });
       return runtime.securityHeaders
         ? applySecurityHeaders(mwResponse, runtime.securityHeaders)
         : mwResponse;
+      };
+
+      if (runtime.onRequestHook) {
+        const hookFn = runtime.onRequestHook;
+        if (hookFn.length >= 3) {
+          return await new Promise<Response>((resolve, reject) => {
+            let doneCalled = false;
+            let settled = false;
+            const settleResolve = (res: Response) => {
+              if (!settled) {
+                settled = true;
+                resolve(res);
+              }
+            };
+            const settleReject = (err: unknown) => {
+              if (!settled) {
+                settled = true;
+                reject(err);
+              }
+            };
+            const done = (err?: unknown) => {
+              if (doneCalled) return;
+              doneCalled = true;
+              if (err !== undefined && err !== null) {
+                settleReject(err);
+                return;
+              }
+              // Invoke runDownstream synchronously inside done() so AsyncLocalStorage
+              // contexts established by the hook (e.g. `storage.run('hook', done)`)
+              // propagate across body parsing, handler execution, and onResponseHook.
+              runDownstream().then(settleResolve, settleReject);
+            };
+            try {
+              const maybePromise = hookFn(ctx.request, ctx.responseContext, done);
+              if (isThenable(maybePromise)) {
+                Promise.resolve(maybePromise).then(
+                  () => {
+                    if (!doneCalled) {
+                      done();
+                    }
+                  },
+                  (err) => {
+                    if (doneCalled) {
+                      new Logger("RequestHook").error(err);
+                    } else {
+                      settleReject(err);
+                    }
+                  },
+                );
+              }
+            } catch (err) {
+              if (doneCalled) {
+                new Logger("RequestHook").error(err);
+              } else {
+                settleReject(err);
+              }
+            }
+          });
+        }
+        await hookFn(ctx.request, ctx.responseContext);
+      }
+
+      return await runDownstream();
     } catch (rawError) {
       const error = runtime.mapException
         ? runtime.mapException(rawError)

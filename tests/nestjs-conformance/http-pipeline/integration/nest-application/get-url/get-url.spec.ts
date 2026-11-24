@@ -140,8 +140,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected app.getUrl() to normalize wildcard bind address 0.0.0.0 to http://127.0.0.1:<port> (matching NestApplication.getUrl()); actual returns raw Bun server.url http://0.0.0.0:<port>/ (packages/core/src/application/bunest-application.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should return 127.0.0.1 for 0.0.0.0", async () => {
+    it("should return 127.0.0.1 for 0.0.0.0", async () => {
       const app = testModule.createNestApplication({ logger: false });
       try {
         await app.listen(port, "0.0.0.0");

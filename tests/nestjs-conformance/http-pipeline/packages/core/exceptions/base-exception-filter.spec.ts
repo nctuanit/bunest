@@ -184,8 +184,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: Filter class with static-only catch() returns 500 instead of 400 — DIContainer.resolveEnhancer instantiates `new StaticOnly()` (which lacks `.catch()`) instead of recognizing a class with static `catch()` and no prototype `catch()` (packages/core/src/di/di-container.ts:1462-1600, packages/core/src/http/pipeline/exception-handler.ts:248).
-        it.skip("should return and invoke the class when only the class has a static 'catch'", async () => {
+        it("should return and invoke the class when only the class has a static 'catch'", async () => {
           @Catch(HttpException)
           class StaticOnly {
             static catch() {
@@ -612,8 +611,7 @@ describeConformance(
         expect(filter.isExceptionObject({})).toBe(false);
       });
 
-      // BUNEST_BUG: BaseExceptionFilter.isHttpError() only checks `typeof err.statusCode === "number" && typeof err.message === "string"`, returning `true` for statusCode 200/600/400.5, empty message "", and plain `Error` instances with `statusCode` instead of enforcing integer 400..599, non-empty message, and http-error signatures (packages/core/src/exceptions/base-exception-filter.ts:107-116).
-      it.skip("isHttpError should reject non-4xx/5xx status codes, non-integers, empty messages, and plain Errors with statusCode", () => {
+      it("isHttpError should reject non-4xx/5xx status codes, non-integers, empty messages, and plain Errors with statusCode", () => {
         const filter = new BaseExceptionFilter();
         expect(
           filter.isHttpError({ statusCode: 400, message: "Bad request" }),
@@ -642,8 +640,7 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: BaseExceptionFilter.getHttpErrorMessage() only masks messages when `err.expose === false && err.statusCode >= 500`, leaking non-exposed 4xx error messages (e.g. 404 ENOENT file paths) instead of masking all `expose === false` errors (packages/core/src/exceptions/base-exception-filter.ts:118-127).
-      it.skip("getHttpErrorMessage should hide non-exposed 4xx error messages (expose: false)", () => {
+      it("getHttpErrorMessage should hide non-exposed 4xx error messages (expose: false)", () => {
         const filter = new BaseExceptionFilter();
         const msg = filter.getHttpErrorMessage({
           statusCode: 404,

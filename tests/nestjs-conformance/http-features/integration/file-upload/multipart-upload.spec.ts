@@ -374,8 +374,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: parseMultipart does not expand bracket notation (user[name], user[roles][], tags[0]) into nested objects/arrays — leaves flat keys (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should parse text fields with bracket notation into nested objects/arrays", async () => {
+      it("should parse text fields with bracket notation into nested objects/arrays", async () => {
         const res = await request(memApp)
           .post("/single")
           .field("user[name]", "Ada")
@@ -402,8 +401,7 @@ describeConformance(
         expect(res.body.file).toBeUndefined();
       });
 
-      // BUNEST_BUG: parseMultipart returns a 0-byte UploadedFileInfo for empty file inputs (`filename=""`) instead of ignoring empty file inputs (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should ignore an empty file input (no filename)", async () => {
+      it("should ignore an empty file input (no filename)", async () => {
         const boundary = "----bunestempty";
         const rawBody =
           `--${boundary}\r\n` +
@@ -469,8 +467,7 @@ describeConformance(
     });
 
     describe("field names", () => {
-      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition field names (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should handle escaped characters in field names", async () => {
+      it("should handle escaped characters in field names", async () => {
         const boundary = "----bunestescaped";
         const res = await request(memApp)
           .post("/none")
@@ -484,8 +481,7 @@ describeConformance(
         expect(res.body.body).toEqual({ 'a"b\nc': "1" });
       });
 
-      // BUNEST_BUG: parseMultipart does not decode WHATWG %22/%0A percent-escapes in Content-Disposition filenames (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should decode escaped characters in file names", async () => {
+      it("should decode escaped characters in file names", async () => {
         const boundary = "----nestboundary";
         const res = await request(memApp)
           .post("/single")
@@ -732,8 +728,7 @@ describeConformance(
         expect(readDirSyncNames(diskDir)).toEqual([]);
       });
 
-      // BUNEST_BUG: Streaming disk storage does not unlink already-stored multipart files when a downstream Nest pipe (e.g. ParseIntPipe) rejects the request (packages/core/src/http/pipeline/execution-pipeline.ts, packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should remove the stored files when a downstream pipe rejects the request", async () => {
+      it("should remove the stored files when a downstream pipe rejects the request", async () => {
         const res = await request(diskApp)
           .post("/disk-validated")
           .field("count", "not a number")

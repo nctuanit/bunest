@@ -73,8 +73,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected BunHttpAdapter.setOnRequestHook() to exist and route rejected hook errors to exception filters (401); actual adapter.setOnRequestHook is undefined (packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should send a request hook rejection to the exception filters", async () => {
+    it("should send a request hook rejection to the exception filters", async () => {
       expect(typeof adapter.setOnRequestHook).toBe("function");
       adapter.setOnRequestHook!(async () => {
         throw new UnauthorizedException();
@@ -87,8 +86,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Expected BunHttpAdapter.setOnRequestHook() to exist and log rejections thrown after done() while preserving the 200 response; actual adapter.setOnRequestHook is undefined (packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should log a request hook rejection after done() and keep the response", async () => {
+    it("should log a request hook rejection after done() and keep the response", async () => {
       const error = new Error("Late hook failure");
       const logError = stubMethod(Logger.prototype, "error");
       try {
@@ -105,8 +103,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected BunHttpAdapter.setOnRequestHook() and setOnResponseHook() to propagate AsyncLocalStorage context across request body parsing, handler execution, and response hook; actual methods are not implemented on BunHttpAdapter (packages/core/src/http/adapter/bun-http.adapter.ts).
-    it.skip("should run a request with a body in the async context of the request hook", async () => {
+    it("should run a request with a body in the async context of the request hook", async () => {
       expect(typeof adapter.setOnRequestHook).toBe("function");
       expect(typeof adapter.setOnResponseHook).toBe("function");
       adapter.setOnRequestHook!((_req, _res, done) =>

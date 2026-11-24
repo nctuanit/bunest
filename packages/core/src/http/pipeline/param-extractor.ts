@@ -14,6 +14,7 @@ import {
   type ValidationErrorDetail,
 } from "../../common/index";
 import type { RequestContext } from "../context/request-context";
+import { HttpResponseContext } from "../context/response-context";
 import { isDangerousKey } from "../security/prototype-sanitizer";
 
 export type ParameterExtractorFn = (
@@ -200,7 +201,7 @@ function buildExtractorFn(param: ParameterMetadata): ParameterExtractorFn {
       return (ctx) => ctx.session;
 
     case "sseSignal":
-      return (ctx) => ctx.signal;
+      return (ctx) => ctx.getSseSignal();
 
     case "hostParam":
       if (key !== undefined) {
@@ -349,6 +350,11 @@ export async function resolveRouteArguments(
     let value = param.isAsync
       ? await param.extract(ctx, executionContext)
       : param.extract(ctx, executionContext);
+
+    if (value instanceof HttpResponseContext) {
+      args[param.index] = value;
+      continue;
+    }
 
     const paramPipes = resolvedParamPipes[i];
     const delegatedToPipe =

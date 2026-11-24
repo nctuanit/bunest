@@ -84,7 +84,7 @@ describeConformance(
       expect(v2.body).toEqual({ userId: "5" });
     });
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
+    // BUNEST_BUG: BunHttpAdapter enforces strict trailing slashes by default (ignoreTrailingSlash: false), so `/reports/report.en.json/` returns 404 (packages/core/src/http/adapter/bun-http.adapter.ts:517).
     it.skip.each(["/reports/report.en.json", "/reports/report.en.json/"])(
       "should preserve optional captures after a version miss on %s",
       async (path) => {
@@ -105,8 +105,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
-    it.skip("should also match the versioned route without its optional part", async () => {
+    it("should also match the versioned route without its optional part", async () => {
       for (const version of ["1", "2"]) {
         const response = await request(app)
           .get("/reports/report.json")

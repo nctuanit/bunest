@@ -859,8 +859,7 @@ describeConformance(
         expect(res.text).toBe("from a stream");
       });
 
-      // BUNEST_BUG: mergeHeadersOntoNativeResponse does not default Content-Type to application/octet-stream for a streaming Response without an explicit Content-Type header (packages/core/src/http/pipeline/response-serializer.ts:192-249).
-      it.skip("should default to application/octet-stream without a Content-Type", async () => {
+      it("should default to application/octet-stream without a Content-Type", async () => {
         const res = await send("/response/stream");
         expect(res.headers["content-type"]).toBe("application/octet-stream");
       });
@@ -955,8 +954,7 @@ describeConformance(
         expect(res.text).toBe("created");
       });
 
-      // BUNEST_BUG: serializeResponse passes streaming Web Response bodies straight to Bun.serve without pre-pulling the first chunk to catch pre-commit errors through exception filters, resulting in ECONNRESET instead of HTTP 404 (packages/core/src/http/pipeline/response-serializer.ts:517-519).
-      it.skip("should go through the exception filters when it fails before the first chunk", async () => {
+      it("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/response/fail-first");
 
         expect(res.status).toBe(404);
@@ -1021,16 +1019,14 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse hardcodes Content-Type: application/octet-stream for all ReadableStream return values instead of inferring text/plain for string chunks (packages/core/src/http/pipeline/response-serializer.ts:598-609).
-      it.skip("should send strings as text", async () => {
+      it("should send strings as text", async () => {
         const res = await send("/web-stream/strings");
 
         expect(res.text).toBe("from strings");
         expect(res.headers["content-type"]).toMatch(/^text\/plain/);
       });
 
-      // BUNEST_BUG: serializeResponse passes object-mode ReadableStream directly to new Response(stream) instead of serializing objects as NDJSON (application/x-ndjson), causing Bun ERR_INVALID_ARG_TYPE / ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:598-609).
-      it.skip("should send objects as lines of JSON", async () => {
+      it("should send objects as lines of JSON", async () => {
         const res = await send("/web-stream/objects");
 
         expect(res.text).toBe('{"n":1}\n{"n":2}\n');
@@ -1042,8 +1038,7 @@ describeConformance(
         expect((await send("/web-stream/consumed")).status).toBe(500);
       });
 
-      // BUNEST_BUG: serializeResponse does not pre-pull the first chunk of a returned ReadableStream before committing HTTP 200 headers, so pre-first-chunk errors bypass exception filters and cause ECONNRESET (packages/core/src/http/pipeline/response-serializer.ts:598-609).
-      it.skip("should go through the exception filters when it fails before the first chunk", async () => {
+      it("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/web-stream/fail-first");
         expect(res.status).toBe(500);
         expect(res.complete).toBe(true);
@@ -1077,8 +1072,7 @@ describeConformance(
     });
 
     describe("an async generator", () => {
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator / AsyncIterable return values — falls through to JSON.stringify() and emits "{}" with status 200 (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should send what it yields as text", async () => {
+      it("should send what it yields as text", async () => {
         const res = await send("/generator");
 
         expect(res.status).toBe(200);
@@ -1087,24 +1081,21 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should send binary chunks as they are", async () => {
+      it("should send binary chunks as they are", async () => {
         const res = await send("/generator/bytes");
 
         expect(res.text).toBe("from bytes and buffers");
         expect(res.headers["content-type"]).toBe("application/octet-stream");
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values as NDJSON — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should send objects as lines of JSON", async () => {
+      it("should send objects as lines of JSON", async () => {
         const res = await send("/generator/objects");
 
         expect(res.text).toBe('{"n":1}\n[2]\n3\nnull\nand text');
         expect(res.headers["content-type"]).toBe("application/x-ndjson");
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — serializes empty generator as "{}" instead of "" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should send nothing for an empty one", async () => {
+      it("should send nothing for an empty one", async () => {
         const res = await send("/generator/empty");
 
         expect(res.status).toBe(200);
@@ -1112,8 +1103,7 @@ describeConformance(
         expect(res.complete).toBe(true);
       });
 
-      // BUNEST_BUG: serializeResponse does not stream non-SSE AsyncGenerator return values — emits "{}" instead of yielded chunks (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should apply @HttpCode() and @Header()", async () => {
+      it("should apply @HttpCode() and @Header()", async () => {
         const res = await send("/generator/decorated");
 
         expect(res.status).toBe(203);
@@ -1126,29 +1116,25 @@ describeConformance(
         expect(res.status).toBe(201);
       });
 
-      // BUNEST_BUG: serializeResponse does not iterate non-SSE AsyncIterable return values — serializes as "{}" (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should iterate any other async iterable", async () => {
+      it("should iterate any other async iterable", async () => {
         expect((await send("/generator/iterable")).text).toBe("01");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so errors thrown before the first yield are never triggered (returns 200 "{}") (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should go through the exception filters when it fails before the first chunk", async () => {
+      it("should go through the exception filters when it fails before the first chunk", async () => {
         const res = await send("/generator/fail-first-http");
 
         expect(res.status).toBe(404);
         expect(JSON.parse(res.text).message).toBe("not there");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so controller exception filters are not invoked on first-chunk errors (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should reach the filters of the controller", async () => {
+      it("should reach the filters of the controller", async () => {
         const res = await send("/generator/fail-first-filtered");
 
         expect(res.status).toBe(418);
         expect(res.text).toBe("caught by the filter");
       });
 
-      // BUNEST_BUG: serializeResponse never iterates non-SSE AsyncGenerator return values, so unknown errors before first chunk return 200 "{}" instead of 500 (packages/core/src/http/pipeline/response-serializer.ts:509-749).
-      it.skip("should not expose an unknown error", async () => {
+      it("should not expose an unknown error", async () => {
         const res = await send("/generator/fail-first-unknown");
 
         expect(res.status).toBe(500);
@@ -1230,8 +1216,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: When an interceptor wraps a handler's returned Web Response into `{ data: response }`, Bunest serializes the wrapper object as 200 JSON instead of preserving the Response's status and headers as NestJS v12 does (packages/core/src/http/pipeline/execution-pipeline.ts:767-804).
-      it.skip("should keep the status and headers of a Response an interceptor wrapped", async () => {
+      it("should keep the status and headers of a Response an interceptor wrapped", async () => {
         const res = await send("/intercepted/wrapped/response");
         expect(res.status).toBe(202);
         expect(res.headers["x-from-response"]).toBe("yes");

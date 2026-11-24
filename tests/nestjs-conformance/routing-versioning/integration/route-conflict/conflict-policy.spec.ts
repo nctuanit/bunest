@@ -247,8 +247,7 @@ describeConformance(
         "default routeConflictPolicy is 'throw' in Bunest per ADR-011",
       );
 
-      // BUNEST_BUG: Expected first-declared controller DuplicateAController (`{ from: "A" }`) to win when `duplicate: "off"`, but got `{ from: "B" }`. packages/core/src/http/scanner/controller-scanner.ts:399-401 overwrites `scanned[duplicateIdx] = entry` with the later controller instead of keeping the first declaration.
-      it.skip("with duplicate=off, both controllers boot and the first one wins", async () => {
+      it("with duplicate=off, both controllers boot and the first one wins", async () => {
         const capture = createCaptureLogger();
         app = await buildApp(
           DuplicateModule,
@@ -321,8 +320,7 @@ describeConformance(
         expect(response.body).toEqual({ from: "tenant" });
       });
 
-      // BUNEST_BUG: Expected `shadow: "warn"` to report 1 warning naming TenantController and AdminController for `:tenant.example.com` shadowing `admin.example.com`, but got 0 warnings. packages/core/src/http/scanner/controller-scanner.ts:588-593 skips shadow checking whenever `String(earlier.host ?? "") !== String(later.host ?? "")` or `earlier.canonicalPath === later.canonicalPath`.
-      it.skip("with shadow=warn, the shadowed host-bound route is reported", async () => {
+      it("with shadow=warn, the shadowed host-bound route is reported", async () => {
         const capture = createCaptureLogger();
         app = await buildApp(
           HostPatternModule,
@@ -336,8 +334,7 @@ describeConformance(
         expect(capture.warnings[0]).toContain("TenantController");
       });
 
-      // BUNEST_BUG: Expected `shadow: "error"` to abort bootstrap on HostPatternModule (`:tenant.example.com` shadowing `admin.example.com`), but `app.init()` resolved without throwing. packages/core/src/http/scanner/controller-scanner.ts:588-593 skips shadow checks across differing host patterns on identical paths.
-      it.skip("with shadow=error, bootstrap is aborted", async () => {
+      it("with shadow=error, bootstrap is aborted", async () => {
         const capture = createCaptureLogger();
         const builtApp = await buildApp(
           HostPatternModule,

@@ -2,8 +2,11 @@ import {
   RequestMethod,
   type RouteHttpMethod,
   type RouteInfo,
+  VERSION_NEUTRAL,
+  type VersionValue,
 } from "../../common/index";
 import type { CompiledMiddlewareConfig } from "../interfaces/http-bridge.interface";
+import { normalizeVersionValue } from "./version-resolver";
 
 const SIMPLE_PARAM_SEGMENT_RE = /^:[A-Za-z_][A-Za-z0-9_]*$/;
 const PARAM_PREFIX_RE = /^:([A-Za-z_][A-Za-z0-9_]*)(.*)$/;
@@ -46,6 +49,12 @@ export function canonicalizePath(normalizedPath: string): string {
   }
   const segments = normalizedPath.slice(1).split("/");
   const canonicalSegments = segments.map((segment) => {
+    if (/^\*[A-Za-z_][A-Za-z0-9_]*$/.test(segment)) {
+      return "*";
+    }
+    if (/^\{\*[A-Za-z_][A-Za-z0-9_]*\}$/.test(segment)) {
+      return "{*}";
+    }
     const match = PARAM_PREFIX_RE.exec(segment);
     if (match) {
       return `:_` + (match[2] ?? "");
@@ -87,12 +96,16 @@ export function isNativeBunRoutePath(normalizedPath: string): boolean {
       continue;
     }
 
-    // Reject inline regex/glob/optional metacharacters in static segments
+    // Reject inline regex/glob/optional/sub-segment param/percent metacharacters in static segments
     if (
       segment.includes("*") ||
       segment.includes("?") ||
       segment.includes("(") ||
-      segment.includes(")")
+      segment.includes(")") ||
+      segment.includes("{") ||
+      segment.includes("}") ||
+      segment.includes(":") ||
+      segment.includes("%")
     ) {
       return false;
     }
@@ -205,18 +218,94 @@ function methodMatches(
   return ruleMethod === routeMethod;
 }
 
+export type VersionedRouteRule = RouteInfo & { readonly version?: VersionValue };
+
+function isPlainStaticPrefix(pattern: string): boolean {
+  const trimmed = pattern.trim();
+  return (
+    trimmed.length > 0 &&
+    !trimmed.includes("*") &&
+    !trimmed.includes(":") &&
+    !trimmed.includes("{") &&
+    !trimmed.includes("}") &&
+    !trimmed.includes("(") &&
+    !trimmed.includes(")")
+  );
+}
+
+export function matchesStringPrefixMount(
+  pattern: string,
+  targetPath: string,
+  caseSensitive = false,
+): boolean {
+  if (!isPlainStaticPrefix(pattern)) {
+    return false;
+  }
+  const normPat = normalizePath(pattern);
+  const normTarget = normalizePath(targetPath);
+  const p = caseSensitive ? normPat : normPat.toLowerCase();
+  const t = caseSensitive ? normTarget : normTarget.toLowerCase();
+  if (p === "/") return true;
+  return t === p || t.startsWith(`${p}/`);
+}
+
+export function versionsMatchRule(
+  ruleVersion: VersionValue | undefined,
+  candidateVersions: readonly (string | typeof VERSION_NEUTRAL)[] | undefined,
+): boolean {
+  if (ruleVersion === undefined) {
+    return true;
+  }
+  if (!candidateVersions || candidateVersions.length === 0) {
+    const allowed = normalizeVersionValue(ruleVersion);
+    return allowed ? allowed.includes(VERSION_NEUTRAL) : false;
+  }
+  const allowed = normalizeVersionValue(ruleVersion);
+  if (!allowed || allowed.length === 0) {
+    return false;
+  }
+  for (const v of candidateVersions) {
+    if (allowed.includes(v)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function matchesRouteInfo(
-  rule: string | RouteInfo,
+  rule: string | VersionedRouteRule,
   routeMethod: RouteHttpMethod,
   candidatePaths: readonly string[],
+  routeVersions?: readonly (string | typeof VERSION_NEUTRAL)[],
+  options?: { allowStringPrefixMount?: boolean },
 ): boolean {
   if (typeof rule === "string") {
-    return candidatePaths.some((p) => matchesPathPattern(rule, p));
+    return candidatePaths.some(
+      (p) =>
+        matchesPathPattern(rule, p) ||
+        (options?.allowStringPrefixMount === true &&
+          matchesStringPrefixMount(rule, p)),
+    );
   }
   if (!methodMatches(rule.method, routeMethod)) {
     return false;
   }
-  return candidatePaths.some((p) => matchesPathPattern(rule.path, p));
+  if (
+    rule.version !== undefined &&
+    routeVersions !== undefined &&
+    !versionsMatchRule(rule.version, routeVersions)
+  ) {
+    return false;
+  }
+  const allowPrefix =
+    options?.allowStringPrefixMount === true &&
+    rule.method === RequestMethod.ALL &&
+    isPlainStaticPrefix(rule.path);
+  return candidatePaths.some(
+    (p) =>
+      matchesPathPattern(rule.path, p) ||
+      (allowPrefix && matchesStringPrefixMount(rule.path, p)),
+  );
 }
 
 export function matchesGlobalPrefixExclude(
@@ -227,9 +316,128 @@ export function matchesGlobalPrefixExclude(
   if (!excludes || excludes.length === 0) {
     return false;
   }
-  return excludes.some((rule) =>
-    matchesRouteInfo(rule, routeMethod, [rawRoutePath]),
-  );
+  return excludes.some((rule) => {
+    if (matchesRouteInfo(rule, routeMethod, [rawRoutePath])) {
+      return true;
+    }
+    // Optional wildcard group like `reports/{*path}` also excludes the parent `/reports`
+    const rawRulePath = typeof rule === "string" ? rule : rule.path;
+    const stripped = rawRulePath.replace(/\/?\{\*[^}]+\}$/, "");
+    if (stripped !== rawRulePath) {
+      const parentRule =
+        typeof rule === "string" ? stripped || "/" : { ...rule, path: stripped || "/" };
+      return matchesRouteInfo(parentRule, routeMethod, [rawRoutePath]);
+    }
+    return false;
+  });
+}
+
+export type MiddlewareRouteMatchMode = "skip" | "always" | "runtime";
+
+export function evaluateMiddlewareForRoute(
+  config: CompiledMiddlewareConfig,
+  routeMethod: RouteHttpMethod,
+  fullPath: string,
+  rawPathWithoutPrefix: string,
+  routeVersions?: readonly (string | typeof VERSION_NEUTRAL)[],
+  isRuntimeVersioningActive = false,
+): MiddlewareRouteMatchMode {
+  const candidates =
+    fullPath === rawPathWithoutPrefix
+      ? [fullPath]
+      : [fullPath, rawPathWithoutPrefix];
+  const isDynamicRoute =
+    fullPath.includes(":") || fullPath.includes("*") || fullPath.includes("{");
+
+  let needsRuntimeCheck = false;
+
+  if (config.include && config.include.length > 0) {
+    let matchedInclude = false;
+    for (const rule of config.include) {
+      if (
+        matchesRouteInfo(rule, routeMethod, candidates, routeVersions, {
+          allowStringPrefixMount: true,
+        })
+      ) {
+        matchedInclude = true;
+        if (
+          isRuntimeVersioningActive &&
+          typeof rule !== "string" &&
+          (rule as VersionedRouteRule).version !== undefined
+        ) {
+          needsRuntimeCheck = true;
+        }
+        break;
+      }
+      // A plain static ALL mount like `shop/admin` (normalized by MiddlewareConsumer to
+      // `{ path: '/shop/admin', method: ALL }`) can match runtime requests served by a dynamic route like `shop/:id`
+      const rulePathStr = typeof rule === "string" ? rule : rule.path;
+      const isPlainAllRule =
+        typeof rule === "string" || rule.method === RequestMethod.ALL;
+      if (isDynamicRoute && isPlainAllRule && isPlainStaticPrefix(rulePathStr)) {
+        const ruleSegs = normalizePath(rulePathStr).slice(1).split("/").filter(Boolean);
+        for (const cand of candidates) {
+          const candSegs = normalizePath(cand).slice(1).split("/").filter(Boolean);
+          const minLen = Math.min(ruleSegs.length, candSegs.length);
+          let prefixCompatible = minLen > 0;
+          for (let i = 0; i < minLen; i++) {
+            const rs = ruleSegs[i]!;
+            const cs = candSegs[i]!;
+            if (
+              cs.startsWith(":") ||
+              cs.includes(":") ||
+              cs.includes("*") ||
+              cs.includes("{") ||
+              rs.toLowerCase() === cs.toLowerCase()
+            ) {
+              continue;
+            }
+            prefixCompatible = false;
+            break;
+          }
+          if (prefixCompatible) {
+            matchedInclude = true;
+            needsRuntimeCheck = true;
+            break;
+          }
+        }
+        if (matchedInclude) break;
+      }
+    }
+    if (!matchedInclude) {
+      return "skip";
+    }
+  }
+
+  if (config.exclude && config.exclude.length > 0) {
+    for (const rule of config.exclude) {
+      const ruleObj =
+        typeof rule === "string" ? undefined : (rule as VersionedRouteRule);
+      const hasRuleVersion = ruleObj?.version !== undefined;
+
+      // Under runtime versioning, a versioned exclude (e.g. exclude({ path: 'reports', version: '1' }))
+      // must be evaluated per request against the incoming request's extracted version.
+      if (isRuntimeVersioningActive && hasRuleVersion) {
+        if (matchesRouteInfo({ ...ruleObj!, version: undefined }, routeMethod, candidates)) {
+          needsRuntimeCheck = true;
+        }
+        continue;
+      }
+
+      if (matchesRouteInfo(rule, routeMethod, candidates, routeVersions)) {
+        // On dynamic routes (e.g. `/statements/:id.pdf`), evaluate exclude at runtime
+        // so malformed/line-terminator pathnames (`%0A`, `%0D`, `%E2%80%A8`, `%E2%80%A9`)
+        // cannot bypass middleware via the exclude pattern.
+        if (isDynamicRoute) {
+          needsRuntimeCheck = true;
+          continue;
+        }
+        return "skip";
+      }
+    }
+  }
+
+  return needsRuntimeCheck ? "runtime" : "always";
 }
 
 /**
@@ -240,29 +448,16 @@ export function matchesMiddlewareForRoute(
   routeMethod: RouteHttpMethod,
   fullPath: string,
   rawPathWithoutPrefix: string,
+  routeVersions?: readonly (string | typeof VERSION_NEUTRAL)[],
 ): boolean {
-  const candidates =
-    fullPath === rawPathWithoutPrefix
-      ? [fullPath]
-      : [fullPath, rawPathWithoutPrefix];
-
-  if (config.include && config.include.length > 0) {
-    const included = config.include.some((rule) =>
-      matchesRouteInfo(rule, routeMethod, candidates),
-    );
-    if (!included) {
-      return false;
-    }
-  }
-
-  if (config.exclude && config.exclude.length > 0) {
-    const excluded = config.exclude.some((rule) =>
-      matchesRouteInfo(rule, routeMethod, candidates),
-    );
-    if (excluded) {
-      return false;
-    }
-  }
-
-  return true;
+  return (
+    evaluateMiddlewareForRoute(
+      config,
+      routeMethod,
+      fullPath,
+      rawPathWithoutPrefix,
+      routeVersions,
+      false,
+    ) !== "skip"
+  );
 }

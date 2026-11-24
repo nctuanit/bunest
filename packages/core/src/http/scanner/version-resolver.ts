@@ -136,6 +136,62 @@ export function formatUriVersionSegment(
  * `HEADER`, `MEDIA_TYPE`, or `CUSTOM` versioning strategies.
  * Ordered from highest to lowest priority.
  */
+function splitQuoteAware(input: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (inQuotes) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inQuotes = false;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      parts.push(input.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(input.slice(start));
+  return parts;
+}
+
+function parseRfc9110ParamValue(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('"')) {
+    let out = "";
+    let escaped = false;
+    let closed = false;
+    for (let i = 1; i < trimmed.length; i++) {
+      const ch = trimmed[i]!;
+      if (escaped) {
+        out += ch;
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        closed = i === trimmed.length - 1;
+        break;
+      } else {
+        out += ch;
+      }
+    }
+    if (!closed || escaped) {
+      return undefined;
+    }
+    const finalVal = out.trim();
+    return finalVal.length > 0 ? finalVal : undefined;
+  }
+  return trimmed;
+}
+
 export function extractRequestVersions(
   req: Request,
   options: VersioningOptions,
@@ -159,31 +215,30 @@ export function extractRequestVersions(
         return EMPTY_VERSIONS;
       }
       const rawKey = options.key;
-      const keyPrefix = (
-        rawKey.endsWith("=") ? rawKey : `${rawKey}=`
-      ).toLowerCase();
-      const keyLen = keyPrefix.length;
+      const keyName = (
+        rawKey.endsWith("=") ? rawKey.slice(0, -1) : rawKey
+      )
+        .trim()
+        .toLowerCase();
       const extracted: string[] = [];
 
-      const mediaRanges = accept.split(",");
+      const mediaRanges = splitQuoteAware(accept, ",");
       for (let i = 0; i < mediaRanges.length; i++) {
         const range = mediaRanges[i];
         if (!range) continue;
-        const semiIdx = range.indexOf(";");
-        if (semiIdx === -1) continue;
+        const segments = splitQuoteAware(range, ";");
+        if (segments.length <= 1) continue;
 
-        const params = range.slice(semiIdx + 1).split(";");
-        for (let j = 0; j < params.length; j++) {
-          const param = params[j]?.trim();
-          if (!param || param.length <= keyLen) continue;
-          if (param.slice(0, keyLen).toLowerCase() === keyPrefix) {
-            let val = param.slice(keyLen).trim();
-            if (val.length >= 2 && val.startsWith('"') && val.endsWith('"')) {
-              val = val.slice(1, -1).trim();
-            }
-            if (val.length > 0 && !extracted.includes(val)) {
-              extracted.push(val);
-            }
+        for (let j = 1; j < segments.length; j++) {
+          const param = segments[j]?.trim();
+          if (!param) continue;
+          const eqIdx = param.indexOf("=");
+          if (eqIdx === -1) continue;
+          const name = param.slice(0, eqIdx).trim().toLowerCase();
+          if (name !== keyName) continue;
+          const val = parseRfc9110ParamValue(param.slice(eqIdx + 1));
+          if (val !== undefined && !extracted.includes(val)) {
+            extracted.push(val);
           }
         }
       }

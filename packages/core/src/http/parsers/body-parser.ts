@@ -5,6 +5,7 @@ import {
   join,
   PayloadTooLargeException,
   resolve,
+  UnsupportedMediaTypeException,
   type UploadedFileInfo,
 } from "../../common/index";
 import type {
@@ -43,6 +44,227 @@ function getMediaType(contentTypeHeader: string | null): string {
   const raw =
     semiIdx === -1 ? contentTypeHeader : contentTypeHeader.slice(0, semiIdx);
   return raw.trim().toLowerCase();
+}
+
+function extractCharset(contentTypeHeader: string | null): string | undefined {
+  if (!contentTypeHeader) return undefined;
+  const semiIdx = contentTypeHeader.indexOf(";");
+  if (semiIdx === -1) return undefined;
+  const params = contentTypeHeader.slice(semiIdx + 1).split(";");
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!.trim();
+    if (!param) continue;
+    const eqIdx = param.indexOf("=");
+    if (eqIdx === -1) continue;
+    const name = param.slice(0, eqIdx).trim().toLowerCase();
+    if (name !== "charset") continue;
+    let value = param.slice(eqIdx + 1).trim();
+    if (
+      value.length >= 2 &&
+      value.startsWith('"') &&
+      value.endsWith('"')
+    ) {
+      value = value.slice(1, -1).trim();
+    }
+    return value.toLowerCase();
+  }
+  return undefined;
+}
+
+const UTF_CHARSETS = new Set([
+  "utf-8",
+  "utf8",
+  "utf-16",
+  "utf16",
+  "utf-16le",
+  "utf16le",
+  "utf-16be",
+  "utf16be",
+]);
+
+const URLENCODED_CHARSETS = new Set([
+  "utf-8",
+  "utf8",
+  "iso-8859-1",
+  "latin1",
+  "ascii",
+  "us-ascii",
+  "windows-1252",
+]);
+
+const TEXT_CHARSETS = new Set([
+  "utf-8",
+  "utf8",
+  "iso-8859-1",
+  "latin1",
+  "ascii",
+  "us-ascii",
+  "windows-1252",
+  "utf-16",
+  "utf16",
+  "utf-16le",
+  "utf16le",
+  "utf-16be",
+  "utf16be",
+]);
+
+function validateCharsetForMediaType(
+  mediaType: string,
+  charset: string | undefined,
+): void {
+  if (!charset) return;
+  if (isJsonMediaType(mediaType)) {
+    if (!UTF_CHARSETS.has(charset)) {
+      throw new UnsupportedMediaTypeException(
+        `Unsupported charset "${charset}" for ${mediaType}`,
+      );
+    }
+    return;
+  }
+  if (mediaType === "application/x-www-form-urlencoded") {
+    if (!URLENCODED_CHARSETS.has(charset)) {
+      throw new UnsupportedMediaTypeException(
+        `Unsupported charset "${charset}" for ${mediaType}`,
+      );
+    }
+    return;
+  }
+  if (mediaType.startsWith("text/")) {
+    if (!TEXT_CHARSETS.has(charset)) {
+      throw new UnsupportedMediaTypeException(
+        `Unsupported charset "${charset}" for ${mediaType}`,
+      );
+    }
+  }
+}
+
+function decodeBytesWithCharset(
+  bytes: Uint8Array,
+  charset: string | undefined,
+): string {
+  if (!charset || charset === "utf-8" || charset === "utf8") {
+    return textDecoder.decode(bytes);
+  }
+  if (charset === "iso-8859-1" || charset === "latin1") {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+      "latin1",
+    );
+  }
+  if (charset === "ascii" || charset === "us-ascii") {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+      "ascii",
+    );
+  }
+  if (charset === "windows-1252") {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+  if (charset === "utf-16le" || charset === "utf16le") {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+  if (charset === "utf-16be" || charset === "utf16be") {
+    return new TextDecoder("utf-16be").decode(bytes);
+  }
+  if (charset === "utf-16" || charset === "utf16") {
+    if (bytes.byteLength >= 2) {
+      if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+        return new TextDecoder("utf-16be").decode(bytes);
+      }
+      if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+        return new TextDecoder("utf-16le").decode(bytes);
+      }
+      if (bytes[0] !== 0 && bytes[1] === 0) {
+        return new TextDecoder("utf-16le").decode(bytes);
+      }
+    }
+    return new TextDecoder("utf-16be").decode(bytes);
+  }
+  return textDecoder.decode(bytes);
+}
+
+function isUtf8Charset(charset: string | undefined): boolean {
+  return !charset || charset === "utf-8" || charset === "utf8";
+}
+
+function decodeWhatwgDispositionValue(value: string): string {
+  if (!value.includes("%")) return value;
+  return value
+    .replace(/%22/gi, '"')
+    .replace(/%0A/gi, "\n")
+    .replace(/%0D/gi, "\r");
+}
+
+function appendMultipartField(
+  fields: Record<string, unknown>,
+  rawKey: string,
+  value: string,
+): void {
+  const openIdx = rawKey.indexOf("[");
+  if (openIdx <= 0 || !rawKey.endsWith("]")) {
+    appendFieldValue(fields, rawKey, value);
+    return;
+  }
+
+  const rootKey = rawKey.slice(0, openIdx);
+  if (isDangerousKey(rootKey)) return;
+
+  const rest = rawKey.slice(openIdx);
+  const tokens: string[] = [rootKey];
+  let pos = 0;
+  while (pos < rest.length) {
+    if (rest[pos] !== "[") {
+      // Malformed bracket syntax -> fall back to flat key
+      appendFieldValue(fields, rawKey, value);
+      return;
+    }
+    const closeIdx = rest.indexOf("]", pos + 1);
+    if (closeIdx === -1) {
+      appendFieldValue(fields, rawKey, value);
+      return;
+    }
+    const seg = rest.slice(pos + 1, closeIdx);
+    if (seg !== "" && isDangerousKey(seg)) return;
+    tokens.push(seg);
+    pos = closeIdx + 1;
+  }
+
+  let current: Record<string, unknown> | unknown[] = fields;
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const seg = tokens[i]!;
+    const nextSeg = tokens[i + 1]!;
+    const nextIsArray = nextSeg === "" || /^\d+$/.test(nextSeg);
+
+    if (Array.isArray(current)) {
+      const idx = seg === "" ? current.length : Number(seg);
+      let next = current[idx];
+      if (next === null || typeof next !== "object") {
+        next = nextIsArray ? [] : {};
+        current[idx] = next;
+      }
+      current = next as Record<string, unknown> | unknown[];
+    } else {
+      let next = Object.prototype.hasOwnProperty.call(current, seg)
+        ? current[seg]
+        : undefined;
+      if (next === null || typeof next !== "object") {
+        next = nextIsArray ? [] : {};
+        current[seg] = next;
+      }
+      current = next as Record<string, unknown> | unknown[];
+    }
+  }
+
+  const lastSeg = tokens[tokens.length - 1]!;
+  if (Array.isArray(current)) {
+    if (lastSeg === "") {
+      current.push(value);
+    } else if (/^\d+$/.test(lastSeg)) {
+      current[Number(lastSeg)] = value;
+    } else {
+      appendFieldValue(current as unknown as Record<string, unknown>, lastSeg, value);
+    }
+  } else {
+    appendFieldValue(current, lastSeg, value);
+  }
 }
 
 function isJsonMediaType(mediaType: string): boolean {
@@ -277,9 +499,16 @@ async function parseMultipartInMemory(
   const maxFiles = multipart?.maxFiles;
   const maxFileSize = multipart?.maxFileSize;
 
-  for (const [fieldname, rawEntry] of formData.entries()) {
+  for (const [rawFieldname, rawEntry] of formData.entries()) {
+    const fieldname = decodeWhatwgDispositionValue(rawFieldname);
     const entry: unknown = rawEntry;
     if (entry instanceof File) {
+      const originalname = entry.name
+        ? decodeWhatwgDispositionValue(entry.name)
+        : "";
+      if (originalname === "" && entry.size === 0) {
+        continue;
+      }
       if (maxFiles !== undefined && files.length + 1 > maxFiles) {
         throw new PayloadTooLargeException(
           `Uploaded file count exceeds maximum allowed limit of ${maxFiles}`,
@@ -287,18 +516,18 @@ async function parseMultipartInMemory(
       }
       if (maxFileSize !== undefined && entry.size > maxFileSize) {
         throw new PayloadTooLargeException(
-          `Uploaded file "${entry.name}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+          `Uploaded file "${originalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
         );
       }
       const buffer = new Uint8Array(await entry.arrayBuffer());
       if (maxFileSize !== undefined && buffer.byteLength > maxFileSize) {
         throw new PayloadTooLargeException(
-          `Uploaded file "${entry.name}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+          `Uploaded file "${originalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
         );
       }
       files.push({
         fieldname,
-        originalname: entry.name,
+        originalname,
         mimetype: entry.type || "application/octet-stream",
         size: entry.size,
         buffer,
@@ -308,7 +537,7 @@ async function parseMultipartInMemory(
       continue;
     }
 
-    appendFieldValue(fields, fieldname, String(entry));
+    appendMultipartField(fields, fieldname, String(entry));
   }
 
   markBodySanitized(fields);
@@ -373,11 +602,13 @@ function parsePartHeaders(headerText: string): {
     } else if (name === "content-disposition") {
       const nameMatch = /;\s*name="((?:\\.|[^"\\])*)"/i.exec(value);
       if (nameMatch?.[1] !== undefined) {
-        fieldname = nameMatch[1].replace(/\\(.)/g, "$1");
+        fieldname = decodeWhatwgDispositionValue(
+          nameMatch[1].replace(/\\(.)/g, "$1"),
+        );
       } else {
         const unquotedName = /;\s*name=([^;\s]+)/i.exec(value);
         if (unquotedName?.[1] !== undefined) {
-          fieldname = unquotedName[1];
+          fieldname = decodeWhatwgDispositionValue(unquotedName[1]);
         }
       }
 
@@ -391,11 +622,13 @@ function parsePartHeaders(headerText: string): {
       } else {
         const filenameMatch = /;\s*filename="((?:\\.|[^"\\])*)"/i.exec(value);
         if (filenameMatch?.[1] !== undefined) {
-          originalname = filenameMatch[1].replace(/\\(.)/g, "$1");
+          originalname = decodeWhatwgDispositionValue(
+            filenameMatch[1].replace(/\\(.)/g, "$1"),
+          );
         } else {
           const unquotedFilename = /;\s*filename=([^;\s]+)/i.exec(value);
           if (unquotedFilename?.[1] !== undefined) {
-            originalname = unquotedFilename[1];
+            originalname = decodeWhatwgDispositionValue(unquotedFilename[1]);
           }
         }
       }
@@ -560,7 +793,10 @@ async function parseMultipartToDisk(
             currentFieldname = parsedHeader.fieldname;
             currentMimetype = parsedHeader.mimetype;
 
-            if (parsedHeader.originalname !== undefined) {
+            if (
+              parsedHeader.originalname !== undefined &&
+              parsedHeader.originalname !== ""
+            ) {
               if (maxFiles !== undefined && files.length + 1 > maxFiles) {
                 throw new PayloadTooLargeException(
                   `Uploaded file count exceeds maximum allowed limit of ${maxFiles}`,
@@ -575,6 +811,7 @@ async function parseMultipartToDisk(
               currentWriter = Bun.file(currentDestPath).writer();
               state = MultipartState.STREAM_FILE_BODY;
             } else {
+              currentOriginalname = parsedHeader.originalname ?? "";
               fieldChunks = [];
               fieldBytes = 0;
               state = MultipartState.READ_FIELD_BODY;
@@ -663,11 +900,15 @@ async function parseMultipartToDisk(
                 off += c.byteLength;
               }
             }
-            appendFieldValue(
-              fields,
-              currentFieldname,
-              textDecoder.decode(mergedField),
-            );
+            if (currentFieldname && currentOriginalname !== "") {
+              // unreachable for non-empty originalname
+            } else if (currentFieldname) {
+              appendMultipartField(
+                fields,
+                currentFieldname,
+                textDecoder.decode(mergedField),
+              );
+            }
             fieldChunks = [];
             fieldBytes = 0;
 
@@ -773,6 +1014,9 @@ export async function parseRequestBody(
 
   const rawContentType = req.headers.get("content-type");
   const mediaType = getMediaType(rawContentType);
+  const charset = extractCharset(rawContentType);
+  validateCharsetForMediaType(mediaType, charset);
+  const utf8FastPath = isUtf8Charset(charset);
 
   // Streaming multipart disk storage path (streams directly to disk without RAM buffering)
   if (
@@ -811,7 +1055,7 @@ export async function parseRequestBody(
     contentLength !== undefined &&
     (maxBodyBytes === undefined || contentLength <= maxBodyBytes)
   ) {
-    if (!captureRawBody) {
+    if (!captureRawBody && utf8FastPath) {
       if (isJsonMediaType(mediaType)) {
         const rawText = await req.text();
         assertTextByteLength(rawText, maxBodyBytes);
@@ -839,7 +1083,7 @@ export async function parseRequestBody(
       }
     }
 
-    // Fast native binary read via `req.bytes()` when rawBody is requested or binary/multipart with known Content-Length
+    // Fast native binary read via `req.bytes()` when rawBody is requested or binary/multipart/non-UTF-8 charset
     const bytes = await req.bytes();
     if (maxBodyBytes !== undefined && bytes.byteLength > maxBodyBytes) {
       throw new PayloadTooLargeException(
@@ -867,7 +1111,7 @@ export async function parseRequestBody(
     }
 
     if (isJsonMediaType(mediaType)) {
-      const rawText = textDecoder.decode(bytes);
+      const rawText = decodeBytesWithCharset(bytes, charset);
       if (rawText.trim().length === 0) {
         return rawBody !== undefined
           ? { body: undefined, files: EMPTY_FILES, rawBody }
@@ -880,7 +1124,7 @@ export async function parseRequestBody(
     }
 
     if (mediaType === "application/x-www-form-urlencoded") {
-      const parsed = parseUrlEncoded(textDecoder.decode(bytes));
+      const parsed = parseUrlEncoded(decodeBytesWithCharset(bytes, charset));
       return rawBody !== undefined
         ? { body: parsed, files: EMPTY_FILES, rawBody }
         : { body: parsed, files: EMPTY_FILES };
@@ -896,7 +1140,7 @@ export async function parseRequestBody(
         : { body: bytes, files: EMPTY_FILES };
     }
 
-    const decoded = textDecoder.decode(bytes);
+    const decoded = decodeBytesWithCharset(bytes, charset);
     return rawBody !== undefined
       ? { body: decoded, files: EMPTY_FILES, rawBody }
       : { body: decoded, files: EMPTY_FILES };
@@ -930,7 +1174,7 @@ export async function parseRequestBody(
   }
 
   if (isJsonMediaType(mediaType)) {
-    const rawText = textDecoder.decode(bytes);
+    const rawText = decodeBytesWithCharset(bytes, charset);
     if (rawText.trim().length === 0) {
       return rawBody !== undefined
         ? { body: undefined, files: EMPTY_FILES, rawBody }
@@ -943,7 +1187,7 @@ export async function parseRequestBody(
   }
 
   if (mediaType === "application/x-www-form-urlencoded") {
-    const parsed = parseUrlEncoded(textDecoder.decode(bytes));
+    const parsed = parseUrlEncoded(decodeBytesWithCharset(bytes, charset));
     return rawBody !== undefined
       ? { body: parsed, files: EMPTY_FILES, rawBody }
       : { body: parsed, files: EMPTY_FILES };
@@ -959,7 +1203,7 @@ export async function parseRequestBody(
       : { body: bytes, files: EMPTY_FILES };
   }
 
-  const decoded = textDecoder.decode(bytes);
+  const decoded = decodeBytesWithCharset(bytes, charset);
   return rawBody !== undefined
     ? { body: decoded, files: EMPTY_FILES, rawBody }
     : { body: decoded, files: EMPTY_FILES };
