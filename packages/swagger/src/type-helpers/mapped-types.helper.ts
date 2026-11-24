@@ -82,7 +82,7 @@ function collectVisibleDocumentedKeys(classRef: Function): Set<string> {
           ._OPENAPI_METADATA_FACTORY === "function"
       ) {
         const factoryResult = (
-          ctor as {
+          ctor as unknown as {
             _OPENAPI_METADATA_FACTORY: () => Record<string, unknown>;
           }
         )._OPENAPI_METADATA_FACTORY();
@@ -132,7 +132,7 @@ function buildKeySuffixedName(
 export function PartialType<T>(
   classRef: Type<T>,
   options?: { skipNullProperties?: boolean },
-): Type<Partial<T>> {
+): ReturnType<typeof CorePartialType<T>> {
   const Mapped = CorePartialType(classRef, options);
   attachMappedTypeMeta(Mapped, {
     kind: "partial",
@@ -144,7 +144,7 @@ export function PartialType<T>(
 export function PickType<T, K extends keyof T>(
   classRef: Type<T>,
   keys: readonly K[],
-): Type<Pick<T, (typeof keys)[number]>> {
+): ReturnType<typeof CorePickType<T, K>> {
   const Mapped = CorePickType(classRef, keys);
   const derivedName = buildKeySuffixedName("Pick", classRef, keys);
   Object.defineProperty(Mapped, "name", {
@@ -162,7 +162,7 @@ export function PickType<T, K extends keyof T>(
 export function OmitType<T, K extends keyof T>(
   classRef: Type<T>,
   keys: readonly K[],
-): Type<Omit<T, (typeof keys)[number]>> {
+): ReturnType<typeof CoreOmitType<T, K>> {
   const Mapped = CoreOmitType(classRef, keys);
   const derivedName = buildKeySuffixedName("Omit", classRef, keys);
   Object.defineProperty(Mapped, "name", {
@@ -177,7 +177,7 @@ export function OmitType<T, K extends keyof T>(
   return Mapped;
 }
 
-export function IntersectionType<T extends readonly Type<any>[]>(
+export function IntersectionType<T extends Type<any>[]>(
   ...classRefs: T
 ): ReturnType<typeof CoreIntersectionType<T>> {
   const Mapped = CoreIntersectionType(...classRefs);

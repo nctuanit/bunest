@@ -99,7 +99,7 @@ function buildDeepPartialType<T>(
         ._OPENAPI_METADATA_FACTORY === "function"
     ) {
       const factoryResult = (
-        ctor as {
+        ctor as unknown as {
           _OPENAPI_METADATA_FACTORY: () => Record<string, ApiPropertyOptions>;
         }
       )._OPENAPI_METADATA_FACTORY();
