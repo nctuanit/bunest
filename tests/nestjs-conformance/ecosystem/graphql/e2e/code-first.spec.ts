@@ -501,8 +501,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Schema bootstrap crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`.
-    it.skip("should return the search result", async () => {
+    it("should return the search result", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({
@@ -585,8 +584,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Schema bootstrap crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`.
-    it.skip("should return query result (basic recipe fields)", async () => {
+    it("should return query result (basic recipe fields)", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({

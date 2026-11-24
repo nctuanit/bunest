@@ -43,7 +43,7 @@ export function resolveImplementedInterfaces(
   if (!input) return [];
   const raw =
     typeof input === "function" &&
-    !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, input)
+    !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, input)
       ? (input as () => Function | readonly Function[])()
       : input;
   if (Array.isArray(raw)) {
@@ -58,7 +58,7 @@ export function resolveImplementedInterfaces(
 export function getInterfaceImplementors(iface: Function): Function[] {
   const matched: Function[] = [];
   for (const cls of objectTypesWithImplements) {
-    const meta = MetadataRegistry.get<ObjectTypeMetadata>(
+    const meta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
       GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
       cls,
     );

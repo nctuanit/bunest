@@ -330,8 +330,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected { owner: "base(value)", name: "value" }; actual errors with `Abstract type "INamedItem" must resolve to an Object type at runtime for field "Query.namedItem"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) uses prototype-walking MetadataRegistry.has(INTERFACE_TYPE, base) instead of hasOwn, misclassifying @ObjectType() subclass NamedItem extends INamedItem as an interface.
-      it.skip("should apply middleware to fields inherited from interface classes", async () => {
+      it("should apply middleware to fields inherited from interface classes", async () => {
         const data = await query(app, "{ namedItem { owner name } }");
         expect(data.namedItem).toEqual({
           owner: "base(value)",
@@ -371,8 +370,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected { owner: "global(base(value))", name: "global(value)" }; actual errors with `Abstract type "INamedItem" must resolve to an Object type at runtime` due to prototype-walking MetadataRegistry.has(INTERFACE_TYPE, base) in GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791).
-      it.skip("should run global middleware on fields inherited from interface classes", async () => {
+      it("should run global middleware on fields inherited from interface classes", async () => {
         const data = await query(app, "{ namedItem { owner name } }");
         expect(data.namedItem).toEqual({
           owner: "global(base(value))",

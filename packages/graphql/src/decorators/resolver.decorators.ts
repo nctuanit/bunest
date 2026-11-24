@@ -38,10 +38,21 @@ function isPipeLike(value: unknown): value is PipeLike {
  * Optionally binds the resolver to a parent `@ObjectType()` class, thunk, or SDL type name.
  */
 export function Resolver(
-  of?: string | Function | (() => Function),
+  ofOrOptions?: string | Function | (() => Function) | ResolverOptions,
   options: ResolverOptions = {},
-): ClassDecorator {
-  return (target: Function) => {
+): ClassDecorator & MethodDecorator {
+  const isOptionsOnly =
+    typeof ofOrOptions === "object" && ofOrOptions !== null;
+  const of = isOptionsOnly ? undefined : ofOrOptions;
+  const resolvedOptions: ResolverOptions = isOptionsOnly
+    ? ofOrOptions
+    : options;
+
+  return ((
+    target: Function | object,
+    propertyKey?: string | symbol,
+    _descriptor?: PropertyDescriptor,
+  ) => {
     const normalizedOf =
       typeof of === "string"
         ? (() => {
@@ -49,26 +60,50 @@ export function Resolver(
             return nameHolder[of]!;
           })()
         : of;
+
+    if (propertyKey !== undefined && typeof target === "object" && target !== null) {
+      const ctor = target.constructor;
+      if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, ctor)) {
+        MetadataRegistry.define(
+          METADATA_KEYS.INJECTABLE,
+          { scope: Scope.SINGLETON },
+          ctor,
+        );
+      }
+      return;
+    }
+
+    const ctor = target as Function;
+    const parentProto = Object.getPrototypeOf(ctor);
+    const parentMeta =
+      parentProto && parentProto !== Function.prototype
+        ? MetadataRegistry.get<ResolverMetadata>(
+            GRAPHQL_METADATA_KEYS.RESOLVER,
+            parentProto,
+          )
+        : undefined;
+    const effectiveOf = normalizedOf ?? parentMeta?.of;
+
     const meta: ResolverMetadata = {
-      of: normalizedOf,
-      isAbstract: options.isAbstract,
+      of: effectiveOf,
+      isAbstract: resolvedOptions.isAbstract,
     };
-    MetadataRegistry.define(GRAPHQL_METADATA_KEYS.RESOLVER, meta, target);
+    MetadataRegistry.define(GRAPHQL_METADATA_KEYS.RESOLVER, meta, ctor);
     TypeMetadataStorage.addResolverMetadata({
-      target,
-      typeFn: normalizedOf
-        ? () => (typeof normalizedOf === "function" ? normalizedOf : undefined)
+      target: ctor,
+      typeFn: effectiveOf
+        ? () => (typeof effectiveOf === "function" ? effectiveOf : undefined)
         : undefined,
-      isAbstract: options.isAbstract,
+      isAbstract: resolvedOptions.isAbstract,
     });
-    if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, target)) {
+    if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, ctor)) {
       MetadataRegistry.define(
         METADATA_KEYS.INJECTABLE,
         { scope: Scope.SINGLETON },
-        target,
+        ctor,
       );
     }
-  };
+  }) as ClassDecorator & MethodDecorator;
 }
 
 function createOperationDecorator(
@@ -110,6 +145,15 @@ function createOperationDecorator(
         [...filtered, entry],
         target.constructor,
       );
+      if (
+        !MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, target.constructor)
+      ) {
+        MetadataRegistry.define(
+          METADATA_KEYS.INJECTABLE,
+          { scope: Scope.SINGLETON },
+          target.constructor,
+        );
+      }
 
       const stored = {
         target: target.constructor,
@@ -155,17 +199,18 @@ export const Subscription = createOperationDecorator(
  * Declares a field resolver method on a `@Resolver(() => ParentType)` class.
  */
 export function ResolveField(): MethodDecorator;
+export function ResolveField(options: ResolveFieldOptions): MethodDecorator;
 export function ResolveField(
   returnTypeFunc: ReturnTypeFunc,
   options?: ResolveFieldOptions,
 ): MethodDecorator;
 export function ResolveField(
-  propertyName: string,
+  propertyName: string | undefined,
   returnTypeFunc?: ReturnTypeFunc,
   options?: ResolveFieldOptions,
 ): MethodDecorator;
 export function ResolveField(
-  nameOrReturnType?: string | ReturnTypeFunc,
+  nameOrReturnType?: string | ReturnTypeFunc | ResolveFieldOptions,
   returnTypeOrOptions?: ReturnTypeFunc | ResolveFieldOptions,
   maybeOptions?: ResolveFieldOptions,
 ): MethodDecorator {
@@ -178,12 +223,28 @@ export function ResolveField(
     if (typeof returnTypeOrOptions === "function") {
       returnTypeFn = returnTypeOrOptions;
       options = maybeOptions ?? {};
-    } else if (returnTypeOrOptions) {
+    } else if (returnTypeOrOptions && typeof returnTypeOrOptions === "object") {
       options = returnTypeOrOptions;
+    } else if (maybeOptions) {
+      options = maybeOptions;
     }
   } else if (typeof nameOrReturnType === "function") {
     returnTypeFn = nameOrReturnType;
-    options = (returnTypeOrOptions as ResolveFieldOptions | undefined) ?? {};
+    options =
+      (returnTypeOrOptions as ResolveFieldOptions | undefined) ??
+      maybeOptions ??
+      {};
+  } else if (nameOrReturnType && typeof nameOrReturnType === "object") {
+    options = nameOrReturnType;
+  } else {
+    if (typeof returnTypeOrOptions === "function") {
+      returnTypeFn = returnTypeOrOptions;
+      options = maybeOptions ?? {};
+    } else if (returnTypeOrOptions && typeof returnTypeOrOptions === "object") {
+      options = returnTypeOrOptions;
+    } else if (maybeOptions) {
+      options = maybeOptions;
+    }
   }
 
   return (

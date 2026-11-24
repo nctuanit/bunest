@@ -730,11 +730,17 @@ export class GraphQLSchemaFactory {
     if (!meta.of) return undefined;
     const resolved = isPlainThunk(meta.of) ? meta.of() : meta.of;
     if (typeof resolved !== "function") return undefined;
-    const objMeta = MetadataRegistry.get<ObjectTypeMetadata>(
+    const objMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
       GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
       resolved,
     );
-    return objMeta?.name ?? resolved.name;
+    if (objMeta) return objMeta.name;
+    const ifaceMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+      GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+      resolved,
+    );
+    if (ifaceMeta) return ifaceMeta.name;
+    return resolved.name;
   }
 
   private resolveOutputType(
@@ -783,7 +789,10 @@ export class GraphQLSchemaFactory {
     }
 
     if (typeof base === "function") {
-      if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, base)) {
+      if (
+        MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, base) &&
+        !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, base)
+      ) {
         return this.getOrCreateInterfaceType(base);
       }
       return this.getOrCreateObjectType(base);
@@ -799,7 +808,7 @@ export class GraphQLSchemaFactory {
       return resolved;
     }
     if (typeof resolved === "function") {
-      const objMeta = MetadataRegistry.get<ObjectTypeMetadata>(
+      const objMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
         GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
         resolved,
       );
@@ -824,7 +833,7 @@ export class GraphQLSchemaFactory {
       }
       const ctor = (value as { constructor?: Function }).constructor;
       if (ctor && ctor !== Object) {
-        const objMeta = MetadataRegistry.get<ObjectTypeMetadata>(
+        const objMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
           GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
           ctor,
         );
@@ -842,7 +851,7 @@ export class GraphQLSchemaFactory {
       return existing;
     }
 
-    const meta = MetadataRegistry.get<InterfaceTypeMetadata>(
+    const meta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
       GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
       cls,
     );
@@ -973,7 +982,7 @@ export class GraphQLSchemaFactory {
       return existing;
     }
 
-    const meta = MetadataRegistry.get<ObjectTypeMetadata>(
+    const meta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
       GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
       cls,
     );
@@ -1026,10 +1035,16 @@ export class GraphQLSchemaFactory {
             const rawType = fieldMeta.typeFn
               ? fieldMeta.typeFn()
               : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
+            const ifaceUseMw = getUseFieldMiddleware(iface, fieldMeta.propertyKey);
+            const clsUseMw = getUseFieldMiddleware(cls, fieldMeta.propertyKey);
+            const combinedUseMw =
+              cls.prototype instanceof iface
+                ? clsUseMw
+                : [...ifaceUseMw, ...clsUseMw];
             const fieldMw: FieldMiddleware[] = [
               ...globalMiddleware,
               ...(fieldMeta.middleware ?? []),
-              ...getUseFieldMiddleware(iface, fieldMeta.propertyKey),
+              ...combinedUseMw,
             ];
             const baseResolve: GraphQLFieldResolver<any, any> =
               fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
@@ -1097,9 +1112,29 @@ export class GraphQLSchemaFactory {
         const fieldResolvers = this.resolveFieldRegistry.get(typeName) ?? [];
         for (const { meta: rfMeta, compiled } of fieldResolvers) {
           const existingField = fields[rfMeta.name];
-          const fieldType = rfMeta.returnTypeFn
-            ? this.resolveOutputType(rfMeta.returnTypeFn(), rfMeta.nullable)
-            : (existingField?.type ?? GraphQLString);
+          let fieldType: GraphQLOutputType;
+          if (rfMeta.returnTypeFn) {
+            fieldType = this.resolveOutputType(
+              rfMeta.returnTypeFn(),
+              rfMeta.nullable,
+            );
+          } else if (existingField?.type) {
+            fieldType = existingField.type;
+          } else {
+            const designReturn = MetadataRegistry.getReturnType(
+              compiled.resolverClass.prototype,
+              rfMeta.handlerKey,
+            );
+            fieldType =
+              designReturn &&
+              designReturn !== Object &&
+              designReturn !== Promise
+                ? this.resolveOutputType(
+                    designReturn as ReturnTypeFuncValue,
+                    rfMeta.nullable,
+                  )
+                : GraphQLString;
+          }
           const argsConfig = this.buildArgsConfig(compiled.params);
           const rfMw: FieldMiddleware[] = [
             ...globalMiddleware,
@@ -1274,7 +1309,7 @@ export class GraphQLSchemaFactory {
         GRAPHQL_METADATA_KEYS.RESOLVER,
         resolverClass,
       );
-      if (!resolverMeta) continue;
+      if (!resolverMeta || resolverMeta.isAbstract) continue;
 
       const targetTypeName = this.resolveTargetTypeName(resolverMeta);
       const resolveFields = getResolverFields(resolverClass);
@@ -1300,16 +1335,35 @@ export class GraphQLSchemaFactory {
       this.activeBuildSchemaOptions.noDuplicatedFields === true;
     for (const instance of resolverInstances) {
       const resolverClass = instance.constructor as Type<unknown>;
+      const resolverMeta = MetadataRegistry.get<ResolverMetadata>(
+        GRAPHQL_METADATA_KEYS.RESOLVER,
+        resolverClass,
+      );
+      if (resolverMeta?.isAbstract) {
+        continue;
+      }
+      const queries = getResolverOperations(
+        resolverClass,
+        GRAPHQL_METADATA_KEYS.QUERIES,
+      );
+      const mutations = getResolverOperations(
+        resolverClass,
+        GRAPHQL_METADATA_KEYS.MUTATIONS,
+      );
+      const subscriptions = getResolverOperations(
+        resolverClass,
+        GRAPHQL_METADATA_KEYS.SUBSCRIPTIONS,
+      );
       if (
-        !MetadataRegistry.has(GRAPHQL_METADATA_KEYS.RESOLVER, resolverClass)
+        !resolverMeta &&
+        queries.length === 0 &&
+        mutations.length === 0 &&
+        subscriptions.length === 0
       ) {
         continue;
       }
 
-      for (const op of getResolverOperations(
-        resolverClass,
-        GRAPHQL_METADATA_KEYS.QUERIES,
-      )) {
+      for (const op of queries) {
         if (noDuplicatedFields && op.name in queryFields) {
           throw new Error(
             `Duplicate Query field "${op.name}" detected in ${resolverClass.name}.`,
@@ -1328,10 +1382,7 @@ export class GraphQLSchemaFactory {
         };
       }
 
-      for (const op of getResolverOperations(
-        resolverClass,
-        GRAPHQL_METADATA_KEYS.MUTATIONS,
-      )) {
+      for (const op of mutations) {
         if (noDuplicatedFields && op.name in mutationFields) {
           throw new Error(
             `Duplicate Mutation field "${op.name}" detected in ${resolverClass.name}.`,
@@ -1350,10 +1401,7 @@ export class GraphQLSchemaFactory {
         };
       }
 
-      for (const op of getResolverOperations(
-        resolverClass,
-        GRAPHQL_METADATA_KEYS.SUBSCRIPTIONS,
-      )) {
+      for (const op of subscriptions) {
         const compiled = await this.compileMethod(instance, op.handlerKey);
         subscriptionFields[op.name] = this.createSubscriptionField(
           op,
@@ -1409,10 +1457,11 @@ export class GraphQLSchemaFactory {
     ];
     for (const orphan of allOrphaned) {
       if (typeof orphan === "function") {
-        if (MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INPUT_TYPE, orphan)) {
+        if (MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INPUT_TYPE, orphan)) {
           extraTypes.push(this.getOrCreateInputType(orphan));
         } else if (
-          MetadataRegistry.has(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, orphan)
+          MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.INTERFACE_TYPE, orphan) &&
+          !MetadataRegistry.hasOwn(GRAPHQL_METADATA_KEYS.OBJECT_TYPE, orphan)
         ) {
           extraTypes.push(this.getOrCreateInterfaceType(orphan));
         } else {
@@ -1630,7 +1679,7 @@ export class GraphQLSchemaFactory {
         GRAPHQL_METADATA_KEYS.RESOLVER,
         resolverClass,
       );
-      if (!resolverMeta) continue;
+      if (!resolverMeta || resolverMeta.isAbstract) continue;
 
       const queryType = schema.getQueryType();
       if (queryType) {
