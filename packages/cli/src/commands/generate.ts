@@ -212,6 +212,8 @@ export async function generateSchematic(
     strict: options.strict,
     minimal: options.minimal,
     packageName: appMeta?.packageName,
+    type: options.type,
+    crud: options.crud,
   });
 
   if (schematic === "application" && !force && !dryRun) {

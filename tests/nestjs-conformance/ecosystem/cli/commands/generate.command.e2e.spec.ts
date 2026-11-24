@@ -361,8 +361,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: `generate resource` does not support `--type ws` or `--no-crud` flags to switch resource transport or omit CRUD DTOs (packages/cli/src/commands/generate.ts, packages/cli/src/templates/schematic.templates.ts)
-      it.skip("should take transport and crud answers from --type ws --no-crud flags", async () => {
+      it("should take transport and crud answers from --type ws --no-crud flags", async () => {
         const res = await runGen([
           "generate",
           "resource",

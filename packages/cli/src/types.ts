@@ -81,6 +81,13 @@ export interface CreateProjectResult {
   readonly dryRun: boolean;
 }
 
+export type ResourceTransportType =
+  | "rest"
+  | "microservice"
+  | "ws"
+  | "graphql-code-first"
+  | "graphql-schema-first";
+
 export interface GenerateSchematicOptions {
   readonly schematic: string;
   readonly name: string;
@@ -95,6 +102,8 @@ export interface GenerateSchematicOptions {
   readonly strict?: boolean;
   readonly packageManager?: string;
   readonly minimal?: boolean;
+  readonly type?: ResourceTransportType;
+  readonly crud?: boolean;
   readonly skipImport?: boolean;
   readonly module?: string;
   readonly cwd?: string;

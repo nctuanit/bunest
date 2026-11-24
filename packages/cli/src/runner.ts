@@ -316,6 +316,24 @@ export async function runCli(
               ? flatFlag
               : undefined;
 
+        const crudFlag = getBoolFlag(flags, "crud");
+        const noCrudFlag = getBoolFlag(flags, "no-crud");
+        const crud =
+          noCrudFlag === true
+            ? false
+            : crudFlag !== undefined
+              ? crudFlag
+              : undefined;
+        const rawType = getStringFlag(flags, "type");
+        const resourceType =
+          rawType === "rest" ||
+          rawType === "microservice" ||
+          rawType === "ws" ||
+          rawType === "graphql-code-first" ||
+          rawType === "graphql-schema-first"
+            ? rawType
+            : undefined;
+
         const result = await generateSchematic(
           {
             schematic,
@@ -327,6 +345,8 @@ export async function runCli(
             specFileSuffix: getStringFlag(flags, "spec-file-suffix"),
             language: getStringFlag(flags, "language"),
             collection: getStringFlag(flags, "collection"),
+            type: resourceType,
+            crud,
             skipImport: getBoolFlag(flags, "skip-import"),
             module: getStringFlag(flags, "module"),
             cwd: io.cwd,
