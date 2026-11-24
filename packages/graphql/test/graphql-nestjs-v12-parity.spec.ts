@@ -782,7 +782,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     });
     const ifaceCode = await Bun.file(outInterfaceFile).text();
     expect(ifaceCode).toContain("export type DateTime = Date;");
-    expect(ifaceCode).toContain("export type Role = 'ADMIN' | 'USER';");
+    expect(ifaceCode).toContain('export type Role = "ADMIN" | "USER";');
     expect(ifaceCode).toContain("export interface User extends Node");
     expect(ifaceCode).toContain("__typename?: 'User';");
     expect(ifaceCode).toContain("/** A system user */");

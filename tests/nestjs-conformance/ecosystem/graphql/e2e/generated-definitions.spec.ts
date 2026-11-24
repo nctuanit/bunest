@@ -452,8 +452,7 @@ describeConformance(
       await removePath(workDir, { recursive: true, force: true });
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate interface definitions for types", async () => {
+    it("should generate interface definitions for types", async () => {
       const outputFile = join(workDir, "simple-type.test-definitions.ts");
       await graphqlFactory.generateDefinitions(SIMPLE_TYPE_GQL, {
         definitions: { path: outputFile },
@@ -462,8 +461,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(SIMPLE_TYPE_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate properties referencing other interfaces", async () => {
+    it("should generate properties referencing other interfaces", async () => {
       const outputFile = join(
         workDir,
         "interface-property.test-definitions.ts",
@@ -477,8 +475,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate array properties with correct optionality", async () => {
+    it("should generate array properties with correct optionality", async () => {
       const outputFile = join(workDir, "array-property.test-definitions.ts");
       await graphqlFactory.generateDefinitions(ARRAY_PROPERTY_GQL, {
         definitions: { path: outputFile },
@@ -487,8 +484,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(ARRAY_PROPERTY_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate queries", async () => {
+    it("should generate queries", async () => {
       const outputFile = join(workDir, "query.test-definitions.ts");
       await graphqlFactory.generateDefinitions(QUERY_GQL, {
         definitions: { path: outputFile },
@@ -497,8 +493,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(QUERY_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate queries with methods as fields (skipResolverArgs: true)", async () => {
+    it("should generate queries with methods as fields (skipResolverArgs: true)", async () => {
       const outputFile = join(workDir, "query-skip-args.test-definitions.ts");
       await graphqlFactory.generateDefinitions(QUERY_GQL, {
         definitions: {
@@ -510,8 +505,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(QUERY_SKIP_ARGS_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate mutations", async () => {
+    it("should generate mutations", async () => {
       const outputFile = join(workDir, "mutation.test-definitions.ts");
       await graphqlFactory.generateDefinitions(MUTATION_GQL, {
         definitions: { path: outputFile },
@@ -520,8 +514,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(MUTATION_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate enums", async () => {
+    it("should generate enums", async () => {
       const outputFile = join(workDir, "enum.test-definitions.ts");
       await graphqlFactory.generateDefinitions(ENUM_GQL, {
         definitions: { path: outputFile },
@@ -530,8 +523,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(ENUM_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected `export type Foobar = "Foo" | "Bar" | "Baz";` with leading header newline and compact type spacing; actual emits single-quoted `'Foo' | 'Bar' | 'Baz'` (graphql-ast.explorer.ts:368), strips leading header newline (:58), and adds extra blank lines via `blocks.join("\n\n")` (:92).
-    it.skip("should generate enums as types", async () => {
+    it("should generate enums as types", async () => {
       const outputFile = join(workDir, "enum-as-type.test-definitions.ts");
       await graphqlFactory.generateDefinitions(ENUM_GQL, {
         definitions: {
@@ -543,8 +535,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(ENUM_AS_TYPE_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading header newline and compact scalar type alias spacing; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines around `export type CustomDate = any;` via `blocks.join("\n\n")` (:92).
-    it.skip("should generate custom scalars", async () => {
+    it("should generate custom scalars", async () => {
       const outputFile = join(workDir, "custom-scalar.test-definitions.ts");
       await graphqlFactory.generateDefinitions(CUSTOM_SCALAR_GQL, {
         definitions: { path: outputFile },
@@ -553,8 +544,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(CUSTOM_SCALAR_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading header newline and compact scalar type alias spacing; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines around `export type CustomDate = unknown;` via `blocks.join("\n\n")` (:92).
-    it.skip("should generate custom scalars with a default type", async () => {
+    it("should generate custom scalars with a default type", async () => {
       const outputFile = join(
         workDir,
         "custom-scalar-default-type.test-definitions.ts",
@@ -571,8 +561,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected leading header newline and adjacent scalar type aliases; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines between every `export type` via `blocks.join("\n\n")` (:92).
-    it.skip("should generate custom scalars with a type mapping", async () => {
+    it("should generate custom scalars with a type mapping", async () => {
       const outputFile = join(
         workDir,
         "custom-scalar-type-mapping.test-definitions.ts",
@@ -593,8 +582,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected leading header newline and no blank line between additionalHeader and scalar type alias; actual strips leading header newline (graphql-ast.explorer.ts:58) and inserts blank lines via `blocks.join("\n\n")` (:92).
-    it.skip("should prepend a custom header", async () => {
+    it("should prepend a custom header", async () => {
       const outputFile = join(workDir, "custom-header.test-definitions.ts");
       await graphqlFactory.generateDefinitions(CUSTOM_SCALAR_GQL, {
         definitions: {
@@ -606,8 +594,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(CUSTOM_HEADER_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading header newline and grouped output order (`enum Category` before classes `Post`/`User`/`IQuery`); actual strips leading header newline (graphql-ast.explorer.ts:58) and emits definitions in raw AST order (:63-89).
-    it.skip("should generate for a federated graph", async () => {
+    it("should generate for a federated graph", async () => {
       const gqlFile = join(workDir, "federation.graphql");
       await Bun.write(gqlFile, FEDERATION_GQL);
       const outputFile = join(workDir, "federation.test-definitions.ts");
@@ -622,8 +609,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(FEDERATION_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading header newline and grouped output order (`enum Animal`, `enum Category` before classes `Post`/`User`/`IQuery`); actual strips leading header newline (graphql-ast.explorer.ts:58) and emits definitions in raw AST order (:63-89, appending inline typeDefs after typePaths).
-    it.skip("should generate for a federated graph with typeDef", async () => {
+    it("should generate for a federated graph with typeDef", async () => {
       const gqlFile = join(workDir, "federation-typedef.graphql");
       await Bun.write(gqlFile, FEDERATION_GQL);
       const outputFile = join(
@@ -647,8 +633,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate with __typename field for each object type", async () => {
+    it("should generate with __typename field for each object type", async () => {
       const outputFile = join(workDir, "typename.test-definitions.ts");
       await graphqlFactory.generateDefinitions(SIMPLE_TYPE_GQL, {
         definitions: {
@@ -660,8 +645,7 @@ describeConformance(
       expect(await Bun.file(outputFile).text()).toBe(TYPENAME_EXPECTED);
     });
 
-    // BUNEST_BUG: Expected leading newline matching DEFINITIONS_FILE_HEADER; actual omits leading newline because GraphQLAstExplorer.explore (packages/graphql/src/schema/graphql-ast.explorer.ts:58) calls `DEFINITIONS_FILE_HEADER.trimStart()`.
-    it.skip("should generate for a federated graph with partial query definition", async () => {
+    it("should generate for a federated graph with partial query definition", async () => {
       const gqlFile = join(workDir, "federation-partial-query.graphql");
       await Bun.write(gqlFile, FEDERATION_PARTIAL_QUERY_GQL);
       const outputFile = join(
@@ -681,8 +665,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected leading header newline, grouped output order (enums -> inputs -> objects -> roots -> type aliases), and adjacent type aliases; actual strips leading header newline (graphql-ast.explorer.ts:58), emits in raw SDL order (:63-89), and inserts blank lines via `blocks.join("\n\n")` (:92).
-    it.skip("should apply typeName function to transform type names", async () => {
+    it("should apply typeName function to transform type names", async () => {
       const outputFile = join(workDir, "type-name.test-definitions.ts");
       await graphqlFactory.generateDefinitions(TYPE_NAME_GQL, {
         definitions: {

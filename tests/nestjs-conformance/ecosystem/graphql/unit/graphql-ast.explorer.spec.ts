@@ -14,8 +14,7 @@ describeConformance(
   },
   () => {
     describe("explore", () => {
-      // BUNEST_BUG: GraphQLAstExplorer.toObjectTypeDefinitionStructure in packages/graphql/src/schema/graphql-ast.explorer.ts emits non-root object fields with arguments as methods ("weight(unit: string): number | Promise<number>;") instead of required properties ("weight: number;") because line 212 checks (isRootType || hasArgs).
-      it.skip("should mark non-nullable fields with arguments as required", async () => {
+      it("should mark non-nullable fields with arguments as required", async () => {
         const astExplorer = new GraphQLAstExplorer();
 
         const document = parse(`
@@ -104,8 +103,7 @@ describeConformance(
         expect(sourceFile.getFullText()).not.toContain("The name of the cat.");
       });
 
-      // BUNEST_BUG: GraphQLAstExplorer.toEnumDefinitionStructure in packages/graphql/src/schema/graphql-ast.explorer.ts ignores emitDescriptions and never emits TSDoc comments for enum types or enum values (missing "/** The available colors. */" and "/** The color red. */").
-      it.skip('should emit descriptions as TSDoc comments when "emitDescriptions" is enabled', async () => {
+      it('should emit descriptions as TSDoc comments when "emitDescriptions" is enabled', async () => {
         const astExplorer = new GraphQLAstExplorer();
 
         const document = parse(`
@@ -172,8 +170,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: GraphQLAstExplorer.toObjectTypeDefinitionStructure in packages/graphql/src/schema/graphql-ast.explorer.ts skips __typename on root object types because line 202 guards with "&& !isRootType" (IQuery missing "__typename?: 'Query';").
-      it.skip('should emit the GraphQL type name as the "__typename" value', async () => {
+      it('should emit the GraphQL type name as the "__typename" value', async () => {
         const astExplorer = new GraphQLAstExplorer();
 
         const document = parse(`
