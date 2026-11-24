@@ -1214,8 +1214,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally getOrCreateInterfaceType (:877-890) does not attach @ResolveField() handlers from @Resolver(() => IRecipe).
-      it.skip('should define "IRecipe" interface', () => {
+      it('should define "IRecipe" interface', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "IRecipe",
         );

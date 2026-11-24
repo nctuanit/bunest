@@ -888,6 +888,26 @@ registerMappedTypeMetadataHook((ctx) => {
       ...field,
       ...(makeAllOptional ? { nullable: true } : {}),
     });
+    const sourceUseMw = getUseFieldMiddleware(ctx.source, field.propertyKey);
+    if (sourceUseMw.length > 0) {
+      const existingMw =
+        MetadataRegistry.getOwn<readonly FieldMiddleware[]>(
+          GRAPHQL_METADATA_KEYS.FIELD_MIDDLEWARE,
+          ctx.target.prototype as object,
+          field.propertyKey,
+        ) ?? [];
+      const mergedMw =
+        existingMw.length > 0 &&
+        existingMw.every((fn) => sourceUseMw.includes(fn))
+          ? [...sourceUseMw]
+          : Array.from(new Set([...existingMw, ...sourceUseMw]));
+      MetadataRegistry.define<FieldMiddleware[]>(
+        GRAPHQL_METADATA_KEYS.FIELD_MIDDLEWARE,
+        mergedMw,
+        ctx.target.prototype as object,
+        field.propertyKey,
+      );
+    }
   }
   if (byProp.size > 0) {
     MetadataRegistry.define(

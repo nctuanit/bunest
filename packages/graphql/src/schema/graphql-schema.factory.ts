@@ -1136,6 +1136,55 @@ export class GraphQLSchemaFactory {
     return undefined;
   }
 
+  private collectAllImplementedInterfaces(
+    cls: Function,
+    directImplements: InterfaceTypeMetadata["implements"] | ObjectTypeMetadata["implements"],
+  ): Function[] {
+    const visited = new Set<Function>();
+    const ordered: Function[] = [];
+
+    const visit = (iface: Function) => {
+      if (visited.has(iface)) return;
+      visited.add(iface);
+      const ifaceMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+        GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+        iface,
+      );
+      for (const parentIface of resolveImplementedInterfaces(
+        ifaceMeta?.implements,
+      )) {
+        visit(parentIface);
+      }
+      ordered.push(iface);
+    };
+
+    // Include interfaces implemented by ancestor @ObjectType/@InterfaceType classes first
+    const chain = MetadataRegistry.getPrototypeChain(cls);
+    for (let i = 0; i < chain.length - 1; i++) {
+      const ancestor = chain[i]!;
+      const ancObjMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
+        GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
+        ancestor,
+      );
+      for (const iface of resolveImplementedInterfaces(ancObjMeta?.implements)) {
+        visit(iface);
+      }
+      const ancIfaceMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+        GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+        ancestor,
+      );
+      for (const iface of resolveImplementedInterfaces(ancIfaceMeta?.implements)) {
+        visit(iface);
+      }
+    }
+
+    for (const iface of resolveImplementedInterfaces(directImplements)) {
+      visit(iface);
+    }
+
+    return ordered;
+  }
+
   private getOrCreateInterfaceType(cls: Function): GraphQLInterfaceType {
     const existing = this.interfaceTypes.get(cls);
     if (existing) {
@@ -1150,12 +1199,29 @@ export class GraphQLSchemaFactory {
 
     // Ensure concrete implementing @ObjectType classes are included in schema `types`
     const implementors = getInterfaceImplementors(cls);
+    const allParentInterfaces = this.collectAllImplementedInterfaces(
+      cls,
+      meta?.implements,
+    );
+
+    const ifaceExtensions = getGraphQLExtensions(cls);
+    const ifaceDirectives = getGraphQLDirectives(cls);
+    const mergedIfaceExtensions =
+      ifaceExtensions || ifaceDirectives.length > 0
+        ? {
+            ...(ifaceExtensions ?? {}),
+            ...(ifaceDirectives.length > 0
+              ? { directives: ifaceDirectives }
+              : {}),
+          }
+        : undefined;
 
     const ifaceType = new GraphQLInterfaceType({
       name: typeName,
       description: meta?.description,
+      ...(mergedIfaceExtensions ? { extensions: mergedIfaceExtensions } : {}),
       interfaces: () =>
-        resolveImplementedInterfaces(meta?.implements).map((parentIface) =>
+        allParentInterfaces.map((parentIface) =>
           this.getOrCreateInterfaceType(parentIface),
         ),
       resolveType: async (value, context, info) => {
@@ -1171,16 +1237,107 @@ export class GraphQLSchemaFactory {
       },
       fields: () => {
         const fields: GraphQLFieldConfigMap<any, any> = {};
+
+        for (const parentIface of allParentInterfaces) {
+          for (const fieldMeta of getGraphQLFields(parentIface)) {
+            const rawType = fieldMeta.typeFn
+              ? fieldMeta.typeFn()
+              : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
+            const fieldExt = getGraphQLExtensions(
+              parentIface,
+              fieldMeta.propertyKey,
+            );
+            const fieldDirs = getGraphQLDirectives(
+              parentIface,
+              fieldMeta.propertyKey,
+            );
+            const mergedFieldExt =
+              fieldExt || fieldDirs.length > 0
+                ? {
+                    ...(fieldExt ?? {}),
+                    ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
+                  }
+                : undefined;
+            fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
+              type: this.resolveOutputType(rawType, fieldMeta.nullable),
+              description: fieldMeta.description,
+              deprecationReason: fieldMeta.deprecationReason,
+              ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
+            };
+          }
+        }
+
         for (const fieldMeta of getGraphQLFields(cls)) {
           const rawType = fieldMeta.typeFn
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
+          const fieldExt = getGraphQLExtensions(cls, fieldMeta.propertyKey);
+          const fieldDirs = getGraphQLDirectives(cls, fieldMeta.propertyKey);
+          const mergedFieldExt =
+            fieldExt || fieldDirs.length > 0
+              ? {
+                  ...(fieldExt ?? {}),
+                  ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
+                }
+              : undefined;
           fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
             type: this.resolveOutputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
             deprecationReason: fieldMeta.deprecationReason,
+            ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
           };
         }
+
+        // Attach @ResolveField() handlers declared on parent interfaces and this interface
+        const ifaceFieldResolvers = [
+          ...allParentInterfaces.flatMap((pIface) => {
+            const pMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+              GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+              pIface,
+            );
+            return (
+              this.resolveFieldRegistry.get(pMeta?.name ?? pIface.name) ?? []
+            );
+          }),
+          ...(this.resolveFieldRegistry.get(typeName) ?? []),
+        ];
+        for (const { meta: rfMeta, compiled } of ifaceFieldResolvers) {
+          const existingField = fields[rfMeta.name];
+          let fieldType: GraphQLOutputType;
+          if (rfMeta.returnTypeFn) {
+            fieldType = this.resolveOutputType(
+              rfMeta.returnTypeFn(),
+              rfMeta.nullable,
+            );
+          } else if (existingField?.type) {
+            fieldType = existingField.type;
+          } else {
+            const designReturn = MetadataRegistry.getReturnType(
+              compiled.resolverClass.prototype,
+              rfMeta.handlerKey,
+            );
+            fieldType =
+              designReturn &&
+              designReturn !== Object &&
+              designReturn !== Promise
+                ? this.resolveOutputType(
+                    designReturn as ReturnTypeFuncValue,
+                    rfMeta.nullable,
+                  )
+                : GraphQLString;
+          }
+          fields[rfMeta.name] = {
+            type: fieldType,
+            description: rfMeta.description ?? existingField?.description,
+            deprecationReason:
+              rfMeta.deprecationReason ?? existingField?.deprecationReason,
+            args: this.buildArgsConfig(compiled.params),
+            ...(existingField?.extensions
+              ? { extensions: existingField.extensions }
+              : {}),
+          };
+        }
+
         return fields;
       },
     });
@@ -1308,21 +1465,26 @@ export class GraphQLSchemaFactory {
     const globalMiddleware =
       this.activeBuildSchemaOptions.fieldMiddleware ?? [];
 
+    const allInterfaces = this.collectAllImplementedInterfaces(
+      cls,
+      meta?.implements,
+    );
+
     // Lazy `fields: () => ({ ... })` thunk breaks circular object type references natively!
     const objType = new GraphQLObjectType({
       name: typeName,
       description: resolvedDescription,
       ...(mergedObjExtensions ? { extensions: mergedObjExtensions } : {}),
       interfaces: () =>
-        resolveImplementedInterfaces(meta?.implements).map((iface) =>
-          this.getOrCreateInterfaceType(iface),
-        ),
+        allInterfaces.map((iface) => this.getOrCreateInterfaceType(iface)),
       fields: () => {
         const fields: GraphQLFieldConfigMap<any, any> = {};
+        const modelFieldMiddlewares = new Map<string, FieldMiddleware[]>();
 
-        // Inherit fields from implemented @InterfaceType() classes first (overridable by own fields)
-        for (const iface of resolveImplementedInterfaces(meta?.implements)) {
+        // Inherit fields from implemented @InterfaceType() classes first (least-specific -> most-specific)
+        for (const iface of allInterfaces) {
           for (const fieldMeta of getGraphQLFields(iface)) {
+            const fieldName = fieldMeta.name ?? fieldMeta.propertyKey;
             const rawType = fieldMeta.typeFn
               ? fieldMeta.typeFn()
               : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
@@ -1332,20 +1494,34 @@ export class GraphQLSchemaFactory {
               cls.prototype instanceof iface
                 ? clsUseMw
                 : [...ifaceUseMw, ...clsUseMw];
-            const fieldMw: FieldMiddleware[] = [
-              ...globalMiddleware,
+            const ownFieldMw: FieldMiddleware[] = [
               ...(fieldMeta.middleware ?? []),
               ...combinedUseMw,
             ];
+            modelFieldMiddlewares.set(fieldName, ownFieldMw);
+            const fieldMw: FieldMiddleware[] = [
+              ...globalMiddleware,
+              ...ownFieldMw,
+            ];
+            const fieldExt = getGraphQLExtensions(iface, fieldMeta.propertyKey);
+            const fieldDirs = getGraphQLDirectives(iface, fieldMeta.propertyKey);
+            const mergedFieldExt =
+              fieldExt || fieldDirs.length > 0
+                ? {
+                    ...(fieldExt ?? {}),
+                    ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
+                  }
+                : undefined;
             const baseResolve: GraphQLFieldResolver<any, any> =
               fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
                 ? (parent: Record<string, unknown>) =>
                     parent?.[fieldMeta.propertyKey]
                 : defaultFieldResolver;
-            fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
+            fields[fieldName] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
               description: fieldMeta.description,
               deprecationReason: fieldMeta.deprecationReason,
+              ...(mergedFieldExt ? { extensions: mergedFieldExt } : {}),
               resolve:
                 fieldMw.length > 0
                   ? applyFieldMiddleware(fieldMw, baseResolve)
@@ -1357,6 +1533,7 @@ export class GraphQLSchemaFactory {
         }
 
         for (const fieldMeta of getGraphQLFields(cls)) {
+          const fieldName = fieldMeta.name ?? fieldMeta.propertyKey;
           const rawType = fieldMeta.typeFn
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
@@ -1374,10 +1551,14 @@ export class GraphQLSchemaFactory {
                     : {}),
                 }
               : undefined;
-          const fieldMw: FieldMiddleware[] = [
-            ...globalMiddleware,
+          const ownFieldMw: FieldMiddleware[] = [
             ...(fieldMeta.middleware ?? []),
             ...getUseFieldMiddleware(cls, fieldMeta.propertyKey),
+          ];
+          modelFieldMiddlewares.set(fieldName, ownFieldMw);
+          const fieldMw: FieldMiddleware[] = [
+            ...globalMiddleware,
+            ...ownFieldMw,
           ];
           const baseResolve: GraphQLFieldResolver<any, any> =
             fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
@@ -1385,7 +1566,7 @@ export class GraphQLSchemaFactory {
                   parent?.[fieldMeta.propertyKey]
               : defaultFieldResolver;
 
-          fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
+          fields[fieldName] = {
             type: this.resolveOutputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
             deprecationReason: fieldMeta.deprecationReason,
@@ -1399,8 +1580,39 @@ export class GraphQLSchemaFactory {
           };
         }
 
-        // Attach @ResolveField() methods targeting this @ObjectType
-        const fieldResolvers = this.resolveFieldRegistry.get(typeName) ?? [];
+        // Attach @ResolveField() methods in precedence order:
+        // 1. Implemented interfaces (least-specific -> most-specific)
+        // 2. Ancestor @ObjectType classes in prototype chain (base -> derived)
+        // 3. Own @ObjectType
+        const fieldResolvers: Array<{
+          readonly meta: ResolveFieldMetadata;
+          readonly compiled: CompiledGqlMethod;
+        }> = [];
+        for (const iface of allInterfaces) {
+          const ifaceMeta = MetadataRegistry.getOwn<InterfaceTypeMetadata>(
+            GRAPHQL_METADATA_KEYS.INTERFACE_TYPE,
+            iface,
+          );
+          const ifaceResolvers =
+            this.resolveFieldRegistry.get(ifaceMeta?.name ?? iface.name) ?? [];
+          fieldResolvers.push(...ifaceResolvers);
+        }
+        const protoChain = MetadataRegistry.getPrototypeChain(cls);
+        for (let i = 0; i < protoChain.length - 1; i++) {
+          const ancestor = protoChain[i]!;
+          if (allInterfaces.includes(ancestor)) continue;
+          const ancMeta = MetadataRegistry.getOwn<ObjectTypeMetadata>(
+            GRAPHQL_METADATA_KEYS.OBJECT_TYPE,
+            ancestor,
+          );
+          const ancName = ancMeta?.name ?? ancestor.name;
+          if (ancName && ancName !== typeName) {
+            const ancResolvers = this.resolveFieldRegistry.get(ancName) ?? [];
+            fieldResolvers.push(...ancResolvers);
+          }
+        }
+        fieldResolvers.push(...(this.resolveFieldRegistry.get(typeName) ?? []));
+
         for (const { meta: rfMeta, compiled } of fieldResolvers) {
           const existingField = fields[rfMeta.name];
           let fieldType: GraphQLOutputType;
@@ -1427,12 +1639,31 @@ export class GraphQLSchemaFactory {
                 : GraphQLString;
           }
           const argsConfig = this.buildArgsConfig(compiled.params);
-          const rfMw: FieldMiddleware[] = [
-            ...globalMiddleware,
+          const modelMw = modelFieldMiddlewares.get(rfMeta.name) ?? [];
+          const handlerMw: FieldMiddleware[] = [
             ...(rfMeta.middleware ?? []),
             ...getUseFieldMiddleware(compiled.resolverClass, rfMeta.handlerKey),
           ];
+          const rfMw: FieldMiddleware[] = Array.from(
+            new Set([...globalMiddleware, ...modelMw, ...handlerMw]),
+          );
           const baseResolve = this.createResolverFn(compiled);
+          const rfExt = getGraphQLExtensions(
+            compiled.resolverClass,
+            String(rfMeta.handlerKey),
+          );
+          const mergedRfExt =
+            existingField?.extensions ||
+            rfExt ||
+            rfMeta.complexity !== undefined
+              ? {
+                  ...(existingField?.extensions ?? {}),
+                  ...(rfExt ?? {}),
+                  ...(rfMeta.complexity !== undefined
+                    ? { complexity: rfMeta.complexity }
+                    : {}),
+                }
+              : undefined;
 
           fields[rfMeta.name] = {
             type: fieldType,
@@ -1440,14 +1671,7 @@ export class GraphQLSchemaFactory {
             deprecationReason:
               rfMeta.deprecationReason ?? existingField?.deprecationReason,
             args: argsConfig,
-            ...(rfMeta.complexity !== undefined
-              ? {
-                  extensions: {
-                    ...(existingField?.extensions ?? {}),
-                    complexity: rfMeta.complexity,
-                  },
-                }
-              : {}),
+            ...(mergedRfExt ? { extensions: mergedRfExt } : {}),
             resolve:
               rfMw.length > 0
                 ? applyFieldMiddleware(rfMw, baseResolve)
@@ -1469,27 +1693,65 @@ export class GraphQLSchemaFactory {
       return existing;
     }
 
-    const meta = MetadataRegistry.get<InputTypeMetadata>(
+    const meta = MetadataRegistry.getOwn<InputTypeMetadata>(
       GRAPHQL_METADATA_KEYS.INPUT_TYPE,
       cls,
     );
     const typeName = meta?.name ?? cls.name;
 
+    let isOneOf = meta?.isOneOf;
+    if (isOneOf === undefined) {
+      const chain = MetadataRegistry.getPrototypeChain(cls);
+      for (let i = chain.length - 2; i >= 0; i--) {
+        const ancMeta = MetadataRegistry.getOwn<InputTypeMetadata>(
+          GRAPHQL_METADATA_KEYS.INPUT_TYPE,
+          chain[i]!,
+        );
+        if (ancMeta?.isOneOf !== undefined) {
+          isOneOf = ancMeta.isOneOf;
+          break;
+        }
+      }
+    }
+    const inputDirectives = getGraphQLDirectives(cls);
+    if (
+      isOneOf !== true &&
+      isOneOf !== false &&
+      inputDirectives.some(
+        (d) => d.trim() === "@oneOf" || d.trim().startsWith("@oneOf("),
+      )
+    ) {
+      isOneOf = true;
+    }
+    const inputExtensions = getGraphQLExtensions(cls);
+    const mergedInputExtensions =
+      inputExtensions || inputDirectives.length > 0
+        ? {
+            ...(inputExtensions ?? {}),
+            ...(inputDirectives.length > 0
+              ? { directives: inputDirectives }
+              : {}),
+          }
+        : undefined;
+
     const inputType = new GraphQLInputObjectType({
       name: typeName,
       description: meta?.description,
-      ...(meta?.isOneOf ? { isOneOf: true } : {}),
+      ...(mergedInputExtensions ? { extensions: mergedInputExtensions } : {}),
+      ...(isOneOf ? { isOneOf: true } : {}),
       fields: () => {
         const fields: GraphQLInputFieldConfigMap = {};
         for (const fieldMeta of getGraphQLFields(cls)) {
           const rawType = fieldMeta.typeFn
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
+          const fieldExt = getGraphQLExtensions(cls, fieldMeta.propertyKey);
           const config: GraphQLInputFieldConfig = {
             type: this.resolveInputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
             defaultValue: fieldMeta.defaultValue,
             deprecationReason: fieldMeta.deprecationReason,
+            ...(fieldExt ? { extensions: fieldExt } : {}),
           };
           fields[fieldMeta.name ?? fieldMeta.propertyKey] = config;
         }
@@ -1523,10 +1785,18 @@ export class GraphQLSchemaFactory {
           const rawType = fieldMeta.typeFn
             ? fieldMeta.typeFn()
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
+          const fieldExt = getGraphQLExtensions(
+            param.metatype,
+            fieldMeta.propertyKey,
+          );
           argsConfig[fieldMeta.name ?? fieldMeta.propertyKey] = {
             type: this.resolveInputType(rawType, fieldMeta.nullable),
             description: fieldMeta.description,
             defaultValue: fieldMeta.defaultValue,
+            ...(fieldMeta.deprecationReason !== undefined
+              ? { deprecationReason: fieldMeta.deprecationReason }
+              : {}),
+            ...(fieldExt ? { extensions: fieldExt } : {}),
           };
         }
         continue;

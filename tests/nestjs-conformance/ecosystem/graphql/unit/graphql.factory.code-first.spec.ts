@@ -72,8 +72,7 @@ describeConformance(
       return (data as { item: Item }).item.overridden;
     }
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType in packages/graphql/src/schema/graphql-schema.factory.ts drops @ObjectType @Field({ middleware }) when @ResolveField() overrides the field (expected "global(model(handler(value)))", received "global(handler(value))").
-    it.skip("should run the global middleware, then the model field middleware, then the handler middleware", async () => {
+    it("should run the global middleware, then the model field middleware, then the handler middleware", async () => {
       @Resolver(() => Item)
       class ItemResolver {
         @Query(() => Item)

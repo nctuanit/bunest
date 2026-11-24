@@ -302,14 +302,12 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected "option(decorator(resolver(value)))"; actual is "resolver(value)" because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1109-1113) drops the overridden model @Field()'s middleware and @UseFieldMiddleware() when attaching a @ResolveField().
-      it.skip("should keep the middleware of a model field overridden by a field resolver", async () => {
+      it("should keep the middleware of a model field overridden by a field resolver", async () => {
         const data = await query(app, "{ item { overridden } }");
         expect(data.item.overridden).toBe("option(decorator(resolver(value)))");
       });
 
-      // BUNEST_BUG: Expected { payslip: { owner: "payslip(resolver(value))" }, memo: { owner: "document(resolver(value))" } }; actual omits "resolver(...)" because GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1102) does not bind interface @ResolveField() handlers from @Resolver(() => Document) onto implementing @ObjectType() classes.
-      it.skip("should keep the middleware of a model field overridden by an interface field resolver", async () => {
+      it("should keep the middleware of a model field overridden by an interface field resolver", async () => {
         const data = await query(app, "{ payslip { owner } memo { owner } }");
         expect(data).toEqual({
           payslip: { owner: "payslip(resolver(value))" },
@@ -317,8 +315,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected { above: "above(value)", combined: "option(first(second(value)))", plain: "value" }; actual returns { above: "value", combined: "option(value)", plain: "value" } because registerMappedTypeMetadataHook (packages/graphql/src/decorators/type.decorators.ts:854-881) does not copy @UseFieldMiddleware() metadata (GRAPHQL_METADATA_KEYS.FIELD_MIDDLEWARE) onto mapped types like PartialType(Item, ObjectType).
-      it.skip("should keep the middleware on fields copied by mapped types", async () => {
+      it("should keep the middleware on fields copied by mapped types", async () => {
         const data = await query(
           app,
           "{ partialItem { above combined plain } }",
@@ -378,8 +375,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected global -> model field -> field resolver middleware chain; actual drops model field middleware on item.overridden ("global(resolver(value))") and skips interface @ResolveField() on payslip/memo ("global(payslip(value))", "global(document(value))") in GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1101-1135).
-      it.skip("should run the global middleware, then the model field middleware, then the field resolver middleware, once each", async () => {
+      it("should run the global middleware, then the model field middleware, then the field resolver middleware, once each", async () => {
         const data = await query(
           app,
           "{ item { overridden } payslip { owner } memo { owner } }",

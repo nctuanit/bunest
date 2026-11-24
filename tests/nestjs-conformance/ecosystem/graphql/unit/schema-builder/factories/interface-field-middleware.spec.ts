@@ -103,8 +103,7 @@ describeConformance(
         },
       });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn, misclassifying @ObjectType() subclasses extending an @InterfaceType() (`Note extends Base`, `LeafNote extends AbstractNote`) as duplicate GraphQLInterfaceType("Base") and crashing schema creation with "Schema must contain uniquely named types but contains multiple types named \"Base\"."
-    it.skip('should run the middleware of an interface field reached through "extends"', async () => {
+    it('should run the middleware of an interface field reached through "extends"', async () => {
       const schema = await createSchema();
       const result = await graphql({
         schema,
@@ -121,8 +120,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn, misclassifying @ObjectType() classes extending an @InterfaceType() (`Note extends Base`, `LeafNote extends AbstractNote`) as duplicate GraphQLInterfaceType("Base") and crashing schema creation.
-    it.skip("should run the middleware when an object type extends the interface class", async () => {
+    it("should run the middleware when an object type extends the interface class", async () => {
       const schema = await createSchema();
       const result = await graphql({
         schema,

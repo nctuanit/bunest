@@ -532,8 +532,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Schema bootstrap crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`; additionally IRecipesResolver interface @ResolveField("interfaceResolver") is not bound onto implementing type Recipe (:1102).
-    it.skip("should return query result (with description and interfaceResolver)", async () => {
+    it("should return query result (with description and interfaceResolver)", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({
