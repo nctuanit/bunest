@@ -115,8 +115,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: app.useGlobalPipes(...) (and APP_PIPE) are never wired into GraphQLService / GraphQLSchemaFactory (packages/graphql/src/driver/graphql-http.handler.ts only queries APP_FILTER and never reads ApplicationConfig global pipes or APP_PIPE). Expected ValidationPipe to reject missing/short `description` with BAD_REQUEST error; actual mutation succeeds without running the global pipe.
-    it.skip("should throw an error when app.useGlobalPipes(ValidationPipe) rejects invalid GraphQL input", async () => {
+    it("should throw an error when app.useGlobalPipes(ValidationPipe) rejects invalid GraphQL input", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [GlobalPipeAppModule],
       }).compile({ logger: false });

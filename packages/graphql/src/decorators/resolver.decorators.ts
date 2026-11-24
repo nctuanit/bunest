@@ -111,9 +111,13 @@ function createOperationDecorator(
   metadataKey: symbol,
 ) {
   return (
-    returnTypeFunc: ReturnTypeFunc,
+    nameOrTypeFunc?: string | ReturnTypeFunc,
     options: OperationOptions & SubscriptionOptions = {},
   ): MethodDecorator => {
+    const returnTypeFunc: ReturnTypeFunc =
+      typeof nameOrTypeFunc === "function" ? nameOrTypeFunc : () => Object;
+    const explicitName =
+      typeof nameOrTypeFunc === "string" ? nameOrTypeFunc : options.name;
     return (
       target: object,
       propertyKey: string | symbol,
@@ -128,7 +132,7 @@ function createOperationDecorator(
       const entry: ResolverOperationMetadata = {
         kind,
         handlerKey: propertyKey,
-        name: options.name ?? String(propertyKey),
+        name: explicitName ?? String(propertyKey),
         returnTypeFn: returnTypeFunc,
         description: options.description,
         nullable: options.nullable,
