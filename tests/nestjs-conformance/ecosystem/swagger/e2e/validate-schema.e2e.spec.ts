@@ -191,8 +191,7 @@ describeConformance(
       expect(api.paths["/api/cats"]?.get?.tags).toContain("tag2");
     });
 
-    // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1874) places @ApiQuery({ type: TagDto, example }) on param.example instead of wrapping $ref in schema.allOf + schema.example
-    it.skip("should preserve example metadata for named type query params (issue #3335)", () => {
+    it("should preserve example metadata for named type query params (issue #3335)", () => {
       const document = SwaggerModule.createDocument(app, options);
       const params =
         document.paths["/api/cats/with-named-type-example"]?.get?.parameters ??

@@ -2111,8 +2111,7 @@ describeConformance(
         expect(params[1]).not.toHaveProperty("description");
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1874) puts example on param instead of wrapping $ref in schema.allOf + schema.example
-      it.skip("should preserve parent example when a non-body param property has a DTO type", async () => {
+      it("should preserve parent example when a non-body param property has a DTO type", async () => {
         class ChildDto {
           @ApiProperty({ example: "child DTO example 1" })
           childKey1!: string;
@@ -2158,8 +2157,7 @@ describeConformance(
         expect(paramResult?.schema?.allOf).toBeUndefined();
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1858,1874) leaves example on param and does not merge $ref into param-level allOf
-      it.skip("should merge param-level allOf with $ref wrapping and not lose example", async () => {
+      it("should merge param-level allOf with $ref wrapping and not lose example", async () => {
         class FilterDto {
           @ApiProperty()
           value!: string;
@@ -2194,8 +2192,7 @@ describeConformance(
         expect(paramResult?.schema?.$ref).toBeUndefined();
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1842-1858) overwrites schema.allOf with q.allOf instead of merging q.schema.allOf, q.allOf, and { $ref }
-      it.skip("should merge parameter and schema allOf constraints for a named scalar parameter", async () => {
+      it("should merge parameter and schema allOf constraints for a named scalar parameter", async () => {
         class FilterDto {
           @ApiProperty({ type: String })
           code!: string;
@@ -2225,8 +2222,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1842-1858) skips q.type/q.isArray when q.schema is also supplied, dropping array items allOf + $ref
-      it.skip("should keep array parameter allOf constraints separate from item constraints", async () => {
+      it("should keep array parameter allOf constraints separate from item constraints", async () => {
         class FilterDto {
           @ApiProperty({ type: String })
           code!: string;
@@ -2887,8 +2883,7 @@ describeConformance(
         expect(requiredOf(GrandchildWithOptionalName)).toEqual([]);
       });
 
-      // BUNEST_BUG: ApiProperty (packages/swagger/src/decorators/api.decorators.ts:127) defaults required: true unconditionally so stacking @ApiProperty({ description }) over @ApiPropertyOptional() on the same class overwrites required: false
-      it.skip("should not change how decorators stacked on the same class are merged", () => {
+      it("should not change how decorators stacked on the same class are merged", () => {
         class StackedDecorators {
           @ApiProperty({ description: "Display name" })
           @ApiPropertyOptional()

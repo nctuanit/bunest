@@ -447,6 +447,78 @@ export interface SchemaExplorerOptions {
  * Standard JSON Schema objects into OpenAPI 3.1 `components.schemas`, handling
  * nested and circular DTO references without infinite recursion.
  */
+/**
+ * Returns true if a schema `default` value is dynamic (a function, Date, or
+ * any non-plain class instance whose prototype is not Object.prototype / null).
+ */
+export function isDynamicDefaultValue(val: unknown): boolean {
+  if (typeof val === "function") return true;
+  if (val === null || typeof val !== "object") return false;
+  if (Array.isArray(val)) return false;
+  const proto = Object.getPrototypeOf(val);
+  return proto !== Object.prototype && proto !== null;
+}
+
+/**
+ * Non-mutating recursive pass that strips dynamic `default` values from a
+ * schema and all nested sub-schemas (`properties`, `items`, `additionalProperties`,
+ * `patternProperties`, `allOf`, `oneOf`, `anyOf`, `not`).
+ */
+export function stripDynamicDefaultsFromSchema<T>(
+  schema: T,
+  seen = new WeakMap<object, unknown>(),
+): T {
+  if (!schema || typeof schema !== "object") return schema;
+  if (seen.has(schema as object)) return seen.get(schema as object) as T;
+  if (Array.isArray(schema)) {
+    const out: unknown[] = [];
+    seen.set(schema as object, out);
+    for (const item of schema) {
+      out.push(stripDynamicDefaultsFromSchema(item, seen));
+    }
+    return out as unknown as T;
+  }
+  const proto = Object.getPrototypeOf(schema);
+  if (proto !== Object.prototype && proto !== null) {
+    return schema;
+  }
+
+  const s = schema as Record<string, unknown>;
+  const clone: Record<string, unknown> = {};
+  seen.set(schema as object, clone);
+
+  for (const [k, v] of Object.entries(s)) {
+    if (k === "default" && isDynamicDefaultValue(v)) {
+      continue;
+    }
+    if (
+      (k === "properties" || k === "patternProperties") &&
+      v &&
+      typeof v === "object"
+    ) {
+      const mapped: Record<string, unknown> = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+        mapped[pk] = stripDynamicDefaultsFromSchema(pv, seen);
+      }
+      clone[k] = mapped;
+    } else if (
+      (k === "items" || k === "additionalProperties" || k === "not") &&
+      v &&
+      typeof v === "object"
+    ) {
+      clone[k] = stripDynamicDefaultsFromSchema(v, seen);
+    } else if (
+      (k === "allOf" || k === "oneOf" || k === "anyOf") &&
+      Array.isArray(v)
+    ) {
+      clone[k] = v.map((branch) => stripDynamicDefaultsFromSchema(branch, seen));
+    } else {
+      clone[k] = v;
+    }
+  }
+  return clone as T;
+}
+
 export class SchemaExplorer {
   private readonly schemas: Record<string, OpenApiSchema> = {};
   private readonly classToName = new Map<Function, string>();
@@ -801,9 +873,7 @@ export class SchemaExplorer {
     }
     if (apiMeta.format !== undefined) schema.format = apiMeta.format;
     if (apiMeta.default !== undefined) {
-      const isDynamic =
-        typeof apiMeta.default === "function" ||
-        apiMeta.default instanceof Date;
+      const isDynamic = isDynamicDefaultValue(apiMeta.default);
       if (!(this.options.excludeDynamicDefaults && isDynamic)) {
         schema.default =
           typeof apiMeta.default === "function"
@@ -900,6 +970,13 @@ export class SchemaExplorer {
     }
     if (apiMeta.contentMediaType !== undefined) {
       schema.contentMediaType = apiMeta.contentMediaType;
+    }
+    if (this.options.excludeDynamicDefaults) {
+      const cleaned = stripDynamicDefaultsFromSchema(schema);
+      for (const key of Object.keys(schema)) {
+        delete (schema as Record<string, unknown>)[key];
+      }
+      Object.assign(schema, cleaned);
     }
   }
 

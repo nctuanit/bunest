@@ -81,6 +81,7 @@ import {
   isSchemaDecoratedClass,
   normalizeEnumValues,
   SchemaExplorer,
+  stripDynamicDefaultsFromSchema,
 } from "./schema-explorer";
 import { renderSwaggerHtml } from "./swagger-ui";
 import { serializeToYaml } from "./utils/yaml-serializer";
@@ -672,7 +673,11 @@ function applyQuerySchemaExtras(
   if (q.patternProperties !== undefined) {
     schema.patternProperties = q.patternProperties;
   }
-  if (q.allOf !== undefined) schema.allOf = q.allOf;
+  if (q.allOf !== undefined) {
+    schema.allOf = schema.allOf
+      ? [...schema.allOf, ...q.allOf]
+      : [...q.allOf];
+  }
   if (q.anyOf !== undefined) schema.anyOf = q.anyOf;
   if (q.oneOf !== undefined) schema.oneOf = q.oneOf;
   if (q.not !== undefined) schema.not = q.not;
@@ -680,6 +685,110 @@ function applyQuerySchemaExtras(
   if (q.xml !== undefined) schema.xml = q.xml;
   if (q.externalDocs !== undefined) schema.externalDocs = q.externalDocs;
   if (q["x-enumNames"] !== undefined) schema["x-enumNames"] = q["x-enumNames"];
+}
+
+function transformDocumentSchemas(
+  doc: OpenApiDocument,
+  transform: (schema: OpenApiSchema) => OpenApiSchema,
+): void {
+  const transformContent = (
+    content: Record<string, OpenApiMediaType> | undefined,
+  ): void => {
+    if (!content) return;
+    for (const [ct, media] of Object.entries(content)) {
+      if (media?.schema) {
+        content[ct] = { ...media, schema: transform(media.schema) };
+      }
+    }
+  };
+
+  const transformOperation = (op: OpenApiOperation | undefined): void => {
+    if (!op) return;
+    if (Array.isArray(op.parameters)) {
+      op.parameters = op.parameters.map((param) => {
+        const p = { ...param };
+        if (p.schema) p.schema = transform(p.schema);
+        if (p.content) {
+          p.content = { ...p.content };
+          transformContent(p.content);
+        }
+        return p;
+      });
+    }
+    if (op.requestBody?.content) {
+      op.requestBody = {
+        ...op.requestBody,
+        content: { ...op.requestBody.content },
+      };
+      transformContent(op.requestBody.content);
+    }
+    if (op.responses) {
+      for (const [status, resp] of Object.entries(op.responses)) {
+        if (!resp || resp.$ref) continue;
+        const r = { ...resp };
+        if (r.content) {
+          r.content = { ...r.content };
+          transformContent(r.content);
+        }
+        if (r.headers) {
+          const newHeaders: Record<string, any> = {};
+          for (const [hk, hv] of Object.entries(r.headers)) {
+            if (hv && typeof hv === "object" && "schema" in hv && hv.schema) {
+              newHeaders[hk] = { ...hv, schema: transform(hv.schema) };
+            } else {
+              newHeaders[hk] = hv;
+            }
+          }
+          r.headers = newHeaders;
+        }
+        op.responses[status] = r;
+      }
+    }
+    if (op.callbacks) {
+      for (const cb of Object.values(op.callbacks)) {
+        if (!cb || typeof cb !== "object") continue;
+        for (const cbPathItem of Object.values(cb as Record<string, OpenApiPathItem>)) {
+          transformPathItem(cbPathItem);
+        }
+      }
+    }
+  };
+
+  const transformPathItem = (pathItem: OpenApiPathItem | undefined): void => {
+    if (!pathItem) return;
+    for (const m of [
+      "get",
+      "put",
+      "post",
+      "delete",
+      "options",
+      "head",
+      "patch",
+      "trace",
+      "query",
+    ] as const) {
+      if (pathItem[m]) transformOperation(pathItem[m]);
+    }
+    if (pathItem.additionalOperations) {
+      for (const op of Object.values(pathItem.additionalOperations)) {
+        transformOperation(op);
+      }
+    }
+  };
+
+  if (doc.components?.schemas) {
+    for (const [name, schema] of Object.entries(doc.components.schemas)) {
+      doc.components.schemas[name] = transform(schema);
+    }
+  }
+  for (const pathItem of Object.values(doc.paths)) {
+    transformPathItem(pathItem);
+  }
+  if (doc.webhooks) {
+    for (const pathItem of Object.values(doc.webhooks)) {
+      transformPathItem(pathItem);
+    }
+  }
 }
 
 interface TrackedOperationRecord {
@@ -1309,6 +1418,12 @@ export class SwaggerModule {
           ? { securitySchemes: { ...existingSchemes } }
           : {}),
       };
+    }
+
+    if (options.excludeDynamicDefaults) {
+      transformDocumentSchemas(document, (s) =>
+        stripDynamicDefaultsFromSchema(s),
+      );
     }
 
     return document;
@@ -2121,8 +2236,46 @@ export class SwaggerModule {
       const qName = q.name ?? "query";
       const existing = paramMap.get(`query:${qName}`);
       let schema: OpenApiSchema;
-      if (q.schema) {
+      let moveExampleToSchema = false;
+
+      if (q.schema && q.type !== undefined) {
+        if (q.isArray) {
+          const itemResolved = explorer.resolveTypeSchema(q.type, false);
+          const itemSchema: OpenApiSchema = { ...(q.schema as OpenApiSchema) };
+          if (itemResolved.$ref) {
+            if (itemSchema.allOf) {
+              itemSchema.allOf = [...itemSchema.allOf, { $ref: itemResolved.$ref }];
+            } else if (Object.keys(itemSchema).length > 0) {
+              itemSchema.allOf = [{ $ref: itemResolved.$ref }];
+            } else {
+              itemSchema.$ref = itemResolved.$ref;
+            }
+          } else {
+            Object.assign(itemSchema, itemResolved);
+          }
+          schema = { type: "array", items: itemSchema };
+        } else {
+          const resolved = explorer.resolveTypeSchema(q.type, false);
+          schema = { ...(q.schema as OpenApiSchema) };
+          applyQuerySchemaExtras(schema, q);
+          if (resolved.$ref) {
+            if (schema.allOf) {
+              schema.allOf = [...schema.allOf, { $ref: resolved.$ref }];
+            } else if (Object.keys(schema).length > 0) {
+              schema.allOf = [{ $ref: resolved.$ref }];
+            } else {
+              schema.$ref = resolved.$ref;
+            }
+          } else {
+            Object.assign(schema, resolved);
+          }
+        }
+        if (q.isArray) {
+          applyQuerySchemaExtras(schema, q);
+        }
+      } else if (q.schema) {
         schema = { ...(q.schema as OpenApiSchema) };
+        applyQuerySchemaExtras(schema, q);
       } else if (q.enumName && q.enum !== undefined) {
         const enumRef = explorer.registerEnumSchema(
           q.enumName,
@@ -2131,18 +2284,31 @@ export class SwaggerModule {
           q["x-enumNames"],
         );
         schema = q.isArray ? { type: "array", items: enumRef } : enumRef;
+        applyQuerySchemaExtras(schema, q);
       } else if (q.type !== undefined) {
         schema = explorer.resolveTypeSchema(q.type, q.isArray === true);
+        if (schema.$ref && (q.example !== undefined || q.allOf !== undefined)) {
+          const refVal = schema.$ref;
+          delete schema.$ref;
+          applyQuerySchemaExtras(schema, q);
+          schema.allOf = [...(schema.allOf ?? []), { $ref: refVal }];
+          if (q.example !== undefined) {
+            schema.example = q.example;
+            moveExampleToSchema = true;
+          }
+        } else {
+          applyQuerySchemaExtras(schema, q);
+        }
       } else {
         schema = { ...(existing?.schema ?? { type: "string" }) };
+        applyQuerySchemaExtras(schema, q);
       }
       if (q.enum && !q.enumName) schema.enum = normalizeEnumValues(q.enum);
-      applyQuerySchemaExtras(schema, q);
 
       const paramObj: OpenApiParameter & Record<string, unknown> = {
         name: qName,
         in: "query",
-        required: q.required ?? existing?.required ?? false,
+        required: q.required ?? true,
         ...(q.description !== undefined ? { description: q.description } : {}),
         ...(q.deprecated !== undefined ? { deprecated: q.deprecated } : {}),
         ...(q.allowEmptyValue !== undefined
@@ -2153,7 +2319,9 @@ export class SwaggerModule {
         ...(q.allowReserved !== undefined
           ? { allowReserved: q.allowReserved }
           : {}),
-        ...(q.example !== undefined ? { example: q.example } : {}),
+        ...(q.example !== undefined && !moveExampleToSchema
+          ? { example: q.example }
+          : {}),
         ...(q.examples !== undefined ? { examples: q.examples } : {}),
         ...(q.content !== undefined ? { content: q.content } : { schema }),
       };
@@ -2175,6 +2343,9 @@ export class SwaggerModule {
         ? { ...(h.schema as OpenApiSchema) }
         : { type: "string" };
       if (h.enum) schema.enum = normalizeEnumValues(h.enum);
+      if (h.example !== undefined && h.content === undefined) {
+        schema.example = h.example;
+      }
 
       const headerObj: OpenApiParameter & Record<string, unknown> = {
         name: h.name,
@@ -2190,7 +2361,9 @@ export class SwaggerModule {
         ...(h.allowReserved !== undefined
           ? { allowReserved: h.allowReserved }
           : {}),
-        ...(h.example !== undefined ? { example: h.example } : {}),
+        ...(h.example !== undefined && h.content !== undefined
+          ? { example: h.example }
+          : {}),
         ...(h.examples !== undefined ? { examples: h.examples } : {}),
         ...(h.content !== undefined ? { content: h.content } : { schema }),
       };
@@ -2224,8 +2397,12 @@ export class SwaggerModule {
         );
       } else if (apiBody.enum !== undefined) {
         const enumVals = normalizeEnumValues(apiBody.enum);
+        const enumType =
+          enumVals.length > 0 && enumVals.every((v) => typeof v === "number")
+            ? "number"
+            : "string";
         schema = apiBody.isArray
-          ? { type: "array", items: { enum: enumVals } }
+          ? { type: "array", items: { type: enumType, enum: enumVals } }
           : { enum: enumVals };
       } else {
         schema = { type: "object" as const };
@@ -2381,9 +2558,13 @@ export class SwaggerModule {
 
     const combined: ApiResponseOptions[] = [
       ...(globalResponses ?? []),
-      ...ctrlResponses,
-      ...methodResponses,
+      ...[...ctrlResponses].reverse(),
+      ...[...methodResponses].reverse(),
     ];
+    const hasExplicitLocalResponses =
+      ctrlResponses.length > 0 ||
+      methodResponses.length > 0 ||
+      (opResponses !== undefined && Object.keys(opResponses).length > 0);
     const responses: Record<string, OpenApiResponse> = {};
     const responseModels = new Map<string, Type<unknown> | Function>();
 
@@ -2469,7 +2650,50 @@ export class SwaggerModule {
         };
       }
 
-      responses[statusKey] = response;
+      const prev = responses[statusKey];
+      if (prev) {
+        const mergedDesc =
+          prev.description && response.description
+            ? `${prev.description}\n\n${response.description}`
+            : response.description || prev.description;
+        let mergedContent = prev.content;
+        if (response.content) {
+          mergedContent = { ...(prev.content ?? {}) };
+          for (const [ct, media] of Object.entries(response.content)) {
+            const existingMedia = mergedContent[ct];
+            if (existingMedia) {
+              mergedContent[ct] = {
+                ...existingMedia,
+                ...media,
+                ...(existingMedia.examples || media.examples
+                  ? {
+                      examples: {
+                        ...(existingMedia.examples ?? {}),
+                        ...(media.examples ?? {}),
+                      },
+                    }
+                  : {}),
+              };
+            } else {
+              mergedContent[ct] = media;
+            }
+          }
+        }
+        responses[statusKey] = {
+          ...prev,
+          ...response,
+          description: mergedDesc,
+          ...(mergedContent !== undefined ? { content: mergedContent } : {}),
+          ...(prev.headers || response.headers
+            ? { headers: { ...(prev.headers ?? {}), ...(response.headers ?? {}) } }
+            : {}),
+          ...(prev.links || response.links
+            ? { links: { ...(prev.links ?? {}), ...(response.links ?? {}) } }
+            : {}),
+        };
+      } else {
+        responses[statusKey] = response;
+      }
     }
 
     const fallbackStatus =
@@ -2524,7 +2748,10 @@ export class SwaggerModule {
           ? "No Content"
           : "OK";
 
-    if (Object.keys(responses).length === 0) {
+    if (
+      Object.keys(responses).length === 0 ||
+      (!hasExplicitLocalResponses && !hasAny2xxResponse && !responses["default"])
+    ) {
       responses[fallbackStatus] = {
         description: defaultStatusDescription,
         ...(inferredReturnSchema !== undefined && fallbackStatus !== "204"
