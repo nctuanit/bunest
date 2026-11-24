@@ -508,8 +508,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should deny the call when the global guard is transient", async () => {
+      it("should deny the call when the global guard is transient", async () => {
         const handler = await createHandler([
           { provide: APP_GUARD, useClass: TransientDenyGuard },
         ]);
@@ -517,8 +516,7 @@ describeConformance(
         await expect(handler()).rejects.toThrow("Forbidden resource");
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_INTERCEPTOR multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should wrap the result when the global interceptor is transient", async () => {
+      it("should wrap the result when the global interceptor is transient", async () => {
         const handler = await createHandler([
           { provide: APP_INTERCEPTOR, useClass: PrefixInterceptor },
         ]);
@@ -526,15 +524,13 @@ describeConformance(
         await expect(handler()).resolves.toBe("intercepted:ok");
       });
 
-      // BUNEST_BUG: ExternalContextCreator resolves method-level guard classes against root module instead of EntryProvider's owning TestModule (packages/core/src/helpers/external-context-creator.ts:103 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should give the provider a constructed instance of a method level transient guard", async () => {
+      it("should give the provider a constructed instance of a method level transient guard", async () => {
         const handler = await createHandler([], "guarded");
 
         await expect(handler()).rejects.toThrow("Forbidden resource");
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should bootstrap when the guard depends on a provider that waits for the entry provider", async () => {
+      it("should bootstrap when the guard depends on a provider that waits for the entry provider", async () => {
         const handler = await createHandler([
           EntryProviderConsumer,
           { provide: APP_GUARD, useClass: EntryProviderConsumerGuard },

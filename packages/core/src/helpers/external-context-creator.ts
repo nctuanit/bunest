@@ -1,4 +1,8 @@
 import {
+  APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_PIPE,
   DESIGN_METADATA_KEYS,
   DecoratorRegistry,
   ForbiddenException,
@@ -16,6 +20,7 @@ import {
   type ExecutionContext,
   type GuardLike,
   type HttpArgumentsHost,
+  type InjectionToken,
   type InterceptorLike,
   type ParamData,
   type PipeLike,
@@ -26,6 +31,7 @@ import {
 } from "../common/index";
 import type { ModulesContainer } from "../di/modules-container";
 import type { ContextId } from "../interfaces/core-types.interface";
+import type { ModuleNode } from "../module/module-node";
 
 export interface ParamsFactory {
   exchangeKeyForValue(
@@ -66,19 +72,53 @@ export interface ExternalHandlerMetadata {
   fnHandleResponse?: (...args: any[]) => unknown;
 }
 
+export type ExternalEnhancerKind = "guard" | "pipe" | "interceptor" | "filter";
+
 /**
  * Narrow structural interface for `DIContainer` / `NestContainer` so
  * `ExternalContextCreator.fromContainer(container)` keeps zero circular imports.
  */
 export interface ExternalContextContainerLike {
-  resolveEnhancer<T = unknown>(enhancer: Type<T> | T): Promise<T> | T;
+  resolveEnhancer<T = unknown>(
+    enhancer: Type<T> | T,
+    requestContainer?: unknown,
+    owningModule?: ModuleNode,
+    kind?: ExternalEnhancerKind,
+  ): Promise<T> | T;
   getModulesContainer?(): ModulesContainer;
   getModules?(): ModulesContainer;
+  getModuleByKey?(moduleKey: string): ModuleNode | undefined;
+  getOrCreateContextContainer?(contextId: ContextId): unknown;
+  getMultiProviderEntries?(token: InjectionToken): ReadonlyArray<{
+    module: ModuleNode;
+    provider: { useClass?: Type<unknown> };
+    instance?: unknown;
+    syntheticToken?: Type<unknown>;
+  }>;
+  getApplicationConfig?(): {
+    getGlobalGuards(): readonly GuardLike[];
+    getGlobalPipes(): readonly PipeLike[];
+    getGlobalInterceptors(): readonly InterceptorLike[];
+    getGlobalFilters(): readonly ExceptionFilterLike[];
+  };
+  discoverProviders?(): ReadonlyArray<{
+    instance?: unknown;
+    moduleId: string;
+  }>;
+  discoverControllers?(): ReadonlyArray<{
+    instance?: unknown;
+    moduleId: string;
+  }>;
   registerRequestByContextId?<T = unknown>(
     request: T,
     contextId: ContextId,
   ): void;
   registerRequestProvider?<T = unknown>(request: T, contextId: ContextId): void;
+}
+
+interface ScopedEnhancerSpec<T> {
+  readonly spec: T;
+  readonly owningModule?: ModuleNode;
 }
 
 class GenericExternalExecutionContext implements ExecutionContext {
@@ -193,14 +233,113 @@ export class ExternalContextCreator {
     );
   }
 
-  private async resolve<T>(enhancer: Type<T> | T): Promise<T> {
+  private async resolve<T>(
+    enhancer: Type<T> | T,
+    requestContainer?: unknown,
+    owningModule?: ModuleNode,
+    kind?: ExternalEnhancerKind,
+  ): Promise<T> {
     if (typeof enhancer !== "function") {
       return enhancer;
+    }
+    if (this.container) {
+      return await this.container.resolveEnhancer<T>(
+        enhancer,
+        requestContainer,
+        owningModule,
+        kind,
+      );
     }
     if (this.resolveEnhancerFn) {
       return await this.resolveEnhancerFn<T>(enhancer);
     }
     return new (enhancer as Type<T>)();
+  }
+
+  private resolveOwningModule(
+    instance: object,
+    ctor: Type<unknown>,
+    inquirerId?: string,
+  ): ModuleNode | undefined {
+    if (inquirerId) {
+      const byId =
+        this.modulesContainer?.getById(inquirerId) ??
+        this.container?.getModuleByKey?.(inquirerId);
+      if (byId) {
+        return byId;
+      }
+    }
+
+    // Match exact singleton instance identity when multiple modules provide the same class.
+    if (this.container?.discoverProviders) {
+      for (const wrapper of this.container.discoverProviders()) {
+        if (wrapper.instance === instance) {
+          const mod =
+            this.modulesContainer?.getById(wrapper.moduleId) ??
+            this.container.getModuleByKey?.(wrapper.moduleId);
+          if (mod) {
+            return mod;
+          }
+        }
+      }
+    }
+    if (this.container?.discoverControllers) {
+      for (const wrapper of this.container.discoverControllers()) {
+        if (wrapper.instance === instance) {
+          const mod =
+            this.modulesContainer?.getById(wrapper.moduleId) ??
+            this.container.getModuleByKey?.(wrapper.moduleId);
+          if (mod) {
+            return mod;
+          }
+        }
+      }
+    }
+
+    // Fallback: match by provider/controller metatype or useClass
+    if (this.modulesContainer) {
+      for (const mod of this.modulesContainer.values()) {
+        if (mod.providers.has(ctor) || mod.controllers.includes(ctor)) {
+          return mod;
+        }
+        for (const p of mod.providers.values()) {
+          if (p.useClass === ctor) {
+            return mod;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private collectGlobalEnhancers<T>(
+    token: InjectionToken,
+    imperative: readonly T[],
+  ): ScopedEnhancerSpec<T>[] {
+    const out: ScopedEnhancerSpec<T>[] = [];
+    const entries = this.container?.getMultiProviderEntries?.(token) ?? [];
+    for (const entry of entries) {
+      if (entry.syntheticToken) {
+        out.push({
+          spec: entry.syntheticToken as unknown as T,
+          owningModule: entry.module,
+        });
+      } else if (entry.instance !== undefined) {
+        out.push({
+          spec: entry.instance as T,
+          owningModule: entry.module,
+        });
+      } else if (entry.provider.useClass) {
+        out.push({
+          spec: entry.provider.useClass as unknown as T,
+          owningModule: entry.module,
+        });
+      }
+    }
+    for (const item of imperative) {
+      out.push({ spec: item });
+    }
+    return out;
   }
 
   getContextModuleKey(moduleCtor: Function | undefined): string {
@@ -483,55 +622,82 @@ export class ExternalContextCreator {
     contextType: TContext = "http" as TContext,
   ): (...args: unknown[]) => Promise<unknown> {
     const ctor = instance.constructor as Type<unknown>;
-    const guardSpecs =
+    const owningModule = this.resolveOwningModule(instance, ctor, inquirerId);
+    const appConfig = this.container?.getApplicationConfig?.();
+
+    const guardSpecs: ScopedEnhancerSpec<GuardLike>[] =
       options.guards !== false
         ? [
+            ...this.collectGlobalEnhancers<GuardLike>(
+              APP_GUARD,
+              appConfig?.getGlobalGuards() ?? [],
+            ),
             ...MetadataRegistry.getMergedClassArray<GuardLike>(
               METADATA_KEYS.GUARDS,
               ctor,
-            ),
-            ...(MetadataRegistry.get<readonly GuardLike[]>(
-              METADATA_KEYS.GUARDS,
-              callback,
-            ) ?? []),
+            ).map((spec) => ({ spec, owningModule })),
+            ...(
+              MetadataRegistry.get<readonly GuardLike[]>(
+                METADATA_KEYS.GUARDS,
+                callback,
+              ) ?? []
+            ).map((spec) => ({ spec, owningModule })),
           ]
         : [];
-    const interceptorSpecs =
+    const interceptorSpecs: ScopedEnhancerSpec<InterceptorLike>[] =
       options.interceptors !== false
         ? [
+            ...this.collectGlobalEnhancers<InterceptorLike>(
+              APP_INTERCEPTOR,
+              appConfig?.getGlobalInterceptors() ?? [],
+            ),
             ...MetadataRegistry.getMergedClassArray<InterceptorLike>(
               METADATA_KEYS.INTERCEPTORS,
               ctor,
-            ),
-            ...(MetadataRegistry.get<readonly InterceptorLike[]>(
-              METADATA_KEYS.INTERCEPTORS,
-              callback,
-            ) ?? []),
+            ).map((spec) => ({ spec, owningModule })),
+            ...(
+              MetadataRegistry.get<readonly InterceptorLike[]>(
+                METADATA_KEYS.INTERCEPTORS,
+                callback,
+              ) ?? []
+            ).map((spec) => ({ spec, owningModule })),
           ]
         : [];
-    const pipeSpecs =
+    const pipeSpecs: ScopedEnhancerSpec<PipeLike>[] =
       options.pipes !== false
         ? [
+            ...this.collectGlobalEnhancers<PipeLike>(
+              APP_PIPE,
+              appConfig?.getGlobalPipes() ?? [],
+            ),
             ...MetadataRegistry.getMergedClassArray<PipeLike>(
               METADATA_KEYS.PIPES,
               ctor,
-            ),
-            ...(MetadataRegistry.get<readonly PipeLike[]>(
-              METADATA_KEYS.PIPES,
-              callback,
-            ) ?? []),
+            ).map((spec) => ({ spec, owningModule })),
+            ...(
+              MetadataRegistry.get<readonly PipeLike[]>(
+                METADATA_KEYS.PIPES,
+                callback,
+              ) ?? []
+            ).map((spec) => ({ spec, owningModule })),
           ]
         : [];
-    const filterSpecs =
+    const filterSpecs: ScopedEnhancerSpec<ExceptionFilterLike>[] =
       options.filters !== false
         ? [
-            ...(MetadataRegistry.get<readonly ExceptionFilterLike[]>(
-              METADATA_KEYS.EXCEPTION_FILTERS,
-              callback,
-            ) ?? []),
+            ...(
+              MetadataRegistry.get<readonly ExceptionFilterLike[]>(
+                METADATA_KEYS.EXCEPTION_FILTERS,
+                callback,
+              ) ?? []
+            ).map((spec) => ({ spec, owningModule })),
             ...MetadataRegistry.getMergedClassArray<ExceptionFilterLike>(
               METADATA_KEYS.EXCEPTION_FILTERS,
               ctor,
+            ).map((spec) => ({ spec, owningModule })),
+            ...this.collectGlobalEnhancers<ExceptionFilterLike>(
+              APP_FILTER,
+              appConfig?.getGlobalFilters() ?? [],
             ),
           ]
         : [];
@@ -546,7 +712,7 @@ export class ExternalContextCreator {
             contextType,
           )
         : undefined;
-    const moduleKey = this.getContextModuleKey(ctor);
+    const moduleKey = owningModule?.id ?? this.getContextModuleKey(ctor);
 
     return async (...args: unknown[]): Promise<unknown> => {
       const ctx = new GenericExternalExecutionContext(
@@ -555,21 +721,35 @@ export class ExternalContextCreator {
         callback,
         contextType,
       );
+      const reqContainer = contextId
+        ? this.container?.getOrCreateContextContainer?.(contextId)
+        : undefined;
 
       try {
-        const guardsFn = this.createGuardsFn(
-          guardSpecs,
-          instance,
-          callback,
-          contextType,
-        );
-        if (guardsFn) {
-          await guardsFn(args);
+        for (let i = 0; i < guardSpecs.length; i++) {
+          const entry = guardSpecs[i]!;
+          const guard = await this.resolve<CanActivate>(
+            entry.spec,
+            reqContainer,
+            entry.owningModule,
+            "guard",
+          );
+          const allowed = await guard.canActivate(ctx);
+          if (!allowed) {
+            throw new ForbiddenException("Forbidden resource");
+          }
         }
 
         const pipes: PipeTransform[] = [];
-        for (const spec of pipeSpecs) {
-          pipes.push(await this.resolve<PipeTransform>(spec));
+        for (const entry of pipeSpecs) {
+          pipes.push(
+            await this.resolve<PipeTransform>(
+              entry.spec,
+              reqContainer,
+              entry.owningModule,
+              "pipe",
+            ),
+          );
         }
 
         const invokeTarget = async (): Promise<unknown> => {
@@ -615,8 +795,15 @@ export class ExternalContextCreator {
         }
 
         const interceptors: BunestInterceptor[] = [];
-        for (const spec of interceptorSpecs) {
-          interceptors.push(await this.resolve<BunestInterceptor>(spec));
+        for (const entry of interceptorSpecs) {
+          interceptors.push(
+            await this.resolve<BunestInterceptor>(
+              entry.spec,
+              reqContainer,
+              entry.owningModule,
+              "interceptor",
+            ),
+          );
         }
 
         let nextHandler: CallHandler = { handle: invokeTarget };
@@ -629,10 +816,17 @@ export class ExternalContextCreator {
         }
         return await nextHandler.handle();
       } catch (err) {
-        for (const spec of filterSpecs) {
-          const filter = await this.resolve<ExceptionFilter>(spec);
+        for (const entry of filterSpecs) {
+          const filter = await this.resolve<ExceptionFilter>(
+            entry.spec,
+            reqContainer,
+            entry.owningModule,
+            "filter",
+          );
           const ctorRef =
-            typeof spec === "function" ? spec : (filter as object).constructor;
+            typeof entry.spec === "function"
+              ? entry.spec
+              : (filter as object).constructor;
           const catchTypes =
             (typeof ctorRef === "function"
               ? MetadataRegistry.get<readonly Type<unknown>[]>(
