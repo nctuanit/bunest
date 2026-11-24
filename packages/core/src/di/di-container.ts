@@ -391,6 +391,13 @@ export class DIContainer
     RequestContainer
   >();
   private readonly pendingLazyLoads = new Map<object, Promise<ModuleRef>>();
+  private readonly pendingModuleInits = new Map<string, Promise<void>>();
+  private readonly inFlightNodeHolders = new Map<string, Set<symbol>>();
+  private readonly committedLazyNodes = new Set<string>();
+  private readonly moduleOverrides = new Map<
+    Type<unknown> | DynamicModule,
+    Type<unknown> | DynamicModule
+  >();
   private onLazyModuleLoaded?: (
     groups: Array<{ module: ModuleNode; instances: object[] }>,
   ) => Promise<void>;
@@ -1541,6 +1548,11 @@ export class DIContainer
 
     if (overrides.mocker !== undefined) {
       this.mocker = overrides.mocker;
+    }
+    if (overrides.modules) {
+      for (const [target, replacement] of overrides.modules.entries()) {
+        this.moduleOverrides.set(target, replacement);
+      }
     }
     if (overrides.providers) {
       for (const [token, provider] of overrides.providers.entries()) {
@@ -3026,23 +3038,36 @@ export class DIContainer
       Promise<Type<unknown> | DynamicModule> | Type<unknown> | DynamicModule,
     _options?: LazyModuleLoaderOptions,
   ): Promise<ModuleRef> {
-    const loaded = await loaderFn();
-    if (!loaded || (typeof loaded !== "function" && !isDynamicModule(loaded))) {
+    const rawLoaded = await loaderFn();
+    if (
+      !rawLoaded ||
+      (typeof rawLoaded !== "function" && !isDynamicModule(rawLoaded))
+    ) {
       throw new Error(
         "LazyModuleLoader.load() expects a loader returning a @Module() class or DynamicModule.",
       );
     }
 
-    // 1. Deduplicate already-registered modules
-    if (isDynamicModule(loaded)) {
-      const existingDyn = this.dynamicModuleNodes.get(loaded);
-      if (existingDyn) {
-        return this.getModuleRef(existingDyn.id);
-      }
-    } else {
-      const existingStatic = this.staticModuleNodes.get(loaded);
-      if (existingStatic) {
-        return this.getModuleRef(existingStatic.id);
+    const loaded = this.moduleOverrides.get(rawLoaded) ?? rawLoaded;
+
+    // 1. Check already-registered or currently-initializing module
+    const existingNode = isDynamicModule(loaded)
+      ? this.dynamicModuleNodes.get(loaded)
+      : this.staticModuleNodes.get(loaded);
+    if (existingNode) {
+      const pendingInit = this.pendingModuleInits.get(existingNode.id);
+      if (pendingInit) {
+        try {
+          await pendingInit;
+          if (this.modulesMap.has(existingNode.id)) {
+            return this.getModuleRef(existingNode.id);
+          }
+        } catch {
+          // Prior concurrent load failed and rolled back; fall through if caller is a fresh load
+          // Wait: if caller specifically requested the same root loadKey, let's check pendingLazyLoads below
+        }
+      } else if (this.modulesMap.has(existingNode.id)) {
+        return this.getModuleRef(existingNode.id);
       }
     }
 
@@ -3053,33 +3078,211 @@ export class DIContainer
       return inFlight;
     }
 
+    const opId = Symbol("lazy-load-op");
+
     const loadPromise = (async (): Promise<ModuleRef> => {
-      const existingIds = new Set(this.modulesMap.keys());
       const scanner = new ModuleScanner();
       const subGraph = await scanner.scan(loaded, {
         existingStaticNodes: this.staticModuleNodes,
         existingDynamicNodes: this.dynamicModuleNodes,
+        ...(this.moduleOverrides.size > 0
+          ? { moduleOverrides: this.moduleOverrides }
+          : {}),
         idPrefix: `lazy${++this.lazyCounter}:`,
       });
 
-      const newNodes = subGraph.topologicalOrder.filter(
-        (node) => !existingIds.has(node.id),
-      );
-
-      if (newNodes.length === 0) {
-        return this.getModuleRef(subGraph.root.id);
+      // Reconcile scanned nodes against any modules that were registered concurrently
+      // while scanner.scan() was awaiting async dynamic imports.
+      const replacedNodes = new Map<ModuleNode, ModuleNode>();
+      for (const node of subGraph.topologicalOrder) {
+        if (this.modulesMap.has(node.id)) {
+          continue;
+        }
+        if (!node.isDynamic) {
+          const existing = this.staticModuleNodes.get(node.metatype);
+          if (existing && existing !== node) {
+            replacedNodes.set(node, existing);
+          }
+        } else if (subGraph.dynamicModuleMap) {
+          for (const [dynKey, dynNode] of subGraph.dynamicModuleMap.entries()) {
+            if (dynNode === node) {
+              const existing = this.dynamicModuleNodes.get(dynKey);
+              if (existing && existing !== node) {
+                replacedNodes.set(node, existing);
+              }
+              break;
+            }
+          }
+        }
       }
 
-      const addedStaticKeys: Type<unknown>[] = [];
-      const addedDynamicKeys: DynamicModule[] = [];
-      const addedControllers: Type<unknown>[] = [];
-      const addedGlobalCountStart = this.globalModulesList.length;
-      const addedTopoCountStart = this.topologicalModules.length;
+      if (replacedNodes.size > 0) {
+        for (const node of subGraph.topologicalOrder) {
+          if (replacedNodes.has(node)) continue;
+          for (let i = 0; i < node.imports.length; i++) {
+            const rep = replacedNodes.get(node.imports[i]!);
+            if (rep) {
+              node.imports[i] = rep;
+            }
+          }
+          for (let i = 0; i < node.reExportedModules.length; i++) {
+            const rep = replacedNodes.get(node.reExportedModules[i]!);
+            if (rep) {
+              node.reExportedModules[i] = rep;
+            }
+          }
+        }
+      }
+
+      const effectiveRoot = replacedNodes.get(subGraph.root) ?? subGraph.root;
+
+      const newNodes: ModuleNode[] = [];
+      const reusedNodes: ModuleNode[] = [];
+      for (const rawNode of subGraph.topologicalOrder) {
+        const node = replacedNodes.get(rawNode) ?? rawNode;
+        if (this.modulesMap.has(node.id)) {
+          if (!reusedNodes.includes(node)) {
+            reusedNodes.push(node);
+          }
+        } else if (!newNodes.includes(node)) {
+          newNodes.push(node);
+        }
+      }
+
+      // Register opId as a holder on all reused nodes that are still in-flight
+      for (const reused of reusedNodes) {
+        const holders = this.inFlightNodeHolders.get(reused.id);
+        if (holders) {
+          holders.add(opId);
+        }
+      }
+
+      // Track per-node deferred init promises for newNodes so concurrent loads can await them
+      const nodeDeferreds = new Map<
+        string,
+        {
+          resolve: () => void;
+          reject: (err: unknown) => void;
+          settled: boolean;
+        }
+      >();
+
+      const addedStaticKeys: Array<{ key: Type<unknown>; node: ModuleNode }> =
+        [];
+      const addedDynamicKeys: Array<{ key: DynamicModule; node: ModuleNode }> =
+        [];
+      const addedControllers: Array<{ ctrl: Type<unknown>; node: ModuleNode }> =
+        [];
+
+      const releaseHolders = (commit: boolean) => {
+        for (const reused of reusedNodes) {
+          const holders = this.inFlightNodeHolders.get(reused.id);
+          if (holders) {
+            holders.delete(opId);
+            if (commit) {
+              this.committedLazyNodes.add(reused.id);
+            }
+            if (holders.size === 0) {
+              this.inFlightNodeHolders.delete(reused.id);
+            }
+          }
+        }
+        for (const node of newNodes) {
+          const holders = this.inFlightNodeHolders.get(node.id);
+          if (holders) {
+            holders.delete(opId);
+            if (commit) {
+              this.committedLazyNodes.add(node.id);
+            }
+            if (holders.size === 0) {
+              this.inFlightNodeHolders.delete(node.id);
+            }
+          }
+        }
+      };
+
+      const settleRemainingDeferredsWithError = (err: unknown) => {
+        for (const [nodeId, def] of nodeDeferreds.entries()) {
+          if (!def.settled) {
+            def.settled = true;
+            this.pendingModuleInits.delete(nodeId);
+            def.reject(err);
+          }
+        }
+      };
+
+      const evictNode = (node: ModuleNode) => {
+        this.modulesMap.delete(node.id);
+        this.modulesContainer.delete(node.id);
+        this.moduleRefs.delete(node.id);
+        const topoIdx = this.topologicalModules.indexOf(node);
+        if (topoIdx !== -1) {
+          this.topologicalModules.splice(topoIdx, 1);
+        }
+        const globIdx = this.globalModulesList.indexOf(node);
+        if (globIdx !== -1) {
+          this.globalModulesList.splice(globIdx, 1);
+        }
+        for (const provider of node.providers.values()) {
+          this.singletons.delete(this.makeInstanceKey(node, provider.token));
+        }
+        for (const { key, node: addedNode } of addedStaticKeys) {
+          if (addedNode === node && this.staticModuleNodes.get(key) === node) {
+            this.staticModuleNodes.delete(key);
+          }
+        }
+        for (const { key, node: addedNode } of addedDynamicKeys) {
+          if (addedNode === node && this.dynamicModuleNodes.get(key) === node) {
+            this.dynamicModuleNodes.delete(key);
+          }
+        }
+        for (const { ctrl, node: addedNode } of addedControllers) {
+          if (addedNode === node && this.controllerOwner.get(ctrl) === node) {
+            this.controllerOwner.delete(ctrl);
+            this.controllerSingletons.delete(ctrl);
+          }
+        }
+      };
 
       try {
-        // Attach new nodes to live module graph
+        if (newNodes.length === 0) {
+          // Wait for any reused nodes that are still initializing in another concurrent load
+          for (const reused of reusedNodes) {
+            const pendingInit = this.pendingModuleInits.get(reused.id);
+            if (pendingInit) {
+              await pendingInit;
+            }
+          }
+          releaseHolders(true);
+          return this.getModuleRef(effectiveRoot.id);
+        }
+
+        // Attach new nodes synchronously and create per-node pendingModuleInits
         for (const node of newNodes) {
+          let holders = this.inFlightNodeHolders.get(node.id);
+          if (!holders) {
+            holders = new Set<symbol>();
+            this.inFlightNodeHolders.set(node.id, holders);
+          }
+          holders.add(opId);
+
+          let resolveFn!: () => void;
+          let rejectFn!: (err: unknown) => void;
+          const initPromise = new Promise<void>((resolve, reject) => {
+            resolveFn = resolve;
+            rejectFn = reject;
+          });
+          // Prevent unhandledRejection if no external caller awaits this deferred
+          initPromise.catch(() => {});
+          this.pendingModuleInits.set(node.id, initPromise);
+          nodeDeferreds.set(node.id, {
+            resolve: resolveFn,
+            reject: rejectFn,
+            settled: false,
+          });
+
           this.modulesMap.set(node.id, node);
+          this.modulesContainer.set(node.id, node);
           this.topologicalModules.push(node);
           if (node.providers.has(AOP_POINTCUTS_TOKEN)) {
             this.invalidatePointcutCaches();
@@ -3089,25 +3292,26 @@ export class DIContainer
           }
           if (!node.isDynamic && !this.staticModuleNodes.has(node.metatype)) {
             this.staticModuleNodes.set(node.metatype, node);
-            addedStaticKeys.push(node.metatype);
+            addedStaticKeys.push({ key: node.metatype, node });
           }
           this.moduleRefs.set(node.id, new ModuleRef(this, node.id));
           for (const ctrl of node.controllers) {
             if (!this.controllerOwner.has(ctrl)) {
               this.controllerOwner.set(ctrl, node);
-              addedControllers.push(ctrl);
+              addedControllers.push({ ctrl, node });
             }
             this.indexControllerEnhancers(ctrl, node);
           }
         }
         if (subGraph.dynamicModuleMap) {
-          for (const [dynKey, node] of subGraph.dynamicModuleMap.entries()) {
+          for (const [dynKey, rawNode] of subGraph.dynamicModuleMap.entries()) {
+            const node = replacedNodes.get(rawNode) ?? rawNode;
             if (
-              !existingIds.has(node.id) &&
+              newNodes.includes(node) &&
               !this.dynamicModuleNodes.has(dynKey)
             ) {
               this.dynamicModuleNodes.set(dynKey, node);
-              addedDynamicKeys.push(dynKey);
+              addedDynamicKeys.push({ key: dynKey, node });
             }
           }
         }
@@ -3116,50 +3320,97 @@ export class DIContainer
         this.validateAllDependenciesAndCycles();
         this.validateScopeLeaks();
 
-        // Instantiate singleton providers, multi-providers, module classes, and singleton controllers
-        for (const node of newNodes) {
-          await this.instantiateModuleSingletons(node);
+        // Wait for any reused imported modules AND instantiate newNodes.
+        // If a reused import is still initializing concurrently, await both so an
+        // in-flight sibling load settles cleanly before propagating the error.
+        const reusedInits: Promise<void>[] = [];
+        for (const reused of reusedNodes) {
+          const pendingInit = this.pendingModuleInits.get(reused.id);
+          if (pendingInit) {
+            reusedInits.push(pendingInit);
+          }
         }
 
-        // Run onModuleInit() lifecycle hooks for the newly instantiated lazy modules
-        const newGroups = this.collectSingletonGroups(newNodes);
-        if (this.onLazyModuleLoaded) {
-          await this.onLazyModuleLoaded(newGroups);
-        } else {
-          const seen = new Set<object>();
-          for (const group of newGroups) {
-            for (const inst of group.instances) {
-              if (seen.has(inst)) continue;
-              seen.add(inst);
-              if (hasOnModuleInit(inst)) {
-                await inst.onModuleInit();
+        const initNewNodes = async (): Promise<void> => {
+          const seenInitInstances = new Set<object>();
+          for (const node of newNodes) {
+            await this.instantiateModuleSingletons(node);
+            const nodeGroups = this.collectSingletonGroups([node]);
+            if (this.onLazyModuleLoaded) {
+              await this.onLazyModuleLoaded(nodeGroups);
+            } else {
+              for (const group of nodeGroups) {
+                for (const inst of group.instances) {
+                  if (seenInitInstances.has(inst)) continue;
+                  seenInitInstances.add(inst);
+                  if (hasOnModuleInit(inst)) {
+                    await inst.onModuleInit();
+                  }
+                }
+              }
+            }
+            const def = nodeDeferreds.get(node.id);
+            if (def && !def.settled) {
+              def.settled = true;
+              this.pendingModuleInits.delete(node.id);
+              def.resolve();
+            }
+          }
+        };
+
+        if (reusedInits.length > 0) {
+          // Check whether any newNode directly injects a provider from an in-flight reused node
+          const needsReusedFirst = newNodes.some((node) =>
+            node.providers.size > 0 &&
+            [...node.providers.values()].some((p) =>
+              this.getProviderDependencies(p).some((dep) =>
+                reusedNodes.some(
+                  (r) =>
+                    this.pendingModuleInits.has(r.id) &&
+                    dep.token !== undefined &&
+                    r.providers.has(dep.token),
+                ),
+              ),
+            ),
+          );
+          if (needsReusedFirst) {
+            await Promise.all(reusedInits);
+            await initNewNodes();
+          } else {
+            const results = await Promise.allSettled([
+              ...reusedInits,
+              initNewNodes(),
+            ]);
+            for (const res of results) {
+              if (res.status === "rejected") {
+                throw res.reason;
               }
             }
           }
+        } else {
+          await initNewNodes();
         }
 
-        return this.getModuleRef(subGraph.root.id);
+        releaseHolders(true);
+        return this.getModuleRef(effectiveRoot.id);
       } catch (err) {
-        // Roll back graph mutations so failed lazy loads never corrupt the live container
-        this.topologicalModules.length = addedTopoCountStart;
-        this.globalModulesList.length = addedGlobalCountStart;
+        // Release our hold first, then evict newNodes:
+        // - Any node that itself did NOT finish initializing (def.settled === false)
+        //   MUST be evicted unconditionally so retries start fresh.
+        // - A node that DID finish initializing (e.g. a shared import) is kept if
+        //   another concurrent load still holds it or it was already committed.
+        releaseHolders(false);
         for (const node of newNodes) {
-          this.modulesMap.delete(node.id);
-          this.moduleRefs.delete(node.id);
-          for (const provider of node.providers.values()) {
-            this.singletons.delete(this.makeInstanceKey(node, provider.token));
+          const def = nodeDeferreds.get(node.id);
+          const nodeFinishedInit = def?.settled === true;
+          const stillHeld =
+            (this.inFlightNodeHolders.get(node.id)?.size ?? 0) > 0;
+          const alreadyCommitted = this.committedLazyNodes.has(node.id);
+          if (!nodeFinishedInit || (!stillHeld && !alreadyCommitted)) {
+            evictNode(node);
           }
         }
-        for (const key of addedStaticKeys) {
-          this.staticModuleNodes.delete(key);
-        }
-        for (const key of addedDynamicKeys) {
-          this.dynamicModuleNodes.delete(key);
-        }
-        for (const ctrl of addedControllers) {
-          this.controllerOwner.delete(ctrl);
-          this.controllerSingletons.delete(ctrl);
-        }
+        settleRemainingDeferredsWithError(err);
         throw err;
       }
     })();
