@@ -487,8 +487,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected transforming global ValidationPipe to preserve NestingInput class instance (isInstance: true, and: "d"); actual { isInstance: false } because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.buildSchema) ignores app.useGlobalPipes() and packages/graphql/src/schema/graphql-schema.factory.ts does not remap nested renamed input fields.
-      it.skip("should keep the instance produced by a transforming global pipe", async () => {
+      it("should keep the instance produced by a transforming global pipe", async () => {
         const res = await execute(`
           {
             keepInstance(input: { filters: { and: "d" } }) {

@@ -172,6 +172,7 @@ export const NEST_DEFAULT_VALIDATION_PIPE_OPTIONS: Readonly<ValidationPipeOption
     transform: false,
     whitelist: false,
     forbidNonWhitelisted: false,
+    forbidUnknownValues: false,
     errorFormat: "list",
   });
 
