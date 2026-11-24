@@ -1,7 +1,8 @@
-import { resolve, statPath } from "@bunest/core";
+import { join, resolve, statPath } from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveEntryFile,
+  resolveProjectConfiguration,
 } from "../config/configuration.loader";
 import { startTypegenWatcher, type TypegenWatcherHandle } from "../typegen";
 import type {
@@ -35,10 +36,16 @@ export async function runStartCommand(
 ): Promise<StartCommandResult> {
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
   const { config } = await loadCliConfiguration(cwd, options.config);
+  const project = resolveProjectConfiguration(config, options.project);
+  const effectiveSourceRoot =
+    options.sourceRoot ??
+    project?.sourceRoot ??
+    (project?.root ? join(project.root, "src") : undefined);
+  const effectiveEntryFile = options.entryFile ?? project?.entryFile;
   const entry = await resolveEntryFile(cwd, config, {
     entry: options.entry,
-    entryFile: options.entryFile,
-    sourceRoot: options.sourceRoot,
+    entryFile: effectiveEntryFile,
+    sourceRoot: effectiveSourceRoot,
   });
 
   if (

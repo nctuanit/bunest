@@ -134,6 +134,7 @@ export interface BuildProjectOptions {
   readonly entry?: string;
   readonly entryFile?: string;
   readonly sourceRoot?: string;
+  readonly project?: string;
   readonly outdir?: string;
   readonly config?: string;
   readonly path?: string;
@@ -185,6 +186,7 @@ export interface StartCommandOptions {
   readonly entry?: string;
   readonly entryFile?: string;
   readonly sourceRoot?: string;
+  readonly project?: string;
   readonly config?: string;
   readonly path?: string;
   readonly watch?: boolean;
