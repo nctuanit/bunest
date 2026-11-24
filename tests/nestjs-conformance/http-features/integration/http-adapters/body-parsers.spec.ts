@@ -67,8 +67,7 @@ describeConformance(
 
       const latin1 = (text: string) => Buffer.from(text, "latin1");
 
-      // BUNEST_BUG: parseRequestBody ignores the Content-Type charset parameter and always decodes as UTF-8 instead of decoding iso-8859-1 (packages/core/src/http/parsers/body-parser.ts).
-      it.skip('should read the charset of a Content-Type with a trailing ";"', async () => {
+      it('should read the charset of a Content-Type with a trailing ";"', async () => {
         const form = await post(
           "application/x-www-form-urlencoded; charset=iso-8859-1;",
           latin1("a=café"),
@@ -82,8 +81,7 @@ describeConformance(
         expect(text.text).toBe("café");
       });
 
-      // BUNEST_BUG: parseRequestBody ignores the Content-Type charset parameter and always decodes as UTF-8 (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should take the first of two charset parameters", async () => {
+      it("should take the first of two charset parameters", async () => {
         const res = await post(
           "text/plain; charset=iso-8859-1; charset=utf-8",
           latin1("café"),
@@ -92,8 +90,7 @@ describeConformance(
         expect(res.text).toBe("café");
       });
 
-      // BUNEST_BUG: parseRequestBody ignores the Content-Type charset parameter and always decodes as UTF-8 (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should read upper-case, spaced and quoted charset parameters", async () => {
+      it("should read upper-case, spaced and quoted charset parameters", async () => {
         for (const contentType of [
           "text/plain; CHARSET=ISO-8859-1",
           "text/plain; charset = iso-8859-1",
@@ -109,8 +106,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: parseRequestBody ignores charset=utf-16le on application/json and fails to decode UTF-16 JSON bodies (packages/core/src/http/parsers/body-parser.ts).
-      it.skip("should read JSON in any utf-* charset", async () => {
+      it("should read JSON in any utf-* charset", async () => {
         const res = await post(
           "application/json; charset=utf-16le",
           Buffer.from('{"a":"é"}', "utf16le"),
@@ -119,8 +115,7 @@ describeConformance(
         expect(res.text).toBe('{"a":"é"}');
       });
 
-      // BUNEST_BUG: parseRequestBody ignores charset=utf-16 and does not decode UTF-16 BOM / BE text payloads (packages/core/src/http/parsers/body-parser.ts).
-      it.skip('should pick the byte order of "utf-16" from the byte order mark, or else the content', async () => {
+      it('should pick the byte order of "utf-16" from the byte order mark, or else the content', async () => {
         const withBom = await post(
           "text/plain; charset=utf-16",
           Buffer.from([0xfe, 0xff, 0, 0x68, 0, 0x69]),
@@ -134,8 +129,7 @@ describeConformance(
         expect(bigEndian.text).toBe("hi");
       });
 
-      // BUNEST_BUG: parseRequestBody does not validate Content-Type charset parameters or return 415 Unsupported Media Type for unsupported charsets (packages/core/src/http/parsers/body-parser.ts).
-      it.skip.each([
+      it.each([
         ["application/json; charset=iso-8859-1", "ISO-8859-1"],
         ["application/x-www-form-urlencoded; charset=utf-16", "UTF-16"],
         ["text/plain; charset=x-unknown", "X-UNKNOWN"],

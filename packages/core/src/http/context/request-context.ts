@@ -316,4 +316,23 @@ export class RequestContext {
     const parsed = await this.ensureBodyParsed();
     return parsed.files;
   }
+
+  async cleanupUploadedDiskFiles(): Promise<void> {
+    if (!this.bodyPromise) {
+      return;
+    }
+    try {
+      const parsed = await this.bodyPromise;
+      for (let i = 0; i < parsed.files.length; i++) {
+        const file = parsed.files[i] as UploadedFileInfo & { path?: string };
+        if (file?.path) {
+          await Bun.file(file.path)
+            .delete()
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // Body parsing itself already failed and cleaned up its own partial files
+    }
+  }
 }

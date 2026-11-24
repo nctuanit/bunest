@@ -305,14 +305,20 @@ async function runMultiArgAsync(
         )
       : (undefined as unknown as HttpExecutionContext);
 
-    const args = await resolveRouteArguments(
-      compiled.compiledParams,
-      compiled.argCount,
-      compiled.singletonSharedPipes!,
-      compiled.singletonParamPipes!,
-      ctx,
-      execCtx,
-    );
+    let args: unknown[];
+    try {
+      args = await resolveRouteArguments(
+        compiled.compiledParams,
+        compiled.argCount,
+        compiled.singletonSharedPipes!,
+        compiled.singletonParamPipes!,
+        ctx,
+        execCtx,
+      );
+    } catch (paramErr) {
+      await ctx.cleanupUploadedDiskFiles();
+      throw paramErr;
+    }
 
     let result = compiled.singletonHandler!.apply(
       compiled.singletonController,
@@ -934,14 +940,20 @@ async function executeFullCompiledRoute(
           }
 
           // Stages 7 & 8: Extract parameters & run pipes
-          const args = await resolveRouteArguments(
-            compiled.compiledParams,
-            compiled.argCount,
-            sharedPipes,
-            paramPipesList,
-            ctx,
-            executionContext,
-          );
+          let args: unknown[];
+          try {
+            args = await resolveRouteArguments(
+              compiled.compiledParams,
+              compiled.argCount,
+              sharedPipes,
+              paramPipesList,
+              ctx,
+              executionContext,
+            );
+          } catch (paramErr) {
+            await ctx.cleanupUploadedDiskFiles();
+            throw paramErr;
+          }
 
           // Stage 9: Invoke controller handler (+ optional onRouteTriggered hook)
           if (runtime.onRouteTriggered) {
