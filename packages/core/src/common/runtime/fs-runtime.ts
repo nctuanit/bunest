@@ -7,6 +7,7 @@
  * `Bun.write`, `Bun.Glob`) directly; only OS syscalls lacking a Bun global API
  * in Bun 1.4.5 are exposed here behind structural, runtime-neutral interfaces.
  */
+import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -226,4 +227,140 @@ export async function openFileHandle(
   mode?: number,
 ): Promise<FsFileHandle> {
   return (await open(path, flags, mode)) as unknown as FsFileHandle;
+}
+
+export interface SubprocessOptions {
+  readonly cwd?: string;
+  readonly env?: Record<string, string | undefined>;
+  readonly stdin?: string;
+  readonly timeoutMs?: number;
+}
+
+export interface SubprocessResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timedOut: boolean;
+}
+
+/**
+ * Spawns a subprocess and captures stdout/stderr across both Bun and Node.js
+ * runtimes (e.g. VS Code Extension Host). Uses `Bun.spawn` when running in Bun
+ * and falls back to `node:child_process` in Node.js.
+ */
+export async function runSubprocess(
+  cmd: readonly string[],
+  options: SubprocessOptions = {},
+): Promise<SubprocessResult> {
+  if (cmd.length === 0) {
+    throw new Error("runSubprocess requires a non-empty command array.");
+  }
+
+  const timeoutMs =
+    typeof options.timeoutMs === "number" && options.timeoutMs > 0
+      ? options.timeoutMs
+      : undefined;
+
+  if (typeof Bun !== "undefined" && typeof Bun.spawn === "function") {
+    const proc = Bun.spawn([...cmd], {
+      cwd: options.cwd,
+      env: options.env as Record<string, string> | undefined,
+      stdin: options.stdin !== undefined ? new Response(options.stdin) : "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        try {
+          proc.kill();
+        } catch {
+          // ignore
+        }
+      }, timeoutMs);
+    }
+
+    try {
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      return { exitCode, stdout, stderr, timedOut };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  return new Promise<SubprocessResult>((resolvePromise, rejectPromise) => {
+    const child = spawn(cmd[0]!, cmd.slice(1), {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const stdoutChunks: Uint8Array[] = [];
+    const stderrChunks: Uint8Array[] = [];
+    let timedOut = false;
+    let settled = false;
+
+    const timer =
+      timeoutMs !== undefined
+        ? setTimeout(() => {
+            timedOut = true;
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              // ignore
+            }
+          }, timeoutMs)
+        : undefined;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+    };
+
+    child.stdout?.on("data", (chunk: Uint8Array) => stdoutChunks.push(chunk));
+    child.stderr?.on("data", (chunk: Uint8Array) => stderrChunks.push(chunk));
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      rejectPromise(err);
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      const decoder = new TextDecoder();
+      const concat = (chunks: Uint8Array[]): string => {
+        const total = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+        const merged = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          merged.set(c, offset);
+          offset += c.byteLength;
+        }
+        return decoder.decode(merged);
+      };
+      resolvePromise({
+        exitCode: code ?? (timedOut ? 124 : 1),
+        stdout: concat(stdoutChunks),
+        stderr: concat(stderrChunks),
+        timedOut,
+      });
+    });
+
+    if (options.stdin !== undefined && child.stdin) {
+      child.stdin.write(options.stdin);
+      child.stdin.end();
+    } else if (child.stdin) {
+      child.stdin.end();
+    }
+  });
 }

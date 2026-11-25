@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or attach assets to (e.g. v0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Release Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck (bun check)
+        run: bun run typecheck
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Run full test suite
+        run: bun test
+
+      - name: NestJS conformance ratchet
+        run: bun run conformance:gate
+
+      - name: Check generated AI docs are fresh
+        run: bun run ai:docs --check
+
+      - name: Run release verification & CLI smoke test
+        run: bun run verify:release
+
+  publish-npm:
+    name: Publish @bunest/* Packages to npm
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Dry-run topological npm publish
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: bun run scripts/publish-packages.ts --dry-run --expect-version="$TAG"
+
+      - name: Publish packages to npm (when NPM_TOKEN is configured)
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_CONFIG_TOKEN}" > ~/.npmrc
+          bun run scripts/publish-packages.ts --expect-version="$TAG" --skip-existing --provenance
+
+      - name: Write npm publish summary
+        env:
+          HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: |
+          {
+            echo "### npm Package Release (\`$TAG\`)"
+            echo ""
+            if [ "$HAS_NPM_TOKEN" = "true" ]; then
+              echo "- Published all 19 \`@bunest/*\` packages in topological order with provenance."
+            else
+              echo "- **Dry-run only**: \`NPM_TOKEN\` secret is not configured. Add \`NPM_TOKEN\` in repository secrets to enable automatic npm publishing."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release-extension:
+    name: Build Extension & Attach to Release
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Typecheck & test VS Code extension
+        run: |
+          bun check -p apps/vscode-bunest/tsconfig.json
+          bun test apps/vscode-bunest
+
+      - name: Package VS Code extension (.vsix)
+        run: bun run --cwd apps/vscode-bunest package
+
+      - name: Generate SHA256 checksum
+        id: vsix
+        working-directory: apps/vscode-bunest
+        run: |
+          VSIX=$(ls -1 vscode-bunest-*.vsix | head -n 1)
+          test -n "$VSIX"
+          sha256sum "$VSIX" > "${VSIX}.sha256"
+          echo "file=$VSIX" >> "$GITHUB_OUTPUT"
+          echo "sha_file=${VSIX}.sha256" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(awk '{print $1}' "${VSIX}.sha256")" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$VSIX" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload VSIX build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-bunest-vsix
+          path: |
+            apps/vscode-bunest/${{ steps.vsix.outputs.file }}
+            apps/vscode-bunest/${{ steps.vsix.outputs.sha_file }}
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release with VSIX
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+          VSIX_PATH: apps/vscode-bunest/${{ steps.vsix.outputs.file }}
+          SHA_PATH: apps/vscode-bunest/${{ steps.vsix.outputs.sha_file }}
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "Error: Could not resolve release tag." >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading VSIX assets..."
+            gh release upload "$TAG" "$VSIX_PATH" "$SHA_PATH" --clobber
+          else
+            echo "Creating GitHub Release $TAG with VSIX assets..."
+            gh release create "$TAG" "$VSIX_PATH" "$SHA_PATH" \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+      - name: Publish to VS Code Marketplace (when VSCE_PAT is configured)
+        if: ${{ secrets.VSCE_PAT != '' }}
+        working-directory: apps/vscode-bunest
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: bunx @vscode/vsce publish --packagePath "${{ steps.vsix.outputs.file }}" -p "$VSCE_PAT"
+
+      - name: Publish to Open VSX (when OVSX_PAT is configured)
+        if: ${{ secrets.OVSX_PAT != '' }}
+        working-directory: apps/vscode-bunest
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: bunx ovsx publish "${{ steps.vsix.outputs.file }}" -p "$OVSX_PAT"
+
+      - name: Write job summary
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+          VSIX_FILE: ${{ steps.vsix.outputs.file }}
+          VSIX_SIZE: ${{ steps.vsix.outputs.size }}
+          VSIX_SHA: ${{ steps.vsix.outputs.sha256 }}
+        run: |
+          {
+            echo "### VS Code Extension Released"
+            echo ""
+            echo "- **Tag**: \`$TAG\`"
+            echo "- **Package**: \`$VSIX_FILE\` ($VSIX_SIZE)"
+            echo "- **SHA256**: \`$VSIX_SHA\`"
+            echo ""
+            echo "Install locally:"
+            echo '```bash'
+            echo "code --install-extension $VSIX_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

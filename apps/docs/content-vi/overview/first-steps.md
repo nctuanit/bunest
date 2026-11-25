@@ -41,6 +41,7 @@ Bunest sử dụng **Legacy TypeScript Decorators** để hỗ trợ constructor
     "emitDecoratorMetadata": true,
     "verbatimModuleSyntax": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "noEmit": true
   }
 }

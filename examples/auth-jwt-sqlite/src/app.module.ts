@@ -23,13 +23,10 @@ import {
   CreateDateColumn,
   CrudRepository,
   Entity,
-  Modifying,
   OrmMigrationRunner,
   OrmModule,
   OrmRepository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
   Transactional,
   type OrmMigration,
 } from "@bunest/orm";
@@ -113,33 +110,36 @@ export abstract class UserRepository extends CrudRepository<UserEntity, number> 
   abstract findByEmail(email: string): Promise<UserEntity | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
 
-  @Query("SELECT COUNT(*) AS count FROM users")
-  countRegisteredUsers(): Promise<number> {
-    return 0 as unknown as Promise<number>;
+  async countRegisteredUsers(): Promise<number> {
+    const row = await this.queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM users",
+    );
+    return Number(row?.count ?? 0);
   }
 }
 
 @OrmRepository(TaskEntity)
 export abstract class TaskRepository extends CrudRepository<TaskEntity, number> {
-  @Query(
-    "SELECT id, user_id, title, created_at FROM tasks WHERE user_id = :userId ORDER BY id ASC",
-  )
-  findAllForUser(@SqlParam("userId") _userId: number): Promise<TaskEntity[]> {
-    return [] as unknown as Promise<TaskEntity[]>;
+  async findAllForUser(userId: number): Promise<TaskEntity[]> {
+    return this.query<TaskEntity>(
+      "SELECT id, user_id AS userId, title, created_at AS createdAt FROM tasks WHERE user_id = :userId ORDER BY id ASC",
+      { userId },
+    );
   }
 
-  @Modifying()
-  @Query("INSERT INTO task_audit (task_id, action) VALUES (:taskId, :action)")
-  recordAudit(
-    @SqlParam("taskId") _taskId: number,
-    @SqlParam("action") _action: string,
-  ): Promise<number> {
-    return 0 as unknown as Promise<number>;
+  async recordAudit(taskId: number, action: string): Promise<number> {
+    const res = await this.execute(
+      "INSERT INTO task_audit (task_id, action) VALUES (:taskId, :action)",
+      { taskId, action },
+    );
+    return res.affectedRows;
   }
 
-  @Query("SELECT COUNT(*) AS count FROM task_audit")
-  countAuditEntries(): Promise<number> {
-    return 0 as unknown as Promise<number>;
+  async countAuditEntries(): Promise<number> {
+    const row = await this.queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM task_audit",
+    );
+    return Number(row?.count ?? 0);
   }
 }
 

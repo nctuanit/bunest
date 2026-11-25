@@ -41,34 +41,34 @@ import {
 
 export class Address {
   @Column()
-  city!: string;
+  city: string;
 }
 
 @Entity("users")
 export class User {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ unique: true })
-  email!: string;
+  email: string;
 
   @Embedded(() => Address)
   address?: Nested<Address>;
 
   @OneToMany(() => Post, (post) => post.author, { cascade: true })
-  posts!: Relation<Post[]>;
+  posts: Relation<Post[]>;
 }
 
 @Entity("posts")
 export class Post {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column()
-  title!: string;
+  title: string;
 
   @ManyToOne(() => User, (user) => user.posts, { onDelete: "CASCADE" })
-  author!: Relation<User>;
+  author: Relation<User>;
 }
 
 @Injectable()

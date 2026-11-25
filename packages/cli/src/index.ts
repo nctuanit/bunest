@@ -42,6 +42,14 @@ export { addLibrary } from "./commands/add";
 export { upgradeProject } from "./commands/upgrade";
 export { deployProject } from "./commands/deploy";
 export { runReplCommand } from "./commands/repl";
+export {
+  BUNEST_MCP_TOOLS,
+  handleMcpRequest,
+  runMcpServer,
+  type JsonRpcRequest,
+  type JsonRpcResponse,
+  type McpServerOptions,
+} from "./commands/mcp";
 export { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
 export {
   AVAILABLE_BUILDERS,

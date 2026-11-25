@@ -6,6 +6,11 @@ import type {
 
 const SWEEP_EVERY = 1_000;
 
+export interface InMemoryIdempotencyStoreOptions {
+  /** Optional clock returning current time in ms (defaults to `Date.now`). */
+  now?: () => number;
+}
+
 export type InMemoryEntry =
   | {
       state: "in-flight";
@@ -33,7 +38,12 @@ export type InMemoryEntry =
  */
 export class InMemoryIdempotencyStore implements IdempotencyStore {
   private readonly entries = new Map<string, InMemoryEntry>();
+  private readonly now: () => number;
   private operations = 0;
+
+  constructor(options?: InMemoryIdempotencyStoreOptions) {
+    this.now = options?.now ?? Date.now;
+  }
 
   async acquire(
     key: string,
@@ -57,7 +67,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
       state: "in-flight",
       fingerprint,
       owner,
-      expiresAt: Date.now() + lockTtl,
+      expiresAt: this.now() + lockTtl,
     });
     return { state: "acquired" };
   }
@@ -76,7 +86,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
       state: "completed",
       fingerprint: existing.fingerprint,
       response: structuredClone(response),
-      expiresAt: Date.now() + ttl,
+      expiresAt: this.now() + ttl,
     });
     return true;
   }
@@ -95,7 +105,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
     if (existing?.state !== "in-flight" || existing.owner !== owner) {
       return false;
     }
-    existing.expiresAt = Date.now() + lockTtl;
+    existing.expiresAt = this.now() + lockTtl;
     return true;
   }
 
@@ -116,7 +126,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
 
   private read(key: string): InMemoryEntry | undefined {
     const entry = this.entries.get(key);
-    if (entry && entry.expiresAt <= Date.now()) {
+    if (entry && entry.expiresAt <= this.now()) {
       this.entries.delete(key);
       return undefined;
     }
@@ -130,7 +140,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
   }
 
   private sweep(): void {
-    const now = Date.now();
+    const now = this.now();
     for (const [key, entry] of this.entries) {
       if (entry.expiresAt <= now) {
         this.entries.delete(key);

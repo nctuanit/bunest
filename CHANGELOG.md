@@ -5,7 +5,31 @@ All notable changes to **Bunest** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] / 0.2.0 Complete 53-Package Ecosystem, Service-Layer AOP & Performance Upgrade
+## [0.1.0] - 2026-11-25 — Production Preview (19 Zero-Dep Packages, 100% NestJS v12 Conformance)
+
+First public **Production Preview** release of the consolidated **19-package `@bunest/*` ecosystem** targeting **Bun >= 1.4.5** with **0 external runtime dependencies** (`ADR-017`), **0 Express/Fastify/RxJS**, **0 circular imports**, and **7,005/7,005 (100.00%, 0 skip)** NestJS v12 conformance.
+
+### Highlights
+
+- **Consolidated 19-Package Zero-Dependency Architecture (`ADR-017`)**:
+  - **Core & Validation**: `@bunest/core` (DI, Common, HTTP, Config, Fetch Client, WebSockets, I18n), `@bunest/validation`
+  - **Security**: `@bunest/security` (WebCrypto JWT/JWKS, OAuth2/OIDC PKCE, Sessions, CSRF, Throttler, Policies, `SecurityModule.forRoot`)
+  - **API & AI**: `@bunest/swagger`, `@bunest/graphql`, `@bunest/ai` (including MCP server/client)
+  - **Data & Integrations**: `@bunest/orm` (`Bun.SQL`, `bun:sqlite`, Drizzle/Prisma/TypeORM/Mongoose/Sequelize adapters, `@Entity`, declarative repositories, migrations), `@bunest/cache`, `@bunest/storage`, `@bunest/mail`, `@bunest/elasticsearch`
+  - **Distributed & Async**: `@bunest/messaging`, `@bunest/jobs`, `@bunest/resilience`, `@bunest/microservices`, `@bunest/workflows`
+  - **DX & Ops**: `@bunest/observability`, `@bunest/testing`, `@bunest/cli` (including `bunest mcp`, `bunest verify`, static diagnostics)
+- **Production Preview Scope (Linux + Bun `1.4.5` + PostgreSQL 17)**:
+  - Reference production app in [`examples/production-rest-postgres`](./examples/production-rest-postgres) with multi-stage Alpine `Dockerfile`, `docker-compose.yml`, Caddy reverse proxy, zero-downtime `rollback.sh`, real PostgreSQL smoke suite (`bun run smoke:postgres`), and 2-hour load/soak harness.
+  - Documented runbooks and Go/No-Go criteria in [`docs/production-preview.md`](./docs/production-preview.md) and [`docs/support-policy.md`](./docs/support-policy.md).
+- **Release & Distribution Automation**:
+  - Automated CI gates (`linux-bun-pinned`, `production-postgres-smoke`, cross-OS compatibility matrix, coverage, VS Code `.vsix` packaging) and release workflow (`.github/workflows/release.yml`) with topological npm publishing (`scripts/publish-packages.ts`), staging registry clean-install verifier (`scripts/verify-staging-registry.ts`), and VS Code Marketplace / Open VSX publishing.
+- **First-Class VS Code Extension & Bilingual Docs**:
+  - `apps/vscode-bunest`: live typegen, declarative repository autocomplete & SQL preview, raw SQL runner, HTTP Studio, live inspector, class macro Hover/Delombok, diagnostics, and interactive DI graph.
+  - Bilingual English/Vietnamese documentation site (`apps/docs`) and auto-generated AI docs (`llms.txt`, `llms-full.txt`, `docs/errors.md`).
+
+---
+
+## [Pre-Consolidation History] — 53-Package Milestone, Service-Layer AOP & Performance Upgrade
 
 Major release completing **two landmark milestones** across **53 workspace packages (1,468 source files, 249,405 physical LOC)** with **100% ADR-adjusted NestJS v12 parity**, **0 new external runtime dependencies** (**48/53** packages zero-dep; strictly 4 unique external npm runtime deps across the monorepo), **0 RxJS**, **0 runtime/type/DAG circular imports**, **6,344 pass / 0 fail** tests (`29,804` assertions across `865` files), and verified zero hot-path regression (`bun run bench`: **34,648 req/s** static GET = **98.7%**, **33,968 req/s** param GET + DI = **99.4%**, **22,583 req/s** JSON POST = **84.3%**, **12,986 req/s** validated POST = **101.3%** of raw `Bun.serve`, `0.3688 ms` cold bootstrap, **1,542,353 ops/s** hot singleton DI):
 

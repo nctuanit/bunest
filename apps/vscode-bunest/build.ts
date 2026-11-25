@@ -11,7 +11,7 @@ const ALIASES: Record<string, string> = {
     "packages/cli/src/analyzer/index.ts",
   ),
   "@bunest/cli": resolve(repoRoot, "packages/cli/src/index.ts"),
-  "@bunest/core": resolve(repoRoot, "packages/core/src/common/index.ts"),
+  "@bunest/core": resolve(repoRoot, "packages/core/src/index.ts"),
 };
 
 const aliasPlugin: BunPlugin = {

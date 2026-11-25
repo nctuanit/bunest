@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bunest/bunest.git",
+    "url": "https://github.com/nctuanit/bunest.git",
     "directory": "packages/microservices"
   },
   "files": [
@@ -37,5 +37,12 @@
   },
   "devDependencies": {
     "@bunest/testing": "workspace:*"
+  },
+  "homepage": "https://nctuanit.github.io/bunest/",
+  "bugs": {
+    "url": "https://github.com/nctuanit/bunest/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -101,6 +101,19 @@ export {
   type BunestErrorCode,
   type BunestErrorReport,
 } from "./errors/error-catalog";
+export {
+  AgentErrorTraceStore,
+  buildAgentErrorTrace,
+  extractAppStackFrames,
+  formatAgentErrorTrace,
+  generateTraceRequestId,
+  readAgentErrorTracesFromFile,
+  type AgentErrorTrace,
+  type AgentStackFrame,
+  type AgentTraceStoreOptions,
+  type BuildAgentErrorTraceInput,
+  type PipelineTraceStage,
+} from "./errors/agent-trace";
 
 // Core Interfaces, ContextId & Enhancer Override Markers
 export {
@@ -361,6 +374,7 @@ export {
 export {
   BunestApplication,
   BunestApplication as NestApplication,
+  type DevDiagnosticsOptions,
 } from "./application/bunest-application";
 export {
   BunestFactory,

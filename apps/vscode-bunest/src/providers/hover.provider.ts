@@ -41,7 +41,12 @@ export class BunestHoverProvider implements vscode.HoverProvider {
     for (const repo of snap.repositories) {
       if (repo.sourceFile !== filePath) continue;
       for (const m of repo.methods) {
-        if (!isPosNearLocation(line1, col1, m.location)) continue;
+        const onCustomDecorator =
+          m.customQuery !== undefined &&
+          isPosNearLocation(line1, col1, m.customQuery.decoratorLocation);
+        if (!onCustomDecorator && !isPosNearLocation(line1, col1, m.location)) {
+          continue;
+        }
 
         if (m.derived) {
           const md = new vscode.MarkdownString();
@@ -87,6 +92,7 @@ export class BunestHoverProvider implements vscode.HoverProvider {
 
         if (m.customQuery) {
           const md = new vscode.MarkdownString();
+          md.isTrusted = true;
           md.appendMarkdown(
             `### Bunest \`@Query\` — \`${repo.className}.${m.name}\`\n\n`,
           );
@@ -97,6 +103,20 @@ export class BunestHoverProvider implements vscode.HoverProvider {
           if (m.customQuery.namedPlaceholders.length > 0) {
             md.appendMarkdown(
               `- **Named placeholders:** ${m.customQuery.namedPlaceholders.map((p) => `\`:${p}\``).join(", ")}\n`,
+            );
+          }
+          if (m.customQuery.sql.trim().length > 0) {
+            const cmdArgs = encodeURIComponent(
+              JSON.stringify([
+                {
+                  sql: m.customQuery.sql,
+                  title: `${repo.className}.${m.name}()`,
+                  cwd: ctx.cwd,
+                },
+              ]),
+            );
+            md.appendMarkdown(
+              `\n[▶ Run Query Directly](command:bunest.executeRawQuery?${cmdArgs})\n`,
             );
           }
           return new vscode.Hover(md);

@@ -54,10 +54,10 @@ import {
 
 export class CreateUserDto {
   @ApiProperty({ example: "ada@example.com" })
-  email!: string;
+  email: string;
 
   @ApiProperty({ example: "Ada Lovelace" })
-  name!: string;
+  name: string;
 }
 
 @ApiTags("users")

@@ -8,6 +8,7 @@ import { generateSchematic } from "./commands/generate";
 import { generateRepositoryCommand } from "./commands/generate-repository";
 import { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
 import { createProject } from "./commands/new";
+import { runMcpServer } from "./commands/mcp";
 import { runReplCommand } from "./commands/repl";
 import { runStartCommand } from "./commands/start";
 import { runTypegenCommand } from "./commands/typegen";
@@ -144,6 +145,10 @@ Commands:
 
   repl                              Start interactive Bunest REPL
     --entry <file>                  REPL entrypoint file (default: src/repl.ts)
+
+  mcp                               Start stdio MCP server for AI coding agents (verify, errors, routes, DI)
+    --trace-file <path>             Path to runtime error JSONL file (default: .bunest/errors.jsonl)
+    --server-url <url>              Running dev server URL (e.g. http://127.0.0.1:3000)
 
   info                              Display Bunest, Bun, OS, CPU, and RAM info
 
@@ -659,6 +664,18 @@ export async function runCli(
           io,
         );
         return { exitCode: result.exitCode, output: result };
+      }
+
+      case "mcp": {
+        const result = await runMcpServer(
+          {
+            cwd: io.cwd,
+            traceFile: getStringFlag(flags, "trace-file"),
+            serverUrl: getStringFlag(flags, "server-url"),
+          },
+          io,
+        );
+        return { exitCode: result.exitCode };
       }
 
       case "info": {

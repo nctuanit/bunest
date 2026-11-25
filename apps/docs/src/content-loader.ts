@@ -32,6 +32,8 @@ export interface CompiledPage {
   categoryId: string;
   categoryTitle: string;
   badge?: string;
+  sourceFile: string;
+  rawMarkdown: string;
   html: string;
   toc: TocItem[];
   readingMinutes: number;
@@ -109,6 +111,8 @@ export async function compilePage(
     };
   };
 
+  const sourceFile = `apps/docs/${lang === "vi" ? "content-vi" : "content"}/${page.file}`;
+
   const compiled: CompiledPage = {
     lang,
     slug: page.slug,
@@ -118,6 +122,8 @@ export async function compilePage(
     categoryId: page.categoryId,
     categoryTitle,
     badge: page.badge,
+    sourceFile,
+    rawMarkdown: raw,
     html: rendered.html,
     toc: rendered.toc,
     readingMinutes: rendered.readingMinutes,

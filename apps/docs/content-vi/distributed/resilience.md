@@ -1,6 +1,6 @@
-# Resilience
+# Độ tin cậy & Chịu lỗi (Resilience)
 
-**`@bunest/resilience`** cung cấp các chính sách chịu lỗi không dependency ngoài—**Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit** và **Fallback**—hoạt động mượt mà trên **cả** các điểm vào transport (HTTP/GraphQL/WebSocket/Microservice handler) **lẫn** các phương thức service `@Injectable()` thông qua `MethodAspectWeaver`, đảm bảo không bao giờ bọc trùng (double-wrapping).
+**`@bunest/resilience`** cung cấp bộ chính sách chịu lỗi zero-dependency — **Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit** và **Fallback** — hoạt động đồng nhất trên **cả** entrypoint (HTTP/GraphQL/WebSocket/Microservice) **lẫn** method của `@Injectable()` service qua `MethodAspectWeaver`, đảm bảo không bao giờ bị bọc trùng (zero double-wrapping).
 
 ## Cài đặt
 
@@ -8,7 +8,7 @@
 bun add @bunest/resilience
 ```
 
-## Thiết lập Module
+## Cấu hình Module
 
 @@filename(app.module.ts)
 
@@ -22,9 +22,21 @@ import { ResilienceModule } from "@bunest/resilience";
 export class AppModule {}
 ```
 
-## Chính sách khai báo ở tầng Service
+## Bảng tra cứu Policy Decorators
 
-Xếp chồng các resilience decorator trực tiếp lên phương thức service `@Injectable()`:
+| Decorator | Công dụng | Tùy chọn chính |
+| --- | --- | --- |
+| `@Retry(options)` | Thử lại khi gặp lỗi tạm thời với backoff cố định/hàm mũ + jitter | `maxAttempts`, `delayMs`, `backoff`, `retryIf` |
+| `@Timeout(options)` | Hủy tác vụ quá hạn và truyền `AbortSignal` xuống bên dưới | `timeoutMs` |
+| `@CircuitBreaker(options)` | Ngắt mạch khi lỗi liên tiếp để chặn hiệu ứng domino | `failureThreshold`, `resetTimeoutMs`, `halfOpenMaxCalls` |
+| `@Bulkhead(options)` | Giới hạn số lời gọi song song và hàng đợi để cô lập dịch vụ chậm | `maxConcurrent`, `maxQueue` |
+| `@Fallback(options)` | Trả về giá trị dự phòng khi các policy phía trên thất bại | `fallback: (err, ...args) => ...` |
+| `@Signal()` | Inject `AbortSignal` do `@Timeout()` quản lý vào tham số hàm | — |
+| `@Resilience(policy)` | Áp dụng một bộ policy tái sử dụng theo tên | tên policy hoặc object cấu hình |
+
+## Kết hợp Policy trên Service Method
+
+Xếp chồng decorator từ ngoài vào trong (Fallback → Circuit Breaker → Retry → Timeout → Bulkhead) và truyền `@Signal()` trực tiếp vào `fetch()`:
 
 @@filename(payment-gateway.service.ts)
 
@@ -35,6 +47,7 @@ import {
   CircuitBreaker,
   Fallback,
   Retry,
+  Signal,
   Timeout,
 } from "@bunest/resilience";
 
@@ -45,9 +58,14 @@ export class PaymentGatewayService {
   @Retry({ maxAttempts: 3, delayMs: 200, backoff: "exponential" })
   @Timeout({ timeoutMs: 2_000 })
   @Bulkhead({ maxConcurrent: 20, maxQueue: 50 })
-  async charge(orderId: string, amountCents: number) {
+  async charge(
+    orderId: string,
+    amountCents: number,
+    @Signal() signal?: AbortSignal,
+  ) {
     const res = await fetch("https://payments.example.com/charge", {
       method: "POST",
+      signal,
       body: JSON.stringify({ orderId, amountCents }),
     });
     if (!res.ok) throw new Error(`Gateway error ${res.status}`);
@@ -56,4 +74,8 @@ export class PaymentGatewayService {
 }
 ```
 
-> info **Không bọc trùng (No Double-Wrapping)** Khi đặt resilience decorator lên một route của HTTP controller, `ResilienceMethodAspectHandler` sẽ nhận diện điểm vào và nhường quyền thực thi cho `ResilienceInterceptor` để retry, timeout và bulkhead chỉ chạy **đúng một lần**.
+## Hủy tác vụ chủ động với `@Signal()`
+
+Khi `@Timeout()` hết hạn, `AbortController` gắn với lời gọi sẽ kích hoạt `abort()`. Việc truyền `@Signal()` vào `fetch()`, `Bun.SQL` hay tác vụ async giúp hủy ngay kết nối đang treo thay vì để rò rỉ tài nguyên ngầm.
+
+> info **Không bọc trùng (No Double-Wrapping)** Khi đặt resilience decorator trực tiếp lên HTTP controller route, `ResilienceMethodAspectHandler` sẽ tự nhận diện entrypoint và nhường cho `ResilienceInterceptor` để retry, timeout và bulkhead chỉ chạy **đúng một lần**.

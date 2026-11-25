@@ -36,12 +36,9 @@ import {
   Column,
   CrudRepository,
   Entity,
-  Modifying,
   OrmModule,
   OrmRepository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
   type OrmMigration,
 } from "@bunest/orm";
 
@@ -101,13 +98,12 @@ export abstract class OrderRepository extends CrudRepository<
   OrderEntity,
   number
 > {
-  @Modifying()
-  @Query("UPDATE orders SET status = :status WHERE id = :id")
-  updateStatus(
-    @SqlParam("id") _id: number,
-    @SqlParam("status") _status: string,
-  ): Promise<number> {
-    return 0 as unknown as Promise<number>;
+  async updateStatus(id: number, status: string): Promise<number> {
+    const res = await this.execute(
+      "UPDATE orders SET status = :status WHERE id = :id",
+      { id, status },
+    );
+    return res.affectedRows;
   }
 }
 

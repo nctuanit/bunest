@@ -25,6 +25,8 @@
 
     // Strict type-checking defaults
     "strict": true,
+    // Allow clean decorator-injected properties (`@Column()`, `@WebSocketServer()`, `@IsEmail()`, ...) without `!:`
+    "strictPropertyInitialization": false,
     "skipLibCheck": true,
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,

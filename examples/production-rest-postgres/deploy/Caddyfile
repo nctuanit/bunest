@@ -1,0 +1,44 @@
+# Caddy reverse proxy for Bunest 0.1 production preview (2 instances + rolling deploy).
+# - Automatic HTTPS for {$SITE_ADDRESS:localhost}
+# - Active readiness probing on /ready (draining instances return 503 and stop receiving traffic)
+# - Blocks public access to /metrics (keep metrics internal only)
+# - Enforces request body limit and upstream timeouts
+
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# Block public access to internal Prometheus metrics
+	@internal_metrics path /metrics
+	respond @internal_metrics 403
+
+	# Enforce 1 MiB request body limit at edge (matches app BODY_LIMIT_BYTES)
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy api-1:3000 api-2:3000 {
+		lb_policy round_robin
+		lb_try_duration 3s
+		lb_try_interval 150ms
+
+		health_uri /ready
+		health_interval 2s
+		health_timeout 1s
+		health_status 200
+
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 15s
+			read_timeout 15s
+			write_timeout 15s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

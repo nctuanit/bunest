@@ -7,7 +7,11 @@ import {
 import { DOCS_ROOT, loadAllDocs } from "./content-loader";
 import { SUPPORTED_LANGS } from "./i18n";
 import { getConfiguredBasePath, normalizeBasePath } from "./navigation";
-import { renderNotFoundHtml, renderPageHtml } from "./template";
+import {
+  DOCS_SITE_ORIGIN,
+  renderNotFoundHtml,
+  renderPageHtml,
+} from "./template";
 
 const SRC_DIR = import.meta.dirname;
 const DEFAULT_DIST_DIR = join(DOCS_ROOT, "dist");
@@ -55,6 +59,7 @@ export async function buildStaticSite(
 
   let totalPages = 0;
   let totalSearchEntries = 0;
+  const sitemapUrls: string[] = [];
 
   for (const lang of SUPPORTED_LANGS) {
     const langOutDir = lang === "en" ? outDir : join(outDir, lang);
@@ -74,6 +79,7 @@ export async function buildStaticSite(
     // Pre-render every documentation page + JSON payload for SPA swaps
     for (const page of pages.values()) {
       const html = renderPageHtml(page, basePath);
+      sitemapUrls.push(`${DOCS_SITE_ORIGIN}${page.href}`);
 
       if (page.slug === "") {
         await Bun.write(join(langOutDir, "index.html"), html);
@@ -87,6 +93,29 @@ export async function buildStaticSite(
         await Bun.write(jsonTarget, JSON.stringify(page));
       }
     }
+  }
+
+  // Write sitemap.xml & robots.txt for SEO
+  const lastmod = new Date().toISOString().slice(0, 10);
+  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapUrls
+    .map(
+      (loc) =>
+        `  <url><loc>${Bun.escapeHTML(loc)}</loc><lastmod>${lastmod}</lastmod></url>`,
+    )
+    .join("\n")}\n</urlset>\n`;
+  await Bun.write(join(outDir, "sitemap.xml"), sitemapXml);
+
+  const sitemapLoc = `${DOCS_SITE_ORIGIN}${basePath}/sitemap.xml`;
+  await Bun.write(
+    join(outDir, "robots.txt"),
+    `User-agent: *\nAllow: /\nSitemap: ${sitemapLoc}\n`,
+  );
+
+  // Copy root llms.txt if present so /llms.txt is served alongside the docs
+  const repoRoot = dirname(dirname(DOCS_ROOT));
+  const llmsSrc = Bun.file(join(repoRoot, "llms.txt"));
+  if (await llmsSrc.exists()) {
+    await Bun.write(join(outDir, "llms.txt"), await llmsSrc.text());
   }
 
   // Write 404 fallback page & GitHub Pages .nojekyll marker

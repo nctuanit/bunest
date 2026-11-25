@@ -33,14 +33,14 @@ import {
 
 export class CreateUserDto {
   @IsEmail()
-  email!: string;
+  email: string;
 
   @IsString()
   @MinLength(8)
-  password!: string;
+  password: string;
 
   @IsString()
-  name!: string;
+  name: string;
 }
 
 export class UpdateUserDto extends PartialType(
@@ -54,7 +54,7 @@ export class LoginDto extends PickType(CreateUserDto, [
 
 export class AuditMetaDto {
   @IsString()
-  reason!: string;
+  reason: string;
 }
 
 export class AuditedUpdateUserDto extends IntersectionType(

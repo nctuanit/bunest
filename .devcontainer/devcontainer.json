@@ -1,0 +1,16 @@
+{
+  "name": "Bunest (Bun 1.4.5)",
+  "image": "oven/bun:1.4.5",
+  "postCreateCommand": "bun install && bun run build",
+  "forwardPorts": [3000, 3100, 4173],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "typescript.tsdk": "node_modules/typescript/lib"
+      },
+      "extensions": [
+        "oven.bun-vscode"
+      ]
+    }
+  }
+}

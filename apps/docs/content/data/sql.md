@@ -53,16 +53,16 @@ import {
 @Entity("orders")
 export class Order {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column()
-  customerId!: string;
+  customerId: string;
 
   @Column()
-  status!: string;
+  status: string;
 
   @Column({ type: "integer" })
-  totalCents!: number;
+  totalCents: number;
 }
 
 @OrmRepository(Order)

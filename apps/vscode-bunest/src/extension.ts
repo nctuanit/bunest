@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import {
   buildCollapseLoggerBoilerplateEdit,
-  buildConvertDerivedToQueryEdit,
   buildDelombokEdit,
   buildSyncDiConstructorEdit,
   formatTypegenSummary,
@@ -12,6 +11,11 @@ import {
   type SourceLocation,
   type TypegenCommandResult,
 } from "@bunest/cli";
+import {
+  runConfigureDatabaseConnectionCommand,
+  runExecuteRawQueryCommand,
+  type RawQueryExecutionRequest,
+} from "./commands/execute-raw-query";
 import { runGenerateRepositoryCommand } from "./commands/generate-repository";
 import { runGenerateSchematicCommand } from "./commands/generate-schematic";
 import { runBunestCliCommand } from "./commands/run-cli";
@@ -21,12 +25,19 @@ import { BunestCodeLensProvider } from "./providers/codelens.provider";
 import { BunestDefinitionProvider } from "./providers/definition.provider";
 import { BunestDiagnosticsProvider } from "./providers/diagnostics.provider";
 import { BunestHoverProvider } from "./providers/hover.provider";
+import { BunestInlayHintsProvider } from "./providers/inlay-hints.provider";
 import { BunestRepositoryCompletionProvider } from "./providers/repository-completion.provider";
+import { BunestSqlCompletionProvider } from "./providers/sql-intellisense.provider";
+import { setBunestExtensionPath } from "./ui/icons";
+import { BunestStatusBarManager } from "./ui/status-bar";
 import { BunestDataModelsTreeProvider } from "./views/data-models.tree";
 import { BunestEventsRpcTreeProvider } from "./views/events-rpc.tree";
+import { BunestMigrationsTreeProvider } from "./views/migrations.tree";
 import { BunestModulesTreeProvider } from "./views/modules.tree";
 import { BunestRoutesTreeProvider } from "./views/routes.tree";
 import { BunestDiGraphPanel } from "./webview/di-graph.panel";
+import { BunestHttpStudioPanel } from "./webview/http-studio.panel";
+import { BunestLiveInspectorPanel } from "./webview/live-inspector.panel";
 import {
   BunestWorkspaceIndex,
   sourceLocationToVscodeLocation,
@@ -48,27 +59,41 @@ const TRIGGER_CHARS = [
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
+  setBunestExtensionPath(context.extensionPath);
   const index = new BunestWorkspaceIndex();
   const diagnostics = new BunestDiagnosticsProvider(index);
   const defProvider = new BunestDefinitionProvider(index);
   const hoverProvider = new BunestHoverProvider(index);
   const completionProvider = new BunestRepositoryCompletionProvider(index);
+  const sqlCompletionProvider = new BunestSqlCompletionProvider(index);
+  const inlayHintsProvider = new BunestInlayHintsProvider(index);
   const codeActionProvider = new BunestCodeActionsProvider(index);
   const codeLensProvider = new BunestCodeLensProvider(index);
 
   const routesTree = new BunestRoutesTreeProvider(index);
   const dataModelsTree = new BunestDataModelsTreeProvider(index);
+  const migrationsTree = new BunestMigrationsTreeProvider(index);
   const eventsRpcTree = new BunestEventsRpcTreeProvider(index);
   const modulesTree = new BunestModulesTreeProvider(index);
+  const statusBar = new BunestStatusBarManager(index);
 
   context.subscriptions.push(
     index,
     diagnostics,
+    statusBar,
     vscode.languages.registerCompletionItemProvider(
       TS_SELECTOR,
       completionProvider,
       ...TRIGGER_CHARS,
     ),
+    vscode.languages.registerCompletionItemProvider(
+      TS_SELECTOR,
+      sqlCompletionProvider,
+      ":",
+      ".",
+      " ",
+    ),
+    vscode.languages.registerInlayHintsProvider(TS_SELECTOR, inlayHintsProvider),
     vscode.languages.registerDefinitionProvider(TS_SELECTOR, defProvider),
     vscode.languages.registerReferenceProvider(TS_SELECTOR, defProvider),
     vscode.languages.registerHoverProvider(TS_SELECTOR, hoverProvider),
@@ -80,6 +105,7 @@ export async function activate(
     vscode.languages.registerCodeLensProvider(TS_SELECTOR, codeLensProvider),
     vscode.window.registerTreeDataProvider("bunest.routesView", routesTree),
     vscode.window.registerTreeDataProvider("bunest.dataModelsView", dataModelsTree),
+    vscode.window.registerTreeDataProvider("bunest.migrationsView", migrationsTree),
     vscode.window.registerTreeDataProvider("bunest.eventsRpcView", eventsRpcTree),
     vscode.window.registerTreeDataProvider("bunest.modulesView", modulesTree),
   );
@@ -152,9 +178,98 @@ export async function activate(
           routeOrItem && "path" in routeOrItem
             ? routeOrItem
             : routeOrItem?.route;
-        await runSendRequestCommand(route);
+        if (route) {
+          BunestHttpStudioPanel.open(index, route);
+        } else {
+          await runSendRequestCommand(route);
+        }
       },
     ),
+
+    vscode.commands.registerCommand("bunest.openHttpStudio", () => {
+      BunestHttpStudioPanel.open(index);
+    }),
+
+    vscode.commands.registerCommand("bunest.openLiveInspector", () => {
+      BunestLiveInspectorPanel.show();
+    }),
+
+    vscode.commands.registerCommand("bunest.openQuickMenu", async () => {
+      const picked = await vscode.window.showQuickPick(
+        [
+          {
+            label: "$(globe) Open HTTP Request Studio",
+            description: "Test API endpoints with auto-generated DTO payloads",
+            cmd: "bunest.openHttpStudio",
+          },
+          {
+            label: "$(pulse) Open Live App Inspector",
+            description: "Monitor /live, /ready, p95/p99, RSS, event-loop lag",
+            cmd: "bunest.openLiveInspector",
+          },
+          {
+            label: "$(type-hierarchy-sub) Open Interactive DI Module Graph",
+            description: "Inspect modules, providers, and circular dependencies",
+            cmd: "bunest.openDiGraph",
+          },
+          {
+            label: "$(database) Configure Database Connection (SQL Runner)",
+            description: "Switch SQLite / PostgreSQL / MySQL / LibSQL / D1",
+            cmd: "bunest.configureDatabaseConnection",
+          },
+          {
+            label: "$(sync) Run Typegen (CLI)",
+            description: "Regenerate .bunest/types/bunest.d.ts",
+            cmd: "bunest.regenerateTypes",
+          },
+          {
+            label: "$(checklist) Run Static Check (CLI)",
+            description: "Run all Bunest static & architecture diagnostics",
+            cmd: "bunest.runCheck",
+          },
+          {
+            label: "$(add) Generate Component Schematic",
+            description: "Module, Controller, Service, Guard, Repository...",
+            cmd: "bunest.generateSchematic",
+          },
+        ],
+        {
+          title: "Bunest — Quick Actions",
+          placeHolder: "Choose a Bunest action...",
+        },
+      );
+      if (picked) {
+        await vscode.commands.executeCommand(picked.cmd);
+      }
+    }),
+
+    vscode.commands.registerCommand("bunest.filterRoutes", async () => {
+      const entered = await vscode.window.showInputBox({
+        title: "Filter Bunest Routes",
+        prompt: "Filter by HTTP method, path, controller, or handler (leave empty to clear)",
+        value: routesTree.getFilter(),
+      });
+      if (entered !== undefined) {
+        routesTree.setFilter(entered);
+      }
+    }),
+
+    vscode.commands.registerCommand("bunest.toggleRoutesGroupBy", () => {
+      const mode = routesTree.toggleGroupBy();
+      vscode.window.showInformationMessage(
+        `Bunest Routes grouped by: ${mode === "controller" ? "Controller" : "HTTP Method"}`,
+      );
+    }),
+
+    vscode.commands.registerCommand("bunest.refreshMigrations", () => {
+      migrationsTree.refresh();
+    }),
+
+    vscode.commands.registerCommand("bunest.runMigrations", () => {
+      const term = vscode.window.createTerminal("Bunest Migrate");
+      term.show(true);
+      term.sendText("bun run migrate");
+    }),
 
     vscode.commands.registerCommand(
       "bunest.copyRouteUrl",
@@ -190,6 +305,20 @@ export async function activate(
     ),
 
     vscode.commands.registerCommand(
+      "bunest.executeRawQuery",
+      async (req?: RawQueryExecutionRequest) => {
+        await runExecuteRawQueryCommand(index, req);
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "bunest.configureDatabaseConnection",
+      async () => {
+        await runConfigureDatabaseConnectionCommand(index);
+      },
+    ),
+
+    vscode.commands.registerCommand(
       "bunest.previewRepositorySql",
       (repo?: AnalyzedRepository, method?: AnalyzedQueryMethod) => {
         if (!repo || !method?.derived) return;
@@ -200,35 +329,6 @@ export async function activate(
         index.outputChannel.appendLine(`SQLite:   ${method.derived.sqlByDialect.sqlite}`);
         index.outputChannel.appendLine(`Postgres: ${method.derived.sqlByDialect.postgres}`);
         index.outputChannel.appendLine(`MySQL:    ${method.derived.sqlByDialect.mysql}`);
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "bunest.convertDerivedToQuery",
-      async (
-        filePath?: string,
-        repo?: AnalyzedRepository,
-        method?: AnalyzedQueryMethod,
-      ) => {
-        if (!filePath || !repo || !method) return;
-        const doc = await vscode.workspace.openTextDocument(filePath);
-        const editRes = buildConvertDerivedToQueryEdit({
-          filePath,
-          sourceText: doc.getText(),
-          method,
-          repo,
-        });
-        if (!editRes.changed) return;
-        const wsEdit = new vscode.WorkspaceEdit();
-        wsEdit.replace(
-          doc.uri,
-          new vscode.Range(
-            doc.positionAt(0),
-            doc.positionAt(editRes.original.length),
-          ),
-          editRes.updated,
-        );
-        await vscode.workspace.applyEdit(wsEdit);
       },
     ),
 

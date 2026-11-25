@@ -211,9 +211,42 @@ describe("@bunest/docs engine", () => {
       expect(controllersJson.href).toBe("/bunest/overview/controllers");
       expect(controllersJson.prev?.href.startsWith("/bunest/")).toBe(true);
       expect(controllersJson.next?.href.startsWith("/bunest/")).toBe(true);
+
+      // Verify SEO & AI artifacts: sitemap.xml, robots.txt, llms.txt
+      const sitemapXml = await Bun.file(join(outDir, "sitemap.xml")).text();
+      expect(sitemapXml).toContain("<urlset");
+      expect(sitemapXml).toContain("/bunest/overview/decorators");
+      expect(sitemapXml).toContain("/bunest/recipes/deployment");
+      expect(sitemapXml).toContain("/bunest/faq/common-errors");
+      expect(sitemapXml).toContain("/bunest/vi/recipes/deployment");
+
+      const robotsTxt = await Bun.file(join(outDir, "robots.txt")).text();
+      expect(robotsTxt).toContain("Sitemap:");
+      expect(robotsTxt).toContain("/bunest/sitemap.xml");
+
+      expect(await Bun.file(join(outDir, "llms.txt")).exists()).toBe(true);
     } finally {
       await removePath(outDir, { recursive: true, force: true });
     }
+  });
+
+  test("renders SEO OpenGraph/hreflang tags, breadcrumbs, Copy Markdown, and Edit on GitHub", async () => {
+    const { pages } = await loadAllDocs("/bunest", "en");
+    const page = pages.get("recipes/deployment")!;
+    expect(page).toBeDefined();
+    expect(page.rawMarkdown).toContain("# Deployment");
+    expect(page.sourceFile).toBe("apps/docs/content/recipes/deployment.md");
+
+    const html = renderPageHtml(page, "/bunest");
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain('name="twitter:card"');
+    expect(html).toContain('rel="canonical"');
+    expect(html).toContain('hreflang="vi"');
+    expect(html).toContain("bn-breadcrumb");
+    expect(html).toContain('id="bn-copy-md"');
+    expect(html).toContain('id="bn-edit-github"');
+    expect(html).toContain("/edit/main/apps/docs/content/recipes/deployment.md");
+    expect(html).toContain("/bunest/llms.txt");
   });
 
   test("loads all Vietnamese pages, rewrites internal links under /vi, and serves /vi routes", async () => {

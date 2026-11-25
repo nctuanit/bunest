@@ -62,6 +62,12 @@ export interface UiStrings {
   readonly footerAdrs: string;
   readonly footerMigration: string;
   readonly footerRoadmap: string;
+  readonly footerLlms: string;
+  readonly editOnGithub: string;
+  readonly copyMarkdown: string;
+  readonly copiedMarkdown: string;
+  readonly githubLabel: string;
+  readonly homeLabel: string;
   readonly toggleMenu: string;
   readonly toggleTheme: string;
   readonly packagesLabel: string;
@@ -97,6 +103,12 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     footerAdrs: "ADRs",
     footerMigration: "Migration",
     footerRoadmap: "Roadmap",
+    footerLlms: "llms.txt",
+    editOnGithub: "Edit this page on GitHub",
+    copyMarkdown: "Copy Markdown",
+    copiedMarkdown: "Copied Markdown",
+    githubLabel: "Bunest on GitHub",
+    homeLabel: "Docs",
     toggleMenu: "Toggle navigation menu",
     toggleTheme: "Toggle light/dark mode",
     packagesLabel: "Packages & Monorepo",
@@ -130,6 +142,12 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     footerAdrs: "ADRs",
     footerMigration: "Chuyển từ NestJS",
     footerRoadmap: "Lộ trình",
+    footerLlms: "llms.txt",
+    editOnGithub: "Chỉnh sửa trang này trên GitHub",
+    copyMarkdown: "Chép Markdown",
+    copiedMarkdown: "Đã chép Markdown",
+    githubLabel: "Bunest trên GitHub",
+    homeLabel: "Tài liệu",
     toggleMenu: "Bật/tắt menu điều hướng",
     toggleTheme: "Chuyển chế độ sáng/tối",
     packagesLabel: "Gói & Monorepo",
@@ -152,6 +170,8 @@ export const VI_CATEGORY_TITLES: Record<string, string> = {
   distributed: "PHÂN TÁN & ĐỘ TIN CẬY",
   ai: "AI & AGENTS",
   observability: "GIÁM SÁT & DX",
+  recipes: "CÔNG THỨC & THỰC CHIẾN",
+  faq: "CÂU HỎI THƯỜNG GẶP & LỖI",
   architecture: "KIẾN TRÚC & ADRs",
   ecosystem: "HỆ SINH THÁI",
 };
@@ -214,6 +234,11 @@ export const VI_PAGE_META: Record<
     title: "Custom decorators",
     description:
       "Tạo parameter decorators với createParamDecorator và gộp nhiều decorators với applyDecorators.",
+  },
+  "overview/decorators": {
+    title: "Tra cứu Decorators (Reference)",
+    description:
+      "Tổng hợp đầy đủ 447 decorators trên 15 packages kèm bảng mô tả, import path và ví dụ sử dụng.",
   },
   "fundamentals/custom-providers": {
     title: "Custom providers",
@@ -439,6 +464,41 @@ export const VI_PAGE_META: Record<
     title: "CLI",
     description:
       "Khởi tạo dự án, sinh code schematics, build, dev watch và bunest verify với @bunest/cli.",
+  },
+  "recipes/deployment": {
+    title: "Triển khai & Production",
+    description:
+      "Multi-stage Dockerfile, single binary bun build --compile, graceful shutdown, health probes và checklist production.",
+  },
+  "recipes/repl": {
+    title: "REPL tương tác",
+    description:
+      "Kiểm tra module, resolve provider và gọi thử service trực tiếp qua terminal với repl() và bunest repl.",
+  },
+  "recipes/class-macros": {
+    title: "Class & Method Macros",
+    description:
+      "Giảm boilerplate với 27 macro kiểu Lombok: @Data, @Value, @Builder, @With, @Memoize, @Synchronized và @Secret.",
+  },
+  "recipes/versioning": {
+    title: "Quản lý phiên bản API",
+    description:
+      "Cấu hình API versioning theo URI, Header, Media Type và Custom với @Version() và VERSION_NEUTRAL.",
+  },
+  "recipes/vscode-extension": {
+    title: "VS Code Extension",
+    description:
+      "Live typegen không cần lưu file, xem trước SQL repository, Delombok, chẩn đoán tĩnh, đồ thị DI và HTTP runner.",
+  },
+  "faq/common-errors": {
+    title: "Danh mục lỗi (BUNEST_E*)",
+    description:
+      "Tra cứu nguyên nhân và các bước sửa cho toàn bộ mã lỗi BUNEST_E001–BUNEST_E103 lúc khởi động và định tuyến.",
+  },
+  "faq/faq": {
+    title: "Câu hỏi thường gặp (FAQ)",
+    description:
+      "Giải đáp các câu hỏi phổ biến: @RawBody, global prefix, hybrid app, nhiều database, vòng đời request và không dùng RxJS.",
   },
   "architecture/execution-pipeline": {
     title: "Pipeline thực thi 11 bước",

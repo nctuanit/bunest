@@ -21,15 +21,11 @@ import {
   EntityNotFoundError,
   InjectOrmMigrations,
   InjectRepository,
-  Modifying,
   OrmMigrationRunner,
   OrmModule,
   OrmRepository,
-  Param,
   PrimaryGeneratedColumn,
-  Query,
   Repository,
-  SqlParam,
   Transactional,
   UpdateDateColumn,
   compileOrmRepository,
@@ -207,41 +203,47 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
       abstract deleteByActive(active: boolean): Promise<number>;
       abstract removeByEmail(email: string): Promise<number>;
 
-      @Query(
-        "SELECT * FROM decl_users WHERE age >= :minAge AND display_name != ':ignored' -- :comment\n ORDER BY age ASC",
-      )
-      findAdults(@SqlParam("minAge") _minAge: number): Promise<DeclUser[]> {
-        return [] as unknown as Promise<DeclUser[]>;
+      async findAdults(minAge: number): Promise<Array<{ email_addr: string }>> {
+        return this.query<{ email_addr: string }>(
+          "SELECT * FROM decl_users WHERE age >= :minAge AND display_name != ':ignored' -- :comment\n ORDER BY age ASC",
+          { minAge },
+        );
       }
 
-      @Query("SELECT * FROM decl_users WHERE email_addr = :email", { single: true })
-      findByEmailParamAlias(@Param("email") _email: string): Promise<DeclUser | null> {
-        return null as unknown as Promise<DeclUser | null>;
+      async findByEmailCustom(email: string): Promise<{ display_name: string } | null> {
+        return this.queryOne<{ display_name: string }>(
+          "SELECT * FROM decl_users WHERE email_addr = :email",
+          { email },
+        );
       }
 
-      @Query("SELECT * FROM decl_users WHERE age >= :minAge AND active = :active")
-      findAllByParamsObject(_params: { minAge: number; active: number }): Promise<DeclUser[]> {
-        return [] as unknown as Promise<DeclUser[]>;
+      async findAllByParamsObject(params: { minAge: number; active: number }): Promise<Record<string, unknown>[]> {
+        return this.query(
+          "SELECT * FROM decl_users WHERE age >= :minAge AND active = :active",
+          params,
+        );
       }
 
-      @Modifying()
-      @Query("UPDATE decl_users SET bio = :bio WHERE id = :id")
-      updateBio(
-        @SqlParam("id") _id: number,
-        @SqlParam("bio") _bio: string,
-      ): Promise<number> {
-        return 0 as unknown as Promise<number>;
+      async updateBio(id: number, bio: string): Promise<number> {
+        const res = await this.execute(
+          "UPDATE decl_users SET bio = :bio WHERE id = :id",
+          { id, bio },
+        );
+        return res.affectedRows;
       }
 
-      @Modifying({ returnType: "void" })
-      @Query("UPDATE decl_users SET active = 0 WHERE id = :id")
-      deactivate(@SqlParam("id") _id: number): Promise<void> {
-        return undefined as unknown as Promise<void>;
+      async deactivate(id: number): Promise<void> {
+        await this.execute("UPDATE decl_users SET active = 0 WHERE id = :id", {
+          id,
+        });
       }
 
-      @Query("SELECT COUNT(*) AS total FROM decl_users WHERE active = :active")
-      countActiveCustom(@SqlParam("active") _active: number): Promise<number> {
-        return 0 as unknown as Promise<number>;
+      async countActiveCustom(active: number): Promise<number> {
+        const row = await this.queryOne<{ total: number }>(
+          "SELECT COUNT(*) AS total FROM decl_users WHERE active = :active",
+          { active },
+        );
+        return Number(row?.total ?? 0);
       }
     }
 
@@ -388,13 +390,13 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
       expect(await repo.existsByEmail("missing@example.org")).toBe(false);
       expect(await repo.countByActive(true)).toBe(3);
 
-      // @Query, @Param, parameter object, @Modifying
-      expect((await repo.findAdults(41)).map((u) => u.email)).toEqual([
+      // this.query, this.queryOne, this.execute
+      expect((await repo.findAdults(41)).map((u) => u.email_addr)).toEqual([
         "alan@example.org",
         "linus@kernel.org",
         "grace@bunest.dev",
       ]);
-      expect((await repo.findByEmailParamAlias("grace@bunest.dev"))?.displayName).toBe(
+      expect((await repo.findByEmailCustom("grace@bunest.dev"))?.display_name).toBe(
         "Grace Hopper",
       );
       expect(await repo.findAllByParamsObject({ minAge: 40, active: 1 })).toHaveLength(2);
@@ -421,7 +423,6 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
     expect(() =>
       OrmRepository({ table: "ok", columns: { x: "bad col" } }),
     ).toThrow(/Invalid column mapping/);
-    expect(() => SqlParam("1bad")).toThrow(/Invalid @SqlParam/);
   });
 
   it("compiles dialect-accurate SQL across postgres, mysql, mariadb, and mssql drivers", async () => {
@@ -435,14 +436,11 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
     abstract class MultiDialectAccountRepo extends CrudRepository<AccountRow, number> {
       abstract findByEmailIgnoreCase(email: string): Promise<AccountRow | null>;
 
-      @Query("SELECT * FROM accounts WHERE email = :email AND full_name = :name", {
-        single: true,
-      })
-      findCustom(
-        @SqlParam("email") _email: string,
-        @SqlParam("name") _name: string,
-      ): Promise<AccountRow | null> {
-        return null as unknown as Promise<AccountRow | null>;
+      async findCustom(email: string, name: string): Promise<AccountRow | null> {
+        return this.queryOne<AccountRow>(
+          "SELECT * FROM accounts WHERE email = :email AND full_name = :name",
+          { email, name },
+        );
       }
     }
 
@@ -542,10 +540,12 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
       @Transactional()
       @Span("archive-project")
       @SetMetadata(CUSTOM_META_KEY, { audited: true })
-      @Modifying()
-      @Query("UPDATE orm_di_projects SET active = 0 WHERE slug = :slug")
-      archiveBySlug(@SqlParam("slug") _slug: string): Promise<number> {
-        return 0 as unknown as Promise<number>;
+      async archiveBySlug(slug: string): Promise<number> {
+        const res = await this.execute(
+          "UPDATE orm_di_projects SET active = 0 WHERE slug = :slug",
+          { slug },
+        );
+        return res.affectedRows;
       }
 
       @Transactional()

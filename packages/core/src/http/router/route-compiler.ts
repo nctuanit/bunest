@@ -132,6 +132,7 @@ export interface RouteCompilerInput {
     readonly handler: Function;
     readonly prefix?: string;
   };
+  readonly onErrorTrace?: PipelineRuntimeConfig["onErrorTrace"];
 }
 
 interface VersionedCompiledGroup {
@@ -495,6 +496,7 @@ export async function compileRoutes(
     securityHooks,
     mapException,
     customErrorHandler,
+    onErrorTrace,
   } = input;
 
   const runtimeVersioning = isRuntimeVersioning(versioning);
@@ -549,6 +551,7 @@ export async function compileRoutes(
         : undefined,
     mapException,
     customErrorHandler,
+    onErrorTrace,
   };
 
   // Pre-compile each route's execution plan
@@ -891,7 +894,8 @@ export async function compileRoutes(
         Boolean(onResponseHook) ||
         Boolean(onRouteTriggered) ||
         Boolean(securityHooks && securityHooks.length > 0) ||
-        Boolean(customErrorHandler);
+        Boolean(customErrorHandler) ||
+        Boolean(onErrorTrace);
       const isFastSingleton =
         singletonMiddlewares.length === 0 &&
         singletonGuards.length === 0 &&

@@ -4,18 +4,19 @@ import {
   sourceLocationToVscodeRange,
   type BunestWorkspaceIndex,
 } from "../workspace/workspace-index";
+import { findInlineSqlDiagnostics } from "./sql-intellisense.provider";
 
 /**
  * Publishes all Bunest static diagnostics (`BUNEST001..007`,
  * `BUNEST_REPO001..007`, `BUNEST_MACRO001..005`, `BUNEST_DEC001..005`,
- * `BUNEST_ARCH001..002`, and custom rules configured in `bunest.config.ts`)
- * into the VS Code Problems panel.
+ * `BUNEST_ARCH001..002`, `BUNEST_SQL001..002`, and custom rules configured
+ * in `bunest.config.ts`) into the VS Code Problems panel.
  */
 export class BunestDiagnosticsProvider implements vscode.Disposable {
   private readonly collection: vscode.DiagnosticCollection;
   private readonly subscription: vscode.Disposable;
 
-  constructor(index: BunestWorkspaceIndex) {
+  constructor(private readonly index: BunestWorkspaceIndex) {
     this.collection = vscode.languages.createDiagnosticCollection("bunest");
     this.subscription = index.onDidUpdate((snapshots) => {
       this.publish(snapshots);
@@ -53,6 +54,37 @@ export class BunestDiagnosticsProvider implements vscode.Disposable {
         list.push(vDiag);
         byFile.set(diag.location.filePath, list);
       }
+    }
+
+    // Inline SQL diagnostics for open TypeScript documents (BUNEST_SQL001..002)
+    for (const doc of vscode.workspace.textDocuments) {
+      if (
+        doc.uri.scheme !== "file" ||
+        (doc.languageId !== "typescript" && doc.languageId !== "typescriptreact")
+      ) {
+        continue;
+      }
+      const sqlDiags = findInlineSqlDiagnostics(doc.getText());
+      if (sqlDiags.length === 0) continue;
+
+      const list = byFile.get(doc.uri.fsPath) ?? [];
+      for (const d of sqlDiags) {
+        const severity =
+          d.severity === "error"
+            ? vscode.DiagnosticSeverity.Error
+            : d.severity === "warning"
+              ? vscode.DiagnosticSeverity.Warning
+              : vscode.DiagnosticSeverity.Information;
+        const range = new vscode.Range(
+          doc.positionAt(d.startOffset),
+          doc.positionAt(d.endOffset),
+        );
+        const vDiag = new vscode.Diagnostic(range, d.message, severity);
+        vDiag.code = d.code;
+        vDiag.source = "bunest";
+        list.push(vDiag);
+      }
+      byFile.set(doc.uri.fsPath, list);
     }
 
     for (const [filePath, diags] of byFile) {

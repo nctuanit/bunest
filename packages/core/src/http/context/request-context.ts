@@ -105,6 +105,10 @@ export class RequestContext {
   public readonly request: Request;
   public container?: RequestScopeContainer;
   public session?: Record<string, unknown>;
+  /** Current HTTP pipeline stage (populated when dev diagnostics tracing is enabled). */
+  public traceStage?: string;
+  /** Optional correlation ID attached to error responses when dev diagnostics tracing is enabled. */
+  public requestId?: string;
 
   private readonly server?: BunServerLike;
   private readonly trustProxy?: boolean | number | string[];

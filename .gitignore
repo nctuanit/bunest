@@ -5,6 +5,7 @@ node_modules
 out
 dist
 .bunest
+.smoke-logs
 *.tgz
 
 # code coverage

@@ -56,6 +56,7 @@ import {
   executeCompiledRoute,
   executeFallbackException,
   type MiddlewareEntry,
+  type PipelineRuntimeConfig,
   runAdapterOnRequestHook,
 } from "../pipeline/execution-pipeline";
 import { mergeHeadersOntoNativeResponse } from "../pipeline/response-serializer";
@@ -484,6 +485,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     readonly prefix?: string;
     readonly excludedRoutes?: RouteInfo[];
   };
+  private onErrorTraceHook?: PipelineRuntimeConfig["onErrorTrace"];
+  private devDiagnosticsHandler?: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response> | null;
 
   private diGlobalGuards: GuardLike[] = [];
   private diGlobalPipes: PipeLike[] = [];
@@ -1591,6 +1597,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       securityHooks: this.securityHooks,
       mapException: (err) => this.mapException(err),
       customErrorHandler: this.customErrorHandler,
+      onErrorTrace: this.onErrorTraceHook,
     });
 
     return this.compiledTable.routes;
@@ -1598,6 +1605,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   getCompiledRoutes(): readonly RouteDefinition[] {
     return this.compiledTable?.routes ?? [];
+  }
+
+  setErrorTraceHook(hook: PipelineRuntimeConfig["onErrorTrace"]): void {
+    this.onErrorTraceHook = hook;
+    this.compiledTable = undefined;
+  }
+
+  setDevDiagnosticsHandler(
+    handler:
+      | ((req: Request, pathname: string) => Response | Promise<Response> | null)
+      | undefined,
+  ): void {
+    this.devDiagnosticsHandler = handler;
   }
 
   getServer(): BunServerLike | undefined {
@@ -2335,6 +2355,14 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         table.runtime,
         fallbackHit.allowHeader,
       );
+    }
+
+    // 3b. Dev Diagnostics endpoints (/__bunest/errors, /__bunest/routes, /__bunest/graph)
+    if (this.devDiagnosticsHandler) {
+      const diagResponse = await this.devDiagnosticsHandler(req, pathname);
+      if (diagResponse !== null) {
+        return diagResponse;
+      }
     }
 
     // 4. Static assets serving (`useStaticAssets` / `ServeStaticModule` via Bun.file())

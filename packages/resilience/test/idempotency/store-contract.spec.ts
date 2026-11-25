@@ -3,10 +3,17 @@ import { InMemoryIdempotencyStore } from "../../src/idempotency/index";
 import { idempotencyStoreContract } from "../../src/idempotency/testing/index";
 
 describe("InMemoryIdempotencyStore — idempotencyStoreContract", () => {
-  const cases = idempotencyStoreContract(() => new InMemoryIdempotencyStore(), {
-    concurrent: true,
-    lockTtl: 120,
-  });
+  let now = 1_000_000;
+  const cases = idempotencyStoreContract(
+    () => new InMemoryIdempotencyStore({ now: () => now }),
+    {
+      concurrent: true,
+      lockTtl: 120,
+      advanceTime: (ms) => {
+        now += ms;
+      },
+    },
+  );
 
   for (const c of cases) {
     it(c.name, c.run);
@@ -15,7 +22,8 @@ describe("InMemoryIdempotencyStore — idempotencyStoreContract", () => {
 
 describe("InMemoryIdempotencyStore helpers & contract validation", () => {
   it("supports peek(), size, clear(), and expiry sweeping", async () => {
-    const store = new InMemoryIdempotencyStore();
+    let now = 1_000_000;
+    const store = new InMemoryIdempotencyStore({ now: () => now });
     expect(store.size).toBe(0);
     expect(store.peek("k1")).toBeUndefined();
 
@@ -35,7 +43,7 @@ describe("InMemoryIdempotencyStore helpers & contract validation", () => {
 
     // Expired entry is filtered by peek() and size
     await store.acquire("k2", "owner-2", "fp-2", 5);
-    await new Promise((r) => setTimeout(r, 15));
+    now += 15;
     expect(store.peek("k2")).toBeUndefined();
     expect(store.size).toBe(1);
 

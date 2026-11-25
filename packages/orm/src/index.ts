@@ -307,6 +307,7 @@ export {
   type OrmQueryReturnMode,
   type OrmRepositoryMetadata,
   type OrmRepositoryOptions,
+  type OrmSqlParams,
 } from "./declarative-repository";
 
 // Declarative Repository Extensions (Custom Operators, Scopes, Projection, Pagination, Composable Fragments)

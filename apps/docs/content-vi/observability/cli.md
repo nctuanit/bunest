@@ -17,12 +17,36 @@ bunx @bunest/cli --help
 | `bunest new <name>` | Khởi tạo dự án Bunest TypeScript mới kèm cấu hình `tsconfig.json`, `@bunest/validation` và `bun:test` |
 | `bunest generate <schematic> <name>` (`g`) | Sinh controller, service, module, DTO, guard, pipe, interceptor, filter, middleware, endpoint hoặc toàn bộ CRUD resource |
 | `bunest dev` | Chạy ứng dụng ở chế độ watch của Bun (`--port`, `--entry`) kèm sinh kiểu `.d.ts` trực tiếp |
-| `bunest build` | Đóng gói ứng dụng cho môi trường production qua `Bun.build()` (`--minify`, `--outfile`) |
+| `bunest build` | Đóng gói ứng dụng (ESM bundle qua `Bun.build()` hoặc binary độc lập `--compile`; hỗ trợ `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
 | `bunest typegen` | Quét route, DI token, class macro, macro/preset tùy chỉnh và các registry hệ sinh thái vào `.bunest/types/bunest.d.ts` |
 | `bunest check` | Chạy phân tích tĩnh cho DI, derived-query của ORM, Class Macro và các quy tắc kiến trúc tùy chỉnh (`BUNEST_ARCH*`) |
+| `bunest verify` | Chạy gọn 1 vòng `typecheck -> static check -> test` (`--reporter=agent\|pretty\|json`) |
+| `bunest mcp` | Khởi chạy MCP server qua `stdio` cho AI coding agent (`bunest_verify`, `bunest_explain_error`, `bunest_recent_errors`, diagnostics) |
 | `bunest delombok` | Khai triển các Class Macro/preset tích hợp sẵn và tùy chỉnh thành các phương thức TypeScript tường minh |
 | `bunest repl` | Khởi chạy DI REPL tương tác trên `AppModule` đã biên dịch của bạn |
 | `bunest info` | In thông tin chẩn đoán về Bunest, Bun runtime và hệ điều hành |
+
+## Các chế độ Build (`bunest build`)
+
+| Chế độ | Lệnh | Đầu ra |
+| --- | --- | --- |
+| **ESM Bundle (mặc định)** | `bunest build --target bun\|node\|browser --sourcemap none\|linked\|inline\|external --minify` | Xuất `dist/*.js` qua `Bun.build({ format: "esm" })`, tự copy `assets` và tùy chọn sinh `.d.ts` |
+| **Standalone Native Binary** | `bunest build --compile --minify` | Biên dịch thành 1 file thực thi độc lập (`dist/main` hoặc `dist/main.exe`) qua `bun build --compile` |
+| **Watch Mode** | `bunest build --watch` | Tự động rebuild khi file nguồn thay đổi |
+
+## Tích hợp AI Agent (`bunest mcp` & `bunest verify`)
+
+Kết nối **Antigravity**, **Claude Code** hoặc **Cursor** trực tiếp tới Bunest thông qua MCP server tích hợp sẵn:
+
+```bash
+bunx @bunest/cli mcp --server-url http://127.0.0.1:3000
+```
+
+Các MCP tool có sẵn:
+- `bunest_verify` — chạy typecheck, static diagnostics và `bun test` trả về báo cáo gọn cho LLM.
+- `bunest_explain_error` — tra cứu bất kỳ mã `BUNEST_E*` nào kèm cách sửa theo thứ tự, ví dụ và link docs.
+- `bunest_recent_errors` — đọc trace lỗi runtime gần nhất từ `.bunest/errors.jsonl` hoặc `GET /__bunest/errors`.
+- `bunest_inspect_diagnostics` — soi lỗi tĩnh, bảng route (`/__bunest/routes`) hoặc đồ thị DI (`/__bunest/graph`).
 
 ## Tham khảo nhanh
 

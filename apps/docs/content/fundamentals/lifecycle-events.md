@@ -48,7 +48,7 @@ export class DatabaseService
     OnApplicationShutdown
 {
   private readonly logger = new Logger(DatabaseService.name);
-  private db!: Database;
+  private db: Database;
 
   async onModuleInit() {
     this.db = new Database(":memory:");

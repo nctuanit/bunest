@@ -4,6 +4,7 @@ import type {
   AnalyzedRepository,
   SourceLocation,
 } from "@bunest/cli";
+import { bunestIcon, type BunestIconName } from "../ui/icons";
 import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
 
 export class DataModelTreeItem extends vscode.TreeItem {
@@ -64,7 +65,8 @@ export class BunestDataModelsTreeProvider
         label: string,
         count: number,
         id: "repositories" | "entities" | "models" | "macros",
-        icon: string,
+        icon: BunestIconName,
+        fallback: string,
       ) => {
         const item = new DataModelTreeItem(
           label,
@@ -75,14 +77,14 @@ export class BunestDataModelsTreeProvider
           id,
         );
         item.description = String(count);
-        item.iconPath = new vscode.ThemeIcon(icon);
+        item.iconPath = bunestIcon(icon, fallback);
         sections.push(item);
       };
 
-      mkSection("Declarative Repositories", repos.length, "repositories", "database");
-      mkSection("SQL Entities", entities.length, "entities", "table");
-      mkSection("Mongoose Models", models.length, "models", "symbol-struct");
-      mkSection("Class Macros", macros.length, "macros", "sparkle");
+      mkSection("Declarative Repositories", repos.length, "repositories", "repository", "database");
+      mkSection("SQL Entities", entities.length, "entities", "entity", "table");
+      mkSection("Mongoose Models", models.length, "models", "entity", "symbol-struct");
+      mkSection("Class Macros", macros.length, "macros", "service", "sparkle");
       return sections;
     }
 
@@ -99,7 +101,7 @@ export class BunestDataModelsTreeProvider
             r.location,
           );
           item.description = `${r.dialect} · ${r.tableName} (${r.methods.length})`;
-          item.iconPath = new vscode.ThemeIcon("repo");
+          item.iconPath = bunestIcon("repository", "repo");
           return item;
         });
       }

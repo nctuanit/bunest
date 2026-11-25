@@ -41,6 +41,7 @@ Bunest uses **Legacy TypeScript Decorators** to support constructor dependency i
     "emitDecoratorMetadata": true,
     "verbatimModuleSyntax": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "noEmit": true
   }
 }

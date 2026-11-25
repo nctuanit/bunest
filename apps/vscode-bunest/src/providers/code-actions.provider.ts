@@ -3,7 +3,6 @@ import * as vscode from "vscode";
 import {
   buildAddProviderToModuleEdit,
   buildCollapseLoggerBoilerplateEdit,
-  buildConvertDerivedToQueryEdit,
   buildConvertTypeImportEdit,
   buildDelombokEdit,
   buildSyncDiConstructorEdit,
@@ -61,6 +60,44 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
     for (const vDiag of context.diagnostics) {
       if (vDiag.source !== "bunest") continue;
       const code = String(vDiag.code ?? "");
+
+      // Quick Fix for BUNEST_SQL002: replace `return ... as unknown as Promise<...>` with `return generatedQuery();`
+      if (code === "BUNEST_SQL002") {
+        const wsEdit = new vscode.WorkspaceEdit();
+        wsEdit.replace(document.uri, vDiag.range, "return generatedQuery();");
+        const fullText = document.getText();
+        if (!/\bgeneratedQuery\b/.test(fullText)) {
+          const ormImportMatch =
+            /import\s*\{([^}]*)\}\s*from\s*["']@bunest\/orm["']/.exec(fullText);
+          if (ormImportMatch && ormImportMatch.index !== undefined) {
+            const closeBraceIdx =
+              ormImportMatch.index + ormImportMatch[0].indexOf("}");
+            const existing = ormImportMatch[1]!.trim();
+            const prefix = existing.endsWith(",") || existing === "" ? " " : ", ";
+            wsEdit.insert(
+              document.uri,
+              document.positionAt(closeBraceIdx),
+              `${prefix}generatedQuery `,
+            );
+          } else {
+            wsEdit.insert(
+              document.uri,
+              new vscode.Position(0, 0),
+              `import { generatedQuery } from "@bunest/orm";\n`,
+            );
+          }
+        }
+        const act = new vscode.CodeAction(
+          "Bunest: Replace stub cast with return generatedQuery()",
+          vscode.CodeActionKind.QuickFix,
+        );
+        act.edit = wsEdit;
+        act.diagnostics = [vDiag];
+        act.isPreferred = true;
+        actions.push(act);
+        continue;
+      }
+
       const matched = snap.diagnostics.find(
         (d) =>
           d.code === code &&
@@ -228,30 +265,7 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
 
     const cursorLine1 = range.start.line + 1;
 
-    // 2. Refactor: Derived Repository Method -> Explicit @Query(...)
-    for (const repo of snap.repositories) {
-      if (repo.sourceFile !== filePath) continue;
-      for (const m of repo.methods) {
-        if (!m.derived || m.location.line !== cursorLine1) continue;
-        const res = buildConvertDerivedToQueryEdit({
-          filePath,
-          sourceText: document.getText(),
-          method: m,
-          repo,
-        });
-        const wsEdit = toWorkspaceEdit(res, document);
-        if (wsEdit) {
-          const act = new vscode.CodeAction(
-            `Bunest: Convert derived query \`${m.name}\` to explicit @Query()`,
-            vscode.CodeActionKind.RefactorRewrite,
-          );
-          act.edit = wsEdit;
-          actions.push(act);
-        }
-      }
-    }
-
-    // 3. Refactor: Class Macros -> Expand (Delombok)
+    // 2. Refactor: Class Macros -> Expand (Delombok)
     if (sf) {
       for (const macro of snap.scan.classMacros) {
         if (macro.sourceFile !== filePath) continue;

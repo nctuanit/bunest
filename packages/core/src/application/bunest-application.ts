@@ -47,6 +47,12 @@ import {
   type RequestScopeContainer,
 } from "../http/index";
 import { DIContainer } from "../di/di-container";
+import {
+  AgentErrorTraceStore,
+  buildAgentErrorTrace,
+  generateTraceRequestId,
+  type PipelineTraceStage,
+} from "../errors/agent-trace";
 import type {
   BunestApplicationContextOptions,
   InjectBody,
@@ -59,6 +65,19 @@ import {
   resolveRouterModulePrefixes,
 } from "../router/router.module";
 import { BunestApplicationContext } from "./bunest-application-context";
+
+export interface DevDiagnosticsOptions {
+  /** URL prefix for dev diagnostics endpoints (default: `"/__bunest"`). */
+  readonly prefix?: string;
+  /** Maximum error traces retained in memory (default: `50`). */
+  readonly maxEntries?: number;
+  /** Optional JSONL file path (e.g. `".bunest/errors.jsonl"`) for cross-process agent reads. */
+  readonly filePath?: string;
+  /** Base working directory for shortening stack frame paths (default: `process.cwd()`). */
+  readonly cwd?: string;
+  /** Explicitly allow enabling in `NODE_ENV=production` (default: `false`). */
+  readonly allowInProduction?: boolean;
+}
 
 interface ExtendedHttpAdapter {
   enableVersioning?(options: VersioningOptions): unknown;
@@ -671,6 +690,152 @@ export class BunestApplication extends BunestApplicationContext {
    */
   private csrfEnabled = false;
   private securityHeadersEnabled = false;
+  private devDiagnosticsStore?: AgentErrorTraceStore;
+
+  /**
+   * Enables AI-agent-friendly runtime error tracing (`stage`, `appFrames`, `X-Request-Id`,
+   * ring-buffer + optional `.bunest/errors.jsonl`) and dev-only diagnostics endpoints:
+   * `GET <prefix>/errors`, `GET <prefix>/routes`, and `GET <prefix>/graph`.
+   *
+   * Disabled automatically when `NODE_ENV === "production"` unless `allowInProduction: true`.
+   */
+  enableDevDiagnostics(options: DevDiagnosticsOptions = {}): this {
+    if (
+      process.env.NODE_ENV === "production" &&
+      options.allowInProduction !== true
+    ) {
+      return this;
+    }
+
+    const rawPrefix = (options.prefix ?? "/__bunest").trim();
+    const prefix =
+      rawPrefix === "" || rawPrefix === "/"
+        ? "/__bunest"
+        : `/${rawPrefix.replace(/^\/+|\/+$/g, "")}`;
+
+    const store = new AgentErrorTraceStore({
+      maxEntries: options.maxEntries,
+      filePath: options.filePath,
+      cwd: options.cwd,
+    });
+    this.devDiagnosticsStore = store;
+
+    this.httpAdapter.setErrorTraceHook((error, ctx, host, response) => {
+      const requestId =
+        ctx.requestId ??
+        ctx.request.headers.get("x-request-id") ??
+        generateTraceRequestId();
+      ctx.requestId = requestId;
+
+      const controllerClass = host.getClass();
+      const handlerKey = host.getHandlerKey();
+      const trace = buildAgentErrorTrace({
+        id: requestId,
+        method: ctx.request.method,
+        path: ctx.pathname,
+        statusCode: response.status,
+        stage: (ctx.traceStage as PipelineTraceStage | undefined) ?? "unknown",
+        controller:
+          controllerClass && controllerClass.name !== "FallbackControllerStub"
+            ? controllerClass.name
+            : undefined,
+        handler:
+          handlerKey && handlerKey !== "fallback"
+            ? String(handlerKey)
+            : undefined,
+        error,
+        cwd: store.cwd,
+      });
+      store.record(trace);
+
+      const headers = new Headers(response.headers);
+      if (!headers.has("x-request-id")) {
+        headers.set("x-request-id", requestId);
+      }
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    });
+
+    this.httpAdapter.setDevDiagnosticsHandler((req, pathname) => {
+      if (req.method !== "GET" || !pathname.startsWith(`${prefix}/`)) {
+        return null;
+      }
+      const sub = pathname.slice(prefix.length);
+      const url = new URL(req.url);
+
+      if (sub === "/errors") {
+        const limitParam = Number(url.searchParams.get("limit") ?? 20);
+        const limit =
+          Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 20;
+        const format = url.searchParams.get("format");
+        const id = url.searchParams.get("id");
+        if (id) {
+          const found = store.getById(id);
+          if (!found) {
+            return Response.json(
+              { error: `Trace "${id}" not found` },
+              { status: 404 },
+            );
+          }
+          return Response.json(found);
+        }
+        if (format === "agent") {
+          return new Response(store.formatForAgent(limit), {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
+        return Response.json({
+          count: store.list(limit).length,
+          errors: store.list(limit),
+        });
+      }
+
+      if (sub === "/routes") {
+        const routes = this.getRoutes().map((r) => ({
+          method: r.method,
+          path: r.fullPath,
+          controller: r.controller?.name ?? "UnknownController",
+          handler: String(r.handlerKey),
+          version: r.version,
+        }));
+        return Response.json({ count: routes.length, routes });
+      }
+
+      if (sub === "/graph") {
+        const modules = [...this.container.getModules().values()].map((m) => ({
+          name: m.metatype?.name ?? "AnonymousModule",
+          isGlobal: m.isGlobal,
+          controllers: [...m.controllers].map(
+            (c) => (typeof c === "function" ? c.name : String(c)),
+          ),
+          providers: [...m.providers.values()].map((p) => ({
+            token:
+              typeof p.token === "function"
+                ? p.token.name
+                : String(p.token),
+            scope: p.scope,
+          })),
+          exports: [...(m.exportedTokens ?? [])].map((t) =>
+            typeof t === "function" ? t.name : String(t),
+          ),
+        }));
+        return Response.json({ count: modules.length, modules });
+      }
+
+      return null;
+    });
+
+    this.routesDirty = true;
+    return this;
+  }
+
+  getDevDiagnosticsStore(): AgentErrorTraceStore | undefined {
+    return this.devDiagnosticsStore;
+  }
 
   enableCsrfProtection(options?: CsrfProtectionOptions<Request>): this {
     if (this.isInitialized) {

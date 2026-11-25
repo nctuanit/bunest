@@ -17,6 +17,9 @@ interface PackageJson {
   type?: string;
   engines?: Record<string, string>;
   repository?: { type?: string; url?: string; directory?: string } | string;
+  homepage?: string;
+  bugs?: { url?: string } | string;
+  publishConfig?: { access?: string; registry?: string };
   files?: string[];
   exports?: Record<
     string,
@@ -455,10 +458,13 @@ async function main() {
     if (
       !pkg.repository ||
       typeof pkg.repository !== "object" ||
-      !pkg.repository.url ||
+      pkg.repository.url !== "https://github.com/nctuanit/bunest.git" ||
       pkg.repository.directory !== `packages/${dir}`
     ) {
       errors.push(`${label}: missing or mismatched repository metadata`);
+    }
+    if (pkg.publishConfig?.access !== "public") {
+      errors.push(`${label}: missing publishConfig.access = "public"`);
     }
     if (
       !Array.isArray(pkg.files) ||

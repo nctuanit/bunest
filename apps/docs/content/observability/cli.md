@@ -17,12 +17,36 @@ bunx @bunest/cli --help
 | `bunest new <name>`                        | Scaffold a new Bunest TypeScript project with `tsconfig.json`, `@bunest/validation`, and `bun:test` setup                          |
 | `bunest generate <schematic> <name>` (`g`) | Generate controllers, services, modules, DTOs, guards, pipes, interceptors, filters, middleware, endpoints, or full CRUD resources |
 | `bunest dev`                               | Run your application in Bun watch mode (`--port`, `--entry`) with live `.d.ts` typegen                                             |
-| `bunest build`                             | Bundle your application for production via `Bun.build()` (`--minify`, `--outfile`)                                                 |
+| `bunest build`                             | Bundle your application (`Bun.build()` ESM or `--compile` standalone binary; `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
 | `bunest typegen`                           | Scan routes, DI tokens, class macros, custom macros/presets, and ecosystem registries into `.bunest/types/bunest.d.ts`             |
 | `bunest check`                             | Run static DI, ORM derived-query, Class Macro, and custom architecture diagnostics (`BUNEST_ARCH*`)                                |
+| `bunest verify`                            | Run `typecheck -> static check -> test` in one compact report (`--reporter=agent\|pretty\|json`)                                   |
+| `bunest mcp`                               | Start a zero-dependency stdio MCP server exposing `bunest_verify`, `bunest_explain_error`, `bunest_recent_errors`, and diagnostics |
 | `bunest delombok`                          | Expand built-in & custom Class Macros/presets into explicit TypeScript methods                                                     |
 | `bunest repl`                              | Start an interactive DI REPL against your compiled `AppModule`                                                                     |
 | `bunest info`                              | Print Bunest, Bun runtime, and OS environment diagnostics                                                                          |
+
+## Build Modes (`bunest build`)
+
+| Mode | Command | Output |
+| --- | --- | --- |
+| **ESM Bundle (default)** | `bunest build --target bun\|node\|browser --sourcemap none\|linked\|inline\|external --minify` | Bundles `dist/*.js` via `Bun.build({ format: "esm" })`, copies configured `assets`, and optionally emits `.d.ts` declarations |
+| **Standalone Native Binary** | `bunest build --compile --minify` | Compiles a single self-contained executable (`dist/main` or `dist/main.exe`) via `bun build --compile` |
+| **Watch Mode** | `bunest build --watch` | Rebuilds automatically on source changes |
+
+## AI Agent Integration (`bunest mcp` & `bunest verify`)
+
+Connect **Antigravity**, **Claude Code**, or **Cursor** directly to Bunest via the built-in stdio MCP server:
+
+```bash
+bunx @bunest/cli mcp --server-url http://127.0.0.1:3000
+```
+
+Available MCP tools:
+- `bunest_verify` — runs typecheck, static diagnostics, and `bun test` with a compact agent report.
+- `bunest_explain_error` — looks up any `BUNEST_E*` code with ordered fixes, examples, and docs link.
+- `bunest_recent_errors` — reads recent runtime traces from `.bunest/errors.jsonl` or `GET /__bunest/errors`.
+- `bunest_inspect_diagnostics` — inspects static diagnostics, compiled routes (`/__bunest/routes`), or DI module graph (`/__bunest/graph`).
 
 ## Quick Reference
 

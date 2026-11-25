@@ -26,6 +26,8 @@
           minRead: "phút đọc",
           copy: "Sao chép",
           copied: "Đã chép",
+          copyMarkdown: "Chép Markdown",
+          copiedMarkdown: "Đã chép Markdown",
           siteTitle:
             "Tài liệu | Bunest — Framework TypeScript thuần Bun theo kiến trúc NestJS",
           titleSuffix: "Tài liệu Bunest",
@@ -38,6 +40,8 @@
           minRead: "min read",
           copy: "Copy",
           copied: "Copied",
+          copyMarkdown: "Copy Markdown",
+          copiedMarkdown: "Copied Markdown",
           siteTitle:
             "Documentation | Bunest — A progressive Bun-native TypeScript framework",
           titleSuffix: "Bunest Documentation",
@@ -79,6 +83,24 @@
   }
 
   $("#bn-theme-toggle")?.addEventListener("click", toggleTheme);
+
+  // Copy current page Markdown (for AI / sharing)
+  $("#bn-copy-md")?.addEventListener("click", async () => {
+    const btn = $("#bn-copy-md");
+    const slug = document.body.getAttribute("data-current-slug") || "";
+    const page = await fetchPageData(slug);
+    const md = page?.rawMarkdown || $("#bn-content")?.innerText || "";
+    try {
+      await navigator.clipboard.writeText(md);
+      btn?.classList.add("is-copied");
+      const label = btn?.querySelector(".bn-copy-md-label");
+      if (label) label.textContent = UI.copiedMarkdown;
+      setTimeout(() => {
+        btn?.classList.remove("is-copied");
+        if (label) label.textContent = UI.copyMarkdown;
+      }, 1800);
+    } catch {}
+  });
 
   // -------------------------------------------------------------------------
   // Mobile Sidebar Drawer
@@ -406,6 +428,13 @@
     }
     if (tocSlot) tocSlot.innerHTML = renderTocHtml(page.toc);
     if (pagerSlot) pagerSlot.innerHTML = renderPagerHtml(page.prev, page.next);
+
+    const editLink = $("#bn-edit-github");
+    if (editLink && page.sourceFile) {
+      const currentHref = editLink.getAttribute("href") || "";
+      const baseRepo = currentHref.split("/edit/main/")[0] || "https://github.com/nctuanit/bunest";
+      editLink.setAttribute("href", `${baseRepo}/edit/main/${page.sourceFile}`);
+    }
 
     document.body.setAttribute("data-current-slug", page.slug);
     document.title =

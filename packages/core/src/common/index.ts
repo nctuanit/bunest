@@ -1100,6 +1100,7 @@ export {
   removeEmptyDir,
   removePath,
   renamePath,
+  runSubprocess,
   statFs,
   statPath,
   statSyncPath,
@@ -1114,5 +1115,7 @@ export {
   type FsStats,
   type FsWatchOptions,
   type FsWatcher,
+  type SubprocessOptions,
+  type SubprocessResult,
 } from "./runtime/fs-runtime";
 export type { ConsoleInspectOptions } from "./logger/console-logger";

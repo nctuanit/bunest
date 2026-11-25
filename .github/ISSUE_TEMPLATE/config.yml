@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Help (GitHub Discussions)
+    url: https://github.com/nctuanit/bunest/discussions
+    about: Ask usage questions, share ideas, or showcase what you built with Bunest.
+  - name: Documentation
+    url: https://nctuanit.github.io/bunest/
+    about: Browse guides, API references, and NestJS migration docs (EN/VI).
+  - name: Security Vulnerability
+    url: https://github.com/nctuanit/bunest/blob/main/SECURITY.md
+    about: Report security issues privately via SECURITY.md.

@@ -15,7 +15,7 @@ import { TransientJobHandler } from "./transient-job.handler";
 
 @Injectable()
 export class PluginRunnerService implements OnModuleInit {
-  private notifier!: EmailNotifier;
+  private notifier: EmailNotifier;
 
   constructor(private readonly moduleRef: ModuleRef) {}
 

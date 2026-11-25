@@ -68,7 +68,7 @@ describe("AI-first: error catalog", () => {
     const report = toBunestErrorReport(err)!;
     expect(report.code).toBe("BUNEST_E001");
     expect(report.fixes.length).toBeGreaterThan(1);
-    expect(report.docs).toEndWith("docs/errors.md#bunest_e001");
+    expect(report.docs).toEndWith("/faq/common-errors#bunest_e001");
     expect(report.details).toMatchObject({ requester: "A", moduleName: "M", token: "B", index: 0 });
     // toJSON → JSON.stringify works and round-trips
     expect(JSON.parse(JSON.stringify(err)).code).toBe("BUNEST_E001");

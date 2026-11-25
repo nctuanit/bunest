@@ -134,6 +134,12 @@ export interface PipelineRuntimeConfig {
     readonly handler: Function;
     readonly prefix?: string;
   };
+  readonly onErrorTrace?: (
+    error: unknown,
+    ctx: RequestContext,
+    host: HttpExecutionContext,
+    response: Response,
+  ) => Response | void;
 }
 
 function shouldEnforceBodyLimitHeader(
@@ -801,6 +807,7 @@ async function executeFullCompiledRoute(
         }
 
       // Stage 3: Security / CORS Pre-Processing
+      if (runtime.onErrorTrace) ctx.traceStage = "security";
       if (runtime.cors) {
         const corsResult = await evaluateCors(
           ctx.request,
@@ -863,11 +870,13 @@ async function executeFullCompiledRoute(
       }
 
       // Stage 4: Middleware -> Stages 5..11
+      if (runtime.onErrorTrace) ctx.traceStage = "middleware";
       const mwResponse = await executeMiddlewareChain(
         middlewares,
         ctx,
         async () => {
         // Stage 5: Guards (Global -> Controller -> Method)
+        if (runtime.onErrorTrace) ctx.traceStage = "guard";
         let guards: readonly CanActivate[];
         if (compiled.singletonGuards) {
           guards = compiled.singletonGuards;
@@ -899,6 +908,7 @@ async function executeFullCompiledRoute(
         }
 
         // Stage 6 & 10: Interceptors (Global -> Controller -> Method before; reverse after)
+        if (runtime.onErrorTrace) ctx.traceStage = "interceptor";
         let interceptors: readonly BunestInterceptor[];
         if (compiled.singletonInterceptors) {
           interceptors = compiled.singletonInterceptors;
@@ -970,6 +980,7 @@ async function executeFullCompiledRoute(
           }
 
           // Stages 7 & 8: Extract parameters & run pipes
+          if (runtime.onErrorTrace) ctx.traceStage = "pipe";
           let args: unknown[];
           try {
             args = await resolveRouteArguments(
@@ -1029,6 +1040,7 @@ async function executeFullCompiledRoute(
               route.handlerKey
             ] as (...a: unknown[]) => unknown);
 
+          if (runtime.onErrorTrace) ctx.traceStage = "handler";
           const rawResult = await handlerMethod.apply(controllerInstance, args);
           if (rawResult instanceof Response) {
             innerHandlerResponse = rawResult;
@@ -1082,6 +1094,7 @@ async function executeFullCompiledRoute(
         }
 
         // Stage 11: Response Serialization (ADR-010) + optional @Render() + Security Headers
+        if (runtime.onErrorTrace) ctx.traceStage = "serialization";
         let response: Response;
         const sentDirectly = ctx.hasResponseContext()
           ? ctx.responseContext.getSentResponse()
@@ -1220,7 +1233,17 @@ async function executeFullCompiledRoute(
         ctx,
         executionContext,
       );
-      return await finalizeResponse(errorResponse);
+      const finalized = await finalizeResponse(errorResponse);
+      if (runtime.onErrorTrace) {
+        const traced = runtime.onErrorTrace(
+          error,
+          ctx,
+          executionContext,
+          finalized,
+        );
+        if (traced instanceof Response) return traced;
+      }
+      return finalized;
     } finally {
       if (requestContainer) {
         await requestContainer.destroy().catch(() => {});
@@ -1310,9 +1333,15 @@ export async function executeFallbackException(
         ctx,
         host,
       );
-      return runtime.securityHeaders
+      const secured = runtime.securityHeaders
         ? applySecurityHeaders(fallbackRes, runtime.securityHeaders)
         : fallbackRes;
+      if (runtime.onErrorTrace) {
+        if (!ctx.traceStage) ctx.traceStage = "routing";
+        const traced = runtime.onErrorTrace(error, ctx, host, secured);
+        if (traced instanceof Response) return traced;
+      }
+      return secured;
     } finally {
       if (requestContainer) {
         await requestContainer.destroy().catch(() => {});

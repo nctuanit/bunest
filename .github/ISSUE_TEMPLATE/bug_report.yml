@@ -1,0 +1,83 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Bunest
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please include a minimal reproduction so we can fix it quickly.
+        For security vulnerabilities, please follow [SECURITY.md](../../SECURITY.md) instead of opening a public issue.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Affected Package
+      multiple: true
+      options:
+        - "@bunest/core"
+        - "@bunest/validation"
+        - "@bunest/orm"
+        - "@bunest/security"
+        - "@bunest/swagger"
+        - "@bunest/graphql"
+        - "@bunest/cache"
+        - "@bunest/jobs"
+        - "@bunest/messaging"
+        - "@bunest/microservices"
+        - "@bunest/observability"
+        - "@bunest/resilience"
+        - "@bunest/storage"
+        - "@bunest/mail"
+        - "@bunest/elasticsearch"
+        - "@bunest/workflows"
+        - "@bunest/ai"
+        - "@bunest/testing"
+        - "@bunest/cli"
+        - "vscode-bunest"
+        - "docs"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: Paste a minimal TypeScript snippet or link to a reproduction repo.
+      render: ts
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Output / BUNEST_E* Code
+      description: Paste the full error message or `bunest verify --reporter=agent` output.
+      render: shell
+
+  - type: input
+    id: bun-version
+    attributes:
+      label: Bun Version
+      placeholder: "1.4.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows
+    validations:
+      required: true

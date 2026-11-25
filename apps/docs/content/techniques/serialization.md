@@ -12,13 +12,13 @@ Decorate your response entity with `@bunest/validation/transformer` decorators (
 import { Exclude, Expose } from "@bunest/validation/transformer";
 
 export class UserEntity {
-  id!: string;
-  firstName!: string;
-  lastName!: string;
-  email!: string;
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
 
   @Exclude()
-  passwordHash!: string;
+  passwordHash: string;
 
   @Expose({ groups: ["admin"] })
   internalNotes?: string;

@@ -1,25 +1,35 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { Controller, Get } from "../../../../../../packages/core/src/common";
 import {
+  CHECK_DISK_SPACE_LIB,
   DiskHealthIndicator,
   HealthCheck,
   HealthCheckService,
   TerminusModule,
-  defaultCheckDiskSpace,
+  type CheckDiskSpaceFn,
   type HealthCheckResult,
 } from "../../../../../../packages/observability/src";
 import {
-  createTestApp,
+  Test,
   describeConformance,
   httpRequest,
   type TestAppContext,
 } from "../../../../_helpers/index";
 
-function createDiskHealthApp(
+const GB = 1024 * 1024 * 1024;
+/**
+ * Fixed filesystem stats (100 GB total, 60 GB free => 40 GB / 40% used)
+ * so threshold assertions never assume host `/` has >0 used bytes.
+ */
+const FIXED_DISK_STATS = { size: 100 * GB, free: 60 * GB };
+const fixedCheckDiskSpace: CheckDiskSpaceFn = async () => FIXED_DISK_STATS;
+
+async function createDiskHealthApp(
   handler: (props: {
     healthCheck: HealthCheckService;
     disk: DiskHealthIndicator;
   }) => Promise<HealthCheckResult>,
+  options?: { checkDiskSpace?: CheckDiskSpaceFn },
 ): Promise<TestAppContext> {
   @Controller()
   class HealthController {
@@ -35,13 +45,25 @@ function createDiskHealthApp(
     }
   }
 
-  return createTestApp(
-    {
-      imports: [TerminusModule.forRoot({ logger: false })],
-      controllers: [HealthController],
+  let builder = Test.createTestingModule({
+    imports: [TerminusModule.forRoot({ logger: false })],
+    controllers: [HealthController],
+  });
+  if (options?.checkDiskSpace) {
+    builder = builder
+      .overrideProvider(CHECK_DISK_SPACE_LIB)
+      .useValue(options.checkDiskSpace);
+  }
+  const moduleRef = await builder.compile();
+  const app = moduleRef.createBunestApplication({ logger: false });
+  await app.init();
+  return {
+    app,
+    moduleRef,
+    close: async () => {
+      await app.close();
     },
-    { silentLogger: true },
-  );
+  };
 }
 
 describeConformance(
@@ -51,7 +73,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001"],
     notes:
-      "Adapts upstream @nestjs/terminus DiskHealthIndicator E2E spec to zero-socket BunestApplication and native fs.promises.statfs (defaultCheckDiskSpace). Outer HealthCheckResult/HealthCheckException assertions tolerate Bunest's timestamp/message/errors envelope fields while strictly verifying info/error/details.",
+      "Adapts upstream @nestjs/terminus DiskHealthIndicator E2E spec to zero-socket BunestApplication with deterministic fixed filesystem metrics for threshold assertions and real statfs ENOENT verification for non-existent paths.",
   },
   () => {
     let ctx: TestAppContext | undefined;
@@ -65,15 +87,17 @@ describeConformance(
 
     describe("#checkStorage", () => {
       it("should check if the disk threshold has not exceeded", async () => {
-        const { free, size } = await defaultCheckDiskSpace("/");
-        ctx = await createDiskHealthApp(({ healthCheck, disk }) =>
-          healthCheck.check([
-            () =>
-              disk.checkStorage("disk", {
-                path: "/",
-                threshold: size - free + 1024 * 1024 * 1024,
-              }),
-          ]),
+        const { free, size } = FIXED_DISK_STATS;
+        ctx = await createDiskHealthApp(
+          ({ healthCheck, disk }) =>
+            healthCheck.check([
+              () =>
+                disk.checkStorage("disk", {
+                  path: "/",
+                  threshold: size - free + GB,
+                }),
+            ]),
+          { checkDiskSpace: fixedCheckDiskSpace },
         );
 
         const details = {
@@ -89,10 +113,12 @@ describeConformance(
       });
 
       it("should check if correctly displays a threshold exceeded error", async () => {
-        ctx = await createDiskHealthApp(({ healthCheck, disk }) =>
-          healthCheck.check([
-            () => disk.checkStorage("disk", { path: "/", threshold: 0 }),
-          ]),
+        ctx = await createDiskHealthApp(
+          ({ healthCheck, disk }) =>
+            healthCheck.check([
+              () => disk.checkStorage("disk", { path: "/", threshold: 0 }),
+            ]),
+          { checkDiskSpace: fixedCheckDiskSpace },
         );
 
         const details = {
@@ -112,16 +138,18 @@ describeConformance(
       });
 
       it("should check if the disk thresholdPercent has not exceeded", async () => {
-        const { free, size } = await defaultCheckDiskSpace("/");
+        const { free, size } = FIXED_DISK_STATS;
         const thresholdPercent = (size - free) / size;
-        ctx = await createDiskHealthApp(({ healthCheck, disk }) =>
-          healthCheck.check([
-            async () =>
-              disk.checkStorage("disk", {
-                path: "/",
-                thresholdPercent: thresholdPercent + 0.2,
-              }),
-          ]),
+        ctx = await createDiskHealthApp(
+          ({ healthCheck, disk }) =>
+            healthCheck.check([
+              async () =>
+                disk.checkStorage("disk", {
+                  path: "/",
+                  thresholdPercent: thresholdPercent + 0.2,
+                }),
+            ]),
+          { checkDiskSpace: fixedCheckDiskSpace },
         );
 
         const details = {
@@ -137,16 +165,18 @@ describeConformance(
       });
 
       it("should check if correctly displays a thresholdPercent exceeded error", async () => {
-        const { free, size } = await defaultCheckDiskSpace("/");
+        const { free, size } = FIXED_DISK_STATS;
         const thresholdPercent = (size - free) / size;
-        ctx = await createDiskHealthApp(({ healthCheck, disk }) =>
-          healthCheck.check([
-            async () =>
-              disk.checkStorage("disk", {
-                path: "/",
-                thresholdPercent: thresholdPercent - 0.2,
-              }),
-          ]),
+        ctx = await createDiskHealthApp(
+          ({ healthCheck, disk }) =>
+            healthCheck.check([
+              async () =>
+                disk.checkStorage("disk", {
+                  path: "/",
+                  thresholdPercent: thresholdPercent - 0.2,
+                }),
+            ]),
+          { checkDiskSpace: fixedCheckDiskSpace },
         );
 
         const details = {

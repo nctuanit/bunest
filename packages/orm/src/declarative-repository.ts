@@ -87,6 +87,17 @@ export const ORM_PARAM_METADATA = Symbol.for("bunest:orm:declarative_param");
 // ============================================================================
 
 /**
+ * Parameter binding input for `this.query(sql, params)`, `this.queryOne(sql, params)`,
+ * and `this.execute(sql, params)` on `CrudRepository`.
+ *
+ * - Pass a plain object for named `:param` placeholders (e.g. `{ id: 10 }`).
+ * - Pass an array for positional `$1` / `?` placeholders (e.g. `[10]`).
+ */
+export type OrmSqlParams =
+  | readonly unknown[]
+  | Readonly<Record<string, unknown>>;
+
+/**
  * Structural host accepted by compiled declarative repositories (implemented by `DataSource`).
  */
 export interface OrmDeclarativeHost {
@@ -253,6 +264,33 @@ export abstract class CrudRepository<
   abstract deleteById(id: TKey): Promise<void>;
   abstract count(): Promise<number>;
   abstract existsById(id: TKey): Promise<boolean>;
+
+  /**
+   * Executes a parameterized multi-dialect SQL query and returns all rows.
+   * Supports named `:param` placeholders with an object (`{ id: 10 }`)
+   * as well as positional (`$1`, `?`) placeholders with an array (`[10]`).
+   */
+  protected abstract query<TRow = Record<string, unknown>>(
+    sql: string,
+    params?: OrmSqlParams,
+  ): Promise<TRow[]>;
+
+  /**
+   * Executes a parameterized multi-dialect SQL query and returns the first row or `null`.
+   */
+  protected abstract queryOne<TRow = Record<string, unknown>>(
+    sql: string,
+    params?: OrmSqlParams,
+  ): Promise<TRow | null>;
+
+  /**
+   * Executes a parameterized write/DDL SQL statement (`INSERT`, `UPDATE`, `DELETE`)
+   * and returns `{ affectedRows, lastInsertId, rows }`.
+   */
+  protected abstract execute(
+    sql: string,
+    params?: OrmSqlParams,
+  ): Promise<OrmQueryResult>;
 }
 
 // ============================================================================
@@ -2016,6 +2054,77 @@ interface CompiledDialectBundle {
   getOrCompileDerived(methodName: string): OrmMethodExecutor | undefined;
 }
 
+const MAX_RAW_SQL_CACHE = 512;
+
+type CompiledRawSql = ReturnType<typeof compileDialectSql>;
+
+function compileAndBindRawSql(
+  sql: string,
+  params: OrmSqlParams | undefined,
+  dialect: OrmDialect,
+  cache: Map<string, CompiledRawSql>,
+  repoName: string,
+  methodName: "query" | "queryOne" | "execute",
+): { readonly sql: string; readonly params: unknown[] } {
+  if (typeof sql !== "string" || sql.trim().length === 0) {
+    throw new Error(
+      `${repoName}.${methodName}() requires a non-empty SQL string.`,
+    );
+  }
+  let compiled = cache.get(sql);
+  if (!compiled) {
+    compiled = compileDialectSql(sql, dialect);
+    if (cache.size >= MAX_RAW_SQL_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        cache.delete(oldestKey);
+      }
+    }
+    cache.set(sql, compiled);
+  }
+  if (compiled.bindings.length === 0) {
+    return { sql: compiled.sql, params: [] };
+  }
+  if (compiled.hasNamedPlaceholders) {
+    if (
+      params === null ||
+      params === undefined ||
+      typeof params !== "object" ||
+      Array.isArray(params)
+    ) {
+      const names = compiled.bindings
+        .filter(
+          (b): b is { readonly kind: "named"; readonly name: string } =>
+            b.kind === "named",
+        )
+        .map((b) => `:${b.name}`);
+      throw new Error(
+        `${repoName}.${methodName}() uses named placeholders (${names.join(", ")}) and requires a parameter object (e.g. { ${names.map((n) => `${n.slice(1)}: ...`).join(", ")} }).`,
+      );
+    }
+    const record = params as Readonly<Record<string, unknown>>;
+    const resolved = compiled.bindings.map((b) => {
+      if (b.kind === "named") {
+        if (!(b.name in record)) {
+          throw new Error(
+            `${repoName}.${methodName}() is missing named parameter "${b.name}".`,
+          );
+        }
+        const val = record[b.name];
+        return val === undefined ? null : val;
+      }
+      return null;
+    });
+    return { sql: compiled.sql, params: resolved };
+  }
+  const arr = Array.isArray(params) ? params : [];
+  const resolved = compiled.bindings.map((b) => {
+    const val = b.kind === "positional" ? arr[b.index] : undefined;
+    return val === undefined ? null : val;
+  });
+  return { sql: compiled.sql, params: resolved };
+}
+
 function compileCustomQueryMethod(
   decl: RawQueryDeclaration,
   dialect: OrmDialect,
@@ -2924,7 +3033,50 @@ export function compileOrmRepository<TRepo extends object>(
         );
         return res.rows.length > 0;
       },
+      query: async (host, args) => {
+        const compiled = compileAndBindRawSql(
+          args[0] as string,
+          args[1] as OrmSqlParams | undefined,
+          dialect,
+          rawSqlCache,
+          RepoClass.name,
+          "query",
+        );
+        const res = await host.driver.query<Record<string, unknown>>(
+          compiled.sql,
+          compiled.params,
+        );
+        return [...res.rows];
+      },
+      queryOne: async (host, args) => {
+        const compiled = compileAndBindRawSql(
+          args[0] as string,
+          args[1] as OrmSqlParams | undefined,
+          dialect,
+          rawSqlCache,
+          RepoClass.name,
+          "queryOne",
+        );
+        const res = await host.driver.query<Record<string, unknown>>(
+          compiled.sql,
+          compiled.params,
+        );
+        return res.rows[0] ?? null;
+      },
+      execute: async (host, args) => {
+        const compiled = compileAndBindRawSql(
+          args[0] as string,
+          args[1] as OrmSqlParams | undefined,
+          dialect,
+          rawSqlCache,
+          RepoClass.name,
+          "execute",
+        );
+        return host.driver.execute(compiled.sql, compiled.params);
+      },
     };
+
+    const rawSqlCache = new Map<string, CompiledRawSql>();
 
     const queryMethods = new Map<string, OrmMethodExecutor>();
     for (const [name, decl] of rawQueryDeclarations.entries()) {

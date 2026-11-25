@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { SourceLocation } from "@bunest/cli";
+import { bunestIcon, type BunestIconName } from "../ui/icons";
 import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
 
 type EventsSectionId = "events" | "rpc" | "cqrs" | "config";
@@ -53,7 +54,8 @@ export class BunestEventsRpcTreeProvider
         label: string,
         count: number,
         id: EventsSectionId,
-        icon: string,
+        icon: BunestIconName,
+        fallback: string,
       ) => {
         const item = new EventsRpcTreeItem(
           label,
@@ -63,14 +65,14 @@ export class BunestEventsRpcTreeProvider
           id,
         );
         item.description = String(count);
-        item.iconPath = new vscode.ThemeIcon(icon);
+        item.iconPath = bunestIcon(icon, fallback);
         return item;
       };
       return [
-        mk("Events", events.length, "events", "bell"),
-        mk("RPC Patterns", msgPatterns.length + evtPatterns.length, "rpc", "radio-tower"),
-        mk("CQRS Handlers", commands.length + queries.length, "cqrs", "layers"),
-        mk("Config & .env", configNs.length + envKeys.length, "config", "settings-gear"),
+        mk("Events", events.length, "events", "event", "bell"),
+        mk("RPC Patterns", msgPatterns.length + evtPatterns.length, "rpc", "rpc", "radio-tower"),
+        mk("CQRS Handlers", commands.length + queries.length, "cqrs", "cqrs", "layers"),
+        mk("Config & .env", configNs.length + envKeys.length, "config", "config", "settings-gear"),
       ];
     }
 

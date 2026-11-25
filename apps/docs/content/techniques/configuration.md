@@ -102,7 +102,7 @@ import { databaseConfig } from "./database.config";
 @Injectable()
 export class MailService {
   @ConfigValue("SMTP_HOST", "localhost")
-  readonly smtpHost!: string;
+  readonly smtpHost: string;
 
   constructor(
     @InjectConfig(databaseConfig)

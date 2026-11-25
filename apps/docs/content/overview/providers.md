@@ -118,7 +118,7 @@ export const AUDIT_WRITER = Symbol("AUDIT_WRITER");
 @Injectable()
 export class AuditService {
   @Inject(AUDIT_WRITER)
-  private readonly writer!: (event: string) => void;
+  private readonly writer: (event: string) => void;
 
   private readonly logger = new Logger(AuditService.name);
 

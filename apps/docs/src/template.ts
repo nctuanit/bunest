@@ -14,10 +14,22 @@ import {
   withLangBase,
   type DocsLang,
 } from "./i18n";
+import corePackageJson from "../../../packages/core/package.json";
 import type { CompiledPage } from "./content-loader";
+
+export const BUNEST_VERSION: string = corePackageJson.version ?? "0.1.0";
+export const DOCS_REPO_URL =
+  process.env.DOCS_REPO_URL ?? "https://github.com/nctuanit/bunest";
+export const DOCS_SITE_ORIGIN = (
+  process.env.DOCS_SITE_URL ?? "https://nctuanit.github.io"
+).replace(/\/+$/, "");
 
 function escapeHtml(str: string): string {
   return Bun.escapeHTML(str);
+}
+
+function buildEditUrl(sourceFile: string): string {
+  return `${DOCS_REPO_URL.replace(/\/+$/, "")}/edit/main/${sourceFile}`;
 }
 
 export function renderBrandLogoSvg(): string {
@@ -145,6 +157,10 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
   const badgeHtml = page.badge
     ? `<span class="bn-meta-badge">${escapeHtml(page.badge)}</span>`
     : "";
+  const canonicalUrl = `${DOCS_SITE_ORIGIN}${page.href}`;
+  const enAbsoluteUrl = `${DOCS_SITE_ORIGIN}${enHref}`;
+  const viAbsoluteUrl = `${DOCS_SITE_ORIGIN}${viHref}`;
+  const editUrl = buildEditUrl(page.sourceFile);
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -153,6 +169,18 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(pageTitle)}</title>
   <meta name="description" content="${escapeHtml(page.description)}" />
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
+  <link rel="alternate" hreflang="en" href="${escapeHtml(enAbsoluteUrl)}" />
+  <link rel="alternate" hreflang="vi" href="${escapeHtml(viAbsoluteUrl)}" />
+  <link rel="alternate" hreflang="x-default" href="${escapeHtml(enAbsoluteUrl)}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Bunest Documentation" />
+  <meta property="og:title" content="${escapeHtml(pageTitle)}" />
+  <meta property="og:description" content="${escapeHtml(page.description)}" />
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
+  <meta name="twitter:description" content="${escapeHtml(page.description)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -199,7 +227,10 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
       </div>
       <a class="bn-header-pill" href="${url("/architecture/adrs")}" data-spa-link title="Architecture Decision Records">
         <span class="bn-pill-dot"></span>
-        <span>v0.1 &bull; Bun 1.4.5+</span>
+        <span>v${escapeHtml(BUNEST_VERSION)} &bull; Bun 1.4.5+</span>
+      </a>
+      <a class="bn-icon-btn" href="${escapeHtml(DOCS_REPO_URL)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ui.githubLabel)}" title="${escapeHtml(ui.githubLabel)}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
       </a>
       <button type="button" class="bn-icon-btn bn-theme-toggle" id="bn-theme-toggle" aria-label="${escapeHtml(ui.toggleTheme)}" title="${escapeHtml(ui.toggleTheme)}">
         <svg class="bn-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -239,15 +270,30 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
     <main class="bn-main" id="bn-main">
       <div class="bn-article-container">
         <div class="bn-page-meta" id="bn-page-meta">
-          <span class="bn-kicker" id="bn-page-kicker">${escapeHtml(page.categoryTitle)}</span>
-          <span class="bn-meta-sep">&bull;</span>
-          <span class="bn-reading-time" id="bn-reading-time">${page.readingMinutes} ${escapeHtml(ui.minRead)}</span>
-          <span id="bn-meta-badge-slot">${badgeHtml}</span>
+          <nav class="bn-breadcrumb" aria-label="Breadcrumb">
+            <a href="${url("/")}" data-spa-link>${escapeHtml(ui.homeLabel)}</a>
+            <span class="bn-breadcrumb-sep" aria-hidden="true">/</span>
+            <span class="bn-kicker" id="bn-page-kicker">${escapeHtml(page.categoryTitle)}</span>
+            <span class="bn-meta-sep">&bull;</span>
+            <span class="bn-reading-time" id="bn-reading-time">${page.readingMinutes} ${escapeHtml(ui.minRead)}</span>
+            <span id="bn-meta-badge-slot">${badgeHtml}</span>
+          </nav>
+          <button type="button" class="bn-copy-md-btn" id="bn-copy-md" title="${escapeHtml(ui.copyMarkdown)}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span class="bn-copy-md-label">${escapeHtml(ui.copyMarkdown)}</span>
+          </button>
         </div>
 
         <article class="bn-content" id="bn-content">
           ${page.html}
         </article>
+
+        <div class="bn-article-actions">
+          <a id="bn-edit-github" class="bn-edit-link" href="${escapeHtml(editUrl)}" target="_blank" rel="noopener noreferrer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>${escapeHtml(ui.editOnGithub)}</span>
+          </a>
+        </div>
 
         <div id="bn-pager-slot">
           ${renderPager(page.prev, page.next, lang)}
@@ -261,6 +307,7 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
             <a href="${url("/architecture/adrs")}" data-spa-link>${escapeHtml(ui.footerAdrs)}</a>
             <a href="${url("/architecture/migration-from-nestjs")}" data-spa-link>${escapeHtml(ui.footerMigration)}</a>
             <a href="${url("/ecosystem/roadmap")}" data-spa-link>${escapeHtml(ui.footerRoadmap)}</a>
+            <a href="${assetUrl("/llms.txt")}" target="_blank" rel="noopener noreferrer">${escapeHtml(ui.footerLlms)}</a>
           </div>
         </footer>
       </div>

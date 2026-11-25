@@ -55,16 +55,16 @@ import {
 @Entity("users")
 export class User {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ type: "text", unique: true })
-  email!: string;
+  email: string;
 
   @Column({ type: "text", default: "member" })
-  role!: string;
+  role: string;
 
   @Column({ type: "boolean", default: true })
-  active!: boolean;
+  active: boolean;
 }
 
 @OrmRepository(User)

@@ -1,0 +1,211 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Bunest SQL in @Query",
+  "scopeName": "bunest.sql.injection",
+  "injectionSelector": "L:source.ts -comment -string, L:source.tsx -comment -string",
+  "patterns": [
+    { "include": "#this-query-template" },
+    { "include": "#this-query-double" },
+    { "include": "#this-query-single" },
+    { "include": "#orm-query-template" },
+    { "include": "#orm-query-double" },
+    { "include": "#orm-query-single" },
+    { "include": "#query-template" },
+    { "include": "#query-double" },
+    { "include": "#query-single" }
+  ],
+  "repository": {
+    "sql-inner": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.ts",
+          "match": "\\\\."
+        },
+        {
+          "name": "variable.parameter.sql",
+          "match": "(?<!:):[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "variable.parameter.sql",
+          "match": "\\$\\d+|\\?"
+        },
+        {
+          "include": "source.sql"
+        }
+      ]
+    },
+    "template-interpolation": {
+      "name": "meta.template.expression.ts",
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.begin.ts" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.end.ts" }
+      },
+      "patterns": [
+        { "include": "source.ts" }
+      ]
+    },
+    "this-query-template": {
+      "name": "meta.embedded.block.sql",
+      "begin": "(\\bthis\\.)(queryOne|query|execute)(?:<[^>]*>)?\\s*(\\()\\s*(`)",
+      "beginCaptures": {
+        "1": { "name": "variable.language.this.ts" },
+        "2": { "name": "entity.name.function.ts" },
+        "3": { "name": "punctuation.definition.parameters.begin.ts" },
+        "4": { "name": "punctuation.definition.string.template.begin.ts" }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.template.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#template-interpolation" },
+        { "include": "#sql-inner" }
+      ]
+    },
+    "this-query-double": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(\\bthis\\.)(queryOne|query|execute)(?:<[^>]*>)?\\s*(\\()\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "variable.language.this.ts" },
+        "2": { "name": "entity.name.function.ts" },
+        "3": { "name": "punctuation.definition.parameters.begin.ts" },
+        "4": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    },
+    "this-query-single": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(\\bthis\\.)(queryOne|query|execute)(?:<[^>]*>)?\\s*(\\()\\s*(')",
+      "beginCaptures": {
+        "1": { "name": "variable.language.this.ts" },
+        "2": { "name": "entity.name.function.ts" },
+        "3": { "name": "punctuation.definition.parameters.begin.ts" },
+        "4": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    },
+    "orm-query-template": {
+      "name": "meta.embedded.block.sql",
+      "begin": "(@OrmQuery)\\s*(\\()\\s*(`)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.template.begin.ts" }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.template.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#template-interpolation" },
+        { "include": "#sql-inner" }
+      ]
+    },
+    "orm-query-double": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(@OrmQuery)\\s*(\\()\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    },
+    "orm-query-single": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(@OrmQuery)\\s*(\\()\\s*(')",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    },
+    "query-template": {
+      "name": "meta.embedded.block.sql",
+      "begin": "(@Query)\\s*(\\()\\s*(`)(?=\\s*$|\\s*(?:--[^\\n]*|/\\*.*?\\*/\\s*)*(?i:SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|REPLACE|PRAGMA|EXPLAIN|SHOW|DESCRIBE|DESC|CALL|MERGE|VACUUM|ATTACH|DETACH|BEGIN|COMMIT|ROLLBACK|VALUES|SET)\\b)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.template.begin.ts" }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.template.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#template-interpolation" },
+        { "include": "#sql-inner" }
+      ]
+    },
+    "query-double": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(@Query)\\s*(\\()\\s*(\")(?=\\s*(?:--[^\\n]*|/\\*.*?\\*/\\s*)*(?i:SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|REPLACE|PRAGMA|EXPLAIN|SHOW|DESCRIBE|DESC|CALL|MERGE|VACUUM|ATTACH|DETACH|BEGIN|COMMIT|ROLLBACK|VALUES|SET)\\b)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    },
+    "query-single": {
+      "name": "meta.embedded.inline.sql",
+      "begin": "(@Query)\\s*(\\()\\s*(')(?=\\s*(?:--[^\\n]*|/\\*.*?\\*/\\s*)*(?i:SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|REPLACE|PRAGMA|EXPLAIN|SHOW|DESCRIBE|DESC|CALL|MERGE|VACUUM|ATTACH|DETACH|BEGIN|COMMIT|ROLLBACK|VALUES|SET)\\b)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.decorator.ts" },
+        "2": { "name": "punctuation.definition.parameters.begin.ts" },
+        "3": { "name": "punctuation.definition.string.begin.ts" }
+      },
+      "end": "(')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.ts" }
+      },
+      "contentName": "source.sql",
+      "patterns": [
+        { "include": "#sql-inner" }
+      ]
+    }
+  }
+}

@@ -42,27 +42,27 @@ import {
 
 export class OrderItemDto {
   @IsString()
-  sku!: string;
+  sku: string;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  quantity!: number;
+  quantity: number;
 }
 
 export class CreateOrderDto {
   @IsEmail()
-  customerEmail!: string;
+  customerEmail: string;
 
   @IsString()
   @MinLength(2)
-  customerName!: string;
+  customerName: string;
 
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items!: OrderItemDto[];
+  items: OrderItemDto[];
 
   @IsOptional()
   @IsString()

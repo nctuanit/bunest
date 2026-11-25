@@ -1990,3 +1990,89 @@ a:hover {
   background: var(--bn-primary);
   color: #ffffff;
 }
+
+/* ==========================================================================
+   Breadcrumbs, Copy Markdown & Edit on GitHub
+   ========================================================================== */
+
+.bn-page-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bn-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bn-breadcrumb a {
+  color: var(--bn-text-muted);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bn-breadcrumb a:hover {
+  color: var(--bn-primary);
+}
+
+.bn-breadcrumb-sep {
+  color: var(--bn-text-muted);
+  opacity: 0.6;
+  font-size: 0.8rem;
+}
+
+.bn-copy-md-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--bn-border);
+  background: var(--bn-bg-subtle);
+  color: var(--bn-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.bn-copy-md-btn:hover {
+  border-color: var(--bn-primary-border);
+  color: var(--bn-primary);
+}
+
+.bn-copy-md-btn.is-copied {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.bn-article-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 28px 0 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--bn-border);
+}
+
+.bn-edit-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--bn-text-muted);
+  text-decoration: none;
+}
+
+.bn-edit-link:hover {
+  color: var(--bn-primary);
+}

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { StaticModuleNode, SourceLocation } from "@bunest/cli";
+import { bunestIcon } from "../ui/icons";
 import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
 
 export class ModuleTreeItem extends vscode.TreeItem {
@@ -65,7 +66,9 @@ export class BunestModulesTreeProvider
           m.location,
         );
         item.description = badges || `${m.providers.length} providers · ${m.controllers.length} ctrls`;
-        item.iconPath = new vscode.ThemeIcon(m.isGlobal ? "globe" : "package");
+        item.iconPath = m.isGlobal
+          ? bunestIcon("module-global", "globe")
+          : bunestIcon("module", "package");
         return item;
       });
     }
@@ -112,13 +115,12 @@ export class BunestModulesTreeProvider
         );
         if (prov) {
           item.description = prov.scope !== "SINGLETON" ? prov.scope : prov.kind;
-          item.iconPath = new vscode.ThemeIcon(
+          item.iconPath =
             prov.kind === "controller"
-              ? "globe"
+              ? bunestIcon("controller", "globe")
               : prov.kind === "repository"
-                ? "database"
-                : "symbol-class",
-          );
+                ? bunestIcon("repository", "database")
+                : bunestIcon("service", "symbol-class");
         } else if (mod) {
           item.description = "module";
           item.iconPath = new vscode.ThemeIcon("package");

@@ -46,10 +46,10 @@ import { Args, Field, ID, ObjectType, Query, Resolver } from "@bunest/graphql";
 @ObjectType()
 export class Book {
   @Field(() => ID)
-  id!: string;
+  id: string;
 
   @Field()
-  title!: string;
+  title: string;
 }
 
 @Resolver(() => Book)

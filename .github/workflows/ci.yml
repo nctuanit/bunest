@@ -14,23 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-verify:
-    name: ${{ matrix.os }} (Bun ${{ matrix.bun-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        bun-version: ["1.4.5", "latest"]
-
+  linux-bun-pinned:
+    name: Linux (Bun 1.4.5 — Required)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Bun ${{ matrix.bun-version }}
+      - name: Setup Bun 1.4.5
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ matrix.bun-version }}
+          bun-version: "1.4.5"
 
       - name: Print runtime environment
         run: bun --version
@@ -56,10 +50,182 @@ jobs:
       - name: Run release verification & CLI clean-project smoke test
         run: bun run verify:release
 
+  production-postgres-smoke:
+    name: Linux + PostgreSQL 17 Production Smoke (Bun 1.4.5 — Required)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies & PostgreSQL client tools
+        run: |
+          bun install --frozen-lockfile
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Build workspace packages
+        run: bun run build
+
+      - name: Start pinned PostgreSQL 17 container and wait for health check
+        env:
+          PG_PASSWORD: bunest_ci_pg_password_991
+        run: |
+          docker run -d \
+            --name bunest-pg-smoke \
+            -e POSTGRES_USER=bunest \
+            -e POSTGRES_PASSWORD="$PG_PASSWORD" \
+            -e POSTGRES_DB=postgres \
+            -p 127.0.0.1:5432:5432 \
+            --health-cmd="pg_isready -U bunest -d postgres" \
+            --health-interval=1s \
+            --health-timeout=2s \
+            --health-retries=30 \
+            postgres:17.5-alpine
+
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' bunest-pg-smoke)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "PostgreSQL 17 is healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs bunest-pg-smoke
+          exit 1
+
+      - name: Run real PostgreSQL production smoke suite
+        env:
+          DATABASE_ADMIN_URL: postgres://bunest:bunest_ci_pg_password_991@127.0.0.1:5432/postgres
+          PG_STOP_CMD: docker stop bunest-pg-smoke
+          PG_START_CMD: docker start bunest-pg-smoke
+          SMOKE_LOG_DIR: examples/production-rest-postgres/.smoke-logs
+        run: bun run --cwd examples/production-rest-postgres smoke:postgres
+
+      - name: Capture PostgreSQL logs on failure (redacted)
+        if: failure()
+        run: |
+          mkdir -p examples/production-rest-postgres/.smoke-logs
+          docker logs bunest-pg-smoke 2>&1 | sed -E 's/(password|secret|token)=[^[:space:]]+/\1=[REDACTED]/gi' > examples/production-rest-postgres/.smoke-logs/postgres.log || true
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-postgres-smoke-logs
+          path: examples/production-rest-postgres/.smoke-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup PostgreSQL container
+        if: always()
+        run: docker rm -f bunest-pg-smoke || true
+
+  redis-integration-smoke:
+    name: Linux + Redis 7.4 Fault-Injection Smoke (Bun 1.4.5)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: bun run build
+
+      - name: Start pinned Redis 7.4 container and wait for health check
+        run: |
+          docker run -d \
+            --name bunest-redis-smoke \
+            -p 127.0.0.1:6379:6379 \
+            --health-cmd="redis-cli ping" \
+            --health-interval=1s \
+            --health-timeout=2s \
+            --health-retries=30 \
+            redis:7.4-alpine
+
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' bunest-redis-smoke)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Redis 7.4 is healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs bunest-redis-smoke
+          exit 1
+
+      - name: Run real Redis integration & fault-injection suite
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          REDIS_STOP_CMD: docker stop bunest-redis-smoke
+          REDIS_START_CMD: docker start bunest-redis-smoke
+        run: bun run smoke:redis
+
+      - name: Cleanup Redis container
+        if: always()
+        run: docker rm -f bunest-redis-smoke || true
+
+  compatibility-matrix:
+    name: Compatibility — ${{ matrix.os }} (Bun ${{ matrix.bun-version }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bun-version: latest
+          - os: macos-latest
+            bun-version: "1.4.5"
+          - os: macos-latest
+            bun-version: latest
+          - os: windows-latest
+            bun-version: "1.4.5"
+          - os: windows-latest
+            bun-version: latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun ${{ matrix.bun-version }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ matrix.bun-version }}
+
+      - name: Print runtime environment
+        run: bun --version
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck (bun check)
+        run: bun run typecheck
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Run full test suite
+        run: bun test
+
+      - name: NestJS conformance ratchet
+        run: bun run conformance:gate
+
   coverage:
     name: Coverage Report (Ubuntu / Bun 1.4.5)
     runs-on: ubuntu-latest
-    needs: test-and-verify
+    needs: linux-bun-pinned
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,3 +243,48 @@ jobs:
 
       - name: Run tests with coverage
         run: bun run test:coverage
+
+  build-extension:
+    name: Build & Package VS Code Extension
+    runs-on: ubuntu-latest
+    needs: linux-bun-pinned
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun 1.4.5
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all workspace packages
+        run: bun run build
+
+      - name: Typecheck & test VS Code extension
+        run: |
+          bun check -p apps/vscode-bunest/tsconfig.json
+          bun test apps/vscode-bunest
+
+      - name: Package VS Code extension (.vsix)
+        run: bun run --cwd apps/vscode-bunest package
+
+      - name: Generate SHA256 checksum
+        working-directory: apps/vscode-bunest
+        run: |
+          VSIX=$(ls -1 vscode-bunest-*.vsix | head -n 1)
+          test -n "$VSIX"
+          sha256sum "$VSIX" > "${VSIX}.sha256"
+          cat "${VSIX}.sha256"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-bunest-vsix
+          path: |
+            apps/vscode-bunest/vscode-bunest-*.vsix
+            apps/vscode-bunest/vscode-bunest-*.vsix.sha256
+          if-no-files-found: error
+          retention-days: 30

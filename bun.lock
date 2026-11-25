@@ -81,6 +81,18 @@
         "@bunest/testing": "workspace:*",
       },
     },
+    "examples/production-rest-postgres": {
+      "name": "@bunest/example-production-rest-postgres",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/orm": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
     "examples/rest-crud": {
       "name": "@bunest/example-rest-crud",
       "version": "0.1.0",
@@ -324,6 +336,8 @@
     "@bunest/example-distributed-worker": ["@bunest/example-distributed-worker@workspace:examples/distributed-worker"],
 
     "@bunest/example-hello-world": ["@bunest/example-hello-world@workspace:examples/hello-world"],
+
+    "@bunest/example-production-rest-postgres": ["@bunest/example-production-rest-postgres@workspace:examples/production-rest-postgres"],
 
     "@bunest/example-rest-crud": ["@bunest/example-rest-crud@workspace:examples/rest-crud"],
 

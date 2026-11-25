@@ -23,7 +23,7 @@ export interface BunestErrorCatalogEntry {
 }
 
 export const BUNEST_ERROR_DOCS_BASE_URL =
-  "https://github.com/bunest/bunest/blob/main/docs/errors.md";
+  "https://nctuanit.github.io/bunest/faq/common-errors";
 
 export const BUNEST_ERROR_CATALOG = {
   BUNEST_E001: {

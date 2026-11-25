@@ -180,6 +180,22 @@ mock.module("vscode", () => ({
   MarkdownString: MockMarkdownString,
   Hover: MockHover,
   CodeLens: MockCodeLens,
+  TreeItem: class {
+    constructor(
+      public label: string,
+      public collapsibleState?: number,
+    ) {}
+  },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  ThemeIcon: class {
+    constructor(
+      public id: string,
+      public color?: unknown,
+    ) {}
+  },
+  ThemeColor: class {
+    constructor(public id: string) {}
+  },
   CompletionItem: MockCompletionItem,
   CompletionItemKind: {
     Method: 1,
@@ -1039,5 +1055,215 @@ export abstract class InvoiceRepository extends CrudRepository<InvoiceEntity, st
 
     diagProvider.dispose();
     index.dispose();
+  });
+
+  it("surfaces ▶ Run Query CodeLens and clickable Hover action on @Query() repository methods", async () => {
+    const repoSource = [
+      'import { UserEntity } from "./user.entity";',
+      "function OrmRepository(_e?: any): ClassDecorator { return () => {}; }",
+      "function Query(_sql: string): MethodDecorator { return () => {}; }",
+      "abstract class CrudRepository<T, K = number> {}",
+      "",
+      "@OrmRepository(UserEntity)",
+      "export abstract class UserRepository extends CrudRepository<UserEntity, number> {",
+      '  @Query("SELECT COUNT(*) AS count FROM users")',
+      "  abstract countUsers(): Promise<{ count: number }[]>;",
+      "}",
+      "",
+    ].join("\n");
+
+    const dir = createTempWorkspace({
+      "src/user.entity.ts": [
+        "function Entity(_t?: string): ClassDecorator { return () => {}; }",
+        "function PrimaryGeneratedColumn(): PropertyDecorator { return () => {}; }",
+        '@Entity("users")',
+        "export class UserEntity {",
+        "  @PrimaryGeneratedColumn()",
+        "  id!: number;",
+        "}",
+      ].join("\n"),
+      "src/user.repository.ts": repoSource,
+    });
+
+    mockWorkspaceFolders = [{ uri: MockUri.file(dir), name: "sql-app", index: 0 }];
+    const index = new BunestWorkspaceIndex();
+    await index.initialize();
+
+    const repoPath = join(dir, "src/user.repository.ts");
+    const doc = createMockTextDocument(repoPath, repoSource);
+
+    // 1. CodeLens exposes ▶ Run Query for @Query(...)
+    const codeLensProvider = new BunestCodeLensProvider(index);
+    const lenses = codeLensProvider.provideCodeLenses(
+      doc as unknown as import("vscode").TextDocument,
+    ) as unknown as MockCodeLens[];
+
+    const runLens = lenses.find(
+      (l) => l.command?.command === "bunest.executeRawQuery",
+    );
+    expect(runLens).toBeDefined();
+    expect(runLens!.command!.title).toBe("▶ Run Query");
+    const arg = runLens!.command!.arguments?.[0] as {
+      sql: string;
+      title: string;
+      cwd: string;
+    };
+    expect(arg.sql).toBe("SELECT COUNT(*) AS count FROM users");
+    expect(arg.title).toBe("UserRepository.countUsers()");
+
+    // 2. Hover on @Query(...) decorator line exposes clickable ▶ Run Query Directly link
+    const hoverProvider = new BunestHoverProvider(index);
+    const decHover = hoverProvider.provideHover(
+      doc as unknown as import("vscode").TextDocument,
+      new MockPosition(7, 10) as unknown as import("vscode").Position,
+    ) as unknown as MockHover | undefined;
+    expect(decHover).toBeDefined();
+    expect(decHover!.contents.isTrusted).toBe(true);
+    expect(decHover!.contents.value).toContain("SELECT COUNT(*) AS count FROM users");
+    expect(decHover!.contents.value).toContain("command:bunest.executeRawQuery");
+
+    index.dispose();
+  });
+
+  it("extracts inline @Query SQL context, flags BUNEST_SQL001/002, generates DTO samples, parses metrics, and discovers migrations", async () => {
+    const { extractQueryContextAtOffset, findInlineSqlDiagnostics } =
+      await import("../src/providers/sql-intellisense.provider");
+    const { parseDtoClassBodyToSample } = await import(
+      "../src/webview/http-studio.panel"
+    );
+    const { parsePrometheusMetrics } = await import(
+      "../src/webview/live-inspector.panel"
+    );
+    const { scanWorkspaceMigrations } = await import(
+      "../src/views/migrations.tree"
+    );
+
+    const src = `
+class AuditRepo {
+  @Modifying()
+  @Query("INSERT INTO task_audit (task_id, action) VALUES (:taskId, :act)")
+  recordAudit(_taskId: number, @SqlParam("act") a: string): Promise<number> {
+    return generatedQuery();
+  }
+}
+`;
+    const offset = src.indexOf(":taskId") + 3;
+    const ctx = extractQueryContextAtOffset(src, offset);
+    expect(ctx).toBeDefined();
+    expect(ctx?.methodName).toBe("recordAudit");
+    expect(ctx?.methodParams).toEqual(["_taskId", "a"]);
+    expect(ctx?.sqlParamAliases.get("act")).toBe(1);
+
+    const diagSrc = `
+class Repo {
+  @Query("SELECT * FROM items WHERE id = :id AND meta = '{}'::jsonb AND owner = :missingParam")
+  findOne(_id: number): Promise<unknown> {
+    return 0 as unknown as Promise<unknown>;
+  }
+}
+`;
+    const diags = findInlineSqlDiagnostics(diagSrc);
+    expect(diags.map((d) => d.code)).toContain("BUNEST_SQL001");
+    expect(diags.map((d) => d.code)).toContain("BUNEST_SQL002");
+    expect(
+      diags.filter((d) => d.code === "BUNEST_SQL001").map((d) => d.paramName),
+    ).toEqual(["missingParam"]);
+
+    const sample = parseDtoClassBodyToSample(`
+      @IsEmail()
+      email!: string;
+      @IsString()
+      name!: string;
+      @IsInt()
+      @Min(5)
+      quantity!: number;
+      @IsBoolean()
+      active!: boolean;
+      @IsArray()
+      tags?: string[];
+    `);
+    expect(sample).toEqual({
+      email: "user@example.com",
+      name: "Sample Item",
+      quantity: 5,
+      active: true,
+      tags: ["example"],
+    });
+
+    const parsed = parsePrometheusMetrics(
+      [
+        "bunest_http_requests_total 1240",
+        "bunest_http_requests_5xx_total 2",
+        "bunest_http_requests_in_flight 4",
+        "bunest_http_request_duration_ms_p95 14.25",
+        "bunest_http_request_duration_ms_p99 31.8",
+        "bunest_process_resident_memory_bytes 104857600",
+        "bunest_event_loop_lag_ms 0.42",
+        "bunest_db_pool_max 10",
+      ].join("\n"),
+    );
+    expect(parsed.totalRequests).toBe(1240);
+    expect(parsed.rssMb).toBe(100);
+    expect(parsed.p95Ms).toBe(14.25);
+
+    const exampleDir = join(
+      dirname(dirname(dirname(import.meta.dir))),
+      "examples/production-rest-postgres",
+    );
+    const scanned = scanWorkspaceMigrations(exampleDir);
+    expect(scanned.migrations.map((m) => m.id)).toContain("001_create_items");
+    expect(scanned.migrations.map((m) => m.id)).toContain(
+      "002_add_items_metadata",
+    );
+
+    // Swagger-grade route schema extraction (Path, Query, Headers, imported DTO Body, Guards)
+    const { extractRouteSchema } = await import(
+      "../src/webview/route-schema-extractor"
+    );
+    const prodCtrl = join(exampleDir, "src/items.controller.ts");
+    const fakeIndex = {
+      getAllContexts: () => [{ cwd: exampleDir, sourceRoot: join(exampleDir, "src") }],
+      getAllSnapshots: () => [],
+    } as unknown as import("../src/workspace/workspace-index").BunestWorkspaceIndex;
+
+    const postSchema = extractRouteSchema(fakeIndex, {
+      key: "POST /items",
+      method: "POST",
+      path: "/items",
+      paramsTypeText: "Record<string, string>",
+      queryTypeText: "Record<string, string>",
+      bodyTypeText: "CreateItemDto",
+      responseTypeText: "Promise<ItemResponse>",
+      controllerName: "ItemsController",
+      handlerName: "create",
+      sourceFile: prodCtrl,
+      location: { filePath: prodCtrl, start: 0, end: 0, line: 17, column: 1, endLine: 20, endColumn: 1 },
+      imports: [],
+    });
+    expect(postSchema.bodyTypeName).toBe("CreateItemDto");
+    expect(postSchema.bodyFields.map((f) => f.name)).toEqual([
+      "name",
+      "description",
+      "quantity",
+    ]);
+    expect(postSchema.bodyFields[0]!.required).toBe(true);
+    expect(postSchema.bodyFields[1]!.required).toBe(false);
+
+    const getSchema = extractRouteSchema(fakeIndex, {
+      key: "GET /items/:id",
+      method: "GET",
+      path: "/items/:id",
+      paramsTypeText: "{ id: string }",
+      queryTypeText: "Record<string, string>",
+      bodyTypeText: "unknown",
+      responseTypeText: "Promise<ItemResponse>",
+      controllerName: "ItemsController",
+      handlerName: "findOne",
+      sourceFile: prodCtrl,
+      location: { filePath: prodCtrl, start: 0, end: 0, line: 23, column: 1, endLine: 26, endColumn: 1 },
+      imports: [],
+    });
+    expect(getSchema.pathParams).toHaveLength(1);
+    expect(getSchema.pathParams[0]!.name).toBe("id");
   });
 });

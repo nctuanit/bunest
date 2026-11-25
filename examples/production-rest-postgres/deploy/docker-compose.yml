@@ -1,0 +1,104 @@
+# Production staging stack: PostgreSQL 17 + standalone migration job + 2 Bunest instances + Caddy
+# Secrets (POSTGRES_PASSWORD, DATABASE_URL, METRICS_TOKEN) MUST be provided via environment or .env file.
+# Never commit real credentials.
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bunest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-bunest_prod}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bunest} -d ${POSTGRES_DB:-bunest_prod}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  migrate:
+    image: bunest-prod-preview:${APP_IMAGE_TAG:-0.1.0-preview}
+    command: ["bun", "run", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - internal
+
+  api-1:
+    image: bunest-prod-preview:${APP_IMAGE_TAG:-0.1.0-preview}
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      APP_VERSION: ${APP_IMAGE_TAG:-0.1.0-preview}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      BODY_LIMIT_BYTES: ${BODY_LIMIT_BYTES:-1048576}
+      TRUST_PROXY: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      SHUTDOWN_READINESS_DELAY_MS: "3000"
+      SHUTDOWN_DRAIN_TIMEOUT_MS: "10000"
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  api-2:
+    image: bunest-prod-preview:${APP_IMAGE_TAG:-0.1.0-preview}
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      APP_VERSION: ${APP_IMAGE_TAG:-0.1.0-preview}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      BODY_LIMIT_BYTES: ${BODY_LIMIT_BYTES:-1048576}
+      TRUST_PROXY: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      SHUTDOWN_READINESS_DELAY_MS: "3000"
+      SHUTDOWN_DRAIN_TIMEOUT_MS: "10000"
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api-1
+      - api-2
+    networks:
+      - internal
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge

@@ -4,11 +4,16 @@
   "description": "First-class VS Code DX for Bunest: Live Global Typegen, Declarative Repository Derived Query Autocomplete & SQL Preview (@SoftDelete/@TenantScoped/@Projection/Page<T>/Custom Operators), Custom Class Macros & Presets (Delombok / Hover / Diagnostics), bunest.config.ts Hot-Reload, Static & Architecture Diagnostics with TextEditor AST Quick Fixes, Inline HTTP Runner, and Interactive DI Module Graph.",
   "version": "0.1.0",
   "publisher": "bunest",
+  "icon": "media/bunest-logo.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bunest/bunest.git",
+    "url": "https://github.com/nctuanit/bunest.git",
     "directory": "apps/vscode-bunest"
+  },
+  "homepage": "https://nctuanit.github.io/bunest/",
+  "bugs": {
+    "url": "https://github.com/nctuanit/bunest/issues"
   },
   "engines": {
     "vscode": "^1.95.0"
@@ -37,6 +42,16 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "grammars": [
+      {
+        "scopeName": "bunest.sql.injection",
+        "path": "./syntaxes/bunest-sql.tmLanguage.json",
+        "injectTo": [
+          "source.ts",
+          "source.tsx"
+        ]
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -55,6 +70,10 @@
         {
           "id": "bunest.dataModelsView",
           "name": "Data & Repositories"
+        },
+        {
+          "id": "bunest.migrationsView",
+          "name": "Migrations & Schema"
         },
         {
           "id": "bunest.eventsRpcView",
@@ -106,12 +125,18 @@
         "title": "Bunest: Generate Declarative Repository from @Entity()"
       },
       {
-        "command": "bunest.convertDerivedToQuery",
-        "title": "Bunest: Convert Derived Query to Explicit @Query()"
-      },
-      {
         "command": "bunest.previewRepositorySql",
         "title": "Bunest: Preview Compiled SQL"
+      },
+      {
+        "command": "bunest.executeRawQuery",
+        "title": "Bunest: Execute Raw SQL Query",
+        "icon": "$(database)"
+      },
+      {
+        "command": "bunest.configureDatabaseConnection",
+        "title": "Bunest: Configure Database Connection (SQL Runner)",
+        "icon": "$(plug)"
       },
       {
         "command": "bunest.delombokClass",
@@ -133,6 +158,55 @@
       {
         "command": "bunest.revealLocation",
         "title": "Bunest: Reveal Source Location"
+      },
+      {
+        "command": "bunest.openHttpStudio",
+        "title": "Bunest: Open HTTP Request Studio",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "bunest.openLiveInspector",
+        "title": "Bunest: Open Live App Inspector",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "bunest.openQuickMenu",
+        "title": "Bunest: Open Quick Actions Menu",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "bunest.filterRoutes",
+        "title": "Bunest: Filter Routes",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "bunest.toggleRoutesGroupBy",
+        "title": "Bunest: Toggle Routes Group By (Controller / Method)",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "bunest.refreshMigrations",
+        "title": "Bunest: Refresh Migrations & Schema Drift",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "bunest.runMigrations",
+        "title": "Bunest: Run Migrations (bun run migrate)",
+        "icon": "$(play)"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "bunest.routesView",
+        "contents": "No Bunest HTTP routes found in this workspace.\n[Generate Controller](command:bunest.generateSchematic)\n[Open HTTP Studio](command:bunest.openHttpStudio)"
+      },
+      {
+        "view": "bunest.dataModelsView",
+        "contents": "No `@Entity()` or `@OrmRepository()` classes found yet.\n[Configure Database](command:bunest.configureDatabaseConnection)\n[Refresh Index](command:bunest.refreshWorkspace)"
+      },
+      {
+        "view": "bunest.migrationsView",
+        "contents": "No migration files detected yet.\n[Run Migrations](command:bunest.runMigrations)\n[Refresh Migrations](command:bunest.refreshMigrations)"
       }
     ],
     "menus": {
@@ -157,6 +231,31 @@
         {
           "command": "bunest.regenerateTypes",
           "when": "view == bunest.routesView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "bunest.filterRoutes",
+          "when": "view == bunest.routesView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "bunest.toggleRoutesGroupBy",
+          "when": "view == bunest.routesView",
+          "group": "navigation@4"
+        },
+        {
+          "command": "bunest.openHttpStudio",
+          "when": "view == bunest.routesView",
+          "group": "navigation@5"
+        },
+        {
+          "command": "bunest.runMigrations",
+          "when": "view == bunest.migrationsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "bunest.refreshMigrations",
+          "when": "view == bunest.migrationsView",
           "group": "navigation@2"
         }
       ],
@@ -206,10 +305,73 @@
           "default": true,
           "description": "Enable Bunest CodeLens actions for HTTP routes, repositories, entities, class macros, and tests."
         },
+        "bunest.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show subtle inline SQL preview hints next to declarative repository derived query methods."
+        },
+        "bunest.http.environments": {
+          "type": "array",
+          "default": [],
+          "description": "Named environment profiles (e.g. Staging, Production) for the Bunest HTTP Request Studio.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "baseUrl": { "type": "string" }
+            }
+          }
+        },
         "bunest.hover.revealSecrets": {
           "type": "boolean",
           "default": false,
           "description": "When false (recommended), redacts sensitive .env keys (SECRET, PASSWORD, TOKEN, KEY, AUTH, CREDENTIAL, DSN) in hover previews."
+        },
+        "bunest.sql.databaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Default database connection URL for the inline Bunest SQL Runner: sqlite://./dev.db, postgres://..., cockroachdb://..., mysql://..., mariadb://..., libsql://..., or d1://accountId/databaseId. When empty, auto-discovers from .env, bunest.sql.connections, or workspace SQLite files."
+        },
+        "bunest.sql.connections": {
+          "type": "array",
+          "default": [],
+          "description": "Named multi-database connection profiles for the Bunest SQL Runner (SQLite, PostgreSQL, CockroachDB, MySQL, MariaDB, LibSQL/Turso, Cloudflare D1).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Display name for the connection profile." },
+              "dialect": {
+                "type": "string",
+                "enum": ["sqlite", "postgres", "cockroachdb", "mysql", "mariadb", "libsql", "d1"],
+                "description": "Optional explicit SQL dialect (auto-detected from url when omitted)."
+              },
+              "url": { "type": "string", "description": "Connection URL or SQLite file path." },
+              "authToken": { "type": "string", "description": "Bearer token for LibSQL / Turso." },
+              "accountId": { "type": "string", "description": "Cloudflare Account ID (for D1)." },
+              "databaseId": { "type": "string", "description": "Cloudflare D1 Database ID." },
+              "apiToken": { "type": "string", "description": "Cloudflare API Token (for D1)." }
+            }
+          }
+        },
+        "bunest.sql.maxRows": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum number of rows rendered in the Bunest SQL Runner result table."
+        },
+        "bunest.sql.timeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "Execution timeout in milliseconds for inline raw SQL queries."
+        },
+        "bunest.sql.confirmWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for confirmation before executing write/DDL SQL statements (INSERT, UPDATE, DELETE, DROP, ALTER...) in the SQL Runner."
+        },
+        "bunest.sql.bunPath": {
+          "type": "string",
+          "default": "bun",
+          "description": "Path to the Bun executable used by the inline SQL Runner to execute SQLite/PostgreSQL/MySQL queries via native Bun.SQL."
         }
       }
     }

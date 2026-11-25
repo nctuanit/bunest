@@ -63,6 +63,7 @@ export function buildProjectTemplateFiles(
       emitDecoratorMetadata: true,
       verbatimModuleSyntax: true,
       strict,
+      strictPropertyInitialization: false,
       skipLibCheck: true,
       noEmit: true,
       noFallthroughCasesInSwitch: true,

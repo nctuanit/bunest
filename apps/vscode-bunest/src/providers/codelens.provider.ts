@@ -66,10 +66,32 @@ export class BunestCodeLensProvider implements vscode.CodeLensProvider {
       );
     }
 
-    // 3. Declarative Repository Derived Queries
+    // 3. Declarative Repository Queries (Derived & Explicit @Query)
     for (const repo of snap.repositories) {
       if (repo.sourceFile !== filePath) continue;
       for (const m of repo.methods) {
+        if (m.customQuery && m.customQuery.sql.trim().length > 0) {
+          const decRange = sourceLocationToVscodeRange(
+            m.customQuery.decoratorLocation,
+          );
+          lenses.push(
+            new vscode.CodeLens(decRange, {
+              title: "▶ Run Query",
+              command: "bunest.executeRawQuery",
+              arguments: [
+                {
+                  sql: m.customQuery.sql,
+                  title: `${repo.className}.${m.name}()`,
+                  cwd: ctx.cwd,
+                  repo,
+                  method: m,
+                },
+              ],
+              tooltip: `Execute @Query SQL directly against your database (${repo.dialect})`,
+            }),
+          );
+          continue;
+        }
         if (!m.derived) continue;
         const range = sourceLocationToVscodeRange(m.location);
         const compactSql =
@@ -78,14 +100,23 @@ export class BunestCodeLensProvider implements vscode.CodeLensProvider {
             : m.derived.sqlPreview;
         lenses.push(
           new vscode.CodeLens(range, {
+            title: "▶ Run SQL",
+            command: "bunest.executeRawQuery",
+            arguments: [
+              {
+                sql: m.derived.sqlPreview,
+                title: `${repo.className}.${m.name}()`,
+                cwd: ctx.cwd,
+                repo,
+                method: m,
+              },
+            ],
+            tooltip: "Execute compiled SQL directly against your database",
+          }),
+          new vscode.CodeLens(range, {
             title: `SQL: ${compactSql}`,
             command: "bunest.previewRepositorySql",
             arguments: [repo, m],
-          }),
-          new vscode.CodeLens(range, {
-            title: "Convert to @Query",
-            command: "bunest.convertDerivedToQuery",
-            arguments: [filePath, repo, m],
           }),
         );
       }
