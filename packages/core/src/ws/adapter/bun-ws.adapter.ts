@@ -973,6 +973,11 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       (req, server) => this.handleUpgrade(gateway, req, server),
       wsHandler,
     );
+    (
+      httpAdapter as { onBeforeClose?: (fn: () => void) => void }
+    ).onBeforeClose?.(() => {
+      void this.closeAll();
+    });
   }
 
   /**

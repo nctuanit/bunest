@@ -888,7 +888,13 @@ export function scanControllers(
         const versionCmp =
           versioning && versioning.type !== VersioningType.URI
             ? compareRouteVersions(earlier.versions, later.versions)
-            : { same: true, overlaps: true };
+            : !versioning &&
+                (earlierItem.versionLabel !== undefined ||
+                  laterItem.versionLabel !== undefined)
+              ? earlierItem.versionLabel === laterItem.versionLabel
+                ? { same: true, overlaps: true }
+                : { same: false, overlaps: false }
+              : { same: true, overlaps: true };
         if (!versionCmp.overlaps) {
           continue;
         }

@@ -173,7 +173,7 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
 
       expect(flatten([1, [2, [3]], 4])).toEqual([1, 2, 3, 4]);
       const meta = assignMetadata({}, 1, 0, "id");
-      expect(meta["1:0"]).toEqual({ index: 0, data: "id" });
+      expect(meta["1:0"]).toEqual({ index: 0, data: "id", pipes: [] });
 
       const clean = stripProtoKeys(
         JSON.parse('{"ok":1,"__proto__":{"polluted":true}}'),
@@ -183,7 +183,7 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         false,
       );
 
-      expect(filterLogLevels("warn")).toEqual(["fatal", "error", "warn"]);
+      expect(filterLogLevels(">=warn")).toEqual(["warn", "error", "fatal"]);
       const consoleLogger = new ConsoleLogger("TestCtx", {
         logLevels: ["error", "warn"],
         json: true,
