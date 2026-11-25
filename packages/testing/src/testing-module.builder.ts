@@ -172,7 +172,12 @@ export class TestingModuleBuilder {
           ? this.loggerOption
           : new TestingLogger();
 
-    if (this.loggerOption !== undefined) {
+    if (
+      this.loggerOption !== undefined &&
+      typeof this.loggerOption === "object" &&
+      this.loggerOption !== null &&
+      !Array.isArray(this.loggerOption)
+    ) {
       Logger.overrideLogger(this.loggerOption);
     }
 
