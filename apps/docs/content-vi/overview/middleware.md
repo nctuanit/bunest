@@ -104,4 +104,4 @@ await app.listen(3000);
 
 - **Ngắt mạch (Short-circuiting):** Trả về một `new Response(...)` gốc từ middleware sẽ lập tức dừng các giai đoạn phía sau (bỏ qua guard, interceptor, pipe và handler) trong khi vẫn áp dụng các CORS header đã cấu hình.
 - **Xử lý ngoại lệ:** Ném một `HttpException` bên trong middleware sẽ chuyển thẳng tới Exception Filters.
-- **Không so khớp đường dẫn lúc chạy:** Vì các route gốc của Bun bỏ qua `fetch()`, Bunest phân giải trước chuỗi middleware khớp với từng route **ngay lúc bootstrap** và gắn trực tiếp vào closure route đã biên dịch ([ADR-008](/architecture/execution-pipeline), [ADR-011](/architecture/hybrid-router)).
+- **Không so khớp đường dẫn lúc chạy:** Vì các route gốc của Bun bỏ qua `fetch()`, Bunest phân giải trước chuỗi middleware khớp với từng route **ngay lúc bootstrap** và gắn trực tiếp vào closure route đã biên dịch.

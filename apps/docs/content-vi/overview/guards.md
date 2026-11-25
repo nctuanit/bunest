@@ -2,7 +2,7 @@
 
 Guard là một class `@Injectable()` triển khai interface `CanActivate`. Guard thực thi ở **Giai đoạn 5 (Stage 5)** của [Execution Pipeline 11 giai đoạn](/architecture/execution-pipeline)—sau middleware và **hoàn toàn trước** interceptor, bước parse body và các validation pipe.
 
-> tip **Lợi ích về Bảo mật & Hiệu năng (ADR-008)** Vì guard chạy trước Giai đoạn 7 (Trích xuất tham số) và Giai đoạn 8 (Pipes), các request không có quyền bị từ chối ngay lập tức mà không tốn chi phí đọc đệm JSON body hay validate DTO.
+> tip **Lợi ích về Bảo mật & Hiệu năng** Vì guard chạy trước Giai đoạn 7 (Trích xuất tham số) và Giai đoạn 8 (Pipes), các request không có quyền bị từ chối ngay lập tức mà không tốn chi phí đọc đệm JSON body hay validate DTO.
 
 ## Viết một Authorization Guard
 

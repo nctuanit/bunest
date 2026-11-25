@@ -20,11 +20,11 @@ bun add @bunest/core @bunest/validation
 bun add -d @types/bun typescript
 ```
 
-> info **Hint** `@bunest/core` exports decorators, built-in pipes, `HttpException` classes, `Logger`, `Reflector`, and core HTTP/DI/Config/WS/I18n subpaths, and auto-installs a zero-dependency ECMAScript Reflect Metadata shim ([ADR-017](/architecture/adrs)).
+> info **Hint** `@bunest/core` exports decorators, built-in pipes, `HttpException` classes, `Logger`, `Reflector`, and core HTTP/DI/Config/WS/I18n subpaths, and auto-installs a zero-dependency ECMAScript Reflect Metadata shim.
 
 ## TypeScript configuration (`tsconfig.json`)
 
-Bunest uses **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) to support constructor dependency injection (`design:paramtypes`), parameter decorators (`@Body()`, `@Param()`, `@Query()`), and `@bunest/validation` (or `class-validator`) DTOs.
+Bunest uses **Legacy TypeScript Decorators** to support constructor dependency injection (`design:paramtypes`), parameter decorators (`@Body()`, `@Param()`, `@Query()`), and `@bunest/validation` (or `class-validator`) DTOs.
 
 @@filename(tsconfig.json)
 
@@ -46,11 +46,11 @@ Bunest uses **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) to 
 }
 ```
 
-> warning **Critical `verbatimModuleSyntax` Rule (ADR-002)** Always keep `verbatimModuleSyntax: true`. **Value-import** runtime classes used in decorated signatures (`import { UsersService }` and `import { CreateUserDto }`), and always **`import type`** TypeScript interfaces and type aliases (`import type { UserRecord }`). Using `import type` on a DI service or DTO erases its runtime metadata to `Object`, while value-importing an interface causes Bun's transpiler to fail at runtime.
+> warning **Critical `verbatimModuleSyntax` Rule** Always keep `verbatimModuleSyntax: true`. **Value-import** runtime classes used in decorated signatures (`import { UsersService }` and `import { CreateUserDto }`), and always **`import type`** TypeScript interfaces and type aliases (`import type { UserRecord }`). Using `import type` on a DI service or DTO erases its runtime metadata to `Object`, while value-importing an interface causes Bun's transpiler to fail at runtime.
 
 ## Application Entrypoint
 
-`@bunest/core` auto-installs its zero-dependency Reflect Metadata shim ([ADR-017](/architecture/adrs)), so no `import "reflect-metadata"` boilerplate is needed:
+`@bunest/core` auto-installs its zero-dependency Reflect Metadata shim, so no `import "reflect-metadata"` boilerplate is needed:
 
 @@filename(src/main.ts)
 
@@ -62,7 +62,7 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await BunestFactory.create(AppModule);
 
-  // Enable secure-by-default DTO validation globally (ADR-009)
+  // Enable secure-by-default DTO validation globally
   app.useGlobalPipes(new ValidationPipe());
 
   const port = Number(Bun.env.PORT ?? 3000);

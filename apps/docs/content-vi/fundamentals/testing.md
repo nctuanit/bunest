@@ -10,7 +10,7 @@ Cài đặt `@bunest/testing` làm dev dependency cùng với `@bunest/core`:
 bun add -d @bunest/testing
 ```
 
-`@bunest/core` đã tích hợp sẵn Reflect Metadata shim không phụ thuộc gói ngoài ([ADR-017](/architecture/adrs)), nên bạn không cần thêm dòng boilerplate `import "reflect-metadata"` trong các file test:
+`@bunest/core` đã tích hợp sẵn Reflect Metadata shim không phụ thuộc gói ngoài, nên bạn không cần thêm dòng boilerplate `import "reflect-metadata"` trong các file test:
 
 ```bash
 # Run all unit & E2E tests with Bun's native runner
@@ -19,7 +19,7 @@ bun test
 
 > tip **Quy ước đặt tên file E2E (`*.e2e.spec.ts`)** Khác với mẫu mặc định `*.e2e-spec.ts` của Jest, `bun test` tự động tìm các file kết thúc bằng `.spec.ts`, `.test.ts`, `_spec.ts`, hoặc `_test.ts`. Hãy đặt tên file E2E test theo dạng `*.e2e.spec.ts` (có dấu chấm trước `spec`) để `bun test` tự động nhận diện.
 
-> info **Không phụ thuộc thư viện Mock bên ngoài** `@bunest/testing` không cần Jest, `jest-mock`, RxJS, Express hay các gói HTTP ngoài. Trình auto-mocker (`ModuleMocker` / `createAutoMocker`), client `request(app)` theo phong cách Supertest, cookie jar và trình phân tích SSE đều được xây dựng thuần trên Bun và Web Standards ([ADR-001](/architecture/adrs)).
+> info **Không phụ thuộc thư viện Mock bên ngoài** `@bunest/testing` không cần Jest, `jest-mock`, RxJS, Express hay các gói HTTP ngoài. Trình auto-mocker (`ModuleMocker` / `createAutoMocker`), client `request(app)` theo phong cách Supertest, cookie jar và trình phân tích SSE đều được xây dựng thuần trên Bun và Web Standards.
 
 ---
 
@@ -305,7 +305,7 @@ const moduleRef = await Test.createTestingModule({
 
 ### Điều hướng Module với `select()`
 
-Dùng `moduleRef.select(TargetModule)` để áp dụng chặt chẽ tính đóng gói của module ([ADR-007](/architecture/adrs)). `select()` có thể gọi nối chuỗi (chainable) và chấp nhận cả static module class lẫn `DynamicModule` instance:
+Dùng `moduleRef.select(TargetModule)` để áp dụng chặt chẽ tính đóng gói của module. `select()` có thể gọi nối chuỗi (chainable) và chấp nhận cả static module class lẫn `DynamicModule` instance:
 
 @@filename(select.spec.ts)
 
@@ -459,7 +459,7 @@ describe("CapturingLogger assertions", () => {
 
 ## Kiểm thử HTTP End-to-End (E2E)
 
-`@bunest/testing` cung cấp **ba chế độ E2E bổ trợ lẫn nhau** dùng chung chính xác một pipeline HTTP 11 giai đoạn đã biên dịch ([ADR-008](/architecture/execution-pipeline)):
+`@bunest/testing` cung cấp **ba chế độ E2E bổ trợ lẫn nhau** dùng chung chính xác một pipeline HTTP 11 giai đoạn đã biên dịch:
 
 1. **Điều phối trong bộ nhớ không socket (khuyên dùng mặc định):** `request(app)`, `request.agent(app)`, `TestClient`, hoặc `app.inject()` — gửi thẳng vào `BunestApplication.fetch()` **không cần mở cổng TCP**, độ trễ tính bằng micro giây, và giữ nguyên vẹn hành vi của middleware/guards/pipes/interceptors/filters/CORS/serialization.
 2. **Cổng tạm thời trực tiếp (`app.listen(0)`):** `TestClient.fromUrl(info.url)` hoặc `request(info.url)` / `request(app.getHttpServer())` — kiểm tra socket `Bun.serve({ routes })` thật trên một cổng do OS cấp (`port: 0`, [ADR-011](/architecture/hybrid-router)) cho WebSockets, ngắt kết nối SSE trực tiếp và hành vi mạng thực tế.
@@ -737,7 +737,7 @@ try {
 }
 ```
 
-> warning **Ranh giới kiến trúc (ADR-001 / ADR-017)** `createNodeHttpServer()` trong `@bunest/testing` chạy thuần trên `Bun.serve({ port: 0 })` (không dùng `node:http`!). Đối với các test mới, hãy ưu tiên `request(app)` hoặc `TestClient` tích hợp sẵn của Bunest, vốn chạy không socket trong bộ nhớ mà không cần mở cổng TCP.
+> warning **Ranh giới kiến trúc** `createNodeHttpServer()` trong `@bunest/testing` chạy thuần trên `Bun.serve({ port: 0 })` (không dùng `node:http`!). Đối với các test mới, hãy ưu tiên `request(app)` hoặc `TestClient` tích hợp sẵn của Bunest, vốn chạy không socket trong bộ nhớ mà không cần mở cổng TCP.
 
 ---
 

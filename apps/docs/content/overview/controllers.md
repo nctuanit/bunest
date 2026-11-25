@@ -1,6 +1,6 @@
 # Controllers
 
-Controllers are responsible for handling incoming **HTTP requests** and returning **responses** to the client. Following NestJS conventions ([ADR-003](/architecture/adrs), [RFC-001](/architecture/adrs)), each `@Controller()` class groups related endpoints as decorated methods—no `BaseMethod` inheritance or class-per-endpoint boilerplate is required.
+Controllers are responsible for handling incoming **HTTP requests** and returning **responses** to the client. Following NestJS conventions, each `@Controller()` class groups related endpoints as decorated methods—no `BaseMethod` inheritance or class-per-endpoint boilerplate is required.
 
 ## Routing
 
@@ -38,7 +38,7 @@ export class CatsController {
 
   @Post()
   create(@Body() dto: CreateCatDto) {
-    // POST automatically returns 201 Created (ADR-010)
+    // POST automatically returns 201 Created
     return { created: true, data: dto };
   }
 
@@ -91,7 +91,7 @@ export class TenantAccountsController {
 
 ## Request Parameter Decorators
 
-Bunest provides NestJS-compatible legacy parameter decorators indexed by parameter position ([ADR-004](/architecture/adrs)). Parameters can appear in **any order**, and Bunest never parses function source strings.
+Bunest provides NestJS-compatible legacy parameter decorators indexed by parameter position. Parameters can appear in **any order**, and Bunest never parses function source strings.
 
 | Decorator                          | Extracts                                  | Notes                                                   |
 | ---------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
@@ -111,7 +111,7 @@ Bunest provides NestJS-compatible legacy parameter decorators indexed by paramet
 
 ## Status Codes, Headers & Redirects
 
-By default, **`POST` returns `201 Created`** and all other HTTP verbs return **`200 OK`** ([ADR-010](/architecture/adrs)). Override status codes, static headers, or redirects declaratively:
+By default, **`POST` returns `201 Created`** and all other HTTP verbs return **`200 OK`**. Override status codes, static headers, or redirects declaratively:
 
 @@filename(response-meta.controller.ts)
 
@@ -185,4 +185,4 @@ At bootstrap, Bunest joins `[globalPrefix, controllerPrefix, methodPath]`, colla
 ## Stateless Singleton Rule & Inheritance
 
 - Controllers default to **`Scope.SINGLETON`**—never store per-request mutable state on `this`. Opt into `Scope.REQUEST` only when necessary (see [Injection scopes](/fundamentals/injection-scopes)).
-- Subclassing a controller safely inherits parent routes via copy-on-write metadata—decorating a subclass never mutates the base controller's route registry ([ADR-002](/architecture/adrs)).
+- Subclassing a controller safely inherits parent routes via copy-on-write metadata—decorating a subclass never mutates the base controller's route registry.

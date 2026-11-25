@@ -174,7 +174,7 @@ See the full [Testing & E2E guide](/fundamentals/testing) for auto-mocking, stat
 
 - [x] Update imports from `@nestjs/common` & `@nestjs/core` to `@bunest/core` (and `@bunest/validation` for `ValidationPipe` / `ClassSerializerInterceptor`).
 - [x] Update test imports from `@nestjs/testing` & `supertest` to `@bunest/testing` (`Test`, `request`, `TestClient`, `createAutoMocker`, `CapturingLogger`) running on `bun:test`, and rename E2E files from `*.e2e-spec.ts` to `*.e2e.spec.ts` so `bun test` discovers them automatically.
-- [x] Remove `reflect-metadata` boilerplate (optional): `@bunest/core` auto-installs a built-in zero-dep Reflect Metadata shim ([ADR-017](/architecture/adrs)); optionally migrate DTO decorators from `class-validator`/`class-transformer` to `@bunest/validation/validator` and `@bunest/validation/transformer` ([ADR-015](/architecture/adrs)).
+- [x] Remove `reflect-metadata` boilerplate (optional): `@bunest/core` auto-installs a built-in zero-dep Reflect Metadata shim; optionally migrate DTO decorators from `class-validator`/`class-transformer` to `@bunest/validation/validator` and `@bunest/validation/transformer`.
 - [x] Enable `verbatimModuleSyntax: true` in `tsconfig.json`; use `import type` for interfaces and value imports for DI services & DTO classes.
 - [x] Replace RxJS `.pipe(map(...))` interceptors with `async/await next.handle()`.
 - [x] Replace Express `res.status().send()` calls with `ResponseContext` or native `new Response(...)`.

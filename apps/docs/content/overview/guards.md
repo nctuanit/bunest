@@ -2,7 +2,7 @@
 
 A guard is an `@Injectable()` class implementing the `CanActivate` interface. Guards execute at **Stage 5** of the [11-Stage Execution Pipeline](/architecture/execution-pipeline)—after middleware, and **strictly before** interceptors, body parsing, and validation pipes.
 
-> tip **Security & Performance Benefit (ADR-008)** Because guards run before Stage 7 (Parameter Extraction) and Stage 8 (Pipes), unauthorized requests are rejected immediately without paying JSON body buffering or DTO validation costs.
+> tip **Security & Performance Benefit** Because guards run before Stage 7 (Parameter Extraction) and Stage 8 (Pipes), unauthorized requests are rejected immediately without paying JSON body buffering or DTO validation costs.
 
 ## Writing an Authorization Guard
 

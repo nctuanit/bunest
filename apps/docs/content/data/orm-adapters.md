@@ -135,7 +135,7 @@ Pass `OrmModule.forFeature([UserRepository])` (or enable `autoRegisterRepositori
 
 ## Custom Derived Query Operators (`registerQueryOperator`)
 
-Extend the Spring Data-style derived query parser with domain- or dialect-specific operators via `registerQueryOperator()` ([ADR-018](/architecture/adrs)). Operators live on the single-realm global registry `globalThis[Symbol.for("bunest:orm:custom_query_operators")]`, so `@bunest/cli` diagnostics, SQL previews, and VS Code completions automatically recognize custom suffixes:
+Extend the Spring Data-style derived query parser with domain- or dialect-specific operators via `registerQueryOperator()`. Operators live on the single-realm global registry `globalThis[Symbol.for("bunest:orm:custom_query_operators")]`, so `@bunest/cli` diagnostics, SQL previews, and VS Code completions automatically recognize custom suffixes:
 
 @@filename(custom-operators.ts)
 

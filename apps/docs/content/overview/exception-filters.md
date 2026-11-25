@@ -61,7 +61,7 @@ export class UsersController {
 
 ## Normalized Error Envelope
 
-All Bunest exceptions share a uniform JSON response structure ([ADR-009](/architecture/adrs)):
+All Bunest exceptions share a uniform JSON response structure:
 
 ```json
 {

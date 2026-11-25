@@ -10,7 +10,7 @@ Install `@bunest/testing` as a dev dependency alongside `@bunest/core`:
 bun add -d @bunest/testing
 ```
 
-`@bunest/core` includes a built-in zero-dependency Reflect Metadata shim ([ADR-017](/architecture/adrs)), so no `import "reflect-metadata"` boilerplate is needed in your test files:
+`@bunest/core` includes a built-in zero-dependency Reflect Metadata shim, so no `import "reflect-metadata"` boilerplate is needed in your test files:
 
 ```bash
 # Run all unit & E2E tests with Bun's native runner
@@ -19,7 +19,7 @@ bun test
 
 > tip **E2E File Naming (`*.e2e.spec.ts`)** Unlike Jest's default `*.e2e-spec.ts` pattern, `bun test` auto-discovers files ending in `.spec.ts`, `.test.ts`, `_spec.ts`, or `_test.ts`. Name your E2E test files `*.e2e.spec.ts` (with a dot before `spec`) so `bun test` picks them up automatically.
 
-> info **Zero External Mock Dependencies** `@bunest/testing` requires no Jest, `jest-mock`, RxJS, Express, or external HTTP packages. Its auto-mocker (`ModuleMocker` / `createAutoMocker`), fluent Supertest-style `request(app)` client, cookie jar, and SSE parser are built natively on Bun and Web Standards ([ADR-001](/architecture/adrs)).
+> info **Zero External Mock Dependencies** `@bunest/testing` requires no Jest, `jest-mock`, RxJS, Express, or external HTTP packages. Its auto-mocker (`ModuleMocker` / `createAutoMocker`), fluent Supertest-style `request(app)` client, cookie jar, and SSE parser are built natively on Bun and Web Standards.
 
 ---
 
@@ -305,7 +305,7 @@ const moduleRef = await Test.createTestingModule({
 
 ### Navigating Modules with `select()`
 
-Use `moduleRef.select(TargetModule)` to enforce strict module encapsulation ([ADR-007](/architecture/adrs)). `select()` is chainable and accepts both static module classes and `DynamicModule` instances:
+Use `moduleRef.select(TargetModule)` to enforce strict module encapsulation. `select()` is chainable and accepts both static module classes and `DynamicModule` instances:
 
 @@filename(select.spec.ts)
 
@@ -459,7 +459,7 @@ describe("CapturingLogger assertions", () => {
 
 ## End-to-End (E2E) HTTP Testing
 
-`@bunest/testing` gives you **three complementary E2E modes** sharing the exact same compiled 11-stage HTTP pipeline ([ADR-008](/architecture/execution-pipeline)):
+`@bunest/testing` gives you **three complementary E2E modes** sharing the exact same compiled 11-stage HTTP pipeline:
 
 1. **Zero-socket in-memory dispatch (recommended default):** `request(app)`, `request.agent(app)`, `TestClient`, or `app.inject()` — dispatches straight into `BunestApplication.fetch()` with **no TCP port binding**, microsecond latency, and full middleware/guards/pipes/interceptors/filters/CORS/serialization fidelity.
 2. **Live ephemeral port (`app.listen(0)`):** `TestClient.fromUrl(info.url)` or `request(info.url)` / `request(app.getHttpServer())` — exercises real `Bun.serve({ routes })` sockets on an OS-assigned port (`port: 0`, [ADR-011](/architecture/hybrid-router)) for WebSockets, live SSE disconnects, and real network behavior.
@@ -737,7 +737,7 @@ try {
 }
 ```
 
-> warning **Architectural Boundary (ADR-001 / ADR-017)** `createNodeHttpServer()` in `@bunest/testing` runs natively on `Bun.serve({ port: 0 })` (zero `node:http`!). For new tests, prefer Bunest's built-in `request(app)` or `TestClient`, which run zero-socket in memory without opening a TCP port.
+> warning **Architectural Boundary** `createNodeHttpServer()` in `@bunest/testing` runs natively on `Bun.serve({ port: 0 })` (zero `node:http`!). For new tests, prefer Bunest's built-in `request(app)` or `TestClient`, which run zero-socket in memory without opening a TCP port.
 
 ---
 

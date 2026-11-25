@@ -1,6 +1,6 @@
 # Controllers
 
-Controller chịu trách nhiệm tiếp nhận các **HTTP request** gửi đến và trả **response** về cho client. Tuân theo quy ước của NestJS ([ADR-003](/architecture/adrs), [RFC-001](/architecture/adrs)), mỗi class `@Controller()` gom nhóm các endpoint liên quan dưới dạng các method được gắn decorator—không cần kế thừa `BaseMethod` hay tạo mỗi endpoint một class riêng rườm rà.
+Controller chịu trách nhiệm tiếp nhận các **HTTP request** gửi đến và trả **response** về cho client. Tuân theo quy ước của NestJS, mỗi class `@Controller()` gom nhóm các endpoint liên quan dưới dạng các method được gắn decorator—không cần kế thừa `BaseMethod` hay tạo mỗi endpoint một class riêng rườm rà.
 
 ## Định tuyến (Routing)
 
@@ -38,7 +38,7 @@ export class CatsController {
 
   @Post()
   create(@Body() dto: CreateCatDto) {
-    // POST automatically returns 201 Created (ADR-010)
+    // POST automatically returns 201 Created
     return { created: true, data: dto };
   }
 
@@ -91,7 +91,7 @@ export class TenantAccountsController {
 
 ## Các Request Parameter Decorator
 
-Bunest cung cấp các legacy parameter decorator tương thích NestJS, được đánh chỉ mục theo vị trí tham số ([ADR-004](/architecture/adrs)). Các tham số có thể đặt theo **bất kỳ thứ tự nào** và Bunest không bao giờ phân tích chuỗi mã nguồn của hàm.
+Bunest cung cấp các legacy parameter decorator tương thích NestJS, được đánh chỉ mục theo vị trí tham số. Các tham số có thể đặt theo **bất kỳ thứ tự nào** và Bunest không bao giờ phân tích chuỗi mã nguồn của hàm.
 
 | Decorator                          | Dữ liệu trích xuất                         | Ghi chú                                                         |
 | ---------------------------------- | ------------------------------------------ | --------------------------------------------------------------- |
@@ -111,7 +111,7 @@ Bunest cung cấp các legacy parameter decorator tương thích NestJS, đượ
 
 ## Mã trạng thái (Status Codes), Header & Chuyển hướng (Redirects)
 
-Mặc định, **`POST` trả về `201 Created`** và mọi HTTP verb khác trả về **`200 OK`** ([ADR-010](/architecture/adrs)). Bạn có thể ghi đè status code, header tĩnh hoặc redirect theo cách khai báo:
+Mặc định, **`POST` trả về `201 Created`** và mọi HTTP verb khác trả về **`200 OK`**. Bạn có thể ghi đè status code, header tĩnh hoặc redirect theo cách khai báo:
 
 @@filename(response-meta.controller.ts)
 
@@ -185,4 +185,4 @@ Lúc bootstrap, Bunest ghép `[globalPrefix, controllerPrefix, methodPath]`, g�
 ## Quy tắc Singleton phi trạng thái & Kế thừa
 
 - Controller mặc định dùng **`Scope.SINGLETON`**—không bao giờ lưu trạng thái thay đổi theo từng request trên `this`. Chỉ bật `Scope.REQUEST` khi thật sự cần thiết (xem [Phạm vi Injection](/fundamentals/injection-scopes)).
-- Kế thừa một controller sẽ thừa hưởng các route của lớp cha một cách an toàn nhờ metadata copy-on-write—việc gắn decorator lên lớp con không bao giờ làm thay đổi bảng đăng ký route của controller gốc ([ADR-002](/architecture/adrs)).
+- Kế thừa một controller sẽ thừa hưởng các route của lớp cha một cách an toàn nhờ metadata copy-on-write—việc gắn decorator lên lớp con không bao giờ làm thay đổi bảng đăng ký route của controller gốc.

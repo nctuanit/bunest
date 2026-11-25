@@ -1,8 +1,8 @@
 # Packages & Monorepo
 
-Bunest is organized as a **19-package, 6-domain Bun workspace monorepo** (`Bun >= 1.4.5`) with **0 circular imports**, **0 RxJS**, **19/19 packages (100%) having zero external npm runtime dependencies**, and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core` ([ADR-017](/architecture/adrs)).
+Bunest is organized as a **19-package, 6-domain Bun workspace monorepo** (`Bun >= 1.4.5`) with **0 circular imports**, **0 RxJS**, **19/19 packages (100%) having zero external npm runtime dependencies**, and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core`.
 
-> info **Consolidated Subpath Architecture (ADR-016)** Related capabilities live together inside cohesive domain packages and expose tree-shakeable ESM subpaths (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, etc.).
+> info **Consolidated Subpath Architecture** Related capabilities live together inside cohesive domain packages and expose tree-shakeable ESM subpaths (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, etc.).
 
 ## 1. Core & Validation (2 Packages)
 

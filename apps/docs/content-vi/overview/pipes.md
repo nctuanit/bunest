@@ -5,7 +5,7 @@ Pipe là một class triển khai interface `PipeTransform`. Pipe thực thi ở
 1. **Chuyển đổi (Transformation)** — biến đổi chuỗi đầu vào thô sang kiểu mong muốn (ví dụ `"42"` thành `42`, `"true"` thành `true`, hoặc JSON thuần thành instance của DTO class).
 2. **Xác thực (Validation)** — kiểm tra dữ liệu đầu vào và ném `BadRequestException` (400) nếu không hợp lệ, ngăn không cho handler được thực thi.
 
-> info **Không ép kiểu ngầm (ADR-004)** Query string, path param, header và cookie luôn có kiểu `string` (hoặc `string[]`). Bunest **không bao giờ** tự ý chạy `Boolean("false") === true` hay ép kiểu số ngầm định—hãy dùng các pipe tích hợp sẵn một cách tường minh hoặc dùng `ValidationPipe` cùng `@Type()`.
+> info **Không ép kiểu ngầm** Query string, path param, header và cookie luôn có kiểu `string` (hoặc `string[]`). Bunest **không bao giờ** tự ý chạy `Boolean("false") === true` hay ép kiểu số ngầm định—hãy dùng các pipe tích hợp sẵn một cách tường minh hoặc dùng `ValidationPipe` cùng `@Type()`.
 
 ## Các Parse Pipe tích hợp sẵn
 

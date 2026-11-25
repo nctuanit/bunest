@@ -1,6 +1,6 @@
 # Resilience
 
-**`@bunest/resilience`** cung cấp các chính sách chịu lỗi không dependency ngoài—**Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit** và **Fallback**—hoạt động mượt mà trên **cả** các điểm vào transport (HTTP/GraphQL/WebSocket/Microservice handler) **lẫn** các phương thức service `@Injectable()` thông qua `MethodAspectWeaver` ([ADR-014](/architecture/adrs)), đảm bảo không bao giờ bọc trùng (double-wrapping).
+**`@bunest/resilience`** cung cấp các chính sách chịu lỗi không dependency ngoài—**Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit** và **Fallback**—hoạt động mượt mà trên **cả** các điểm vào transport (HTTP/GraphQL/WebSocket/Microservice handler) **lẫn** các phương thức service `@Injectable()` thông qua `MethodAspectWeaver`, đảm bảo không bao giờ bọc trùng (double-wrapping).
 
 ## Cài đặt
 

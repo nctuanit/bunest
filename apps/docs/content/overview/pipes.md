@@ -5,7 +5,7 @@ A pipe is a class implementing the `PipeTransform` interface. Pipes execute at *
 1. **Transformation** — convert raw input strings into desired types (e.g., `"42"` to `42`, `"true"` to `true`, or plain JSON to a DTO class instance).
 2. **Validation** — evaluate input data and throw `BadRequestException` (400) if invalid, preventing the handler from ever running.
 
-> info **No Implicit Coercion (ADR-004)** Query strings, path params, headers, and cookies always arrive as `string` (or `string[]`). Bunest **never** silently runs `Boolean("false") === true` or implicit numeric coercion—use explicit built-in pipes or `ValidationPipe` with `@Type()`.
+> info **No Implicit Coercion** Query strings, path params, headers, and cookies always arrive as `string` (or `string[]`). Bunest **never** silently runs `Boolean("false") === true` or implicit numeric coercion—use explicit built-in pipes or `ValidationPipe` with `@Type()`.
 
 ## Built-in Parse Pipes
 

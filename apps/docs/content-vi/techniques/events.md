@@ -61,7 +61,7 @@ export class OrdersListener {
 }
 ```
 
-## Aspect `@EmitEvent()` dạng khai báo ([ADR-014](/architecture/adrs))
+## Aspect `@EmitEvent()` dạng khai báo
 
 Thay vì phải inject `EventEmitter2` thủ công trong mọi service, bạn có thể gắn decorator `@EmitEvent()` lên phương thức để giá trị trả về đã phân giải của phương thức được tự động phát ra khi thành công (và không bao giờ phát nếu phương thức ném lỗi):
 

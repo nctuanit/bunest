@@ -46,7 +46,7 @@ export class SessionController {
 }
 ```
 
-> info **Multi-Cookie Invariant (ADR-010)** Calling `res.cookie(...)` multiple times always uses `headers.append("Set-Cookie", ...)`—never `headers.set()`—so multiple cookies are always preserved cleanly on the outgoing native `Response`.
+> info **Multi-Cookie Invariant** Calling `res.cookie(...)` multiple times always uses `headers.append("Set-Cookie",...)`—never `headers.set()`—so multiple cookies are always preserved cleanly on the outgoing native `Response`.
 
 ## Configuring CORS (`CorsOptions`)
 
@@ -67,7 +67,7 @@ const app = await BunestFactory.create(AppModule, {
 });
 ```
 
-### CORS Pipeline Guarantees (ADR-008 & ADR-011)
+### CORS Pipeline Guarantees
 
 - **Fast preflight short-circuit:** `OPTIONS` preflight requests carrying `Origin` and `Access-Control-Request-Method` are answered immediately with `204 No Content` inside both native per-path route dispatchers and the `fetch()` fallback.
 - **Preserved on error responses:** Because CORS runs inside the Exception Filter boundary, `400`, `401`, `403`, `404`, `405`, `413`, and `500` responses always retain your configured `Access-Control-*` headers so browser clients receive clean API errors instead of opaque CORS failures.

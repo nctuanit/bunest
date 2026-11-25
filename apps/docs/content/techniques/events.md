@@ -61,7 +61,7 @@ export class OrdersListener {
 }
 ```
 
-## Declarative `@EmitEvent()` Aspect ([ADR-014](/architecture/adrs))
+## Declarative `@EmitEvent()` Aspect
 
 Instead of injecting `EventEmitter2` manually in every service, decorate methods with `@EmitEvent()` so the method's resolved return value is emitted automatically on success (and never emitted if the method throws):
 

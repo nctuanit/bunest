@@ -9,7 +9,7 @@ An interceptor is a class implementing `BunestInterceptor` that wraps route exec
 
 ## Native Promise Onion Model (Zero RxJS)
 
-Unlike NestJS on Node.js, Bunest core **does not require RxJS** ([ADR-008](/architecture/execution-pipeline)). Instead, `CallHandler.handle()` returns a standard native `Promise<T>`:
+Unlike NestJS on Node.js, Bunest core **does not require RxJS**. Instead, `CallHandler.handle()` returns a standard native `Promise<T>`:
 
 ```ts
 export interface CallHandler<T = unknown> {

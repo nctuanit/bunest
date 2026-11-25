@@ -61,7 +61,7 @@ export class UsersController {
 
 ## Cấu trúc JSON lỗi chuẩn hóa
 
-Mọi exception trong Bunest đều dùng chung một cấu trúc JSON response đồng nhất ([ADR-009](/architecture/adrs)):
+Mọi exception trong Bunest đều dùng chung một cấu trúc JSON response đồng nhất:
 
 ```json
 {

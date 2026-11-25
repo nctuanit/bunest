@@ -104,4 +104,4 @@ await app.listen(3000);
 
 - **Short-circuiting:** Returning a native `new Response(...)` from middleware immediately halts downstream stages (skipping guards, interceptors, pipes, and handler) while still applying configured CORS headers.
 - **Exception handling:** Throwing an `HttpException` inside middleware routes directly to Exception Filters.
-- **Zero runtime path matching:** Because Bun native routes bypass `fetch()`, Bunest pre-resolves every route's matching middleware chain **at bootstrap** and binds it straight into the compiled route closure ([ADR-008](/architecture/execution-pipeline), [ADR-011](/architecture/hybrid-router)).
+- **Zero runtime path matching:** Because Bun native routes bypass `fetch()`, Bunest pre-resolves every route's matching middleware chain **at bootstrap** and binds it straight into the compiled route closure.

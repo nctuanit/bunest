@@ -39,7 +39,7 @@ export class UsersController {
 }
 ```
 
-And with **Service-Layer AOP & Declarative Repositories** ([ADR-014](/architecture/adrs)), cross-cutting concerns on `@Injectable()` services require zero boilerplate:
+And with **Service-Layer AOP & Declarative Repositories**, cross-cutting concerns on `@Injectable()` services require zero boilerplate:
 
 @@filename(billing.service.ts)
 
@@ -81,7 +81,7 @@ export class BillingService {
 3. **Compile-at-bootstrap execution** — Module scanning, DI graph validation, route collision detection, scope-leak detection, declarative repository SQL compilation, and execution plan compilation run **once at startup**. Hot paths perform zero `Reflect.getMetadata()` calls.
 4. **Strict fail-fast guarantees** — Duplicate routes (even renamed params like `/users/:id` vs `/users/:userId`), missing providers, ambiguous exports, dependency cycles, and singleton-to-request scope leaks all fail fast before `Bun.serve()` binds a port.
 5. **Secure defaults** — `ValidationPipe` defaults to `whitelist: true`, `forbidNonWhitelisted: true`, `forbidUnknownValues: true`, prototype-pollution rejection, Fetch-Metadata CSRF, Helmet-8 headers, WebCrypto JWT/JWKS, and a normalized JSON error envelope that never leaks stack traces in production.
-6. **Consolidated 19-package, 6-domain, 100% zero-dep ecosystem** — From core HTTP/DI/Config/WS/I18n (with built-in Reflect metadata shim) and zero-dep native validation to unified Bun-native `@bunest/orm` (12 dialects + SQL Store Kit), zero-dep GraphQL Oct 2021 / Apollo engine, zero-dep native TS AST CLI, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP, and Observability—with **19/19 packages (100%) having zero external npm runtime dependencies** and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core` ([ADR-017](/architecture/adrs)).
+6. **Consolidated 19-package, 6-domain, 100% zero-dep ecosystem** — From core HTTP/DI/Config/WS/I18n (with built-in Reflect metadata shim) and zero-dep native validation to unified Bun-native `@bunest/orm` (12 dialects + SQL Store Kit), zero-dep GraphQL Oct 2021 / Apollo engine, zero-dep native TS AST CLI, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP, and Observability—with **19/19 packages (100%) having zero external npm runtime dependencies** and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core`.
 
 ## Prerequisites
 

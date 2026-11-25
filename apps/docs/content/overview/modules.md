@@ -1,6 +1,6 @@
 # Modules
 
-A module is a class annotated with the `@Module()` decorator. Modules organize your application into cohesive domain boundaries and define strict provider visibility rules ([ADR-007](/architecture/adrs)).
+A module is a class annotated with the `@Module()` decorator. Modules organize your application into cohesive domain boundaries and define strict provider visibility rules.
 
 ## The `@Module()` Metadata Contract
 
@@ -141,7 +141,7 @@ Each distinct `DynamicModule` return object receives its own registration ID so 
 
 ## Strict Token Resolution Precedence
 
-When resolving token `T` inside module `M`, Bunest checks in deterministic order ([ADR-007](/architecture/adrs)):
+When resolving token `T` inside module `M`, Bunest checks in deterministic order:
 
 1. **`M`'s own local `providers`** (local always shadows imported or global tokens).
 2. **`exports` of `M`'s direct `imports`** (including re-exports). If two imported modules export the same token `T` without a local override, Bunest fails fast with **`AmbiguousProviderException`**.
@@ -183,7 +183,7 @@ export class OrdersModule {}
 
 ## Conditional Beans (`@RegisterIf*` & `@Profile`)
 
-Register providers or controllers conditionally based on runtime profiles, environment variables, custom predicates, or missing fallback bindings ([ADR-018](/architecture/adrs)):
+Register providers or controllers conditionally based on runtime profiles, environment variables, custom predicates, or missing fallback bindings:
 
 | Decorator | Evaluation Pass | Behavior |
 | --- | --- | --- |

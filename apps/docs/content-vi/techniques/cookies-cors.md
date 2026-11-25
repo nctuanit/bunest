@@ -46,7 +46,7 @@ export class SessionController {
 }
 ```
 
-> info **Bất biến đa Cookie (ADR-010)** Khi gọi `res.cookie(...)` nhiều lần, hệ thống luôn sử dụng `headers.append("Set-Cookie", ...)` — không bao giờ dùng `headers.set()` — nhờ đó nhiều cookie luôn được bảo toàn nguyên vẹn trên `Response` gốc trả về.
+> info **Bất biến đa Cookie** Khi gọi `res.cookie(...)` nhiều lần, hệ thống luôn sử dụng `headers.append("Set-Cookie",...)` — không bao giờ dùng `headers.set()` — nhờ đó nhiều cookie luôn được bảo toàn nguyên vẹn trên `Response` gốc trả về.
 
 ## Cấu hình CORS (`CorsOptions`)
 
@@ -67,7 +67,7 @@ const app = await BunestFactory.create(AppModule, {
 });
 ```
 
-### Các đảm bảo của CORS Pipeline (ADR-008 & ADR-011)
+### Các đảm bảo của CORS Pipeline
 
 - **Phản hồi preflight nhanh:** Các request preflight `OPTIONS` mang theo `Origin` và `Access-Control-Request-Method` được trả lời ngay lập tức với `204 No Content` ở cả bộ điều phối route gốc theo từng đường dẫn lẫn nhánh fallback `fetch()`.
 - **Bảo toàn trên các response lỗi:** Do CORS chạy bên trong ranh giới Exception Filter, các response `400`, `401`, `403`, `404`, `405`, `413`, và `500` luôn giữ lại các header `Access-Control-*` đã cấu hình để trình duyệt nhận được lỗi API rõ ràng thay vì lỗi CORS mơ hồ.

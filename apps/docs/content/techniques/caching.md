@@ -33,7 +33,7 @@ export class AppModule {}
 
 For multi-instance deployments, pass `new RedisCacheStore({ client: redisClient, keyPrefix: "app:" })`.
 
-## Declarative Service-Layer Caching ([ADR-014](/architecture/adrs))
+## Declarative Service-Layer Caching
 
 Decorate `@Injectable()` service methods directly with `@Cacheable()`, `@CacheEvict()`, and `@CachePut()`. `CacheModule` automatically registers the aspect handlers with `DIContainer`'s `MethodAspectWeaver`:
 

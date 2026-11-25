@@ -39,7 +39,7 @@ export class UsersController {
 }
 ```
 
-Và với **Service-Layer AOP & Declarative Repositories** ([ADR-014](/architecture/adrs)), các tác vụ cross-cutting trên các service `@Injectable()` hoàn toàn không cần boilerplate:
+Và với **Service-Layer AOP & Declarative Repositories**, các tác vụ cross-cutting trên các service `@Injectable()` hoàn toàn không cần boilerplate:
 
 @@filename(billing.service.ts)
 
@@ -81,7 +81,7 @@ export class BillingService {
 3. **Biên dịch một lần lúc bootstrap** — Quét module, kiểm tra đồ thị DI, phát hiện trùng route, phát hiện rò rỉ scope, biên dịch SQL cho declarative repository và biên dịch execution plan đều chạy **một lần duy nhất lúc khởi động**. Hot path không gọi bất kỳ `Reflect.getMetadata()` nào.
 4. **Đảm bảo fail-fast chặt chẽ** — Route trùng lặp (kể cả khi chỉ đổi tên param như `/users/:id` và `/users/:userId`), thiếu provider, export mơ hồ, dependency vòng tròn và rò rỉ scope từ singleton sang request đều báo lỗi ngay lập tức trước khi `Bun.serve()` mở port.
 5. **Mặc định an toàn (Secure defaults)** — `ValidationPipe` mặc định bật `whitelist: true`, `forbidNonWhitelisted: true`, `forbidUnknownValues: true`, chặn prototype pollution, bảo vệ CSRF theo Fetch-Metadata, header Helmet-8, WebCrypto JWT/JWKS và cấu trúc JSON lỗi chuẩn hóa không bao giờ làm lộ stack trace ở môi trường production.
-6. **Hệ sinh thái tinh gọn 19 package, 6 lĩnh vực, 100% không phụ thuộc ngoài** — Từ lõi HTTP/DI/Config/WS/I18n (tích hợp sẵn Reflect metadata shim) và validation gốc không dependency đến `@bunest/orm` thống nhất trên Bun (12 dialect + SQL Store Kit), engine GraphQL Oct 2021 / Apollo không dependency, CLI phân tích TS AST gốc, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP và Observability—với **19/19 package (100%) có 0 runtime dependency ngoài từ npm** và **0 import `node:*` trên toàn repo** ngoài 2 kernel adapter được cô lập trong `@bunest/core` ([ADR-017](/architecture/adrs)).
+6. **Hệ sinh thái tinh gọn 19 package, 6 lĩnh vực, 100% không phụ thuộc ngoài** — Từ lõi HTTP/DI/Config/WS/I18n (tích hợp sẵn Reflect metadata shim) và validation gốc không dependency đến `@bunest/orm` thống nhất trên Bun (12 dialect + SQL Store Kit), engine GraphQL Oct 2021 / Apollo không dependency, CLI phân tích TS AST gốc, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP và Observability—với **19/19 package (100%) có 0 runtime dependency ngoài từ npm** và **0 import `node:*` trên toàn repo** ngoài 2 kernel adapter được cô lập trong `@bunest/core`.
 
 ## Yêu cầu trước khi bắt đầu
 

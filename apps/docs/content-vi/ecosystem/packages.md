@@ -1,8 +1,8 @@
 # Các Package & Monorepo
 
-Bunest được tổ chức thành một **monorepo Bun workspace gồm 19 package, 6 lĩnh vực** (`Bun >= 1.4.5`) với **0 import vòng lặp**, **0 RxJS**, **19/19 package (100%) không có runtime dependency npm bên ngoài**, và **0 import `node:*` trên toàn repo** ngoại trừ 2 kernel adapter được cách ly trong `@bunest/core` ([ADR-017](/architecture/adrs)).
+Bunest được tổ chức thành một **monorepo Bun workspace gồm 19 package, 6 lĩnh vực** (`Bun >= 1.4.5`) với **0 import vòng lặp**, **0 RxJS**, **19/19 package (100%) không có runtime dependency npm bên ngoài**, và **0 import `node:*` trên toàn repo** ngoại trừ 2 kernel adapter được cách ly trong `@bunest/core`.
 
-> info **Kiến trúc Subpath Hợp nhất (ADR-016)** Các năng lực liên quan nằm cùng nhau trong các package lĩnh vực gắn kết và cung cấp các ESM subpath có thể tree-shake (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, v.v.).
+> info **Kiến trúc Subpath Hợp nhất** Các năng lực liên quan nằm cùng nhau trong các package lĩnh vực gắn kết và cung cấp các ESM subpath có thể tree-shake (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, v.v.).
 
 ## 1. Lõi & Xác thực dữ liệu (2 Package)
 

@@ -2,7 +2,7 @@
 
 **`@bunest/observability`** provides a unified, zero-external-dependency observability stack in one package:
 
-- `ObservabilityModule.forRoot()`, `@Span`/`@Trace`/`@Timed`/`@Counted` service aspects ([ADR-014](/architecture/adrs)), W3C Trace Context (`TracingModule`, `OtlpHttpSpanExporter`), and Prometheus `MetricsModule`.
+- `ObservabilityModule.forRoot()`, `@Span`/`@Trace`/`@Timed`/`@Counted` service aspects, W3C Trace Context (`TracingModule`, `OtlpHttpSpanExporter`), and Prometheus `MetricsModule`.
 - Terminus v12-compatible health checks (`TerminusModule`, `HealthModule`, `HealthCheckService`, `HttpHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `OrmHealthIndicator`).
 - Devtools graph introspection (`DevtoolsModule`, `DevtoolsService`, `GraphPublisher`).
 

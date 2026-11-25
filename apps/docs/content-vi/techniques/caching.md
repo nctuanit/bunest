@@ -33,7 +33,7 @@ export class AppModule {}
 
 Đối với triển khai đa instance, truyền `new RedisCacheStore({ client: redisClient, keyPrefix: "app:" })`.
 
-## Lưu đệm tầng Service dạng khai báo ([ADR-014](/architecture/adrs))
+## Lưu đệm tầng Service dạng khai báo
 
 Gắn trực tiếp `@Cacheable()`, `@CacheEvict()` và `@CachePut()` lên các phương thức service `@Injectable()`. `CacheModule` tự động đăng ký các aspect handler với `MethodAspectWeaver` của `DIContainer`:
 

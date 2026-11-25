@@ -70,7 +70,7 @@ export class CreateOrderDto {
 }
 ```
 
-## `ValidationPipeOptions` an toàn theo mặc định (ADR-009)
+## `ValidationPipeOptions` an toàn theo mặc định
 
 Khác với các thiết lập mặc định lỏng lẻo dễ gây lỗi mass-assignment hoặc ép kiểu ngầm, `new ValidationPipe()` của Bunest đi kèm các tùy chọn mặc định nghiêm ngặt, ưu tiên bảo mật hàng đầu:
 

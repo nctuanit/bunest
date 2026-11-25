@@ -9,7 +9,7 @@ Interceptor là một class triển khai `BunestInterceptor` nhằm bọc quá t
 
 ## Mô hình Onion với Promise gốc (Không RxJS)
 
-Khác với NestJS trên Node.js, lõi Bunest **không yêu cầu RxJS** ([ADR-008](/architecture/execution-pipeline)). Thay vào đó, `CallHandler.handle()` trả về một `Promise<T>` gốc chuẩn:
+Khác với NestJS trên Node.js, lõi Bunest **không yêu cầu RxJS**. Thay vào đó, `CallHandler.handle()` trả về một `Promise<T>` gốc chuẩn:
 
 ```ts
 export interface CallHandler<T = unknown> {

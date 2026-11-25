@@ -6,7 +6,7 @@ Bunest quản lý quá trình khởi động và tắt ứng dụng an toàn (gr
 
 ### Giai đoạn Bootstrap (Thứ tự tô-pô từ dưới lên)
 
-1. Kiểm tra toàn bộ đồ thị module, exports, phạm vi hiển thị token, vòng lặp dependency và rò rỉ scope ([ADR-012](/fundamentals/injection-scopes)).
+1. Kiểm tra toàn bộ đồ thị module, exports, phạm vi hiển thị token, vòng lặp dependency và rò rỉ scope.
 2. Khởi tạo các singleton provider (chờ `useFactory` bất đồng bộ) và các singleton controller.
 3. **`onModuleInit()`** — được gọi trên mọi provider, controller và module có triển khai `OnModuleInit` sau khi các dependency của module chủ quản đã được resolve.
 4. **`onApplicationBootstrap()`** — được gọi trên mọi instance có triển khai `OnApplicationBootstrap` sau khi tất cả các module đã khởi tạo xong, **trước khi** `Bun.serve()` bắt đầu nhận lưu lượng truy cập.
@@ -20,7 +20,7 @@ Bunest quản lý quá trình khởi động và tắt ứng dụng an toàn (gr
 
 ### Hook dọn dẹp theo từng Request
 
-- **`onRequestDestroy()`** — tự động được gọi trên các provider `Scope.REQUEST` theo thứ tự đảo ngược lúc khởi tạo bên trong khối `finally` khi một HTTP request hoàn tất, ném lỗi hoặc bị hủy qua `request.signal` ([ADR-012](/fundamentals/injection-scopes)).
+- **`onRequestDestroy()`** — tự động được gọi trên các provider `Scope.REQUEST` theo thứ tự đảo ngược lúc khởi tạo bên trong khối `finally` khi một HTTP request hoàn tất, ném lỗi hoặc bị hủy qua `request.signal`.
 
 ## Triển khai các Lifecycle Interface
 

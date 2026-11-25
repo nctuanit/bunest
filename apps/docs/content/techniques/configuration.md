@@ -90,7 +90,7 @@ export class AppModule {}
 
 ## Declarative `@InjectConfig()` and `@ConfigValue()`
 
-Eliminate manual `ConfigService.get()` boilerplate with declarative parameter and property decorators ([ADR-014](/architecture/adrs)):
+Eliminate manual `ConfigService.get()` boilerplate with declarative parameter and property decorators:
 
 @@filename(mail.service.ts)
 

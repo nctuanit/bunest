@@ -2,7 +2,7 @@
 
 **`@bunest/observability`** cung cấp một bộ công cụ giám sát (observability) thống nhất, không phụ thuộc thư viện bên ngoài (zero-external-dependency) trong một package duy nhất:
 
-- `ObservabilityModule.forRoot()`, các aspect ở tầng service `@Span`/`@Trace`/`@Timed`/`@Counted` ([ADR-014](/architecture/adrs)), W3C Trace Context (`TracingModule`, `OtlpHttpSpanExporter`), và Prometheus `MetricsModule`.
+- `ObservabilityModule.forRoot()`, các aspect ở tầng service `@Span`/`@Trace`/`@Timed`/`@Counted`, W3C Trace Context (`TracingModule`, `OtlpHttpSpanExporter`), và Prometheus `MetricsModule`.
 - Kiểm tra sức khỏe (health checks) tương thích Terminus v12 (`TerminusModule`, `HealthModule`, `HealthCheckService`, `HttpHealthIndicator`, `MemoryHealthIndicator`, `DiskHealthIndicator`, `EventLoopHealthIndicator`, `OrmHealthIndicator`).
 - Kiểm tra đồ thị Devtools (`DevtoolsModule`, `DevtoolsService`, `GraphPublisher`).
 

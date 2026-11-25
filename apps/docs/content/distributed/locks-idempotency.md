@@ -2,7 +2,7 @@
 
 `@bunest/resilience` provides two subpaths for concurrency control and request deduplication in multi-instance production deployments:
 
-- **`@bunest/resilience/locks`** — Leased distributed locks with monotonic fencing tokens, `@WithLock()` service aspect ([ADR-014](/architecture/adrs)), `@OnOneInstance()`, `@WithoutOverlapping()`, and `LeaderElection` (with `./testing` helpers).
+- **`@bunest/resilience/locks`** — Leased distributed locks with monotonic fencing tokens, `@WithLock()` service aspect, `@OnOneInstance()`, `@WithoutOverlapping()`, and `LeaderElection` (with `./testing` helpers).
 - **`@bunest/resilience/idempotency`** — `@Idempotent()` safe retry deduplication for HTTP routes, GraphQL mutations, and microservice handlers (with `./testing` helpers).
 
 ## Installation

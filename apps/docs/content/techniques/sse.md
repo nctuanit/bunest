@@ -1,6 +1,6 @@
 # Server-Sent Events (SSE)
 
-Server-Sent Events allow a server to push real-time updates to browser clients over standard HTTP. In Bunest, SSE endpoints use **native `AsyncGenerator` / `AsyncIterable<SseMessageEvent>`**—no RxJS `Observable` required ([ADR-006](/architecture/adrs), [ADR-010](/architecture/response-serialization)).
+Server-Sent Events allow a server to push real-time updates to browser clients over standard HTTP. In Bunest, SSE endpoints use **native `AsyncGenerator` / `AsyncIterable<SseMessageEvent>`**—no RxJS `Observable` required.
 
 ## Creating an `@Sse()` Endpoint
 
@@ -46,7 +46,7 @@ export interface SseMessageEvent {
 }
 ```
 
-### Automatic Wire Formatting & Headers (ADR-010)
+### Automatic Wire Formatting & Headers
 
 When a route is decorated with `@Sse()`, Bunest's serializer automatically:
 

@@ -90,7 +90,7 @@ export class AppModule {}
 
 ## Khai báo `@InjectConfig()` và `@ConfigValue()`
 
-Loại bỏ mã lặp `ConfigService.get()` thủ công bằng các decorator tham số và thuộc tính mang tính khai báo ([ADR-014](/architecture/adrs)):
+Loại bỏ mã lặp `ConfigService.get()` thủ công bằng các decorator tham số và thuộc tính mang tính khai báo:
 
 @@filename(mail.service.ts)
 

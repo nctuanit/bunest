@@ -1,6 +1,6 @@
 # Circular dependency
 
-A circular dependency occurs when two classes (or two modules) depend on each other (`A -> B -> A`). While you should avoid cycles whenever possible by extracting shared logic into a third service, Bunest provides deterministic **bootstrap cycle detection** and explicit **`forwardRef()`** resolution when a cycle is intentional ([ADR-007](/architecture/adrs)).
+A circular dependency occurs when two classes (or two modules) depend on each other (`A -> B -> A`). While you should avoid cycles whenever possible by extracting shared logic into a third service, Bunest provides deterministic **bootstrap cycle detection** and explicit **`forwardRef()`** resolution when a cycle is intentional.
 
 ## Fail-Fast Cycle Diagnostics
 
@@ -76,7 +76,7 @@ import { AuthService } from "./auth.service";
 export class AuthModule {}
 ```
 
-> warning **Limitations of `forwardRef()` (ADR-007)**
+> warning **Limitations of `forwardRef()`**
 >
 > - Never eagerly invoke methods on a `forwardRef` peer inside a `constructor()` body—use `onModuleInit()` instead so both singletons finish allocation first.
 > - Circular `useFactory` provider invocations cannot be deferred and still fail fast at bootstrap.

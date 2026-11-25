@@ -20,11 +20,11 @@ bun add @bunest/core @bunest/validation
 bun add -d @types/bun typescript
 ```
 
-> info **Gợi ý** `@bunest/core` export các decorator, pipe tích hợp sẵn, các lớp `HttpException`, `Logger`, `Reflector` cùng các subpath lõi HTTP/DI/Config/WS/I18n, và tự động cài đặt ECMAScript Reflect Metadata shim không dependency ([ADR-017](/architecture/adrs)).
+> info **Gợi ý** `@bunest/core` export các decorator, pipe tích hợp sẵn, các lớp `HttpException`, `Logger`, `Reflector` cùng các subpath lõi HTTP/DI/Config/WS/I18n, và tự động cài đặt ECMAScript Reflect Metadata shim không dependency.
 
 ## Cấu hình TypeScript (`tsconfig.json`)
 
-Bunest sử dụng **Legacy TypeScript Decorators** ([ADR-002](/architecture/adrs)) để hỗ trợ constructor dependency injection (`design:paramtypes`), parameter decorator (`@Body()`, `@Param()`, `@Query()`) và DTO của `@bunest/validation` (hoặc `class-validator`).
+Bunest sử dụng **Legacy TypeScript Decorators** để hỗ trợ constructor dependency injection (`design:paramtypes`), parameter decorator (`@Body()`, `@Param()`, `@Query()`) và DTO của `@bunest/validation` (hoặc `class-validator`).
 
 @@filename(tsconfig.json)
 
@@ -46,11 +46,11 @@ Bunest sử dụng **Legacy TypeScript Decorators** ([ADR-002](/architecture/adr
 }
 ```
 
-> warning **Quy tắc `verbatimModuleSyntax` quan trọng (ADR-002)** Luôn giữ `verbatimModuleSyntax: true`. Hãy dùng **value-import** cho các class runtime xuất hiện trong chữ ký có decorator (`import { UsersService }` và `import { CreateUserDto }`), và luôn dùng **`import type`** cho TypeScript interface hoặc type alias (`import type { UserRecord }`). Dùng `import type` cho một DI service hoặc DTO sẽ làm metadata runtime bị xóa thành `Object`, còn value-import một interface sẽ khiến transpiler của Bun lỗi khi chạy.
+> warning **Quy tắc `verbatimModuleSyntax` quan trọng** Luôn giữ `verbatimModuleSyntax: true`. Hãy dùng **value-import** cho các class runtime xuất hiện trong chữ ký có decorator (`import { UsersService }` và `import { CreateUserDto }`), và luôn dùng **`import type`** cho TypeScript interface hoặc type alias (`import type { UserRecord }`). Dùng `import type` cho một DI service hoặc DTO sẽ làm metadata runtime bị xóa thành `Object`, còn value-import một interface sẽ khiến transpiler của Bun lỗi khi chạy.
 
 ## Điểm khởi chạy ứng dụng (Entrypoint)
 
-`@bunest/core` tự động nạp Reflect Metadata shim không dependency ([ADR-017](/architecture/adrs)), nên bạn không cần viết dòng `import "reflect-metadata"` nữa:
+`@bunest/core` tự động nạp Reflect Metadata shim không dependency, nên bạn không cần viết dòng `import "reflect-metadata"` nữa:
 
 @@filename(src/main.ts)
 
@@ -62,7 +62,7 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await BunestFactory.create(AppModule);
 
-  // Enable secure-by-default DTO validation globally (ADR-009)
+  // Enable secure-by-default DTO validation globally
   app.useGlobalPipes(new ValidationPipe());
 
   const port = Number(Bun.env.PORT ?? 3000);

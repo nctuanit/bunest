@@ -6,7 +6,7 @@ Bunest manages startup and graceful shutdown in **deterministic topological orde
 
 ### Bootstrap Phase (Bottom-Up Topological Order)
 
-1. Validate full module graph, exports, token visibility, dependency cycles, and scope leaks ([ADR-012](/fundamentals/injection-scopes)).
+1. Validate full module graph, exports, token visibility, dependency cycles, and scope leaks.
 2. Instantiate singleton providers (awaiting async `useFactory`) and singleton controllers.
 3. **`onModuleInit()`** — called on every provider, controller, and module implementing `OnModuleInit` once the host module's dependencies are resolved.
 4. **`onApplicationBootstrap()`** — called on all instances implementing `OnApplicationBootstrap` once all modules are initialized, **before** `Bun.serve()` starts accepting traffic.
@@ -20,7 +20,7 @@ Bunest manages startup and graceful shutdown in **deterministic topological orde
 
 ### Per-Request Cleanup Hook
 
-- **`onRequestDestroy()`** — called automatically on `Scope.REQUEST` providers in reverse instantiation order inside a `finally` block when an HTTP request completes, throws, or is aborted via `request.signal` ([ADR-012](/fundamentals/injection-scopes)).
+- **`onRequestDestroy()`** — called automatically on `Scope.REQUEST` providers in reverse instantiation order inside a `finally` block when an HTTP request completes, throws, or is aborted via `request.signal`.
 
 ## Implementing Lifecycle Interfaces
 

@@ -1,6 +1,6 @@
 # Phụ thuộc vòng (Circular dependency)
 
-Phụ thuộc vòng (circular dependency) xảy ra khi hai class (hoặc hai module) phụ thuộc lẫn nhau (`A -> B -> A`). Mặc dù bạn nên tránh vòng phụ thuộc bất cứ khi nào có thể bằng cách tách logic dùng chung sang một service thứ ba, Bunest vẫn cung cấp cơ chế **phát hiện vòng lặp xác định khi bootstrap** và giải quyết tường minh bằng **`forwardRef()`** khi vòng phụ thuộc là có chủ đích ([ADR-007](/architecture/adrs)).
+Phụ thuộc vòng (circular dependency) xảy ra khi hai class (hoặc hai module) phụ thuộc lẫn nhau (`A -> B -> A`). Mặc dù bạn nên tránh vòng phụ thuộc bất cứ khi nào có thể bằng cách tách logic dùng chung sang một service thứ ba, Bunest vẫn cung cấp cơ chế **phát hiện vòng lặp xác định khi bootstrap** và giải quyết tường minh bằng **`forwardRef()`** khi vòng phụ thuộc là có chủ đích.
 
 ## Chẩn đoán vòng lặp Fail-Fast
 
@@ -76,7 +76,7 @@ import { AuthService } from "./auth.service";
 export class AuthModule {}
 ```
 
-> warning **Giới hạn của `forwardRef()` (ADR-007)**
+> warning **Giới hạn của `forwardRef()`**
 >
 > - Không bao giờ gọi trực tiếp phương thức trên đối tượng `forwardRef` bên trong thân `constructor()` — hãy dùng `onModuleInit()` để cả hai singleton hoàn tất việc cấp phát trước.
 > - Các lệnh gọi provider `useFactory` bị vòng phụ thuộc không thể trì hoãn và vẫn sẽ báo lỗi fail-fast khi bootstrap.

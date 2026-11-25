@@ -1,6 +1,6 @@
 # Modules
 
-Module là một class được gắn decorator `@Module()`. Module giúp tổ chức ứng dụng thành các ranh giới nghiệp vụ mạch lạc và thiết lập quy tắc hiển thị provider chặt chẽ ([ADR-007](/architecture/adrs)).
+Module là một class được gắn decorator `@Module()`. Module giúp tổ chức ứng dụng thành các ranh giới nghiệp vụ mạch lạc và thiết lập quy tắc hiển thị provider chặt chẽ.
 
 ## Giao ước Metadata của `@Module()`
 
@@ -141,7 +141,7 @@ Mỗi object `DynamicModule` trả về khác nhau sẽ nhận một ID đăng k
 
 ## Thứ tự ưu tiên phân giải Token nghiêm ngặt
 
-Khi phân giải token `T` bên trong module `M`, Bunest kiểm tra theo một thứ tự xác định ([ADR-007](/architecture/adrs)):
+Khi phân giải token `T` bên trong module `M`, Bunest kiểm tra theo một thứ tự xác định:
 
 1. **`providers` cục bộ của chính `M`** (provider cục bộ luôn ghi đè token được import hoặc global).
 2. **`exports` từ các `imports` trực tiếp của `M`** (bao gồm các re-export). Nếu hai module được import cùng export token `T` mà không có override cục bộ, Bunest báo lỗi fail-fast với **`AmbiguousProviderException`**.
@@ -183,7 +183,7 @@ export class OrdersModule {}
 
 ## Đăng ký có điều kiện (`@RegisterIf*` & `@Profile`)
 
-Đăng ký provider hoặc controller có điều kiện dựa trên profile lúc chạy, biến môi trường, predicate tùy chỉnh hoặc triển khai dự phòng khi thiếu binding ([ADR-018](/architecture/adrs)):
+Đăng ký provider hoặc controller có điều kiện dựa trên profile lúc chạy, biến môi trường, predicate tùy chỉnh hoặc triển khai dự phòng khi thiếu binding:
 
 | Decorator | Lượt đánh giá | Hành vi |
 | --- | --- | --- |

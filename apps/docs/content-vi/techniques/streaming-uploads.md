@@ -4,7 +4,7 @@ Vì Bunest vận hành trực tiếp trên Web Standards và các hàm I/O gốc
 
 ## Phản hồi File Zero-Copy (`Bun.file()`)
 
-Trả về trực tiếp một `BunFile` (kế thừa từ `Blob`) từ bất kỳ controller handler nào. Bộ Response Serializer của Bunest sẽ truyền thẳng nó vào `new Response(blob, ...)` — giữ nguyên luồng xử lý nhanh zero-copy `sendfile` ở cấp hệ điều hành của Bun ([ADR-010](/architecture/response-serialization)):
+Trả về trực tiếp một `BunFile` (kế thừa từ `Blob`) từ bất kỳ controller handler nào. Bộ Response Serializer của Bunest sẽ truyền thẳng nó vào `new Response(blob,...)` — giữ nguyên luồng xử lý nhanh zero-copy `sendfile` ở cấp hệ điều hành của Bun:
 
 @@filename(files.controller.ts)
 

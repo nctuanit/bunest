@@ -18,7 +18,7 @@ app.useGlobalPipes(new ValidationPipe());
 await app.listen(3000);
 ```
 
-> info **Opt-In Execution (ADR-005 / ADR-015)** Validation decorators (`@IsEmail()`, `@MinLength()`) only register metadata—they do **not** validate incoming requests unless a `ValidationPipe` is attached. Endpoints without DTOs or without `ValidationPipe` pay zero validation overhead.
+> info **Opt-In Execution** Validation decorators (`@IsEmail()`, `@MinLength()`) only register metadata—they do **not** validate incoming requests unless a `ValidationPipe` is attached. Endpoints without DTOs or without `ValidationPipe` pay zero validation overhead.
 
 ## Writing Validated DTOs
 
@@ -70,7 +70,7 @@ export class CreateOrderDto {
 }
 ```
 
-## Secure-by-Default `ValidationPipeOptions` (ADR-009)
+## Secure-by-Default `ValidationPipeOptions`
 
 Unlike permissive defaults that risk mass-assignment or silent type coercion bugs, Bunest's `new ValidationPipe()` ships with strict, security-first defaults:
 

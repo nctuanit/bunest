@@ -2,7 +2,7 @@
 
 `@bunest/resilience` cung cấp hai subpath xử lý đồng thời và khử trùng lặp request cho môi trường production đa instance:
 
-- **`@bunest/resilience/locks`** — Khóa phân tán có thời hạn thuê (leased distributed lock) kèm fencing token đơn điệu, service aspect `@WithLock()` ([ADR-014](/architecture/adrs)), `@OnOneInstance()`, `@WithoutOverlapping()` và `LeaderElection` (kèm helper `./testing`).
+- **`@bunest/resilience/locks`** — Khóa phân tán có thời hạn thuê (leased distributed lock) kèm fencing token đơn điệu, service aspect `@WithLock()`, `@OnOneInstance()`, `@WithoutOverlapping()` và `LeaderElection` (kèm helper `./testing`).
 - **`@bunest/resilience/idempotency`** — `@Idempotent()` khử trùng lặp retry an toàn cho các HTTP route, GraphQL mutation và microservice handler (kèm helper `./testing`).
 
 ## Cài đặt

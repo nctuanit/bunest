@@ -174,7 +174,7 @@ Xem đầy đủ [Hướng dẫn Kiểm thử & E2E](/fundamentals/testing) về
 
 - [x] Cập nhật import từ `@nestjs/common` & `@nestjs/core` sang `@bunest/core` (và `@bunest/validation` cho `ValidationPipe` / `ClassSerializerInterceptor`).
 - [x] Cập nhật import kiểm thử từ `@nestjs/testing` & `supertest` sang `@bunest/testing` (`Test`, `request`, `TestClient`, `createAutoMocker`, `CapturingLogger`) chạy trên `bun:test`, và đổi tên các tệp E2E từ `*.e2e-spec.ts` sang `*.e2e.spec.ts` để `bun test` tự động phát hiện.
-- [x] Loại bỏ mã thừa `reflect-metadata` (tùy chọn): `@bunest/core` tự động cài đặt shim Reflect Metadata không phụ thuộc ngoài tích hợp sẵn ([ADR-017](/architecture/adrs)); tùy chọn chuyển đổi các DTO decorator từ `class-validator`/`class-transformer` sang `@bunest/validation/validator` và `@bunest/validation/transformer` ([ADR-015](/architecture/adrs)).
+- [x] Loại bỏ mã thừa `reflect-metadata` (tùy chọn): `@bunest/core` tự động cài đặt shim Reflect Metadata không phụ thuộc ngoài tích hợp sẵn; tùy chọn chuyển đổi các DTO decorator từ `class-validator`/`class-transformer` sang `@bunest/validation/validator` và `@bunest/validation/transformer`.
 - [x] Bật `verbatimModuleSyntax: true` trong `tsconfig.json`; dùng `import type` cho interface và value import cho các DI service & class DTO.
 - [x] Thay các interceptor dùng `.pipe(map(...))` của RxJS bằng `async/await next.handle()`.
 - [x] Thay các lời gọi `res.status().send()` của Express bằng `ResponseContext` hoặc `new Response(...)` gốc.

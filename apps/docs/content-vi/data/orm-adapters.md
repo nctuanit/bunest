@@ -135,7 +135,7 @@ Truyền `OrmModule.forFeature([UserRepository])` (hoặc bật `autoRegisterRep
 
 ## Toán tử truy vấn suy diễn tùy chỉnh (`registerQueryOperator`)
 
-Mở rộng bộ phân tích truy vấn suy diễn kiểu Spring Data với các toán tử đặc thù theo miền nghiệp vụ hoặc dialect thông qua `registerQueryOperator()` ([ADR-018](/architecture/adrs)). Các toán tử nằm trên registry toàn cục đơn realm `globalThis[Symbol.for("bunest:orm:custom_query_operators")]`, vì vậy công cụ chẩn đoán `@bunest/cli`, xem trước SQL và gợi ý tự động hoàn thành trong VS Code đều tự động nhận diện các hậu tố tùy chỉnh:
+Mở rộng bộ phân tích truy vấn suy diễn kiểu Spring Data với các toán tử đặc thù theo miền nghiệp vụ hoặc dialect thông qua `registerQueryOperator()`. Các toán tử nằm trên registry toàn cục đơn realm `globalThis[Symbol.for("bunest:orm:custom_query_operators")]`, vì vậy công cụ chẩn đoán `@bunest/cli`, xem trước SQL và gợi ý tự động hoàn thành trong VS Code đều tự động nhận diện các hậu tố tùy chỉnh:
 
 @@filename(custom-operators.ts)
 

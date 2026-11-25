@@ -1,6 +1,6 @@
 # Resilience
 
-**`@bunest/resilience`** provides zero-dependency fault-tolerance policies—**Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit**, and **Fallback**—that work seamlessly on **both** transport entrypoints (HTTP/GraphQL/WebSocket/Microservice handlers) **and** `@Injectable()` service methods via `MethodAspectWeaver` ([ADR-014](/architecture/adrs)), with guaranteed zero double-wrapping.
+**`@bunest/resilience`** provides zero-dependency fault-tolerance policies—**Retry**, **Timeout**, **Circuit Breaker**, **Bulkhead**, **Outbound Rate Limit**, and **Fallback**—that work seamlessly on **both** transport entrypoints (HTTP/GraphQL/WebSocket/Microservice handlers) **and** `@Injectable()` service methods via `MethodAspectWeaver`, with guaranteed zero double-wrapping.
 
 ## Installation
 

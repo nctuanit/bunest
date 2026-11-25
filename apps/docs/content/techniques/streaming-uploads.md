@@ -4,7 +4,7 @@ Because Bunest operates directly on Web Standards and Bun's native I/O primitive
 
 ## Zero-Copy File Responses (`Bun.file()`)
 
-Return a `BunFile` (which extends `Blob`) directly from any controller handler. Bunest's Response Serializer passes it untouched to `new Response(blob, ...)`—preserving Bun's OS-level zero-copy `sendfile` fast path ([ADR-010](/architecture/response-serialization)):
+Return a `BunFile` (which extends `Blob`) directly from any controller handler. Bunest's Response Serializer passes it untouched to `new Response(blob,...)`—preserving Bun's OS-level zero-copy `sendfile` fast path:
 
 @@filename(files.controller.ts)
 
