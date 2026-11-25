@@ -86,7 +86,7 @@ describeConformance(
 
     itAdapted(
       "ADR-011",
-      "should preserve optional captures after a version miss on /reports/report.en.json and enforce strict trailing slash by default",
+      "should preserve optional captures after a version miss on /reports/report.en.json",
       async () => {
         const v1 = await request(app)
           .get("/reports/report.en.json")
@@ -108,7 +108,14 @@ describeConformance(
           locale: "en",
           ext: "json",
         });
+      },
+      "ADR-011 preserves optional captures on canonical path without trailing slash",
+    );
 
+    itAdapted(
+      "ADR-011",
+      "should enforce strict trailing slash on /reports/report.en.json/ by default",
+      async () => {
         await request(app)
           .get("/reports/report.en.json/")
           .set("v", "1")
