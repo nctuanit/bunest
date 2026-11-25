@@ -735,7 +735,12 @@ describeConformance(
           >),
         });
         servers.push(server);
+        let resolveStarted!: () => void;
+        const handlerStarted = new Promise<void>((res) => {
+          resolveStarted = res;
+        });
         server.addMessageHandler("slow-graceful", async () => {
+          resolveStarted();
           await Bun.sleep(40);
           return "finished-before-close";
         });
@@ -748,7 +753,7 @@ describeConformance(
         clients.push(client);
 
         const inFlight = client.send("slow-graceful", {});
-        await Bun.sleep(10);
+        await handlerStarted;
         const closing = server.close();
 
         expect(await inFlight).toBe("finished-before-close");

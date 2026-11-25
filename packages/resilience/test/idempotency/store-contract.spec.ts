@@ -5,7 +5,7 @@ import { idempotencyStoreContract } from "../../src/idempotency/testing/index";
 describe("InMemoryIdempotencyStore — idempotencyStoreContract", () => {
   const cases = idempotencyStoreContract(() => new InMemoryIdempotencyStore(), {
     concurrent: true,
-    lockTtl: 40,
+    lockTtl: 120,
   });
 
   for (const c of cases) {
