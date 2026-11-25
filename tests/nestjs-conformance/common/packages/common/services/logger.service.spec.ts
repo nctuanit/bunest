@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  spyOn,
+} from "bun:test";
 import {
   ConsoleLogger,
   Logger,
@@ -42,6 +50,12 @@ describeConformance(
       "Ported from Vitest vi.spyOn/vi.stubEnv to bun:test spyOn and env helper; exercises both @bunest/common Logger and ConsoleLogger.",
   },
   () => {
+    beforeAll(() => {
+      // Restore default global Logger in case an earlier test file left it muted
+      // (bun test shares one runtime across spec files unlike Vitest/Jest workers).
+      Logger.overrideLogger(true);
+    });
+
     describe("[static methods]", () => {
       describe("when the default logger is used", () => {
         let processStdoutWriteSpy: ReturnType<typeof spyOn>;

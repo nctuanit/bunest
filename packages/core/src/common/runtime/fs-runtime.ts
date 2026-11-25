@@ -130,12 +130,25 @@ export async function lstatPath(path: string): Promise<FsStats> {
   return (await lstat(path)) as unknown as FsStats;
 }
 
-export function realpathOf(path: string): Promise<string> {
-  return realpath(path);
+function normalizeRealpath(p: string): string {
+  // Strip Windows extended-length drive prefix (`\\?\C:\...`) so realpathOf and realpathSyncOf
+  // produce canonical paths compatible with `relative()` / `resolve()`.
+  if (p.startsWith("\\\\?\\") && p.length >= 6 && p[5] === ":") {
+    return p.slice(4);
+  }
+  return p;
+}
+
+export async function realpathOf(path: string): Promise<string> {
+  return normalizeRealpath(await realpath(path));
 }
 
 export function realpathSyncOf(path: string): string {
-  return realpathSync(path);
+  const fn =
+    typeof realpathSync.native === "function"
+      ? realpathSync.native
+      : realpathSync;
+  return normalizeRealpath(fn(path));
 }
 
 export function renamePath(oldPath: string, newPath: string): Promise<void> {

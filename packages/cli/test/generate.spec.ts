@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   ensureDir,
+  existsSyncPath,
   getPlatform,
   join,
   removeEmptyDir,
@@ -348,8 +349,11 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
     for (const pkg of ["validation", "core", "testing"]) {
       await linkDir(join(repoRoot, "packages", pkg), join(bunestScopeDir, pkg));
     }
-    for (const dep of ["@types"]) {
-      await linkDir(join(repoNodeModules, dep), join(projectNodeModules, dep));
+    for (const dep of ["@types", ".bun"]) {
+      const targetDep = join(repoNodeModules, dep);
+      if (existsSyncPath(targetDep)) {
+        await linkDir(targetDep, join(projectNodeModules, dep));
+      }
     }
 
     // 1. Real `bun check` against generated project's strict verbatimModuleSyntax tsconfig.json

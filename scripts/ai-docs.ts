@@ -154,7 +154,9 @@ async function listValueExports(file: string): Promise<string[]> {
 
 async function readOptional(relPath: string): Promise<string | undefined> {
   const file = Bun.file(`${REPO_ROOT}/${relPath}`);
-  return (await file.exists()) ? await file.text() : undefined;
+  return (await file.exists())
+    ? (await file.text()).replace(/\r\n/g, "\n")
+    : undefined;
 }
 
 export async function buildLlmsFullTxt(packages?: PackageMeta[]): Promise<string> {
@@ -199,7 +201,9 @@ if (import.meta.main) {
   const stale: string[] = [];
   for (const [rel, content] of Object.entries(outputs)) {
     const path = `${REPO_ROOT}/${rel}`;
-    const current = (await Bun.file(path).exists()) ? await Bun.file(path).text() : undefined;
+    const current = (await Bun.file(path).exists())
+      ? (await Bun.file(path).text()).replace(/\r\n/g, "\n")
+      : undefined;
     if (current === content) continue;
     if (check) {
       stale.push(rel);

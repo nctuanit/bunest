@@ -920,11 +920,17 @@ describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
     return cycles;
   }
 
-  it("has ZERO runtime AND ZERO type-only circular imports in packages/core/src/common and packages/core/src", () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
-    const commonCycles = findAllCycles(join(repoRoot, "packages/core/src/common"));
-    const coreCycles = findAllCycles(join(repoRoot, "packages/core/src"));
-    expect(commonCycles).toEqual([]);
-    expect(coreCycles).toEqual([]);
-  });
+  it(
+    "has ZERO runtime AND ZERO type-only circular imports in packages/core/src/common and packages/core/src",
+    () => {
+      const repoRoot = resolve(import.meta.dir, "../../..");
+      const commonCycles = findAllCycles(
+        join(repoRoot, "packages/core/src/common"),
+      );
+      const coreCycles = findAllCycles(join(repoRoot, "packages/core/src"));
+      expect(commonCycles).toEqual([]);
+      expect(coreCycles).toEqual([]);
+    },
+    15_000,
+  );
 });

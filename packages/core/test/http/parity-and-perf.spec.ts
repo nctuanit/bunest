@@ -11,6 +11,7 @@ import {
   Headers,
   HttpCode,
   join,
+  lstatPath,
   Param,
   type PipeTransform,
   Post,
@@ -990,13 +991,14 @@ describe("P1 #6 — StreamableFile, useStaticAssets (with Security Defenses), & 
 
     let symlinkCreated = false;
     try {
-      const ln = Bun.spawnSync([
-        "ln",
-        "-s",
-        join(baseDir, "secret.txt"),
-        join(publicDir, "escape.txt"),
-      ]);
-      if (ln.exitCode === 0) {
+      const escapeLink = join(publicDir, "escape.txt");
+      const escapeTarget = join(baseDir, "secret.txt");
+      const cmd =
+        process.platform === "win32"
+          ? ["cmd", "/c", "mklink", escapeLink, escapeTarget]
+          : ["ln", "-s", escapeTarget, escapeLink];
+      const ln = Bun.spawnSync(cmd);
+      if (ln.exitCode === 0 && (await lstatPath(escapeLink)).isSymbolicLink()) {
         symlinkCreated = true;
       }
     } catch {

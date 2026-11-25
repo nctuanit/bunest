@@ -761,7 +761,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       const escapedDir = dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       Bun.plugin(
         createOrmCircularSafePlugin({
-          filter: new RegExp(`^${escapedDir}/.*\\.ts$`),
+          filter: new RegExp(`^${escapedDir}[\\\\/].*\\.ts$`),
         }),
       );
 

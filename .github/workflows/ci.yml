@@ -41,6 +41,9 @@ jobs:
       - name: Typecheck (bun check)
         run: bun run typecheck
 
+      - name: Build all workspace packages
+        run: bun run build
+
       - name: Run full test suite
         run: bun test
 
@@ -49,9 +52,6 @@ jobs:
 
       - name: Check generated AI docs (llms.txt, docs/errors.md) are fresh
         run: bun run ai:docs --check
-
-      - name: Build all workspace packages
-        run: bun run build
 
       - name: Run release verification & CLI clean-project smoke test
         run: bun run verify:release

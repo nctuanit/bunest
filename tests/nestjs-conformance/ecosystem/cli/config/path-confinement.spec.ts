@@ -26,7 +26,11 @@ function makeTempDir(prefix: string): string {
 }
 
 function createSymlink(target: string, linkPath: string): void {
-  const res = Bun.spawnSync(["ln", "-s", target, linkPath]);
+  const cmd =
+    process.platform === "win32"
+      ? ["cmd", "/c", "mklink", "/J", linkPath, target]
+      : ["ln", "-s", target, linkPath];
+  const res = Bun.spawnSync(cmd);
   if (res.exitCode !== 0) {
     throw new Error(`Failed to create symlink ${linkPath} -> ${target}`);
   }

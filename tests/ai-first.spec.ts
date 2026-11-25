@@ -108,7 +108,11 @@ describe("AI-first: generated docs", () => {
   it("docs/errors.md, llms.txt and llms-full.txt are up to date (run `bun run ai:docs`)", async () => {
     const outputs = await buildAllAiDocs();
     for (const [rel, content] of Object.entries(outputs)) {
-      expect({ rel, fresh: (await Bun.file(`${REPO_ROOT}/${rel}`).text()) === content }).toEqual({ rel, fresh: true });
+      const actual = (await Bun.file(`${REPO_ROOT}/${rel}`).text()).replace(
+        /\r\n/g,
+        "\n",
+      );
+      expect({ rel, fresh: actual === content }).toEqual({ rel, fresh: true });
     }
     for (const code of Object.keys(BUNEST_ERROR_CATALOG)) {
       expect(outputs["docs/errors.md"]).toContain(`## ${code}`);
