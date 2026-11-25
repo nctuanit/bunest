@@ -810,7 +810,10 @@ export class ItemEntity {
       document: itemDoc,
       contentChanges: [{ text: "sku!: string;" }],
     });
-    await Bun.sleep(80);
+    const deadline = Date.now() + 1000;
+    while (!existsSyncPath(subDtsPath) && Date.now() < deadline) {
+      await Bun.sleep(20);
+    }
 
     expect(existsSyncPath(subDtsPath)).toBe(true);
     expect(readTextSync(subDtsPath)).toContain("getSku(): string;");
