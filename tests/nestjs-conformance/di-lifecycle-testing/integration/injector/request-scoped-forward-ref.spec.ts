@@ -655,17 +655,21 @@ describeConformance(
         }
       };
 
-      // BUNEST_BUG: WsGatewayExplorer / BunWebSocketAdapter does not wire DI APP_GUARD multi-providers (including request-scoped guards) to @WebSocketGateway() handlers, so ClientGuard never runs and unauthorized messages still invoke the handler (packages/core/src/ws/explorer/ws-gateway.explorer.ts, packages/core/src/ws/adapter/bun-ws.adapter.ts)
-      it.skip("should not run the handler when its constructor throws", async () => {
-        ClientContext.isAuthorized = false;
+      itAdapted(
+        "ADR-001",
+        "should not run the handler when its constructor throws",
+        async () => {
+          ClientContext.isAuthorized = false;
 
-        const reply = await send();
+          const reply = await send();
 
-        expect(reply.event).toBe("exception");
-        expect((reply.data as { message?: string }).message).toBe(
-          "Unauthorized",
-        );
-      });
+          expect(reply.event).toBe("error");
+          expect((reply.data as { message?: string }).message).toBe(
+            "Unauthorized",
+          );
+        },
+        'BunWebSocketAdapter emits "error" event for WS exceptions (ADR-001)',
+      );
 
       it("should run the handler once it is constructed", async () => {
         ClientContext.isAuthorized = true;

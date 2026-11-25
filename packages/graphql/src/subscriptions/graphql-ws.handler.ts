@@ -141,6 +141,11 @@ export class GraphQLWsHandler {
       (req, server) => this.handleUpgrade(req, server),
       this.createBunWebSocketConfig(),
     );
+    (
+      adapter as { onBeforeClose?: (fn: () => void) => void }
+    ).onBeforeClose?.(() => {
+      void this.closeAll();
+    });
   }
 
   /**
@@ -317,6 +322,20 @@ export class GraphQLWsHandler {
     const data = ws.data;
     if (data.closed) {
       return;
+    }
+
+    const customMaxPayload = (
+      this.options.server as
+        | { options?: { maxPayload?: number } }
+        | undefined
+    )?.options?.maxPayload;
+    if (typeof customMaxPayload === "number" && customMaxPayload > 0) {
+      const byteLength =
+        typeof raw === "string" ? Buffer.byteLength(raw) : raw.byteLength;
+      if (byteLength > customMaxPayload) {
+        this.closeSocketWithProtocolError(ws, 1009, "Message too big");
+        return;
+      }
     }
 
     const text =

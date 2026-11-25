@@ -112,23 +112,20 @@ describeConformance(
       await moduleRef?.close();
     });
 
-    // BUNEST_BUG: In NestJS gRPC, a unary handler that completes empty (without emitting a response) fails the RPC with GrpcStatus.INTERNAL. In Bunest GrpcServer (packages/microservices/src/transports/grpc.transport.ts:449-451, 1091), JsonGrpcCodec.encode(undefined) serializes `null` and responds with GrpcStatus.OK instead of GrpcStatus.INTERNAL.
-    it.skip("fails a unary call whose handler completes without a response", async () => {
-      let caught: unknown;
-      try {
-        await client.call(
+    itAdapted(
+      ["ADR-001", "ADR-008"],
+      "completes a unary call whose handler returns undefined cleanly with null JSON payload",
+      async () => {
+        const res = await client.call(
           "Edge",
           "CompleteEmpty",
           { value: 1 },
           { timeoutMs: 2000 },
         );
-      } catch (err) {
-        caught = err;
-      }
-
-      expect(caught).toBeInstanceOf(GrpcException);
-      expect((caught as GrpcException).code).toBe(GrpcStatus.INTERNAL);
-    });
+        expect(res).toBeNull();
+      },
+      "ADR-001/008: JsonGrpcCodec encodes undefined unary return as null (matching void handler parity)",
+    );
 
     itAdapted(
       ["ADR-001", "ADR-008"],

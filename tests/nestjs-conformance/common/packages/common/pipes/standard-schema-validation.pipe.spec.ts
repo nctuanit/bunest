@@ -432,7 +432,16 @@ describeConformance(
             .transform({}, { type: "body" })
             .catch((err) => err);
           expect(error).toBeInstanceOf(HttpException);
-          return ((error as HttpException).getResponse() as any).message;
+          const body = (error as HttpException).getResponse() as {
+            message: string;
+            details: Array<{ field: string; messages: string[] }>;
+          };
+          expect(body.message).toBe("Validation failed");
+          return body.details.flatMap((d) =>
+            d.field === "..."
+              ? d.messages
+              : d.messages.map((m) => (d.field ? `${d.field}: ${m}` : m)),
+          );
         };
 
         it("should use the default limit for a value that is not a number", () => {
@@ -446,58 +455,74 @@ describeConformance(
           expect((target as any).maxErrorMessagesLength).toBe(1_000_000);
         });
 
-        // BUNEST_BUG: StandardSchemaValidationPipe does not implement `maxErrorMessagesLength` truncation (packages/validation/src/standard-schema.pipe.ts)
-        it.skip("should leave out the messages past the limit and say so", async () => {
-          expect(
-            await messagesOf({ maxErrorMessagesLength: 30 }, issues),
-          ).toEqual(["a: must be a string", "b.c: must be a string", omitted]);
-        });
+        itAdapted(
+          "ADR-009",
+          "should leave out the messages past the limit and say so",
+          async () => {
+            expect(
+              await messagesOf({ maxErrorMessagesLength: 30 }, issues),
+            ).toEqual(["a: must be a string", "b.c: must be a string", omitted]);
+          },
+          "ADR-009 normalized details envelope with maxErrorMessagesLength truncation",
+        );
 
-        // BUNEST_BUG: StandardSchemaValidationPipe does not implement `maxErrorMessagesLength` lazy early-stop while formatting issues (iterates all 1,000 issues) (packages/validation/src/standard-schema.pipe.ts)
-        it.skip("should not format the issues past the limit", async () => {
-          let read = 0;
-          const paths = Array.from({ length: 1_000 }, (_, index) => ({
-            get key() {
-              read++;
-              return index;
-            },
-          }));
+        itAdapted(
+          "ADR-009",
+          "should not format the issues past the limit",
+          async () => {
+            let read = 0;
+            const paths = Array.from({ length: 1_000 }, (_, index) => ({
+              get key() {
+                read++;
+                return index;
+              },
+            }));
 
-          const messages = await messagesOf(
-            { maxErrorMessagesLength: 50 },
-            paths.map((segment) => ({
-              message: "must be a string",
-              path: ["items", segment],
-            })),
-          );
+            const messages = await messagesOf(
+              { maxErrorMessagesLength: 50 },
+              paths.map((segment) => ({
+                message: "must be a string",
+                path: ["items", segment],
+              })),
+            );
 
-          expect(messages.at(-1)).toBe(omitted);
-          expect(read).toBeLessThan(10);
-        });
+            expect(messages.at(-1)).toBe(omitted);
+            expect(read).toBeLessThan(10);
+          },
+          "ADR-009 normalized details envelope with lazy early-stop",
+        );
 
-        // BUNEST_BUG: StandardSchemaValidationPipe does not enforce default 1_000_000-character DoS cap on emitted issue messages (packages/validation/src/standard-schema.pipe.ts)
-        it.skip("should limit the messages to about a million characters by default", async () => {
-          const manyIssues = Array.from({ length: 100_000 }, (_, index) => ({
-            message: "Invalid input: expected string, received undefined",
-            path: ["contacts", index, "name"],
-          }));
+        itAdapted(
+          "ADR-009",
+          "should limit the messages to about a million characters by default",
+          async () => {
+            const manyIssues = Array.from({ length: 100_000 }, (_, index) => ({
+              message: "Invalid input: expected string, received undefined",
+              path: ["contacts", index, "name"],
+            }));
 
-          const messages = await messagesOf({}, manyIssues);
+            const messages = await messagesOf({}, manyIssues);
 
-          expect(messages.at(-1)).toBe(omitted);
-          expect(messages.join("").length).toBeLessThan(1_000_100);
-        });
+            expect(messages.at(-1)).toBe(omitted);
+            expect(messages.join("").length).toBeLessThan(1_000_100);
+          },
+          "ADR-009 normalized details envelope with default 1M char DoS cap",
+        );
 
-        // BUNEST_BUG: StandardSchemaValidationPipe does not implement `maxErrorMessagesLength` option or NestJS flat errorFormat (packages/validation/src/standard-schema.pipe.ts)
-        it.skip("should keep every message when the limit is lifted", async () => {
-          expect(
-            await messagesOf({ maxErrorMessagesLength: Infinity }, issues),
-          ).toEqual([
-            "a: must be a string",
-            "b.c: must be a string",
-            "b.d: must be a string",
-          ]);
-        });
+        itAdapted(
+          "ADR-009",
+          "should keep every message when the limit is lifted",
+          async () => {
+            expect(
+              await messagesOf({ maxErrorMessagesLength: Infinity }, issues),
+            ).toEqual([
+              "a: must be a string",
+              "b.c: must be a string",
+              "b.d: must be a string",
+            ]);
+          },
+          "ADR-009 normalized details envelope with maxErrorMessagesLength: Infinity",
+        );
 
         it("should hand every issue to a custom exception factory", async () => {
           const exceptionFactory = mock(() => new Error("custom"));

@@ -2063,22 +2063,26 @@ describeConformance(
     });
 
     describe("subclass compatibility", () => {
-      // BUNEST_BUG: bun:test expect(value).not.toHaveProperty("constructor") checks the prototype chain rather than own properties (unlike Chai's own.property) (packages/core/src/common/pipes/validation.pipe.ts)
-      it.skip("should allow subclasses to call super.stripProtoKeys", () => {
-        class CustomPipe extends ValidationPipe {
-          public callSuperStripProtoKeys(value: unknown) {
-            (
-              ValidationPipe.prototype as unknown as {
-                stripProtoKeys: (v: unknown) => void;
-              }
-            ).stripProtoKeys.call(this, value);
+      itAdapted(
+        "ADR-001",
+        "should allow subclasses to call super.stripProtoKeys",
+        () => {
+          class CustomPipe extends ValidationPipe {
+            public callSuperStripProtoKeys(value: unknown) {
+              (
+                ValidationPipe.prototype as unknown as {
+                  stripProtoKeys: (v: unknown) => void;
+                }
+              ).stripProtoKeys.call(this, value);
+            }
           }
-        }
-        const pipe = new CustomPipe();
-        const value = { constructor: "malicious" };
-        expect(() => pipe.callSuperStripProtoKeys(value)).not.toThrow();
-        expect(value).not.toHaveProperty("constructor");
-      });
+          const pipe = new CustomPipe();
+          const value = { constructor: "malicious" };
+          expect(() => pipe.callSuperStripProtoKeys(value)).not.toThrow();
+          expect(Object.hasOwn(value, "constructor")).toBe(false);
+        },
+        "bun:test toHaveProperty checks prototype chain; verify own property removal via Object.hasOwn",
+      );
 
       it("should invoke an overridden stripProtoKeys during transform", async () => {
         let called = false;

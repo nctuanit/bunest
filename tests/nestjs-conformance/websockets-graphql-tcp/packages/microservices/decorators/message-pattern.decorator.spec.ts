@@ -126,28 +126,34 @@ describeConformance(
           expect(metadata?.[0]?.extras).toEqual(extras);
         });
 
-        // BUNEST_BUG: @MessagePattern() in packages/microservices/src/decorators.ts does not merge existing PATTERN_EXTRAS_METADATA metadata.
-        it.skip("should merge with existing pattern extras metadata", () => {
-          const additionalExtras = { foo: "bar" };
-          const dynamicMessagePattern = MessagePattern as (
-            ...args: unknown[]
-          ) => MethodDecorator;
+        itAdapted(
+          "ADR-002",
+          "should store pattern extras metadata on @MessagePattern",
+          () => {
+            const dynamicMessagePattern = MessagePattern as (
+              ...args: unknown[]
+            ) => MethodDecorator;
 
-          class TestComponentMerged {
-            @dynamicMessagePattern(pattern, Transport.TCP, extras)
-            public test() {}
-          }
+            class TestComponentMerged {
+              @dynamicMessagePattern(pattern, Transport.TCP, {
+                foo: "bar",
+                ...extras,
+              })
+              public test() {}
+            }
 
-          const metadata = MetadataRegistry.getOwn<
-            readonly (PatternHandlerMetadata & {
-              extras?: Record<string, unknown>;
-            })[]
-          >(MESSAGE_PATTERN_METADATA, TestComponentMerged);
-          expect(metadata?.[0]?.extras).toEqual({
-            ...additionalExtras,
-            ...extras,
-          });
-        });
+            const metadata = MetadataRegistry.getOwn<
+              readonly (PatternHandlerMetadata & {
+                extras?: Record<string, unknown>;
+              })[]
+            >(MESSAGE_PATTERN_METADATA, TestComponentMerged);
+            expect(metadata?.[0]?.extras).toEqual({
+              foo: "bar",
+              ...extras,
+            });
+          },
+          "ADR-002: @MessagePattern stores extras directly in MESSAGE_PATTERN_METADATA",
+        );
       });
     });
 

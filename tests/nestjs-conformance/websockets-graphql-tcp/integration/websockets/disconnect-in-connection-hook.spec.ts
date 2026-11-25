@@ -204,10 +204,18 @@ describeConformance(
         ws.addEventListener("open", () => ws.close(1000, "client disconnect"));
       }
 
-      await Promise.race([
-        disconnectHooksCalled,
-        new Promise((resolve) => setTimeout(resolve, 1000)),
-      ]);
+      if (expectedDisconnects === 0) {
+        await new Promise<void>((resolve) => {
+          ws.addEventListener("open", () => setTimeout(resolve, 30), {
+            once: true,
+          });
+        });
+      } else {
+        await Promise.race([
+          disconnectHooksCalled,
+          new Promise((resolve) => setTimeout(resolve, 1000)),
+        ]);
+      }
     }
 
     it("should call handleDisconnect when a synchronous handleConnection disconnects the client [ADR-001: native Bun WS close]", async () => {
@@ -294,8 +302,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: Test harness `connect(..., 0)` resolves `disconnectHooksCalled` immediately without awaiting WebSocket `open`, so `expect(calls)` runs before the TCP handshake completes.
-    it.skip("should call handleConnection of every gateway sharing a RegExp namespace", async () => {
+    it("should call handleConnection of every gateway sharing a RegExp namespace", async () => {
       await connect([RoomGateway, OtherRoomGateway], 0, {
         path: "/room-1",
       });

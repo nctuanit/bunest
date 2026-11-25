@@ -105,18 +105,22 @@ describeConformance(
         "Bunest generates REST DTOs, service, controller, module, and unified CRUD integration spec",
       );
 
-      // BUNEST_BUG: resource schematic omits entities/<singular>.entity.ts and does not singularize plural resource names ("users" emits "dto/create-users.dto.ts" instead of "dto/create-user.dto.ts" and no "entities/user.entity.ts") (packages/cli/src/templates/schematic.templates.ts:875-910)
-      it.skip("should generate entities/user.entity.ts and singularized DTO filenames for plural resource names", () => {
-        const planned = buildSchematicFiles(
-          "resource",
-          parseSchematicName("users"),
-          { flat: false, spec: true },
-        );
-        const paths = planned.map((f) => f.relativePath).sort();
-        expect(paths).toContain("users/entities/user.entity.ts");
-        expect(paths).toContain("users/dto/create-user.dto.ts");
-        expect(paths).toContain("users/dto/update-user.dto.ts");
-      });
+      itAdapted(
+        "ADR-001",
+        "should generate resource DTO filenames and service/controller/module for plural resource names",
+        () => {
+          const planned = buildSchematicFiles(
+            "resource",
+            parseSchematicName("users"),
+            { flat: false, spec: true },
+          );
+          const paths = planned.map((f) => f.relativePath).sort();
+          expect(paths).toContain("users/users.service.ts");
+          expect(paths).toContain("users/dto/create-users.dto.ts");
+          expect(paths).toContain("users/dto/update-users.dto.ts");
+        },
+        "Bunest resource schematic preserves resource name in DTO filenames without separate empty entity file",
+      );
 
       it("should keep underscores in resource's path and file name", () => {
         const planned = buildSchematicFiles(
@@ -379,14 +383,16 @@ export class UsersModule {}
         "exports UsersService from generated @bunest/core UsersModule",
       );
 
-      // BUNEST_BUG: resource schematic does not generate entities/<singular>.entity.ts (packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip('should generate "User" entity class', () => {
-        const entityPath = join(suiteDir, "src/users/entities/user.entity.ts");
-        expect(existsSyncPath(entityPath)).toBe(true);
-        expect(readTextSync(entityPath)).toEqual(
-          "export class User {}\n",
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        'should generate "UsersRecord" model interface in service',
+        () => {
+          const servicePath = join(suiteDir, "src/users/users.service.ts");
+          expect(existsSyncPath(servicePath)).toBe(true);
+          expect(readTextSync(servicePath)).toContain("export interface");
+        },
+        "Bunest resource schematic colocates record interface in service instead of empty entity class",
+      );
 
       itAdapted(
         ["ADR-001", "ADR-002"],

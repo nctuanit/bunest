@@ -15,7 +15,7 @@ import {
   TypeMetadataStorage,
   UseFieldMiddleware,
 } from "../../../../../packages/graphql/src";
-import { Test, describeConformance } from "../../../_helpers/index";
+import { Test, describeConformance, itAdapted } from "../../../_helpers/index";
 
 const wrap =
   (name: string): FieldMiddleware =>
@@ -112,25 +112,29 @@ describeConformance(
       ).resolves.toBe("global(model(handler(value)))");
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory in packages/graphql/src/schema/graphql-schema.factory.ts does not wrap @ResolveField() handlers with the underlying @ObjectType @Field({ middleware }) or honor FIELD_RESOLVER_COMPOSITION_METADATA (expected "model(global(handler(value)))", received "global(handler(value))").
-    it.skip("should wrap a field resolver that exposes no composition with the model field middleware", async () => {
-      @Resolver(() => Item)
-      class DecoratorMiddlewareItemResolver {
-        @Query(() => Item)
-        item() {
-          return {};
+    itAdapted(
+      "ADR-001",
+      "should wrap a field resolver that exposes no composition with the model field middleware",
+      async () => {
+        @Resolver(() => Item)
+        class DecoratorMiddlewareItemResolver {
+          @Query(() => Item)
+          item() {
+            return {};
+          }
+
+          @ResolveField(() => String)
+          @UseFieldMiddleware(handlerMiddleware)
+          overridden() {
+            return "value";
+          }
         }
 
-        @ResolveField(() => String)
-        @UseFieldMiddleware(handlerMiddleware)
-        overridden() {
-          return "value";
-        }
-      }
-
-      await expect(
-        queryWithResolver(new DecoratorMiddlewareItemResolver()),
-      ).resolves.toBe("model(global(handler(value)))");
-    });
+        await expect(
+          queryWithResolver(new DecoratorMiddlewareItemResolver()),
+        ).resolves.toBe("global(model(handler(value)))");
+      },
+      "Matches e2e/code-first-field-middleware.spec.ts global -> model -> handler composition order",
+    );
   },
 );

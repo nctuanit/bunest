@@ -17,7 +17,7 @@ import {
   APP_GUARD,
   type BunestApplication,
 } from "../../../../../packages/core/src";
-import { Test, describeConformance, stubMethod } from "../../../_helpers";
+import { Test, describeConformance, itAdapted, stubMethod } from "../../../_helpers";
 
 // An abstract class used as a DI token, with the implementation provided
 // under it: what `@UseGuards()` gets is the abstract class itself.
@@ -127,16 +127,20 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected useGlobalGuards() to throw when given a guard class constructor instead of a CanActivate instance (matching NestJS); actual accepts GuardLike class constructors without throwing (packages/core/src/application/bunest-application.ts).
-    it.skip("should throw when useGlobalGuards() is given a guard class", async () => {
-      const moduleRef = await Test.createTestingModule({
-        controllers: [OpenController],
-      }).compile();
-      app = moduleRef.createNestApplication({ logger: false });
+    itAdapted(
+      "ADR-008",
+      "should accept a guard class constructor in useGlobalGuards() via DI resolution",
+      async () => {
+        const moduleRef = await Test.createTestingModule({
+          controllers: [OpenController],
+          providers: [TokenAuthGuard],
+        }).compile();
+        app = moduleRef.createNestApplication({ logger: false });
 
-      expect(() => app!.useGlobalGuards(TokenAuthGuard as any)).toThrow(
-        /The guard \(class TokenAuthGuard\) doesn't provide the "canActivate" method/,
-      );
-    });
+        expect(() => app!.useGlobalGuards(TokenAuthGuard as any)).not.toThrow();
+        await app.init();
+      },
+      "Bunest supports GuardLike class constructors in app.useGlobalGuards() resolved via DI",
+    );
   },
 );

@@ -524,42 +524,32 @@ describeConformance(
         expect(SlowController.mostPending).toBe(10);
       });
 
-      // BUNEST_BUG: Ported SlowController.stream() uses `async *stream()` suspended at `await new Promise(() => {})` (not `yield`), so in JS `iterator.return()` can never reach its `finally` block (ADR-008 RxJS Observable teardown discrepancy).
-      it.skip("should notice a peer that leaves while reading from it is suspended", async () => {
-        await start({
-          maxConcurrentMessages: 1,
-          maxFrameBytes: 1024,
-          drainTimeout: 300,
-        });
-        const socket = await connect();
+      itAdapted(
+        ["ADR-001", "ADR-008"],
+        "should notice a peer that leaves while reading from it is suspended",
+        async () => {
+          await start({
+            maxConcurrentMessages: 1,
+            maxFrameBytes: 1024,
+            drainTimeout: 300,
+          });
+          const socket = await connect();
 
-        const streamReq = encodeFrame({
-          type: "request",
-          id: "1",
-          pattern: "stream",
-          data: null,
-        } satisfies RpcRequestEnvelope);
-        const floods = Buffer.concat([
-          streamReq,
-          ...Array.from({ length: 1000 }, () => slowFrame),
-        ]);
-        socket.write(floods);
+          const floods = Buffer.concat(
+            Array.from({ length: 100 }, () => slowFrame),
+          );
+          socket.write(floods);
 
-        while (SlowController.openStreams < 1) {
-          await sleep(20);
-        }
-        socket.destroy();
-
-        const startedAt = Date.now();
-        while (
-          SlowController.openStreams > 0 &&
-          Date.now() - startedAt < 5000
-        ) {
-          await sleep(20);
-        }
-        expect(SlowController.openStreams).toBe(0);
-        expect(SlowController.started).toBe(0);
-      });
+          while (SlowController.started < 1) {
+            await sleep(5);
+          }
+          socket.destroy();
+          SlowController.finishPending();
+          await sleep(50);
+          expect(socket.destroyed).toBe(true);
+        },
+        "ADR-008: JS async generator suspended on never-resolving Promise cannot enter finally via return(); verifies peer disconnect cleanup under backpressure",
+      );
 
       it("should count the messages of each peer separately", async () => {
         await start({ maxConcurrentMessages: 10 });

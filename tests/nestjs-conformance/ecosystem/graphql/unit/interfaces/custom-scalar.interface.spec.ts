@@ -51,23 +51,22 @@ describeConformance(
       expect(scalar.serialize("not-a-date")).toBeNull();
     });
 
-    // BUNEST_BUG: CustomScalar<TExternal, TInternal> in packages/graphql/src/interfaces/graphql.interface.ts returns `TInternal` / `TExternal` (and marks `parseLiteral?` optional) instead of `TInternal | null | undefined` / `TExternal | null | undefined` (and required `parseLiteral`), so `class DateScalar implements CustomScalar<number, Date>` cannot return `null` or `undefined` under strict TypeScript.
-    it.skip("should expose method signatures whose return types include null and undefined", () => {
+    it("should expose method signatures whose return types include null and undefined", () => {
       type Methods = CustomScalar<number, Date>;
       type ParseLiteralFn = NonNullable<Methods["parseLiteral"]>;
 
       const parseLiteralIncludesNullish: IsEqual<
         ReturnType<ParseLiteralFn>,
         Date | null | undefined
-      > = false;
+      > = true;
       const parseValueIncludesNullish: IsEqual<
         ReturnType<Methods["parseValue"]>,
         Date | null | undefined
-      > = false;
+      > = true;
       const serializeIncludesNullish: IsEqual<
         ReturnType<Methods["serialize"]>,
         number | null | undefined
-      > = false;
+      > = true;
 
       expect<boolean>(parseLiteralIncludesNullish).toBe(true);
       expect<boolean>(parseValueIncludesNullish).toBe(true);

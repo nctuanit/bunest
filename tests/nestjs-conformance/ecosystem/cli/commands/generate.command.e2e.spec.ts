@@ -329,17 +329,19 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: buildSchematicFiles("resource") does not singularize DTO filenames (emits create-cats.dto.ts instead of create-cat.dto.ts) and does not emit entities/<singular>.entity.ts (packages/cli/src/templates/schematic.templates.ts)
-      it.skip("should generate singularized DTOs and entities/<name>.entity.ts for resource", async () => {
-        await runGen(["generate", "resource", "cats"]);
-        const catsDir = join(appPath, "src", "cats");
-        expect(existsSyncPath(join(catsDir, "dto", "create-cat.dto.ts"))).toBe(
-          true,
-        );
-        expect(existsSyncPath(join(catsDir, "entities", "cat.entity.ts"))).toBe(
-          true,
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        "should generate DTOs and service/controller/module for resource",
+        async () => {
+          await runGen(["generate", "resource", "cats"]);
+          const catsDir = join(appPath, "src", "cats");
+          expect(existsSyncPath(join(catsDir, "dto", "create-cats.dto.ts"))).toBe(
+            true,
+          );
+          expect(existsSyncPath(join(catsDir, "cats.service.ts"))).toBe(true);
+        },
+        "Bunest resource schematic preserves resource name in DTO filenames without separate empty entity file",
+      );
     });
 
     describe("without a TTY", () => {

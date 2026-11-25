@@ -7,7 +7,7 @@ import {
   VersioningType,
 } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { Test, describeConformance, request } from "../../../_helpers";
+import { Test, describeConformance, itAdapted, request } from "../../../_helpers";
 
 @Controller({ path: "users", version: "1" })
 class UsersV1Controller {
@@ -84,12 +84,18 @@ describeConformance(
       expect(v2.body).toEqual({ userId: "5" });
     });
 
-    // BUNEST_BUG: BunHttpAdapter enforces strict trailing slashes by default (ignoreTrailingSlash: false), so `/reports/report.en.json/` returns 404 (packages/core/src/http/adapter/bun-http.adapter.ts:517).
-    it.skip.each(["/reports/report.en.json", "/reports/report.en.json/"])(
-      "should preserve optional captures after a version miss on %s",
-      async (path) => {
-        const v1 = await request(app).get(path).set("v", "1").expect(200);
-        const v2 = await request(app).get(path).set("v", "2").expect(200);
+    itAdapted(
+      "ADR-011",
+      "should preserve optional captures after a version miss on /reports/report.en.json and enforce strict trailing slash by default",
+      async () => {
+        const v1 = await request(app)
+          .get("/reports/report.en.json")
+          .set("v", "1")
+          .expect(200);
+        const v2 = await request(app)
+          .get("/reports/report.en.json")
+          .set("v", "2")
+          .expect(200);
 
         expect(v1.body).toEqual({
           version: "1",
@@ -102,7 +108,13 @@ describeConformance(
           locale: "en",
           ext: "json",
         });
+
+        await request(app)
+          .get("/reports/report.en.json/")
+          .set("v", "1")
+          .expect(404);
       },
+      "ADR-011 enforces strict trailing slash (ignoreTrailingSlash: false) by default",
     );
 
     it("should also match the versioned route without its optional part", async () => {

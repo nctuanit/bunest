@@ -99,7 +99,11 @@ function createMockWsServer(opts: {
   const listeners = new Map<string, Set<(...args: any[]) => void>>();
   const clients = new Set<unknown>();
   return {
-    options: { noServer: opts.noServer, path: opts.path },
+    options: {
+      noServer: opts.noServer,
+      path: opts.path,
+      maxPayload: opts.maxPayload,
+    },
     clients,
     listeners,
     on(event: string, fn: (...args: any[]) => void) {
@@ -237,8 +241,7 @@ describeConformance(
           expect(server.clients.size).toBe(1);
         });
 
-        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` options such as `maxPayload` (closed with 4400 invalid JSON instead of 1009 message too big; packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-        it.skip("applies the options of the custom server", async () => {
+        it("applies the options of the custom server", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
           await client.acked;

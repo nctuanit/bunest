@@ -290,7 +290,7 @@ export class StandardSchemaValidationPipe<
         typeof issue.message === "string" && issue.message.length > 0
           ? issue.message
           : "Invalid value";
-      remainingLength -= field.length + msg.length;
+      remainingLength -= field.length + (field.length > 0 ? 2 : 0) + msg.length;
       boundedIssues.push({
         message: msg,
         path: field ? [field] : undefined,

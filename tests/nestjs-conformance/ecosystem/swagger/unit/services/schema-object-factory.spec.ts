@@ -34,7 +34,7 @@ import {
   type StandardJSONSchemaV1,
   type StandardSchemaConverter,
 } from "../../../../../../packages/swagger/src";
-import { createSpy, describeConformance } from "../../../../_helpers";
+import { createSpy, describeConformance, itAdapted } from "../../../../_helpers";
 import { CreateUserDto } from "./fixtures/create-user.dto";
 
 function createStandardSchema(
@@ -2439,33 +2439,35 @@ describeConformance(
         expect(prop.type).toBe("array");
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:747-757) applies numeric bounds (minimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf) onto the outer array schema instead of items
-      it.skip("should move numeric constraints to the items", () => {
-        class Order {
-          @ApiProperty({
-            type: [Number],
-            minimum: 0,
-            exclusiveMinimum: true,
-            maximum: 100,
-            exclusiveMaximum: true,
-            multipleOf: 5,
-          })
-          quantities!: number[];
-        }
+      itAdapted(
+        "ADR-001",
+        "should move numeric constraints to the items",
+        () => {
+          class Order {
+            @ApiProperty({
+              type: [Number],
+              minimum: 0,
+              exclusiveMinimum: true,
+              maximum: 100,
+              exclusiveMaximum: true,
+              multipleOf: 5,
+            })
+            quantities!: number[];
+          }
 
-        const { schemas } = exploreModel(Order, explorer);
-        expect(schemas.Order?.properties?.quantities).toEqual({
-          type: "array",
-          items: {
-            type: "number",
-            minimum: 0,
-            exclusiveMinimum: true,
-            maximum: 100,
-            exclusiveMaximum: true,
-            multipleOf: 5,
-          },
-        });
-      });
+          const { schemas } = exploreModel(Order, explorer);
+          expect(schemas.Order?.properties?.quantities).toEqual({
+            type: "array",
+            items: {
+              type: "number",
+              exclusiveMinimum: 0,
+              exclusiveMaximum: 100,
+              multipleOf: 5,
+            },
+          });
+        },
+        "SchemaExplorer defaults to OpenAPI 3.1 numeric exclusiveMinimum/exclusiveMaximum",
+      );
     });
 
     describe("boolean enum and explicit type preservation", () => {

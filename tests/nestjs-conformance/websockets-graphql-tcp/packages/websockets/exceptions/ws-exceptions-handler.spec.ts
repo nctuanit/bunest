@@ -357,54 +357,64 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not strip binary payloads (Buffer, ArrayBuffer, Float32Array, DataView, Blob, or deeply nested objects) from error causes because cause emission is not implemented.
-        it.skip("should omit binary data (Buffer/ArrayBuffer/TypedArray/DataView/Blob/deeply nested) from emitted cause", () => {
-          const binaryValues: unknown[] = [
-            Buffer.from("x"),
-            new ArrayBuffer(1),
-            new Float32Array(1),
-            new DataView(new ArrayBuffer(1)),
-            new Blob(["x"]),
-          ];
-          for (const val of binaryValues) {
-            emitStub.resetHistory();
+        itAdapted(
+          "ADR-001",
+          "should omit binary data (Buffer/ArrayBuffer/TypedArray/DataView/Blob/deeply nested) from emitted cause",
+          () => {
+            const causeFilter = new BaseWsExceptionFilter();
+            const binaryValues: unknown[] = [
+              Buffer.from("x"),
+              new ArrayBuffer(1),
+              new Float32Array(1),
+              new DataView(new ArrayBuffer(1)),
+              new Blob(["x"]),
+            ];
+            for (const val of binaryValues) {
+              emitStub.resetHistory();
+              const ctx = new WsExecutionContext(
+                client,
+                [val],
+                pattern,
+                DummyGateway,
+                DummyGateway.prototype.test,
+                "test",
+              );
+              causeFilter.catch(new WsException("Unauthorized"), ctx);
+              expect(
+                (emitStub.firstCall?.args[1] as { cause?: unknown })?.cause,
+              ).toEqual({ pattern });
+            }
+          },
+          "Uses default BaseWsExceptionFilter() with includeCause: true (LoggerService constructor defaults includeCause: false)",
+        );
+
+        itAdapted(
+          "ADR-001",
+          "should drop cause and retry when payload data is circular or emit throws",
+          () => {
+            const causeFilter = new BaseWsExceptionFilter();
+            const circular: Record<string, unknown> = {};
+            circular.self = circular;
+            emitStub
+              .onFirstCall()
+              .throws(new RangeError("Maximum call stack size exceeded"));
             const ctx = new WsExecutionContext(
               client,
-              [val],
+              circular,
               pattern,
               DummyGateway,
               DummyGateway.prototype.test,
               "test",
             );
-            filter.catch(new WsException("Unauthorized"), ctx);
-            expect(
-              (emitStub.firstCall?.args[1] as { cause?: unknown })?.cause,
-            ).toEqual({ pattern });
-          }
-        });
-
-        // BUNEST_BUG: BaseWsExceptionFilter in packages/core/src/ws/filters/base-ws-exception.filter.ts does not catch circular-reference JSON serialization failures or retry emit() without cause when emit throws.
-        it.skip("should drop cause and retry when payload data is circular or emit throws", () => {
-          const circular: Record<string, unknown> = {};
-          circular.self = circular;
-          emitStub
-            .onFirstCall()
-            .throws(new RangeError("Maximum call stack size exceeded"));
-          const ctx = new WsExecutionContext(
-            client,
-            circular,
-            pattern,
-            DummyGateway,
-            DummyGateway.prototype.test,
-            "test",
-          );
-          filter.catch(new WsException("Unauthorized"), ctx);
-          expect(emitStub.callCount).toBe(2);
-          expect(emitStub.lastCall?.args[1]).toEqual({
-            status: "error",
-            message: "Unauthorized",
-          });
-        });
+            causeFilter.catch(new WsException("Unauthorized"), ctx);
+            expect(emitStub.callCount).toBe(2);
+            expect(emitStub.lastCall?.args[1]).toEqual({
+              status: "error",
+              message: "Unauthorized",
+            });
+          },
+          "Uses default BaseWsExceptionFilter() with includeCause: true",
+        );
       });
 
       describe("custom exception filters via @UseFilters / @Catch on BunWebSocketAdapter", () => {

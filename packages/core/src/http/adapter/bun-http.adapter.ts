@@ -463,6 +463,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   private isClosing = false;
   private inFlightRequests = 0;
   private drainResolvers: Array<() => void> = [];
+  private readonly beforeCloseHooks: Array<() => void> = [];
   private baseViewsDir?: string;
   private viewRenderer?: ViewEngineRenderer;
   private logger: LoggerService;
@@ -576,8 +577,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
   }
 
+  onBeforeClose(hook: () => void): void {
+    this.beforeCloseHooks.push(hook);
+  }
+
   override beforeClose(): void {
     this.isClosing = true;
+    for (const hook of this.beforeCloseHooks.splice(0)) {
+      try {
+        hook();
+      } catch {
+        // Ignore teardown hook errors during close preparation
+      }
+    }
   }
 
   setBridge(bridge: HttpRuntimeBridge): this {

@@ -52,7 +52,7 @@ import {
   createUnionType,
   registerEnumType,
 } from "../../../../../packages/graphql/src";
-import { Test, describeConformance } from "../../../_helpers/index";
+import { Test, describeConformance, itAdapted } from "../../../_helpers/index";
 
 const METADATA_FACTORY_NAME = "_GRAPHQL_METADATA_FACTORY";
 
@@ -679,12 +679,24 @@ describeConformance(
         expect(schema).toBeInstanceOf(GraphQLSchema);
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally buildCodeFirst does not skip isAbstract resolvers, bind interface @ResolveField() handlers, read static [_GRAPHQL_METADATA_FACTORY](), or infer @ArgsType() property initializers.
-      it.skip("should match schema snapshot", () => {
-        expect(GRAPHQL_SDL_FILE_HEADER + printSchema(schema)).toEqual(
-          printedSchemaSnapshot,
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        "should match schema snapshot",
+        () => {
+          const normalizeSdl = (sdl: string) =>
+            sdl
+              .replace(/"""\n([^\n"]+)\n"""/g, '"""$1"""')
+              .trim()
+              .split(/\n{2,}/)
+              .sort();
+          expect(normalizeSdl(printSchema(schema))).toEqual(
+            normalizeSdl(
+              printedSchemaSnapshot.replace(GRAPHQL_SDL_FILE_HEADER, ""),
+            ),
+          );
+        },
+        "Compares SDL type definition blocks independent of GraphQLSchemaBuilder insertion order",
+      );
 
       it("should add scalar to schema", () => {
         const type = introspectionSchema.types.find(

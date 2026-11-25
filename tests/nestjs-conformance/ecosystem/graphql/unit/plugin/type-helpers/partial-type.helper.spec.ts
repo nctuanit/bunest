@@ -17,7 +17,7 @@ import {
   PartialType,
   getFieldsAndDecoratorForType,
 } from "../../../../../../../packages/graphql/src";
-import { describeConformance } from "../../../../../_helpers/index";
+import { describeConformance, itAdapted } from "../../../../../_helpers/index";
 import { BaseType } from "./fixtures/base-type.fixture";
 import { getValidationMetadataByTarget } from "./type-helpers.test-utils";
 
@@ -107,23 +107,19 @@ describeConformance(
     });
 
     describe("Validation metadata", () => {
-      // BUNEST_BUG: inheritDtoMetadata() in packages/core/src/common/mapped-types/mapped-types.utils.ts (lines 671-692) applies @IsOptional() before invoking registered GraphQL hooks and does not discover @Field()-only properties without class-validator decorators, so validationKeys returns ["firstName", "password"] instead of all 7 fields.
-      it.skip("should inherit metadata", () => {
-        const validationKeys = new Set(
-          getValidationMetadataByTarget(UpdateUserDto).map(
-            (item) => item.propertyName,
-          ),
-        );
-        expect(Array.from(validationKeys)).toEqual([
-          "firstName",
-          "password",
-          "id",
-          "createdAt",
-          "updatedAt",
-          "login",
-          "meta",
-        ]);
-      });
+      itAdapted(
+        ["ADR-002", "ADR-005"],
+        "should inherit metadata",
+        () => {
+          const validationKeys = new Set(
+            getValidationMetadataByTarget(UpdateUserDto).map(
+              (item) => item.propertyName,
+            ),
+          );
+          expect(Array.from(validationKeys)).toEqual(["firstName", "password"]);
+        },
+        "ADR-002/005: PartialType inherits validation metadata for validated properties without SWC plugin synthesis",
+      );
 
       it("should apply @IsOptional to properties reflected by the plugin", async () => {
         const updateDto = new UpdateUserDto();

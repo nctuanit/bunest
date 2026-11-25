@@ -136,28 +136,32 @@ describeConformance(
           'ADR-006 §2 defaults method decorator path to "" (normalized to "/" by scanner)',
         );
 
-        // BUNEST_BUG: Conflicts with itAdapted on line 125 (ADR-006 defaults @Get() to "" whereas upstream defaults to "/"); @Get([]) already normalizes to "/".
-        it.skip('should set path on "/" by default for empty array []', () => {
-          class Test {
-            @DecoratorFn()
-            public static test() {}
+        itAdapted(
+          "ADR-006",
+          'should set path on "/" by default for empty array []',
+          () => {
+            class Test {
+              @DecoratorFn()
+              public static test() {}
 
-            @DecoratorFn([])
-            public static testUsingArray() {}
-          }
+              @DecoratorFn([])
+              public static testUsingArray() {}
+            }
 
-          const path = MetadataRegistry.get(
-            METADATA_KEYS.ROUTE_PATH,
-            Test.test,
-          );
-          const pathUsingArray = MetadataRegistry.get(
-            METADATA_KEYS.ROUTE_PATH,
-            Test.testUsingArray,
-          );
+            const path = MetadataRegistry.get(
+              METADATA_KEYS.ROUTE_PATH,
+              Test.test,
+            );
+            const pathUsingArray = MetadataRegistry.get(
+              METADATA_KEYS.ROUTE_PATH,
+              Test.testUsingArray,
+            );
 
-          expect(path).toEqual("/");
-          expect(pathUsingArray).toEqual("/");
-        });
+            expect(path).toEqual("");
+            expect(pathUsingArray).toEqual("/");
+          },
+          'ADR-006 §2 defaults no-arg route path to "" while [] normalizes to "/"',
+        );
       });
     }
 

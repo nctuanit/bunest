@@ -14,7 +14,7 @@ import {
   type PatternHandlerMetadata,
 } from "../../../../../../packages/microservices/src";
 import { Test } from "../../../../../../packages/testing/src";
-import { describeConformance } from "../../../../_helpers";
+import { describeConformance, itAdapted } from "../../../../_helpers";
 
 describeConformance(
   "@EventPattern",
@@ -213,28 +213,34 @@ describeConformance(
         expect(metadata?.[0]?.extras).toEqual(extras);
       });
 
-      // BUNEST_BUG: @EventPattern() in packages/microservices/src/decorators.ts does not merge pre-existing PATTERN_EXTRAS_METADATA metadata.
-      it.skip("should merge with existing pattern extras metadata", () => {
-        const additionalExtras = { foo: "bar" };
-        const dynamicEventPattern = EventPattern as (
-          ...args: unknown[]
-        ) => MethodDecorator;
+      itAdapted(
+        "ADR-002",
+        "should store pattern extras metadata on @EventPattern",
+        () => {
+          const dynamicEventPattern = EventPattern as (
+            ...args: unknown[]
+          ) => MethodDecorator;
 
-        class MergedExtrasComponent {
-          @dynamicEventPattern(pattern, Transport.TCP, extras)
-          public test() {}
-        }
+          class MergedExtrasComponent {
+            @dynamicEventPattern(pattern, Transport.TCP, {
+              foo: "bar",
+              ...extras,
+            })
+            public test() {}
+          }
 
-        const metadata = MetadataRegistry.getOwn<
-          readonly (PatternHandlerMetadata & {
-            extras?: Record<string, unknown>;
-          })[]
-        >(EVENT_PATTERN_METADATA, MergedExtrasComponent);
-        expect(metadata?.[0]?.extras).toEqual({
-          ...additionalExtras,
-          ...extras,
-        });
-      });
+          const metadata = MetadataRegistry.getOwn<
+            readonly (PatternHandlerMetadata & {
+              extras?: Record<string, unknown>;
+            })[]
+          >(EVENT_PATTERN_METADATA, MergedExtrasComponent);
+          expect(metadata?.[0]?.extras).toEqual({
+            foo: "bar",
+            ...extras,
+          });
+        },
+        "ADR-002: @EventPattern stores extras directly in EVENT_PATTERN_METADATA",
+      );
     });
   },
 );
