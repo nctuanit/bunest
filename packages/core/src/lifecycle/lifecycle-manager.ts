@@ -155,7 +155,10 @@ export class LifecycleManager implements LifecycleManagerLike {
 
     if (stopServer) {
       try {
-        await stopServer();
+        const stopRes = stopServer();
+        if (stopRes) {
+          await stopRes;
+        }
       } catch (err) {
         errors.push(err);
       }

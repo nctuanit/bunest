@@ -92,8 +92,7 @@ describeConformance(
       await app.listen(0);
     });
 
-    // BUNEST_BUG: BunHttpAdapter defaults forceCloseConnections to true (packages/core/src/http/adapter/bun-http.adapter.ts:509,2215), so app.close() invokes server.stop(true) and forcibly aborts in-flight HTTP requests with ECONNRESET instead of draining them before CacheService disconnects the store; additionally CacheService disconnects in onModuleDestroy() rather than onApplicationShutdown() (packages/cache/src/cache.service.ts:587).
-    it.skip("should disconnect the store only after the requests in flight", async () => {
+    it("should disconnect the store only after the requests in flight", async () => {
       const cacheManager = app.get<Cache>(CACHE_MANAGER);
       await cacheManager.del("shutdown-key");
 

@@ -1044,13 +1044,20 @@ export class BunestApplication extends BunestApplicationContext {
     return info;
   }
 
-  protected override async prepareClose(): Promise<void> {
+  protected override prepareClose(): void {
     this.httpAdapter.beforeClose();
   }
 
-  protected override async stopTransport(): Promise<void> {
-    const errors: unknown[] = [];
+  protected override stopTransport(): Promise<void> | void {
     this.container.getHttpAdapterHost().listening = false;
+    if (!this.httpAdapter.getHttpServer() && this.microservices.length === 0) {
+      return;
+    }
+    return this.stopTransportAsync();
+  }
+
+  private async stopTransportAsync(): Promise<void> {
+    const errors: unknown[] = [];
 
     try {
       await this.httpAdapter.close();

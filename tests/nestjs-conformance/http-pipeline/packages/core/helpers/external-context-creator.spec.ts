@@ -557,8 +557,7 @@ describeConformance(
         exchangeKeyForValue: () => undefined,
       };
 
-      // BUNEST_BUG: ExternalContextCreator does not expose getMetadata() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should cache an entry per context type via getMetadata", () => {
+      it("should cache an entry per context type via getMetadata", () => {
         const creatorAny = contextCreator as unknown as {
           getMetadata?: (
             instance: object,

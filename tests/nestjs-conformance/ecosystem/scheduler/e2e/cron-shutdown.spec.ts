@@ -57,8 +57,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.onModuleDestroy() to stop all cron jobs and await in-flight waitForCompletion: true callbacks before onApplicationShutdown runs, but packages/jobs/src/scheduler/scheduler.registry.ts stopAll() is synchronous and does not await active ticks.
-    it.skip("should stop all jobs before waiting for active callbacks during shutdown [ADR-001: native CronJob fireOnce()/isRunning()]", async () => {
+    it("should stop all jobs before waiting for active callbacks during shutdown [ADR-001: native CronJob fireOnce()/isRunning()]", async () => {
       const lifecycle: string[] = [];
       onApplicationShutdown.mockImplementation(() =>
         lifecycle.push("shutdown"),

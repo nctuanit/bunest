@@ -204,6 +204,10 @@ function isSubscribableLike(value: unknown): value is {
 export class ExternalContextCreator {
   private readonly modulesContainer?: ModulesContainer;
   private readonly container?: ExternalContextContainerLike;
+  private readonly handlerMetadataCache = new WeakMap<
+    object,
+    Map<string, ExternalHandlerMetadata>
+  >();
 
   constructor(
     private readonly resolveEnhancerFn?: <T = unknown>(
@@ -485,6 +489,18 @@ export class ExternalContextCreator {
     contextType: TContext = "http" as TContext,
   ): ExternalHandlerMetadata {
     const ctor = instance.constructor as Type<unknown>;
+    const cacheOwner = (ctor ?? instance) as object;
+    let byKey = this.handlerMetadataCache.get(cacheOwner);
+    if (!byKey) {
+      byKey = new Map();
+      this.handlerMetadataCache.set(cacheOwner, byKey);
+    }
+    const cacheKey = `${String(methodName)}\0${String(metadataKey ?? "")}\0${contextType}`;
+    const cached = byKey.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const proto = Object.getPrototypeOf(instance) as object | null;
     const paramtypes: unknown[] =
       (proto
@@ -514,7 +530,7 @@ export class ExternalContextCreator {
       }
     }
 
-    return {
+    const entry: ExternalHandlerMetadata = {
       argsLength,
       paramtypes,
       getParamsMetadata: (
@@ -546,6 +562,8 @@ export class ExternalContextCreator {
         }));
       },
     };
+    byKey.set(cacheKey, entry);
+    return entry;
   }
 
   createGuardsFn<TContext extends string = ContextType>(

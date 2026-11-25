@@ -2,7 +2,7 @@ import {
   Inject,
   Injectable,
   Optional,
-  type OnModuleDestroy,
+  type OnApplicationShutdown,
 } from "@bunest/core";
 import { Cache } from "./cache.abstract";
 import { CACHE_MODULE_OPTIONS, CACHE_STORE } from "./constants";
@@ -41,7 +41,7 @@ function isWrapOptionsObject<T>(value: unknown): value is CacheWrapOptions<T> {
  * `disconnect()` teardown.
  */
 @Injectable()
-export class CacheService extends Cache implements OnModuleDestroy {
+export class CacheService extends Cache implements OnApplicationShutdown {
   public override readonly stores: readonly CacheStore[];
 
   private readonly defaultTtlMs?: number;
@@ -574,7 +574,7 @@ export class CacheService extends Cache implements OnModuleDestroy {
     );
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.disconnect();
   }
 

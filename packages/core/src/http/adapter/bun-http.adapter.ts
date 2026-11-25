@@ -522,7 +522,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     this.abortOnError = options.abortOnError ?? true;
     this.development = options.development;
     this.httpsOptions = options.httpsOptions;
-    this.forceCloseConnections = options.forceCloseConnections ?? true;
+    this.forceCloseConnections = options.forceCloseConnections ?? false;
     this.return503OnClosing = options.return503OnClosing === true;
     if (options.cookies?.secret !== undefined) {
       this.cookieSecrets = normalizeCookieSecrets(options.cookies.secret);
@@ -2630,7 +2630,8 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   async close(force?: boolean): Promise<void> {
     this.isClosing = true;
-    if (this.return503OnClosing && this.inFlightRequests > 0) {
+    const shouldForce = force ?? this.forceCloseConnections;
+    if ((this.return503OnClosing || !shouldForce) && this.inFlightRequests > 0) {
       await new Promise<void>((resolve) => {
         if (this.inFlightRequests <= 0) {
           resolve();
@@ -2644,6 +2645,6 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
     const active = this.httpServer;
     this.httpServer = undefined;
-    await active.stop(force ?? this.forceCloseConnections);
+    await active.stop(shouldForce);
   }
 }

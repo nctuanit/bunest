@@ -453,7 +453,10 @@ export class BunestApplicationContext {
       return;
     }
     this.isClosed = true;
-    await this.prepareClose();
+    const prep = this.prepareClose();
+    if (prep) {
+      await prep;
+    }
     if (this.lifecycle.getIsClosed()) {
       try {
         await this.dispose();
@@ -465,9 +468,12 @@ export class BunestApplicationContext {
     }
     const groups = this.container.getSingletonInstancesByModule();
     try {
-      await this.lifecycle.callShutdown(groups, signal, async () => {
-        await this.dispose();
-        await this.container.destroyContextContainers();
+      await this.lifecycle.callShutdown(groups, signal, () => {
+        const disposed = this.dispose();
+        if (disposed) {
+          return disposed.then(() => this.container.destroyContextContainers());
+        }
+        return this.container.destroyContextContainers();
       });
     } finally {
       this.restoreGlobalLogger();
@@ -483,8 +489,12 @@ export class BunestApplicationContext {
     }
   }
 
-  protected async stopTransport(): Promise<void> {
+  protected stopTransport(): Promise<void> | void {
     // Subclasses (e.g. BunestApplication) override to stop HTTP/WS servers before destroy hooks
+  }
+
+  protected dispose(): Promise<void> | void {
+    return this.stopTransport();
   }
 
   protected flushLogsIfAutoFlushEnabled(): void {
@@ -525,12 +535,8 @@ export class BunestApplicationContext {
     await this.close(signal);
   }
 
-  protected async prepareClose(): Promise<void> {
+  protected prepareClose(): Promise<void> | void {
     // Subclasses override to enter closing/draining state before shutdown hooks
-  }
-
-  protected async dispose(): Promise<void> {
-    await this.stopTransport();
   }
 
   protected async shutdown(signal?: string): Promise<void> {

@@ -276,7 +276,7 @@ describe("@bunest/cache", () => {
       ).toBe("recovered");
       expect(errAttempts).toBe(2);
 
-      await service.onModuleDestroy();
+      await service.onApplicationShutdown();
     });
   });
 
