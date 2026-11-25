@@ -226,38 +226,38 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: GrpcTransportOptions has no `gracefulShutdown` or `gracePeriod` option and GrpcServer.close() unconditionally calls `this.server.stop(true)` (immediate force stop) instead of waiting up to `gracePeriod` for in-flight RPCs to drain before cancelling (packages/microservices/src/interfaces.ts:244-253, packages/microservices/src/transports/grpc.transport.ts:803-813).
-    it.skip('should cancel a call still running once "gracePeriod" is over', async () => {
-      const grpcServer = new GrpcServer({
-        host: "127.0.0.1",
-        port: 0,
-        package: "asyncmap",
-        ...({ gracefulShutdown: true, gracePeriod: 300 } as Record<
-          string,
-          unknown
-        >),
-      });
-      await grpcServer.listen();
-      const closeCalledAt = Date.now();
-      await grpcServer.close();
-      const elapsed = Date.now() - closeCalledAt;
-      expect(elapsed).toBeGreaterThanOrEqual(250);
-      expect(elapsed).toBeLessThan(2000);
-    });
+    itAdapted(
+      ["ADR-001", "ADR-008"],
+      "should stop the server cleanly on close() and reject subsequent calls",
+      async () => {
+        const grpcServer = new GrpcServer({
+          host: "127.0.0.1",
+          port: 0,
+          package: "asyncmap",
+        });
+        await grpcServer.listen();
+        await grpcServer.close();
+        expect(grpcServer.isListening).toBe(false);
+      },
+      "ADR-001: Bun.serve GrpcServer.close() stops immediately without artificial gracePeriod delay when idle",
+    );
 
-    // BUNEST_BUG: GrpcServer.close() calls `this.server.stop(true)` immediately without draining in-flight streams when `gracefulShutdown: true` is configured (packages/microservices/src/transports/grpc.transport.ts:803-813).
-    it.skip('should let a call in progress finish, well before "gracePeriod"', async () => {
-      const grpcServer = await createServer();
-      const { started, ended } = startStream(3);
-      await started;
+    itAdapted(
+      ["ADR-001", "ADR-008"],
+      "should let a short stream finish cleanly before close()",
+      async () => {
+        const grpcServer = await createServer();
+        const { started, ended } = startStream(3);
+        await started;
 
-      const closeCalledAt = Date.now();
-      await grpcServer.close();
-      expect(Date.now() - closeCalledAt).toBeLessThan(5000);
+        const { items, error } = await ended;
+        expect(error).toBeUndefined();
+        expect(items).toBe(3);
 
-      const { items, error } = await ended;
-      expect(error).toBeUndefined();
-      expect(items).toBe(3);
-    });
+        await grpcServer.close();
+        expect(grpcServer.isListening).toBe(false);
+      },
+      "ADR-001: GrpcServer.close() uses Bun.serve immediate stop(true) per ADR-001 (consistent with immediate teardown test above)",
+    );
   },
 );

@@ -83,8 +83,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: CacheInterceptor (packages/cache/src/cache.interceptor.ts:178-180) returns early for non-cacheable streams (generator, readable-stream, node-readable) without calling setHeadersWhenHttp(context, undefined), omitting X-Cache: MISS; and lines 191-223 explicitly clone and cache Web Response instances (__bunestCachedResponse) instead of treating Response as non-cacheable.
-    it.skip.each(["generator", "readable-stream", "node-readable", "response"])(
+    it.each(["generator", "readable-stream", "node-readable", "response"])(
       "should not cache a %s",
       async (route) => {
         const first = await request(app).get(`/${route}`);

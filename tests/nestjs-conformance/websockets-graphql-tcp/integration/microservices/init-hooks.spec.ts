@@ -154,8 +154,7 @@ describeConformance(
         moduleRef = undefined;
       });
 
-      // BUNEST_BUG: NestHybridApplicationOptions does not support `deferInitialization: true`, and BunestApplication.startAllMicroservices() unconditionally invokes `this.init()` before `app.init()` is called (packages/core/src/common/interfaces/nest-compat.interface.ts, packages/core/src/application/bunest-application.ts)
-      it.skip("should be called once, by the application, when the microservice starts first", async () => {
+      it("should be called once, by the application, when the microservice starts first", async () => {
         await app!.startAllMicroservices();
         expect(app!.get(HooksTracker)).toMatchObject({
           moduleInit: 0,

@@ -398,8 +398,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttServer.close() awaits client.unsubscribe() without catching broker disconnect errors, skipping client.end() when closeClientOnClose=true (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("still ends the client when unsubscribe() fails during close() with closeClientOnClose=true", async () => {
+      it("still ends the client when unsubscribe() fails during close() with closeClientOnClose=true", async () => {
         const h = createMqttServerHarness();
         h.client.unsubscribe = async () => {
           throw new Error("Connection closed");
@@ -658,8 +657,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttServer.onMessage() does not unwrap MqttRecord returned by a message handler — it serializes the MqttRecord object directly and publishes with server default qos & retain: false instead of record.options (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("unwraps MqttRecord returned by a message handler and applies record publish options", async () => {
+      it("unwraps MqttRecord returned by a message handler and applies record publish options", async () => {
         const server = track(new MqttServer({ client: harness.client }));
         const record = new MqttRecordBuilder({ value: "test" })
           .setQoS(2)
@@ -690,8 +688,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: matchMqttTopic / MqttServer do not strip MQTT 5 shared subscription prefixes (`$share/<group>/<filter>`), so handlers registered on `$share/workers/devices/+` never match incoming `devices/status` topics (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("matches MQTT 5 shared subscription filters ($share/<group>/<filter>) against broker-delivered topics", async () => {
+      it("matches MQTT 5 shared subscription filters ($share/<group>/<filter>) against broker-delivered topics", async () => {
         const server = track(new MqttServer({ client: harness.client }));
         const sharedSpy = createSpy();
         server.addEventHandler("$share/workers/devices/+", sharedSpy);
@@ -871,8 +868,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: MqttServer.onMessage() invokes matched.handler(envelope.data, ctx) directly instead of calling super.dispatchMessage() or this.preRequestHook, so server.setPreRequestHook() is never executed (packages/microservices/src/transports/mqtt.transport.ts)
-      it.skip("invokes setPreRequestHook({ pattern, data, ctx }) before executing an MQTT message handler", async () => {
+      it("invokes setPreRequestHook({ pattern, data, ctx }) before executing an MQTT message handler", async () => {
         const server = track(new MqttServer({ client: harness.client }));
         const hook = createSpy();
         server.setPreRequestHook(hook);

@@ -321,6 +321,7 @@ export class CommandBus<CommandBase extends ICommand = ICommand>
       if (!ref) {
         throw new InvalidCommandHandlerException();
       }
+      ref.registerRequestByContextId(ctx, ctx.id);
       handler = (await ref.resolve(stored.wrapper.token, ctx.id, {
         strict: false,
       })) as { execute(command: ICommand): Promise<unknown> | unknown };

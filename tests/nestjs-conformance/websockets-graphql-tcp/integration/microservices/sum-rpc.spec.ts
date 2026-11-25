@@ -344,8 +344,7 @@ describeConformance(
       expect(res.text).toBe("true");
     });
 
-    // BUNEST_BUG: TcpServer and TcpClientProxy only support single-response request-reply (isDisposed: true) and do not support multi-value AsyncIterable streaming responses from @MessagePattern (ADR-008 replacement for RxJS multi-emission Observable streams; returning an AsyncGenerator serializes as {} in JSON.stringify) (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/client-proxy.ts)
-    it.skip("/POST (streaming)", async () => {
+    it("/POST (streaming)", async () => {
       const res = await request(app!)
         .post("/stream")
         .send([1, 2, 3, 4, 5])

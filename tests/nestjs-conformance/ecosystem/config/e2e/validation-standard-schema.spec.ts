@@ -44,8 +44,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should fail when issues are returned alongside a value", async () => {
+    it("should fail when issues are returned alongside a value", async () => {
       // Valibot-style failure: the partially parsed dataset is returned together
       // with the issues, so the presence of "value" must not imply success.
       const schema = createSchema(() => ({
@@ -62,8 +61,7 @@ describeConformance(
       ).rejects.toThrow("Config validation error: PORT: PORT is required");
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should fail when a real valibot schema rejects the config", async () => {
+    it("should fail when a real valibot schema rejects the config", async () => {
       const schema = createValibotLikePortSchema();
 
       await expect(
@@ -108,8 +106,7 @@ describeConformance(
       expect(app.get(ConfigService).get("PORT")).toEqual(4000);
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - PORT: ..." instead of NestJS "Config validation error: PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should report issues from schemas that validate asynchronously", async () => {
+    it("should report issues from schemas that validate asynchronously", async () => {
       const schema = createSchema(async () => ({
         issues: [{ message: "PORT is required", path: ["PORT"] }],
       }));
@@ -123,8 +120,7 @@ describeConformance(
       ).rejects.toThrow("Config validation error: PORT: PORT is required");
     });
 
-    // BUNEST_BUG: Standard Schema failure message uses "Configuration Standard Schema validation failed:\n  - DATABASE.PORT: ..." instead of NestJS "Config validation error: DATABASE.PORT: ..." format (packages/core/src/config/validator.ts:194-197)
-    it.skip("should format issue paths built from path segment objects", async () => {
+    it("should format issue paths built from path segment objects", async () => {
       const schema = createSchema(() => ({
         issues: [
           {
@@ -145,8 +141,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Standard Schema pathless issues use "Configuration Standard Schema validation failed:\n  - <env>: the config is invalid" instead of NestJS "Config validation error: the config is invalid" format (packages/core/src/config/validator.ts:190-197)
-    it.skip("should report issues that carry no path", async () => {
+    it("should report issues that carry no path", async () => {
       const schema = createSchema(() => ({
         issues: [{ message: "the config is invalid" }],
       }));
@@ -160,8 +155,7 @@ describeConformance(
       ).rejects.toThrow("Config validation error: the config is invalid");
     });
 
-    // BUNEST_BUG: validateConfiguration() calls validationSchema["~standard"].validate({ ...rawConfig }) with 1 argument and drops options.validationOptions (expected { libraryOptions: { custom: true } }, received undefined; packages/core/src/config/validator.ts:186)
-    it.skip("should forward validationOptions to the schema", async () => {
+    it("should forward validationOptions to the schema", async () => {
       const validate = mock(
         (_value: unknown, _options?: StandardSchemaV1Options) => ({
           value: {},

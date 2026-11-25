@@ -44,8 +44,7 @@ describeConformance(
           expect(instance.getError()).toEqual(error);
         });
 
-        // BUNEST_BUG: RpcException constructor in packages/microservices/src/exceptions.ts falls back to `JSON.stringify(error)` ('{"test":true}') instead of splitting the class name into words ('Rpc Exception') as NestJS does (and as Bunest's own HttpException.initMessage() does).
-        it.skip("should fallback error message to class name", () => {
+        it("should fallback error message to class name", () => {
           expect(instance.message).toEqual("Rpc Exception");
         });
       });
@@ -55,8 +54,7 @@ describeConformance(
         const error = { test: true };
         const instance = new RPC(error);
 
-        // BUNEST_BUG: RpcException constructor in packages/microservices/src/exceptions.ts uses `JSON.stringify(error)` instead of falling back to "Error" when the subclass name cannot be split into words.
-        it.skip('should fallback error message to "Error"', () => {
+        it('should fallback error message to "Error"', () => {
           expect(instance.message).toEqual("Error");
         });
       });

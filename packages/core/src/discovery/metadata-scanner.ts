@@ -6,6 +6,8 @@ import { DecoratorRegistry, Injectable } from "../common/index";
  */
 @Injectable()
 export class MetadataScanner {
+  private readonly cachedScannedPrototypes = new WeakMap<object, string[]>();
+
   /**
    * Returns all unique method names defined on `prototype` and its ancestors
    * (stopping before `Object.prototype`), preserving derived-first discovery order.
@@ -13,6 +15,11 @@ export class MetadataScanner {
   getAllMethodNames(prototype: object | null | undefined): string[] {
     if (!prototype || typeof prototype !== "object") {
       return [];
+    }
+
+    const cached = this.cachedScannedPrototypes.get(prototype);
+    if (cached) {
+      return cached;
     }
 
     const seen = new Set<string>();
@@ -33,6 +40,7 @@ export class MetadataScanner {
       current = Object.getPrototypeOf(current) as object | null;
     }
 
+    this.cachedScannedPrototypes.set(prototype, names);
     return names;
   }
 

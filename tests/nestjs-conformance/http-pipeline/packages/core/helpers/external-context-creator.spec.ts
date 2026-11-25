@@ -407,8 +407,7 @@ describeConformance(
       });
 
       describe("module key & inquirer resolution (upstream parity)", () => {
-        // BUNEST_BUG: ExternalContextCreator does not implement getContextModuleKey() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-        it.skip("should call getContextModuleKey with expected argument", () => {
+        it("should call getContextModuleKey with expected argument", () => {
           const creatorAny = contextCreator as unknown as Record<
             string,
             unknown
@@ -416,8 +415,7 @@ describeConformance(
           expect(typeof creatorAny.getContextModuleKey).toBe("function");
         });
 
-        // BUNEST_BUG: ExternalContextCreator.create() ignores _contextId and _inquirerId, has no ModulesContainer integration for overwritten-constructor / entry-provider / multi-module / factory host resolution, and does not implement getContextModuleKey() (packages/core/src/helpers/external-context-creator.ts:117-127).
-        it.skip("should handle overwritten prototype constructor and module lookup by instance / inquirerId", () => {
+        it("should handle overwritten prototype constructor and module lookup by instance / inquirerId", () => {
           const creatorAny = contextCreator as unknown as {
             getContextModuleKey?: (ctor: unknown) => string;
           };
@@ -428,8 +426,7 @@ describeConformance(
     });
 
     describe("exchangeKeysForValues", () => {
-      // BUNEST_BUG: ExternalContextCreator does not expose exchangeKeysForValues() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should exchange arguments keys for appropriate values", () => {
+      it("should exchange arguments keys for appropriate values", () => {
         const creatorAny = contextCreator as unknown as {
           exchangeKeysForValues?: (
             keys: string[],
@@ -443,8 +440,7 @@ describeConformance(
     });
 
     describe("getParamValue", () => {
-      // BUNEST_BUG: ExternalContextCreator does not expose getParamValue() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should apply pipe transforms via getParamValue", async () => {
+      it("should apply pipe transforms via getParamValue", async () => {
         const creatorAny = contextCreator as unknown as {
           getParamValue?: (
             value: unknown,
@@ -465,8 +461,7 @@ describeConformance(
     });
 
     describe("createPipesFn", () => {
-      // BUNEST_BUG: ExternalContextCreator does not expose createPipesFn() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should expose createPipesFn returning null for empty paramsOptions and function for non-empty", async () => {
+      it("should expose createPipesFn returning null for empty paramsOptions and function for non-empty", async () => {
         const creatorAny = contextCreator as unknown as {
           createPipesFn?: (
             pipes: PipeTransform[],
@@ -491,8 +486,7 @@ describeConformance(
         expect(typeof pipesFn).toBe("function");
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not await thenable values returned by paramsFactory.exchangeKeyForValue() when pipes are empty; handler received the unsettled thenable object instead of "settled" (packages/core/src/helpers/external-context-creator.ts:213-225).
-      it.skip("should settle a thenable value returned by paramsFactory without pipes", async () => {
+      it("should settle a thenable value returned by paramsFactory without pipes", async () => {
         const thenSpy = createSpy((resolve: (v: string) => void) =>
           resolve("settled"),
         );
@@ -536,8 +530,7 @@ describeConformance(
     });
 
     describe("transformToResult", () => {
-      // BUNEST_BUG: ExternalContextCreator does not expose transformToResult() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should transform Promise and plain values via transformToResult", async () => {
+      it("should transform Promise and plain values via transformToResult", async () => {
         const creatorAny = contextCreator as unknown as {
           transformToResult?: (resultOrDeferred: unknown) => Promise<unknown>;
         };
@@ -564,8 +557,7 @@ describeConformance(
         exchangeKeyForValue: () => undefined,
       };
 
-      // BUNEST_BUG: ExternalContextCreator does not expose getMetadata() (expected "function", received "undefined") (packages/core/src/helpers/external-context-creator.ts:91-280).
-      it.skip("should cache an entry per context type via getMetadata", () => {
+      it("should cache an entry per context type via getMetadata", () => {
         const creatorAny = contextCreator as unknown as {
           getMetadata?: (
             instance: object,
@@ -604,8 +596,7 @@ describeConformance(
         ).not.toBe(first);
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() reads paramMetadata from `ctor` instead of `ctor.prototype` and never invokes `createParamDecorator()`'s `meta.factory(data, ctx)` or param-level `meta.pipes`; handler received `{}` instead of `"mcp"` (packages/core/src/helpers/external-context-creator.ts:181-225).
-      it.skip("should give param decorators the context type of each wrapper of the same method", async () => {
+      it("should give param decorators the context type of each wrapper of the same method", async () => {
         const instance = new Tools();
         const wrap = (type: string) =>
           contextCreator.create(

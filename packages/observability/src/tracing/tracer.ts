@@ -78,9 +78,16 @@ export class Tracer implements OnModuleDestroy {
       options.parentContext ?? traceContextStorage.getCurrentSpanContext();
     const traceId = parent?.traceId ?? generateTraceId();
     const spanId = generateSpanId();
-    const sampled = this.sampler
-      ? this.sampler({ name, parentContext: parent })
-      : (parent?.sampled ?? true);
+    let sampled: boolean;
+    if (this.sampler) {
+      try {
+        sampled = Boolean(this.sampler({ name, parentContext: parent }));
+      } catch {
+        sampled = false;
+      }
+    } else {
+      sampled = parent?.sampled ?? true;
+    }
     const traceFlags = sampled ? 0x01 : 0x00;
 
     const context: SpanContext = {

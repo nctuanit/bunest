@@ -1,4 +1,9 @@
-import type { CorsOptions, PipeLike, Scope } from "../../common/index";
+import type {
+  CorsOptions,
+  PipeLike,
+  Scope,
+  StandardSchemaV1,
+} from "../../common/index";
 import type { BunHttpAdapter } from "../../http/index";
 
 export type WsAuthenticateResult = boolean | Record<string, unknown> | Response;
@@ -240,6 +245,7 @@ export interface WsParamMetadata {
   readonly source: WsParamSource;
   readonly key?: string;
   readonly pipes?: readonly PipeLike[];
+  readonly schema?: StandardSchemaV1;
   readonly metatype?: Function;
 }
 

@@ -298,9 +298,9 @@ describe("ClassSerializerInterceptor & @SerializeOptions()", () => {
         controller.close();
       },
     });
-    expect(await interceptor.intercept(ctx, callHandlerReturning(stream))).toBe(
-      stream,
-    );
+    expect(
+      await interceptor.intercept(ctx, callHandlerReturning(stream)),
+    ).toBeInstanceOf(ReadableStream);
 
     const blob = new Blob(["hello"], { type: "text/plain" });
     expect(await interceptor.intercept(ctx, callHandlerReturning(blob))).toBe(
@@ -326,9 +326,16 @@ describe("ClassSerializerInterceptor & @SerializeOptions()", () => {
       yield { data: "ping" };
     }
     const gen = sseGenerator();
-    expect(await interceptor.intercept(ctx, callHandlerReturning(gen))).toBe(
-      gen,
-    );
+    const mappedGen = (await interceptor.intercept(
+      ctx,
+      callHandlerReturning(gen),
+    )) as AsyncIterable<unknown>;
+    expect(typeof mappedGen[Symbol.asyncIterator]).toBe("function");
+    const yielded: unknown[] = [];
+    for await (const chunk of mappedGen) {
+      yielded.push(chunk);
+    }
+    expect(yielded).toEqual([{ data: "ping" }]);
 
     for (const primitive of [null, undefined, "plain text", 42, true, false]) {
       expect(

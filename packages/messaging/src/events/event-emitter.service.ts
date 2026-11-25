@@ -855,7 +855,14 @@ export class EventEmitterService {
     }
 
     const matched: ListenerEntry[] = [];
+    const exact = this.listenerMap.get(event);
+    if (exact) {
+      matched.push(...exact);
+    }
     for (const [pattern, bucket] of this.listenerMap.entries()) {
+      if (pattern === event) {
+        continue;
+      }
       if (matchEventName(pattern, event, true, this.delimiter)) {
         matched.push(...bucket);
       }

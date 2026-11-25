@@ -107,14 +107,29 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
   isHttpError(
     err: unknown,
   ): err is { statusCode: number; message: string; expose?: boolean } {
-    return (
-      typeof err === "object" &&
-      err !== null &&
-      "statusCode" in err &&
-      "message" in err &&
-      typeof (err as { statusCode?: unknown }).statusCode === "number" &&
-      typeof (err as { message?: unknown }).message === "string"
-    );
+    if (typeof err !== "object" || err === null) {
+      return false;
+    }
+    const candidate = err as {
+      statusCode?: unknown;
+      message?: unknown;
+      expose?: unknown;
+    };
+    if (
+      typeof candidate.statusCode !== "number" ||
+      !Number.isInteger(candidate.statusCode) ||
+      candidate.statusCode < 400 ||
+      candidate.statusCode > 599
+    ) {
+      return false;
+    }
+    if (typeof candidate.message !== "string" || candidate.message.length === 0) {
+      return false;
+    }
+    if (err instanceof Error && typeof candidate.expose !== "boolean") {
+      return false;
+    }
+    return true;
   }
 
   getHttpErrorMessage(err: {
@@ -122,8 +137,8 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
     message: string;
     expose?: boolean;
   }): string {
-    if (err.expose === false && err.statusCode >= 500) {
-      return "Internal server error";
+    if (err.expose === false) {
+      return err.statusCode >= 500 ? "Internal server error" : "Http Exception";
     }
     return err.message;
   }

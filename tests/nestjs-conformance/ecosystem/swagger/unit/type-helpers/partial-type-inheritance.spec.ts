@@ -86,8 +86,7 @@ describeConformance(
         childProp!: string;
       }
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should include plugin-based parent properties in the child prototype chain", () => {
+      it("should include plugin-based parent properties in the child prototype chain", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(ChildOfPartialPlugin);
         const properties = Object.keys(
@@ -97,8 +96,7 @@ describeConformance(
         expect(properties).toContain("childProp");
       });
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should mark plugin parent properties as optional", () => {
+      it("should mark plugin parent properties as optional", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(ChildOfPartialPlugin);
         const schema = explorer.getSchemas().ChildOfPartialPlugin;
@@ -128,8 +126,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata from parent or child classes
-      it.skip("should include properties from both parent and child after applyMetadataFactory", () => {
+      it("should include properties from both parent and child after applyMetadataFactory", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(PluginChild);
         const properties = Object.keys(
@@ -139,8 +136,7 @@ describeConformance(
         expect(properties).toContain("childProp");
       });
 
-      // BUNEST_BUG: PartialType / SchemaExplorer (packages/swagger/src/schema-explorer.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata from parent or child classes
-      it.skip("should mark parent properties as optional", () => {
+      it("should mark parent properties as optional", () => {
         const explorer = new SchemaExplorer();
         explorer.registerDtoSchema(PluginChild);
         const schema = explorer.getSchemas().PluginChild;
@@ -159,8 +155,7 @@ describeConformance(
         childProp!: string;
       }
 
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
-      it.skip("should include parent properties after metadata is loaded", async () => {
+      it("should include parent properties after metadata is loaded", async () => {
         const SERIALIZED_METADATA = {
           "@nestjs/swagger": {
             models: [
@@ -188,8 +183,7 @@ describeConformance(
         expect(properties).toContain("childProp");
       });
 
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not retroactively inherit plugin metadata loaded after PartialType(LazyParent)
-      it.skip("should mark parent properties as optional after metadata is loaded", async () => {
+      it("should mark parent properties as optional after metadata is loaded", async () => {
         const SERIALIZED_METADATA = {
           "@nestjs/swagger": {
             models: [
@@ -222,8 +216,7 @@ describeConformance(
         explorer = new SchemaExplorer();
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should generate schema with all properties for class extending PartialType with plugin metadata", () => {
+      it("should generate schema with all properties for class extending PartialType with plugin metadata", () => {
         class PluginBase {
           baseProp!: string;
 
@@ -271,8 +264,7 @@ describeConformance(
         expect(required).not.toContain("baseProp");
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata across deep inheritance chains
-      it.skip("should handle deep inheritance chains", () => {
+      it("should handle deep inheritance chains", () => {
         class GrandParent {
           grandProp!: string;
           static [METADATA_FACTORY_NAME](): Record<string, any> {

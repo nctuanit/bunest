@@ -74,7 +74,7 @@ export function parseTraceParent(
   if (typeof header !== "string") {
     return null;
   }
-  const trimmed = header.trim().toLowerCase();
+  const trimmed = header.trim();
   if (trimmed.length === 0) {
     return null;
   }
@@ -146,7 +146,11 @@ export function parseTraceState(
   header: string | null | undefined,
 ): Record<string, string> {
   const result: Record<string, string> = {};
-  if (typeof header !== "string" || header.trim().length === 0) {
+  if (
+    typeof header !== "string" ||
+    header.trim().length === 0 ||
+    /[\r\n]/.test(header)
+  ) {
     return result;
   }
   for (const member of header.split(",")) {

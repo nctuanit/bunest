@@ -107,8 +107,7 @@ describeConformance(
       expect(host4).toEqual(reflectedHost);
     });
 
-    // BUNEST_BUG: Controller({ version: ['1','2','2','1','2','1'] }) in packages/core/src/common/decorators/http.decorators.ts:35 clones `[...version]` without deduplicating entries, whereas NestJS deduplicates to `['1', '2']`.
-    it.skip("should enhance controller with expected version metadata (deduplicating version arrays)", () => {
+    it("should enhance controller with expected version metadata (deduplicating version arrays)", () => {
       const version = MetadataRegistry.get(
         METADATA_KEYS.VERSION,
         PathAndHostAndVersionDecorator,

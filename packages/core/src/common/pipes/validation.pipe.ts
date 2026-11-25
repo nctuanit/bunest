@@ -444,7 +444,7 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
       return value;
     }
 
-    // Guard 1: Reject null, undefined, primitives, arrays, and non-record built-ins when a DTO class is expected (ADR-009)
+    // Guard 1: Handle null, undefined, primitives, arrays, and non-record built-ins when a DTO class is expected (ADR-009)
     if (
       value === null ||
       value === undefined ||
@@ -452,12 +452,47 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
       Array.isArray(value) ||
       isNonDtoPayloadObject(value)
     ) {
+      const hasRules = await this.hasValidationRules(metatype as Type<unknown>);
+      if (
+        !hasRules &&
+        (this.isBinary(value) ||
+          this.validatorOptions.forbidUnknownValues !== true)
+      ) {
+        return value;
+      }
+
+      if (hasRules && this.isBinary(value) && this.errorFormat !== "bunest") {
+        const useDynamicTransformer =
+          !this.transformerPackageOverride &&
+          this.loadTransformer === ValidationPipe.prototype.loadTransformer;
+        const transformerPkg = useDynamicTransformer
+          ? resolveTransformerPackageFor(metatype)
+          : await this.loadTransformer();
+        const emptyEntity = transformerPkg.plainToInstance
+          ? transformerPkg.plainToInstance(
+              metatype as Type<unknown>,
+              {},
+              this.transformOptions,
+            )
+          : new (metatype as Type<unknown>)();
+        const validatorPkg = this.validatorPackageOverride
+          ? await this.loadValidator()
+          : resolveValidatorPackageFor(metatype);
+        const binaryRuleErrors = await validatorPkg.validate(
+          emptyEntity,
+          this.validatorOptions,
+        );
+        if (binaryRuleErrors.length > 0) {
+          throw this.exceptionFactory(binaryRuleErrors);
+        }
+      }
+
       const fieldName = effectiveMeta.data ?? effectiveMeta.type ?? "value";
       const rootError: ValidationError = {
         property: fieldName,
         children: [],
         constraints: {
-          isObject: `${fieldName} must be a valid object`,
+          isObject: "Validation failed (object is expected)",
         },
       };
       throw this.exceptionFactory([rootError]);
@@ -475,6 +510,10 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
           buildDangerousKeyValidationErrors(dangerousViolations),
         );
       }
+    }
+
+    if (this.stripProtoKeys !== ValidationPipe.prototype.stripProtoKeys) {
+      this.stripProtoKeys(value);
     }
 
     this.closeArrayGaps(value);
@@ -508,6 +547,17 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         },
       };
       throw this.exceptionFactory([rootError]);
+    }
+
+    if (!this.validatorPackageOverride) {
+      const nestedBinaryErrors = this.findNestedBinaryValues(
+        entity,
+        new Map(),
+        metatype as Type<unknown>,
+      );
+      if (nestedBinaryErrors.length > 0) {
+        throw this.exceptionFactory(nestedBinaryErrors);
+      }
     }
 
     let errors: ValidationError[];
@@ -587,14 +637,14 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
 
       if (this.errorFormat === "grouped") {
         const grouped = this.groupValidationErrors(limitedErrors);
-        if (budget.isExceeded) {
-          grouped["..."] = [OMITTED_ERRORS_MESSAGE];
-        }
+        const finalGrouped = budget.isExceeded
+          ? { ...grouped, "...": [OMITTED_ERRORS_MESSAGE] }
+          : grouped;
         return createStatusHttpException(
           {
             statusCode: this.errorHttpStatusCode,
             error: getHttpReasonPhrase(this.errorHttpStatusCode),
-            message: grouped,
+            message: finalGrouped,
           },
           this.errorHttpStatusCode,
         );
@@ -602,14 +652,14 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
 
       // NestJS "list" format: flat string[]
       const list = this.flattenValidationErrors(limitedErrors);
-      if (budget.isExceeded) {
-        list.push(OMITTED_ERRORS_MESSAGE);
-      }
+      const finalList = budget.isExceeded
+        ? [...list, OMITTED_ERRORS_MESSAGE]
+        : list;
       return createStatusHttpException(
         {
           statusCode: this.errorHttpStatusCode,
           error: getHttpReasonPhrase(this.errorHttpStatusCode),
-          message: list,
+          message: finalList,
         },
         this.errorHttpStatusCode,
       );
@@ -631,10 +681,9 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         break;
       }
 
+      const propLen = typeof error.property === "string" ? error.property.length : 0;
       const propPathLen =
-        parentPathLength > 0
-          ? parentPathLength + 1 + error.property.length
-          : error.property.length;
+        parentPathLength > 0 ? parentPathLength + 1 + propLen : propLen;
 
       let keptConstraints: Record<string, string> | undefined;
       if (error.constraints) {
@@ -767,36 +816,180 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
   protected findNestedBinaryValues(
     object: unknown,
     metadataCache = new Map<unknown, unknown[]>(),
+    explicitTarget?: Type<unknown>,
+    activePath: Set<object> = new Set(),
   ): ValidationError[] {
     if (typeof object !== "object" || object === null) {
       return [];
     }
+    if (activePath.has(object)) {
+      return [];
+    }
+
+    const targetCtor =
+      explicitTarget ??
+      (object.constructor && object.constructor !== Object
+        ? (object.constructor as Type<unknown>)
+        : undefined);
+    if (!targetCtor) {
+      // Plain object (e.g. direct call from subclass hook): inspect own enumerable properties
+      const plainErrors: ValidationError[] = [];
+      for (const propKey of Object.keys(object)) {
+        const val = (object as Record<string, unknown>)[propKey];
+        if (this.isBinary(val)) {
+          const binErr = this.toNestedBinaryError(
+            propKey,
+            val,
+            `${propKey} must be a valid object`,
+            metadataCache,
+          );
+          if (binErr) {
+            plainErrors.push(binErr);
+          }
+        }
+      }
+      return plainErrors;
+    }
+
+    let metas = metadataCache.get(targetCtor) as
+      | ReadonlyArray<{
+          type: string;
+          propertyName: string;
+          constraints?: unknown[];
+          message?: string | ((args: { property: string; value: unknown }) => string);
+        }>
+      | undefined;
+    if (!metas) {
+      metas = getValidationMetadatasForTarget(
+        targetCtor,
+        false,
+        false,
+      ) as unknown as NonNullable<typeof metas>;
+      metadataCache.set(targetCtor, [...metas]);
+    }
+    if (!metas || metas.length === 0) {
+      return [];
+    }
+
+    const nestedMetas = metas.filter((m) => m.type === "nestedValidation");
+    if (nestedMetas.length === 0) {
+      return [];
+    }
+
+    const condMetasByProp = new Map<string, Array<(obj: unknown, val: unknown) => boolean>>();
+    for (const m of metas) {
+      if (m.type === "conditionalValidation" && typeof m.constraints?.[0] === "function") {
+        const list = condMetasByProp.get(m.propertyName) ?? [];
+        list.push(m.constraints[0] as (obj: unknown, val: unknown) => boolean);
+        condMetasByProp.set(m.propertyName, list);
+      }
+    }
+
+    activePath.add(object);
     const errors: ValidationError[] = [];
-    for (const [key, val] of Object.entries(object)) {
+    const seenProps = new Set<string>();
+
+    const checkValue = (
+      val: unknown,
+      propKey: string,
+      message: string,
+    ): ValidationError | undefined => {
+      if (val === undefined || val === null) {
+        return undefined;
+      }
       if (this.isBinary(val)) {
-        const err = this.toNestedBinaryError(
-          key,
-          val,
-          `nested property ${key} must be either object or array`,
-          metadataCache,
-        );
+        return this.toNestedBinaryError(propKey, val, message, metadataCache);
+      }
+      if (typeof val !== "object") {
+        return undefined;
+      }
+      if (activePath.has(val)) {
+        return undefined;
+      }
+      if (Array.isArray(val) || val instanceof Set || val instanceof Map) {
+        activePath.add(val);
+        const childErrors: ValidationError[] = [];
+        try {
+          if (val instanceof Map) {
+            for (const [k, item] of val.entries()) {
+              const childErr = checkValue(item, String(k), message);
+              if (childErr) childErrors.push(childErr);
+            }
+          } else {
+            const arr = val instanceof Set ? Array.from(val) : val;
+            for (let idx = 0; idx < arr.length; idx++) {
+              const childErr = checkValue(arr[idx], String(idx), message);
+              if (childErr) childErrors.push(childErr);
+            }
+          }
+        } finally {
+          activePath.delete(val);
+        }
+        if (childErrors.length > 0) {
+          return {
+            property: propKey,
+            children: childErrors,
+          };
+        }
+        return undefined;
+      }
+
+      const childErrors = this.findNestedBinaryValues(
+        val,
+        metadataCache,
+        undefined,
+        activePath,
+      );
+      if (childErrors.length > 0) {
+        return {
+          property: propKey,
+          children: childErrors,
+        };
+      }
+      return undefined;
+    };
+
+    try {
+      const record = object as Record<string, unknown>;
+      for (const meta of nestedMetas) {
+        const prop = meta.propertyName;
+        if (seenProps.has(prop)) continue;
+        seenProps.add(prop);
+        if (!Object.prototype.hasOwnProperty.call(object, prop)) continue;
+
+        const val = record[prop];
+        const conds = condMetasByProp.get(prop);
+        if (conds && conds.some((fn) => !fn(object, val))) {
+          continue;
+        }
+
+        const message =
+          typeof meta.message === "string"
+            ? meta.message.replace(/\$property/g, prop)
+            : typeof meta.message === "function"
+              ? meta.message({ property: prop, value: val })
+              : `nested property ${prop} must be either object or array`;
+
+        const err = checkValue(val, prop, message);
         if (err) {
           errors.push(err);
         }
       }
+    } finally {
+      activePath.delete(object);
     }
+
     return errors;
   }
 
   protected toNestedBinaryError(
     property: string,
-    value: unknown,
+    _value: unknown,
     message: string,
     _metadataCache: Map<unknown, unknown[]>,
   ): ValidationError | undefined {
     return {
       property,
-      value,
       children: [],
       constraints: {
         nestedValidation: message,
@@ -840,7 +1033,18 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         result[propPath] = existing;
       }
       if (error.children && error.children.length > 0) {
-        this.groupValidationErrors(error.children, propPath, result);
+        const childResult = this.groupValidationErrors(
+          error.children,
+          propPath,
+          result,
+        );
+        if (childResult !== result) {
+          for (const [k, v] of Object.entries(childResult)) {
+            const existing = result[k] ?? [];
+            existing.push(...v);
+            result[k] = existing;
+          }
+        }
       }
     }
     return result;
@@ -870,7 +1074,14 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
       );
     }
     for (const child of error.children) {
-      this.mapChildrenToValidationErrors(child, nextPath, validationErrors);
+      const childResult = this.mapChildrenToValidationErrors(
+        child,
+        nextPath,
+        validationErrors,
+      );
+      if (childResult !== validationErrors) {
+        validationErrors.push(...childResult);
+      }
     }
     return validationErrors;
   }

@@ -563,7 +563,14 @@ export interface ApiPropertyMetadata extends ApiPropertyOptions {
 
 export interface ApiSchemaOptions {
   name?: string;
+  title?: string;
   description?: string;
+  additionalProperties?: boolean | OpenApiSchema;
+  minProperties?: number;
+  maxProperties?: number;
+  deprecated?: boolean;
+  example?: unknown;
+  externalDocs?: OpenApiExternalDocs;
 }
 
 export interface ApiLinkOptions {

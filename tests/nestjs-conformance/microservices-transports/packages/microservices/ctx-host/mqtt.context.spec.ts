@@ -93,8 +93,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: NestJS MqttContext implements getMetadata() returning single-valued MQTT 5 packet.properties.userProperties (and undefined for MQTT 3 packets without userProperties). packages/microservices/src/transports/mqtt.transport.ts does not implement getMetadata() on MqttContext.
-      it.skip("should return MQTT 5 userProperties with single string values from getMetadata() and undefined without userProperties", () => {
+      it("should return MQTT 5 userProperties with single string values from getMetadata() and undefined without userProperties", () => {
         const anyCtx = context as unknown as {
           getMetadata?: () => Record<string, string> | undefined;
         };

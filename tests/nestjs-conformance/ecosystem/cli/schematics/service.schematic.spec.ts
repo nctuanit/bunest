@@ -215,8 +215,7 @@ describeConformance(
       "normalizes camelCase directory segment to kebab-case",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore segments ("_bar/_foo") instead of preserving underscores in path and filename while normalizing class name to FooService (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in path and file name", () => {
+    it("should keep underscores in path and file name", () => {
       const planned = buildSchematicFiles(
         "service",
         parseSchematicName("_bar/_foo"),
@@ -250,8 +249,7 @@ describeConformance(
       "Bunest is Bun-only native TypeScript with no JavaScript template variant",
     );
 
-    // BUNEST_BUG: generateSchematic("service", ...) does not auto-register FooService in src/app.module.ts providers array (missing module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -273,8 +271,7 @@ describeConformance(
       expect(appModule).toContain("providers: [AppService, FooService]");
     });
 
-    // BUNEST_BUG: generateSchematic("service", ...) does not auto-register FooService in src/foo/foo.module.ts providers array (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in foo module", async () => {
+    it("should manage declaration in foo module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -302,8 +299,7 @@ describeConformance(
       expect(fooModule).toContain("providers: [FooService]");
     });
 
-    // BUNEST_BUG: generateSchematic("service", ...) does not select matching users.module.ts over admin.module.ts or auto-register UsersService (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in the module matching the name", async () => {
+    it("should manage declaration in the module matching the name", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -367,8 +363,7 @@ describeConformance(
       ).toBeDefined();
     });
 
-    // BUNEST_BUG: generateSchematic("service", ...) does not auto-register FooService in src/app.module.ts providers array for ESM projects (missing module declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

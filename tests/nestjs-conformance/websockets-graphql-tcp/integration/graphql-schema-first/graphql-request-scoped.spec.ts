@@ -98,8 +98,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: GraphQLService.buildSchema() in packages/graphql/src/driver/graphql-http.handler.ts skips any discovered provider whose `wrapper.instance` is undefined, which omits Scope.REQUEST @Resolver() providers from the schema and never resolves request-scoped resolvers per incoming GraphQL HTTP request.
-    it.skip("should create explicitly Scope.REQUEST resolver and service for each incoming request", async () => {
+    it("should create explicitly Scope.REQUEST resolver and service for each incoming request", async () => {
       @Injectable({ scope: Scope.REQUEST })
       @Resolver("Cat")
       class RequestScopedCatsResolver {

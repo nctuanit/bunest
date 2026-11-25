@@ -263,8 +263,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected `{ __type: null }` when Product has `registerIn: () => ProductsModule` and `include: [UsersModule]`; actual returns `{ __type: { name: "Product" } }` because GraphQLSchemaFactory.buildCodeFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1407-1428) adds all buildSchemaOptions.orphanedTypes without filtering by registerIn against options.include.
-      it.skip("should NOT expose Product type", async () => {
+      it("should NOT expose Product type", async () => {
         expect(await queryTypeName(app, "Product")).toEqual({ __type: null });
       });
     });

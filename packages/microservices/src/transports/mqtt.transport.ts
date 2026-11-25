@@ -17,12 +17,39 @@ import type {
   RpcResponseEnvelope,
 } from "../interfaces";
 import { toPacketMetadata, type PacketMetadata } from "../packets";
+import { MqttRecord } from "../records";
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
+function assertValidMqttPublishTopic(topic: string): void {
+  if (
+    !topic ||
+    topic.includes("+") ||
+    topic.includes("#") ||
+    topic.includes("\u0000")
+  ) {
+    throw new Error(
+      `Invalid MQTT publish topic "${topic}": publish topics must not contain '+', '#', or null characters.`,
+    );
+  }
+}
+
+function stripMqttSharedPrefix(filter: string): string {
+  if (!filter.startsWith("$share/")) {
+    return filter;
+  }
+  const rest = filter.slice("$share/".length);
+  const slashIdx = rest.indexOf("/");
+  if (slashIdx <= 0 || slashIdx === rest.length - 1) {
+    return filter;
+  }
+  return rest.slice(slashIdx + 1);
+}
+
 /**
  * Matches an MQTT topic name against an MQTT topic filter implementing the
- * MQTT 3.1.1 / 5.0 wildcard specification (Section 4.7):
+ * MQTT 3.1.1 / 5.0 wildcard specification (Section 4.7), including MQTT 5
+ * shared subscription filters (`$share/<group>/<filter>`):
  * - `+` matches exactly one topic level
  * - `#` matches zero or more remaining levels (must be the final level)
  * - Filters starting with `+` or `#` do NOT match `$`-prefixed system topics
@@ -32,15 +59,17 @@ export function matchMqttTopic(filter: string, topic: string): boolean {
     return false;
   }
 
+  const effectiveFilter = stripMqttSharedPrefix(filter);
+
   // MQTT spec 4.7.2: wildcards at root must not match $-prefixed system topics
   if (
     topic.startsWith("$") &&
-    (filter.startsWith("#") || filter.startsWith("+"))
+    (effectiveFilter.startsWith("#") || effectiveFilter.startsWith("+"))
   ) {
     return false;
   }
 
-  const filterLevels = filter.split("/");
+  const filterLevels = effectiveFilter.split("/");
   const topicLevels = topic.split("/");
 
   // Validate wildcard placement in filter
@@ -284,7 +313,11 @@ export class MqttServer extends MicroserviceTransportServer {
 
     const topics = this.subscribedTopics.splice(0);
     for (const topic of topics) {
-      await this.client.unsubscribe?.(topic);
+      try {
+        await this.client.unsubscribe?.(topic);
+      } catch {
+        // Continue teardown even if broker is already disconnected
+      }
     }
 
     if (this.closeClientOnClose) {
@@ -367,9 +400,16 @@ export class MqttServer extends MicroserviceTransportServer {
         };
       } else {
         try {
-          const response = await this.runWithProcessingHooks(ctx, async () =>
-            matched.handler(envelope.data, ctx),
-          );
+          const response = await this.runWithProcessingHooks(ctx, async () => {
+            if (this.preRequestHook) {
+              await this.preRequestHook({
+                pattern: matched.filter,
+                data: envelope.data,
+                ctx,
+              });
+            }
+            return matched.handler(envelope.data, ctx);
+          });
           outcome = { response };
         } catch (err) {
           outcome = { error: this.serializeError(err) };
@@ -377,17 +417,32 @@ export class MqttServer extends MicroserviceTransportServer {
       }
 
       if (envelope.replyTo) {
+        const isRecord = outcome.response instanceof MqttRecord;
+        const unwrappedResponse = isRecord
+          ? (outcome.response as MqttRecord).data
+          : outcome.response;
+        const recordOpts = isRecord
+          ? (outcome.response as MqttRecord).options
+          : undefined;
         const responseEnvelope: RpcResponseEnvelope = {
           type: "response",
           id: envelope.id,
-          response: outcome.response,
+          response: unwrappedResponse,
           error: outcome.error,
           isDisposed: true,
+        };
+        const publishOpts: MqttPublishOptions = {
+          qos: recordOpts?.qos ?? this.qos,
+          retain: recordOpts?.retain ?? false,
+          ...(recordOpts?.dup !== undefined ? { dup: recordOpts.dup } : {}),
+          ...(recordOpts?.properties !== undefined
+            ? { properties: recordOpts.properties }
+            : {}),
         };
         await this.client.publish(
           envelope.replyTo,
           JSON.stringify(responseEnvelope),
-          { qos: this.qos, retain: false },
+          publishOpts,
         );
       }
       return;
@@ -462,6 +517,7 @@ export class MqttClientProxy extends ClientProxy {
 
   async connect(): Promise<void> {
     this.ensureListener();
+    this.emitStatus("connected");
   }
 
   async close(): Promise<void> {
@@ -470,6 +526,8 @@ export class MqttClientProxy extends ClientProxy {
       this.pending.delete(id);
       entry.reject(new Error("MqttClientProxy closed."));
     }
+
+    this.emitStatus("disconnected");
 
     if (this.listenerAttached && this.messageListener) {
       if (typeof this.client.off === "function") {
@@ -481,17 +539,21 @@ export class MqttClientProxy extends ClientProxy {
       this.messageListener = undefined;
     }
 
-    for (const replyTopic of [...this.subscribedReplyTopics]) {
-      await this.client.unsubscribe?.(replyTopic);
-    }
+    const replyTopics = [...this.subscribedReplyTopics];
     this.subscribedReplyTopics.clear();
     this.pendingSubscribes.clear();
 
-    if (this.closeClientOnClose) {
-      if (typeof this.client.end === "function") {
-        await this.client.end();
-      } else if (typeof this.client.close === "function") {
-        await this.client.close();
+    try {
+      for (const replyTopic of replyTopics) {
+        await this.client.unsubscribe?.(replyTopic);
+      }
+    } finally {
+      if (this.closeClientOnClose) {
+        if (typeof this.client.end === "function") {
+          await this.client.end();
+        } else if (typeof this.client.close === "function") {
+          await this.client.close();
+        }
       }
     }
   }
@@ -504,16 +566,35 @@ export class MqttClientProxy extends ClientProxy {
     data: TReq,
     options?: MqttPublishOptions,
   ): Promise<void> {
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: topic,
+        data,
+        transport: this.transport,
+      });
+    }
+    await this.publishEventInternal(topic, data, options);
+  }
+
+  private async publishEventInternal<TReq = any>(
+    topic: string,
+    data: TReq,
+    options?: MqttPublishOptions,
+  ): Promise<void> {
+    assertValidMqttPublishTopic(topic);
+    const isRecord = data instanceof MqttRecord;
+    const unwrappedData = isRecord ? data.data : data;
+    const recordOpts = isRecord ? data.options : undefined;
     const envelope: RpcEventEnvelope = {
       type: "event",
       pattern: topic,
-      data,
+      data: unwrappedData,
     };
     await this.client.publish(topic, JSON.stringify(envelope), {
-      qos: options?.qos ?? this.qos,
-      retain: options?.retain ?? this.retain,
-      dup: options?.dup,
-      properties: options?.properties,
+      qos: options?.qos ?? recordOpts?.qos ?? this.qos,
+      retain: options?.retain ?? recordOpts?.retain ?? this.retain,
+      dup: options?.dup ?? recordOpts?.dup,
+      properties: options?.properties ?? recordOpts?.properties,
     });
   }
 
@@ -545,6 +626,7 @@ export class MqttClientProxy extends ClientProxy {
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<TRes> {
+    assertValidMqttPublishTopic(pattern);
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
     }
@@ -556,13 +638,26 @@ export class MqttClientProxy extends ClientProxy {
       throw new RpcTimeoutException(pattern, timeoutMs);
     }
 
+    const isRecord = data instanceof MqttRecord;
+    const unwrappedData = isRecord ? data.data : data;
+    const recordOpts = isRecord ? data.options : undefined;
+
     const id = `mqtt_${++this.seq}_${crypto.randomUUID().slice(0, 8)}`;
     const req: RpcRequestEnvelope = {
       type: "request",
       id,
       pattern,
-      data,
+      data: unwrappedData,
       replyTo: replyTopic,
+    };
+
+    const publishOpts: MqttPublishOptions = {
+      qos: recordOpts?.qos ?? this.qos,
+      retain: recordOpts?.retain ?? false,
+      ...(recordOpts?.dup !== undefined ? { dup: recordOpts.dup } : {}),
+      ...(recordOpts?.properties !== undefined
+        ? { properties: recordOpts.properties }
+        : {}),
     };
 
     return await new Promise<TRes>((resolve, reject) => {
@@ -600,10 +695,7 @@ export class MqttClientProxy extends ClientProxy {
       signal?.addEventListener("abort", onAbort, { once: true });
 
       Promise.resolve(
-        this.client.publish(pattern, JSON.stringify(req), {
-          qos: this.qos,
-          retain: false,
-        }),
+        this.client.publish(pattern, JSON.stringify(req), publishOpts),
       ).catch((err) => {
         clearTimeout(timer);
         cleanup();
@@ -617,7 +709,7 @@ export class MqttClientProxy extends ClientProxy {
     pattern: string,
     data: TReq,
   ): Promise<void> {
-    await this.emitWithOptions(pattern, data);
+    await this.publishEventInternal(pattern, data);
   }
 
   private ensureListener(): void {

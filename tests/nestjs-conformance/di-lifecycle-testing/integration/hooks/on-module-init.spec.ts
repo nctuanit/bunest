@@ -51,8 +51,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Global dynamic module (C.forRoot() with global: true) is not sorted ahead of modules implicitly injecting its exported token, so BB.onModuleInit runs before CC.onModuleInit ("_b-field_a-field" vs "c-field_b-field_a-field") (packages/core/src/module/module-scanner.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should sort modules by distance (topological sort) - DESC order", async () => {
+    it("should sort modules by distance (topological sort) - DESC order", async () => {
       @Injectable()
       class CC implements OnModuleInit {
         public field = "";
@@ -172,8 +171,7 @@ describeConformance(
       expect(db.onModuleInit.calledBefore(users.onModuleInit)).toBe(true);
     });
 
-    // BUNEST_BUG: LifecycleManager runs intra-module onModuleInit hooks in provider declaration order instead of constructor dependency hierarchy order (packages/core/src/di/di-container.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should sort components within a single module by injection hierarchy - DESC order", async () => {
+    it("should sort components within a single module by injection hierarchy - DESC order", async () => {
       @Injectable()
       class A implements OnModuleInit {
         onModuleInit = createSpy();
@@ -216,8 +214,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: LifecycleManager runs intra-module onModuleInit hooks in provider declaration order instead of running property (@Inject) dependency hooks first (packages/core/src/di/di-container.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should call onModuleInit of a property dependency first", async () => {
+    it("should call onModuleInit of a property dependency first", async () => {
       const calls: string[] = [];
 
       @Injectable()

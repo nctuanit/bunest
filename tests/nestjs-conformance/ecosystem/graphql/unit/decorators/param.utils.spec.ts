@@ -56,8 +56,7 @@ describeConformance(
       ]);
     });
 
-    // BUNEST_BUG: Inherited parameter decorators on overridden resolver methods are dropped by getResolverMethodParams/registerGqlParam in packages/graphql/src/decorators/resolver.decorators.ts (reads only own metadata on the defining prototype; expected ["args:0", "context:1"], received ["args:0"]).
-    it.skip("should keep the entries an override does not redeclare", () => {
+    it("should keep the entries an override does not redeclare", () => {
       class UserResolver extends BaseResolver {
         override profile(@Args("id") _id: any, _context: any) {
           return {};

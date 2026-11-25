@@ -99,7 +99,11 @@ function createMockWsServer(opts: {
   const listeners = new Map<string, Set<(...args: any[]) => void>>();
   const clients = new Set<unknown>();
   return {
-    options: { noServer: opts.noServer, path: opts.path },
+    options: {
+      noServer: opts.noServer,
+      path: opts.path,
+      maxPayload: opts.maxPayload,
+    },
     clients,
     listeners,
     on(event: string, fn: (...args: any[]) => void) {
@@ -226,8 +230,7 @@ describeConformance(
           closing = undefined;
         });
 
-        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` (`GraphQLWsServer` option in graphql.interface.ts:486) and never delegates upgrades or emits `"connection"` on a custom WS server (packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-        it.skip("routes connections on its own path to the custom server", async () => {
+        it("routes connections on its own path to the custom server", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
 
@@ -238,8 +241,7 @@ describeConformance(
           expect(server.clients.size).toBe(1);
         });
 
-        // BUNEST_BUG: GraphQLWsHandler ignores `subscriptions["graphql-ws"].server` options such as `maxPayload` (closed with 4400 invalid JSON instead of 1009 message too big; packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-        it.skip("applies the options of the custom server", async () => {
+        it("applies the options of the custom server", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
           await client.acked;
@@ -250,8 +252,7 @@ describeConformance(
           expect(await withTimeout(client.closed)).toBe(1009);
         });
 
-        // BUNEST_BUG: GraphQLWsHandler neither attaches/disposes custom `options.server` listeners nor closes WS sockets with 1001 before BunHttpAdapter stops the server (received 1006 abnormal closure; packages/graphql/src/subscriptions/graphql-ws.handler.ts & packages/core/src/application/bunest-application.ts).
-        it.skip("closes the custom server when the application closes", async () => {
+        it("closes the custom server when the application closes", async () => {
           const client = connect(`ws://127.0.0.1:${port}/subscriptions`);
           socket = client.socket;
           await client.acked;
@@ -266,8 +267,7 @@ describeConformance(
     );
 
     describe("graphql-ws custom server validation", () => {
-      // BUNEST_BUG: GraphQLService / GraphQLWsHandler does not validate that a custom `subscriptions["graphql-ws"].server` has `options.noServer === true` at init (packages/graphql/src/driver/graphql-http.handler.ts & packages/graphql/src/subscriptions/graphql-ws.handler.ts).
-      it.skip('rejects a server that was not created with "noServer: true"', async () => {
+      it('rejects a server that was not created with "noServer: true"', async () => {
         const server = createMockWsServer({ noServer: false });
         const moduleRef = await Test.createTestingModule({
           imports: [

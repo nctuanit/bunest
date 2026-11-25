@@ -47,21 +47,25 @@ export function applyDecorators(
       return undefined;
     }
 
-    // Class decorator
-    if (
-      typeof target === "function" &&
-      propertyKey === undefined &&
-      descriptorOrIndex === undefined
-    ) {
-      let currentTarget: Function = target;
-      for (let i = snapshot.length - 1; i >= 0; i--) {
-        const decorator = snapshot[i] as ClassDecorator | undefined;
-        const result = decorator?.(currentTarget);
-        if (typeof result === "function") {
-          currentTarget = result;
+    // Class or plain-object target decorator (no propertyKey / descriptor)
+    if (propertyKey === undefined && descriptorOrIndex === undefined) {
+      if (typeof target === "function") {
+        let currentTarget: Function = target;
+        for (let i = snapshot.length - 1; i >= 0; i--) {
+          const decorator = snapshot[i] as ClassDecorator | undefined;
+          const result = decorator?.(currentTarget);
+          if (typeof result === "function") {
+            currentTarget = result;
+          }
         }
+        return currentTarget !== target ? currentTarget : undefined;
       }
-      return currentTarget !== target ? currentTarget : undefined;
+      // Plain-object target (e.g. NestJS applyDecorators(d1, d2)(obj)) runs forward
+      for (let i = 0; i < snapshot.length; i++) {
+        const decorator = snapshot[i] as ((t: object) => void) | undefined;
+        decorator?.(target);
+      }
+      return undefined;
     }
 
     // Method / accessor decorator

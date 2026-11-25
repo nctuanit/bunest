@@ -326,8 +326,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: @ArgsType() class property initializers (e.g. `skip = 0` without explicit `{ defaultValue: 0 }` in @Field) are not read as GraphQL argument defaultValue in packages/graphql/src/schema/graphql-schema.factory.ts (buildArgsConfig only reads fieldMeta.defaultValue), causing queries omitting defaulted Int! args to fail GraphQL validation.
-    it.skip("should infer @ArgsType() default values from TypeScript class property initializers", async () => {
+    it("should infer @ArgsType() default values from TypeScript class property initializers", async () => {
       @ArgsType()
       class ImplicitDefaultArgs {
         @Field(() => Int)

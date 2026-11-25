@@ -42,8 +42,7 @@ describeConformance(
       "Adapts out SWC MetadataLoader in favor of explicit @Field() on active (ADR-002, ADR-005).",
   },
   () => {
-    // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-927) does not auto-apply the source @ObjectType() decorator onto the generated mapped class ("PickCreateUserDto", throwing UnableToFindFieldsError) and does not clone @Directive() metadata.
-    it.skip('should inherit "login" field', () => {
+    it('should inherit "login" field', () => {
       const prototype = Object.getPrototypeOf(UpdateUserDto);
       const { fields } = getFieldsAndDecoratorForType(prototype);
 
@@ -57,8 +56,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 920-927) does not auto-apply the source @ObjectType() decorator onto the generated mapped class ("PickCreateUserWithActiveFieldDto"), causing getFieldsAndDecoratorForType to throw UnableToFindFieldsError.
-    it.skip('should inherit "active" field', async () => {
+    it('should inherit "active" field', async () => {
       const prototype = Object.getPrototypeOf(IsActiveUserDto);
       const { fields } = getFieldsAndDecoratorForType(prototype);
 
@@ -66,8 +64,7 @@ describeConformance(
       expect(fields[0]?.name).toEqual("active");
     });
 
-    // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-927) does not auto-apply the source @ObjectType() decorator onto the generated mapped class ("PickCreateUserDto", throwing UnableToFindFieldsError) and does not clone @Extensions() metadata.
-    it.skip('should inherit renamed "_id" field', () => {
+    it('should inherit renamed "_id" field', () => {
       const { fields } = getFieldsAndDecoratorForType(
         Object.getPrototypeOf(UpdateUserWithIdDto),
       );
@@ -134,8 +131,7 @@ describeConformance(
     @ObjectType()
     class PickArgsTest1 extends PickType(ArgsType1, ["a", "c", "f", "h"]) {}
 
-    // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 920-927) does not auto-apply the source @ArgsType() decorator onto the generated mapped class ("PickArgsType1"), causing getFieldsAndDecoratorForType(Object.getPrototypeOf(PickArgsTest1)) to throw UnableToFindFieldsError.
-    it.skip("should inherit: a, c, f, h fields", () => {
+    it("should inherit: a, c, f, h fields", () => {
       const { fields } = getFieldsAndDecoratorForType(
         Object.getPrototypeOf(PickArgsTest1),
       );
@@ -146,8 +142,7 @@ describeConformance(
       expect(fields[3]?.name).toEqual("h");
     });
 
-    // BUNEST_BUG: PickType() in packages/graphql/src/decorators/type.decorators.ts (lines 920-927) does not auto-apply the source @ObjectType() decorator onto the generated mapped class ("PickPricesDto"), causing getFieldsAndDecoratorForType(Object.getPrototypeOf(PublicPricesDto)) to throw UnableToFindFieldsError.
-    it.skip("should handle a field whose key is a number", () => {
+    it("should handle a field whose key is a number", () => {
       @ObjectType()
       class PricesDto {
         @IsNumber()

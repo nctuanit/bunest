@@ -3,6 +3,7 @@ import {
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_PIPE,
+  Logger,
   METADATA_KEYS,
   MetadataRegistry,
   VersioningType,
@@ -256,6 +257,27 @@ class CoreHttpBridge implements HttpRuntimeBridge {
  * Full Bunest HTTP application uniting `@bunest/core`'s DI/Module/Lifecycle engine
  * with `@bunest/core/http`'s native `BunHttpAdapter`.
  */
+export interface InjectChain {
+  get(url?: string): InjectChain;
+  post(url?: string): InjectChain;
+  put(url?: string): InjectChain;
+  patch(url?: string): InjectChain;
+  delete(url?: string): InjectChain;
+  head(url?: string): InjectChain;
+  options(url?: string): InjectChain;
+  method(method: string): InjectChain;
+  url(url: string): InjectChain;
+  headers(headers: Record<string, string | string[]>): InjectChain;
+  query(
+    query: Record<string, string | number | boolean | readonly string[]>,
+  ): InjectChain;
+  payload(body: InjectBody): InjectChain;
+  body(body: InjectBody): InjectChain;
+  cookies(cookies: Record<string, string>): InjectChain;
+  remoteAddress(addr: string): InjectChain;
+  end(): Promise<InjectResponse>;
+}
+
 export class BunestApplication extends BunestApplicationContext {
   private readonly httpAdapter: BunHttpAdapter;
   private readonly controllers: Type<unknown>[] = [];
@@ -270,6 +292,8 @@ export class BunestApplication extends BunestApplicationContext {
   }> = [];
   private readonly microservices: MicroserviceInstance[] = [];
   private readonly startedMicroservices = new WeakSet<MicroserviceInstance>();
+  private readonly deferredInitMicroservices =
+    new WeakSet<MicroserviceInstance>();
   private readonly inheritedConfigMicroservices =
     new Set<MicroserviceInstance>();
   private wsAdapter?: WebSocketAdapter;
@@ -277,6 +301,7 @@ export class BunestApplication extends BunestApplicationContext {
   private routesDirty = true;
   private moduleMiddlewaresConfigured = false;
   private diEnhancersWired = false;
+  private hasListened = false;
 
   constructor(
     container: DIContainer,
@@ -284,6 +309,19 @@ export class BunestApplication extends BunestApplicationContext {
     adapter?: BunHttpAdapter,
   ) {
     super(container, options);
+    if (options.cookies?.secret !== undefined) {
+      const secret = options.cookies.secret;
+      if (
+        (typeof secret === "string" && secret.length === 0) ||
+        (Array.isArray(secret) &&
+          (secret.length === 0 ||
+            secret.some((s) => typeof s !== "string" || s.length === 0)))
+      ) {
+        throw new TypeError(
+          "Cookie secret must be a non-empty string or a non-empty array of non-empty strings.",
+        );
+      }
+    }
     if (adapter) {
       this.httpAdapter = adapter;
       if (options.logger !== undefined || options.bufferLogs) {
@@ -329,7 +367,18 @@ export class BunestApplication extends BunestApplicationContext {
       );
     }
     if (this.options.cookies?.secret !== undefined) {
-      const signer = new CookieSigner(this.options.cookies.secret);
+      const secret = this.options.cookies.secret;
+      if (
+        (typeof secret === "string" && secret.length === 0) ||
+        (Array.isArray(secret) &&
+          (secret.length === 0 ||
+            secret.some((s) => typeof s !== "string" || s.length === 0)))
+      ) {
+        throw new TypeError(
+          "Cookie secret must be a non-empty string or a non-empty array of non-empty strings.",
+        );
+      }
+      const signer = new CookieSigner(secret);
       config.setCookieSigner(signer);
       this.httpAdapter.setCookieSigner(signer);
     }
@@ -416,9 +465,19 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   override async init(): Promise<this> {
+    if (this.isInitialized && this.lifecycle.getIsInitialized()) {
+      return this;
+    }
     await this.prepareHttpPipeline();
+    for (const route of this.getRoutes()) {
+      this.logger.log(
+        `Mapped {${route.path}, ${route.method}} route`,
+        "RouterExplorer",
+      );
+    }
     await super.init();
     this.container.getHttpAdapterHost().markInitialized();
+    this.logger.log("Nest application successfully started", "NestApplication");
     return this;
   }
 
@@ -445,73 +504,119 @@ export class BunestApplication extends BunestApplicationContext {
   }
 
   getUrl(): string | undefined {
-    return this.httpAdapter.getUrl();
+    const url = this.httpAdapter.getUrl();
+    if (url !== undefined) {
+      return url;
+    }
+    if (!this.hasListened) {
+      throw "app.listen() needs to be called before calling app.getUrl()";
+    }
+    return undefined;
   }
 
   useGlobalPipes(...pipes: PipeLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const p of pipes) {
       if (typeof p === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: p as Type<unknown>,
           kind: "pipe",
         });
+        appConfig.addGlobalPipe(p);
+      } else {
+        appConfig.useGlobalPipes(p);
       }
     }
-    this.container.getApplicationConfig().useGlobalPipes(...pipes);
     this.httpAdapter.useGlobalPipes(...pipes);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalGuards(...guards: GuardLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const g of guards) {
       if (typeof g === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: g as Type<unknown>,
           kind: "guard",
         });
+        appConfig.addGlobalGuard(g);
+      } else {
+        appConfig.useGlobalGuards(g);
       }
     }
-    this.container.getApplicationConfig().useGlobalGuards(...guards);
     this.httpAdapter.useGlobalGuards(...guards);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const ic of interceptors) {
       if (typeof ic === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: ic as Type<unknown>,
           kind: "interceptor",
         });
+        appConfig.addGlobalInterceptor(ic);
+      } else {
+        appConfig.useGlobalInterceptors(ic);
       }
     }
-    this.container
-      .getApplicationConfig()
-      .useGlobalInterceptors(...interceptors);
     this.httpAdapter.useGlobalInterceptors(...interceptors);
     this.routesDirty = true;
     return this;
   }
 
   useGlobalFilters(...filters: ExceptionFilterLike[]): this {
+    const appConfig = this.container.getApplicationConfig();
     for (const f of filters) {
       if (typeof f === "function") {
         this.pendingGlobalEnhancerClasses.push({
           cls: f as Type<unknown>,
           kind: "filter",
         });
+        appConfig.addGlobalFilter(f);
+      } else {
+        appConfig.useGlobalFilters(f);
       }
     }
-    this.container.getApplicationConfig().useGlobalFilters(...filters);
     this.httpAdapter.useGlobalFilters(...filters);
     this.routesDirty = true;
     return this;
   }
 
-  use(...middlewares: MiddlewareEntry[]): this {
+  use(
+    pathOrMiddleware: string | readonly string[] | MiddlewareEntry,
+    ...rest: MiddlewareEntry[]
+  ): this {
+    let mountPaths: string[] | undefined;
+    let middlewares: MiddlewareEntry[];
+
+    if (
+      typeof pathOrMiddleware === "string" ||
+      Array.isArray(pathOrMiddleware)
+    ) {
+      const rawPaths = Array.isArray(pathOrMiddleware)
+        ? pathOrMiddleware
+        : [pathOrMiddleware];
+      mountPaths = rawPaths.map((p) => {
+        const trimmed = String(p).trim();
+        if (trimmed === "" || trimmed === "/") return "/";
+        const withLead = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+        return withLead.length > 1 && withLead.endsWith("/")
+          ? withLead.slice(0, -1)
+          : withLead;
+      });
+      middlewares = rest;
+    } else {
+      middlewares = [pathOrMiddleware as MiddlewareEntry, ...rest];
+    }
+
+    const decorator = this.options.instrument?.instanceDecorator;
+    const processed: MiddlewareEntry[] = [];
     for (const mw of middlewares) {
+      let prepared: MiddlewareEntry;
       if (
         typeof mw === "function" &&
         typeof (mw as { prototype?: { use?: unknown } }).prototype?.use ===
@@ -520,9 +625,36 @@ export class BunestApplication extends BunestApplicationContext {
         this.pendingGlobalEnhancerClasses.push({
           cls: mw as Type<unknown>,
         });
+        prepared = mw;
+      } else if (typeof mw === "function" && decorator) {
+        prepared = decorator(mw) as MiddlewareEntry;
+      } else {
+        prepared = mw;
+      }
+
+      if (mountPaths && mountPaths.length > 0 && typeof prepared === "function") {
+        const paths = mountPaths;
+        const inner = prepared as (
+          r: Request,
+          s: ResponseContext,
+          n: () => Promise<void | Response> | void | Response,
+        ) => void | Response | Promise<void | Response>;
+        const scopedMw: MiddlewareEntry = (req, res, next) => {
+          const pathname = new URL(req.url).pathname;
+          const matches = paths.some(
+            (p) => p === "/" || pathname === p || pathname.startsWith(`${p}/`),
+          );
+          if (!matches) {
+            return next();
+          }
+          return inner(req, res, next);
+        };
+        processed.push(scopedMw);
+      } else {
+        processed.push(prepared);
       }
     }
-    this.httpAdapter.use(...middlewares);
+    this.httpAdapter.use(...processed);
     this.routesDirty = true;
     return this;
   }
@@ -537,8 +669,18 @@ export class BunestApplication extends BunestApplicationContext {
    * Enables built-in NestJS v12 Fetch-Metadata CSRF protection (`Sec-Fetch-Site`
    * with `Origin`/`Host` fallback).
    */
+  private csrfEnabled = false;
+  private securityHeadersEnabled = false;
+
   enableCsrfProtection(options?: CsrfProtectionOptions<Request>): this {
+    if (this.isInitialized) {
+      throw new Error("enableCsrfProtection() must be called before app.init().");
+    }
+    if (this.csrfEnabled) {
+      throw new Error("enableCsrfProtection() can only be called once.");
+    }
     this.httpAdapter.enableCsrfProtection(options);
+    this.csrfEnabled = true;
     this.routesDirty = true;
     return this;
   }
@@ -548,7 +690,14 @@ export class BunestApplication extends BunestApplicationContext {
    * `404`s and error responses) and removes `X-Powered-By`.
    */
   useSecurityHeaders(options?: HttpSecurityHeadersOptions): this {
+    if (this.isInitialized) {
+      throw new Error("useSecurityHeaders() must be called before app.init().");
+    }
+    if (this.securityHeadersEnabled) {
+      throw new Error("useSecurityHeaders() can only be called once.");
+    }
     this.httpAdapter.useSecurityHeaders(options);
+    this.securityHeadersEnabled = true;
     this.routesDirty = true;
     return this;
   }
@@ -688,6 +837,12 @@ export class BunestApplication extends BunestApplicationContext {
     if (hybridOptions?.inheritAppConfig) {
       this.inheritedConfigMicroservices.add(server);
     }
+    if (
+      (hybridOptions as { deferInitialization?: boolean } | undefined)
+        ?.deferInitialization === true
+    ) {
+      this.deferredInitMicroservices.add(server);
+    }
     return server;
   }
 
@@ -696,7 +851,10 @@ export class BunestApplication extends BunestApplicationContext {
    * microservice transport servers.
    */
   async startAllMicroservices(): Promise<this> {
-    if (!this.isInitialized) {
+    const allDeferred =
+      this.microservices.length > 0 &&
+      this.microservices.every((ms) => this.deferredInitMicroservices.has(ms));
+    if (!this.isInitialized && !allDeferred) {
       await this.init();
     }
     const appCfg = this.container.getApplicationConfig();
@@ -765,7 +923,91 @@ export class BunestApplication extends BunestApplicationContext {
    * Executes a NestJS/Fastify-style in-memory HTTP request directly against
    * `this.fetch()` without binding a network socket.
    */
-  async inject(input: string | InjectOptions): Promise<InjectResponse> {
+  inject(): InjectChain;
+  inject(input: string | InjectOptions): Promise<InjectResponse>;
+  inject(
+    input?: string | InjectOptions,
+  ): Promise<InjectResponse> | InjectChain {
+    if (input === undefined) {
+      return this.createInjectChain();
+    }
+    return this.executeInject(input);
+  }
+
+  private createInjectChain(): InjectChain {
+    let method = "GET";
+    let url = "/";
+    let headers: Record<string, string | string[]> | undefined;
+    let query: Record<string, string | number | boolean | readonly string[]> | undefined;
+    let payload: InjectBody | undefined;
+    let cookies: Record<string, string> | undefined;
+    let remoteAddress: string | undefined;
+
+    const setMethodUrl = (m: string, u?: string): InjectChain => {
+      method = m;
+      if (u !== undefined) url = u;
+      return chain;
+    };
+
+    const chain: InjectChain = {
+      get: (u?: string) => setMethodUrl("GET", u),
+      post: (u?: string) => setMethodUrl("POST", u),
+      put: (u?: string) => setMethodUrl("PUT", u),
+      patch: (u?: string) => setMethodUrl("PATCH", u),
+      delete: (u?: string) => setMethodUrl("DELETE", u),
+      head: (u?: string) => setMethodUrl("HEAD", u),
+      options: (u?: string) => setMethodUrl("OPTIONS", u),
+      method: (m: string) => {
+        method = m;
+        return chain;
+      },
+      url: (u: string) => {
+        url = u;
+        return chain;
+      },
+      headers: (h: Record<string, string | string[]>) => {
+        headers = { ...(headers ?? {}), ...h };
+        return chain;
+      },
+      query: (q: Record<string, string | number | boolean | readonly string[]>) => {
+        query = { ...(query ?? {}), ...q };
+        return chain;
+      },
+      payload: (body: InjectBody) => {
+        payload = body;
+        return chain;
+      },
+      body: (body: InjectBody) => {
+        payload = body;
+        return chain;
+      },
+      cookies: (c: Record<string, string>) => {
+        cookies = { ...(cookies ?? {}), ...c };
+        return chain;
+      },
+      remoteAddress: (addr: string) => {
+        remoteAddress = addr;
+        return chain;
+      },
+      end: () =>
+        this.executeInject({
+          method,
+          url,
+          headers:
+            remoteAddress !== undefined
+              ? { "x-forwarded-for": remoteAddress, ...(headers ?? {}) }
+              : headers,
+          query,
+          payload,
+          cookies,
+        }),
+    };
+    return chain;
+  }
+
+  private async executeInject(
+    input: string | InjectOptions,
+  ): Promise<InjectResponse> {
     const req = buildInjectRequest(input);
     const raw = await this.fetch(req);
     const rawPayload = new Uint8Array(await raw.arrayBuffer());
@@ -797,17 +1039,25 @@ export class BunestApplication extends BunestApplicationContext {
       hostnameOrCallback,
       callback,
     );
+    this.hasListened = true;
     this.container.getHttpAdapterHost().listening = true;
     return info;
   }
 
-  protected override async prepareClose(): Promise<void> {
+  protected override prepareClose(): void {
     this.httpAdapter.beforeClose();
   }
 
-  protected override async stopTransport(): Promise<void> {
-    const errors: unknown[] = [];
+  protected override stopTransport(): Promise<void> | void {
     this.container.getHttpAdapterHost().listening = false;
+    if (!this.httpAdapter.getHttpServer() && this.microservices.length === 0) {
+      return;
+    }
+    return this.stopTransportAsync();
+  }
+
+  private async stopTransportAsync(): Promise<void> {
+    const errors: unknown[] = [];
 
     try {
       await this.httpAdapter.close();
@@ -843,8 +1093,21 @@ export class BunestApplication extends BunestApplicationContext {
     this.diEnhancersWired = true;
 
     const appConfig = this.container.getApplicationConfig();
+    const enhancerLogger = new Logger("ApplicationConfig");
+    const describeProviderValue = (val: unknown): string => {
+      if (typeof val === "function") {
+        return `class ${val.name || "anonymous"}`;
+      }
+      if (Array.isArray(val)) return "an array";
+      if (typeof val === "object" && val !== null) return "an object";
+      return String(val);
+    };
+
     const collectToken = <T>(
       token: InjectionToken,
+      tokenLabel: string,
+      methodName: string,
+      warnOnly: boolean,
       onRequestScoped?: (wrapper: {
         readonly token: InjectionToken<unknown>;
         readonly metatype: Type<unknown> | Function | undefined;
@@ -871,6 +1134,28 @@ export class BunestApplication extends BunestApplicationContext {
         if (entry.syntheticToken) {
           items.push(entry.syntheticToken as unknown as T);
         } else if (entry.instance !== undefined) {
+          if (
+            entry.provider.kind === "value" &&
+            typeof (entry.instance as Record<string, unknown> | null)?.[
+              methodName
+            ] !== "function"
+          ) {
+            const valDesc = describeProviderValue(entry.instance);
+            const enhancerType =
+              tokenLabel === "APP_FILTER"
+                ? "exception filter"
+                : tokenLabel === "APP_GUARD"
+                  ? "guard"
+                  : tokenLabel === "APP_PIPE"
+                    ? "pipe"
+                    : "interceptor";
+            const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
+            if (warnOnly) {
+              enhancerLogger.warn(msg);
+            } else {
+              throw new Error(msg);
+            }
+          }
           items.push(entry.instance as T);
         } else if (entry.provider.useClass) {
           this.container.registerEnhancerOwner(
@@ -886,17 +1171,33 @@ export class BunestApplication extends BunestApplicationContext {
     // Always place DI multi-providers ahead of imperative app.useGlobal*() enhancers
     // consistently in both BunestFactory.create() and TestingModule.createBunestApplication().
     this.httpAdapter.setDiGlobalEnhancers({
-      guards: collectToken<GuardLike>(APP_GUARD, (w) =>
-        appConfig.addGlobalRequestGuard(w as any),
+      guards: collectToken<GuardLike>(
+        APP_GUARD,
+        "APP_GUARD",
+        "canActivate",
+        false,
+        (w) => appConfig.addGlobalRequestGuard(w as any),
       ),
-      pipes: collectToken<PipeLike>(APP_PIPE, (w) =>
-        appConfig.addGlobalRequestPipe(w as any),
+      pipes: collectToken<PipeLike>(
+        APP_PIPE,
+        "APP_PIPE",
+        "transform",
+        false,
+        (w) => appConfig.addGlobalRequestPipe(w as any),
       ),
-      interceptors: collectToken<InterceptorLike>(APP_INTERCEPTOR, (w) =>
-        appConfig.addGlobalRequestInterceptor(w as any),
+      interceptors: collectToken<InterceptorLike>(
+        APP_INTERCEPTOR,
+        "APP_INTERCEPTOR",
+        "intercept",
+        false,
+        (w) => appConfig.addGlobalRequestInterceptor(w as any),
       ),
-      filters: collectToken<ExceptionFilterLike>(APP_FILTER, (w) =>
-        appConfig.addGlobalRequestFilter(w as any),
+      filters: collectToken<ExceptionFilterLike>(
+        APP_FILTER,
+        "APP_FILTER",
+        "catch",
+        true,
+        (w) => appConfig.addGlobalRequestFilter(w as any),
       ),
     });
   }
@@ -908,13 +1209,67 @@ export class BunestApplication extends BunestApplicationContext {
     this.moduleMiddlewaresConfigured = true;
 
     const compiledConfigs: CompiledMiddlewareConfig[] = [];
+    const graph = this.container.getGraph();
+    const controllerPrefixes = resolveRouterModulePrefixes(graph);
 
-    for (const mod of this.container.getGraph().topologicalOrder) {
+    // Order modules for middleware registration matching NestJS:
+    // 1. @Global() modules first (in discovery order)
+    // 2. Non-global modules in top-down importing-module-first order (ascending max depth from root),
+    //    tie-broken by imports array discovery order.
+    const discoveryOrder = new Map<string, number>();
+    const maxDepth = new Map<string, number>();
+    let visitIdx = 0;
+
+    const traverse = (
+      mod: (typeof graph.topologicalOrder)[number],
+      depth: number,
+      ancestors: Set<string>,
+    ): void => {
+      if (!discoveryOrder.has(mod.id)) {
+        discoveryOrder.set(mod.id, visitIdx++);
+      }
+      const prevDepth = maxDepth.get(mod.id);
+      if (prevDepth !== undefined && prevDepth >= depth) {
+        return;
+      }
+      maxDepth.set(mod.id, depth);
+      ancestors.add(mod.id);
+      for (const imp of mod.imports) {
+        if (!ancestors.has(imp.id)) {
+          traverse(imp, depth + 1, ancestors);
+        }
+      }
+      ancestors.delete(mod.id);
+    };
+    traverse(graph.root, 0, new Set());
+
+    const orderedModules = [...graph.topologicalOrder].sort((a, b) => {
+      if (a.isGlobal !== b.isGlobal) {
+        return a.isGlobal ? -1 : 1;
+      }
+      if (!a.isGlobal) {
+        const depthDiff = (maxDepth.get(a.id) ?? 0) - (maxDepth.get(b.id) ?? 0);
+        if (depthDiff !== 0) {
+          return depthDiff;
+        }
+      }
+      return (
+        (discoveryOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (discoveryOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      );
+    });
+
+    for (const mod of orderedModules) {
       if (!isConfigurableModule(mod.instance)) {
         continue;
       }
 
-      const consumer = new CoreMiddlewareConsumer(mod.id, this.httpAdapter);
+      const consumer = new CoreMiddlewareConsumer(
+        mod.id,
+        this.httpAdapter,
+        undefined,
+        controllerPrefixes,
+      );
       await mod.instance.configure(consumer);
 
       for (const cfg of consumer.getConfigs()) {

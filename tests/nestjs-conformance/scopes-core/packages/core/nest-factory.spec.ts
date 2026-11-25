@@ -138,8 +138,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ModuleScanner.scan() fails with TypeError ("No default value" from String() on null-prototype object) instead of throwing InvalidModuleException for module namespace objects (packages/core/src/module/module-scanner.ts:40-55).
-      it.skip("should reject a module namespace object", async () => {
+      it("should reject a module namespace object", async () => {
         const namespace = Object.assign(Object.create(null), {
           TestModule,
         });

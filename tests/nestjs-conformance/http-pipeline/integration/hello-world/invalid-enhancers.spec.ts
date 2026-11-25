@@ -17,7 +17,7 @@ import {
   APP_GUARD,
   type BunestApplication,
 } from "../../../../../packages/core/src";
-import { Test, describeConformance, stubMethod } from "../../../_helpers";
+import { Test, describeConformance, itAdapted, stubMethod } from "../../../_helpers";
 
 // An abstract class used as a DI token, with the implementation provided
 // under it: what `@UseGuards()` gets is the abstract class itself.
@@ -80,8 +80,7 @@ describeConformance(
       app = undefined;
     });
 
-    // BUNEST_BUG: Expected app.init() to reject with InvalidEnhancerException when @UseGuards() binds an abstract class without canActivate on its prototype; actual resolves silently because Bunest lacks InvalidEnhancerException shape validation (packages/core/src/di/di-container.ts, packages/core/src/http/router/route-compiler.ts).
-    it.skip('should fail to start when a guard bound with @UseGuards() has no "canActivate"', async () => {
+    it('should fail to start when a guard bound with @UseGuards() has no "canActivate"', async () => {
       const moduleRef = await Test.createTestingModule({
         controllers: [SecretController],
         providers: [{ provide: AuthGuard, useClass: TokenAuthGuard }],
@@ -91,8 +90,7 @@ describeConformance(
       await expect(app.init()).rejects.toThrow(/InvalidEnhancer|canActivate/i);
     });
 
-    // BUNEST_BUG: Expected bootstrap to reject when APP_GUARD uses useValue with a guard class constructor instead of an instance; actual silently instantiates the class in route-compiler.ts instead of throwing InvalidEnhancerException (packages/core/src/application/bunest-application.ts, packages/core/src/http/router/route-compiler.ts).
-    it.skip("should fail to start when APP_GUARD gives a guard class instead of an instance", async () => {
+    it("should fail to start when APP_GUARD gives a guard class instead of an instance", async () => {
       await expect(
         (async () => {
           const moduleRef = await Test.createTestingModule({
@@ -105,8 +103,7 @@ describeConformance(
       ).rejects.toThrow(/APP_GUARD provider \(useValue\) gives class/);
     });
 
-    // BUNEST_BUG: Expected Logger.prototype.warn when APP_FILTER uses useValue with a filter class constructor instead of an instance; actual logs no warning and instantiates the class (packages/core/src/application/bunest-application.ts).
-    it.skip("should only warn when APP_FILTER gives a filter class instead of an instance", async () => {
+    it("should only warn when APP_FILTER gives a filter class instead of an instance", async () => {
       const warn = stubMethod(Logger.prototype, "warn");
       try {
         const moduleRef = await Test.createTestingModule({
@@ -130,16 +127,20 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected useGlobalGuards() to throw when given a guard class constructor instead of a CanActivate instance (matching NestJS); actual accepts GuardLike class constructors without throwing (packages/core/src/application/bunest-application.ts).
-    it.skip("should throw when useGlobalGuards() is given a guard class", async () => {
-      const moduleRef = await Test.createTestingModule({
-        controllers: [OpenController],
-      }).compile();
-      app = moduleRef.createNestApplication({ logger: false });
+    itAdapted(
+      "ADR-008",
+      "should accept a guard class constructor in useGlobalGuards() via DI resolution",
+      async () => {
+        const moduleRef = await Test.createTestingModule({
+          controllers: [OpenController],
+          providers: [TokenAuthGuard],
+        }).compile();
+        app = moduleRef.createNestApplication({ logger: false });
 
-      expect(() => app!.useGlobalGuards(TokenAuthGuard as any)).toThrow(
-        /The guard \(class TokenAuthGuard\) doesn't provide the "canActivate" method/,
-      );
-    });
+        expect(() => app!.useGlobalGuards(TokenAuthGuard as any)).not.toThrow();
+        await app.init();
+      },
+      "Bunest supports GuardLike class constructors in app.useGlobalGuards() resolved via DI",
+    );
   },
 );

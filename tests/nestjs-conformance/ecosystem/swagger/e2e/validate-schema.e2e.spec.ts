@@ -111,8 +111,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: SchemaExplorer.registerDtoSchema (packages/swagger/src/schema-explorer.ts:564-689) ignores class-level @ApiExtension() metadata on DTO schemas (x-schema-extension missing on Cat)
-    it.skip("should produce a valid OpenAPI 3.0 schema", async () => {
+    it("should produce a valid OpenAPI 3.0 schema", async () => {
       await SwaggerModule.loadPluginMetadata(async () => ({
         "@nestjs/swagger": {
           models: [
@@ -191,8 +190,7 @@ describeConformance(
       expect(api.paths["/api/cats"]?.get?.tags).toContain("tag2");
     });
 
-    // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1853,1874) places @ApiQuery({ type: TagDto, example }) on param.example instead of wrapping $ref in schema.allOf + schema.example
-    it.skip("should preserve example metadata for named type query params (issue #3335)", () => {
+    it("should preserve example metadata for named type query params (issue #3335)", () => {
       const document = SwaggerModule.createDocument(app, options);
       const params =
         document.paths["/api/cats/with-named-type-example"]?.get?.parameters ??
@@ -259,8 +257,7 @@ describeConformance(
       expect(document.components?.schemas).not.toHaveProperty("Date");
     });
 
-    // BUNEST_BUG: SwaggerModule.buildResponses (packages/swagger/src/swagger-module.ts:2147-2156) emits OAS 3.1 `type: ["object", "null"]` even when config.openapi is "3.0.0" instead of `nullable: true`
-    it.skip("should move nullable from a schema response into the schema", () => {
+    it("should move nullable from a schema response into the schema", () => {
       const oas30Options: SwaggerConfig = { ...options, openapi: "3.0.0" };
       const document = SwaggerModule.createDocument(app, oas30Options);
 
@@ -277,8 +274,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: convertPathToOpenApi (packages/swagger/src/swagger-module.ts:121-160) does not unescape `\:` literal colons in route paths ("/api/v1/express\\:colon\\:another/{prop}" vs "/api/v1/express:colon:another/{prop}")
-    it.skip("should fix colons in url", () => {
+    it("should fix colons in url", () => {
       const document = SwaggerModule.createDocument(app, options);
       expect(
         document.paths["/api/v1/express:colon:another/{prop}"],
@@ -332,8 +328,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:912) unconditionally emits OAS 3.1 anyOf: [{ $ref }, { type: "null" }] even for openapi: "3.0.0" instead of OAS 3.0 { type: "object", nullable: true, allOf: [{ $ref }] }
-    it.skip("should include type field when nullable is used with allOf (issue #3274)", () => {
+    it("should include type field when nullable is used with allOf (issue #3274)", () => {
       const document = SwaggerModule.createDocument(app, {
         ...options,
         openapi: "3.0.0",
@@ -348,8 +343,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-912) keeps reflected design:type ("object") next to oneOf and applies OAS 3.1 type array even for openapi: "3.0.0"
-    it.skip("should omit inferred type when nullable is used with oneOf (issue #3928)", () => {
+    it("should omit inferred type when nullable is used with oneOf (issue #3928)", () => {
       const document = SwaggerModule.createDocument(app, {
         ...options,
         openapi: "3.0.0",
@@ -503,8 +497,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) converts nullable enums into anyOf instead of { type: ["string", "null"], enum: [..., null] }
-      it.skip("should add null to the values of a nullable enum", () => {
+      it("should add null to the values of a nullable enum", () => {
         const properties = getCreateCatDtoProperties(createOas31Document());
 
         expect(properties.nullableEnum).toEqual({
@@ -523,8 +516,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-912) retains reflected design:type ("object") on oneOf properties so applyNullable31 emits type: ["object", "null"] instead of anyOf: [{ oneOf }, { type: "null" }]
-      it.skip("should emit anyOf for a nullable composite schema", () => {
+      it("should emit anyOf for a nullable composite schema", () => {
         const properties = getCreateCatDtoProperties(createOas31Document());
 
         expect(properties.nullablePrimitiveUnion).toEqual({
@@ -551,8 +543,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:747-755) does not convert OAS 3.0 boolean exclusiveMinimum/exclusiveMaximum into OAS 3.1 numeric bounds in parameter schemas
-      it.skip("should emit numeric exclusive bounds in parameter schemas", () => {
+      it("should emit numeric exclusive bounds in parameter schemas", () => {
         const document = createOas31Document();
         const parameters = document.paths["/api/cats"]?.get
           ?.parameters as ParameterObject[];
@@ -575,8 +566,7 @@ describeConformance(
         expect(JSON.stringify(document)).not.toContain('"nullable"');
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:912) unconditionally emits OAS 3.1 `type: ["string", "null"]` regardless of config.openapi: "3.0.0"
-      it.skip("should keep the 3.0 spelling in 3.0 documents", () => {
+      it("should keep the 3.0 spelling in 3.0 documents", () => {
         const properties = getCreateCatDtoProperties(
           SwaggerModule.createDocument(app, { ...options, openapi: "3.0.0" }),
         );

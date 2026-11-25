@@ -537,8 +537,8 @@ export class GrpcServer extends MicroserviceTransportServer {
       this.messageHandlers.set(primaryPath, handler);
     }
 
-    if (!service.includes(".")) {
-      for (const pkg of this.packages) {
+    for (const pkg of this.packages) {
+      if (!service.startsWith(`${pkg}.`)) {
         const qualifiedPath = `/${pkg}.${service}/${method}`;
         this.grpcRoutes.set(qualifiedPath, {
           ...entry,
@@ -653,6 +653,14 @@ export class GrpcServer extends MicroserviceTransportServer {
     return undefined;
   }
 
+  private encodeGrpcMessage(message: string): string {
+    const sanitized = message.replace(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+      "\uFFFD",
+    );
+    return encodeURIComponent(sanitized);
+  }
+
   private buildErrorResponse(
     code: GrpcStatus,
     message: string,
@@ -662,7 +670,7 @@ export class GrpcServer extends MicroserviceTransportServer {
       ...sanitizeMetadataHeaders(metadata),
       "content-type": this.codec.contentType,
       "grpc-status": String(code),
-      "grpc-message": encodeURIComponent(message),
+      "grpc-message": this.encodeGrpcMessage(message),
     };
     return new Response(new Uint8Array(0), { status: 200, headers });
   }
@@ -759,7 +767,16 @@ export class GrpcServer extends MicroserviceTransportServer {
     try {
       const result = await this.runWithProcessingHooks(grpcCtx, () =>
         this.invokeWithDeadline(
-          () => Promise.resolve(route.handler(requestData, grpcCtx)),
+          async () => {
+            if (this.preRequestHook) {
+              await this.preRequestHook({
+                pattern: pathname,
+                data: requestData,
+                ctx: grpcCtx,
+              });
+            }
+            return await Promise.resolve(route.handler(requestData, grpcCtx));
+          },
           abortController.signal,
           () => timedOut,
           pathname,
@@ -785,6 +802,7 @@ export class GrpcServer extends MicroserviceTransportServer {
 
         const iterator = result[Symbol.asyncIterator]();
         const codec = this.codec;
+        const encodeMsg = (m: string) => this.encodeGrpcMessage(m);
         let streamClosed = false;
 
         const nextWithAbort = (): Promise<
@@ -852,7 +870,7 @@ export class GrpcServer extends MicroserviceTransportServer {
                     encodeGrpcTrailerFrame({
                       ...sanitizeMetadataHeaders(grpcCtx.responseMetadata),
                       "grpc-status": String(errCode),
-                      "grpc-message": encodeURIComponent(errMsg),
+                      "grpc-message": encodeMsg(errMsg),
                     }),
                   );
                   safeClose();
@@ -882,7 +900,7 @@ export class GrpcServer extends MicroserviceTransportServer {
                   ...sanitizeMetadataHeaders(grpcCtx.responseMetadata),
                   ...sanitizeMetadataHeaders(mapped.metadata),
                   "grpc-status": String(mapped.code),
-                  "grpc-message": encodeURIComponent(mapped.message),
+                  "grpc-message": encodeMsg(mapped.message),
                 };
                 safeEnqueue(encodeGrpcTrailerFrame(trailerHeaders));
                 safeClose();
@@ -1038,10 +1056,12 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
 
   async connect(): Promise<void> {
     this.closed = false;
+    this.emitStatus("connected");
   }
 
   async close(): Promise<void> {
     this.closed = true;
+    this.emitStatus("disconnected");
     for (const controller of [...this.activeControllers]) {
       controller.abort(
         new GrpcException(GrpcStatus.CANCELLED, "GrpcClientProxy closed"),
@@ -1088,7 +1108,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     service: string,
     method: string,
     data: TReq,
-    options?: GrpcCallOptions,
+    options?: GrpcCallOptions & { readonly _skipPreRequestHook?: boolean },
   ): Promise<GrpcCallResult<TRes>> {
     if (this.closed) {
       throw new GrpcException(
@@ -1098,6 +1118,13 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     }
 
     const path = this.buildMethodPath(service, method);
+    if (this.preRequestHook && !options?._skipPreRequestHook) {
+      await this.preRequestHook({
+        pattern: path,
+        data,
+        transport: this.transport,
+      });
+    }
     const timeoutMs = Math.max(
       1,
       Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
@@ -1246,6 +1273,13 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     }
 
     const path = this.buildMethodPath(service, method);
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: path,
+        data,
+        transport: this.transport,
+      });
+    }
     const timeoutMs = Math.max(
       1,
       Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
@@ -1378,8 +1412,237 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
   }
 
   /**
+   * Executes a client-streaming gRPC call, encoding every yielded input item as a
+   * 5-byte length-prefixed gRPC frame and returning the single decoded response.
+   */
+  async clientStream<TRes = any, TReq = any>(
+    service: string,
+    method: string,
+    input: AsyncIterable<TReq>,
+    options?: GrpcCallOptions,
+  ): Promise<TRes> {
+    if (this.closed) {
+      throw new GrpcException(
+        GrpcStatus.UNAVAILABLE,
+        "GrpcClientProxy is closed.",
+      );
+    }
+    const path = this.buildMethodPath(service, method);
+    const items: TReq[] = [];
+    for await (const item of input) {
+      items.push(item);
+    }
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: path,
+        data: items,
+        transport: this.transport,
+      });
+    }
+    const timeoutMs = Math.max(
+      1,
+      Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
+    );
+    const frames = items.map((item) =>
+      encodeGrpcFrame(this.codec.encode(item, path)),
+    );
+    const body =
+      frames.length === 0 ? new Uint8Array(0) : Buffer.concat(frames);
+    const headers: Record<string, string> = {
+      ...this.buildRequestHeaders(timeoutMs, options?.metadata),
+      "x-bunest-grpc-stream-request": "1",
+    };
+
+    const controller = new AbortController();
+    this.activeControllers.add(controller);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    if (typeof (timer as { unref?: () => void }).unref === "function") {
+      (timer as { unref: () => void }).unref();
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers,
+        body,
+        signal: controller.signal,
+      });
+      const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
+      const statusHeader = response.headers.get("grpc-status");
+      const messageHeader = response.headers.get("grpc-message");
+      const grpcStatus =
+        statusHeader !== null
+          ? (Number(statusHeader) as GrpcStatus)
+          : response.ok
+            ? GrpcStatus.OK
+            : mapHttpStatusToGrpc(response.status);
+      if (grpcStatus !== GrpcStatus.OK) {
+        const msg = safeDecodeGrpcMessage(
+          messageHeader,
+          `gRPC clientStream "${path}" failed with status ${grpcStatus}`,
+        );
+        throw new GrpcException(grpcStatus, msg, responseMetadata);
+      }
+      const rawBytes = new Uint8Array(await response.arrayBuffer());
+      const decoder = new GrpcFrameDecoder(this.maxMessageBytes);
+      const resFrames = decoder.push(rawBytes);
+      let resultData: TRes = undefined as TRes;
+      for (const f of resFrames) {
+        if (!f.isTrailer) {
+          resultData = this.codec.decode<TRes>(f.payload, path);
+        }
+      }
+      return resultData;
+    } catch (err) {
+      if (err instanceof GrpcException) throw err;
+      if (timedOut) {
+        throw new GrpcException(
+          GrpcStatus.DEADLINE_EXCEEDED,
+          `gRPC clientStream "${path}" timed out after ${timeoutMs}ms`,
+        );
+      }
+      if (controller.signal.aborted) {
+        throw new GrpcException(
+          GrpcStatus.CANCELLED,
+          `gRPC clientStream "${path}" was cancelled`,
+        );
+      }
+      throw new GrpcException(
+        GrpcStatus.UNAVAILABLE,
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      clearTimeout(timer);
+      this.activeControllers.delete(controller);
+    }
+  }
+
+  /**
+   * Executes a bidirectional streaming gRPC call, encoding every yielded input item
+   * as a gRPC frame and incrementally yielding decoded response messages.
+   */
+  async *bidiStream<TRes = any, TReq = any>(
+    service: string,
+    method: string,
+    input: AsyncIterable<TReq>,
+    options?: GrpcCallOptions,
+  ): AsyncGenerator<TRes, void, unknown> {
+    if (this.closed) {
+      throw new GrpcException(
+        GrpcStatus.UNAVAILABLE,
+        "GrpcClientProxy is closed.",
+      );
+    }
+    const path = this.buildMethodPath(service, method);
+    const items: TReq[] = [];
+    for await (const item of input) {
+      items.push(item);
+    }
+    if (this.preRequestHook) {
+      await this.preRequestHook({
+        pattern: path,
+        data: items,
+        transport: this.transport,
+      });
+    }
+    const timeoutMs = Math.max(
+      1,
+      Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
+    );
+    const frames = items.map((item) =>
+      encodeGrpcFrame(this.codec.encode(item, path)),
+    );
+    const body =
+      frames.length === 0 ? new Uint8Array(0) : Buffer.concat(frames);
+    const headers: Record<string, string> = {
+      ...this.buildRequestHeaders(timeoutMs, options?.metadata),
+      "x-bunest-grpc-stream-request": "1",
+    };
+
+    const controller = new AbortController();
+    this.activeControllers.add(controller);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    if (typeof (timer as { unref?: () => void }).unref === "function") {
+      (timer as { unref: () => void }).unref();
+    }
+
+    let activeReader: { cancel(): Promise<unknown> } | undefined;
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers,
+        body,
+        signal: controller.signal,
+      });
+      const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
+      const statusHeader = response.headers.get("grpc-status");
+      const messageHeader = response.headers.get("grpc-message");
+      const initialStatus =
+        statusHeader !== null
+          ? (Number(statusHeader) as GrpcStatus)
+          : response.ok
+            ? GrpcStatus.OK
+            : mapHttpStatusToGrpc(response.status);
+      if (initialStatus !== GrpcStatus.OK) {
+        const msg = safeDecodeGrpcMessage(
+          messageHeader,
+          `gRPC bidiStream "${path}" failed with status ${initialStatus}`,
+        );
+        throw new GrpcException(initialStatus, msg, responseMetadata);
+      }
+      if (!response.body) return;
+      const decoder = new GrpcFrameDecoder(this.maxMessageBytes);
+      const streamReader = response.body.getReader();
+      activeReader = streamReader;
+      while (true) {
+        const { done, value } = await streamReader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        const resFrames = decoder.push(value);
+        for (const f of resFrames) {
+          if (f.isTrailer) {
+            const trailers = parseGrpcTrailers(f.payload);
+            const tStatus =
+              trailers["grpc-status"] !== undefined
+                ? (Number(trailers["grpc-status"]) as GrpcStatus)
+                : GrpcStatus.OK;
+            if (tStatus !== GrpcStatus.OK) {
+              const tMsg = safeDecodeGrpcMessage(
+                trailers["grpc-message"],
+                `gRPC bidiStream "${path}" terminated with status ${tStatus}`,
+              );
+              throw new GrpcException(tStatus, tMsg, responseMetadata);
+            }
+          } else {
+            yield this.codec.decode<TRes>(f.payload, path);
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      if (activeReader) {
+        try {
+          await activeReader.cancel();
+        } catch {
+          // ignore
+        }
+      }
+      this.activeControllers.delete(controller);
+    }
+  }
+
+  /**
    * Returns a NestJS-compatible dynamic proxy for a named gRPC service where
-   * calling `service.findOne(req, options?)` invokes `/${serviceName}/FindOne`.
+   * calling `service.findOne(req, options?)` supports both `await` (unary)
+   * and `for await` (server-streaming).
    */
   getService<T extends object>(serviceName: string): T {
     const existing = this.serviceClients.get(serviceName);
@@ -1393,8 +1656,31 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
           if (typeof prop !== "string" || prop === "then") {
             return undefined;
           }
-          return (data: unknown, options?: GrpcCallOptions) =>
-            this.call(serviceName, prop, data, options);
+          return (data: unknown, options?: GrpcCallOptions) => {
+            let unaryPromise: Promise<unknown> | undefined;
+            const getUnary = () => {
+              if (!unaryPromise) {
+                unaryPromise = this.call(serviceName, prop, data, options);
+              }
+              return unaryPromise;
+            };
+            const handle = {
+              then: <TResult1 = unknown, TResult2 = never>(
+                onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+                onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+              ) => getUnary().then(onfulfilled, onrejected),
+              catch: <TResult = never>(
+                onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+              ) => getUnary().catch(onrejected),
+              finally: (onfinally?: (() => void) | null) =>
+                getUnary().finally(onfinally),
+              [Symbol.asyncIterator]: () =>
+                this.stream(serviceName, prop, data, options)[
+                  Symbol.asyncIterator
+                ](),
+            };
+            return handle;
+          };
         },
       },
     ) as T;
@@ -1415,14 +1701,16 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     timeoutMs: number,
   ): Promise<TRes> {
     const resolved = this.parsePatternToServiceMethod(pattern);
-    return await this.call<TRes, TReq>(
+    const res = await this.callWithMetadata<TRes, TReq>(
       resolved.service,
       resolved.method,
       data,
       {
         timeoutMs,
+        _skipPreRequestHook: true,
       },
     );
+    return res.data;
   }
 
   protected override async dispatchEvent<TReq = any>(

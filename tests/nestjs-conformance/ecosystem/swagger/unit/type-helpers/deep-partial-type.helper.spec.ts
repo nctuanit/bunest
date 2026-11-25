@@ -228,8 +228,7 @@ describeConformance(
 
       class UpdatePluginUserDto extends DeepPartialType(PluginUserDto) {}
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should mark plugin-declared top-level properties as optional", () => {
+      it("should mark plugin-declared top-level properties as optional", () => {
         expect(getPropertyMetadata(UpdatePluginUserDto, "name")?.required).toBe(
           false,
         );
@@ -238,15 +237,13 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should leave plugin-declared primitive types unchanged", () => {
+      it("should leave plugin-declared primitive types unchanged", () => {
         const nameMeta = getPropertyMetadata(UpdatePluginUserDto, "name");
         expect(typeof nameMeta?.type).toBe("function");
         expect((nameMeta?.type as () => unknown)()).toBe(String);
       });
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should wrap nested DTOs declared only in the metadata factory", () => {
+      it("should wrap nested DTOs declared only in the metadata factory", () => {
         const NestedProfileType = resolveType(
           getPropertyMetadata(UpdatePluginUserDto, "profile"),
         );
@@ -258,8 +255,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata
-      it.skip("should recursively wrap deeply nested plugin DTOs", () => {
+      it("should recursively wrap deeply nested plugin DTOs", () => {
         const NestedProfileType = resolveType(
           getPropertyMetadata(UpdatePluginUserDto, "profile"),
         );
@@ -292,8 +288,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata for array properties
-      it.skip("should preserve array-ness for a plugin-declared nested DTO array", () => {
+      it("should preserve array-ness for a plugin-declared nested DTO array", () => {
         class UpdatePluginArticleDto extends DeepPartialType(
           PluginArticleDto,
         ) {}
@@ -379,8 +374,7 @@ describeConformance(
         expect(getPropertyMetadata(resolved, "label")?.required).toBe(false);
       });
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts) does not read static _OPENAPI_METADATA_FACTORY() metadata alongside explicit @ApiProperty decorators
-      it.skip("should wrap the plugin-declared nested DTO on the same class", () => {
+      it("should wrap the plugin-declared nested DTO on the same class", () => {
         const meta = getPropertyMetadata(UpdateMixedAccountDto, "settings");
 
         expect(meta?.required).toBe(false);
@@ -391,15 +385,13 @@ describeConformance(
     });
 
     describe("class caching", () => {
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts:144-149) creates a fresh per-call Map instead of caching generated classes globally per (classRef, skipNullProperties)
-      it.skip("should return the same class for the same input to avoid infinite recursion", () => {
+      it("should return the same class for the same input to avoid infinite recursion", () => {
         const A = DeepPartialType(UserDto);
         const B = DeepPartialType(UserDto);
         expect(A).toBe(B);
       });
 
-      // BUNEST_BUG: DeepPartialType (packages/swagger/src/type-helpers/deep-partial-type.helper.ts:144-149) does not cache generated classes across calls per skipNullProperties setting
-      it.skip("should cache each `skipNullProperties` setting separately", () => {
+      it("should cache each `skipNullProperties` setting separately", () => {
         expect(
           DeepPartialType(UserDto, { skipNullProperties: false }),
         ).not.toBe(DeepPartialType(UserDto));
@@ -458,8 +450,7 @@ describeConformance(
         expect(await validate(dto)).toHaveLength(0);
       });
 
-      // BUNEST_BUG: PartialType/DeepPartialType (packages/core/src/common/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
-      it.skip.each([{}, { skipNullProperties: false }])(
+      it.each([{}, { skipNullProperties: false }])(
         "should not whitelist documented properties that have no validation decorator (%j)",
         async (options) => {
           class LocalUserDto {
@@ -496,8 +487,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string"/"object") even when oneOf is declared without an explicit type
-    it.skip("should leave the type of a oneOf property inferred", () => {
+    it("should leave the type of a oneOf property inferred", () => {
       class NullableBinDto {
         @ApiProperty({ oneOf: [{ type: "string" }, { type: "null" }] })
         bin!: string | null;

@@ -1,4 +1,4 @@
-import type { InjectionToken, Scope } from "../common/index";
+import { MultiMap, type InjectionToken, type Scope } from "../common/index";
 
 export type SerializedGraphStatus = "partial" | "complete";
 
@@ -92,7 +92,7 @@ type WithOptionalId<T extends { id: string }> = Omit<T, "id"> &
 export class SerializedGraph {
   private readonly nodes = new Map<string, GraphNodeDefinition>();
   private readonly edges = new Map<string, GraphEdgeDefinition>();
-  private readonly entrypoints = new Map<string, GraphEntrypoint[]>();
+  private readonly entrypoints = new MultiMap<string, GraphEntrypoint>();
   private readonly extras: {
     orphanedEnhancers: OrphanedEnhancerDefinition[];
     attachedEnhancers: Array<{ nodeId: string }>;
@@ -120,6 +120,10 @@ export class SerializedGraph {
   }
 
   insertNode(nodeDefinition: GraphNodeDefinition): GraphNodeDefinition {
+    const existing = this.nodes.get(nodeDefinition.id);
+    if (existing) {
+      return existing;
+    }
     this.nodes.set(nodeDefinition.id, nodeDefinition);
     return nodeDefinition;
   }
@@ -141,9 +145,7 @@ export class SerializedGraph {
     definition: GraphEntrypoint<T>,
     parentId: string,
   ): void {
-    const list = this.entrypoints.get(parentId) ?? [];
-    list.push(definition as GraphEntrypoint);
-    this.entrypoints.set(parentId, list);
+    this.entrypoints.add(parentId, definition as GraphEntrypoint);
   }
 
   insertOrphanedEnhancer(entry: OrphanedEnhancerDefinition): void {

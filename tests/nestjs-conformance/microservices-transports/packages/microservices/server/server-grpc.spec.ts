@@ -498,8 +498,7 @@ describeConformance(
         expect(gErr.metadata?.get("x-crlf")).toBe("safe grpc-status: 0");
       });
 
-      // BUNEST_BUG: GrpcServer.buildErrorResponse() and streaming error trailers call encodeURIComponent(message) directly without replacing lone UTF-16 surrogates (e.g. '\ud83d'), throwing URIError instead of sanitizing to U+FFFD (packages/microservices/src/transports/grpc.transport.ts:850, 1064).
-      it.skip("should sanitize lone UTF-16 surrogates in error messages instead of throwing URIError", async () => {
+      it("should sanitize lone UTF-16 surrogates in error messages instead of throwing URIError", async () => {
         const { server, client } = await createPair();
         server.addGrpcHandler("Surrogate", "Fail", () => {
           throw new GrpcException(
@@ -915,8 +914,7 @@ describeConformance(
     });
 
     describe("unimplemented NestJS ServerGrpc parity checks", () => {
-      // BUNEST_BUG: GrpcServer.handleHttpRequest() does not invoke this.preRequestHook set via MicroserviceTransportServer.setPreRequestHook() (packages/microservices/src/transports/grpc.transport.ts:941-947).
-      it.skip("should invoke preRequestHook on incoming gRPC calls", async () => {
+      it("should invoke preRequestHook on incoming gRPC calls", async () => {
         const { server, client } = await createPair();
         const called: string[] = [];
         server.setPreRequestHook(({ pattern }) => {
@@ -928,8 +926,7 @@ describeConformance(
         expect(called).toEqual(["/HookSvc/Ping"]);
       });
 
-      // BUNEST_BUG: GrpcServer.close() has no gracefulShutdown / gracePeriod support and always calls server.stop(true) immediately (packages/microservices/src/transports/grpc.transport.ts:803-813).
-      it.skip("should honor gracefulShutdown and bounded gracePeriod before force-closing active calls", async () => {
+      it("should honor gracefulShutdown and bounded gracePeriod before force-closing active calls", async () => {
         const server = new GrpcServer({
           host: "127.0.0.1",
           port: 0,

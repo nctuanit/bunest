@@ -93,8 +93,7 @@ describeConformance(
       await testingModule.close();
     });
 
-    // BUNEST_BUG: resolve(TransientService, contextId) creates a new instance on every call instead of reusing the instance cached for the same ContextId (packages/core/src/di/di-container.ts)
-    it.skip("should dynamically resolve transient provider", async () => {
+    it("should dynamically resolve transient provider", async () => {
       const contextId = createContextId();
       const transient1 = await testingModule.resolve(
         TransientService,
@@ -129,8 +128,7 @@ describeConformance(
       expect(transientThreeDepthLevel.svc.svc.logger).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: resolve(ScopedService) without a prior registerRequestByContextId() throws when injecting REQUEST instead of passing undefined as NestJS does (packages/core/src/di/di-container.ts:3586)
-    it.skip("should dynamically resolve request-scoped provider", async () => {
+    it("should dynamically resolve request-scoped provider", async () => {
       const request1 = await testingModule.resolve(ScopedService);
       const request2 = await testingModule.resolve(ScopedService);
 
@@ -214,8 +212,7 @@ describeConformance(
       expect(new Set(controllers).size).toBe(contexts.length);
     }, 20000);
 
-    // BUNEST_BUG: DIContainer.getSync() does not recognize request-scoped controllers via controllerOwner and throws UnknownDependencyException ("Cannot resolve dependency") instead of an invalid-scope error (packages/core/src/di/di-container.ts:2295-2315)
-    it.skip('should throw an exception when "get()" method is used for scoped providers', () => {
+    it('should throw an exception when "get()" method is used for scoped providers', () => {
       expect(() => testingModule.get(ScopedController)).toThrow(
         ScopeLeakException,
       );

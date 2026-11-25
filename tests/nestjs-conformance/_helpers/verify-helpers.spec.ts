@@ -173,6 +173,7 @@ describe("Conformance Test Harness (_helpers)", () => {
         transform: false,
         whitelist: false,
         forbidNonWhitelisted: false,
+        forbidUnknownValues: false,
         errorFormat: "list",
       });
 

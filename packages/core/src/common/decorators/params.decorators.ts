@@ -262,12 +262,70 @@ export function Bind(...decorators: ParameterDecorator[]): MethodDecorator {
  */
 export const SseSignal = createSimpleParamDecorator("sseSignal");
 
+function isParamDecoratorOptions(
+  value: unknown,
+): value is KeyedParamSchemaOptions {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    isPipeLike(value) ||
+    "~standard" in value
+  ) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (keys.length === 0) {
+    return false;
+  }
+  for (const key of keys) {
+    if (key !== "schema" && key !== "pipes") {
+      return false;
+    }
+  }
+  if (
+    "schema" in obj &&
+    obj.schema !== undefined &&
+    !isStandardSchema(obj.schema)
+  ) {
+    return false;
+  }
+  if ("pipes" in obj && obj.pipes !== undefined) {
+    if (
+      !Array.isArray(obj.pipes) ||
+      !obj.pipes.every((p) => p === undefined || isPipeLike(p))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Extracts the raw unparsed request body (`Uint8Array`) when `rawBody: true`
  * is enabled on the application/adapter (ideal for HMAC webhook verification).
  */
-export function RawBody(...pipes: PipeLike[]): ParameterDecorator {
-  const capturedPipes = pipes.length > 0 ? [...pipes] : undefined;
+export function RawBody(
+  ...pipesOrOptions: Array<PipeLike | KeyedParamSchemaOptions | StandardSchemaV1>
+): ParameterDecorator {
+  const pipes: PipeLike[] = [];
+  let schema: StandardSchemaV1 | undefined;
+  for (const arg of pipesOrOptions) {
+    if (isStandardSchema(arg)) {
+      schema = arg;
+    } else if (isParamDecoratorOptions(arg) || isKeyedParamSchemaOptions(arg)) {
+      if (arg.schema !== undefined) schema = arg.schema;
+      if (arg.pipes) {
+        for (const p of arg.pipes) {
+          if (p !== undefined) pipes.push(p);
+        }
+      }
+    } else if (arg !== undefined) {
+      pipes.push(arg as PipeLike);
+    }
+  }
+  const capturedPipes = pipes.length > 0 ? pipes : undefined;
   return (
     target: object,
     propertyKey: string | symbol | undefined,
@@ -277,9 +335,12 @@ export function RawBody(...pipes: PipeLike[]): ParameterDecorator {
       index: parameterIndex,
       source: "rawBody",
       pipes: capturedPipes,
+      ...(schema !== undefined ? { schema } : {}),
     });
   };
 }
+
+export type ParamDecoratorEnhancer = ParameterDecorator;
 
 /**
  * Creates a reusable custom route parameter decorator backed by a factory function.
@@ -288,20 +349,50 @@ export function createParamDecorator<
   TData = unknown,
   TContext = ExecutionContext,
   TResult = unknown,
->(factory: CustomParamFactory<TData, TContext, TResult>) {
+>(
+  factory: CustomParamFactory<TData, TContext, TResult>,
+  enhancers: readonly ParamDecoratorEnhancer[] = [],
+) {
   return (
-    dataOrPipe?: TData | PipeLike,
-    ...restPipes: PipeLike[]
+    ...args: Array<TData | PipeLike | KeyedParamSchemaOptions>
   ): ParameterDecorator => {
     let data: unknown;
-    let pipes: PipeLike[];
+    const pipes: PipeLike[] = [];
+    let schema: StandardSchemaV1 | undefined;
 
-    if (dataOrPipe !== undefined && isPipeLike(dataOrPipe)) {
-      data = undefined;
-      pipes = [dataOrPipe, ...restPipes];
-    } else {
-      data = dataOrPipe;
-      pipes = [...restPipes];
+    if (args.length > 0) {
+      const first = args[0];
+      let startIndex = 0;
+
+      if (
+        first !== undefined &&
+        !isPipeLike(first) &&
+        !isParamDecoratorOptions(first)
+      ) {
+        data = first;
+        startIndex = 1;
+      } else if (first === undefined) {
+        data = undefined;
+        startIndex = 1;
+      }
+
+      for (let i = startIndex; i < args.length; i++) {
+        const arg = args[i];
+        if (isParamDecoratorOptions(arg)) {
+          if (arg.schema !== undefined) {
+            schema = arg.schema;
+          }
+          if (arg.pipes) {
+            for (const p of arg.pipes) {
+              if (p !== undefined) {
+                pipes.push(p);
+              }
+            }
+          }
+        } else if (arg !== undefined) {
+          pipes.push(arg as PipeLike);
+        }
+      }
     }
 
     return (
@@ -316,7 +407,11 @@ export function createParamDecorator<
         data,
         pipes: pipes.length > 0 ? pipes : undefined,
         factory: factory as CustomParamFactory,
+        ...(schema !== undefined ? { schema } : {}),
       });
+      for (const enhancer of enhancers) {
+        enhancer(target, propertyKey, parameterIndex);
+      }
     };
   };
 }

@@ -155,8 +155,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: DIContainer.instantiateClass() injects the parent class constructor function instead of the parent instance/object for INQUIRER (packages/core/src/di/di-container.ts:3503,3571-3573), so inquirer.constructor is Function instead of HelloTransientService and inquirer.constructor.logger is undefined.
-    it.skip("should allow the injection of inquirer in a Transient Scope", async () => {
+    it("should allow the injection of inquirer in a Transient Scope", async () => {
       await request(app).get("/hello/transient").expect(200);
 
       expect(logger.log).toHaveBeenCalledWith(
@@ -167,8 +166,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: DIContainer.instantiateClass() injects the parent class constructor function instead of the parent instance/object for INQUIRER (packages/core/src/di/di-container.ts:3503,3571-3573), so inquirer.constructor is Function instead of HelloRequestService and inquirer.constructor.logger is undefined.
-    it.skip("should allow the injection of the inquirer in a Request Scope", async () => {
+    it("should allow the injection of the inquirer in a Request Scope", async () => {
       await request(app).get("/hello/request").expect(200);
 
       expect(logger.log).toHaveBeenCalledWith(

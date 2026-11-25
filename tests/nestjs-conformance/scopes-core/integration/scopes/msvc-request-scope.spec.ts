@@ -141,8 +141,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: MicroserviceHost.collectLoadedInstances() skips Scope.REQUEST controllers (wrapper.instance is undefined) and compileHandler() does not create a per-message RequestContainer or resolve request-scoped controllers/guards/interceptors (packages/microservices/src/microservice-host.ts:59-78,318-395); GET /hello returns 500 ("No @MessagePattern() handler found for pattern \"test\"").
-    describe.skip("when one service is request scoped (explicit Scope.REQUEST)", () => {
+    describe("when one service is request scoped (explicit Scope.REQUEST)", () => {
       let app: BunestApplication;
       let client: TcpClientProxy;
 

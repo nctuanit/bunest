@@ -178,8 +178,7 @@ describeConformance(
       ]);
     }
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) looks up `resolveFieldRegistry.get(typeName)` directly without walking ancestor @ObjectType() classes (Author -> User, StarAuthor -> Author -> User, Editor -> User), failing with `Cannot query field "email" on type "StarAuthor".` / `"Editor".`.
-    it.skip("should bind the field resolvers of the parent type to its subtypes (nearest ancestor wins)", async () => {
+    it("should bind the field resolvers of the parent type to its subtypes (nearest ancestor wins)", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({
@@ -204,8 +203,7 @@ describeConformance(
       expectForbidden("{ user { ssn } }"));
 
     for (const query of ["author", "starAuthor", "editor"] as const) {
-      // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) does not inherit @ResolveField() `ssn` (or its field middleware) from parent @ObjectType() `User` onto subtypes `Author`, `StarAuthor`, `Editor` (`data` is undefined / validation error).
-      it.skip(`should apply the field middleware of the inherited field resolver (${query})`, () =>
+      it(`should apply the field middleware of the inherited field resolver (${query})`, () =>
         expectForbidden(`{ ${query} { ssn } }`));
     }
 
@@ -213,13 +211,11 @@ describeConformance(
       expectForbidden("{ user { phone } }"));
 
     for (const query of ["author", "starAuthor", "editor"] as const) {
-      // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) does not inherit @ResolveField() `phone` (or its @UseGuards(DenyGuard)) from parent @ObjectType() `User` onto subtypes `Author`, `StarAuthor`, `Editor` (`data` is undefined / validation error).
-      it.skip(`should apply the guards of the inherited field resolver (${query})`, () =>
+      it(`should apply the guards of the inherited field resolver (${query})`, () =>
         expectForbidden(`{ ${query} { phone } }`));
     }
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) drops model @Field({ middleware }) when overridden by @ResolveField() (`user.nickname` returned `"resolver:ada"` instead of `"model(resolver:ada)"`) and does not inherit `UsersResolver.nickname` onto subtypes (`author`/`starAuthor`/`editor` returned `"model(ada)"` instead of `"model(resolver:ada)"`).
-    it.skip("should run the model field middleware once around the inherited field resolver", async () => {
+    it("should run the model field middleware once around the inherited field resolver", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({

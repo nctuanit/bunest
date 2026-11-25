@@ -391,6 +391,13 @@ export class DIContainer
     RequestContainer
   >();
   private readonly pendingLazyLoads = new Map<object, Promise<ModuleRef>>();
+  private readonly pendingModuleInits = new Map<string, Promise<void>>();
+  private readonly inFlightNodeHolders = new Map<string, Set<symbol>>();
+  private readonly committedLazyNodes = new Set<string>();
+  private readonly moduleOverrides = new Map<
+    Type<unknown> | DynamicModule,
+    Type<unknown> | DynamicModule
+  >();
   private onLazyModuleLoaded?: (
     groups: Array<{ module: ModuleNode; instances: object[] }>,
   ) => Promise<void>;
@@ -1542,6 +1549,11 @@ export class DIContainer
     if (overrides.mocker !== undefined) {
       this.mocker = overrides.mocker;
     }
+    if (overrides.modules) {
+      for (const [target, replacement] of overrides.modules.entries()) {
+        this.moduleOverrides.set(target, replacement);
+      }
+    }
     if (overrides.providers) {
       for (const [token, provider] of overrides.providers.entries()) {
         this.providerOverrides.set(token, provider);
@@ -2049,28 +2061,43 @@ export class DIContainer
       return reqContainer;
     }
 
+    const payload =
+      ctxId.payload !== undefined
+        ? ctxId.payload
+        : parentCtxId.payload !== undefined
+          ? parentCtxId.payload
+          : reqContainer.getRequestValue(REQUEST);
+
     let durable = this.durableContainers.get(parentCtxId.id);
     if (!durable) {
       durable = new RequestContainer(
-        (token, rc) =>
-          this.resolveAsync(token, this.graph.root.id, rc, {
+        (tok, rc) =>
+          this.resolveAsync(tok, this.graph.root.id, rc, {
             strict: false,
           }),
         { contextId: parentCtxId, durable: true },
       );
-      const payload =
-        ctxId.payload !== undefined
-          ? ctxId.payload
-          : parentCtxId.payload !== undefined
-            ? parentCtxId.payload
-            : reqContainer.getRequestValue(REQUEST);
       if (payload !== undefined) {
         durable.registerRequestValue(REQUEST, payload);
       }
       this.durableContainers.set(parentCtxId.id, durable);
+    } else if (payload !== undefined) {
+      // Refresh REQUEST payload for any durable providers not yet constructed
+      // (e.g. after an earlier construction threw an error with a failing payload).
+      durable.registerRequestValue(REQUEST, payload);
     }
 
     return durable;
+  }
+
+  private evictEmptyDurableContainer(container: RequestContainer): void {
+    if (!container.isDurable() || container.hasAnyScopedInstance()) {
+      return;
+    }
+    const ctxId = container.getContextId();
+    if (ctxId && this.durableContainers.get(ctxId.id) === container) {
+      this.durableContainers.delete(ctxId.id);
+    }
   }
 
   private getEnhancerOverride(
@@ -2464,16 +2491,21 @@ export class DIContainer
           controllerToken,
         ) ?? reqContainer;
       const key = `ctrl:${ownerMod.id}:${this.getTokenId(controllerToken)}`;
-      return targetContainer.getOrCreateScopedInstance<object>(
-        key,
-        async () =>
-          (await this.instantiateClass(
-            controllerToken,
-            ownerMod,
-            targetContainer,
-            new Set(),
-          )) as object,
-      );
+      try {
+        return await targetContainer.getOrCreateScopedInstance<object>(
+          key,
+          async () =>
+            (await this.instantiateClass(
+              controllerToken,
+              ownerMod,
+              targetContainer,
+              new Set(),
+            )) as object,
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Transient controller
@@ -2607,6 +2639,19 @@ export class DIContainer
       return instance;
     }
 
+    const ensureValidEnhancerInstance = (resolved: T): T => {
+      if (
+        kind === "guard" &&
+        typeof (resolved as { canActivate?: unknown } | null | undefined)
+          ?.canActivate !== "function"
+      ) {
+        throw new Error(
+          `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
+        );
+      }
+      return resolved;
+    };
+
     // Separate provider overrides from enhancer resolution: if `cls` was overridden via
     // overrideProvider(cls) without a matching enhancer override, instantiate `cls` directly
     // as an enhancer instead of returning the provider mock!
@@ -2621,24 +2666,39 @@ export class DIContainer
         this.graph.globalModules,
       );
       if (loc) {
-        return (await this.resolveNormalizedProvider(
-          loc.owner,
-          loc.provider,
-          reqContainer,
-          new Set(),
-        )) as T;
+        if (
+          kind === "guard" &&
+          loc.provider.useClass &&
+          loc.provider.useClass !== cls &&
+          typeof (cls as { prototype?: { canActivate?: unknown } }).prototype
+            ?.canActivate !== "function"
+        ) {
+          throw new Error(
+            `InvalidEnhancerException: The guard (class ${cls.name || "anonymous"}) doesn't provide the "canActivate" method.`,
+          );
+        }
+        return ensureValidEnhancerInstance(
+          (await this.resolveNormalizedProvider(
+            loc.owner,
+            loc.provider,
+            reqContainer,
+            new Set(),
+          )) as T,
+        );
       }
 
       // 2. Fallback: search across all modules for registered provider
       for (const candidateMod of this.graph.topologicalOrder) {
         const found = candidateMod.providers.get(cls);
         if (found) {
-          return (await this.resolveNormalizedProvider(
-            candidateMod,
-            found,
-            reqContainer,
-            new Set(),
-          )) as T;
+          return ensureValidEnhancerInstance(
+            (await this.resolveNormalizedProvider(
+              candidateMod,
+              found,
+              reqContainer,
+              new Set(),
+            )) as T,
+          );
         }
       }
     }
@@ -2647,22 +2707,26 @@ export class DIContainer
     const scope = getInjectableScope(cls);
     const cacheKey = `enhancer:${kind ?? "any"}:${this.getTokenId(cls)}`;
     if (scope === Scope.SINGLETON && this.singletons.has(cacheKey)) {
-      return this.singletons.get(cacheKey) as T;
+      return ensureValidEnhancerInstance(this.singletons.get(cacheKey) as T);
     }
     if (scope === Scope.REQUEST && reqContainer) {
-      return reqContainer.getOrCreateScopedInstance<T>(
-        cacheKey,
-        async () =>
-          (await this.instantiateClass(cls, mod, reqContainer, new Set())) as T,
+      return ensureValidEnhancerInstance(
+        await reqContainer.getOrCreateScopedInstance<T>(
+          cacheKey,
+          async () =>
+            (await this.instantiateClass(cls, mod, reqContainer, new Set())) as T,
+        ),
       );
     }
 
-    const instance = (await this.instantiateClass(
-      cls,
-      mod,
-      reqContainer,
-      new Set(),
-    )) as T;
+    const instance = ensureValidEnhancerInstance(
+      (await this.instantiateClass(
+        cls,
+        mod,
+        reqContainer,
+        new Set(),
+      )) as T,
+    );
 
     if (scope === Scope.SINGLETON) {
       this.singletons.set(cacheKey, instance);
@@ -2782,15 +2846,30 @@ export class DIContainer
           `Cannot resolve REQUEST-scoped multi-provider ${formatToken(provider.token)} without an active RequestContainer.`,
         );
       }
-      return reqContainer.getOrCreateScopedInstance(cacheKey, () =>
-        this.instantiateProvider(
-          mod,
-          provider,
+      const isDurable =
+        provider.durable === true ||
+        (provider.useClass ? isInjectableDurable(provider.useClass) : false);
+      const targetContainer =
+        this.resolveDurableContainerFor(
+          provider.useClass ?? provider.token,
+          isDurable,
           reqContainer,
-          new Set(),
-          Boolean(allowRootFallback),
-        ),
-      );
+          provider.token,
+        ) ?? reqContainer;
+      try {
+        return await targetContainer.getOrCreateScopedInstance(cacheKey, () =>
+          this.instantiateProvider(
+            mod,
+            provider,
+            targetContainer,
+            new Set(),
+            Boolean(allowRootFallback),
+          ),
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Scope.TRANSIENT
@@ -2815,7 +2894,25 @@ export class DIContainer
     module: ModuleNode;
     instances: object[];
   }> {
-    return this.collectSingletonGroups(this.graph.topologicalOrder);
+    // Order modules bottom-up with global modules (and their imports) ahead of
+    // non-global modules that may implicitly inject global tokens.
+    const ordered: ModuleNode[] = [];
+    const visited = new Set<ModuleNode>();
+    const visitMod = (mod: ModuleNode) => {
+      if (visited.has(mod)) return;
+      visited.add(mod);
+      for (const imp of mod.imports) {
+        visitMod(imp);
+      }
+      ordered.push(mod);
+    };
+    for (const globalMod of this.graph.globalModules) {
+      visitMod(globalMod);
+    }
+    for (const mod of this.graph.topologicalOrder) {
+      visitMod(mod);
+    }
+    return this.collectSingletonGroups(ordered);
   }
 
   private collectSingletonGroups(
@@ -2833,7 +2930,36 @@ export class DIContainer
         }
       };
 
+      // Sort intra-module providers by constructor & property (@Inject) dependency hierarchy
+      // so dependencies run onModuleInit/onApplicationBootstrap first and shutdown hooks last.
+      const orderedProviders: NormalizedProvider[] = [];
+      const visitedProviders = new Set<InjectionToken>();
+      const visitingProviders = new Set<InjectionToken>();
+      const visitProvider = (provider: NormalizedProvider) => {
+        if (
+          visitedProviders.has(provider.token) ||
+          visitingProviders.has(provider.token)
+        ) {
+          return;
+        }
+        visitingProviders.add(provider.token);
+        const deps = this.getProviderDependencies(provider);
+        for (const dep of deps) {
+          if (dep.token === undefined) continue;
+          const localDep = mod.providers.get(dep.token);
+          if (localDep && localDep !== provider) {
+            visitProvider(localDep);
+          }
+        }
+        visitingProviders.delete(provider.token);
+        visitedProviders.add(provider.token);
+        orderedProviders.push(provider);
+      };
       for (const provider of mod.providers.values()) {
+        visitProvider(provider);
+      }
+
+      for (const provider of orderedProviders) {
         if (provider.kind === "existing") continue;
         const key = this.makeInstanceKey(mod, provider.token);
         if (this.singletons.has(key)) {
@@ -2871,8 +2997,11 @@ export class DIContainer
   private filterModulesForDiscovery(
     options?: DiscoveryFilterOptions,
   ): readonly ModuleNode[] {
-    if (!options?.include || options.include.length === 0) {
+    if (options?.include === undefined) {
       return this.graph.topologicalOrder;
+    }
+    if (options.include.length === 0) {
+      return [];
     }
     const allowed = new Set<Type<unknown> | ModuleNode>(options.include);
     return this.graph.topologicalOrder.filter(
@@ -2954,6 +3083,9 @@ export class DIContainer
     const wrappers: InstanceWrapper[] = [];
     for (const mod of this.filterModulesForDiscovery(options)) {
       for (const provider of mod.providers.values()) {
+        if (provider.kind === "existing") {
+          continue;
+        }
         wrappers.push(this.buildProviderWrapper(mod, provider));
       }
     }
@@ -2970,8 +3102,8 @@ export class DIContainer
     return wrappers;
   }
 
-  discoverModules(): readonly ModuleNode[] {
-    return [...this.graph.topologicalOrder];
+  discoverModules(options?: DiscoveryFilterOptions): readonly ModuleNode[] {
+    return [...this.filterModulesForDiscovery(options)];
   }
 
   discoverProviderByToken<T = unknown>(
@@ -3020,23 +3152,36 @@ export class DIContainer
       Promise<Type<unknown> | DynamicModule> | Type<unknown> | DynamicModule,
     _options?: LazyModuleLoaderOptions,
   ): Promise<ModuleRef> {
-    const loaded = await loaderFn();
-    if (!loaded || (typeof loaded !== "function" && !isDynamicModule(loaded))) {
+    const rawLoaded = await loaderFn();
+    if (
+      !rawLoaded ||
+      (typeof rawLoaded !== "function" && !isDynamicModule(rawLoaded))
+    ) {
       throw new Error(
         "LazyModuleLoader.load() expects a loader returning a @Module() class or DynamicModule.",
       );
     }
 
-    // 1. Deduplicate already-registered modules
-    if (isDynamicModule(loaded)) {
-      const existingDyn = this.dynamicModuleNodes.get(loaded);
-      if (existingDyn) {
-        return this.getModuleRef(existingDyn.id);
-      }
-    } else {
-      const existingStatic = this.staticModuleNodes.get(loaded);
-      if (existingStatic) {
-        return this.getModuleRef(existingStatic.id);
+    const loaded = this.moduleOverrides.get(rawLoaded) ?? rawLoaded;
+
+    // 1. Check already-registered or currently-initializing module
+    const existingNode = isDynamicModule(loaded)
+      ? this.dynamicModuleNodes.get(loaded)
+      : this.staticModuleNodes.get(loaded);
+    if (existingNode) {
+      const pendingInit = this.pendingModuleInits.get(existingNode.id);
+      if (pendingInit) {
+        try {
+          await pendingInit;
+          if (this.modulesMap.has(existingNode.id)) {
+            return this.getModuleRef(existingNode.id);
+          }
+        } catch {
+          // Prior concurrent load failed and rolled back; fall through if caller is a fresh load
+          // Wait: if caller specifically requested the same root loadKey, let's check pendingLazyLoads below
+        }
+      } else if (this.modulesMap.has(existingNode.id)) {
+        return this.getModuleRef(existingNode.id);
       }
     }
 
@@ -3047,33 +3192,211 @@ export class DIContainer
       return inFlight;
     }
 
+    const opId = Symbol("lazy-load-op");
+
     const loadPromise = (async (): Promise<ModuleRef> => {
-      const existingIds = new Set(this.modulesMap.keys());
       const scanner = new ModuleScanner();
       const subGraph = await scanner.scan(loaded, {
         existingStaticNodes: this.staticModuleNodes,
         existingDynamicNodes: this.dynamicModuleNodes,
+        ...(this.moduleOverrides.size > 0
+          ? { moduleOverrides: this.moduleOverrides }
+          : {}),
         idPrefix: `lazy${++this.lazyCounter}:`,
       });
 
-      const newNodes = subGraph.topologicalOrder.filter(
-        (node) => !existingIds.has(node.id),
-      );
-
-      if (newNodes.length === 0) {
-        return this.getModuleRef(subGraph.root.id);
+      // Reconcile scanned nodes against any modules that were registered concurrently
+      // while scanner.scan() was awaiting async dynamic imports.
+      const replacedNodes = new Map<ModuleNode, ModuleNode>();
+      for (const node of subGraph.topologicalOrder) {
+        if (this.modulesMap.has(node.id)) {
+          continue;
+        }
+        if (!node.isDynamic) {
+          const existing = this.staticModuleNodes.get(node.metatype);
+          if (existing && existing !== node) {
+            replacedNodes.set(node, existing);
+          }
+        } else if (subGraph.dynamicModuleMap) {
+          for (const [dynKey, dynNode] of subGraph.dynamicModuleMap.entries()) {
+            if (dynNode === node) {
+              const existing = this.dynamicModuleNodes.get(dynKey);
+              if (existing && existing !== node) {
+                replacedNodes.set(node, existing);
+              }
+              break;
+            }
+          }
+        }
       }
 
-      const addedStaticKeys: Type<unknown>[] = [];
-      const addedDynamicKeys: DynamicModule[] = [];
-      const addedControllers: Type<unknown>[] = [];
-      const addedGlobalCountStart = this.globalModulesList.length;
-      const addedTopoCountStart = this.topologicalModules.length;
+      if (replacedNodes.size > 0) {
+        for (const node of subGraph.topologicalOrder) {
+          if (replacedNodes.has(node)) continue;
+          for (let i = 0; i < node.imports.length; i++) {
+            const rep = replacedNodes.get(node.imports[i]!);
+            if (rep) {
+              node.imports[i] = rep;
+            }
+          }
+          for (let i = 0; i < node.reExportedModules.length; i++) {
+            const rep = replacedNodes.get(node.reExportedModules[i]!);
+            if (rep) {
+              node.reExportedModules[i] = rep;
+            }
+          }
+        }
+      }
+
+      const effectiveRoot = replacedNodes.get(subGraph.root) ?? subGraph.root;
+
+      const newNodes: ModuleNode[] = [];
+      const reusedNodes: ModuleNode[] = [];
+      for (const rawNode of subGraph.topologicalOrder) {
+        const node = replacedNodes.get(rawNode) ?? rawNode;
+        if (this.modulesMap.has(node.id)) {
+          if (!reusedNodes.includes(node)) {
+            reusedNodes.push(node);
+          }
+        } else if (!newNodes.includes(node)) {
+          newNodes.push(node);
+        }
+      }
+
+      // Register opId as a holder on all reused nodes that are still in-flight
+      for (const reused of reusedNodes) {
+        const holders = this.inFlightNodeHolders.get(reused.id);
+        if (holders) {
+          holders.add(opId);
+        }
+      }
+
+      // Track per-node deferred init promises for newNodes so concurrent loads can await them
+      const nodeDeferreds = new Map<
+        string,
+        {
+          resolve: () => void;
+          reject: (err: unknown) => void;
+          settled: boolean;
+        }
+      >();
+
+      const addedStaticKeys: Array<{ key: Type<unknown>; node: ModuleNode }> =
+        [];
+      const addedDynamicKeys: Array<{ key: DynamicModule; node: ModuleNode }> =
+        [];
+      const addedControllers: Array<{ ctrl: Type<unknown>; node: ModuleNode }> =
+        [];
+
+      const releaseHolders = (commit: boolean) => {
+        for (const reused of reusedNodes) {
+          const holders = this.inFlightNodeHolders.get(reused.id);
+          if (holders) {
+            holders.delete(opId);
+            if (commit) {
+              this.committedLazyNodes.add(reused.id);
+            }
+            if (holders.size === 0) {
+              this.inFlightNodeHolders.delete(reused.id);
+            }
+          }
+        }
+        for (const node of newNodes) {
+          const holders = this.inFlightNodeHolders.get(node.id);
+          if (holders) {
+            holders.delete(opId);
+            if (commit) {
+              this.committedLazyNodes.add(node.id);
+            }
+            if (holders.size === 0) {
+              this.inFlightNodeHolders.delete(node.id);
+            }
+          }
+        }
+      };
+
+      const settleRemainingDeferredsWithError = (err: unknown) => {
+        for (const [nodeId, def] of nodeDeferreds.entries()) {
+          if (!def.settled) {
+            def.settled = true;
+            this.pendingModuleInits.delete(nodeId);
+            def.reject(err);
+          }
+        }
+      };
+
+      const evictNode = (node: ModuleNode) => {
+        this.modulesMap.delete(node.id);
+        this.modulesContainer.delete(node.id);
+        this.moduleRefs.delete(node.id);
+        const topoIdx = this.topologicalModules.indexOf(node);
+        if (topoIdx !== -1) {
+          this.topologicalModules.splice(topoIdx, 1);
+        }
+        const globIdx = this.globalModulesList.indexOf(node);
+        if (globIdx !== -1) {
+          this.globalModulesList.splice(globIdx, 1);
+        }
+        for (const provider of node.providers.values()) {
+          this.singletons.delete(this.makeInstanceKey(node, provider.token));
+        }
+        for (const { key, node: addedNode } of addedStaticKeys) {
+          if (addedNode === node && this.staticModuleNodes.get(key) === node) {
+            this.staticModuleNodes.delete(key);
+          }
+        }
+        for (const { key, node: addedNode } of addedDynamicKeys) {
+          if (addedNode === node && this.dynamicModuleNodes.get(key) === node) {
+            this.dynamicModuleNodes.delete(key);
+          }
+        }
+        for (const { ctrl, node: addedNode } of addedControllers) {
+          if (addedNode === node && this.controllerOwner.get(ctrl) === node) {
+            this.controllerOwner.delete(ctrl);
+            this.controllerSingletons.delete(ctrl);
+          }
+        }
+      };
 
       try {
-        // Attach new nodes to live module graph
+        if (newNodes.length === 0) {
+          // Wait for any reused nodes that are still initializing in another concurrent load
+          for (const reused of reusedNodes) {
+            const pendingInit = this.pendingModuleInits.get(reused.id);
+            if (pendingInit) {
+              await pendingInit;
+            }
+          }
+          releaseHolders(true);
+          return this.getModuleRef(effectiveRoot.id);
+        }
+
+        // Attach new nodes synchronously and create per-node pendingModuleInits
         for (const node of newNodes) {
+          let holders = this.inFlightNodeHolders.get(node.id);
+          if (!holders) {
+            holders = new Set<symbol>();
+            this.inFlightNodeHolders.set(node.id, holders);
+          }
+          holders.add(opId);
+
+          let resolveFn!: () => void;
+          let rejectFn!: (err: unknown) => void;
+          const initPromise = new Promise<void>((resolve, reject) => {
+            resolveFn = resolve;
+            rejectFn = reject;
+          });
+          // Prevent unhandledRejection if no external caller awaits this deferred
+          initPromise.catch(() => {});
+          this.pendingModuleInits.set(node.id, initPromise);
+          nodeDeferreds.set(node.id, {
+            resolve: resolveFn,
+            reject: rejectFn,
+            settled: false,
+          });
+
           this.modulesMap.set(node.id, node);
+          this.modulesContainer.set(node.id, node);
           this.topologicalModules.push(node);
           if (node.providers.has(AOP_POINTCUTS_TOKEN)) {
             this.invalidatePointcutCaches();
@@ -3083,25 +3406,26 @@ export class DIContainer
           }
           if (!node.isDynamic && !this.staticModuleNodes.has(node.metatype)) {
             this.staticModuleNodes.set(node.metatype, node);
-            addedStaticKeys.push(node.metatype);
+            addedStaticKeys.push({ key: node.metatype, node });
           }
           this.moduleRefs.set(node.id, new ModuleRef(this, node.id));
           for (const ctrl of node.controllers) {
             if (!this.controllerOwner.has(ctrl)) {
               this.controllerOwner.set(ctrl, node);
-              addedControllers.push(ctrl);
+              addedControllers.push({ ctrl, node });
             }
             this.indexControllerEnhancers(ctrl, node);
           }
         }
         if (subGraph.dynamicModuleMap) {
-          for (const [dynKey, node] of subGraph.dynamicModuleMap.entries()) {
+          for (const [dynKey, rawNode] of subGraph.dynamicModuleMap.entries()) {
+            const node = replacedNodes.get(rawNode) ?? rawNode;
             if (
-              !existingIds.has(node.id) &&
+              newNodes.includes(node) &&
               !this.dynamicModuleNodes.has(dynKey)
             ) {
               this.dynamicModuleNodes.set(dynKey, node);
-              addedDynamicKeys.push(dynKey);
+              addedDynamicKeys.push({ key: dynKey, node });
             }
           }
         }
@@ -3110,50 +3434,97 @@ export class DIContainer
         this.validateAllDependenciesAndCycles();
         this.validateScopeLeaks();
 
-        // Instantiate singleton providers, multi-providers, module classes, and singleton controllers
-        for (const node of newNodes) {
-          await this.instantiateModuleSingletons(node);
+        // Wait for any reused imported modules AND instantiate newNodes.
+        // If a reused import is still initializing concurrently, await both so an
+        // in-flight sibling load settles cleanly before propagating the error.
+        const reusedInits: Promise<void>[] = [];
+        for (const reused of reusedNodes) {
+          const pendingInit = this.pendingModuleInits.get(reused.id);
+          if (pendingInit) {
+            reusedInits.push(pendingInit);
+          }
         }
 
-        // Run onModuleInit() lifecycle hooks for the newly instantiated lazy modules
-        const newGroups = this.collectSingletonGroups(newNodes);
-        if (this.onLazyModuleLoaded) {
-          await this.onLazyModuleLoaded(newGroups);
-        } else {
-          const seen = new Set<object>();
-          for (const group of newGroups) {
-            for (const inst of group.instances) {
-              if (seen.has(inst)) continue;
-              seen.add(inst);
-              if (hasOnModuleInit(inst)) {
-                await inst.onModuleInit();
+        const initNewNodes = async (): Promise<void> => {
+          const seenInitInstances = new Set<object>();
+          for (const node of newNodes) {
+            await this.instantiateModuleSingletons(node);
+            const nodeGroups = this.collectSingletonGroups([node]);
+            if (this.onLazyModuleLoaded) {
+              await this.onLazyModuleLoaded(nodeGroups);
+            } else {
+              for (const group of nodeGroups) {
+                for (const inst of group.instances) {
+                  if (seenInitInstances.has(inst)) continue;
+                  seenInitInstances.add(inst);
+                  if (hasOnModuleInit(inst)) {
+                    await inst.onModuleInit();
+                  }
+                }
+              }
+            }
+            const def = nodeDeferreds.get(node.id);
+            if (def && !def.settled) {
+              def.settled = true;
+              this.pendingModuleInits.delete(node.id);
+              def.resolve();
+            }
+          }
+        };
+
+        if (reusedInits.length > 0) {
+          // Check whether any newNode directly injects a provider from an in-flight reused node
+          const needsReusedFirst = newNodes.some((node) =>
+            node.providers.size > 0 &&
+            [...node.providers.values()].some((p) =>
+              this.getProviderDependencies(p).some((dep) =>
+                reusedNodes.some(
+                  (r) =>
+                    this.pendingModuleInits.has(r.id) &&
+                    dep.token !== undefined &&
+                    r.providers.has(dep.token),
+                ),
+              ),
+            ),
+          );
+          if (needsReusedFirst) {
+            await Promise.all(reusedInits);
+            await initNewNodes();
+          } else {
+            const results = await Promise.allSettled([
+              ...reusedInits,
+              initNewNodes(),
+            ]);
+            for (const res of results) {
+              if (res.status === "rejected") {
+                throw res.reason;
               }
             }
           }
+        } else {
+          await initNewNodes();
         }
 
-        return this.getModuleRef(subGraph.root.id);
+        releaseHolders(true);
+        return this.getModuleRef(effectiveRoot.id);
       } catch (err) {
-        // Roll back graph mutations so failed lazy loads never corrupt the live container
-        this.topologicalModules.length = addedTopoCountStart;
-        this.globalModulesList.length = addedGlobalCountStart;
+        // Release our hold first, then evict newNodes:
+        // - Any node that itself did NOT finish initializing (def.settled === false)
+        //   MUST be evicted unconditionally so retries start fresh.
+        // - A node that DID finish initializing (e.g. a shared import) is kept if
+        //   another concurrent load still holds it or it was already committed.
+        releaseHolders(false);
         for (const node of newNodes) {
-          this.modulesMap.delete(node.id);
-          this.moduleRefs.delete(node.id);
-          for (const provider of node.providers.values()) {
-            this.singletons.delete(this.makeInstanceKey(node, provider.token));
+          const def = nodeDeferreds.get(node.id);
+          const nodeFinishedInit = def?.settled === true;
+          const stillHeld =
+            (this.inFlightNodeHolders.get(node.id)?.size ?? 0) > 0;
+          const alreadyCommitted = this.committedLazyNodes.has(node.id);
+          if (!nodeFinishedInit || (!stillHeld && !alreadyCommitted)) {
+            evictNode(node);
           }
         }
-        for (const key of addedStaticKeys) {
-          this.staticModuleNodes.delete(key);
-        }
-        for (const key of addedDynamicKeys) {
-          this.dynamicModuleNodes.delete(key);
-        }
-        for (const ctrl of addedControllers) {
-          this.controllerOwner.delete(ctrl);
-          this.controllerSingletons.delete(ctrl);
-        }
+        settleRemainingDeferredsWithError(err);
         throw err;
       }
     })();
@@ -3191,10 +3562,21 @@ export class DIContainer
     ) {
       return { found: true, value: this.httpAdapterHost };
     }
-    if (
-      Object.is(token, ApplicationConfig) ||
-      token === BUNEST_APPLICATION_CONFIG_TOKEN
-    ) {
+    if (Object.is(token, ApplicationConfig)) {
+      if (
+        this.providerOverrides.has(token) ||
+        ModuleScanner.resolveProviderLocation(
+          mod,
+          token,
+          this.graph.globalModules,
+        ) ||
+        this.graph.root.providers.has(token)
+      ) {
+        return { found: false };
+      }
+      return { found: true, value: this._applicationConfig };
+    }
+    if (token === BUNEST_APPLICATION_CONFIG_TOKEN) {
       return { found: true, value: this._applicationConfig };
     }
     if (Object.is(token, ModulesContainer)) {
@@ -3287,6 +3669,13 @@ export class DIContainer
             results.push(ctrl as unknown as T);
           }
         }
+        for (const m of this.graph.modules.values()) {
+          if (m.metatype === token && m.instance !== undefined) {
+            if (!strict || m === mod) {
+              results.push(m.instance as unknown as T);
+            }
+          }
+        }
       }
 
       if (MULTI_PROVIDER_TOKENS.has(token)) {
@@ -3330,13 +3719,30 @@ export class DIContainer
       return results;
     }
 
-    // Check controller singletons first
+    // Check controller singletons and module class instances first
     if (typeof token === "function") {
-      const ctrl = this.controllerSingletons.get(token as Type<unknown>);
-      if (ctrl) {
-        const owner = this.controllerOwner.get(token as Type<unknown>);
-        if (!strict || owner === mod) {
+      const ctrlOwner = this.controllerOwner.get(token as Type<unknown>);
+      if (ctrlOwner && (!strict || ctrlOwner === mod)) {
+        const ctrl = this.controllerSingletons.get(token as Type<unknown>);
+        if (ctrl) {
           return ctrl as unknown as T;
+        }
+        const ctrlScope = getControllerScope(token as Type<unknown>);
+        if (ctrlScope !== Scope.SINGLETON) {
+          throw new ScopeLeakException([
+            { name: "ModuleRef.get", scope: Scope.SINGLETON },
+            { name: token.name || "<Controller>", scope: ctrlScope },
+          ]);
+        }
+      }
+      if (mod.metatype === token && mod.instance !== undefined) {
+        return mod.instance as unknown as T;
+      }
+      if (!strict) {
+        for (const m of this.graph.modules.values()) {
+          if (m.metatype === token && m.instance !== undefined) {
+            return m.instance as unknown as T;
+          }
         }
       }
     }
@@ -3587,6 +3993,43 @@ export class DIContainer
     const effectiveContainer =
       reqContainer ??
       (needsReq ? this.createEphemeralRequestContainer() : undefined);
+
+    // NestJS parity: when an explicit ContextId/RequestContainer is provided,
+    // Scope.TRANSIENT providers resolved via ModuleRef.resolve(token, contextId)
+    // are cached per contextId so repeated resolve(token, sameContextId) calls
+    // (including via useExisting aliases) return the same instance.
+    if (reqContainer && effScope === Scope.TRANSIENT) {
+      let targetOwner = loc.owner;
+      let targetProvider = loc.provider;
+      const visitedAliases = new Set<string>();
+      while (
+        targetProvider.kind === "existing" &&
+        targetProvider.useExisting !== undefined
+      ) {
+        const aliasKey = this.makeInstanceKey(targetOwner, targetProvider.token);
+        if (visitedAliases.has(aliasKey)) break;
+        visitedAliases.add(aliasKey);
+        const nextLoc = this.locateTokenForModuleRef(
+          targetOwner,
+          targetProvider.useExisting,
+          false,
+        );
+        if (!nextLoc) break;
+        targetOwner = nextLoc.owner;
+        targetProvider = nextLoc.provider;
+      }
+      const transientKey = `transient-resolve:${this.makeInstanceKey(targetOwner, targetProvider.token)}`;
+      return await reqContainer.getOrCreateScopedInstance<T>(
+        transientKey,
+        async () =>
+          (await this.resolveNormalizedProvider(
+            targetOwner,
+            targetProvider,
+            reqContainer,
+            new Set(),
+          )) as T,
+      );
+    }
 
     return (await this.resolveNormalizedProvider(
       loc.owner,
@@ -4333,7 +4776,7 @@ export class DIContainer
     provider: NormalizedProvider,
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     const key = this.makeInstanceKey(owner, provider.token);
     const allowRoot = this.overriddenProviderKeys.has(key);
@@ -4406,16 +4849,21 @@ export class DIContainer
           requestContainer,
           provider.token,
         ) ?? requestContainer;
-      return targetContainer.getOrCreateScopedInstance(key, () =>
-        this.instantiateProvider(
-          owner,
-          provider,
-          targetContainer,
-          activeInstantiations,
-          allowRoot,
-          inquirer,
-        ),
-      );
+      try {
+        return await targetContainer.getOrCreateScopedInstance(key, () =>
+          this.instantiateProvider(
+            owner,
+            provider,
+            targetContainer,
+            activeInstantiations,
+            allowRoot,
+            inquirer,
+          ),
+        );
+      } catch (err) {
+        this.evictEmptyDurableContainer(targetContainer);
+        throw err;
+      }
     }
 
     // Scope.TRANSIENT -> new instance per resolution
@@ -4439,7 +4887,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     if (provider.kind === "value") {
       return provider.useValue;
@@ -4517,6 +4965,7 @@ export class DIContainer
       }
       if (provider.inject) {
         const deps = this.getProviderDependencies(provider);
+        const inquirerObj = Object.create(provider.useClass.prototype) as object;
         const args: unknown[] = [];
         for (const dep of deps) {
           args.push(
@@ -4527,7 +4976,7 @@ export class DIContainer
               requestContainer,
               activeInstantiations,
               allowRootFallback,
-              dep.token === INQUIRER ? inquirer : provider.useClass,
+              dep.token === INQUIRER ? inquirer : inquirerObj,
             ),
           );
         }
@@ -4576,10 +5025,11 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     const allDeps = this.getClassDependencies(target);
     const ctorDeps = allDeps.filter((d) => d.index !== undefined);
+    const inquirerObj = Object.create(target.prototype) as object;
     const args: unknown[] = [];
 
     for (const dep of ctorDeps) {
@@ -4591,7 +5041,7 @@ export class DIContainer
           requestContainer,
           activeInstantiations,
           allowRootFallback,
-          dep.token === INQUIRER ? inquirer : target,
+          dep.token === INQUIRER ? inquirer : inquirerObj,
         ),
       );
     }
@@ -4624,7 +5074,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<void> {
     const propDeps = this.getClassDependencies(target).filter(
       (d) => d.propertyKey !== undefined,
@@ -4637,7 +5087,7 @@ export class DIContainer
         requestContainer,
         activeInstantiations,
         allowRootFallback,
-        dep.token === INQUIRER ? inquirer : target,
+        dep.token === INQUIRER ? inquirer : instance,
       );
       if (
         dep.propertyKey !== undefined &&
@@ -4655,7 +5105,7 @@ export class DIContainer
     requestContainer: RequestContainer | undefined,
     activeInstantiations: Set<string>,
     allowRootFallback = false,
-    inquirer?: InjectionToken,
+    inquirer?: unknown,
   ): Promise<unknown> {
     if (dep.token === undefined) {
       if (dep.optional) {
@@ -4679,7 +5129,7 @@ export class DIContainer
       return builtIn.value;
     }
     if (isBuiltInRequestToken(dep.token)) {
-      if (requestContainer?.hasRequestValue(dep.token)) {
+      if (requestContainer) {
         return requestContainer.getRequestValue(dep.token);
       }
       if (dep.optional) {
@@ -4728,13 +5178,28 @@ export class DIContainer
       );
     }
 
-    return this.resolveNormalizedProvider(
-      loc.owner,
-      loc.provider,
-      requestContainer,
-      activeInstantiations,
-      inquirer,
-    );
+    try {
+      return await this.resolveNormalizedProvider(
+        loc.owner,
+        loc.provider,
+        requestContainer,
+        activeInstantiations,
+        inquirer,
+      );
+    } catch (err) {
+      if (dep.optional && !requestContainer) {
+        const depScope = this.getEffectiveProviderScope(
+          loc.owner,
+          loc.provider,
+          new Set(),
+          allowRootFallback,
+        );
+        if (depScope === Scope.TRANSIENT) {
+          return undefined;
+        }
+      }
+      throw err;
+    }
   }
 
   private getOrCreateDeferredProxy(

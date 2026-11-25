@@ -285,6 +285,8 @@ export {
   lexicographicSortSchema,
   printIntrospectionSchema,
   printSchema,
+  printSubgraphSchema,
+  type PrintSubgraphSchemaOptions,
   printType,
 } from "./sdl";
 

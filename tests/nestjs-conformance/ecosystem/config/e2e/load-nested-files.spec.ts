@@ -23,8 +23,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally registerAs('database.driver', ...) stores flat store['database.driver'] instead of nested store.database.driver so configService.get('database.driver.host') splits on '.' and returns undefined (packages/core/src/config/config.module.ts:161, packages/core/src/config/config.service.ts:63)
-    it.skip("should return nested loaded configuration", () => {
+    it("should return nested loaded configuration", () => {
       const host = app.get(AppModule).getNestedDatabaseHost();
       expect(host).toEqual("host");
     });

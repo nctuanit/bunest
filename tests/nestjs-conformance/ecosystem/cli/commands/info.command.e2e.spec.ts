@@ -115,8 +115,7 @@ describeConformance(
     });
 
     describe("with installed dependencies", () => {
-      // BUNEST_BUG: `bunest info` only outputs OS/Bun/CPU/Memory/CLI version and does not inspect package.json or node_modules to display installed @bunest/* package versions (packages/cli/src/commands/info.ts)
-      it.skip("should display installed @bunest/* package versions", async () => {
+      it("should display installed @bunest/* package versions", async () => {
         writeTextSync(
           join(tmpDir, "package.json"),
           JSON.stringify({

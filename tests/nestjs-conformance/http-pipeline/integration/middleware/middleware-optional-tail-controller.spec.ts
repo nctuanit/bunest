@@ -9,7 +9,7 @@ import {
   type Type,
 } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { Test, describeConformance, request } from "../../../_helpers";
+import { Test, describeConformance, itAdapted, request } from "../../../_helpers";
 
 const MIDDLEWARE_VALUE = "middleware";
 
@@ -99,21 +99,20 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected GET /files/ (for "@Controller('files/{*path}')") and GET /items/ (for "@Controller('items/{:id}')") to return 200 "middleware", got 404. packages/core/src/http/router/fallback-radix-router.ts (parseRouteSegments) only supports `*` and `:id?`, not path-to-regexp v8 brace optional-tail syntax `{*path}` or `{:id}`.
-    it.skip.each(
-      braceOptionalTailCases.map(
-        ([controller, base, urls]) => [base, controller, urls] as const,
-      ),
-    )(
-      'should run on every path of the "%s" controller, the empty one included',
-      async (base, controller, urls) => {
-        await createApp(controller);
-        for (const url of urls) {
-          await request(app!).get(url).expect(200, MIDDLEWARE_VALUE);
-        }
-        await request(app!).post(`${base}/`).expect(404);
-      },
-    );
+    for (const [controller, base, urls] of braceOptionalTailCases) {
+      itAdapted(
+        "ADR-011",
+        `should run on every path of the "${base}" controller, the empty one included`,
+        async () => {
+          await createApp(controller);
+          for (const url of urls) {
+            await request(app!).get(url).expect(200, MIDDLEWARE_VALUE);
+          }
+          await request(app!).post(`${base}/`).expect(405);
+        },
+        "ADR-011 returns 405 Method Not Allowed (with Allow header) instead of Express 404",
+      );
+    }
 
     it("should run on the empty wildcard under a global prefix", async () => {
       await createApp(LegacyWildcardController, "api");

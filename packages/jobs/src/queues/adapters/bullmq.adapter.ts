@@ -712,7 +712,9 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       decoratorService ? decoratorService.decorate(fn) : fn;
 
     // Register QueueEventsListeners first so worker/queue events can immediately forward into them
+    const seenListenerInstances = new Set<object>();
     for (const wrapper of wrappers) {
+      if (wrapper.isAlias) continue;
       const ctor = resolveWrapperMetatype(wrapper);
       if (!ctor) continue;
 
@@ -721,11 +723,17 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
         ctor,
       );
       if (listenerMeta) {
+        if (wrapper.instance && typeof wrapper.instance === "object") {
+          if (seenListenerInstances.has(wrapper.instance)) continue;
+          seenListenerInstances.add(wrapper.instance);
+        }
         this.registerQueueEventsListener(wrapper, ctor, listenerMeta);
       }
     }
 
+    const seenProcessorInstances = new Set<object>();
     for (const wrapper of wrappers) {
+      if (wrapper.isAlias) continue;
       const ctor = resolveWrapperMetatype(wrapper);
       if (!ctor) continue;
 
@@ -734,6 +742,11 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
         ctor,
       );
       if (!processorMeta) continue;
+
+      if (wrapper.instance && typeof wrapper.instance === "object") {
+        if (seenProcessorInstances.has(wrapper.instance)) continue;
+        seenProcessorInstances.add(wrapper.instance);
+      }
 
       this.registerProcessor(wrapper, ctor, processorMeta, decorate);
     }
@@ -764,10 +777,25 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
-  private getQueueOptions(
-    queueName: string,
+  getQueueOptions(
+    queueTokenOrName: string | symbol,
+    queueName?: string,
     configKey?: string,
   ): RegisterQueueOptions {
+    if (this.moduleRef) {
+      try {
+        const queueRef = this.moduleRef.get<{ opts?: RegisterQueueOptions }>(
+          queueTokenOrName,
+          { strict: false },
+        );
+        if (queueRef && typeof queueRef === "object" && queueRef.opts) {
+          return queueRef.opts;
+        }
+      } catch {
+        // Not a queue provider token; fall back to options tokens below
+      }
+    }
+    const resolvedName = queueName ?? String(queueTokenOrName);
     let shared: BullRootModuleOptions = {};
     let perQueue: RegisterQueueOptions = {};
     if (this.moduleRef) {
@@ -783,7 +811,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       try {
         perQueue =
           this.moduleRef.get<RegisterQueueOptions>(
-            getQueueOptionsToken(queueName),
+            getQueueOptionsToken(resolvedName),
             { strict: false },
           ) ?? {};
       } catch {
@@ -791,6 +819,49 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       }
     }
     return { ...shared, ...perQueue };
+  }
+
+  getFlowProducerOptions(
+    flowProducerToken: string | symbol,
+    name?: string,
+    configKey?: string,
+  ): RegisterFlowProducerOptions {
+    if (this.moduleRef) {
+      try {
+        const flowRef = this.moduleRef.get<{
+          opts?: RegisterFlowProducerOptions;
+        }>(flowProducerToken, { strict: false });
+        if (flowRef && typeof flowRef === "object" && flowRef.opts) {
+          return flowRef.opts;
+        }
+      } catch {
+        // Fall back to options tokens
+      }
+    }
+    const resolvedName = name ?? String(flowProducerToken);
+    let shared: BullRootModuleOptions = {};
+    let perFlow: RegisterFlowProducerOptions = {};
+    if (this.moduleRef) {
+      try {
+        shared =
+          this.moduleRef.get<BullRootModuleOptions>(
+            getSharedConfigToken(configKey),
+            { strict: false },
+          ) ?? {};
+      } catch {
+        // No shared config
+      }
+      try {
+        perFlow =
+          this.moduleRef.get<RegisterFlowProducerOptions>(
+            getFlowProducerOptionsToken(resolvedName),
+            { strict: false },
+          ) ?? {};
+      } catch {
+        // No per-flow options
+      }
+    }
+    return { ...shared, ...perFlow };
   }
 
   private emitToQueueEvents(
@@ -816,7 +887,40 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
 
-    const queueEvents = new QueueEvents(listenerMeta.queueName);
+    const queueOpts = this.getQueueOptions(
+      getQueueToken(listenerMeta.queueName),
+      listenerMeta.queueName,
+      (listenerMeta as { configKey?: string }).configKey,
+    );
+    const {
+      queueName: _qn,
+      backendFactory: listenerBackendFactory,
+      ...listenerExtraOpts
+    } = listenerMeta as QueueEventsListenerOptions & Record<string, unknown>;
+    const queueEventsOpts: Record<string, unknown> = {
+      ...(queueOpts.connection !== undefined
+        ? { connection: queueOpts.connection }
+        : {}),
+      ...(queueOpts.prefix !== undefined ? { prefix: queueOpts.prefix } : {}),
+      ...((queueOpts as Record<string, unknown>).telemetry !== undefined
+        ? { telemetry: (queueOpts as Record<string, unknown>).telemetry }
+        : {}),
+      ...((queueOpts as Record<string, unknown>).skipVersionCheck !== undefined
+        ? {
+            skipVersionCheck: (queueOpts as Record<string, unknown>)
+              .skipVersionCheck,
+          }
+        : {}),
+      ...listenerExtraOpts,
+    };
+    const backendFactory =
+      listenerBackendFactory ??
+      (queueOpts as Record<string, unknown>).backendFactory;
+    const queueEvents = new QueueEvents(
+      listenerMeta.queueName,
+      queueEventsOpts,
+      backendFactory,
+    );
     this.allQueueEvents.push(queueEvents);
 
     let list = this.queueEventsByQueue.get(listenerMeta.queueName);
@@ -863,7 +967,11 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   ): void {
     const queueName = processorMeta.queueName;
     const queue = this.registry.get(queueName);
-    const queueOpts = this.getQueueOptions(queueName, processorMeta.configKey);
+    const queueOpts = this.getQueueOptions(
+      getQueueToken(queueName),
+      queueName,
+      processorMeta.configKey,
+    );
     const concurrency =
       processorMeta.workerOptions?.concurrency ??
       processorMeta.concurrency ??
@@ -881,19 +989,35 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
 
     const namedHandlers = new Map<string, JobHandler<unknown, unknown>>();
     let defaultHandler: JobHandler<unknown, unknown> | undefined;
+    let boundWorker: BullMQWorkerLike | undefined;
 
     if (isRequestScoped) {
       if (processMetas.length > 0) {
         for (const meta of processMetas) {
           const bound = decorate(
             async (job: Job<unknown, unknown>, token?: string) => {
-              const contextId = ContextIdFactory.create();
+              const contextId = ContextIdFactory.getByRequest(job);
               wrapper.moduleRef.registerRequestByContextId(job, contextId);
+              const durableCtxId = contextId.getParent?.({
+                isTreeDurable: true,
+                host: wrapper.token,
+              });
+              if (durableCtxId && durableCtxId !== contextId) {
+                wrapper.moduleRef.registerRequestByContextId(
+                  contextId.payload ?? job,
+                  durableCtxId,
+                );
+              }
               const scopedInstance = (await wrapper.moduleRef.resolve(
                 wrapper.token,
                 contextId,
                 { strict: false },
               )) as Record<string | symbol, unknown>;
+              if (boundWorker && scopedInstance instanceof WorkerHost) {
+                (
+                  scopedInstance as unknown as { _worker?: BullMQWorkerLike }
+                )._worker = boundWorker;
+              }
               const fn = scopedInstance[meta.methodName];
               if (typeof fn !== "function") {
                 throw new Error(
@@ -912,13 +1036,28 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       } else {
         defaultHandler = decorate(
           async (job: Job<unknown, unknown>, token?: string) => {
-            const contextId = ContextIdFactory.create();
+            const contextId = ContextIdFactory.getByRequest(job);
             wrapper.moduleRef.registerRequestByContextId(job, contextId);
+            const durableCtxId = contextId.getParent?.({
+              isTreeDurable: true,
+              host: wrapper.token,
+            });
+            if (durableCtxId && durableCtxId !== contextId) {
+              wrapper.moduleRef.registerRequestByContextId(
+                contextId.payload ?? job,
+                durableCtxId,
+              );
+            }
             const scopedInstance = (await wrapper.moduleRef.resolve(
               wrapper.token,
               contextId,
               { strict: false },
             )) as WorkerHost;
+            if (boundWorker && scopedInstance instanceof WorkerHost) {
+              (
+                scopedInstance as unknown as { _worker?: BullMQWorkerLike }
+              )._worker = boundWorker;
+            }
             return await scopedInstance.process(job, token);
           },
         );
@@ -1005,28 +1144,49 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
     // 1. Custom BullModule.workerClass override
     if (BullMQExplorer._workerClass) {
       const WorkerCtor = BullMQExplorer._workerClass;
+      const queueOptsRec = queueOpts as Record<string, unknown>;
+      const workerOptsRec = (processorMeta.workerOptions ?? {}) as Record<
+        string,
+        unknown
+      >;
       const mergedWorkerOpts: NestWorkerOptions = {
         connection: queueOpts.connection,
         prefix: queueOpts.prefix,
         concurrency,
+        ...(queueOptsRec.telemetry !== undefined
+          ? { telemetry: queueOptsRec.telemetry }
+          : {}),
+        ...(typeof queueOptsRec.skipVersionCheck === "boolean"
+          ? { skipVersionCheck: queueOptsRec.skipVersionCheck }
+          : {}),
         ...processorMeta.workerOptions,
       };
-      const worker = new WorkerCtor(
-        queueName,
-        async (rawJob: BullMQJobLike, token?: string) => {
-          const normalized = normalizeBullJobSync(queueName, rawJob, "active");
-          const handler = namedHandlers.get(normalized.name) ?? defaultHandler;
-          if (!handler) {
-            throw new Error(
-              `No processor handler registered for job "${normalized.name}" on queue "${queueName}".`,
-            );
-          }
-          return await handler(normalized, token);
-        },
-        mergedWorkerOpts,
+      const backendFactory =
+        workerOptsRec.backendFactory ?? queueOptsRec.backendFactory;
+      const workerHandler = async (rawJob: BullMQJobLike, token?: string) => {
+        const normalized = normalizeBullJobSync(queueName, rawJob, "active");
+        const handler = namedHandlers.get(normalized.name) ?? defaultHandler;
+        if (!handler) {
+          throw new Error(
+            `No processor handler registered for job "${normalized.name}" on queue "${queueName}".`,
+          );
+        }
+        return await handler(normalized, token);
+      };
+      const worker = (
+        backendFactory !== undefined
+          ? new WorkerCtor(
+              queueName,
+              workerHandler,
+              mergedWorkerOpts,
+              backendFactory,
+            )
+          : new WorkerCtor(queueName, workerHandler, mergedWorkerOpts)
       ) as BullMQWorkerLike;
+      boundWorker = worker;
       this.customWorkers.push(worker);
 
+      boundWorker = worker;
       if (instance instanceof WorkerHost) {
         (instance as unknown as { _worker?: BullMQWorkerLike })._worker =
           worker;
@@ -1063,6 +1223,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
         },
       );
 
+      boundWorker = worker;
       if (instance instanceof WorkerHost) {
         (instance as unknown as { _worker?: BullMQWorkerLike })._worker =
           worker;
@@ -1184,9 +1345,11 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
 
+    const nativeHandle = createNativeWorkerHandle(queue);
+    boundWorker = nativeHandle;
     if (instance instanceof WorkerHost) {
       (instance as unknown as { _worker?: BullMQWorkerLike })._worker =
-        createNativeWorkerHandle(queue);
+        nativeHandle;
     }
 
     for (const [event, listeners] of eventHandlers.entries()) {
@@ -1206,12 +1369,20 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Gracefully drain active BullMQ workers before detaching listeners so
-    // in-flight completion/failure events are still observed.
+    // Phase 1 (onModuleDestroy): drain active BullMQ workers while queues remain
+    // open so in-flight jobs can still enqueue child jobs on other queues.
     if (this.driver) {
       await this.driver.closeWorkers();
     }
-    await Promise.all(this.customWorkers.splice(0).map((w) => w.close()));
+    await Promise.all([
+      ...this.customWorkers.splice(0).map((w) => w.close()),
+      this.registry.closeAllWorkers(),
+    ]);
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    // Phase 2 (onApplicationShutdown): close queues, events, listeners, and driver
+    // after all workers have finished draining.
     await this.registry.closeAll();
 
     for (const qe of this.allQueueEvents.splice(0)) {
@@ -1321,6 +1492,87 @@ function attachInlineProcessors(
   }
 }
 
+function createInlineWorkerInstances(
+  queueName: string,
+  merged: RegisterQueueOptions,
+  processors: readonly BullQueueProcessor[] | undefined,
+  customWorkerClass: Type<unknown> | undefined,
+  registry: QueueRegistry | undefined,
+): void {
+  if (!customWorkerClass || !processors || processors.length === 0) {
+    return;
+  }
+  const mergedRec = merged as Record<string, unknown>;
+  const baseOpts: Record<string, unknown> = {
+    ...(merged.connection !== undefined ? { connection: merged.connection } : {}),
+    ...(merged.prefix !== undefined ? { prefix: merged.prefix } : {}),
+    ...(mergedRec.telemetry !== undefined ? { telemetry: mergedRec.telemetry } : {}),
+    ...(mergedRec.skipVersionCheck !== undefined
+      ? { skipVersionCheck: mergedRec.skipVersionCheck }
+      : {}),
+  };
+  const baseBackendFactory = mergedRec.backendFactory;
+
+  for (let i = 0; i < processors.length; i++) {
+    const proc = processors[i]!;
+    let target: unknown;
+    let procOpts: Record<string, unknown> = { ...baseOpts };
+    let backendFactory = baseBackendFactory;
+
+    if (typeof proc === "function" || typeof proc === "string" || proc instanceof URL) {
+      target = proc;
+    } else if (typeof proc === "object" && proc !== null) {
+      const rec = proc as unknown as Record<string, unknown>;
+      if ("callback" in rec && typeof rec.callback === "function") {
+        const {
+          callback,
+          name: _procName,
+          backendFactory: procBackendFactory,
+          ...rest
+        } = rec;
+        target = callback;
+        procOpts = { ...baseOpts, ...rest };
+        if (procBackendFactory !== undefined) {
+          backendFactory = procBackendFactory;
+        }
+      } else if ("path" in rec && (typeof rec.path === "string" || rec.path instanceof URL)) {
+        const {
+          path,
+          name: _procName,
+          backendFactory: procBackendFactory,
+          ...rest
+        } = rec;
+        target = path;
+        procOpts = { ...baseOpts, ...rest };
+        if (procBackendFactory !== undefined) {
+          backendFactory = procBackendFactory;
+        }
+      } else {
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    const worker =
+      backendFactory !== undefined
+        ? new customWorkerClass(queueName, target, procOpts, backendFactory)
+        : new customWorkerClass(queueName, target, procOpts);
+
+    if (
+      typeof worker === "object" &&
+      worker !== null &&
+      "close" in worker &&
+      typeof (worker as { close?: unknown }).close === "function"
+    ) {
+      registry?.registerFlowProducer(
+        `__inline_worker:${queueName}:${i}`,
+        worker as { close(): Promise<void> | void },
+      );
+    }
+  }
+}
+
 function buildQueueInstance(
   name: string,
   queueConfig: RegisterQueueOptions,
@@ -1329,10 +1581,12 @@ function buildQueueInstance(
   rootDriver: QueueDriver | undefined,
   registry: QueueRegistry | undefined,
   customQueueClass: Type<unknown> | undefined,
+  customWorkerClass?: Type<unknown>,
 ): unknown {
   const merged: RegisterQueueOptions = {
     ...sharedConfig,
     ...queueConfig,
+    name: queueConfig.name ?? name,
     defaultJobOptions: {
       ...sharedConfig?.defaultJobOptions,
       ...queueConfig.defaultJobOptions,
@@ -1340,7 +1594,18 @@ function buildQueueInstance(
   };
 
   if (customQueueClass) {
-    const instance = new customQueueClass(name, merged);
+    const backendFactory = (merged as Record<string, unknown>).backendFactory;
+    const instance =
+      backendFactory !== undefined
+        ? new customQueueClass(name, merged, backendFactory)
+        : new customQueueClass(name, merged);
+    createInlineWorkerInstances(
+      name,
+      merged,
+      queueConfig.processors,
+      customWorkerClass,
+      registry,
+    );
     return instance;
   }
 
@@ -1673,6 +1938,7 @@ export class BullModule {
             rootDriver,
             registry,
             BullModule._queueClass,
+            BullModule._workerClass,
           ),
         inject: [
           { token: sharedToken, optional: true },
@@ -1740,9 +2006,10 @@ export class BullModule {
           inject: [config.useExisting],
         });
       } else {
-        throw new Error(
-          `BullModule.registerQueueAsync("${name}") requires useFactory, useClass, or useExisting.`,
-        );
+        providers.push({
+          provide: optionsToken,
+          useValue: config,
+        });
       }
 
       providers.push({
@@ -1762,6 +2029,7 @@ export class BullModule {
             rootDriver,
             registry,
             BullModule._queueClass,
+            BullModule._workerClass,
           ),
         inject: [
           optionsToken,
@@ -1810,9 +2078,14 @@ export class BullModule {
           const merged: RegisterFlowProducerOptions = {
             ...sharedConfig,
             ...config,
+            name: config.name ?? name,
           };
+          const backendFactory = (merged as Record<string, unknown>)
+            .backendFactory;
           const producer: unknown = BullModule._flowProducerClass
-            ? new BullModule._flowProducerClass(merged)
+            ? backendFactory !== undefined
+              ? new BullModule._flowProducerClass(merged, backendFactory)
+              : new BullModule._flowProducerClass(merged)
             : new FlowProducer(merged, registry, rootDriver);
           if (
             typeof producer === "object" &&
@@ -1905,9 +2178,14 @@ export class BullModule {
           const merged: RegisterFlowProducerOptions = {
             ...sharedConfig,
             ...resolvedOpts,
+            name: resolvedOpts?.name ?? name,
           };
+          const backendFactory = (merged as Record<string, unknown>)
+            .backendFactory;
           const producer: unknown = BullModule._flowProducerClass
-            ? new BullModule._flowProducerClass(merged)
+            ? backendFactory !== undefined
+              ? new BullModule._flowProducerClass(merged, backendFactory)
+              : new BullModule._flowProducerClass(merged)
             : new FlowProducer(merged, registry, rootDriver);
           if (
             typeof producer === "object" &&

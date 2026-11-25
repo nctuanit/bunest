@@ -130,8 +130,7 @@ describeConformance(
         expect(res.statusCode).toBe(404);
       });
 
-      // BUNEST_BUG: Expected zero-argument app.inject() to return a fluent chain builder (.post().headers().payload().end()) matching NestJS Fastify/NodeAdapter inject() API; actual throws TypeError because BunestApplication.inject(input) requires string | InjectOptions (packages/core/src/application/bunest-application.ts).
-      it.skip("should build a request with the chain API", async () => {
+      it("should build a request with the chain API", async () => {
         const chain = (app as unknown as { inject(): any }).inject();
         const res = await chain
           .post("/inject/echo")

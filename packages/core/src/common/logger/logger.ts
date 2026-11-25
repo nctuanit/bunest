@@ -4,16 +4,14 @@ import {
   formatNestTimestamp,
   isColorAllowed,
 } from "./cli-colors";
+import {
+  ConsoleLogger,
+  LOG_LEVELS,
+  isLogLevelEnabled,
+} from "./console-logger";
 import type { LogLevel, LoggerService } from "./logger.interface";
 
-export const ALL_LOG_LEVELS: readonly LogLevel[] = Object.freeze([
-  "fatal",
-  "error",
-  "warn",
-  "log",
-  "debug",
-  "verbose",
-]);
+export const ALL_LOG_LEVELS: readonly LogLevel[] = LOG_LEVELS;
 
 export const DEFAULT_REDACT_KEYS: readonly string[] = Object.freeze([
   "password",
@@ -92,7 +90,7 @@ function defaultWriter(line: string, level: LogLevel): void {
  * and deep immutable secret-key redaction.
  */
 export class Logger implements LoggerService {
-  private static globalInstance: LoggerService = new Logger();
+  private static globalInstance: LoggerService = new ConsoleLogger();
   private static isBuffering = false;
   protected static logBuffer: LogBufferRecord[] = [];
   protected static logLevels: LogLevel[] = [...ALL_LOG_LEVELS];
@@ -101,6 +99,7 @@ export class Logger implements LoggerService {
   protected context?: string;
   protected options: LoggerOptions;
   protected localInstanceRef?: LoggerService;
+  private readonly useLocalEmitter: boolean;
   private levels: Set<LogLevel>;
   private readonly json: boolean;
   private readonly timestamp: boolean;
@@ -115,6 +114,17 @@ export class Logger implements LoggerService {
   constructor(context?: string, options: LoggerOptions = {}) {
     this.context = context;
     this.options = { ...options };
+    this.useLocalEmitter = Boolean(
+      options.writer !== undefined ||
+        options.json !== undefined ||
+        options.levels !== undefined ||
+        options.redactKeys !== undefined ||
+        options.redactionMask !== undefined ||
+        options.prefix !== undefined ||
+        options.pid !== undefined ||
+        options.colors !== undefined ||
+        options.timestampDiff !== undefined,
+    );
     this.levels = new Set(options.levels ?? ALL_LOG_LEVELS);
     this.json = options.json ?? false;
     this.timestamp = options.timestamp ?? true;
@@ -137,7 +147,13 @@ export class Logger implements LoggerService {
   }
 
   get localInstance(): LoggerService {
-    return this.localInstanceRef ?? this;
+    if (this.localInstanceRef) {
+      return this.localInstanceRef;
+    }
+    if (this.useLocalEmitter) {
+      return this;
+    }
+    return Logger.globalInstance;
   }
 
   static get staticInstanceRef(): LoggerService {
@@ -182,13 +198,13 @@ export class Logger implements LoggerService {
   static overrideLogger(logger: LoggerService | LogLevel[] | boolean): void {
     if (logger === false) {
       Logger.logLevels = [];
-      Logger.globalInstance = new Logger(undefined, { levels: [] });
+      Logger.globalInstance = new ConsoleLogger({ logLevels: [] });
     } else if (logger === true) {
       Logger.logLevels = [...ALL_LOG_LEVELS];
-      Logger.globalInstance = new Logger();
+      Logger.globalInstance = new ConsoleLogger();
     } else if (Array.isArray(logger)) {
       Logger.logLevels = [...logger];
-      Logger.globalInstance = new Logger(undefined, { levels: logger });
+      Logger.globalInstance = new ConsoleLogger({ logLevels: logger });
     } else {
       Logger.globalInstance = logger;
     }
@@ -207,35 +223,28 @@ export class Logger implements LoggerService {
     (fn as (...a: unknown[]) => void).apply(Logger.globalInstance, args);
   }
 
-  static log(message: unknown, context?: string): void {
-    Logger.dispatchGlobal("log", [message, ...(context ? [context] : [])]);
+  static log(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("log", [message, ...optionalParams]);
   }
 
-  static error(
-    message: unknown,
-    stackOrContext?: string,
-    context?: string,
-  ): void {
-    const args: unknown[] = [message];
-    if (stackOrContext !== undefined) args.push(stackOrContext);
-    if (context !== undefined) args.push(context);
-    Logger.dispatchGlobal("error", args);
+  static error(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("error", [message, ...optionalParams]);
   }
 
-  static warn(message: unknown, context?: string): void {
-    Logger.dispatchGlobal("warn", [message, ...(context ? [context] : [])]);
+  static warn(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("warn", [message, ...optionalParams]);
   }
 
-  static debug(message: unknown, context?: string): void {
-    Logger.dispatchGlobal("debug", [message, ...(context ? [context] : [])]);
+  static debug(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("debug", [message, ...optionalParams]);
   }
 
-  static verbose(message: unknown, context?: string): void {
-    Logger.dispatchGlobal("verbose", [message, ...(context ? [context] : [])]);
+  static verbose(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("verbose", [message, ...optionalParams]);
   }
 
-  static fatal(message: unknown, context?: string): void {
-    Logger.dispatchGlobal("fatal", [message, ...(context ? [context] : [])]);
+  static fatal(message: unknown, ...optionalParams: unknown[]): void {
+    Logger.dispatchGlobal("fatal", [message, ...optionalParams]);
   }
 
   setContext(context: string): void {
@@ -247,31 +256,87 @@ export class Logger implements LoggerService {
   }
 
   isLevelEnabled(level: LogLevel): boolean {
-    return this.levels.has(level);
+    if (!this.useLocalEmitter) {
+      const target = this.localInstance as unknown as {
+        isLevelEnabled?: (l: LogLevel) => boolean;
+      };
+      if (target !== (this as unknown) && typeof target.isLevelEnabled === "function") {
+        return target.isLevelEnabled(level);
+      }
+    }
+    return isLogLevelEnabled(level, [...this.levels]);
+  }
+
+  private addContext(
+    method: "log" | "error" | "warn" | "debug" | "verbose" | "fatal",
+    args: unknown[],
+  ): unknown[] {
+    if (!this.context) {
+      return args;
+    }
+    if ((method === "error" || method === "fatal") && args.length === 1) {
+      return [args[0], undefined, this.context];
+    }
+    return [...args, this.context];
+  }
+
+  private dispatchInstance(
+    method: "log" | "error" | "warn" | "debug" | "verbose" | "fatal",
+    message: unknown,
+    optionalParams: unknown[],
+  ): void {
+    if (this.useLocalEmitter) {
+      this.emit(method, message, optionalParams);
+      return;
+    }
+    const target = this.localInstance;
+    const fn = target[method];
+    if (typeof fn !== "function") return;
+    const args = this.addContext(method, [message, ...optionalParams]);
+    if (Logger.isBuffering && target === Logger.globalInstance) {
+      Logger.logBuffer.push({ methodRef: fn, arguments: args });
+      return;
+    }
+    if (
+      this.options.timestamp === true &&
+      target instanceof ConsoleLogger
+    ) {
+      const opts = (target as unknown as { options: { timestamp?: boolean } })
+        .options;
+      const prevTimestamp = opts.timestamp;
+      opts.timestamp = true;
+      try {
+        (fn as (...a: unknown[]) => void).apply(target, args);
+      } finally {
+        opts.timestamp = prevTimestamp;
+      }
+      return;
+    }
+    (fn as (...a: unknown[]) => void).apply(target, args);
   }
 
   log(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("log", message, optionalParams);
+    this.dispatchInstance("log", message, optionalParams);
   }
 
   error(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("error", message, optionalParams);
+    this.dispatchInstance("error", message, optionalParams);
   }
 
   warn(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("warn", message, optionalParams);
+    this.dispatchInstance("warn", message, optionalParams);
   }
 
   debug(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("debug", message, optionalParams);
+    this.dispatchInstance("debug", message, optionalParams);
   }
 
   verbose(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("verbose", message, optionalParams);
+    this.dispatchInstance("verbose", message, optionalParams);
   }
 
   fatal(message: unknown, ...optionalParams: unknown[]): void {
-    this.emit("fatal", message, optionalParams);
+    this.dispatchInstance("fatal", message, optionalParams);
   }
 
   /**

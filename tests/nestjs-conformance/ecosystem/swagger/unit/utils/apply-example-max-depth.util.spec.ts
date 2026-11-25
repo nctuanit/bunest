@@ -101,8 +101,7 @@ describeConformance(
         expect(arrProp.example).toEqual([]);
       });
 
-      // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:735-739) copies `examples` arrays verbatim without applying truncateExampleDepth()
-      it.skip("truncates entries inside the OpenAPI 3.1 examples array", () => {
+      it("truncates entries inside the OpenAPI 3.1 examples array", () => {
         const prop = exploreWithMaxDepth(
           {
             type: "object",
@@ -114,8 +113,7 @@ describeConformance(
         expect(prop.examples).toEqual([{ a: { b: {} } }, { x: { y: {} } }]);
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:728-734) only truncates top-level property `example` and never walks into nested `items`, `allOf`, `oneOf`, `anyOf`, or `additionalProperties`
-      it.skip("walks into items, allOf, oneOf, anyOf, and additionalProperties", () => {
+      it("walks into items, allOf, oneOf, anyOf, and additionalProperties", () => {
         class Dto {
           @ApiProperty({
             type: "array",
@@ -319,8 +317,7 @@ describeConformance(
     });
 
     describe("non-plain object instances", () => {
-      // BUNEST_BUG: truncateExampleDepth (packages/swagger/src/schema-explorer.ts:231-252) treats non-plain objects (Date, Map, Set, class instances) as plain objects via Object.entries(), rewriting them to {}
-      it.skip("preserves Date / Map / Set / class instances inside examples as-is", () => {
+      it("preserves Date / Map / Set / class instances inside examples as-is", () => {
         const date = new Date("2026-01-01T00:00:00.000Z");
         const map = new Map<string, number>([["k", 1]]);
         const set = new Set<number>([1, 2, 3]);
@@ -344,8 +341,7 @@ describeConformance(
         expect(out.who).toBe(instance);
       });
 
-      // BUNEST_BUG: truncateExampleDepth (packages/swagger/src/schema-explorer.ts:231-252) collapses a top-level Date instance to {} when maxDepth is 0 instead of preserving non-plain instances
-      it.skip("does not rewrite a Date used as the entire example value", () => {
+      it("does not rewrite a Date used as the entire example value", () => {
         const date = new Date("2026-05-08T00:00:00.000Z");
         const prop = exploreWithMaxDepth({ type: "string", example: date }, 0);
 
@@ -354,8 +350,7 @@ describeConformance(
     });
 
     describe("circular safety", () => {
-      // BUNEST_BUG: truncateExampleDepth (packages/swagger/src/schema-explorer.ts:231-252) lacks a WeakSet ancestor guard, unrolling circular references down to maxDepth instead of breaking the cycle immediately
-      it.skip("terminates on circular example values via WeakSet guard", () => {
+      it("terminates on circular example values via WeakSet guard", () => {
         const cyclic: Record<string, unknown> = { name: "root" };
         cyclic.self = cyclic;
 

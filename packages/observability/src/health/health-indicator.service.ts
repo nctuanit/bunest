@@ -407,6 +407,19 @@ export class HealthCheckAttempt<
       }
       return data;
     }
+    if (
+      result !== null &&
+      typeof result === "object" &&
+      !Array.isArray(result) &&
+      Object.keys(result as Record<string, unknown>).length > 0
+    ) {
+      warnOnce(
+        this.logger,
+        `deprecated-return:${this.key}`,
+        `The value returned by attempt() for health indicator "${this.key}" is added to the health check result. ` +
+          "This is deprecated: the next major version ignores it. Use .withSuccessData() to choose the data to add, or return nothing.",
+      );
+    }
     return sanitizeAttemptData(this.key, result, this.logger);
   }
 

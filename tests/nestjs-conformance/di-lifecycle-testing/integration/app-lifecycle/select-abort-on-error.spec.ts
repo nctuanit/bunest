@@ -49,8 +49,7 @@ describeConformance(
       expect(exit).not.toHaveBeenCalled();
     });
 
-    // BUNEST_BUG: BunestApplicationContext.select(mod, { abortOnError: true }) throws instead of calling process.exit(1) (packages/core/src/application/bunest-application-context.ts)
-    it.skip("should exit when the selected context has abortOnError set to true", async () => {
+    it("should exit when the selected context has abortOnError set to true", async () => {
       app = await NestFactory.create(AppModule, {
         abortOnError: false,
         logger: false,
@@ -61,8 +60,7 @@ describeConformance(
       expect(exit).toHaveBeenCalledWith(1);
     });
 
-    // BUNEST_BUG: select(NotImportedModule, { abortOnError: true }) throws instead of calling process.exit(1) (packages/core/src/application/bunest-application-context.ts)
-    it.skip("should exit when select itself fails with abortOnError set to true", async () => {
+    it("should exit when select itself fails with abortOnError set to true", async () => {
       app = await NestFactory.create(AppModule, {
         abortOnError: false,
         logger: false,
@@ -74,8 +72,7 @@ describeConformance(
       expect(exit).toHaveBeenCalledWith(1);
     });
 
-    // BUNEST_BUG: chained select() does not propagate abortOnError: true -> process.exit(1) (packages/core/src/application/bunest-application-context.ts)
-    it.skip("should apply the option of the selected context to a further select", async () => {
+    it("should apply the option of the selected context to a further select", async () => {
       app = await NestFactory.create(AppModule, {
         abortOnError: false,
         logger: false,

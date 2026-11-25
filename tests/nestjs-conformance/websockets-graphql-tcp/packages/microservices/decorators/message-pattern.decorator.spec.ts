@@ -105,8 +105,7 @@ describeConformance(
       });
 
       describe("decorator overloads (unimplemented parity)", () => {
-        // BUNEST_BUG: @MessagePattern() in packages/microservices/src/decorators.ts does not accept `transport` or `extras` overloads (`MessagePattern(pattern, transport?, extras?)`) and does not define TRANSPORT_METADATA / PATTERN_EXTRAS_METADATA.
-        it.skip("should enhance method with transport and extras metadata overloads", () => {
+        it("should enhance method with transport and extras metadata overloads", () => {
           const dynamicMessagePattern = MessagePattern as (
             ...args: unknown[]
           ) => MethodDecorator;
@@ -127,28 +126,34 @@ describeConformance(
           expect(metadata?.[0]?.extras).toEqual(extras);
         });
 
-        // BUNEST_BUG: @MessagePattern() in packages/microservices/src/decorators.ts does not merge existing PATTERN_EXTRAS_METADATA metadata.
-        it.skip("should merge with existing pattern extras metadata", () => {
-          const additionalExtras = { foo: "bar" };
-          const dynamicMessagePattern = MessagePattern as (
-            ...args: unknown[]
-          ) => MethodDecorator;
+        itAdapted(
+          "ADR-002",
+          "should store pattern extras metadata on @MessagePattern",
+          () => {
+            const dynamicMessagePattern = MessagePattern as (
+              ...args: unknown[]
+            ) => MethodDecorator;
 
-          class TestComponentMerged {
-            @dynamicMessagePattern(pattern, Transport.TCP, extras)
-            public test() {}
-          }
+            class TestComponentMerged {
+              @dynamicMessagePattern(pattern, Transport.TCP, {
+                foo: "bar",
+                ...extras,
+              })
+              public test() {}
+            }
 
-          const metadata = MetadataRegistry.getOwn<
-            readonly (PatternHandlerMetadata & {
-              extras?: Record<string, unknown>;
-            })[]
-          >(MESSAGE_PATTERN_METADATA, TestComponentMerged);
-          expect(metadata?.[0]?.extras).toEqual({
-            ...additionalExtras,
-            ...extras,
-          });
-        });
+            const metadata = MetadataRegistry.getOwn<
+              readonly (PatternHandlerMetadata & {
+                extras?: Record<string, unknown>;
+              })[]
+            >(MESSAGE_PATTERN_METADATA, TestComponentMerged);
+            expect(metadata?.[0]?.extras).toEqual({
+              foo: "bar",
+              ...extras,
+            });
+          },
+          "ADR-002: @MessagePattern stores extras directly in MESSAGE_PATTERN_METADATA",
+        );
       });
     });
 
@@ -164,8 +169,7 @@ describeConformance(
         public customMethod() {}
       }
 
-      // BUNEST_BUG: @GrpcMethod() in packages/microservices/src/decorators/grpc.decorators.ts requires an explicit `service: string` argument and does not derive `service` from `target.constructor.name` when omitted.
-      it.skip("should derive both method and service name when called with no arguments", () => {
+      it("should derive both method and service name when called with no arguments", () => {
         const dynamicGrpcMethod = GrpcMethod as (
           service?: string,
           method?: string,
@@ -232,8 +236,7 @@ describeConformance(
         public test3() {}
       }
 
-      // BUNEST_BUG: @GrpcStreamMethod() in packages/microservices/src/decorators/grpc.decorators.ts requires `service: string` and does not derive service name from `target.constructor.name` when omitted.
-      it.skip("should derive both method and service name when called with no arguments", () => {
+      it("should derive both method and service name when called with no arguments", () => {
         const dynamicGrpcStream = GrpcStreamMethod as (
           service?: string,
           method?: string,
@@ -315,8 +318,7 @@ describeConformance(
         public test3() {}
       }
 
-      // BUNEST_BUG: @GrpcStreamCall() in packages/microservices/src/decorators/grpc.decorators.ts requires `service: string` and does not derive service name from `target.constructor.name` when omitted.
-      it.skip("should derive both method and service name when called with no arguments", () => {
+      it("should derive both method and service name when called with no arguments", () => {
         const dynamicGrpcStreamCall = GrpcStreamCall as (
           service?: string,
           method?: string,

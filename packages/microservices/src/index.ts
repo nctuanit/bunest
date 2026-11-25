@@ -115,7 +115,13 @@ export {
   NatsRequestJSONDeserializer,
   NatsResponseJSONDeserializer,
 } from "./deserializers";
-export { IdentitySerializer, KafkaRequestSerializer } from "./serializers";
+export {
+  IdentitySerializer,
+  KafkaRequestSerializer,
+  MqttRecordSerializer,
+  NatsRecordSerializer,
+  RmqRecordSerializer,
+} from "./serializers";
 
 // Protocol Helpers
 export {
@@ -143,6 +149,7 @@ export type {
 
 // Core Interfaces & Transport Config Types
 export {
+  exceedsPatternLimits,
   normalizePattern,
   type AsyncMicroserviceOptions,
   type AsyncOptions,

@@ -115,8 +115,7 @@ describeConformance(
         .create([new DocumentsResolver()]);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1029-1056) iterates `implements` in array order (letting ancestor `Document` overwrite descendant `ConfidentialDocument` for `DescendantFirst` and `Sealed`) and omits `@Extensions()` on fields inherited from `@InterfaceType()` (returning `{}` instead of `{ role: "ADMIN" }` on `AncestorFirst`).
-    it.skip.each(["DescendantFirst", "AncestorFirst", "Sealed"])(
+    it.each(["DescendantFirst", "AncestorFirst", "Sealed"])(
       "should build %s.author from the closest declaration",
       (typeName) => {
         const author = (
@@ -128,8 +127,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInterfaceType (packages/graphql/src/schema/graphql-schema.factory.ts:877-890) does not inherit fields from interfaces listed in `@InterfaceType({ implements })`, causing GraphQL schema validation errors ("Interface field Document.id expected but ConfidentialDocument does not provide it", etc.), and getOrCreateObjectType does not prefer the closest interface declaration's field middleware.
-    it.skip("should run the middleware of the closest declaration", async () => {
+    it("should run the middleware of the closest declaration", async () => {
       const result = await graphql({
         schema,
         source:

@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(415);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Unsupported Media Type", 415) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Unsupported Media Type"` in getResponse(), whereas NestJS returns `{ message: "Unsupported Media Type", statusCode: 415 }`.
-    it.skip('should return "Unsupported Media Type" as default message', () => {
+    it('should return "Unsupported Media Type" as default message', () => {
       const exc = new UnsupportedMediaTypeException();
       expect(exc.getResponse()).toEqual({
         message: "Unsupported Media Type",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new UnsupportedMediaTypeException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

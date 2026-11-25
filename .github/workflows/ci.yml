@@ -44,6 +44,12 @@ jobs:
       - name: Run full test suite
         run: bun test
 
+      - name: NestJS conformance ratchet (skips may only decrease)
+        run: bun run conformance:gate
+
+      - name: Check generated AI docs (llms.txt, docs/errors.md) are fresh
+        run: bun run ai:docs --check
+
       - name: Build all workspace packages
         run: bun run build
 

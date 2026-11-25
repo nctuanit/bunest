@@ -225,8 +225,7 @@ describeConformance(
       "normalizes camelCase directory segment to kebab-case",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore segments ("_bar/_foo") instead of preserving underscores in path and filename while normalizing class name to FooModule (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in module's path and file name", () => {
+    it("should keep underscores in module's path and file name", () => {
       const planned = buildSchematicFiles(
         "module",
         parseSchematicName("_bar/_foo"),
@@ -257,8 +256,7 @@ describeConformance(
       "Bunest is Bun-only native TypeScript with no JavaScript template variant",
     );
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-import generated modules into parent src/app.module.ts (missing AST module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -279,8 +277,7 @@ describeConformance(
       expect(appModule).toContain("imports: [FooModule]");
     });
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-import nested child modules into nearest parent module src/bar/bar.module.ts (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in bar module", async () => {
+    it("should manage declaration in bar module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -306,8 +303,7 @@ describeConformance(
       expect(barModule).toContain("imports: [FooModule]");
     });
 
-    // BUNEST_BUG: generateSchematic("module", ...) does not auto-declare FooModule in src/app.module.ts for ESM projects (missing module declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

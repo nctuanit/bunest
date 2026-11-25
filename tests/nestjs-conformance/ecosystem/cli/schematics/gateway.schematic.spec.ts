@@ -157,8 +157,7 @@ describeConformance(
       "Normalizes camelCase gateway name to kebab-case path and PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_foo/_foo.gateway.ts" exporting FooGateway.
-    it.skip("should keep underscores", async () => {
+    it("should keep underscores", async () => {
       const result = await generateSchematic({
         schematic: "gateway",
         name: "_foo",
@@ -255,8 +254,7 @@ describeConformance(
       expect(existsSyncPath(join(tempDir, "foo.gateway.test.ts"))).toBe(true);
     });
 
-    // BUNEST_BUG: generateSchematic("gateway") in packages/cli/src/commands/generate.ts does not auto-register FooGateway in src/app.module.ts providers[] (note: per ADR-001/ADR-002, Bunest ESM uses extensionless imports).
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       await generateSchematic({
         schematic: "application",
         name: "app",
@@ -310,8 +308,7 @@ describeConformance(
       "Bunest generates bun:test gateway spec with extensionless bundler imports",
     );
 
-    // BUNEST_BUG: generateSchematic("gateway") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream gateway/schema.json.
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "gateway",
         name: "foo",

@@ -102,8 +102,12 @@ describeConformance(
               expect(configs[0]?.middleware).toBe(noopMiddleware);
               expect(configs[0]?.include).toEqual([
                 { path: "/test", method: RequestMethod.GET },
-                { path: "/path", method: RequestMethod.ALL },
-                { path: "/path/*", method: RequestMethod.ALL },
+                { path: "/path/route", method: RequestMethod.GET },
+                {
+                  path: "/path/versioned",
+                  method: RequestMethod.GET,
+                  version: "1",
+                } as RouteInfo,
               ]);
               expect(matches("GET", "/test")).toBe(true);
               expect(matches("POST", "/test")).toBe(false);
@@ -113,8 +117,7 @@ describeConformance(
             "CoreMiddlewareConsumer expands controllers to prefix + prefix/*",
           );
 
-          // BUNEST_BUG: CoreMiddlewareConsumer.forRoutes(Controller) expands only controller-level paths (`/path`, `/path/*`) with RequestMethod.ALL instead of scanning method-level routes and `@Version()` metadata (packages/core/src/module/middleware-consumer.ts:33-52).
-          it.skip("should extract per-method controller routes and @Version metadata in forRoutes(Controller)", () => {
+          it("should extract per-method controller routes and @Version metadata in forRoutes(Controller)", () => {
             configProxy.forRoutes(route, TestController);
 
             const include = builder.getConfigs()[0]?.include as Array<
@@ -195,8 +198,7 @@ describeConformance(
             "Single compiled-route match avoids duplicate middleware runs",
           );
 
-          // BUNEST_BUG: matchesPathPattern() treats any segment starting with ":" (e.g. ":id.json") as matching arbitrary segments like "admin" (received true, expected false) and does not parse NestJS v11+ "{*path}" or "*path" wildcard syntax (packages/core/src/http/scanner/path-normalizer.ts:134-158).
-          it.skip("should not treat /docs/:id.json as matching /docs/admin, and should support brace/named wildcards", () => {
+          it("should not treat /docs/:id.json as matching /docs/admin, and should support brace/named wildcards", () => {
             configProxy.forRoutes(
               { path: "/docs/:id.json", method: RequestMethod.GET },
               { path: "/files/{*path}", method: RequestMethod.GET },
@@ -271,8 +273,7 @@ describeConformance(
             expect(matches("GET", "/:tenant")).toBe(true);
           });
 
-          // BUNEST_BUG: RouteInfo lacks a `version` property, CoreMiddlewareConsumer toRouteInfos() strips `version`, and matchesMiddlewareForRoute() has no version filtering (packages/core/src/common/interfaces/pipeline.interface.ts:113-116, packages/core/src/module/middleware-consumer.ts:54-59, packages/core/src/http/scanner/path-normalizer.ts:212-242).
-          it.skip("should preserve version scoping on RouteInfo and not match a route of another version", () => {
+          it("should preserve version scoping on RouteInfo and not match a route of another version", () => {
             const routes = [
               {
                 path: "/accounts/:id",
@@ -403,8 +404,7 @@ describeConformance(
         expect(matches("GET", "/api/users", "/users")).toBe(true);
       });
 
-      // BUNEST_BUG: matchesPathPattern() only recognizes "*" and "(.*)", not NestJS v11+ "{*path}" brace wildcard syntax; GET /health/ready was not excluded (received true, expected false) (packages/core/src/http/scanner/path-normalizer.ts:134-167).
-      it.skip("should exclude routes using NestJS v11+ brace wildcard syntax (health/{*path})", () => {
+      it("should exclude routes using NestJS v11+ brace wildcard syntax (health/{*path})", () => {
         builder
           .apply(noopMiddleware)
           .exclude("health/{*path}", "health")
@@ -414,8 +414,7 @@ describeConformance(
         expect(matches("GET", "/health/ready", "/health/ready")).toBe(false);
       });
 
-      // BUNEST_BUG: matchesPathPattern() matches trailing wildcard "/webhooks/*" against parent path "/webhooks" (received false, expected true), so excluding "webhooks/*" unintentionally excludes parent "/webhooks" (packages/core/src/http/scanner/path-normalizer.ts:161-167).
-      it.skip("should not exclude the parent route of a wildcard, excluded from the global prefix with a trailing slash", () => {
+      it("should not exclude the parent route of a wildcard, excluded from the global prefix with a trailing slash", () => {
         builder.apply(noopMiddleware).exclude("webhooks/*").forRoutes("*");
 
         // `/webhooks` is the parent path without a child segment and must NOT be excluded by `webhooks/*`
@@ -425,8 +424,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: matchesPathPattern() only performs case-sensitive segment comparison (`pSeg !== tSeg`) and exposes no `caseSensitive` matching option; case-insensitive exclude "HEALTH/:check" failed to exclude "/health/ready" (received true, expected false) (packages/core/src/http/scanner/path-normalizer.ts:155).
-      it.skip("should match excluded routes according to router case sensitivity", () => {
+      it("should match excluded routes according to router case sensitivity", () => {
         builder.apply(noopMiddleware).exclude("HEALTH/:check").forRoutes("*");
 
         // Case-sensitive exact match excludes `/HEALTH/ready`

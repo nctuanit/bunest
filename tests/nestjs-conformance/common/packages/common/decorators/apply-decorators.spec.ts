@@ -37,8 +37,7 @@ describeConformance(
       };
     }
 
-    // BUNEST_BUG: applyDecorators() in packages/core/src/common/decorators/apply-decorators.ts:54-95 ignores plain-object targets when propertyKey is undefined (`typeof target === "function"` check fails and falls through without calling any decorator) and executes class decorators bottom-to-top instead of forward order (reversing non-commutative mutations like myParam = 1 then += 2).
-    it.skip("should apply all decorators", () => {
+    it("should apply all decorators", () => {
       const testParams = {
         decorator1: { param: 1 },
         decorator2: { param1: 2, param2: 3 },

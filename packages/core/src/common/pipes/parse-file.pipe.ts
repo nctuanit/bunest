@@ -14,6 +14,10 @@ import {
   type FileValidator,
   type MaxFileSizeValidatorOptions,
 } from "./file-validators";
+import {
+  createStatusHttpException,
+  getHttpReasonPhrase,
+} from "./validation-http.util";
 
 export interface ParseFileOptions {
   /**
@@ -42,22 +46,10 @@ function createParseFileException(
     return options.exceptionFactory(message);
   }
   const status = options?.errorHttpStatusCode ?? HttpStatus.BAD_REQUEST;
-  const label =
-    status === HttpStatus.UNPROCESSABLE_ENTITY
-      ? "Unprocessable Entity"
-      : status === HttpStatus.PAYLOAD_TOO_LARGE
-        ? "Payload Too Large"
-        : status === HttpStatus.UNSUPPORTED_MEDIA_TYPE
-          ? "Unsupported Media Type"
-          : status === HttpStatus.BAD_REQUEST
-            ? "Bad Request"
-            : "Http Exception";
-  return new HttpException(
+  const label = getHttpReasonPhrase(status);
+  return createStatusHttpException(
     HttpException.createBody(message, label, status),
     status,
-    {
-      description: label,
-    },
   );
 }
 
@@ -130,27 +122,41 @@ export class ParseFilePipe implements PipeTransform<
 
     if (typeof value === "object") {
       const entries = Object.values(value as Record<string, unknown>);
-      const files: UploadedFileInfo[] = [];
-      for (const entry of entries) {
-        if (Array.isArray(entry)) {
-          for (const item of entry) {
-            if (isUploadedFileInfo(item)) {
-              files.push(item);
-            }
-          }
-        } else if (isUploadedFileInfo(entry)) {
-          files.push(entry);
-        }
-      }
-      if (files.length === 0) {
+      if (entries.length === 0) {
         if (!this.fileIsRequired) {
           return value;
         }
         throw this.exceptionFactory("File is required");
       }
-      for (const file of files) {
-        await this.validate(file);
+      const isFieldMap = entries.every(
+        (entry) => Array.isArray(entry) || isUploadedFileInfo(entry),
+      );
+      if (isFieldMap) {
+        const files: UploadedFileInfo[] = [];
+        for (const entry of entries) {
+          if (Array.isArray(entry)) {
+            for (const item of entry) {
+              if (item && typeof item === "object") {
+                files.push(item as UploadedFileInfo);
+              }
+            }
+          } else if (isUploadedFileInfo(entry)) {
+            files.push(entry);
+          }
+        }
+        if (files.length === 0) {
+          if (!this.fileIsRequired) {
+            return value;
+          }
+          throw this.exceptionFactory("File is required");
+        }
+        for (const file of files) {
+          await this.validate(file);
+        }
+        return value;
       }
+      // Minimal single file object (e.g. `{ path: "some-path" }`)
+      await this.validate(value);
       return value;
     }
 

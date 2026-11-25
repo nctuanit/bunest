@@ -20,6 +20,8 @@ export interface ExplorerModuleLike {
   readonly metatype?: Function;
   readonly moduleClass?: Function;
   readonly providers?: Map<unknown, unknown> | readonly unknown[];
+  readonly imports?: ReadonlySet<ExplorerModuleLike> | readonly ExplorerModuleLike[];
+  readonly isGlobal?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ export class BaseExplorerService {
   getModules<TKey = unknown, TModule = ExplorerModuleLike>(
     modulesContainer: ReadonlyMap<TKey, TModule> | undefined,
     include: Function[],
-    _skipGlobalImports = false,
+    skipGlobalImports = false,
   ): TModule[] {
     if (!modulesContainer) {
       return [];
@@ -39,20 +41,39 @@ export class BaseExplorerService {
     if (!include || include.length === 0) {
       return [...modulesContainer.values()];
     }
-    return this.includeWhitelisted(modulesContainer, include);
+    return this.includeWhitelisted(modulesContainer, include, skipGlobalImports);
   }
 
   includeWhitelisted<TKey = unknown, TModule = ExplorerModuleLike>(
     modulesContainer: ReadonlyMap<TKey, TModule>,
     include: Function[],
+    skipGlobalImports = false,
   ): TModule[] {
     const allowed = new Set<Function>(include);
+    const visited = new Set<TModule>();
     const result: TModule[] = [];
+
+    const collect = (mod: TModule): void => {
+      if (visited.has(mod)) return;
+      visited.add(mod);
+      result.push(mod);
+      const moduleLike = mod as ExplorerModuleLike | null | undefined;
+      const imports = moduleLike?.imports;
+      if (imports) {
+        for (const imported of imports) {
+          if (skipGlobalImports && imported?.isGlobal) {
+            continue;
+          }
+          collect(imported as unknown as TModule);
+        }
+      }
+    };
+
     for (const mod of modulesContainer.values()) {
       const moduleLike = mod as ExplorerModuleLike | null | undefined;
       const metatype = moduleLike?.metatype ?? moduleLike?.moduleClass;
       if (metatype && allowed.has(metatype)) {
-        result.push(mod);
+        collect(mod);
       }
     }
     return result;
@@ -155,7 +176,27 @@ export class BaseExplorerService {
     }
     if (isDerivedFrom(first.target, second.target)) return true;
     if (isDerivedFrom(second.target, first.target)) return false;
-    if (first.target === second.target) return false;
+    if (first.target === second.target) {
+      if (
+        first.methodName &&
+        second.methodName &&
+        first.methodName !== second.methodName
+      ) {
+        throw new Error(
+          `Duplicate resolver handler "${first.type}.${first.name}" registered by methods "${first.methodName}" and "${second.methodName}" on ${first.target.name}.`,
+        );
+      }
+      return false;
+    }
+    if (
+      first.declaredOn &&
+      second.declaredOn &&
+      first.declaredOn === second.declaredOn &&
+      first.methodName &&
+      first.methodName === second.methodName
+    ) {
+      return true;
+    }
     throw new Error(
       `Duplicate resolver handler "${first.type}.${first.name}" registered by unrelated classes ${first.target.name} and ${second.target.name}.`,
     );

@@ -131,8 +131,7 @@ describeConformance(
       "normalizes camelCase sub-app name to kebab-case paths and PascalCase symbols",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore ("_project") instead of creating apps/_project with _project.* files (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in sub-app's path and file name", () => {
+    it("should keep underscores in sub-app's path and file name", () => {
       const planned = buildSchematicFiles(
         "sub-app",
         parseSchematicName("_project"),
@@ -215,8 +214,7 @@ describeConformance(
       "Bunest uses native Bun.build rather than @rspack/core or webpack plugins",
     );
 
-    // BUNEST_BUG: generateSchematic("sub-app", ...) does not create or update bunest.json (or .bunestrc.json) with monorepo: true and registered project metadata (packages/cli/src/commands/generate.ts, packages/cli/src/templates/schematic.templates.ts:470-572)
-    it.skip("should create or update bunest.json with monorepo: true and register sub-app", async () => {
+    it("should create or update bunest.json with monorepo: true and register sub-app", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "sub-app",
@@ -235,8 +233,7 @@ describeConformance(
       expect(projects["project"]?.["root"]).toBe("apps/project");
     });
 
-    // BUNEST_BUG: generateSchematic("sub-app", ...) does not sort or register sub-app project entries in bunest.json (packages/cli/src/commands/generate.ts, packages/cli/src/templates/schematic.templates.ts:470-572)
-    it.skip("should sort sub-app names in bunest.json", async () => {
+    it("should sort sub-app names in bunest.json", async () => {
       const cwd = createTempDir();
       const configPath = join(cwd, "bunest.json");
       writeTextSync(configPath, JSON.stringify({ monorepo: true, projects: {} }));
@@ -250,8 +247,7 @@ describeConformance(
       expect(Object.keys(projects)).toEqual(["a", "b", "c"]);
     });
 
-    // BUNEST_BUG: generateSchematic("sub-app", ...) does not update existing .bunestrc.json when it is the active config file (packages/cli/src/commands/generate.ts)
-    it.skip("should update .bunestrc.json when it is the config file in use", async () => {
+    it("should update .bunestrc.json when it is the config file in use", async () => {
       const cwd = createTempDir();
       const rcPath = join(cwd, ".bunestrc.json");
       writeTextSync(rcPath, JSON.stringify({ compilerOptions: { deleteOutDir: true } }));
@@ -270,8 +266,7 @@ describeConformance(
       ).toBe(true);
     });
 
-    // BUNEST_BUG: GenerateSchematicOptions and buildSchematicFiles("sub-app") hardcode "apps/<kebab>" and do not support a custom rootDir option (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:471)
-    it.skip("should support custom rootDir option for sub-app", async () => {
+    it("should support custom rootDir option for sub-app", async () => {
       const cwd = createTempDir();
       const options: ExtendedSubAppOptions = {
         schematic: "sub-app",
@@ -287,8 +282,7 @@ describeConformance(
       ).toBeDefined();
     });
 
-    // BUNEST_BUG: generateSchematic("sub-app", ...) does not convert root tsconfig.json to solution-style project references or create tsconfig.spec.json (packages/cli/src/commands/generate.ts, packages/cli/src/templates/schematic.templates.ts:470-572)
-    it.skip("should convert tsconfig.json to solution-style with project references and tsconfig.spec.json", async () => {
+    it("should convert tsconfig.json to solution-style with project references and tsconfig.spec.json", async () => {
       const cwd = createTempDir();
       const tsconfigPath = join(cwd, "tsconfig.json");
       writeTextSync(tsconfigPath, JSON.stringify({
@@ -337,8 +331,7 @@ describeConformance(
       "Bunest standardizes on bun check and bun test instead of oxlint/eslint",
     );
 
-    // BUNEST_BUG: generateSchematic("sub-app", ...) does not warn about ignored legacy config files (nest.json) or update bunest.json (packages/cli/src/commands/generate.ts)
-    it.skip("should warn about ignored legacy nest.json config file when creating monorepo config", async () => {
+    it("should warn about ignored legacy nest.json config file when creating monorepo config", async () => {
       const cwd = createTempDir();
       writeTextSync(join(cwd, "nest.json"), JSON.stringify({ sourceRoot: "source" }));
       const stderr: string[] = [];

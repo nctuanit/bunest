@@ -190,8 +190,7 @@ describeConformance(
       "HealthCheckService serializes array details inline as JSON",
     );
 
-    // BUNEST_BUG: formatErrorLog() in packages/observability/src/health/health.service.ts:143-155 uses raw JSON.stringify(value), which silently drops Symbol-valued properties instead of formatting them (expected output to contain "foo" and "Symbol(TEST)", received 'Health Check has failed!\n  - dog: {"status":"down"}').
-    it.skip("should print symbol details", async () => {
+    it("should print symbol details", async () => {
       const message = await logPrettyErrorFor([
         {
           dog: {

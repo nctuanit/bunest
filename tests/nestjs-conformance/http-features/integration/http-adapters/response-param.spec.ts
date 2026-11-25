@@ -114,8 +114,7 @@ describeConformance(
         expect(res.headers["x-from-param"]).toBe("yes");
       });
 
-      // BUNEST_BUG: resolveRouteArguments runs parameter-scoped pipes (and global pipes on custom decorators) even when the custom param decorator returns ResponseContext (packages/core/src/http/pipeline/param-extractor.ts:289-293, 340-358).
-      it.skip("should run no pipe on the response a decorator gives", async () => {
+      it("should run no pipe on the response a decorator gives", async () => {
         const res = await request(app).get("/response-with-pipe");
 
         expect(res.status).toBe(200);

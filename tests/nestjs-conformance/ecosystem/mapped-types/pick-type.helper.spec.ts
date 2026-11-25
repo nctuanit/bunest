@@ -87,8 +87,7 @@ describeConformance(
         expect(transformedDto.login).toEqual(login + "_transformed");
       });
 
-      // BUNEST_BUG: inheritTransformationMetadata() (packages/core/src/common/mapped-types/mapped-types.utils.ts:427-495) iterates the prototype chain base-to-derived ([Grandparent, Parent]) and appends both @Transform entries onto PickType's generated class in that order; because class-transformer executes transforms on the same class in reverse (LIFO) order, Parent runs before Grandparent (received ["Parent", "Grandparent", "Children"] and value=0 instead of ["Grandparent", "Parent", "Children"] and value=1).
-      it.skip("should inherit grandparent transformer metadata", () => {
+      it("should inherit grandparent transformer metadata", () => {
         const transformExecuteSequenceList: string[] = [];
         class Grandparent {
           @Expose()

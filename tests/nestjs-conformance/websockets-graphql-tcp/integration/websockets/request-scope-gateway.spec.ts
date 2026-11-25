@@ -235,8 +235,7 @@ describeConformance(
       "fail-fast scope leak",
     );
 
-    // BUNEST_BUG: WsGatewayExplorer.discoverAndBindGateways() only iterates discovery.getAllSingletonInstances() and skips @WebSocketGateway({ scope: Scope.REQUEST }) providers; BunWebSocketAdapter lacks per-connection RequestContainer/REQUEST resolution (packages/core/src/ws/explorer/ws-gateway.explorer.ts#L122, packages/core/src/ws/adapter/bun-ws.adapter.ts#L240).
-    it.skip("should reuse the same request-scoped provider per connection and isolate across clients [ADR-001, ADR-012]", async () => {
+    it("should reuse the same request-scoped provider per connection and isolate across clients [ADR-001, ADR-012]", async () => {
       const testingModule = await Test.createTestingModule({
         imports: [WebSocketModule.forRoot()],
         providers: [

@@ -103,8 +103,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected `_service.sdl` to emit `@tag(name: "visibility")` on enum Visibility, `@tag(name: "public")` on PUBLIC, and `@tag(name: "media")` on union Media; actual SDL omits all enum/enum-value/union directives because registerEnumType (packages/graphql/src/decorators/type.decorators.ts:102-118) ignores directives/valuesMap.directives, getOrCreateUnionType (packages/graphql/src/schema/graphql-schema.factory.ts:906-921) ignores ref.directives, and federation printSchema (:1549) does not print AST directives.
-    it.skip("should emit enum, enum-value and union directives in the subgraph SDL", async () => {
+    it("should emit enum, enum-value and union directives in the subgraph SDL", async () => {
       const res = await request(app)
         .post("/graphql")
         .send({

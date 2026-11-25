@@ -97,8 +97,7 @@ describeConformance(
       schema = await schemaFactory.create([new OwnerResolver()]);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1201-1210) does not inspect @ArgsType() class property initializers (`ownerId = null`) as GraphQL defaultValue (expected null, actual undefined).
-    it.skip('should keep a "null" initializer as the default of a nullable argument', () => {
+    it('should keep a "null" initializer as the default of a nullable argument', () => {
       const [ownerId] = schema.getQueryType()!.getFields().optional!.args;
       expect(ownerId!.defaultValue).toBeNull();
     });
@@ -109,8 +108,7 @@ describeConformance(
       expect(isRequiredArgument(ownerId!)).toBe(true);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateInputType (packages/graphql/src/schema/graphql-schema.factory.ts:1163-1174) does not inspect @InputType() class property initializers (`ownerId = null`) as GraphQL defaultValue (expected null on OptionalOwnerInput.ownerId, actual undefined).
-    it.skip('should not let a "null" initializer make a non-nullable input field optional', () => {
+    it('should not let a "null" initializer make a non-nullable input field optional', () => {
       const optional = schema.getType(
         "OptionalOwnerInput",
       ) as GraphQLInputObjectType;
@@ -123,8 +121,7 @@ describeConformance(
       expect(isRequiredInputField(required.getFields().ownerId!)).toBe(true);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1214-1226) does not reject an explicit `defaultValue: null` on a non-nullable argument (and `DefaultNullableConflictError` is not implemented in packages/graphql/src/).
-    it.skip('should reject an explicit "null" default on a non-nullable argument', async () => {
+    it('should reject an explicit "null" default on a non-nullable argument', async () => {
       await expect(
         schemaFactory.create([new ExplicitNullDefaultResolver()]),
       ).rejects.toThrow();

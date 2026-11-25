@@ -35,8 +35,7 @@ describeConformance(
       process.env = originalEnv;
     });
 
-    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/core/src/config/validator.ts:262)
-    it.skip("should prevent application from bootstrapping if error is thrown due to loaded env variables", async () => {
+    it("should prevent application from bootstrapping if error is thrown due to loaded env variables", async () => {
       let hasThrown = false;
       try {
         const moduleRef = await Test.createTestingModule({
@@ -52,8 +51,7 @@ describeConformance(
       expect(hasThrown).toBe(true);
     });
 
-    // BUNEST_BUG: validateConfiguration() wraps errors thrown by custom validate() in ConfigValidationError("Configuration validation failed: ...") instead of preserving err.message directly (expected "Validation error", received "Configuration validation failed: Validation error"; packages/core/src/config/validator.ts:262)
-    it.skip("should prevent application from bootstrapping if error is thrown even when ignoreEnvFile is true", async () => {
+    it("should prevent application from bootstrapping if error is thrown even when ignoreEnvFile is true", async () => {
       let hasThrown = false;
       try {
         const moduleRef = await Test.createTestingModule({

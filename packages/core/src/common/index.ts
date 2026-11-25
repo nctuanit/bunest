@@ -619,6 +619,7 @@ export {
   parseDuration,
   parseJsonOr,
   parseQueryString,
+  parseRetryAfter,
   partition,
   pascalCase,
   pick,

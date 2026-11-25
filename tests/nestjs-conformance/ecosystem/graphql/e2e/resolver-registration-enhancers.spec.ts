@@ -162,8 +162,7 @@ describeConformance(
         expect(body.errors[0].message).toBe("Forbidden resource");
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.compileMethod() resolves class enhancers via moduleRef.get/create even for useFactory/useValue resolvers instead of refusing bootstrap when Nest did not register the class enhancer on the provider (packages/graphql/src/schema/graphql-schema.factory.ts:275-288).
-      it.skip.each(["useFactory", "useValue"] as const)(
+      it.each(["useFactory", "useValue"] as const)(
         'should refuse to start with a resolver registered with "%s"',
         async (method) => {
           await createApp([CatsModule.register(method, GuardedCatsResolver)]);
@@ -193,8 +192,7 @@ describeConformance(
         useClass: RequestScopedDenyGuard,
       };
 
-      // BUNEST_BUG: GraphQLService.buildSchema() only discovers APP_FILTER multi-providers and ignores APP_GUARD (including request-scoped global guards), so RequestScopedDenyGuard never runs for GraphQL resolvers (packages/graphql/src/driver/graphql-http.handler.ts:258-290).
-      it.skip.each([
+      it.each([
         ["as a class", CatsResolver],
         ['with "useClass" under another token', "CATS_RESOLVER"],
       ] as const)(
@@ -213,8 +211,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: GraphQLService.buildSchema() does not validate non-entry useFactory/useValue resolver providers against request-scoped global APP_GUARD enhancers at startup (packages/graphql/src/driver/graphql-http.handler.ts:224-290).
-      it.skip.each(["useFactory", "useValue"] as const)(
+      it.each(["useFactory", "useValue"] as const)(
         'should refuse to start with a resolver registered with "%s" under another token',
         async (method) => {
           await createApp(

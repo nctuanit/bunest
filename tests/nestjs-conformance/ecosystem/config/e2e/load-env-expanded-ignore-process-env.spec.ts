@@ -26,8 +26,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException because DIContainer.getSync() never checks module class instances (mod.instance) (packages/core/src/di/di-container.ts:1201,2626-2731)
-    it.skip("should ignore process environment variable", () => {
+    it("should ignore process environment variable", () => {
       const envVars = app.get(AppModule).getEnvVariables();
       expect(envVars.EMAIL).toEqual("support@myapp.test");
     });

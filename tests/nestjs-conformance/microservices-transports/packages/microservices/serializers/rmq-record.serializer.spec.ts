@@ -103,8 +103,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: @bunest/microservices exports RmqRecord and RmqRecordBuilder (packages/microservices/src/records.ts), but does NOT export RmqRecordSerializer (needed for NestJS serializer parity).
-      it.skip("should export RmqRecordSerializer and unwrap RmqRecord in request and reply packets", async () => {
+      it("should export RmqRecordSerializer and unwrap RmqRecord in request and reply packets", async () => {
         const mod =
           (await import("../../../../../../packages/microservices/src")) as Record<
             string,
@@ -146,8 +145,7 @@ describeConformance(
         expect(replyRecord.data).toEqual({ value: "string" });
       });
 
-      // BUNEST_BUG: RabbitMqClientProxy.emit() and send() do not unwrap RmqRecord instances into sendToQueue options and unwrapped data payload (packages/microservices/src/transports/broker.transports.ts:597-650).
-      it.skip("should unwrap RmqRecord data and forward AMQP options in RabbitMqClientProxy.emit()", async () => {
+      it("should unwrap RmqRecord data and forward AMQP options in RabbitMqClientProxy.emit()", async () => {
         const sent: Array<{
           queue: string;
           content: Uint8Array | string;

@@ -23,8 +23,7 @@ describeConformance(
       await app.init();
     });
 
-    // BUNEST_BUG: app.get(AppModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts:1201,2626-2731); additionally default ConfigService<Record<string, unknown>> KeyOf<T> resolves to `string` instead of `string | symbol`, rejecting symbol keys at compile time (packages/core/src/config/config.service.ts:27)
-    it.skip("should return symbol loaded configuration", () => {
+    it("should return symbol loaded configuration", () => {
       const config = app.get(AppModule).getSymbolDatabaseConfig();
       expect(config.host).toEqual("host");
       expect(config.port).toEqual(4000);

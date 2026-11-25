@@ -1,4 +1,10 @@
-import { resolve } from "@bunest/core";
+import {
+  basename,
+  existsSyncPath,
+  join,
+  resolve,
+  writeTextSync,
+} from "@bunest/core";
 import { buildProjectTemplateFiles } from "../templates/project.templates";
 import type {
   CliIO,
@@ -30,11 +36,18 @@ export async function createProject(
   options: CreateProjectOptions,
   io?: CliIO,
 ): Promise<CreateProjectResult> {
-  const projectName = validateProjectName(options.projectName);
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
-  const targetDir = options.dir
-    ? resolve(cwd, options.dir)
-    : resolve(cwd, projectName);
+  const isCurrentDir = options.projectName.trim() === ".";
+  const targetDir = isCurrentDir
+    ? options.dir
+      ? resolve(cwd, options.dir)
+      : resolve(cwd)
+    : options.dir
+      ? resolve(cwd, options.dir)
+      : resolve(cwd, validateProjectName(options.projectName));
+  const projectName = isCurrentDir
+    ? basename(targetDir) || "bunest-app"
+    : validateProjectName(options.projectName);
   const dryRun = options.dryRun ?? false;
   const skipInstall = options.skipInstall ?? false;
   const skipGit = options.skipGit ?? true;
@@ -55,6 +68,31 @@ export async function createProject(
     dryRun,
     force,
   });
+
+  if (!dryRun) {
+    const bunestJsonPath = join(targetDir, "bunest.json");
+    if (!existsSyncPath(bunestJsonPath) || force) {
+      const defaultBunestConfig = {
+        collection: "@bunest/schematics",
+        sourceRoot: "src",
+        entryFile: "main",
+        compilerOptions: {
+          deleteOutDir: true,
+          assets: [],
+          plugins: [],
+        },
+        generateOptions: {
+          spec: true,
+          flat: false,
+          specFileSuffix: "spec",
+        },
+      };
+      writeTextSync(
+        bunestJsonPath,
+        `${JSON.stringify(defaultBunestConfig, null, 2)}\n`,
+      );
+    }
+  }
 
   if (io) {
     for (const file of files) {

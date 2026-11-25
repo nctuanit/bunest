@@ -249,44 +249,56 @@ export class CapturingLogger extends ConsoleLogger {
   }
 
   override log(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("log", message, optionalParams);
+    if (!this.isLevelEnabled("log")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("log", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.log(message, ...optionalParams);
+      super.log(resolved, ...optionalParams);
     }
   }
 
   override error(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("error", message, optionalParams);
+    if (!this.isLevelEnabled("error")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("error", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.error(message, ...optionalParams);
+      super.error(resolved, ...optionalParams);
     }
   }
 
   override warn(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("warn", message, optionalParams);
+    if (!this.isLevelEnabled("warn")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("warn", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.warn(message, ...optionalParams);
+      super.warn(resolved, ...optionalParams);
     }
   }
 
   override debug(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("debug", message, optionalParams);
+    if (!this.isLevelEnabled("debug")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("debug", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.debug(message, ...optionalParams);
+      super.debug(resolved, ...optionalParams);
     }
   }
 
   override verbose(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("verbose", message, optionalParams);
+    if (!this.isLevelEnabled("verbose")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("verbose", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.verbose(message, ...optionalParams);
+      super.verbose(resolved, ...optionalParams);
     }
   }
 
   override fatal(message: unknown, ...optionalParams: unknown[]): void {
-    this.capture("fatal", message, optionalParams);
+    if (!this.isLevelEnabled("fatal")) return;
+    const resolved = typeof message === "function" ? (message as () => unknown)() : message;
+    this.capture("fatal", resolved, optionalParams);
     if (this.shouldPrint) {
-      super.fatal(message, ...optionalParams);
+      super.fatal(resolved, ...optionalParams);
     }
   }
 

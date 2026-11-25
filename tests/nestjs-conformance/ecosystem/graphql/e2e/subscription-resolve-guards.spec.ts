@@ -95,8 +95,7 @@ describeConformance(
       expect(body.errors).toHaveLength(1);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.createSubscriptionField() invokes `op.resolve!(payload, args, contextValue, info)` without binding `this` to `compiled.instance` (`op.resolve.call(compiled.instance, ...)`), throwing `TypeError: this.balance is not a function` (packages/graphql/src/schema/graphql-schema.factory.ts:706-712).
-    it.skip("should run for the events of a subscription the guard let through", async () => {
+    it("should run for the events of a subscription the guard let through", async () => {
       const { schema } = app.get(GraphQLSchemaHost);
       const stream = (await subscribe({
         schema,

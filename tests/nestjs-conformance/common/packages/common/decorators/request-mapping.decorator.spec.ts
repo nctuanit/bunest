@@ -68,8 +68,7 @@ describeConformance(
       expect(method).toEqual(RequestMethod.GET);
     });
 
-    // BUNEST_BUG: RequestMapping({ path: [] }) in packages/core/src/common/decorators/http.decorators.ts:154 stores empty array `[]` instead of normalizing empty array to `"/"` as NestJS does.
-    it.skip('should set path on "/" by default (for both {} and { path: [] })', () => {
+    it('should set path on "/" by default (for both {} and { path: [] })', () => {
       class Test {
         @RequestMapping({})
         public static test() {}

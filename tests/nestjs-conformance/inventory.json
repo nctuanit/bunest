@@ -27943,238 +27943,201 @@
     }
   ],
   "verification": {
-    "verifiedAt": "2026-11-20T13:00:05Z",
-    "verifiedBy": "eco-verifier-b",
-    "command": "bun test tests/nestjs-conformance",
-    "portedUpstreamFilesPresent": 669,
-    "supplementalSpecFilesPresent": 9,
-    "helperTestsFile": "tests/nestjs-conformance/_helpers/verify-helpers.spec.ts",
-    "totalSpecFiles": 679,
-    "totalTsFiles": 702,
-    "nonSpecHelperFixtureTsFiles": 23,
-    "hyphenatedSpecFiles": 0,
-    "missingFiles": 0,
-    "typecheck": {
-      "conformanceTsFiles": 702,
-      "conformanceTsErrors": 0,
-      "externalTsErrors": 0,
-      "fullRepoFilesChecked": 1581,
-      "fullRepoTsErrors": 0,
-      "fullRepoDurationMs": 706.92
-    },
-    "combinedRuns": {
-      "run1": {
-        "pass": 5076,
-        "skip": 2030,
-        "fail": 0,
-        "total": 7106,
-        "expects": 12008,
-        "files": 679,
-        "durationSeconds": 35.82
-      },
-      "run2": {
-        "pass": 5076,
-        "skip": 2030,
-        "fail": 0,
-        "total": 7106,
-        "expects": 12008,
-        "files": 679,
-        "durationSeconds": 30.62
-      },
-      "deterministicAcrossRuns": true
-    },
-    "fullWorkspaceTest": {
-      "command": "bun test",
-      "pass": 6270,
-      "skip": 2030,
+    "generatedAt": "2026-11-25T00:26:53.459Z",
+    "bunVersion": "1.4.5",
+    "elapsedMs": 37319,
+    "totals": {
+      "files": 683,
+      "tests": 7005,
+      "pass": 7005,
+      "skip": 0,
       "fail": 0,
-      "total": 8300,
-      "expects": 28941,
-      "files": 845,
-      "durationSeconds": 44.9,
-      "preExistingPackageSuite": {
-        "files": 166,
-        "pass": 1194,
-        "skip": 0,
-        "fail": 0,
-        "expects": 16933,
-        "regressions": 0
-      }
+      "assertions": 16058
     },
-    "hygiene": {
-      "skipCallSites": 1766,
-      "annotatedBugSkipSites": 1766,
-      "unannotatedSkipSites": 0,
-      "todoSites": 0,
-      "missingReflectMetadataLine1": 0,
-      "strayTempOrDbFiles": 0
-    },
-    "packageCoverage": {
-      "coveredPackages": 22,
-      "totalPackages": 22,
-      "specFilesImportingPackage": {
-        "axios": 4,
-        "cache": 10,
-        "cli": 37,
-        "common": 478,
-        "config": 25,
-        "core": 338,
-        "cqrs": 10,
-        "events": 3,
-        "graphql": 131,
-        "http": 68,
-        "mapped-types": 5,
-        "microservices": 59,
-        "observability": 35,
-        "queues": 9,
-        "scheduler": 7,
-        "security": 12,
-        "sql": 14,
-        "sqlite": 14,
-        "swagger": 40,
-        "testing": 8,
-        "validation": 9,
-        "websockets": 26
-      }
-    },
-    "byPhase": {
-      "phase1Core": {
-        "files": 336,
-        "pass": 2885,
-        "skip": 1129,
-        "fail": 0,
-        "total": 4014
-      },
-      "helpers": {
-        "files": 1,
-        "pass": 9,
-        "skip": 0,
-        "fail": 0,
-        "total": 9,
-        "expects": 80
-      },
-      "phase2Ecosystem": {
-        "files": 342,
-        "pass": 2182,
-        "skip": 901,
-        "fail": 0,
-        "total": 3083,
-        "expects": 5936
-      }
-    },
-    "byBucket": {
+    "buckets": {
       "_helpers": {
-        "directory": "tests/nestjs-conformance/_helpers",
         "files": 1,
+        "tests": 9,
         "pass": 9,
         "skip": 0,
         "fail": 0,
-        "total": 9,
-        "expects": 80
+        "assertions": 80
       },
-      "bucket-1": {
-        "directory": "tests/nestjs-conformance/common",
-        "files": 72
-      },
-      "bucket-2": {
-        "directory": "tests/nestjs-conformance/di-lifecycle-testing",
-        "files": 59
-      },
-      "bucket-3": {
-        "directory": "tests/nestjs-conformance/http-pipeline",
-        "files": 43
-      },
-      "bucket-4": {
-        "directory": "tests/nestjs-conformance/http-features",
-        "files": 32
-      },
-      "bucket-5": {
-        "directory": "tests/nestjs-conformance/routing-versioning",
-        "files": 14
-      },
-      "bucket-6": {
-        "directory": "tests/nestjs-conformance/scopes-core",
-        "files": 37
-      },
-      "bucket-7": {
-        "directory": "tests/nestjs-conformance/websockets-graphql-tcp",
-        "files": 55
-      },
-      "bucket-8": {
-        "directory": "tests/nestjs-conformance/microservices-transports",
-        "files": 24
-      },
-      "eco-bucket-1": {
-        "directory": "tests/nestjs-conformance/ecosystem/{axios,cache,config,cqrs,events,mapped-types,scheduler}",
-        "files": 66,
-        "pass": 304,
-        "skip": 131,
+      "ecosystem/mapped-types": {
+        "files": 5,
+        "tests": 33,
+        "pass": 33,
+        "skip": 0,
         "fail": 0,
-        "total": 435,
-        "expects": 672
+        "assertions": 65
       },
-      "eco-bucket-2": {
-        "directory": "tests/nestjs-conformance/ecosystem/swagger",
+      "ecosystem/queues": {
+        "files": 9,
+        "tests": 118,
+        "pass": 118,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 196
+      },
+      "ecosystem/axios": {
+        "files": 2,
+        "tests": 24,
+        "pass": 24,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 47
+      },
+      "ecosystem/cqrs": {
+        "files": 10,
+        "tests": 95,
+        "pass": 95,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 202
+      },
+      "ecosystem/cache": {
+        "files": 10,
+        "tests": 23,
+        "pass": 23,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 41
+      },
+      "ecosystem/swagger": {
         "files": 38,
-        "pass": 347,
-        "skip": 174,
+        "tests": 521,
+        "pass": 521,
+        "skip": 0,
         "fail": 0,
-        "total": 521,
-        "expects": 588
+        "assertions": 1011
       },
-      "eco-bucket-3": {
-        "directory": "tests/nestjs-conformance/ecosystem/graphql/unit",
-        "files": 60,
+      "ecosystem/config": {
+        "files": 29,
+        "tests": 140,
+        "pass": 140,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 271
+      },
+      "ecosystem/security": {
+        "files": 12,
+        "tests": 147,
         "pass": 147,
-        "skip": 132,
+        "skip": 0,
         "fail": 0,
-        "total": 279,
-        "expects": 338
+        "assertions": 498
       },
-      "eco-bucket-4": {
-        "directory": "tests/nestjs-conformance/ecosystem/graphql/{e2e,subscriptions}",
-        "files": 63,
-        "pass": 109,
-        "skip": 230,
+      "ecosystem/scheduler": {
+        "files": 7,
+        "tests": 75,
+        "pass": 75,
+        "skip": 0,
         "fail": 0,
-        "total": 339,
-        "expects": 226
+        "assertions": 193
       },
-      "eco-bucket-5": {
-        "directory": "tests/nestjs-conformance/ecosystem/{security,queues}",
-        "files": 21,
-        "pass": 214,
-        "skip": 51,
-        "fail": 0,
-        "total": 265,
-        "expects": 419
-      },
-      "eco-bucket-6": {
-        "directory": "tests/nestjs-conformance/ecosystem/observability",
-        "files": 35,
-        "pass": 492,
-        "skip": 50,
-        "fail": 0,
-        "total": 542,
-        "expects": 1604
-      },
-      "eco-bucket-7": {
-        "directory": "tests/nestjs-conformance/ecosystem/cli",
+      "ecosystem/cli": {
         "files": 37,
-        "pass": 382,
-        "skip": 132,
+        "tests": 514,
+        "pass": 514,
+        "skip": 0,
         "fail": 0,
-        "total": 514,
-        "expects": 1248
+        "assertions": 1487
       },
-      "eco-bucket-8": {
-        "directory": "tests/nestjs-conformance/ecosystem/persistence",
-        "files": 22,
-        "pass": 187,
-        "skip": 1,
+      "ecosystem/observability": {
+        "files": 35,
+        "tests": 537,
+        "pass": 537,
+        "skip": 0,
         "fail": 0,
-        "total": 188,
-        "expects": 841
+        "assertions": 1726
+      },
+      "ecosystem/graphql": {
+        "files": 123,
+        "tests": 612,
+        "pass": 612,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 1336
+      },
+      "ecosystem/persistence": {
+        "files": 26,
+        "tests": 105,
+        "pass": 105,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 526
+      },
+      "ecosystem/events": {
+        "files": 3,
+        "tests": 42,
+        "pass": 42,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 54
+      },
+      "websockets-graphql-tcp": {
+        "files": 55,
+        "tests": 403,
+        "pass": 403,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 1118
+      },
+      "http-pipeline": {
+        "files": 43,
+        "tests": 330,
+        "pass": 330,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 433
+      },
+      "common": {
+        "files": 72,
+        "tests": 1048,
+        "pass": 1048,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 2385
+      },
+      "di-lifecycle-testing": {
+        "files": 59,
+        "tests": 361,
+        "pass": 361,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 604
+      },
+      "scopes-core": {
+        "files": 37,
+        "tests": 411,
+        "pass": 411,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 735
+      },
+      "routing-versioning": {
+        "files": 14,
+        "tests": 467,
+        "pass": 467,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 248
+      },
+      "http-features": {
+        "files": 32,
+        "tests": 579,
+        "pass": 579,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 1153
+      },
+      "microservices-transports": {
+        "files": 24,
+        "tests": 411,
+        "pass": 411,
+        "skip": 0,
+        "fail": 0,
+        "assertions": 1649
       }
     }
   }

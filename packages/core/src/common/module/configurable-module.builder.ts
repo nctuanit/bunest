@@ -229,6 +229,7 @@ export class ConfigurableModuleBuilder<
   protected readonly logger: Logger = new Logger(
     ConfigurableModuleBuilder.name,
   );
+  private defaultOptionsToken?: symbol;
 
   constructor(
     options: ConfigurableModuleBuilderOptions = {},
@@ -236,6 +237,7 @@ export class ConfigurableModuleBuilder<
   ) {
     this.options = options;
     if (parentBuilder) {
+      this.defaultOptionsToken = parentBuilder.defaultOptionsToken;
       this.staticMethodKey = parentBuilder.staticMethodKey as StaticMethodKey;
       this.factoryClassMethodKey =
         parentBuilder.factoryClassMethodKey as FactoryClassMethodKey;
@@ -246,6 +248,9 @@ export class ConfigurableModuleBuilder<
           extraOptions: ExtraModuleDefinitionOptions,
         ) => DynamicModule;
     } else {
+      this.defaultOptionsToken = Symbol(
+        `BUNEST_CONFIGURABLE_MODULE_OPTIONS_${builderTokenSeq++}`,
+      );
       this.staticMethodKey = DEFAULT_METHOD_KEY as StaticMethodKey;
       this.factoryClassMethodKey =
         DEFAULT_FACTORY_CLASS_METHOD_KEY as FactoryClassMethodKey;
@@ -341,7 +346,9 @@ export class ConfigurableModuleBuilder<
       this.options.optionsInjectionToken ??
       (this.options.moduleName
         ? this.constructInjectionTokenString()
-        : Symbol(`BUNEST_CONFIGURABLE_MODULE_OPTIONS_${builderTokenSeq++}`));
+        : (this.defaultOptionsToken ??= Symbol(
+            `BUNEST_CONFIGURABLE_MODULE_OPTIONS_${builderTokenSeq++}`,
+          )));
 
     const extractExtrasAndOptions = (
       raw: unknown,

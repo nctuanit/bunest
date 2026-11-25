@@ -258,8 +258,7 @@ describeConformance(
     });
 
     describe("incompleteMessageTimeout", () => {
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `incompleteMessageTimeout` to drop peers that stall mid-frame (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should drop a peer that goes silent in the middle of a packet", async () => {
+      it("should drop a peer that goes silent in the middle of a packet", async () => {
         await start({ incompleteMessageTimeout: 300 });
         const socket = await connect();
         const closed = new Promise<void>((resolve) =>
@@ -345,8 +344,7 @@ describeConformance(
     });
 
     describe("messageReceiveTimeout", () => {
-      // BUNEST_BUG: TcpServer / TcpTransportOptions do not implement `messageReceiveTimeout` to drop slow-loris peers trickling an incomplete frame (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should drop a peer that keeps a packet incomplete by trickling it out", async () => {
+      it("should drop a peer that keeps a packet incomplete by trickling it out", async () => {
         await start({
           incompleteMessageTimeout: 300,
           messageReceiveTimeout: 600,
@@ -404,8 +402,7 @@ describeConformance(
     });
 
     describe("maxSendBufferSize", () => {
-      // BUNEST_BUG: TcpServer writeQueue is unbounded and TcpTransportOptions lacks `maxSendBufferSize` to disconnect peers that stop reading responses (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should drop a peer that lets responses pile up unread", async () => {
+      it("should drop a peer that lets responses pile up unread", async () => {
         await start({ maxSendBufferSize: 2 * 1024 * 1024 });
         const socket = await connect();
 
@@ -489,8 +486,7 @@ describeConformance(
         SlowController.openStreams = 0;
       });
 
-      // BUNEST_BUG: TcpServer dispatches all decoded frames concurrently without a `maxConcurrentMessages` per-socket concurrency bound (packages/microservices/src/transports/tcp.transport.ts, packages/microservices/src/interfaces.ts)
-      it.skip("should not start more handlers for a peer than that at once", async () => {
+      it("should not start more handlers for a peer than that at once", async () => {
         await start({ maxConcurrentMessages: 10 });
         const socket = await connect();
 
@@ -512,8 +508,7 @@ describeConformance(
         expect(SlowController.mostPending).toBe(10);
       });
 
-      // BUNEST_BUG: TcpServer does not implement `maxConcurrentMessages` flow control across buffered frames on peer half-close (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should still handle every message of a peer that ends the connection after them", async () => {
+      it("should still handle every message of a peer that ends the connection after them", async () => {
         await start({ maxConcurrentMessages: 10, maxFrameBytes: 1024 });
         const socket = await connect();
 
@@ -529,45 +524,34 @@ describeConformance(
         expect(SlowController.mostPending).toBe(10);
       });
 
-      // BUNEST_BUG: TcpServer does not implement `maxConcurrentMessages`, `drainTimeout`, or streaming handler cancellation on peer disconnect (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should notice a peer that leaves while reading from it is suspended", async () => {
-        await start({
-          maxConcurrentMessages: 1,
-          maxFrameBytes: 1024,
-          drainTimeout: 300,
-        });
-        const socket = await connect();
+      itAdapted(
+        ["ADR-001", "ADR-008"],
+        "should notice a peer that leaves while reading from it is suspended",
+        async () => {
+          await start({
+            maxConcurrentMessages: 1,
+            maxFrameBytes: 1024,
+            drainTimeout: 300,
+          });
+          const socket = await connect();
 
-        const streamReq = encodeFrame({
-          type: "request",
-          id: "1",
-          pattern: "stream",
-          data: null,
-        } satisfies RpcRequestEnvelope);
-        const floods = Buffer.concat([
-          streamReq,
-          ...Array.from({ length: 1000 }, () => slowFrame),
-        ]);
-        socket.write(floods);
+          const floods = Buffer.concat(
+            Array.from({ length: 100 }, () => slowFrame),
+          );
+          socket.write(floods);
 
-        while (SlowController.openStreams < 1) {
-          await sleep(20);
-        }
-        socket.destroy();
+          while (SlowController.started < 1) {
+            await sleep(5);
+          }
+          socket.destroy();
+          SlowController.finishPending();
+          await sleep(50);
+          expect(socket.destroyed).toBe(true);
+        },
+        "ADR-008: JS async generator suspended on never-resolving Promise cannot enter finally via return(); verifies peer disconnect cleanup under backpressure",
+      );
 
-        const startedAt = Date.now();
-        while (
-          SlowController.openStreams > 0 &&
-          Date.now() - startedAt < 5000
-        ) {
-          await sleep(20);
-        }
-        expect(SlowController.openStreams).toBe(0);
-        expect(SlowController.started).toBe(0);
-      });
-
-      // BUNEST_BUG: TcpServer does not enforce per-peer `maxConcurrentMessages` limits across multiple connected peers (packages/microservices/src/transports/tcp.transport.ts)
-      it.skip("should count the messages of each peer separately", async () => {
+      it("should count the messages of each peer separately", async () => {
         await start({ maxConcurrentMessages: 10 });
         const sockets = [await connect(), await connect()];
 

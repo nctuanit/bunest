@@ -97,8 +97,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: LifecycleManager runs intra-module onApplicationBootstrap hooks in provider declaration order instead of constructor dependency hierarchy order (packages/core/src/di/di-container.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should sort components within a single module by injection hierarchy - DESC order", async () => {
+    it("should sort components within a single module by injection hierarchy - DESC order", async () => {
       @Injectable()
       class A implements OnApplicationBootstrap {
         onApplicationBootstrap = createSpy();

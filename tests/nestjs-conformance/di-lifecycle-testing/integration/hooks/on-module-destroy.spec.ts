@@ -132,8 +132,7 @@ describeConformance(
       expect(users.onModuleDestroy.calledBefore(db.onModuleDestroy)).toBe(true);
     });
 
-    // BUNEST_BUG: LifecycleManager runs intra-module onModuleDestroy hooks in provider declaration order instead of reverse constructor dependency hierarchy (packages/core/src/di/di-container.ts, packages/core/src/lifecycle/lifecycle-manager.ts)
-    it.skip("should sort components within a single module by injection hierarchy - ASC order", async () => {
+    it("should sort components within a single module by injection hierarchy - ASC order", async () => {
       @Injectable()
       class A implements OnModuleDestroy {
         onModuleDestroy = createSpy();

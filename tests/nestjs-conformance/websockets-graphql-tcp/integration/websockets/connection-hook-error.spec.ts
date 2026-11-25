@@ -68,8 +68,7 @@ describeConformance(
       ["throws", SyncRejectingGateway],
       ["rejects", AsyncRejectingGateway],
     ] as const)("when the hook %s", (_, gateway) => {
-      // BUNEST_BUG: Expected handleConnection() throwing/rejecting WsException to be routed through BaseWsExceptionFilter and emit an error frame to the connected client, but BunWebSocketAdapter.handleOpen() catches and only logs the error without notifying the client (packages/core/src/ws/adapter/bun-ws.adapter.ts#L679-L688).
-      it.skip("should send the exception to a ws client [ADR-001]", async () => {
+      it("should send the exception to a ws client [ADR-001]", async () => {
         const port = await start(gateway);
         const client = new WebSocket(`ws://127.0.0.1:${port}/ws`);
         clients.push(client);

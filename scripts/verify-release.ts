@@ -278,6 +278,7 @@ async function runCliSmokeTest(errors: string[]): Promise<string> {
       "src/app.controller.ts",
       "src/app.service.ts",
       "test/app.spec.ts",
+      "AGENTS.md",
     ];
     for (const rel of expectedNewFiles) {
       if (!existsSyncPath(join(appDir, rel))) {

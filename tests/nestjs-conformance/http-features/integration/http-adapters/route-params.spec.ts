@@ -7,7 +7,7 @@ import {
   VersioningType,
 } from "../../../../../packages/core/src/common";
 import type { BunestApplication } from "../../../../../packages/core/src";
-import { Test, describeConformance, request } from "../../../_helpers";
+import { Test, describeConformance, itAdapted, request } from "../../../_helpers";
 
 @Controller({ path: "users", version: "1" })
 class UsersV1Controller {
@@ -84,12 +84,18 @@ describeConformance(
       expect(v2.body).toEqual({ userId: "5" });
     });
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher only parse whole-segment :param tokens and do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
-    it.skip.each(["/reports/report.en.json", "/reports/report.en.json/"])(
-      "should preserve optional captures after a version miss on %s",
-      async (path) => {
-        const v1 = await request(app).get(path).set("v", "1").expect(200);
-        const v2 = await request(app).get(path).set("v", "2").expect(200);
+    itAdapted(
+      "ADR-011",
+      "should preserve optional captures after a version miss on /reports/report.en.json",
+      async () => {
+        const v1 = await request(app)
+          .get("/reports/report.en.json")
+          .set("v", "1")
+          .expect(200);
+        const v2 = await request(app)
+          .get("/reports/report.en.json")
+          .set("v", "2")
+          .expect(200);
 
         expect(v1.body).toEqual({
           version: "1",
@@ -103,10 +109,22 @@ describeConformance(
           ext: "json",
         });
       },
+      "ADR-011 preserves optional captures on canonical path without trailing slash",
     );
 
-    // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher do not support sub-segment dot captures or optional groups like ":name.:ext" or ":name{.:locale}.:ext" (packages/core/src/http/router/fallback-radix-router.ts:35-38, 159-204).
-    it.skip("should also match the versioned route without its optional part", async () => {
+    itAdapted(
+      "ADR-011",
+      "should enforce strict trailing slash on /reports/report.en.json/ by default",
+      async () => {
+        await request(app)
+          .get("/reports/report.en.json/")
+          .set("v", "1")
+          .expect(404);
+      },
+      "ADR-011 enforces strict trailing slash (ignoreTrailingSlash: false) by default",
+    );
+
+    it("should also match the versioned route without its optional part", async () => {
       for (const version of ["1", "2"]) {
         const response = await request(app)
           .get("/reports/report.json")

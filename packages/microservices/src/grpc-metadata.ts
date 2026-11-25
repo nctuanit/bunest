@@ -1,3 +1,5 @@
+import { MultiMap } from "@bunest/core";
+
 export const RESERVED_HTTP_HEADERS = new Set([
   "content-type",
   "content-length",
@@ -51,7 +53,7 @@ export function sanitizeMetadataHeaders(
  * base64-encoded binary (`-bin`) header values.
  */
 export class GrpcMetadata {
-  private readonly entries = new Map<string, string[]>();
+  private readonly entries = new MultiMap<string, string>();
 
   constructor(initial?: Readonly<Record<string, string | Uint8Array>>) {
     if (initial) {
@@ -77,25 +79,23 @@ export class GrpcMetadata {
 
   set(key: string, value: string | Uint8Array): this {
     const k = this.normalizeKey(key);
-    this.entries.set(k, [this.encodeValue(k, value)]);
+    this.entries.deleteKey(k);
+    this.entries.add(k, this.encodeValue(k, value));
     return this;
   }
 
   add(key: string, value: string | Uint8Array): this {
     const k = this.normalizeKey(key);
-    const list = this.entries.get(k) ?? [];
-    list.push(this.encodeValue(k, value));
-    this.entries.set(k, list);
+    this.entries.add(k, this.encodeValue(k, value));
     return this;
   }
 
   get(key: string): string | undefined {
-    const list = this.entries.get(this.normalizeKey(key));
-    return list?.[0];
+    return this.entries.get(this.normalizeKey(key))[0];
   }
 
   getAll(key: string): readonly string[] {
-    return [...(this.entries.get(this.normalizeKey(key)) ?? [])];
+    return [...this.entries.get(this.normalizeKey(key))];
   }
 
   getBuffer(key: string): Uint8Array | undefined {
@@ -115,7 +115,7 @@ export class GrpcMetadata {
   }
 
   delete(key: string): boolean {
-    return this.entries.delete(this.normalizeKey(key));
+    return this.entries.deleteKey(this.normalizeKey(key));
   }
 
   keys(): string[] {
@@ -139,7 +139,9 @@ export class GrpcMetadata {
   clone(): GrpcMetadata {
     const copy = new GrpcMetadata();
     for (const [key, values] of this.entries.entries()) {
-      copy.entries.set(key, [...values]);
+      for (const value of values) {
+        copy.entries.add(key, value);
+      }
     }
     return copy;
   }

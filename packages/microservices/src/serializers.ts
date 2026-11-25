@@ -1,4 +1,5 @@
 import type { Serializer } from "./packets";
+import { MqttRecord, NatsRecord, RmqRecord } from "./records";
 
 const MAX_KAFKA_HEADER_VALUES = 10_000;
 const KAFKA_MESSAGE_FIELDS = new Set([
@@ -103,5 +104,94 @@ export class KafkaRequestSerializer implements Serializer<
       return null;
     }
     return value;
+  }
+}
+
+/**
+ * Unwraps `RmqRecord` instances from outgoing request/reply packets into
+ * `{ ...packet, data/response, options }` without mutating the source record.
+ */
+export class RmqRecordSerializer implements Serializer {
+  serialize(packet: unknown): unknown {
+    if (packet === null || packet === undefined || typeof packet !== "object") {
+      return packet;
+    }
+    const rec = packet as Record<string, unknown>;
+    if (rec.data instanceof RmqRecord) {
+      return {
+        ...rec,
+        data: rec.data.data,
+        ...(rec.data.options !== undefined ? { options: rec.data.options } : {}),
+      };
+    }
+    if (rec.response instanceof RmqRecord) {
+      return {
+        ...rec,
+        response: rec.response.data,
+        ...(rec.response.options !== undefined
+          ? { options: rec.response.options }
+          : {}),
+      };
+    }
+    return packet;
+  }
+}
+
+/**
+ * Unwraps `NatsRecord` instances from outgoing request/reply packets into
+ * `{ headers, data: JSON.stringify(unwrappedPacket) }`.
+ */
+export class NatsRecordSerializer implements Serializer<
+  unknown,
+  { headers: unknown; data: string }
+> {
+  serialize(packet: unknown): { headers: unknown; data: string } {
+    if (packet === undefined) {
+      return { headers: undefined, data: JSON.stringify({}) };
+    }
+    if (packet === null) {
+      return { headers: undefined, data: JSON.stringify({ data: undefined }) };
+    }
+    if (typeof packet === "object") {
+      const rec = packet as Record<string, unknown>;
+      if (rec.data instanceof NatsRecord) {
+        return {
+          headers: rec.data.headers,
+          data: JSON.stringify({ ...rec, data: rec.data.data }),
+        };
+      }
+      if (rec.response instanceof NatsRecord) {
+        return {
+          headers: rec.response.headers,
+          data: JSON.stringify({ ...rec, response: rec.response.data }),
+        };
+      }
+    }
+    return { headers: undefined, data: JSON.stringify(packet) };
+  }
+}
+
+/**
+ * Unwraps `MqttRecord` instances from outgoing request/reply packets and
+ * serializes the resulting packet as JSON.
+ */
+export class MqttRecordSerializer implements Serializer {
+  serialize(packet: unknown): unknown {
+    if (packet === undefined) {
+      return undefined;
+    }
+    if (packet === null) {
+      return "null";
+    }
+    if (typeof packet === "object") {
+      const rec = packet as Record<string, unknown>;
+      if (rec.data instanceof MqttRecord) {
+        return JSON.stringify({ ...rec, data: rec.data.data });
+      }
+      if (rec.response instanceof MqttRecord) {
+        return JSON.stringify({ ...rec, response: rec.response.data });
+      }
+    }
+    return JSON.stringify(packet);
   }
 }

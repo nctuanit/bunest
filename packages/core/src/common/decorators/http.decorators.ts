@@ -36,7 +36,7 @@ export function Controller(
       };
     } else {
       const clonedVersion = Array.isArray(prefixOrOptions.version)
-        ? [...prefixOrOptions.version]
+        ? [...new Set(prefixOrOptions.version)]
         : prefixOrOptions.version;
       metadata = {
         path: Array.isArray(prefixOrOptions.path)
@@ -82,7 +82,13 @@ function registerRouteMetadata(
     propertyKey: string | symbol,
     descriptor: PropertyDescriptor,
   ) => {
-    const normalizedPath = Array.isArray(path) ? [...path] : path;
+    const normalizedPath = Array.isArray(path)
+      ? path.length === 0
+        ? "/"
+        : [...path]
+      : isSse && path === ""
+        ? "/"
+        : path;
     const entry: RouteMethodMetadata = isSse
       ? {
           method,

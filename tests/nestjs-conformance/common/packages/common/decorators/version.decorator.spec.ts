@@ -34,8 +34,7 @@ describeConformance(
       expect(metadata).toEqual(version);
     });
 
-    // BUNEST_BUG: Version(versions) in packages/core/src/common/decorators/version.decorator.ts:12 clones `[...version]` without deduplicating duplicate entries (`['1','2','2','1','2','1']` stays un-deduplicated instead of `['1','2']`).
-    it.skip("should enhance method with expected version array", () => {
+    it("should enhance method with expected version array", () => {
       const metadata = MetadataRegistry.get(
         METADATA_KEYS.VERSION,
         Test.multipleVersions,

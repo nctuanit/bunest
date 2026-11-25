@@ -46,8 +46,7 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseBoolPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously before matcher attaches (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error", async () => {
+        it("should throw an error", async () => {
           return expect(
             target.transform("123abc", {} as ArgumentMetadata),
           ).rejects.toBeDefined();

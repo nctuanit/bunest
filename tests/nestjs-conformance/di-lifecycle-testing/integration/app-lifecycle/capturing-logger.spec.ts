@@ -79,13 +79,11 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: BunestApplication.init() does not emit RouterExplorer/NestApplication startup logs into CapturingLogger (packages/core/src/application/bunest-application.ts)
-      it.skip("should capture the framework startup logs", () => {
+      it("should capture the framework startup logs", () => {
         logger.assertLogged(/orders/, "log");
       });
 
-      // BUNEST_BUG: new Logger(OrdersService.name) inside providers does not route through TestingModuleBuilder.setLogger(capturingLogger) (packages/core/src/common/logger/logger.ts)
-      it.skip('should capture the logs of "Logger" instances in providers', async () => {
+      it('should capture the logs of "Logger" instances in providers', async () => {
         logger.assertLogged("Orders service ready", "log");
         await request(app).get("/orders").expect(200);
         logger.assertLogged("Listing orders", "debug");

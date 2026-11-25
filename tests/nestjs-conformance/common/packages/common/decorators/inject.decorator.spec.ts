@@ -55,8 +55,7 @@ describeConformance(
         expect(metadata).toEqual([{ index: 0, token: Dependency }]);
       });
 
-      // BUNEST_BUG: Inject(undefined) in packages/core/src/common/decorators/core.decorators.ts:78 uses `token ?? getParamTypes()?.[parameterIndex]` instead of distinguishing omitted argument (`arguments.length === 0`) from explicit `undefined`, so `@Inject(undefined)` still infers `Dependency` instead of preserving explicit `undefined`.
-      it.skip("should not infer the token when an explicit undefined token is passed", () => {
+      it("should not infer the token when an explicit undefined token is passed", () => {
         const metadata = MetadataRegistry.get(
           METADATA_KEYS.INJECT_TOKENS,
           TestWithUndefinedToken,

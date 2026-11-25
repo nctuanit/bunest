@@ -310,11 +310,26 @@ describe("../../src/cqrs/index", () => {
       },
     });
 
+    // NestJS default (rethrowUnhandled omitted): handler errors go to the
+    // UnhandledExceptionBus and publish() resolves.
     await expect(
       eventBus.publish(new OrderCreatedEvent("ord_sync_err", 50)),
-    ).rejects.toThrow("sync-handler-boom");
+    ).resolves.toBeUndefined();
 
     await Bun.sleep(15);
     expect(handledBySecond).toEqual(["ord_sync_err"]);
+
+    // Opt-in rethrowUnhandled: true rejects publish() with the handler error.
+    const strictBus = new EventBus(commandBus, undefined, undefined, {
+      rethrowUnhandled: true,
+    });
+    strictBus.register(OrderCreatedEvent, {
+      handle() {
+        throw new Error("sync-handler-boom");
+      },
+    });
+    await expect(
+      strictBus.publish(new OrderCreatedEvent("ord_sync_err_strict", 50)),
+    ).rejects.toThrow("sync-handler-boom");
   });
 });

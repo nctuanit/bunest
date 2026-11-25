@@ -52,8 +52,7 @@ describeConformance(
       await removePath(tmpDir, { recursive: true, force: true });
     });
 
-    // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables or enforce an expansion size limit (expected toThrow "is too long after variable expansion", did not throw; packages/core/src/config/config.service.ts:342-369)
-    it.skip("should refuse to grow a variable past the size limit", async () => {
+    it("should refuse to grow a variable past the size limit", async () => {
       const lines = ["A00=${API_TOKEN}${API_TOKEN}"];
       for (let i = 1; i <= 22; i++) {
         const previous = `A${String(i - 1).padStart(2, "0")}`;
@@ -87,8 +86,7 @@ describeConformance(
       expect(process.env.AUTH_REQUIRED).toBe("true");
     });
 
-    // BUNEST_BUG: ConfigService.set() does not re-expand startup .env definitions when a referenced variable changes (expected "https://yourapp.test/help", received "https:///help"; packages/core/src/config/config.service.ts:342-369)
-    it.skip("should expand the definitions loaded at startup, not the file as it is now", async () => {
+    it("should expand the definitions loaded at startup, not the file as it is now", async () => {
       const envFilePath = writeEnvFile([
         "URL=",
         "SUPPORT_URL=https://${URL}/help",
@@ -119,8 +117,7 @@ describeConformance(
       expect(process.env.INJECTED).toBeUndefined();
     });
 
-    // BUNEST_BUG: ConfigService.set() does not write updated values to process.env or re-expand dependent variables (expected process.env.API_URL="https://gateway.internal/v1", received "https://api.myapp.test/v1"; packages/core/src/config/config.service.ts:342-369)
-    it.skip("should keep a value set earlier when a variable it references is set", async () => {
+    it("should keep a value set earlier when a variable it references is set", async () => {
       const configService = await createConfigService({
         envFilePath: writeEnvFile([
           "API_HOST=api.myapp.test",
@@ -139,8 +136,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables (expected "https://api2.myapp.test/v1", received "https://api.myapp.test/v1"; packages/core/src/config/config.service.ts:342-369)
-    it.skip('should not treat a value passed to "set" as predefined when the app is bootstrapped again', async () => {
+    it('should not treat a value passed to "set" as predefined when the app is bootstrapped again', async () => {
       const envFilePath = writeEnvFile([
         "API_HOST=api.myapp.test",
         "API_URL=https://${API_HOST}/v1",
@@ -156,8 +152,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: ConfigService.set() does not re-expand dependent .env variables against custom processEnv target (expected "http://myapp.test:4000", received "http://myapp.test:3000"; packages/core/src/config/config.service.ts:342-369)
-    it.skip('should expand against a custom "processEnv" target', async () => {
+    it('should expand against a custom "processEnv" target', async () => {
       process.env.URL = "process-app.test";
       const configService = await createConfigService({
         envFilePath: writeEnvFile([

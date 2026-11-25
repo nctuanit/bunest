@@ -76,8 +76,7 @@ describeConformance(
     });
 
     describe("limits that are not a number", () => {
-      // BUNEST_BUG: FrameDecoder constructor in packages/microservices/src/framing.ts computes `Math.max(1024, Math.floor(maxFrameBytes))` without guarding against NaN/non-numeric inputs; `Math.max(1024, NaN)` yields `NaN`, so `payloadLength > NaN` is always false and disables frame-size enforcement.
-      it.skip("should fall back to default maxFrameBytes for NaN or non-numeric strings", () => {
+      it("should fall back to default maxFrameBytes for NaN or non-numeric strings", () => {
         for (const invalidLimit of [NaN, "16mb" as unknown as number]) {
           const decoder = new FrameDecoder(invalidLimit);
           expect(
@@ -86,8 +85,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Because `new FrameDecoder(NaN)` sets `maxFrameBytes = NaN` in packages/microservices/src/framing.ts, frames declaring more than 16 MiB are NOT rejected.
-      it.skip("should reject a frame declaring more than default maxFrameBytes when configured with NaN", () => {
+      it("should reject a frame declaring more than default maxFrameBytes when configured with NaN", () => {
         const decoder = new FrameDecoder(NaN);
         expect(() => {
           decoder.push(makeHeader(DEFAULT_MAX_FRAME_BYTES + 1));

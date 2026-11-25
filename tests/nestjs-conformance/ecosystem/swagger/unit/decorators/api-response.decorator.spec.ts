@@ -232,8 +232,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: SwaggerModule.buildResponses (packages/swagger/src/swagger-module.ts:2179) overwrites responses[statusKey] instead of merging multiple decorators for the same status with "\n\n"-joined descriptions
-      it.skip("should merge descriptions with newline separator", async () => {
+      it("should merge descriptions with newline separator", async () => {
         @Module({ controllers: [TestController] })
         class TestModule {}
         const app = await BunestFactory.create(TestModule, { logger: false });
@@ -250,8 +249,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: SwaggerModule.buildResponses (packages/swagger/src/swagger-module.ts:2179) overwrites responses[statusKey] instead of merging content examples across multiple decorators for the same status
-      it.skip("should merge examples from multiple decorators", async () => {
+      it("should merge examples from multiple decorators", async () => {
         @Controller("tests")
         class ExamplesController {
           @Get()

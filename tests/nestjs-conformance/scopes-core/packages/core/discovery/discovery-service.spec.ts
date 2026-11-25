@@ -85,8 +85,7 @@ describeConformance(
         expect(metadata).toEqual({ event: "click" });
       });
 
-      // BUNEST_BUG: DiscoveryService.createDecorator() stores undefined instead of default {} metadata when called without arguments (packages/core/src/discovery/discovery.service.ts).
-      it.skip("should use empty object as default metadata when no options provided", () => {
+      it("should use empty object as default metadata when no options provided", () => {
         const TestDecorator = DiscoveryService.createDecorator();
 
         @TestDecorator()
@@ -261,8 +260,7 @@ describeConformance(
         expect(tokens).not.toContain("PROVIDER_3");
       });
 
-      // BUNEST_BUG: DIContainer.filterModulesForDiscovery() treats include: [] as unfiltered and returns all modules instead of [] (packages/core/src/di/di-container.ts:1844-1855).
-      it.skip("should return empty array when include option is empty array", async () => {
+      it("should return empty array when include option is empty array", async () => {
         @NestModule({
           providers: [{ provide: "PROVIDER_1", useValue: 1 }],
         })
@@ -585,8 +583,7 @@ describeConformance(
         expect(modules).toHaveLength(0);
       });
 
-      // BUNEST_BUG: DiscoveryService.getModules() ignores { include } filter options and always returns all modules (packages/core/src/discovery/discovery.service.ts & packages/core/src/di/di-container.ts:1925-1934).
-      it.skip("should filter modules by include option", async () => {
+      it("should filter modules by include option", async () => {
         @NestModule({})
         class Module1 {}
 
@@ -612,8 +609,7 @@ describeConformance(
         expect(metatypes).not.toContain(Module2);
       });
 
-      // BUNEST_BUG: DiscoveryService.getModules() ignores { include: [] } and returns all modules instead of [] (packages/core/src/discovery/discovery.service.ts & packages/core/src/di/di-container.ts:1925-1934).
-      it.skip("should return empty array when include option is empty", async () => {
+      it("should return empty array when include option is empty", async () => {
         @NestModule({})
         class Module1 {}
 
@@ -678,8 +674,7 @@ describeConformance(
         expect(providers[0]?.instance).toBeInstanceOf(ClassService);
       });
 
-      // BUNEST_BUG: DIContainer.discoverProviders() also returns useExisting alias wrappers pointing to a decorated provider, duplicating discovery results (packages/core/src/di/di-container.ts:1857-1905); received 2 instead of 1.
-      it.skip("should not discover an alias wrapper in addition to the provider it points at", async () => {
+      it("should not discover an alias wrapper in addition to the provider it points at", async () => {
         const TestDecorator = DiscoveryService.createDecorator();
 
         @TestDecorator({ alias: true })
@@ -706,8 +701,7 @@ describeConformance(
         expect(providers[0]?.instance).toBeInstanceOf(AliasedService);
       });
 
-      // BUNEST_BUG: DIContainer.discoverProviders() includes the useExisting ALIAS wrapper pointing to ClassService, returning 4 wrappers instead of 3 (packages/core/src/di/di-container.ts:1857-1905).
-      it.skip("should discover providers and controllers by each of the discovery decorators applied to them", async () => {
+      it("should discover providers and controllers by each of the discovery decorators applied to them", async () => {
         const FirstDecorator = DiscoveryService.createDecorator();
         const SecondDecorator = DiscoveryService.createDecorator();
 

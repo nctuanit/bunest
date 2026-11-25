@@ -1,4 +1,9 @@
-import type { InjectionToken, PipeLike, Type } from "@bunest/core";
+import type {
+  InjectionToken,
+  PipeLike,
+  StandardSchemaV1,
+  Type,
+} from "@bunest/core";
 import type { SerializedRpcError } from "./exceptions";
 import type { KafkaParserConfig } from "./helpers";
 import type { Deserializer, Serializer } from "./packets";
@@ -24,6 +29,94 @@ function canonicalizeValue(value: unknown): unknown {
  * Normalizes a string, number, RegExp, or structured object pattern into a deterministic lookup key.
  * Object keys are canonically sorted so `{ cmd: "sum", v: 1 }` and `{ v: 1, cmd: "sum" }` match.
  */
+const PATTERN_MAX_DEPTH = 6;
+const PATTERN_MAX_KEYS = 20;
+const PATTERN_MAX_TOTAL_KEYS = 100;
+const PATTERN_MAX_KEY_LENGTH = 256;
+const PATTERN_MAX_VALUE_LENGTH = 4096;
+
+function serializePatternValue(
+  value: unknown,
+  depth: number,
+  state: { totalKeys: number; exceededTotalKeys: boolean },
+): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    if (value.length > PATTERN_MAX_VALUE_LENGTH) {
+      return "[VALUE_TOO_LONG]";
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    if (depth >= PATTERN_MAX_DEPTH) {
+      return "[MAX_DEPTH_REACHED]";
+    }
+    if (value.length > PATTERN_MAX_KEYS) {
+      return "[TOO_MANY_KEYS]";
+    }
+    const items = value.map((item) =>
+      serializePatternValue(item, depth + 1, state),
+    );
+    return `[${items.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    if (depth >= PATTERN_MAX_DEPTH) {
+      return "[MAX_DEPTH_REACHED]";
+    }
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    if (keys.length > PATTERN_MAX_KEYS) {
+      return "[TOO_MANY_KEYS]";
+    }
+    state.totalKeys += keys.length;
+    if (state.totalKeys > PATTERN_MAX_TOTAL_KEYS) {
+      state.exceededTotalKeys = true;
+      return "[TOO_MANY_KEYS]";
+    }
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i]!.length > PATTERN_MAX_KEY_LENGTH) {
+        return "[KEY_TOO_LONG]";
+      }
+    }
+    const record = value as Record<string, unknown>;
+    const entries: string[] = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!;
+      const serializedVal = serializePatternValue(record[key], depth + 1, state);
+      if (state.exceededTotalKeys) {
+        return "[TOO_MANY_KEYS]";
+      }
+      entries.push(`${JSON.stringify(key)}:${serializedVal}`);
+    }
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+export function exceedsPatternLimits(pattern: unknown): boolean {
+  if (
+    pattern === null ||
+    pattern === undefined ||
+    typeof pattern !== "object" ||
+    pattern instanceof RegExp
+  ) {
+    return false;
+  }
+  const state = { totalKeys: 0, exceededTotalKeys: false };
+  const serialized = serializePatternValue(pattern, 0, state);
+  return (
+    state.exceededTotalKeys ||
+    serialized.includes("[MAX_DEPTH_REACHED]") ||
+    serialized.includes("[TOO_MANY_KEYS]") ||
+    serialized.includes("[KEY_TOO_LONG]") ||
+    serialized.includes("[VALUE_TOO_LONG]")
+  );
+}
+
 export function normalizePattern(pattern: PatternInput): string {
   if (typeof pattern === "string") {
     return pattern;
@@ -34,7 +127,12 @@ export function normalizePattern(pattern: PatternInput): string {
   if (pattern instanceof RegExp) {
     return pattern.toString();
   }
-  return JSON.stringify(canonicalizeValue(pattern));
+  if (pattern === null || typeof pattern !== "object") {
+    return pattern as unknown as string;
+  }
+  const state = { totalKeys: 0, exceededTotalKeys: false };
+  const serialized = serializePatternValue(pattern, 0, state);
+  return state.exceededTotalKeys ? "[TOO_MANY_KEYS]" : serialized;
 }
 
 export interface RpcRequestEnvelope {
@@ -43,6 +141,7 @@ export interface RpcRequestEnvelope {
   readonly pattern: string;
   readonly data: unknown;
   readonly replyTo?: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export interface RpcResponseEnvelope {
@@ -57,6 +156,7 @@ export interface RpcEventEnvelope {
   readonly type: "event";
   readonly pattern: string;
   readonly data: unknown;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export type RpcEnvelope =
@@ -116,6 +216,7 @@ export interface RpcParamMetadata {
   readonly kind: RpcParamKind;
   readonly property?: string;
   readonly pipes?: readonly PipeLike[];
+  readonly schema?: StandardSchemaV1;
 }
 
 export type TransportId = Transport | symbol;
@@ -197,7 +298,10 @@ export interface NatsMessageLike {
   readonly data: string | Uint8Array;
   readonly reply?: string;
   readonly headers?: unknown;
-  respond?(data: string | Uint8Array): Promise<void> | void;
+  respond?(
+    data: string | Uint8Array,
+    options?: { headers?: unknown },
+  ): Promise<void> | void;
 }
 
 export interface NatsSubscriptionLike {
@@ -208,7 +312,7 @@ export interface NatsTransportClientLike {
   publish(
     subject: string,
     data: string | Uint8Array,
-    options?: { reply?: string },
+    options?: { reply?: string; headers?: unknown },
   ): Promise<void> | void;
   subscribe(
     subject: string,
@@ -217,7 +321,7 @@ export interface NatsTransportClientLike {
   request?(
     subject: string,
     data: string | Uint8Array,
-    options?: { timeout?: number },
+    options?: { timeout?: number; headers?: unknown },
   ): Promise<NatsMessageLike>;
   drain?(): Promise<void>;
   close?(): Promise<void> | void;
@@ -264,6 +368,7 @@ export interface RabbitMqChannelLike {
       replyTo?: string;
       persistent?: boolean;
       headers?: Record<string, unknown>;
+      [key: string]: unknown;
     },
   ): Promise<boolean | void> | boolean | void;
   ack?(msg: RabbitMqMessageLike): void;

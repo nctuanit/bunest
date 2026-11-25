@@ -249,18 +249,15 @@ describeConformance(
           ]);
         }
 
-        // BUNEST_BUG: Expected ForbiddenException from interface @ResolveField() guard; actual fails with 500 `Type Contract must implement Node because it is implemented by PrivateNode.` (getOrCreateObjectType:1021-1024 omits inherited/transitive interfaces, getOrCreateObjectType:1102 never binds @Resolver(() => Interface) field resolvers onto implementing types, resolveOutputLeaf:791 misclassifies SavingsAccount extends Account as interface) or 400 with `schema` option because GraphQLSchemaFactory.create (packages/graphql/src/schema/graphql-schema.factory.ts:351-355) returns options.schema without merging code-first resolvers.
-        it.skip("should apply the guards of an interface field resolver to the implementing types", () =>
+        it("should apply the guards of an interface field resolver to the implementing types", () =>
           expectForbidden("{ accounts { id balance } }"));
 
         for (const queryName of ["payslip", "invoice", "contract"]) {
-          // BUNEST_BUG: Expected most-specific interface field resolver (PrivateNodeResolver.owner -> ForbiddenException); actual fails schema validation on Contract (getOrCreateObjectType:1021-1024), never binds interface @ResolveField() handlers onto implementing types (getOrCreateObjectType:1102), or ignores code-first resolvers when options.schema is set (packages/graphql/src/schema/graphql-schema.factory.ts:351-355).
-          it.skip(`should bind the field resolver of the most specific interface, whatever the order of the interfaces (${queryName})`, () =>
+          it(`should bind the field resolver of the most specific interface, whatever the order of the interfaces (${queryName})`, () =>
             expectForbidden(`{ ${queryName} { owner } }`));
         }
 
-        // BUNEST_BUG: Expected { payslip: { id: "1" }, accounts: [{ id: "1", label: "masked:savings" }] }; actual fails schema validation on Contract (`Type Contract must implement Node...`, getOrCreateObjectType:1021-1024) or misses merged code-first fields when options.schema is set (packages/graphql/src/schema/graphql-schema.factory.ts:351-355).
-        it.skip("should keep the generated resolvers of the fields that have no field resolver", async () => {
+        it("should keep the generated resolvers of the fields that have no field resolver", async () => {
           const res = await request(app)
             .post("/graphql")
             .send({ query: "{ payslip { id } accounts { id label } }" })
@@ -272,8 +269,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: Expected last-listed interface field resolver (PrivateNodeResolver.owner -> ForbiddenException); actual fails schema validation on Contract (getOrCreateObjectType:1021-1024), never binds interface @ResolveField() handlers onto Note (getOrCreateObjectType:1102), or ignores code-first resolvers when options.schema is set (packages/graphql/src/schema/graphql-schema.factory.ts:351-355).
-        it.skip("should keep the last listed interface when the interfaces are unrelated", async () => {
+        it("should keep the last listed interface when the interfaces are unrelated", async () => {
           await expectForbidden("{ note { owner } }");
         });
 

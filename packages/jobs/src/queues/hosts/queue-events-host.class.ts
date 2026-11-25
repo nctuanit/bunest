@@ -10,7 +10,11 @@ export class QueueEvents implements QueueEventsLike {
   private readonly unbinders: Array<() => void> = [];
   private closed = false;
 
-  constructor(public readonly name: string) {}
+  constructor(
+    public readonly name: string,
+    public readonly opts?: Record<string, unknown>,
+    public readonly backendFactory?: unknown,
+  ) {}
 
   on(event: string, listener: (...args: any[]) => void): this {
     let set = this.listeners.get(event);

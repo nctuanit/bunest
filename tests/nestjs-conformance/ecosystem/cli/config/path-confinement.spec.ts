@@ -163,23 +163,20 @@ describeConformance(
         expect(() => parseSchematicName("/abs/path")).toThrow(/absolute paths/);
       });
 
-      // BUNEST_BUG: resolveSafeChildPath() uses `rel.startsWith("..")` instead of checking `rel === ".." || rel.startsWith(".." + sep)`, falsely rejecting legitimate in-project directory names starting with ".." like `"..cache"` (packages/cli/src/utils/naming.ts:146)
-      it.skip("should accept a directory whose name merely starts with '..' (e.g. '..cache')", () => {
+      it("should accept a directory whose name merely starts with '..' (e.g. '..cache')", () => {
         expect(resolveSafeChildPath(projectRoot, "..cache")).toBe(
           resolve(projectRoot, "..cache"),
         );
       });
 
-      // BUNEST_BUG: resolveSafeChildPath(projectRoot, ".") resolves to `rel === ""` and returns `projectRoot` instead of rejecting the project root itself for destructive operations like deleteOutDir (packages/cli/src/utils/naming.ts:146)
-      it.skip("should reject the project directory itself ('.')", () => {
+      it("should reject the project directory itself ('.')", () => {
         expect(() => resolveSafeChildPath(projectRoot, ".")).toThrow(
           /Unsafe target path|outside of or equal to the project directory/,
         );
       });
 
       describe("with symlinks", () => {
-        // BUNEST_BUG: resolveSafeChildPath() performs lexical `path.resolve`/`path.relative` only and does not resolve symlinks via `realpathSync`, allowing symlinked directories pointing outside projectRoot to pass confinement (packages/cli/src/utils/naming.ts:138-152)
-        it.skip("should reject a symlink pointing outside the project", () => {
+        it("should reject a symlink pointing outside the project", () => {
           const linkPath = join(projectRoot, "dist");
           createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
@@ -189,8 +186,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: resolveSafeChildPath() does not resolve ancestor symlinks via `realpathSync`, allowing nested writes through a symlink escaping projectRoot (packages/cli/src/utils/naming.ts:138-152)
-        it.skip("should reject a path nested under a symlinked directory pointing outside", () => {
+        it("should reject a path nested under a symlinked directory pointing outside", () => {
           const linkPath = join(projectRoot, "dist");
           createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
@@ -214,7 +210,7 @@ describeConformance(
           ).not.toThrow();
         });
 
-        it("should allow lexical paths inside the project when symlinks are not dereferenced", () => {
+        it("should reject a symlinked node_modules pointing outside the project once symlinks are dereferenced", () => {
           const linkPath = join(projectRoot, "node_modules");
           createSymlink(outsideDir, linkPath);
           createdLinks.push(linkPath);
@@ -225,7 +221,9 @@ describeConformance(
               projectRoot,
               "node_modules/tsconfig.tsbuildinfo",
             ),
-          ).not.toThrow();
+          ).toThrow(
+            /Unsafe target path|outside of or equal to the project directory/,
+          );
         });
       });
     });

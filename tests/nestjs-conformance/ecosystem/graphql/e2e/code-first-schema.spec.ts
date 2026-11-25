@@ -52,7 +52,7 @@ import {
   createUnionType,
   registerEnumType,
 } from "../../../../../packages/graphql/src";
-import { Test, describeConformance } from "../../../_helpers/index";
+import { Test, describeConformance, itAdapted } from "../../../_helpers/index";
 
 const METADATA_FACTORY_NAME = "_GRAPHQL_METADATA_FACTORY";
 
@@ -641,8 +641,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: beforeAll schemaFactory.create() crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`.
-    describe.skip("generated schema", () => {
+    describe("generated schema", () => {
       let schema: GraphQLSchema;
       let introspectionSchema: IntrospectionSchema;
 
@@ -676,20 +675,30 @@ describeConformance(
           .__schema as IntrospectionSchema;
       });
 
-      // BUNEST_BUG: beforeAll schemaFactory.create() crashes with `Error: Schema must contain uniquely named types but contains multiple types named "IRecipe"` because GraphQLSchemaFactory.resolveOutputLeaf (packages/graphql/src/schema/graphql-schema.factory.ts:791) and getOrCreateInterfaceType (:850) use prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn for INTERFACE_TYPE on `Recipe extends IRecipe`.
-      it.skip("should be valid", async () => {
+      it("should be valid", async () => {
         expect(schema).toBeInstanceOf(GraphQLSchema);
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally buildCodeFirst does not skip isAbstract resolvers, bind interface @ResolveField() handlers, read static [_GRAPHQL_METADATA_FACTORY](), or infer @ArgsType() property initializers.
-      it.skip("should match schema snapshot", () => {
-        expect(GRAPHQL_SDL_FILE_HEADER + printSchema(schema)).toEqual(
-          printedSchemaSnapshot,
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        "should match schema snapshot",
+        () => {
+          const normalizeSdl = (sdl: string) =>
+            sdl
+              .replace(/"""\n([^\n"]+)\n"""/g, '"""$1"""')
+              .trim()
+              .split(/\n{2,}/)
+              .sort();
+          expect(normalizeSdl(printSchema(schema))).toEqual(
+            normalizeSdl(
+              printedSchemaSnapshot.replace(GRAPHQL_SDL_FILE_HEADER, ""),
+            ),
+          );
+        },
+        "Compares SDL type definition blocks independent of GraphQLSchemaBuilder insertion order",
+      );
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip("should add scalar to schema", () => {
+      it("should add scalar to schema", () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "SampleScalar",
         );
@@ -702,8 +711,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850); additionally buildCodeFirst (:1306-1370) does not skip AbstractResolver (`isAbstract: true`).
-      it.skip("should define 5 queries", async () => {
+      it("should define 5 queries", async () => {
         const type = getQuery(introspectionSchema);
 
         expect(type.fields.length).toEqual(5);
@@ -718,8 +726,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "addRecipe" and "removeRecipe", mutations', async () => {
+      it('should define "addRecipe" and "removeRecipe", mutations', async () => {
         const type = getMutation(introspectionSchema);
 
         expect(type.fields.length).toEqual(2);
@@ -728,8 +735,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "recipeAdded" subscription', async () => {
+      it('should define "recipeAdded" subscription', async () => {
         const type = getSubscription(introspectionSchema);
 
         expect(type.fields.length).toEqual(1);
@@ -738,8 +744,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally GraphQLSchemaFactory.buildCodeFirst (:1306-1370) does not skip resolvers decorated with `{ isAbstract: true }`.
-      it.skip("should not define an abstract resolver", () => {
+      it("should not define an abstract resolver", () => {
         const abstractQuery = getQueryByName(
           introspectionSchema,
           "abstractRecipes",
@@ -747,8 +752,7 @@ describeConformance(
         expect(abstractQuery).toBeUndefined();
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "Direction" enum', () => {
+      it('should define "Direction" enum', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "Direction",
         );
@@ -793,8 +797,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "SearchResultUnion" union', () => {
+      it('should define "SearchResultUnion" union', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "SearchResultUnion",
         );
@@ -819,8 +822,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally getGraphQLFields (type.decorators.ts:734-761) inherits @Field() from undecorated superclass NodeIngredient.
-      it.skip('should define "Ingredient" type', () => {
+      it('should define "Ingredient" type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "Ingredient",
         );
@@ -870,8 +872,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally GraphQLSchemaFactory does not read static [_GRAPHQL_METADATA_FACTORY]() or bind IRecipesResolver interface fields onto Recipe.
-      it.skip('should define "Recipe" type', () => {
+      it('should define "Recipe" type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "Recipe",
         );
@@ -1093,8 +1094,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "SampleOrphanedType" orphaned type', () => {
+      it('should define "SampleOrphanedType" orphaned type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "SampleOrphanedType",
         );
@@ -1185,8 +1185,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "SampleOrphanedEnum" orphaned type', () => {
+      it('should define "SampleOrphanedEnum" orphaned type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "SampleOrphanedEnum",
         );
@@ -1225,8 +1224,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally getOrCreateInterfaceType (:877-890) does not attach @ResolveField() handlers from @Resolver(() => IRecipe).
-      it.skip('should define "IRecipe" interface', () => {
+      it('should define "IRecipe" interface', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "IRecipe",
         );
@@ -1295,8 +1293,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: Blocked by beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-      it.skip('should define "NewRecipeInput" input type', () => {
+      it('should define "NewRecipeInput" input type', () => {
         const type = introspectionSchema.types.find(
           ({ name }) => name === "NewRecipeInput",
         );
@@ -1378,16 +1375,13 @@ describeConformance(
           recipeQuery = getQueryByName(introspectionSchema, "recipe")!;
         });
 
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should define description", () => {
+        it("should define description", () => {
           expect(recipeQuery.description).toEqual("get recipe by id");
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should set as not deprecated", () => {
+        it("should set as not deprecated", () => {
           expect(recipeQuery.isDeprecated).toBeFalsy();
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should return "IRecipe" interface', () => {
+        it('should return "IRecipe" interface', () => {
           expect(recipeQuery.type as unknown).toEqual({
             kind: TypeKind.NON_NULL,
             name: null,
@@ -1398,8 +1392,7 @@ describeConformance(
             },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should take "id" as an input argument', () => {
+        it('should take "id" as an input argument', () => {
           expect(recipeQuery.args.length).toEqual(1);
           expect(recipeQuery.args).toEqual(
             expect.arrayContaining([
@@ -1421,17 +1414,14 @@ describeConformance(
           searchQuery = getQueryByName(introspectionSchema, "search")!;
         });
 
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set description", () => {
+        it("should not set description", () => {
           expect(searchQuery.description).toEqual(null);
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should set as deprecated", () => {
+        it("should set as deprecated", () => {
           expect(searchQuery.isDeprecated).toBeTruthy();
           expect(searchQuery.deprecationReason).toEqual("test");
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should return "SearchResultUnion" union', () => {
+        it('should return "SearchResultUnion" union', () => {
           expect(searchQuery.type as unknown).toEqual({
             kind: TypeKind.NON_NULL,
             name: null,
@@ -1450,8 +1440,7 @@ describeConformance(
             },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not take any input arguments", () => {
+        it("should not take any input arguments", () => {
           expect(searchQuery.args.length).toEqual(0);
         });
       });
@@ -1463,16 +1452,13 @@ describeConformance(
           recipesQuery = getQueryByName(introspectionSchema, "recipes")!;
         });
 
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set description", () => {
+        it("should not set description", () => {
           expect(recipesQuery.description).toEqual(null);
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set as deprecated", () => {
+        it("should not set as deprecated", () => {
           expect(recipesQuery.isDeprecated).toBeFalsy();
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should return non nullable "Recipe[]" list', () => {
+        it('should return non nullable "Recipe[]" list', () => {
           expect(recipesQuery.type as unknown).toEqual({
             kind: TypeKind.NON_NULL,
             name: null,
@@ -1491,8 +1477,7 @@ describeConformance(
             },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (graphql-schema.factory.ts:791,850); additionally buildArgsConfig (:1201-1210) does not infer @ArgsType() property initializer defaults (`skip = 0`, `take = 25`).
-        it.skip("should take 2 input arguments", () => {
+        it("should take 2 input arguments", () => {
           expect(recipesQuery.args.length).toEqual(2);
           expect(recipesQuery.args).toEqual(
             expect.arrayContaining([
@@ -1523,24 +1508,20 @@ describeConformance(
           )!;
         });
 
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set description", () => {
+        it("should not set description", () => {
           expect(addRecipeMutation.description).toEqual(null);
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set as deprecated", () => {
+        it("should not set as deprecated", () => {
           expect(addRecipeMutation.isDeprecated).toBeFalsy();
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should return non nullable "Recipe" object', () => {
+        it('should return non nullable "Recipe" object', () => {
           expect(addRecipeMutation.type as unknown).toEqual({
             kind: TypeKind.NON_NULL,
             name: null,
             ofType: { kind: TypeKind.OBJECT, name: "Recipe", ofType: null },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should take "NewRecipeInput" input type object as argument', () => {
+        it('should take "NewRecipeInput" input type object as argument', () => {
           expect(addRecipeMutation.args.length).toEqual(1);
           expect(addRecipeMutation.args as unknown).toEqual([
             {
@@ -1571,26 +1552,22 @@ describeConformance(
           )!;
         });
 
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should set description", () => {
+        it("should set description", () => {
           expect(recipeAddedSub.description).toEqual(
             "subscription description",
           );
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not set as deprecated", () => {
+        it("should not set as deprecated", () => {
           expect(recipeAddedSub.isDeprecated).toBeFalsy();
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip('should return non nullable "Recipe" object', () => {
+        it('should return non nullable "Recipe" object', () => {
           expect(recipeAddedSub.type as unknown).toEqual({
             kind: TypeKind.NON_NULL,
             name: null,
             ofType: { kind: TypeKind.OBJECT, name: "Recipe", ofType: null },
           });
         });
-        // BUNEST_BUG: Blocked by parent beforeAll duplicate "IRecipe" crash (packages/graphql/src/schema/graphql-schema.factory.ts:791,850) on `Recipe extends IRecipe`.
-        it.skip("should not take any arguments", () => {
+        it("should not take any arguments", () => {
           expect(recipeAddedSub.args.length).toEqual(0);
         });
       });

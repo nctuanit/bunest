@@ -178,8 +178,7 @@ describeConformance(
       "Normalizes camelCase path segments to kebab-case",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_bar/_foo" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]); expected "_bar/_foo/_foo.decorator.ts" exporting Foo.
-    it.skip("should keep underscores on decorator's path and name", async () => {
+    it("should keep underscores on decorator's path and name", async () => {
       const result = await generateSchematic({
         schematic: "decorator",
         name: "_bar/_foo",
@@ -219,8 +218,7 @@ describeConformance(
       "Bunest targets TypeScript natively on Bun without JS output templates",
     );
 
-    // BUNEST_BUG: generateSchematic("decorator") in packages/cli/src/commands/generate.ts defaults flat to false for all schematics instead of flat: true as defined in upstream decorator/schema.json.
-    it.skip("should default to flat: true when flat option is omitted", async () => {
+    it("should default to flat: true when flat option is omitted", async () => {
       const result = await generateSchematic({
         schematic: "decorator",
         name: "foo",

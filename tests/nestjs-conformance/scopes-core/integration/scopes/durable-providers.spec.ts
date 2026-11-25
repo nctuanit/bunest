@@ -243,8 +243,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: DIContainer.resolveSyntheticEnhancer() does not call resolveDurableContainerFor() for durable APP_FILTER/APP_GUARD multi-providers (packages/core/src/di/di-container.ts:1752-1767), injecting raw Request instead of tenant payload so tenantId is undefined.
-      it.skip("should run a durable global filter with its tenant payload", async () => {
+      it("should run a durable global filter with its tenant payload", async () => {
         expect((await call(51, "/durable/filter").expect(400)).body).toEqual({
           tenantId: "51",
           instanceCounter: 1,
@@ -317,8 +316,7 @@ describeConformance(
         );
       }, 20000);
 
-      // BUNEST_BUG: DIContainer.resolveDurableContainerFor() caches the durable RequestContainer with the first request's REQUEST payload before provider construction succeeds (packages/core/src/di/di-container.ts:1040-1045), so after a failing construction with forceError=true, subsequent requests reuse the stale forceError=true payload and return 412 instead of 200.
-      it.skip("should not cache durable providers that throw errors", async () => {
+      it("should not cache durable providers that throw errors", async () => {
         const failed = await call(10, "/durable/echo", { forceError: true });
         expect(failed.status).toBe(412);
 

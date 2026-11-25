@@ -130,8 +130,7 @@ describeConformance(
         await app2.close();
       });
 
-      // BUNEST_BUG: BunHttpAdapter/BunestApplication rejects empty cookie secret with generic Error instead of TypeError (packages/core/src/http/adapter/bun-http.adapter.ts & packages/core/src/application/bunest-application.ts).
-      it.skip("should reject an empty cookie secret", async () => {
+      it("should reject an empty cookie secret", async () => {
         await expect(
           BunestFactory.create(AppModule, {
             logger: false,
@@ -303,8 +302,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.init() does not auto-flush buffered logs when bufferLogs is true and autoFlushLogs defaults to true (packages/core/src/application/bunest-application.ts & bunest-application-context.ts).
-      it.skip("should flush buffered logs on app.init() by default", async () => {
+      it("should flush buffered logs on app.init() by default", async () => {
         const capturing = new CapturingLogger();
         const app = await BunestFactory.create(AppModule, {
           logger: capturing,
@@ -321,8 +319,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.init() does not auto-flush buffered logs when initialization fails (packages/core/src/application/bunest-application.ts & bunest-application-context.ts).
-      it.skip("should flush buffered logs when init() fails", async () => {
+      it("should flush buffered logs when init() fails", async () => {
         const capturing = new CapturingLogger();
 
         @Injectable()
@@ -367,8 +364,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.use() does not wrap function middleware with options.instrument.instanceDecorator (packages/core/src/application/bunest-application.ts).
-      it.skip("should decorate function middleware with instrument.instanceDecorator when configured", async () => {
+      it("should decorate function middleware with instrument.instanceDecorator when configured", async () => {
         const calls: string[] = [];
         const instanceDecorator = createSpy((instance: unknown) => {
           if (typeof instance === "function") {
@@ -479,8 +475,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.enableCsrfProtection() does not guard against being called after app.init() (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called after init", async () => {
+      it("should throw when called after init", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
         await app.init();
 
@@ -490,8 +485,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.enableCsrfProtection() does not guard against being called twice (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called twice", async () => {
+      it("should throw when called twice", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
         app.enableCsrfProtection();
 
@@ -553,8 +547,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: BunestApplication.useSecurityHeaders() / compileSecurityHeaders() does not reject semicolon/CRLF directive injection in CSP values (packages/core/src/http/security/security-headers.ts).
-      it.skip("should validate CSP directives eagerly", async () => {
+      it("should validate CSP directives eagerly", async () => {
         const app = await BunestFactory.create(AppModule, { logger: false });
 
         expect(() =>
@@ -566,8 +559,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunestApplication.useSecurityHeaders() does not guard against being called twice or after app.init() (packages/core/src/application/bunest-application.ts).
-      it.skip("should throw when called after init or twice", async () => {
+      it("should throw when called after init or twice", async () => {
         const app1 = await BunestFactory.create(AppModule, { logger: false });
         app1.useSecurityHeaders();
         expect(() => app1.useSecurityHeaders()).toThrow(/only be called once/);

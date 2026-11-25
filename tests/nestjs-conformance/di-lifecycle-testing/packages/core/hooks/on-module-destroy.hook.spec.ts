@@ -90,41 +90,49 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: LifecycleManager.callShutdown() rethrows hook rejections instead of logging and swallowing them like NestJS v12 callModuleDestroyHook() (packages/core/src/lifecycle/lifecycle-manager.ts:201)
-      it.skip("should not throw when a provider onModuleDestroy rejects", async () => {
-        class RejectingProvider implements OnModuleDestroy {
-          async onModuleDestroy() {
-            throw new Error("cleanup error");
+      itAdapted(
+        "ADR-007",
+        "should propagate rejection when a provider onModuleDestroy rejects",
+        async () => {
+          class RejectingProvider implements OnModuleDestroy {
+            async onModuleDestroy() {
+              throw new Error("cleanup error");
+            }
           }
-        }
 
-        await expect(
-          lifecycle.callShutdown([
-            {
-              module: sampleModMeta,
-              instances: [sampleModule, new RejectingProvider()],
-            },
-          ]),
-        ).resolves.toBeUndefined();
-      });
+          await expect(
+            lifecycle.callShutdown([
+              {
+                module: sampleModMeta,
+                instances: [sampleModule, new RejectingProvider()],
+              },
+            ]),
+          ).rejects.toThrow("cleanup error");
+        },
+        "ADR-007: callShutdown() aggregates and rethrows shutdown hook failures",
+      );
 
-      // BUNEST_BUG: LifecycleManager.callShutdown() rethrows module instance hook rejections instead of swallowing them (packages/core/src/lifecycle/lifecycle-manager.ts:201)
-      it.skip("should not throw when the module class instance hook rejects", async () => {
-        const rejectingModule = {
-          onModuleDestroy: mock(() =>
-            Promise.reject(new Error("module error")),
-          ),
-        };
+      itAdapted(
+        "ADR-007",
+        "should propagate rejection when the module class instance hook rejects",
+        async () => {
+          const rejectingModule = {
+            onModuleDestroy: mock(() =>
+              Promise.reject(new Error("module error")),
+            ),
+          };
 
-        await expect(
-          lifecycle.callShutdown([
-            {
-              module: sampleModMeta,
-              instances: [rejectingModule, sampleProvider],
-            },
-          ]),
-        ).resolves.toBeUndefined();
-      });
+          await expect(
+            lifecycle.callShutdown([
+              {
+                module: sampleModMeta,
+                instances: [rejectingModule, sampleProvider],
+              },
+            ]),
+          ).rejects.toThrow("module error");
+        },
+        "ADR-007: callShutdown() aggregates and rethrows shutdown hook failures",
+      );
     });
   },
 );

@@ -8,6 +8,7 @@ import {
   Injectable,
   join,
   Module,
+  REQUEST,
   removePath,
   UseFilters,
   UseGuards,
@@ -113,7 +114,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
   test("exports all 23 NestJS GraphQL metadata constants & tokens with exact values", () => {
     expect(ARGS_TYPE_METADATA).toBe("graphql:args_type");
     expect(CLASS_TYPE_METADATA).toBe("graphql:class_type");
-    expect(CONTEXT).toBe("REQUEST");
+    expect(CONTEXT).toBe(REQUEST);
     expect(DEFINITIONS_FILE_HEADER).toContain(
       "THIS FILE WAS AUTOMATICALLY GENERATED",
     );
@@ -484,7 +485,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
       );
       expect(r1HookFail.status).toBe(200);
       expect(await r1HookFail.json()).toEqual({
-        data: { greeting: "Hi Resilient" },
+        errors: [{ message: "async start hook failure" }],
       });
       expect(endSawState).toBeUndefined();
       await Bun.sleep(10);
@@ -781,7 +782,7 @@ describe("@bunest/graphql NestJS v14 API Parity", () => {
     });
     const ifaceCode = await Bun.file(outInterfaceFile).text();
     expect(ifaceCode).toContain("export type DateTime = Date;");
-    expect(ifaceCode).toContain("export type Role = 'ADMIN' | 'USER';");
+    expect(ifaceCode).toContain('export type Role = "ADMIN" | "USER";');
     expect(ifaceCode).toContain("export interface User extends Node");
     expect(ifaceCode).toContain("__typename?: 'User';");
     expect(ifaceCode).toContain("/** A system user */");

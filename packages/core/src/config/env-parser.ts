@@ -4,6 +4,7 @@ import type { Parser } from "./types/path.types";
 
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+export const MAX_EXPANDED_ENV_VALUE_LENGTH = 128 * 1024;
 
 export interface ParsedEnvEntry {
   readonly value: string;
@@ -195,22 +196,39 @@ function expandStringValue(
   raw: string,
   lookup: (name: string) => string | undefined,
   visiting: Set<string>,
+  options?: {
+    selfKey?: string;
+    selfLookup?: () => string | undefined;
+    maxLength?: number;
+    targetKey?: string;
+    noRecursiveExpand?: boolean;
+  },
 ): string {
   let result = "";
   let i = 0;
+  const maxLength = options?.maxLength;
+
+  const append = (chunk: string) => {
+    result += chunk;
+    if (maxLength !== undefined && result.length > maxLength) {
+      throw new Error(
+        `Environment variable "${options?.targetKey ?? ""}" is too long after variable expansion`,
+      );
+    }
+  };
 
   while (i < raw.length) {
     const ch = raw[i]!;
 
     // Escaped dollar `\$` -> literal `$`
     if (ch === "\\" && raw[i + 1] === "$") {
-      result += "$";
+      append("$");
       i += 2;
       continue;
     }
 
     if (ch === "$") {
-      // Braced expression `${VAR}`, `${VAR:-default}`, `${VAR-default}`
+      // Braced expression `${VAR}`, `${VAR:-default}`, `${VAR-default}`, `${VAR:+alt}`, `${VAR+alt}`
       if (raw[i + 1] === "{") {
         let depth = 1;
         let j = i + 2;
@@ -233,7 +251,7 @@ function expandStringValue(
 
         if (depth === 0) {
           const expr = raw.slice(i + 2, j);
-          result += evaluateBraceExpression(expr, lookup, visiting);
+          append(evaluateBraceExpression(expr, lookup, visiting, options));
           i = j + 1;
           continue;
         }
@@ -243,13 +261,13 @@ function expandStringValue(
       const match = /^[A-Za-z_][A-Za-z0-9_]*/.exec(raw.slice(i + 1));
       if (match) {
         const varName = match[0]!;
-        result += resolveVariable(varName, lookup, visiting) ?? "";
+        append(resolveVariable(varName, lookup, visiting, options) ?? "");
         i += 1 + varName.length;
         continue;
       }
     }
 
-    result += ch;
+    append(ch);
     i++;
   }
 
@@ -260,8 +278,15 @@ function evaluateBraceExpression(
   expr: string,
   lookup: (name: string) => string | undefined,
   visiting: Set<string>,
+  options?: {
+    selfKey?: string;
+    selfLookup?: () => string | undefined;
+    maxLength?: number;
+    targetKey?: string;
+    noRecursiveExpand?: boolean;
+  },
 ): string {
-  const opMatch = /^([A-Za-z_][A-Za-z0-9_]*)(?:(:-|:=|-|=)([\s\S]*))?$/.exec(
+  const opMatch = /^([A-Za-z_][A-Za-z0-9_]*)(?:(:-|:=|:\+|-|=|\+)([\s\S]*))?$/.exec(
     expr,
   );
   if (!opMatch) {
@@ -272,31 +297,55 @@ function evaluateBraceExpression(
   const operator = opMatch[2];
   const fallbackRaw = opMatch[3] ?? "";
 
-  const resolved = resolveVariable(varName, lookup, visiting);
+  const resolved = resolveVariable(varName, lookup, visiting, options);
 
   if (operator === undefined) {
     return resolved ?? "";
+  }
+
+  if (operator === ":+") {
+    if (resolved !== undefined && resolved !== "") {
+      return expandStringValue(fallbackRaw, lookup, visiting, options);
+    }
+    return "";
+  }
+
+  if (operator === "+") {
+    if (resolved !== undefined) {
+      return expandStringValue(fallbackRaw, lookup, visiting, options);
+    }
+    return "";
   }
 
   if (operator === ":-" || operator === ":=") {
     if (resolved !== undefined && resolved !== "") {
       return resolved;
     }
-    return expandStringValue(fallbackRaw, lookup, visiting);
+    return expandStringValue(fallbackRaw, lookup, visiting, options);
   }
 
   // `-` or `=`: use fallback only when completely unset
   if (resolved !== undefined) {
     return resolved;
   }
-  return expandStringValue(fallbackRaw, lookup, visiting);
+  return expandStringValue(fallbackRaw, lookup, visiting, options);
 }
 
 function resolveVariable(
   name: string,
   lookup: (varName: string) => string | undefined,
   visiting: Set<string>,
+  options?: {
+    selfKey?: string;
+    selfLookup?: () => string | undefined;
+    maxLength?: number;
+    targetKey?: string;
+    noRecursiveExpand?: boolean;
+  },
 ): string | undefined {
+  if (options?.selfKey === name && options.selfLookup) {
+    return options.selfLookup();
+  }
   if (visiting.has(name)) {
     return "";
   }
@@ -304,25 +353,66 @@ function resolveVariable(
   if (raw === undefined) {
     return undefined;
   }
+  if (options?.noRecursiveExpand) {
+    return raw;
+  }
   visiting.add(name);
   try {
-    return expandStringValue(raw, lookup, visiting);
+    return expandStringValue(raw, lookup, visiting, options);
   } finally {
     visiting.delete(name);
   }
 }
 
 /**
- * Expands `${VAR}` / `${VAR:-default}` / `$VAR` references across parsed `.env` entries.
+ * Expands a single raw template string using an explicit lookup function,
+ * enforcing `MAX_EXPANDED_ENV_VALUE_LENGTH` to prevent exponential blowup.
+ */
+export function expandSingleEnvValue(
+  key: string,
+  raw: string,
+  lookup: (name: string) => string | undefined,
+  maxLength: number = MAX_EXPANDED_ENV_VALUE_LENGTH,
+): string {
+  return expandStringValue(raw, lookup, new Set([key]), {
+    maxLength,
+    targetKey: key,
+    noRecursiveExpand: true,
+  });
+}
+
+/**
+ * Expands `${VAR}` / `${VAR:-default}` / `${VAR:+alt}` / `$VAR` references across parsed `.env` entries.
  * Single-quoted values are preserved literally; escaped `\$` becomes `$`.
  */
 export function expandEnvEntries(
   entries: ReadonlyMap<string, ParsedEnvEntry>,
   externalEnv: Readonly<Record<string, string | undefined>>,
-  options: ExpandVariablesOptions & { override?: boolean } = {},
+  options: ExpandVariablesOptions & {
+    override?: boolean;
+    predefinedKeys?: ReadonlySet<string>;
+  } = {},
 ): Record<string, string> {
   const expanded = new Map<string, string>();
   const effectiveExternal = options.processEnv ?? externalEnv;
+  const predefinedKeys = options.predefinedKeys;
+
+  const isExternalPredefined = (name: string): boolean => {
+    if (options.ignoreProcessEnv) return false;
+    const extVal = effectiveExternal[name];
+    if (extVal === undefined) return false;
+    if (predefinedKeys) {
+      return predefinedKeys.has(name);
+    }
+    if (extVal === "" && entries.has(name)) {
+      return false;
+    }
+    const entry = entries.get(name);
+    if (entry && extVal === entry.value) {
+      return false;
+    }
+    return true;
+  };
 
   const makeLookup =
     (currentKey: string) =>
@@ -350,21 +440,43 @@ export function expandEnvEntries(
         return undefined;
       }
 
-      if (!options.ignoreProcessEnv && effectiveExternal[name] !== undefined) {
+      if (isExternalPredefined(name)) {
         return effectiveExternal[name];
       }
       if (expanded.has(name)) {
         return expanded.get(name);
       }
       const entry = entries.get(name);
-      return entry?.value;
+      if (entry !== undefined) {
+        return entry.value;
+      }
+      if (!options.ignoreProcessEnv && effectiveExternal[name] !== undefined) {
+        return effectiveExternal[name];
+      }
+      return undefined;
     };
 
   const out: Record<string, string> = {};
   for (const [key, entry] of entries.entries()) {
-    const finalValue = entry.singleQuoted
-      ? entry.value
-      : expandStringValue(entry.value, makeLookup(key), new Set([key]));
+    let finalValue: string;
+    if (!options.override && isExternalPredefined(key)) {
+      finalValue = effectiveExternal[key]!;
+    } else if (entry.singleQuoted) {
+      finalValue = entry.value;
+    } else if (options.override) {
+      finalValue = expandStringValue(entry.value, makeLookup(key), new Set([key]), {
+        selfKey: key,
+        selfLookup: () =>
+          options.ignoreProcessEnv ? undefined : effectiveExternal[key],
+        maxLength: MAX_EXPANDED_ENV_VALUE_LENGTH,
+        targetKey: key,
+      });
+    } else {
+      finalValue = expandStringValue(entry.value, makeLookup(key), new Set([key]), {
+        maxLength: MAX_EXPANDED_ENV_VALUE_LENGTH,
+        targetKey: key,
+      });
+    }
     expanded.set(key, finalValue);
     Object.defineProperty(out, key, {
       value: finalValue,
@@ -372,6 +484,18 @@ export function expandEnvEntries(
       writable: true,
       configurable: true,
     });
+    // Write back into custom processEnv target when supplied (dotenv-expand parity)
+    if (options.processEnv) {
+      if (
+        options.override ||
+        !Object.prototype.hasOwnProperty.call(options.processEnv, key) ||
+        options.processEnv[key] === undefined ||
+        options.processEnv[key] === "" ||
+        options.processEnv[key] === entry.value
+      ) {
+        options.processEnv[key] = finalValue;
+      }
+    }
   }
 
   return out;
@@ -385,12 +509,16 @@ export interface LoadEnvOptions {
   readonly override?: boolean;
   readonly parser?: Parser;
   readonly envSource?: Readonly<Record<string, string | undefined>>;
+  readonly previouslyLoadedEnv?: ReadonlyMap<string, string>;
 }
 
 export interface LoadedEnvSnapshot {
   readonly fileValues: Record<string, unknown>;
   readonly runtimeEnv: Record<string, string>;
   readonly combined: Record<string, unknown>;
+  readonly rawEntries: ReadonlyMap<string, ParsedEnvEntry>;
+  readonly predefinedKeys: ReadonlySet<string>;
+  readonly invalidNulKey?: string;
 }
 
 /**
@@ -432,8 +560,9 @@ export function loadEnvironmentSnapshot(
           ? [options.envFilePath]
           : [...options.envFilePath];
 
-    // Load in reverse order so earlier paths override later paths cleanly
-    for (let i = paths.length - 1; i >= 0; i--) {
+    // Load in forward order, keeping the first occurrence so earlier paths take precedence
+    // AND key insertion order preserves the first env file's definition order.
+    for (let i = 0; i < paths.length; i++) {
       const filePath = paths[i];
       if (!filePath || !existsSyncPath(filePath)) {
         continue;
@@ -444,24 +573,78 @@ export function loadEnvironmentSnapshot(
         if (parsedObj && typeof parsedObj === "object") {
           for (const [key, val] of Object.entries(parsedObj)) {
             if (!key || DANGEROUS_KEYS.has(key)) continue;
-            Object.defineProperty(customParsedValues, key, {
-              value: val,
-              enumerable: true,
-              writable: true,
-              configurable: true,
-            });
-            if (typeof val === "string") {
-              mergedEntries.set(key, { value: val, singleQuoted: false });
-            } else {
-              mergedEntries.delete(key);
+            if (!Object.prototype.hasOwnProperty.call(customParsedValues, key)) {
+              Object.defineProperty(customParsedValues, key, {
+                value: val,
+                enumerable: true,
+                writable: true,
+                configurable: true,
+              });
+              if (typeof val === "string") {
+                mergedEntries.set(key, { value: val, singleQuoted: false });
+              }
             }
           }
         }
       } else {
         const parsed = parseEnvEntries(raw);
         for (const [key, entry] of parsed.entries()) {
-          mergedEntries.set(key, entry);
+          if (!mergedEntries.has(key)) {
+            mergedEntries.set(key, entry);
+          }
         }
+      }
+    }
+  }
+
+  // Determine which keys in externalEnv were genuinely predefined before `.env` loading.
+  const expandOpts: ExpandVariablesOptions | undefined =
+    typeof options.expandVariables === "object"
+      ? options.expandVariables
+      : options.expandVariables
+        ? {}
+        : undefined;
+  const effectiveExternal = expandOpts?.processEnv ?? runtimeEnv;
+  const predefinedKeys = new Set<string>();
+  if (!options.override && !expandOpts?.ignoreProcessEnv) {
+    for (const [key, extVal] of Object.entries(effectiveExternal)) {
+      if (extVal === undefined) continue;
+      const fileEntry = mergedEntries.get(key);
+      if (fileEntry) {
+        // Empty predefined variable is replaceable when expandVariables is enabled
+        if (options.expandVariables && extVal === "") {
+          continue;
+        }
+        // Predefined value identical to raw `.env` template is expanded
+        if (options.expandVariables && extVal === fileEntry.value) {
+          continue;
+        }
+        // Value written by an earlier ConfigModule.forRoot() or ConfigService.set() in the same process
+        if (
+          !expandOpts?.processEnv &&
+          options.previouslyLoadedEnv &&
+          options.previouslyLoadedEnv.get(key) === extVal
+        ) {
+          continue;
+        }
+      }
+      predefinedKeys.add(key);
+    }
+  }
+
+  // Check for NUL bytes in parsed env file values before expansion
+  let invalidNulKey: string | undefined;
+  for (const [key, entry] of mergedEntries.entries()) {
+    if (entry.value.includes("\0")) {
+      invalidNulKey = key;
+      break;
+    }
+  }
+  if (!invalidNulKey && useCustomParser) {
+    for (const [key, val] of Object.entries(customParsedValues)) {
+      if (typeof val === "string" && val.includes("\0")) {
+        invalidNulKey = key;
+        break;
       }
     }
   }
@@ -479,14 +662,11 @@ export function loadEnvironmentSnapshot(
         });
       }
     }
-    if (options.expandVariables && mergedEntries.size > 0) {
-      const expandOpts: ExpandVariablesOptions =
-        typeof options.expandVariables === "object"
-          ? options.expandVariables
-          : {};
+    if (options.expandVariables && mergedEntries.size > 0 && !invalidNulKey) {
       const expandedStrings = expandEnvEntries(mergedEntries, runtimeEnv, {
-        ...expandOpts,
+        ...(expandOpts ?? {}),
         override: options.override,
+        predefinedKeys,
       });
       for (const [key, val] of Object.entries(expandedStrings)) {
         if (!DANGEROUS_KEYS.has(key)) {
@@ -499,14 +679,11 @@ export function loadEnvironmentSnapshot(
         }
       }
     }
-  } else if (options.expandVariables) {
-    const expandOpts: ExpandVariablesOptions =
-      typeof options.expandVariables === "object"
-        ? options.expandVariables
-        : {};
+  } else if (options.expandVariables && !invalidNulKey) {
     const expanded = expandEnvEntries(mergedEntries, runtimeEnv, {
-      ...expandOpts,
+      ...(expandOpts ?? {}),
       override: options.override,
+      predefinedKeys,
     });
     for (const [key, val] of Object.entries(expanded)) {
       if (!DANGEROUS_KEYS.has(key)) {
@@ -528,6 +705,15 @@ export function loadEnvironmentSnapshot(
         writable: true,
         configurable: true,
       });
+    }
+  }
+
+  if (!invalidNulKey) {
+    for (const [key, val] of Object.entries(fileValues)) {
+      if (typeof val === "string" && val.includes("\0")) {
+        invalidNulKey = key;
+        break;
+      }
     }
   }
 
@@ -553,7 +739,7 @@ export function loadEnvironmentSnapshot(
       }
     }
   } else {
-    // Default precedence: runtime env > earlier `.env` > later `.env`
+    // Default precedence: predefined runtime env > earlier `.env` > later `.env`
     for (const [key, val] of Object.entries(fileValues)) {
       if (!DANGEROUS_KEYS.has(key)) {
         Object.defineProperty(combined, key, {
@@ -565,6 +751,15 @@ export function loadEnvironmentSnapshot(
       }
     }
     for (const [key, val] of Object.entries(runtimeEnv)) {
+      const hasFileValue = Object.prototype.hasOwnProperty.call(fileValues, key);
+      if (hasFileValue && !predefinedKeys.has(key) && !expandOpts?.processEnv) {
+        // Replaced by expanded file value (e.g. empty predefined or raw template or earlier bootstrap)
+        continue;
+      }
+      if (hasFileValue && expandOpts?.processEnv) {
+        // Custom processEnv target took precedence for expansion
+        continue;
+      }
       Object.defineProperty(combined, key, {
         value: val,
         enumerable: true,
@@ -574,7 +769,14 @@ export function loadEnvironmentSnapshot(
     }
   }
 
-  return { fileValues, runtimeEnv, combined };
+  return {
+    fileValues,
+    runtimeEnv,
+    combined,
+    rawEntries: mergedEntries,
+    predefinedKeys,
+    invalidNulKey,
+  };
 }
 
 /**

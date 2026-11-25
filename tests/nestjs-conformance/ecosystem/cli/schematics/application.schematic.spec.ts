@@ -31,6 +31,7 @@ function makeTempDir(prefix: string): string {
 const EXPECTED_APP_FILES = (prefix: string): string[] =>
   [
     `${prefix}.gitignore`,
+    `${prefix}AGENTS.md`,
     `${prefix}README.md`,
     `${prefix}package.json`,
     `${prefix}tsconfig.json`,
@@ -147,8 +148,7 @@ describeConformance(
         "createProject uses validateProjectName which accepts dotted package names",
       );
 
-      // BUNEST_BUG: generateSchematic("application", { name: "project.foo.bar" }) fails because parseSchematicName() in packages/cli/src/utils/naming.ts disallows "." in VALID_SEGMENT_REGEX (unlike validateProjectName() used by createProject).
-      it.skip("should manage name with dots in it via application schematic", async () => {
+      it("should manage name with dots in it via application schematic", async () => {
         const result = await generateSchematic({
           schematic: "application",
           name: "project.foo.bar",
@@ -186,8 +186,7 @@ describeConformance(
         "Normalizes camelCase to kebab-case in Bunest scaffold",
       );
 
-      // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects leading "_" in "_awesomeProject" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]) and toKebabCase() strips leading separators instead of preserving "_awesome-project".
-      it.skip("should keep underscores", async () => {
+      it("should keep underscores", async () => {
         const result = await generateSchematic({
           schematic: "application",
           name: "_awesomeProject",
@@ -203,8 +202,7 @@ describeConformance(
         expect(pkg.name).toBe("_awesome-project");
       });
 
-      // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects "@" in "@/package"; expected scaffold under "@/package/" with package.json name "package".
-      it.skip('should manage basic name that has no scope name in it but starts with "@"', async () => {
+      it('should manage basic name that has no scope name in it but starts with "@"', async () => {
         const result = await generateSchematic({
           schematic: "application",
           name: "@/package",
@@ -220,8 +218,7 @@ describeConformance(
         expect(pkg.name).toBe("package");
       });
 
-      // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects "." as a path-traversal segment instead of scaffolding the application in cwd with basename(cwd) as package.json name.
-      it.skip('should manage the name "." (ie., current working directory)', async () => {
+      it('should manage the name "." (ie., current working directory)', async () => {
         const result = await generateSchematic({
           schematic: "application",
           name: ".",
@@ -238,8 +235,7 @@ describeConformance(
       });
 
       describe("and it meant to be a scoped package", () => {
-        // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects "@" scope prefix in "@scope/package"; expected scaffold under "@scope/package/" with package.json name "@scope/package".
-        it.skip("should manage basic scoped name", async () => {
+        it("should manage basic scoped name", async () => {
           const result = await generateSchematic({
             schematic: "application",
             name: "@scope/package",
@@ -255,8 +251,7 @@ describeConformance(
           expect(pkg.name).toBe("@scope/package");
         });
 
-        // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects "@" and whitespace in "@ /package"; expected normalization to "@-/package".
-        it.skip('should manage name with blank space right after the "@" symbol', async () => {
+        it('should manage name with blank space right after the "@" symbol', async () => {
           const result = await generateSchematic({
             schematic: "application",
             name: "@ /package",
@@ -296,8 +291,7 @@ describeConformance(
       "createProject accepts numeric project names via validateProjectName",
     );
 
-    // BUNEST_BUG: parseSchematicName() in packages/cli/src/utils/naming.ts rejects numeric schematic names like "123" (VALID_SEGMENT_REGEX requires leading [a-zA-Z]).
-    it.skip("should manage name as number via application schematic", async () => {
+    it("should manage name as number via application schematic", async () => {
       const result = await generateSchematic({
         schematic: "application",
         name: "123",
@@ -374,8 +368,7 @@ describeConformance(
       "createProject supports explicit dir; generateSchematic requires flat: true with dir",
     );
 
-    // BUNEST_BUG: generateSchematic("application") in packages/cli/src/commands/generate.ts has no "directory" option overriding the output folder while keeping package.json name as "project" (passing dir without flat nests under app/project/).
-    it.skip("should manage destination directory option on application schematic without flat", async () => {
+    it("should manage destination directory option on application schematic without flat", async () => {
       const result = await generateSchematic({
         schematic: "application",
         name: "project",
@@ -387,8 +380,7 @@ describeConformance(
       expect(result.files.map((f) => f.relativePath)).toContain("package.json");
     });
 
-    // BUNEST_BUG: buildSchematicFiles("application") in packages/cli/src/templates/schematic.templates.ts ignores options.spec = false and always emits test/app.spec.ts (buildProjectTemplateFiles in packages/cli/src/templates/project.templates.ts lacks a spec flag).
-    it.skip("should not create a spec file when spec is false", () => {
+    it("should not create a spec file when spec is false", () => {
       const files = buildSchematicFiles(
         "application",
         parseSchematicName("project"),
@@ -428,8 +420,7 @@ describeConformance(
       "Bunest generates bun:test integration spec instead of Jest/Vitest specs",
     );
 
-    // BUNEST_BUG: buildSchematicFiles("application") in packages/cli/src/templates/schematic.templates.ts ignores options.specFileSuffix ("test") and hardcodes test/app.spec.ts in packages/cli/src/templates/project.templates.ts.
-    it.skip("should create a spec file with custom file suffix", () => {
+    it("should create a spec file with custom file suffix", () => {
       const files = buildSchematicFiles(
         "application",
         parseSchematicName("project"),
@@ -535,8 +526,7 @@ describeConformance(
         "createProject forwards strict option to tsconfig.json",
       );
 
-      // BUNEST_BUG: GenerateSchematicOptions in packages/cli/src/types.ts and buildSchematicFiles("application") in packages/cli/src/templates/schematic.templates.ts do not accept strict or packageManager options (only createProject supports them).
-      it.skip("should propagate strict and packageManager options through application schematic", async () => {
+      it("should propagate strict and packageManager options through application schematic", async () => {
         await generateSchematic({
           schematic: "application",
           name: "project",
@@ -555,8 +545,7 @@ describeConformance(
     });
 
     describe("when minimal", () => {
-      // BUNEST_BUG: generateSchematic("application") and buildProjectTemplateFiles() in packages/cli/src/templates/project.templates.ts do not implement the "minimal" one-file application scaffold option.
-      it.skip("should generate one source file and minimal config when minimal is true", async () => {
+      it("should generate one source file and minimal config when minimal is true", async () => {
         const result = await generateSchematic({
           schematic: "application",
           name: "project",
@@ -602,8 +591,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: generateSchematic("application") throws FileCollisionError when README.md or .gitignore already exist instead of preserving them and generating the remaining files (packages/cli/src/utils/fs-writer.ts).
-      it.skip("should keep an existing README.md and .gitignore instead of overwriting them", async () => {
+      it("should keep an existing README.md and .gitignore instead of overwriting them", async () => {
         const projectDir = join(tempDir, "project");
         mkdirSyncPath(projectDir, { recursive: true });
         writeTextSync(join(projectDir, "README.md"), "# My service");

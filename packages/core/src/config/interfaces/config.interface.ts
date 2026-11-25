@@ -151,15 +151,32 @@ export interface ConfigModuleOptions<T extends object = ConfigObject> {
   envSource?: Readonly<Record<string, string | undefined>>;
 }
 
-export interface ConfigServiceInternalOptions {
-  readonly secretKeys?: readonly string[];
-  readonly redactionMask?: string;
-  readonly cache?: boolean;
-  readonly skipProcessEnv?: boolean;
-  readonly ignoreEnvVars?: boolean;
+export interface EnvExpansionContext {
+  readonly rawEntries: ReadonlyMap<
+    string,
+    { readonly value: string; readonly singleQuoted: boolean }
+  >;
+  readonly predefinedKeys: ReadonlySet<string>;
+  readonly expandOptions: ExpandVariablesOptions;
+  readonly override: boolean;
+  readonly ignoreEnvVars: boolean;
+  readonly skipProcessEnv: boolean;
   readonly envSource?: Readonly<Record<string, string | undefined>>;
-  readonly envFilePaths?: readonly string[];
-  readonly parser?: Parser;
+}
+
+export interface ConfigServiceInternalOptions {
+  secretKeys?: readonly string[];
+  redactionMask?: string;
+  cache?: boolean;
+  skipProcessEnv?: boolean;
+  ignoreEnvVars?: boolean;
+  envSource?: Readonly<Record<string, string | undefined>>;
+  envFilePaths?: readonly string[];
+  parser?: Parser;
+  envExpansionContexts?: EnvExpansionContext[];
+  validatedSources?: object[];
+  validatedKeys?: Set<string>;
+  onEnvAssigned?: (key: string, value: string) => void;
 }
 
 /**

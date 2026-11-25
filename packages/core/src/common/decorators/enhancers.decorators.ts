@@ -10,10 +10,35 @@ import { MetadataRegistry } from "../metadata/metadata-registry";
 
 export type { ExceptionFilterLike, GuardLike, InterceptorLike, MiddlewareLike };
 
+function validateEnhancerItem(
+  decoratorName: string,
+  requiredMethod: string | undefined,
+  item: unknown,
+): void {
+  if (!requiredMethod) return;
+  const isValid =
+    typeof item === "function" ||
+    (typeof item === "object" &&
+      item !== null &&
+      typeof (item as Record<string, unknown>)[requiredMethod] === "function");
+  if (!isValid) {
+    throw new Error(
+      `Invalid item passed to ${decoratorName}() decorator (expected a class or an object with a ${requiredMethod}() method).`,
+    );
+  }
+}
+
 function createEnhancerDecorator<T>(
   metadataKey: MetadataKey,
+  decoratorName?: string,
+  requiredMethod?: string,
 ): (...items: T[]) => ClassDecorator & MethodDecorator {
   return (...items: T[]): ClassDecorator & MethodDecorator => {
+    if (decoratorName && requiredMethod) {
+      for (const item of items) {
+        validateEnhancerItem(decoratorName, requiredMethod, item);
+      }
+    }
     return (
       target: object,
       _propertyKey?: string | symbol,
@@ -36,16 +61,26 @@ function createEnhancerDecorator<T>(
 
 export const UseGuards = createEnhancerDecorator<GuardLike>(
   METADATA_KEYS.GUARDS,
+  "@UseGuards",
+  "canActivate",
 );
 
-export const UsePipes = createEnhancerDecorator<PipeLike>(METADATA_KEYS.PIPES);
+export const UsePipes = createEnhancerDecorator<PipeLike>(
+  METADATA_KEYS.PIPES,
+  "@UsePipes",
+  "transform",
+);
 
 export const UseInterceptors = createEnhancerDecorator<InterceptorLike>(
   METADATA_KEYS.INTERCEPTORS,
+  "@UseInterceptors",
+  "intercept",
 );
 
 export const UseFilters = createEnhancerDecorator<ExceptionFilterLike>(
   METADATA_KEYS.EXCEPTION_FILTERS,
+  "@UseFilters",
+  "catch",
 );
 
 /**

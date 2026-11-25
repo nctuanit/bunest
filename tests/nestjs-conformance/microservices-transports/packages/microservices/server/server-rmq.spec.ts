@@ -454,8 +454,7 @@ describeConformance(
         expect(harness.cancel.secondCall?.args).toEqual(["amq.ctag-2"]);
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer.listen() has no single-flight or closing guard, so concurrent listen() calls register duplicate consumers and calling close() while assertQueue() is pending still proceeds to consume() and sets isListening = true (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should not consume when close() runs while listen() is awaiting assertQueue()", async () => {
+      it("should not consume when close() runs while listen() is awaiting assertQueue()", async () => {
         let releaseAssert!: () => void;
         harness.assertQueue.onFirstCall().callsFake(
           (queue) =>
@@ -521,8 +520,7 @@ describeConformance(
         expect(noTagHarness.cancel.notCalled).toBe(true);
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer.close() does not catch channel.cancel() rejections/throws and clears `this.consumerTag` only after `await cancel()`, so a closed channel error fails close() and leaks stale consumerTag (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should still complete close() and clear consumerTag when channel.cancel() rejects or throws", async () => {
+      it("should still complete close() and clear consumerTag when channel.cancel() rejects or throws", async () => {
         await server.listen();
         harness.cancel.rejects(new Error("Channel closed"));
 
@@ -665,8 +663,7 @@ describeConformance(
         expect(harness.ack.calledOnceWith(strayResponse)).toBe(true);
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer.onMessage() directly reads `msg.content` without checking for `null` (AMQP broker consumer-cancel notification), throwing an unhandled TypeError (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should handle null consumer-cancelled delivery gracefully without throwing", async () => {
+      it("should handle null consumer-cancelled delivery gracefully without throwing", async () => {
         await server.listen();
         const consumer = harness.getLastConsumer("tasks.queue");
         expect(consumer).toBeDefined();
@@ -881,8 +878,7 @@ describeConformance(
         ).toBe(404);
       });
 
-      // BUNEST_BUG: When no @MessagePattern handler exists and `noAck` is `false`, RabbitMqTransportServer.onMessage() calls `channel.ack(msg)` instead of `channel.nack(msg, false, false)` (upstream ServerRMQ nacks without requeue on missing handlers) (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should negative acknowledge without requeue when message handler does not exist and noAck is false", async () => {
+      it("should negative acknowledge without requeue when message handler does not exist and noAck is false", async () => {
         await server.listen();
 
         const msg = makeRequestMsg(
@@ -1043,8 +1039,7 @@ describeConformance(
         expect(harness.ack.notCalled).toBe(true);
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer.onMessage() does not unwrap RmqRecord / RmqRecordBuilder responses returned by handlers, serializing `{ data, options }` directly into `response.response` and dropping record options (e.g., priority, headers, persistent) instead of forwarding them to `channel.sendToQueue` while preserving request `correlationId` (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
-      it.skip("should unwrap RmqRecord response data and forward options to sendToQueue while preserving request correlationId", async () => {
+      it("should unwrap RmqRecord response data and forward options to sendToQueue while preserving request correlationId", async () => {
         const recordOptions = {
           priority: 5,
           headers: { "x-reply": "yes" },
@@ -1082,8 +1077,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer.onMessage() only populates `metadata` with `{ queue, correlationId, replyTo }` and drops AMQP `msg.properties.headers` (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
-      it.skip("should expose incoming message headers in RpcContext.metadata", async () => {
+      it("should expose incoming message headers in RpcContext.metadata", async () => {
         let capturedCtx: RpcContext | undefined;
         server.addEventHandler("traced.event", (_data, ctx) => {
           capturedCtx = ctx;
@@ -1196,8 +1190,7 @@ describeConformance(
         expect(harness.nack.notCalled).toBe(true);
       });
 
-      // BUNEST_BUG: When no @EventPattern handler exists and `noAck` is `false`, RabbitMqTransportServer.onMessage() calls `channel.ack(msg)` instead of `channel.nack(msg, false, false)` (upstream ServerRMQ.handleEvent nacks without requeue on unknown events when noAck is false) (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should negative acknowledge without requeue when event handler does not exist and noAck is false", async () => {
+      it("should negative acknowledge without requeue when event handler does not exist and noAck is false", async () => {
         await server.listen();
 
         const msg = makeEventMsg("unhandled.event", { test: true });
@@ -1288,13 +1281,11 @@ describeConformance(
         expect(server.unwrap()).toBeDefined();
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer inherits base `MicroserviceTransportServer.unwrap()` which returns `this` instead of overriding it to return the underlying injected `RabbitMqChannelLike` (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("should return the underlying RabbitMqChannelLike from unwrap()", () => {
+      it("should return the underlying RabbitMqChannelLike from unwrap()", () => {
         expect(server.unwrap<RabbitMqChannelLike>()).toBe(harness.channel);
       });
 
-      // BUNEST_BUG: RabbitMqTransportServer does not support AMQP wildcard topic pattern matching (`*` single-segment and `#` multi-segment, `wildcards: true`) unlike NestJS ServerRMQ and Bunest MqttServer (packages/microservices/src/transports/broker.transports.ts & packages/microservices/src/interfaces.ts).
-      it.skip("should match AMQP wildcard patterns (* and #) when wildcards option is enabled", async () => {
+      it("should match AMQP wildcard patterns (* and #) when wildcards option is enabled", async () => {
         const wildcardServer = trackServer(
           new RabbitMqTransportServer({
             channel: harness.channel,

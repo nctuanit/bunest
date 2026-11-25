@@ -1,3 +1,10 @@
+import {
+  base64UrlEncode,
+  randomToken,
+  timingSafeEqualBytes,
+  timingSafeEqualStr,
+} from "@bunest/core";
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -11,14 +18,12 @@ export function utf8Decode(bytes: Uint8Array): string {
   return textDecoder.decode(bytes);
 }
 
-export function base64UrlEncode(input: Uint8Array | string): string {
-  const bytes = typeof input === "string" ? utf8Encode(input) : input;
-  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
+export {
+  base64UrlEncode,
+  randomToken,
+  timingSafeEqualBytes,
+  timingSafeEqualStr as timingSafeEqualString,
+};
 
 export function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   if (typeof input !== "string" || input.length === 0) {
@@ -41,32 +46,10 @@ export function base64UrlDecodeUtf8(input: string): string {
   return utf8Decode(base64UrlDecode(input));
 }
 
-/**
- * Constant-time comparison of two byte buffers to prevent timing side channels.
- */
-export function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
-  const lenA = a.length;
-  const lenB = b.length;
-  const maxLen = Math.max(lenA, lenB);
-  let diff = lenA ^ lenB;
-  for (let i = 0; i < maxLen; i++) {
-    diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
-  }
-  return diff === 0;
-}
-
-export function timingSafeEqualString(a: string, b: string): boolean {
-  return timingSafeEqualBytes(utf8Encode(a), utf8Encode(b));
-}
-
 export function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
   return bytes;
-}
-
-export function randomToken(byteLength = 32): string {
-  return base64UrlEncode(randomBytes(byteLength));
 }
 
 const DURATION_REGEX = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i;

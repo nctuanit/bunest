@@ -256,8 +256,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: CSRF Origin vs Host comparison fails when Host explicitly includes the scheme's default port (443/80) because URL.host strips default ports (packages/core/src/http/security/csrf-protection.ts).
-      it.skip("allows Origin host matching Host with default port of its scheme (443/80/IPv6)", () => {
+      it("allows Origin host matching Host with default port of its scheme (443/80/IPv6)", () => {
         expect(
           checkAllowed(protection, "POST", "/items", {
             origin: "https://app.example",
@@ -322,8 +321,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: normalizeOrigin rejects non-http/https schemes such as chrome-extension:// (packages/core/src/http/security/csrf-protection.ts:15-30).
-      it.skip("supports non-http/https serialized origins like chrome-extension://", () => {
+      it("supports non-http/https serialized origins like chrome-extension://", () => {
         const p = compileCsrfProtection({
           trustedOrigins: ["chrome-extension://abcdef"],
         });
@@ -353,8 +351,7 @@ describeConformance(
         ).toThrow(/Invalid trusted origin/);
       });
 
-      // BUNEST_BUG: normalizeOrigin relies on new URL() which normalizes away credentials, dot-segments, and backslashes instead of rejecting them (packages/core/src/http/security/csrf-protection.ts:15-30).
-      it.skip.each([
+      it.each([
         "https://user:pass@example.com",
         "https://example.com/.",
         "https://example.com/%2e%2e",
@@ -420,8 +417,7 @@ describeConformance(
           expect(isExcluded(p, "/items")).toBe(false);
         });
 
-        // BUNEST_BUG: compileCsrfProtection exclude matching only performs exact pathname equality and does not support wildcard patterns like "webhooks/*path" (packages/core/src/http/security/csrf-protection.ts).
-        it.skip("matches wildcard path exclusions like webhooks/*path", () => {
+        it("matches wildcard path exclusions like webhooks/*path", () => {
           const p = compileCsrfProtection({
             exclude: ["webhooks/*path"],
           });
@@ -429,8 +425,7 @@ describeConformance(
           expect(isExcluded(p, "/items")).toBe(false);
         });
 
-        // BUNEST_BUG: compileCsrfProtection pushes BOTH the unprefixed and prefixed exclude paths when globalPrefix is set (packages/core/src/http/security/csrf-protection.ts:97-101), erroneously excluding unprefixed "/webhooks".
-        it.skip("adds the global prefix and only matches the prefixed path", () => {
+        it("adds the global prefix and only matches the prefixed path", () => {
           const p = compileCsrfProtection({ exclude: ["webhooks"] }, "/api/");
           expect(isExcluded(p, "/api/webhooks")).toBe(true);
           expect(isExcluded(p, "/webhooks")).toBe(false);

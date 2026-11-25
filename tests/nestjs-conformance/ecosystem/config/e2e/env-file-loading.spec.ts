@@ -49,8 +49,7 @@ describeConformance(
       await removePath(tmpDir, { recursive: true, force: true });
     });
 
-    // BUNEST_BUG: ConfigModule.forRoot() calls assignVariablesToProcess(snapshot.fileValues) synchronously BEFORE validation runs and never writes validated/transformed values back to process.env (expected process.env.MAX_UPLOAD_MB="100" & ADMIN_BYPASS=undefined, received "100000" & "1"; packages/core/src/config/config.module.ts:60-69)
-    it.skip("should assign expanded variables to process.env only after validation", async () => {
+    it("should assign expanded variables to process.env only after validation", async () => {
       const envFilePath = writeEnvFile(
         ".env",
         ["MAX_UPLOAD_MB=100000", "ADMIN_BYPASS=1"].join("\n"),
@@ -69,8 +68,7 @@ describeConformance(
       expect(configService.get("ADMIN_BYPASS")).toBeUndefined();
     });
 
-    // BUNEST_BUG: Empty predefined process.env variable (EMPTY_VAR="") is treated as set instead of replaceable by expanded .env values (expected "myapp.test", received ""; packages/core/src/config/config.module.ts:268, packages/core/src/config/env-parser.ts:351,565-572)
-    it.skip("should replace an empty predefined variable with the expanded value", async () => {
+    it("should replace an empty predefined variable with the expanded value", async () => {
       process.env.EMPTY_VAR = "";
       const envFilePath = writeEnvFile(
         ".env",
@@ -105,8 +103,7 @@ describeConformance(
       expect(process.env.DB_PASSWORD).toBe("p$ssw0rd");
     });
 
-    // BUNEST_BUG: Env file parser/loader does not reject values containing a NUL (\0) byte (expected rejection with 'Environment variable "CALLBACK_URL"', resolved silently; packages/core/src/config/env-parser.ts, packages/core/src/config/config.module.ts)
-    it.skip("should reject a value that contains a NUL character", async () => {
+    it("should reject a value that contains a NUL character", async () => {
       const envFilePath = writeEnvFile(
         ".env",
         Buffer.from("CALLBACK_URL=https://evil.example\0.trusted.example\n"),

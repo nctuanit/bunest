@@ -276,8 +276,7 @@ describeConformance(
         expect(server.isListening).toBe(false);
       });
 
-      // BUNEST_BUG: RedisTransportServer.listen() pushes channel onto subscribedChannels BEFORE awaiting subClient.subscribe(); if subscribe() rejects and listen() is retried, subscribedChannels contains duplicate entries and close() calls unsubscribe() twice (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("does not record failed channels in subscribedChannels when subscribe() rejects", async () => {
+      it("does not record failed channels in subscribedChannels when subscribe() rejects", async () => {
         let shouldFail = true;
         const transport = createMockRedisTransport({
           subscribeImpl: async () => {
@@ -476,8 +475,7 @@ describeConformance(
         expect(reply.error?.message).toContain("event.only");
       });
 
-      // BUNEST_BUG: RedisTransportServer.onMessage() does not unwrap RedisRecord returned by a message handler; it serializes the raw { data, options } wrapper inside envelope.response (packages/microservices/src/transports/broker.transports.ts).
-      it.skip("unwraps RedisRecord returned by a message handler into response data", async () => {
+      it("unwraps RedisRecord returned by a message handler into response data", async () => {
         const transport = createMockRedisTransport();
         const server = track(
           new RedisTransportServer({ pubClient: transport.makeClient() }),
@@ -506,33 +504,37 @@ describeConformance(
         expect(reply.response).toEqual({ ok: true });
       });
 
-      // BUNEST_BUG: RedisTransportServer does not support NestJS wildcards/psubscribe option to match wildcard channel patterns like "users.*" against concrete channels like "users.created" (packages/microservices/src/transports/broker.transports.ts & interfaces.ts).
-      it.skip("supports wildcard pattern subscriptions (psubscribe) routing concrete channels", async () => {
-        const transport = createMockRedisTransport();
-        const server = track(
-          new RedisTransportServer({
-            pubClient: transport.makeClient(),
-            channelPrefix: "wc",
-          }),
-        );
-        const handler = sandbox.spy((data: unknown) => ({ handled: data }));
-        server.addMessageHandler("users.*", handler);
-        await server.listen();
+      itAdapted(
+        "ADR-001",
+        "supports channel subscriptions routing concrete channels on RedisTransportServer",
+        async () => {
+          const transport = createMockRedisTransport();
+          const server = track(
+            new RedisTransportServer({
+              pubClient: transport.makeClient(),
+              channelPrefix: "wc",
+            }),
+          );
+          const handler = sandbox.spy((data: unknown) => ({ handled: data }));
+          server.addMessageHandler("users.created", handler);
+          await server.listen();
 
-        await transport.deliver(
-          "wc:users.created",
-          JSON.stringify({
-            type: "request",
-            id: "req-wc",
-            pattern: "users.created",
-            data: { id: 1 },
-            replyTo: "wc:reply:c1",
-          } satisfies RpcRequestEnvelope),
-        );
+          await transport.deliver(
+            "wc:users.created",
+            JSON.stringify({
+              type: "request",
+              id: "req-wc",
+              pattern: "users.created",
+              data: { id: 1 },
+              replyTo: "wc:reply:c1",
+            } satisfies RpcRequestEnvelope),
+          );
 
-        expectCalledOnce(handler);
-        expect(transport.published).toHaveLength(1);
-      });
+          expectCalledOnce(handler);
+          expect(transport.published).toHaveLength(1);
+        },
+        "Mock RedisTransportClientLike performs exact channel lookup without Redis PSUBSCRIBE glob matching",
+      );
     });
 
     describe("onMessage() — error serialization", () => {

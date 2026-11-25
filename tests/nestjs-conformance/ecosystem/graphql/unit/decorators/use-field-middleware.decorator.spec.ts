@@ -139,8 +139,7 @@ describeConformance(
     });
 
     describe("when a class decorates a member it does not declare with @Field()", () => {
-      // BUNEST_BUG: GraphQLSchemaFactory.resolveOutputLeaf in packages/graphql/src/schema/graphql-schema.factory.ts checks inherited MetadataRegistry.has(INTERFACE_TYPE, base) instead of hasOwn, misclassifying @ObjectType subclasses extending an @InterfaceType (Customer/VipCustomer extends CustomerAccount) as duplicate "CustomerAccount" GraphQLInterfaceTypes and throwing "Schema must contain uniquely named types".
-      it.skip("should extend the middleware of the inherited field", async () => {
+      it("should extend the middleware of the inherited field", async () => {
         @InterfaceType()
         abstract class Account {
           @Field(() => ID)

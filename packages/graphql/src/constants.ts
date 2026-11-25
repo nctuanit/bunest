@@ -1,3 +1,5 @@
+import { REQUEST } from "@bunest/core";
+
 /**
  * Namespaced Symbol metadata keys and DI tokens for `@bunest/graphql`.
  */
@@ -60,4 +62,4 @@ export const GRAPHQL_SDL_FILE_HEADER =
 export const GRAPHQL_SDL_FILE_END = "\n";
 export const FIELD_RESOLVER_COMPOSITION_METADATA =
   "graphql:field_resolver_composition";
-export const CONTEXT = "REQUEST";
+export const CONTEXT = REQUEST;

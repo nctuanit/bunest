@@ -1,5 +1,10 @@
 import type { CorsOptions, CorsOrigin } from "../../common/index";
 
+export type CorsOptionsDelegate = (
+  req: Request,
+  callback: (err: Error | null, options?: CorsOptions) => void,
+) => void;
+
 export interface NormalizedCorsOptions {
   readonly origin: CorsOrigin;
   readonly methods?: string;
@@ -9,12 +14,14 @@ export interface NormalizedCorsOptions {
   readonly maxAge?: number;
   readonly preflightContinue: boolean;
   readonly optionsSuccessStatus: number;
+  readonly delegate?: CorsOptionsDelegate;
 }
 
 export interface CorsEvaluationResult {
   readonly headers: Headers;
   readonly isPreflight: boolean;
   readonly originAllowed: boolean;
+  readonly resolvedOptions?: NormalizedCorsOptions;
 }
 
 const DEFAULT_CORS_METHODS = "GET,HEAD,PUT,PATCH,POST,DELETE";
@@ -30,10 +37,20 @@ function joinHeaderList(
 }
 
 export function normalizeCorsOptions(
-  cors: boolean | CorsOptions | undefined,
+  cors: boolean | CorsOptions | CorsOptionsDelegate | undefined,
 ): NormalizedCorsOptions | undefined {
   if (!cors) {
     return undefined;
+  }
+
+  if (typeof cors === "function") {
+    return {
+      origin: "*",
+      credentials: false,
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+      delegate: cors,
+    };
   }
 
   if (cors === true) {
@@ -161,6 +178,46 @@ async function resolveAllowedOrigin(
   return { value: null, varyOrigin: false };
 }
 
+async function resolveCorsDelegate(
+  delegate: CorsOptionsDelegate,
+  req: Request,
+): Promise<NormalizedCorsOptions | undefined> {
+  const delegated = await new Promise<CorsOptions | boolean | undefined>(
+    (resolve, reject) => {
+      let settled = false;
+      const done = (err: Error | null, opts?: CorsOptions | boolean) => {
+        if (settled) return;
+        settled = true;
+        if (err) {
+          reject(err);
+        } else {
+          resolve(opts);
+        }
+      };
+      try {
+        const ret = delegate(req, done) as unknown;
+        if (
+          ret &&
+          typeof ret === "object" &&
+          typeof (ret as PromiseLike<unknown>).then === "function"
+        ) {
+          (ret as PromiseLike<CorsOptions | boolean | undefined>).then(
+            (val) => {
+              if (!settled && val !== undefined) {
+                done(null, val);
+              }
+            },
+            (err) => done(err instanceof Error ? err : new Error(String(err))),
+          );
+        }
+      } catch (err) {
+        done(err instanceof Error ? err : new Error(String(err)));
+      }
+    },
+  );
+  return normalizeCorsOptions(delegated);
+}
+
 /**
  * Evaluates CORS headers for both actual and preflight requests.
  */
@@ -169,15 +226,28 @@ export async function evaluateCors(
   options: NormalizedCorsOptions,
   allowedMethodsFallback?: string,
 ): Promise<CorsEvaluationResult> {
+  const isPreflight = isCorsPreflightRequest(req);
+  let effectiveOptions = options;
+  if (options.delegate) {
+    const resolved = await resolveCorsDelegate(options.delegate, req);
+    if (!resolved) {
+      return {
+        headers: new Headers(),
+        isPreflight,
+        originAllowed: false,
+      };
+    }
+    effectiveOptions = resolved;
+  }
+
   const headers = new Headers();
   const requestOrigin = req.headers.get("origin");
-  const isPreflight = isCorsPreflightRequest(req);
 
   const { value: allowedOrigin, varyOrigin } = await resolveAllowedOrigin(
-    options.origin,
+    effectiveOptions.origin,
     requestOrigin,
     req,
-    options.credentials,
+    effectiveOptions.credentials,
   );
 
   if (varyOrigin) {
@@ -187,7 +257,7 @@ export async function evaluateCors(
   const originAllowed = allowedOrigin !== null;
   if (allowedOrigin !== null) {
     headers.set("Access-Control-Allow-Origin", allowedOrigin);
-    if (options.credentials && allowedOrigin !== "*") {
+    if (effectiveOptions.credentials && allowedOrigin !== "*") {
       headers.set("Access-Control-Allow-Credentials", "true");
     }
   }
@@ -195,11 +265,16 @@ export async function evaluateCors(
   if (isPreflight) {
     if (originAllowed) {
       const methods =
-        options.methods ?? allowedMethodsFallback ?? DEFAULT_CORS_METHODS;
+        effectiveOptions.methods ??
+        allowedMethodsFallback ??
+        DEFAULT_CORS_METHODS;
       headers.set("Access-Control-Allow-Methods", methods);
 
-      if (options.allowedHeaders !== undefined) {
-        headers.set("Access-Control-Allow-Headers", options.allowedHeaders);
+      if (effectiveOptions.allowedHeaders !== undefined) {
+        headers.set(
+          "Access-Control-Allow-Headers",
+          effectiveOptions.allowedHeaders,
+        );
       } else {
         const requestedHeaders = req.headers.get(
           "access-control-request-headers",
@@ -210,15 +285,23 @@ export async function evaluateCors(
         }
       }
 
-      if (options.maxAge !== undefined) {
-        headers.set("Access-Control-Max-Age", String(options.maxAge));
+      if (effectiveOptions.maxAge !== undefined) {
+        headers.set("Access-Control-Max-Age", String(effectiveOptions.maxAge));
       }
     }
-  } else if (originAllowed && options.exposedHeaders) {
-    headers.set("Access-Control-Expose-Headers", options.exposedHeaders);
+  } else if (originAllowed && effectiveOptions.exposedHeaders) {
+    headers.set(
+      "Access-Control-Expose-Headers",
+      effectiveOptions.exposedHeaders,
+    );
   }
 
-  return { headers, isPreflight, originAllowed };
+  return {
+    headers,
+    isPreflight,
+    originAllowed,
+    resolvedOptions: effectiveOptions,
+  };
 }
 
 export function createPreflightResponse(
@@ -228,7 +311,9 @@ export function createPreflightResponse(
   const headers = new Headers(result.headers);
   headers.set("Content-Length", "0");
   return new Response(null, {
-    status: options.optionsSuccessStatus,
+    status:
+      result.resolvedOptions?.optionsSuccessStatus ??
+      options.optionsSuccessStatus,
     headers,
   });
 }

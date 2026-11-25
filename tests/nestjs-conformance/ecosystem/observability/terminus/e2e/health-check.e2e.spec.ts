@@ -93,8 +93,7 @@ describeConformance(
       expect(getHealthResponses()).not.toHaveProperty("503");
     });
 
-    // BUNEST_BUG: @HealthCheck() records HEALTH_CHECK_METADATA but does not apply @bunest/swagger @ApiOkResponse/@ApiServiceUnavailableResponse decorators (and SwaggerModule does not read HEALTH_CHECK_METADATA), so OpenAPI document lacks the 503 response entry (packages/observability/src/health/health.decorator.ts:13-44).
-    it.skip("should keep the Swagger documentation when only noCache is disabled", async () => {
+    it("should keep the Swagger documentation when only noCache is disabled", async () => {
       ctx = await createHealthCheckDecoratorApp(
         (healthCheck) => healthCheck.check([healthyCheck]),
         { noCache: false },

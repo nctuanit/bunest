@@ -64,8 +64,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1863) defaults required to false instead of NestJS default true when @ApiQuery omits required
-      it.skip("should attach metadata to all API methods", async () => {
+      it("should attach metadata to all API methods", async () => {
         expect(
           MetadataRegistry.has(
             SWAGGER_METADATA_KEYS.API_QUERIES,
@@ -103,8 +102,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1863) defaults required to false instead of NestJS default true when @ApiQuery omits required
-      it.skip("should attach metadata to a given method", async () => {
+      it("should attach metadata to a given method", async () => {
         const controller = new TestAppController();
         expect(
           MetadataRegistry.has(
@@ -126,8 +124,7 @@ describeConformance(
     });
 
     describe("extensions support", () => {
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1863) defaults required to false instead of NestJS default true when @ApiQuery omits required
-      it.skip("should merge extensions into parameter metadata when provided (method level)", async () => {
+      it("should merge extensions into parameter metadata when provided (method level)", async () => {
         @Controller("")
         class TestAppController {
           @Get()
@@ -151,8 +148,7 @@ describeConformance(
         ]);
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1863) defaults required to false instead of NestJS default true when @ApiQuery omits required
-      it.skip("should auto-prefix extension keys without x- (class level)", async () => {
+      it("should auto-prefix extension keys without x- (class level)", async () => {
         @ApiQuery({
           name: "search",
           extensions: { permissions: ["test.customer.add"] },

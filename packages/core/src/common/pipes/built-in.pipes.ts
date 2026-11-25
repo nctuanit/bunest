@@ -7,6 +7,11 @@ import type {
 } from "../interfaces/http.interface";
 import type { Type } from "../interfaces/type.interface";
 import { MetadataRegistry } from "../metadata/metadata-registry";
+import {
+  OMITTED_ERRORS_MESSAGE,
+  resolveMaxErrorMessagesLength,
+} from "./validation-errors.constants";
+import { createStatusHttpException } from "./validation-http.util";
 import { ValidationPipe, type ValidationPipeOptions } from "./validation.pipe";
 
 export interface ParsePipeOptions {
@@ -19,7 +24,24 @@ export type ParseIntPipeOptions = ParsePipeOptions;
 export type ParseFloatPipeOptions = ParsePipeOptions;
 export type ParseBoolPipeOptions = ParsePipeOptions;
 export type ParseEnumPipeOptions = ParsePipeOptions;
-export type UUIDVersion = "3" | "4" | "5" | "7" | "all";
+export type UUIDVersion =
+  | "1"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "7"
+  | "8"
+  | "all"
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5
+  | 6
+  | 7
+  | 8;
 
 const HTTP_STATUS_REASON_PHRASES: Readonly<Record<number, string>> = {
   [HttpStatus.BAD_REQUEST]: "Bad Request",
@@ -51,17 +73,19 @@ const HTTP_STATUS_REASON_PHRASES: Readonly<Record<number, string>> = {
 
 function buildPipeExceptionFactory(
   options?: ParsePipeOptions,
-): (error: string) => unknown {
+): (error: string | string[]) => unknown {
   if (options?.exceptionFactory) {
-    return options.exceptionFactory;
+    return options.exceptionFactory as (error: string | string[]) => unknown;
   }
   const status = options?.errorHttpStatusCode ?? HttpStatus.BAD_REQUEST;
   const errorLabel = HTTP_STATUS_REASON_PHRASES[status] ?? "Http Exception";
-  return (message: string) =>
-    new HttpException(
-      HttpException.createBody(message, errorLabel, status),
+  return (message: string | string[]) =>
+    createStatusHttpException(
+      HttpException.createBody(message, errorLabel, status) as Record<
+        string,
+        unknown
+      >,
       status,
-      { description: errorLabel },
     );
 }
 
@@ -81,17 +105,21 @@ const STRICT_INT_REGEX = /^[+-]?\d+$/;
 const STRICT_FLOAT_REGEX = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-const UUID_REGEX: Record<UUIDVersion, RegExp> = {
+const UUID_REGEX: Record<string, RegExp> = {
+  "1": /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  "2": /^[0-9a-f]{8}-[0-9a-f]{4}-2[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   "3": /^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   "4": /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   "5": /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  "6": /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   "7": /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-  all: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  "8": /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  all: /^(?:00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i,
 };
 
 export class ParseIntPipe implements PipeTransform<
   unknown,
-  number | undefined
+  Promise<number | undefined>
 > {
   protected readonly options?: ParseIntPipeOptions;
   protected exceptionFactory: (error: string) => unknown;
@@ -101,7 +129,10 @@ export class ParseIntPipe implements PipeTransform<
     this.exceptionFactory = buildPipeExceptionFactory(options);
   }
 
-  transform(value: unknown, _metadata?: ArgumentMetadata): number | undefined {
+  async transform(
+    value: unknown,
+    _metadata?: ArgumentMetadata,
+  ): Promise<number | undefined> {
     if (isNil(value) && this.options?.optional) {
       return undefined;
     }
@@ -132,7 +163,7 @@ export class ParseIntPipe implements PipeTransform<
 
 export class ParseFloatPipe implements PipeTransform<
   unknown,
-  number | undefined
+  Promise<number | undefined>
 > {
   protected readonly options?: ParseFloatPipeOptions;
   protected exceptionFactory: (error: string) => unknown;
@@ -142,7 +173,10 @@ export class ParseFloatPipe implements PipeTransform<
     this.exceptionFactory = buildPipeExceptionFactory(options);
   }
 
-  transform(value: unknown, _metadata?: ArgumentMetadata): number | undefined {
+  async transform(
+    value: unknown,
+    _metadata?: ArgumentMetadata,
+  ): Promise<number | undefined> {
     if (isNil(value) && this.options?.optional) {
       return undefined;
     }
@@ -177,7 +211,7 @@ export class ParseFloatPipe implements PipeTransform<
  */
 export class ParseBoolPipe implements PipeTransform<
   unknown,
-  boolean | undefined
+  Promise<boolean | undefined>
 > {
   protected readonly options?: ParseBoolPipeOptions;
   protected exceptionFactory: (error: string) => unknown;
@@ -187,7 +221,10 @@ export class ParseBoolPipe implements PipeTransform<
     this.exceptionFactory = buildPipeExceptionFactory(options);
   }
 
-  transform(value: unknown, _metadata?: ArgumentMetadata): boolean | undefined {
+  async transform(
+    value: unknown,
+    _metadata?: ArgumentMetadata,
+  ): Promise<boolean | undefined> {
     if (isNil(value) && this.options?.optional) {
       return undefined;
     }
@@ -220,31 +257,35 @@ export interface ParseUUIDPipeOptions extends ParsePipeOptions {
 
 export class ParseUUIDPipe implements PipeTransform<
   unknown,
-  string | undefined
+  Promise<string | undefined>
 > {
-  protected static uuidRegExps: Record<UUIDVersion, RegExp> = UUID_REGEX;
+  protected static uuidRegExps: Record<string, RegExp> = UUID_REGEX;
 
   protected readonly options?: ParseUUIDPipeOptions;
   protected exceptionFactory: (errors: string) => unknown;
-  private readonly version: UUIDVersion;
+  private readonly version: string;
 
   constructor(options?: ParseUUIDPipeOptions) {
     this.options = options;
-    this.version = options?.version ?? "all";
+    this.version =
+      options?.version !== undefined ? String(options.version) : "all";
     this.exceptionFactory = buildPipeExceptionFactory(options);
   }
 
-  transform(value: unknown, _metadata?: ArgumentMetadata): string | undefined {
+  async transform(
+    value: unknown,
+    _metadata?: ArgumentMetadata,
+  ): Promise<string | undefined> {
     if (isNil(value) && this.options?.optional) {
       return undefined;
     }
 
-    if (this.isUUID(value, this.version)) {
+    if (this.isUUID(value, this.version as UUIDVersion)) {
       return value as string;
     }
 
     const versionMsg =
-      this.version === "all" ? "uuid" : `uuid v${this.version}`;
+      this.version === "all" ? "uuid" : `uuid v ${this.version}`;
     throw this.exceptionFactory(
       `Validation failed (${versionMsg} is expected)`,
     );
@@ -254,7 +295,7 @@ export class ParseUUIDPipe implements PipeTransform<
     if (typeof str !== "string") {
       return false;
     }
-    const pattern = ParseUUIDPipe.uuidRegExps[version];
+    const pattern = ParseUUIDPipe.uuidRegExps[String(version)];
     return Boolean(pattern && pattern.test(str));
   }
 }
@@ -267,24 +308,46 @@ export interface ParseArrayPipeOptions extends Omit<
   separator?: string;
   optional?: boolean;
   itemPipe?: PipeTransform;
-  exceptionFactory?: (error: string) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  exceptionFactory?: (error: any) => unknown;
 }
 
 export type ParseArrayOptions = ParseArrayPipeOptions;
 
 export class ParseArrayPipe implements PipeTransform<
   unknown,
-  unknown[] | undefined
+  Promise<unknown[] | undefined>
 > {
   protected readonly options: ParseArrayPipeOptions;
   protected readonly validationPipe: ValidationPipe;
-  protected exceptionFactory: (error: string) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected exceptionFactory: (error: any) => unknown;
   private readonly separator: string;
+  private readonly stopAtFirstError: boolean;
+  private readonly maxErrorMessagesLength: number;
 
   constructor(options: ParseArrayPipeOptions = {}) {
     this.options = options;
     this.separator = options.separator ?? ",";
-    this.exceptionFactory = buildPipeExceptionFactory(options);
+    this.stopAtFirstError = options.stopAtFirstError ?? true;
+    const hasCustomFactory = typeof options.exceptionFactory === "function";
+    this.maxErrorMessagesLength = hasCustomFactory
+      ? Infinity
+      : resolveMaxErrorMessagesLength(options.maxErrorMessagesLength);
+
+    const status = options.errorHttpStatusCode ?? HttpStatus.BAD_REQUEST;
+    const errorLabel = HTTP_STATUS_REASON_PHRASES[status] ?? "Bad Request";
+    this.exceptionFactory =
+      options.exceptionFactory ??
+      ((error: string | string[]) =>
+        createStatusHttpException(
+          HttpException.createBody(error, errorLabel, status) as Record<
+            string,
+            unknown
+          >,
+          status,
+        ));
+
     const {
       items: _items,
       separator: _sep,
@@ -296,6 +359,10 @@ export class ParseArrayPipe implements PipeTransform<
     this.validationPipe = new ValidationPipe({
       ...validationOpts,
       transform: true,
+      errorFormat: options.errorFormat ?? "list",
+      ...(options.exceptionFactory
+        ? { exceptionFactory: options.exceptionFactory }
+        : {}),
     });
   }
 
@@ -307,11 +374,12 @@ export class ParseArrayPipe implements PipeTransform<
       return undefined;
     }
 
+    const fromString = typeof value === "string";
     let rawItems: unknown[];
     if (Array.isArray(value)) {
       rawItems = value;
-    } else if (typeof value === "string") {
-      rawItems = value === "" ? [] : value.split(this.separator);
+    } else if (fromString) {
+      rawItems = (value as string).split(this.separator);
     } else {
       throw this.exceptionFactory(
         "Validation failed (parsable array expected)",
@@ -323,31 +391,172 @@ export class ParseArrayPipe implements PipeTransform<
     const isPrimitiveItem = this.isExpectedTypePrimitive();
     const result: unknown[] = [];
 
-    for (let index = 0; index < rawItems.length; index++) {
-      const item = rawItems[index];
-      let transformed: unknown = item;
-
-      if (isPrimitiveItem) {
-        transformed = this.validatePrimitive(item, index);
-      } else if (itemType) {
-        transformed = await this.validationPipe.transform(item, {
-          type: metadata?.type ?? "body",
-          metatype: itemType,
-          data: metadata?.data,
-        });
+    // Collect only populated entries so sparse arrays (even with huge length)
+    // are traversed in O(populated items) and gaps are closed.
+    const entries: Array<[number, unknown]> = [];
+    for (const key of Object.keys(rawItems)) {
+      const idx = Number(key);
+      if (Number.isInteger(idx) && idx >= 0 && String(idx) === key) {
+        entries.push([idx, rawItems[idx]]);
       }
+    }
 
-      if (itemPipe) {
-        transformed = await itemPipe.transform(
-          transformed,
-          metadata ?? { type: "custom" },
+    if (this.stopAtFirstError) {
+      for (const [index, item] of entries) {
+        const transformed = await this.transformItem(
+          item,
+          index,
+          fromString,
+          isPrimitiveItem,
+          itemType,
+          itemPipe,
+          metadata,
         );
+        result.push(transformed);
       }
+      return result;
+    }
 
-      result.push(transformed);
+    const collectedErrors: string[] = [];
+    let collectedLength = 0;
+    let omitted = false;
+
+    for (const [index, item] of entries) {
+      try {
+        const transformed = await this.transformItem(
+          item,
+          index,
+          fromString,
+          isPrimitiveItem,
+          itemType,
+          itemPipe,
+          metadata,
+        );
+        if (collectedErrors.length === 0) {
+          result.push(transformed);
+        }
+      } catch (err) {
+        if (!(err instanceof HttpException)) {
+          throw err;
+        }
+        const itemMessages = this.extractItemErrorMessages(err, index);
+        if (itemMessages.length === 0) {
+          continue;
+        }
+        if (collectedLength >= this.maxErrorMessagesLength) {
+          collectedErrors.push(OMITTED_ERRORS_MESSAGE);
+          omitted = true;
+          break;
+        }
+        for (const msg of itemMessages) {
+          collectedErrors.push(msg);
+          collectedLength += msg.length;
+        }
+      }
+    }
+
+    if (collectedErrors.length > 0 || omitted) {
+      throw this.exceptionFactory(collectedErrors);
     }
 
     return result;
+  }
+
+  private async transformItem(
+    item: unknown,
+    index: number,
+    fromString: boolean,
+    isPrimitiveItem: boolean,
+    itemType: ParseArrayPipeOptions["items"],
+    itemPipe: PipeTransform | undefined,
+    metadata?: ArgumentMetadata,
+  ): Promise<unknown> {
+    let transformed: unknown = item;
+
+    if (isPrimitiveItem) {
+      transformed = this.validatePrimitive(item, index);
+    } else if (itemType) {
+      let candidate: unknown = item;
+      if (fromString && typeof candidate === "string") {
+        try {
+          candidate = JSON.parse(candidate);
+        } catch {
+          throw this.exceptionFactory([
+            "Validation failed (object is expected)",
+          ]);
+        }
+      }
+      if (
+        typeof candidate !== "object" ||
+        candidate === null ||
+        Array.isArray(candidate)
+      ) {
+        throw this.exceptionFactory(["Validation failed (object is expected)"]);
+      }
+      transformed = await this.validationPipe.transform(candidate, {
+        type: metadata?.type ?? "body",
+        metatype: itemType,
+        data: metadata?.data,
+      });
+    }
+
+    if (itemPipe) {
+      transformed = await itemPipe.transform(
+        transformed,
+        metadata ?? { type: "custom" },
+      );
+    }
+
+    return transformed;
+  }
+
+  private extractItemErrorMessages(
+    err: HttpException,
+    index: number,
+  ): string[] {
+    const response = err.getResponse();
+    const rawMessage =
+      typeof response === "string"
+        ? response
+        : (response as Record<string, unknown>)?.message;
+    const prefix = `[${index}] `;
+
+    const prefixMessage = (msg: string): string =>
+      msg.startsWith(prefix) ? msg : `${prefix}${msg}`;
+
+    if (typeof rawMessage === "string") {
+      return [prefixMessage(rawMessage)];
+    }
+
+    if (Array.isArray(rawMessage)) {
+      const out: string[] = [];
+      for (const entry of rawMessage) {
+        if (typeof entry === "string") {
+          out.push(prefixMessage(entry));
+        }
+      }
+      return out;
+    }
+
+    if (rawMessage && typeof rawMessage === "object") {
+      const out: string[] = [];
+      for (const [field, value] of Object.entries(
+        rawMessage as Record<string, unknown>,
+      )) {
+        const list = Array.isArray(value) ? value : [value];
+        for (const item of list) {
+          if (typeof item !== "string") continue;
+          if (field === "..." || item === OMITTED_ERRORS_MESSAGE) {
+            out.push(prefixMessage(item));
+          } else {
+            out.push(`${prefix}${field}: ${item}`);
+          }
+        }
+      }
+      return out;
+    }
+
+    return [prefixMessage(err.message)];
   }
 
   protected isExpectedTypePrimitive(): boolean {
@@ -362,21 +571,19 @@ export class ParseArrayPipe implements PipeTransform<
     return typeof value === "string" && STRICT_FLOAT_REGEX.test(value.trim());
   }
 
-  protected validatePrimitive(originalValue: unknown, _index?: number): unknown {
+  protected validatePrimitive(originalValue: unknown, index = 0): unknown {
     const itemType = this.options.items;
     if (itemType === Number) {
-      if (typeof originalValue === "number" && Number.isFinite(originalValue)) {
-        return originalValue === 0 ? 0 : originalValue;
-      }
       if (this.isNumeric(originalValue)) {
-        const num = Number(String(originalValue).trim());
+        const num =
+          typeof originalValue === "number"
+            ? originalValue
+            : Number(String(originalValue).trim());
         if (Number.isFinite(num)) {
           return num === 0 ? 0 : num;
         }
       }
-      throw this.exceptionFactory(
-        "Validation failed (numeric array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a number`);
     }
 
     if (itemType === Boolean) {
@@ -390,9 +597,7 @@ export class ParseArrayPipe implements PipeTransform<
       if (normalized === false || normalized === "false") {
         return false;
       }
-      throw this.exceptionFactory(
-        "Validation failed (boolean array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a boolean value`);
     }
 
     if (itemType === String) {
@@ -403,9 +608,7 @@ export class ParseArrayPipe implements PipeTransform<
       ) {
         return String(originalValue);
       }
-      throw this.exceptionFactory(
-        "Validation failed (string array item expected)",
-      );
+      throw this.exceptionFactory(`[${index}] item must be a string`);
     }
 
     return originalValue;
@@ -417,33 +620,46 @@ export class ParseEnumPipe<
     string,
     string | number
   >,
-> implements PipeTransform<unknown, TEnum[keyof TEnum] | undefined> {
+> implements PipeTransform<unknown, Promise<TEnum[keyof TEnum] | undefined>> {
   protected readonly enumType: TEnum;
   protected readonly options?: ParseEnumPipeOptions;
   protected exceptionFactory: (error: string) => unknown;
   private cachedEnumValues?: (string | number)[];
-  private readonly validValues: ReadonlySet<string | number>;
-  private readonly numericValues: ReadonlySet<number>;
+  private validValues?: ReadonlySet<string | number>;
+  private numericValues?: ReadonlySet<number>;
 
   constructor(enumType: TEnum, options?: ParseEnumPipeOptions) {
-    if (!enumType || typeof enumType !== "object") {
-      throw new Error("ParseEnumPipe requires a valid enum object.");
+    if (!enumType && !options?.optional) {
+      throw new Error(
+        `"ParseEnumPipe" requires "enumType" argument specified (to validate input values).`,
+      );
     }
     this.enumType = enumType;
     this.options = options;
     this.exceptionFactory = buildPipeExceptionFactory(options);
-
-    const values = this.getEnumValues();
-    this.validValues = new Set(values);
-    this.numericValues = new Set(
-      values.filter((v): v is number => typeof v === "number"),
-    );
   }
 
-  transform(
+  private ensureEnumSets(): {
+    validValues: ReadonlySet<string | number>;
+    numericValues: ReadonlySet<number>;
+  } {
+    if (!this.validValues || !this.numericValues) {
+      const values = this.enumType ? this.getEnumValues() : [];
+      this.validValues = new Set(values);
+      this.numericValues = new Set(
+        values.filter((v): v is number => typeof v === "number"),
+      );
+    }
+    return {
+      validValues: this.validValues,
+      numericValues: this.numericValues,
+    };
+  }
+
+  async transform(
     value: unknown,
     _metadata?: ArgumentMetadata,
-  ): TEnum[keyof TEnum] | undefined {
+  ): Promise<TEnum[keyof TEnum] | undefined> {
     if (isNil(value) && this.options?.optional) {
       return undefined;
     }
@@ -462,20 +678,25 @@ export class ParseEnumPipe<
   }
 
   protected toEnumValue(value: unknown): string | number | undefined {
+    const { validValues, numericValues } = this.ensureEnumSets();
     if (
       (typeof value === "string" || typeof value === "number") &&
-      this.validValues.has(value)
+      validValues.has(value)
     ) {
       return value;
     }
 
     if (
       typeof value === "string" &&
-      this.numericValues.size > 0 &&
-      STRICT_INT_REGEX.test(value)
+      numericValues.size > 0 &&
+      value.length > 0
     ) {
-      const parsed = Number.parseInt(value, 10);
-      if (this.numericValues.has(parsed)) {
+      const parsed = Number(value);
+      if (
+        Number.isFinite(parsed) &&
+        String(parsed) === value &&
+        numericValues.has(parsed)
+      ) {
         return parsed;
       }
     }
@@ -483,10 +704,7 @@ export class ParseEnumPipe<
     return undefined;
   }
 
-  protected getEnumValues(): (string | number)[] {
-    if (this.cachedEnumValues) {
-      return this.cachedEnumValues;
-    }
+  protected computeEnumValues(): (string | number)[] {
     const values: (string | number)[] = [];
     for (const key of Object.keys(this.enumType)) {
       const val = this.enumType[key];
@@ -501,8 +719,15 @@ export class ParseEnumPipe<
       }
       values.push(val);
     }
-    this.cachedEnumValues = values;
     return values;
+  }
+
+  protected getEnumValues(): (string | number)[] {
+    if (this.cachedEnumValues) {
+      return this.cachedEnumValues;
+    }
+    this.cachedEnumValues = this.computeEnumValues();
+    return this.cachedEnumValues;
   }
 }
 
@@ -623,15 +848,41 @@ export class DefaultValuePipe<T = unknown, R = T> implements PipeTransform<
     if (seen.has(value)) {
       return seen.get(value) as V;
     }
-    const copy = Object.assign(
-      isArray ? [] : Object.create(Object.getPrototypeOf(value)),
-      value,
-    ) as Record<PropertyKey, unknown>;
-    seen.set(value, copy);
-    for (const key of Reflect.ownKeys(copy)) {
-      copy[key] = this.copyDefaultValue(copy[key], seen);
+    if (isArray) {
+      const arrCopy = new Array((value as unknown[]).length) as unknown[];
+      seen.set(value, arrCopy);
+      for (const key of Reflect.ownKeys(value)) {
+        if (key === "length") continue;
+        const desc = Object.getOwnPropertyDescriptor(value, key);
+        if (!desc) continue;
+        if ("value" in desc) {
+          Object.defineProperty(arrCopy, key, {
+            ...desc,
+            value: this.copyDefaultValue(desc.value, seen),
+          });
+        } else {
+          Object.defineProperty(arrCopy, key, desc);
+        }
+      }
+      return arrCopy as unknown as V;
     }
-    return copy as V;
+    const objCopy = Object.create(
+      Object.getPrototypeOf(value),
+    ) as Record<PropertyKey, unknown>;
+    seen.set(value, objCopy);
+    for (const key of Reflect.ownKeys(value)) {
+      const desc = Object.getOwnPropertyDescriptor(value, key);
+      if (!desc) continue;
+      if ("value" in desc) {
+        Object.defineProperty(objCopy, key, {
+          ...desc,
+          value: this.copyDefaultValue(desc.value, seen),
+        });
+      } else {
+        Object.defineProperty(objCopy, key, desc);
+      }
+    }
+    return objCopy as V;
   }
 }
 
@@ -650,4 +901,15 @@ for (const pipeClass of [
     { scope: Scope.SINGLETON },
     pipeClass,
   );
+}
+
+for (const optionalPipeClass of [
+  ParseIntPipe,
+  ParseFloatPipe,
+  ParseBoolPipe,
+  ParseUUIDPipe,
+  ParseArrayPipe,
+  ParseDatePipe,
+]) {
+  MetadataRegistry.define(METADATA_KEYS.OPTIONAL_DEPS, [0], optionalPipeClass);
 }

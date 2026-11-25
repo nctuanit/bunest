@@ -56,6 +56,10 @@ export type CronOptions = {
    * Optional error hook invoked when a job tick throws/rejects.
    */
   onError?: (error: unknown, jobName: string) => void;
+  /**
+   * Optional completion hook invoked when the cron job is stopped.
+   */
+  onComplete?: () => unknown | Promise<unknown>;
 };
 
 export interface IntervalOptions {

@@ -1,3 +1,4 @@
+import { LruCache } from "../../common/utils/structures.util";
 import { I18nMessageFormatter } from "./i18n-message.formatter";
 
 const SIMPLE_PLACEHOLDER_RE = /^\w+$/;
@@ -13,9 +14,15 @@ const MAX_INTL_CACHE = 200;
  * A placeholder without an argument stays as written.
  */
 export class PlaceholderMessageFormatter extends I18nMessageFormatter {
-  private readonly pluralRules = new Map<string, Intl.PluralRules>();
-  private readonly numberFormats = new Map<string, Intl.NumberFormat>();
-  private readonly dateFormats = new Map<string, Intl.DateTimeFormat>();
+  private readonly pluralRules = new LruCache<string, Intl.PluralRules>({
+    maxSize: MAX_INTL_CACHE,
+  });
+  private readonly numberFormats = new LruCache<string, Intl.NumberFormat>({
+    maxSize: MAX_INTL_CACHE,
+  });
+  private readonly dateFormats = new LruCache<string, Intl.DateTimeFormat>({
+    maxSize: MAX_INTL_CACHE,
+  });
 
   override format(
     message: string,
@@ -240,12 +247,6 @@ export class PlaceholderMessageFormatter extends I18nMessageFormatter {
     let rules = this.pluralRules.get(locale);
     if (!rules) {
       rules = new Intl.PluralRules(locale);
-      if (this.pluralRules.size >= MAX_INTL_CACHE) {
-        const oldest = this.pluralRules.keys().next().value;
-        if (oldest !== undefined) {
-          this.pluralRules.delete(oldest);
-        }
-      }
       this.pluralRules.set(locale, rules);
     }
     return rules;
@@ -259,12 +260,6 @@ export class PlaceholderMessageFormatter extends I18nMessageFormatter {
     let fmt = this.numberFormats.get(key);
     if (!fmt) {
       fmt = new Intl.NumberFormat(locale, options);
-      if (this.numberFormats.size >= MAX_INTL_CACHE) {
-        const oldest = this.numberFormats.keys().next().value;
-        if (oldest !== undefined) {
-          this.numberFormats.delete(oldest);
-        }
-      }
       this.numberFormats.set(key, fmt);
     }
     return fmt;
@@ -278,12 +273,6 @@ export class PlaceholderMessageFormatter extends I18nMessageFormatter {
     let fmt = this.dateFormats.get(key);
     if (!fmt) {
       fmt = new Intl.DateTimeFormat(locale, options);
-      if (this.dateFormats.size >= MAX_INTL_CACHE) {
-        const oldest = this.dateFormats.keys().next().value;
-        if (oldest !== undefined) {
-          this.dateFormats.delete(oldest);
-        }
-      }
       this.dateFormats.set(key, fmt);
     }
     return fmt;

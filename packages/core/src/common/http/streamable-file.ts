@@ -27,6 +27,7 @@ export interface StreamableHandlerResponse {
   headersSent?: boolean;
   statusCode?: number;
   statusMessage?: string;
+  destroy?: () => unknown;
   end?: (chunk?: unknown) => unknown;
   send?: (body?: unknown) => unknown;
   [key: string]: unknown;
@@ -51,15 +52,27 @@ export class StreamableFile {
     if (!res || res.destroyed) {
       return;
     }
+    this.logError(err);
     if (res.headersSent) {
-      res.end?.();
+      const streamEnded =
+        (this.source as { readableEnded?: boolean }).readableEnded === true ||
+        (this.source instanceof ReadableStream &&
+          !this.source.locked &&
+          typeof Bun !== "undefined" &&
+          typeof Bun.inspect === "function" &&
+          Bun.inspect(this.source).includes("state: 'closed'"));
+      if (!streamEnded && typeof res.destroy === "function") {
+        res.destroy();
+      } else {
+        res.end?.();
+      }
       return;
     }
     res.statusCode = 400;
     if (typeof res.send === "function") {
-      res.send(err.message);
+      res.send("Bad Request");
     } else if (typeof res.end === "function") {
-      res.end(err.message);
+      res.end("Bad Request");
     }
   };
   protected logError: (err: Error) => void = (err: Error) => {

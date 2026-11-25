@@ -194,8 +194,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Schema-first operation decorator overloads `@Query()`, `@Query('cat')`, `@Mutation('createCat')`, `@Subscription('catCreated')` are missing in packages/graphql/src/decorators/resolver.decorators.ts (`createOperationDecorator` unconditionally requires a `returnTypeFunc` first parameter and ignores a string name argument).
-    it.skip("should support NestJS schema-first @Query() and @Query('cat') overloads without returnTypeFunc", async () => {
+    it("should support NestJS schema-first @Query() and @Query('cat') overloads without returnTypeFunc", async () => {
       const rawQuery = Query as unknown as (name?: string) => MethodDecorator;
 
       @Resolver("Cat")

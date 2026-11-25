@@ -73,8 +73,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: PartialType (packages/core/src/common/mapped-types/mapped-types.utils.ts:670-682) applies @IsOptional/@ValidateIf to @ApiProperty-only properties without class-validator decorators, whitelisting them under whitelist/forbidNonWhitelisted
-      it.skip.each([{}, { skipNullProperties: false }])(
+      it.each([{}, { skipNullProperties: false }])(
         "should not whitelist documented properties that have no validation decorator (%j)",
         async (options) => {
           class UpdateUserWithOptionsDto extends PartialType(
@@ -103,8 +102,7 @@ describeConformance(
     });
 
     describe("OpenAPI metadata", () => {
-      // BUNEST_BUG: PartialType / plugin-metadata-store (packages/swagger/src/plugin-metadata-store.ts, packages/core/src/common/mapped-types/mapped-types.utils.ts) does not inherit plugin metadata loaded after PartialType(CreateUserDto) ("active" missing)
-      it.skip("should return partial class", async () => {
+      it("should return partial class", async () => {
         await SwaggerModule.loadPluginMetadata(async () => SERIALIZED_METADATA);
 
         const explorer = new SchemaExplorer();
@@ -147,8 +145,7 @@ describeConformance(
     });
 
     describe("Schema", () => {
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string") when oneOf is declared without an explicit type
-      it.skip("should not turn a type inferred for a property declaring oneOf into an explicit one", () => {
+      it("should not turn a type inferred for a property declaring oneOf into an explicit one", () => {
         class NullableBinDto {
           @ApiProperty({
             required: false,
@@ -170,8 +167,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer.buildPropertySchema (packages/swagger/src/schema-explorer.ts:860-910) keeps reflected design:type ("string") when oneOf is declared without an explicit type across mapped types
-      it.skip.each([
+      it.each([
         ["PickType", (base: Type<any>) => PickType(base, ["bin"])],
         ["OmitType", (base: Type<any>) => OmitType(base, [])],
         ["IntersectionType", (base: Type<any>) => IntersectionType(base, base)],

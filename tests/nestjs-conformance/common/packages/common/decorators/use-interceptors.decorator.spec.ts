@@ -45,8 +45,7 @@ describeConformance(
       expect(metadata).toEqual(interceptors);
     });
 
-    // BUNEST_BUG: UseInterceptors() in packages/core/src/common/decorators/enhancers.decorators.ts does not validate decorator items (does not throw InvalidDecoratorItemException when passed an invalid primitive like 'test').
-    it.skip("when object is invalid should throw exception", () => {
+    it("when object is invalid should throw exception", () => {
       let error: unknown = undefined;
       try {
         UseInterceptors("test" as any)({ name: "target" } as any);

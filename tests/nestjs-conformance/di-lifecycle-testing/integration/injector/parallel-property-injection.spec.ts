@@ -112,8 +112,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: @Inject(INQUIRER) on a property of a transient provider injects the parent class constructor ([class InquirerAwareProviderHost]) instead of the parent instance (packages/core/src/di/di-container.ts)
-    it.skip("should keep injecting a property that is not registered as metadata", async () => {
+    it("should keep injecting a property that is not registered as metadata", async () => {
       for (const requestId of ["first", "second"]) {
         const contextId = createContextId();
         testingModule.registerRequestByContextId({ requestId }, contextId);

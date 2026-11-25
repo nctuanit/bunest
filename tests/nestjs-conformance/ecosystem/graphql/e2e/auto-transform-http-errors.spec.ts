@@ -88,8 +88,7 @@ describeConformance(
         .post("/graphql")
         .send({ query: `{ ${fieldName} }` });
 
-    // BUNEST_BUG: Expected extensions { code: "INTERNAL_SERVER_ERROR", status: 404, originalError: { statusCode: 404, message: "invoice not found", error: "Not Found" } } per NestJS autoTransformHttpErrors; actual { code: "NOT_FOUND", statusCode: 404 } (missing originalError & status mapping) in packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.formatSingleError).
-    it.skip('should map an HttpException and expose its response as "originalError"', async () => {
+    it('should map an HttpException and expose its response as "originalError"', async () => {
       const res = await query("throwHttpException");
 
       expect(res.body.errors[0].message).toBe("invoice not found");
@@ -104,8 +103,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: Expected extensions { code: "UNAUTHENTICATED", originalError: "Sign in first" } for HttpException(string, 401); actual { code: "HTTPEXCEPTION", statusCode: 401 } because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.formatSingleError) derives code from httpJson.error instead of HTTP status code mapping and omits originalError.
-    it.skip("should map an HttpException created with a string response", async () => {
+    it("should map an HttpException created with a string response", async () => {
       const res = await query("throwHttpExceptionWithStringResponse");
 
       expect(res.body.errors[0].message).toBe("Sign in first");

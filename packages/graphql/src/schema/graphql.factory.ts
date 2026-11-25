@@ -1,4 +1,4 @@
-import { Injectable, Module, Optional } from "@bunest/core";
+import { Injectable, Logger, Module, Optional } from "@bunest/core";
 import { type GraphQLSchema, parse, printSchema } from "../engine";
 import type {
   AutoSchemaFileValue,
@@ -18,6 +18,7 @@ import { GraphQLTypesLoader } from "./graphql-types.loader";
  */
 @Injectable()
 export class GraphQLFactory {
+  private readonly logger = new Logger("GraphQLFactory");
   private readonly schemaFactory: GraphQLSchemaFactory;
   private readonly definitionsFactory = new GraphQLDefinitionsFactory();
 
@@ -34,6 +35,14 @@ export class GraphQLFactory {
     options: T = {} as T,
     resolvers: readonly object[] = [],
   ): Promise<GraphQLSchema> {
+    if (
+      (options as { directiveResolvers?: unknown }).directiveResolvers !==
+      undefined
+    ) {
+      this.logger.warn(
+        'The "directiveResolvers" option is ignored. Use "transformSchema" instead.',
+      );
+    }
     const schema = await this.schemaFactory.create(resolvers, options);
     if (options.definitions?.path) {
       const sdl = printSchema(schema);
@@ -70,6 +79,7 @@ export class GraphQLFactory {
  */
 @Injectable()
 export class GraphQLFederationFactory {
+  private readonly logger = new Logger("GraphQLFederationFactory");
   private readonly schemaFactory: GraphQLSchemaFactory;
   private readonly typesLoader = new GraphQLTypesLoader();
 
@@ -89,6 +99,14 @@ export class GraphQLFederationFactory {
     ) => GraphQLSchema,
     resolvers: readonly object[] = [],
   ): Promise<GraphQLSchema> {
+    if (
+      (options as { directiveResolvers?: unknown }).directiveResolvers !==
+      undefined
+    ) {
+      this.logger.warn(
+        'The "directiveResolvers" option is ignored. Use "transformSchema" instead.',
+      );
+    }
     if (buildFederatedSchema && (options.typeDefs || options.typePaths)) {
       const fromPaths = options.typePaths?.length
         ? await this.typesLoader.mergeTypesByPaths(options.typePaths)

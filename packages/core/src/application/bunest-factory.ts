@@ -8,6 +8,7 @@ import {
   type ModuleImport,
   type Provider,
   type Type,
+  type WebSocketAdapter,
 } from "../common/index";
 import {
   extractCallerDir,
@@ -71,6 +72,7 @@ export class BunestMicroserviceApplication<
   T extends MicroserviceInstance = MicroserviceInstance,
 > extends BunestApplicationContext {
   private started = false;
+  private pendingStopPromise?: Promise<void>;
 
   constructor(
     container: DIContainer,
@@ -84,6 +86,24 @@ export class BunestMicroserviceApplication<
     return this.microservice;
   }
 
+  useWebSocketAdapter(adapter: WebSocketAdapter): this {
+    this.container.getApplicationConfig().setIoAdapter(adapter);
+    for (const group of this.container.getSingletonInstancesByModule()) {
+      for (const instance of group.instances) {
+        if (
+          instance !== null &&
+          typeof instance === "object" &&
+          typeof (instance as { discoverAndBindGateways?: unknown })
+            .discoverAndBindGateways === "function" &&
+          "adapter" in instance
+        ) {
+          (instance as { adapter: unknown }).adapter = adapter;
+        }
+      }
+    }
+    return this;
+  }
+
   async listen(): Promise<void> {
     await this.init();
     if (this.started) {
@@ -93,12 +113,22 @@ export class BunestMicroserviceApplication<
     this.started = true;
   }
 
+  protected override prepareClose(): Promise<void> {
+    if (this.started && !this.pendingStopPromise) {
+      this.pendingStopPromise = Promise.resolve(this.microservice.close());
+    }
+    return Promise.resolve();
+  }
+
   protected override async stopTransport(): Promise<void> {
-    if (!this.started) {
+    if (!this.started && !this.pendingStopPromise) {
       return;
     }
+    const stopPromise =
+      this.pendingStopPromise ?? Promise.resolve(this.microservice.close());
+    this.pendingStopPromise = undefined;
     try {
-      await this.microservice.close();
+      await stopPromise;
     } finally {
       this.started = false;
     }

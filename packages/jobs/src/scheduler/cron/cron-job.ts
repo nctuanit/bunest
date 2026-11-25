@@ -33,11 +33,13 @@ export class CronJob {
   public readonly initialDelay?: number;
   public readonly disabled: boolean;
   private readonly onError?: (error: unknown, jobName: string) => void;
+  private readonly onComplete?: () => unknown | Promise<unknown>;
   private readonly logger = new Logger("CronJob");
 
   private timer?: ReturnType<typeof setTimeout>;
   private running = false;
   private inFlight = false;
+  private activeTickPromise?: Promise<void>;
   private lastRunDate?: Date;
   private skippedTicksCount = 0;
 
@@ -80,6 +82,7 @@ export class CronJob {
     this.initialDelay = options.initialDelay;
     this.disabled = options.disabled ?? false;
     this.onError = options.onError;
+    this.onComplete = options.onComplete;
   }
 
   start(): void {
@@ -95,10 +98,14 @@ export class CronJob {
   }
 
   stop(): void {
+    const wasRunning = this.running;
     this.running = false;
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
       this.timer = undefined;
+    }
+    if (wasRunning && this.onComplete) {
+      this.onComplete();
     }
   }
 
@@ -108,6 +115,10 @@ export class CronJob {
 
   isInFlight(): boolean {
     return this.inFlight;
+  }
+
+  getActiveTick(): Promise<void> | undefined {
+    return this.activeTickPromise;
   }
 
   lastDate(): Date | undefined {
@@ -125,27 +136,37 @@ export class CronJob {
     return getNextCronDate(this.parsed!, from, this.timeZone, this.utcOffset);
   }
 
-  async fireOnce(): Promise<void> {
+  fireOnce(): Promise<void> {
+    this.lastRunDate = new Date();
     if (this.waitForCompletion && this.inFlight) {
       this.skippedTicksCount += 1;
-      return;
+      return Promise.resolve();
     }
 
     this.inFlight = true;
-    this.lastRunDate = new Date();
-    try {
-      await this.onTick();
-    } catch (error) {
-      if (this.onError) {
-        this.onError(error, this.name);
-      } else {
-        this.logger.error(
-          `CronJob "${this.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+    let tickPromise: Promise<void> | undefined;
+    tickPromise = (async () => {
+      try {
+        await this.onTick();
+      } catch (error) {
+        if (this.onError) {
+          this.onError(error, this.name);
+        } else {
+          this.logger.error(
+            `CronJob "${this.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      } finally {
+        this.inFlight = false;
+        if (this.activeTickPromise === tickPromise) {
+          this.activeTickPromise = undefined;
+        }
       }
-    } finally {
-      this.inFlight = false;
+    })();
+    if (this.inFlight) {
+      this.activeTickPromise = tickPromise;
     }
+    return tickPromise;
   }
 
   private scheduleOneShotDate(): void {

@@ -129,8 +129,7 @@ describeConformance(
         public create(): void {}
       }
 
-      // BUNEST_BUG: SwaggerModule.buildRequestBody (packages/swagger/src/swagger-module.ts:1943-1947) omits inferred type: "string" on array enum items ({ items: { enum: [...] } } instead of { items: { type: "string", enum: [...] } })
-      it.skip("should attach array enum schema metadata", async () => {
+      it("should attach array enum schema metadata", async () => {
         const controller = new TestAppController();
         expect(
           MetadataRegistry.has(

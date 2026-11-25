@@ -137,8 +137,7 @@ describeConformance(
         });
 
         describe("commit()", () => {
-          // BUNEST_BUG: Expected AggregateRoot.commit() without dispatcherContext to pass the live internalEvents array and clear it after publishAll (matching NestJS), but packages/messaging/src/cqrs/aggregate-root.ts splices internalEvents into a detached copy before calling publishAll().
-          it.skip("publishes the uncommitted events with the default dispatcher context, and clears them", () => {
+          it("publishes the uncommitted events with the default dispatcher context, and clears them", () => {
             const eventBusPublishAll = spyOn(eventBus, "publishAll");
             order.place();
             order.ship();
@@ -186,8 +185,7 @@ describeConformance(
             await expect(result).rejects.toBe(error);
           });
 
-          // BUNEST_BUG: Expected AggregateRoot.commit() to keep uncommitted events when publisher.publishAll() throws synchronously, but packages/messaging/src/cqrs/aggregate-root.ts splices internalEvents before invoking publishAll(), losing uncommitted events ([]).
-          it.skip("keeps the events when the publisher throws synchronously", () => {
+          it("keeps the events when the publisher throws synchronously", () => {
             publisher.publishAll.mockImplementation(() => {
               throw new Error("invalid event");
             });
@@ -242,8 +240,7 @@ describeConformance(
             expect(order.getUncommittedEvents()).toEqual([]);
           });
 
-          // BUNEST_BUG: Expected AggregateRoot.commit(undefined) to pass the live internalEvents array cleared after publishAll (matching commit()), but packages/messaging/src/cqrs/aggregate-root.ts passes a detached splice copy before clearing.
-          it.skip("treats an undefined dispatcher context as none", () => {
+          it("treats an undefined dispatcher context as none", () => {
             order.place();
 
             order.commit(undefined);
@@ -255,8 +252,7 @@ describeConformance(
             );
           });
 
-          // BUNEST_BUG: Expected EventBus.publishAll() to return an array of per-event results when custom IEventPublisher only implements publish(), but packages/messaging/src/cqrs/event-bus.ts returns Promise<void> (undefined).
-          it.skip("resolves with what the event bus returns when the publisher only implements publish()", async () => {
+          it("resolves with what the event bus returns when the publisher only implements publish()", async () => {
             const localBus = createEventBus({
               publish: mock(() => Promise.resolve("published")),
             });
@@ -318,8 +314,7 @@ describeConformance(
         });
 
         describe("with autoCommit", () => {
-          // BUNEST_BUG: Expected AggregateRoot.commit(transactionContext) with 0 uncommitted events to still call publishAll([], transactionContext), but packages/messaging/src/cqrs/aggregate-root.ts short-circuits and returns Promise.resolve() when internalEvents.length === 0.
-          it.skip("publishes on apply() with the default dispatcher context, and commit() publishes nothing new", () => {
+          it("publishes on apply() with the default dispatcher context, and commit() publishes nothing new", () => {
             order.autoCommit = true;
 
             order.place();
@@ -356,8 +351,7 @@ describeConformance(
               expect(AsyncContext.of(events[0]!)).toBe(asyncContext);
             });
 
-            // BUNEST_BUG: Expected AggregateRoot.commit() without dispatcherContext to pass the live internalEvents array (emptied post-publish), but packages/messaging/src/cqrs/aggregate-root.ts passes a detached splice copy before clearing.
-            it.skip("keeps passing the aggregate and the async context without a dispatcher context", () => {
+            it("keeps passing the aggregate and the async context without a dispatcher context", () => {
               const asyncContext = new AsyncContext();
               const localOrder = path.create(eventBus, asyncContext);
               localOrder.place();
@@ -376,8 +370,7 @@ describeConformance(
     }
 
     describe("typings", () => {
-      // BUNEST_BUG: Expected AggregateRoot.publishAll() return type to allow void-returning subclass overrides (Promise<void> | any), matching IAggregateRoot.publishAll(): any, but packages/messaging/src/cqrs/aggregate-root.ts declares async publishAll(...): Promise<void> (TS2416).
-      it.skip("accept subclasses and implementations whose publish methods and commit() return void", () => {
+      it("accept subclasses and implementations whose publish methods and commit() return void", () => {
         class LegacyOrder extends Order {
           override publish<T extends IEvent>(event: T): void {
             super.publish(event);

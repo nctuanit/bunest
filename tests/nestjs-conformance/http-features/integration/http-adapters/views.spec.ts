@@ -214,8 +214,7 @@ describeConformance(
         expect(res.body.statusCode).toBe(500);
       });
 
-      // BUNEST_BUG: FallbackRadixRouter/NativePathMatcher use safeDecodeSegment() which silently swallows URIError on malformed percent-encoding (%E0%A4%A) instead of rejecting with 400 Bad Request (packages/core/src/http/router/fallback-radix-router.ts:139-145).
-      it.skip("should answer a path param it cannot decode with 400", async () => {
+      it("should answer a path param it cannot decode with 400", async () => {
         const res = await request(app).get("/pages/%E0%A4%A");
 
         expect(res.status).toBe(400);

@@ -277,8 +277,7 @@ describeConformance(
     });
 
     describe("extension properties cloning", () => {
-      // BUNEST_BUG: ApiExtension (packages/swagger/src/decorators/api.decorators.ts:606-621) stores extensionProperties by reference without shallow-cloning, so mutating metadata mutates originalProperties
-      it.skip("should shallow clone extension properties (top-level properties are cloned)", () => {
+      it("should shallow clone extension properties (top-level properties are cloned)", () => {
         const originalProperties = {
           topLevel: "original",
           nested: { value: "original" },
@@ -306,8 +305,7 @@ describeConformance(
         expect(originalProperties.nested.value).toBe("modified");
       });
 
-      // BUNEST_BUG: ApiExtension (packages/swagger/src/decorators/api.decorators.ts:606-621) does not shallow-clone shared extensionProperties across multiple methods, causing cross-method mutation leakage
-      it.skip("should clone extension properties when applied to multiple methods", () => {
+      it("should clone extension properties when applied to multiple methods", () => {
         const sharedProperties = { counter: 0 };
 
         @Controller("test")

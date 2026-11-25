@@ -318,7 +318,9 @@ export class ValidationExecutor {
       if (rule.fastValidate && isCollection) {
         const items = convertToArray(value);
         let allValid = true;
+        const isSparseArray = Array.isArray(value);
         for (let k = 0; k < items.length; k++) {
+          if (isSparseArray && !(k in items)) continue;
           if (!rule.fastValidate(items[k])) {
             allValid = false;
             break;

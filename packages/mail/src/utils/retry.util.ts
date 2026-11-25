@@ -1,3 +1,4 @@
+import { computeBackoffDelay } from "@bunest/core";
 import type { Duration } from "../interfaces/duration.interface";
 import type {
   MailBackoffOptions,
@@ -111,16 +112,7 @@ export function backoffDelay(
   if (typeof retry.backoff === "function") {
     return durationOption(retry.backoff(attempt, error), "retry.backoff()");
   }
-  const { delay, factor, maxDelay, jitter } = retry.backoff;
-  const ceiling = Math.min(maxDelay, delay * factor ** (attempt - 1));
-  switch (jitter) {
-    case "none":
-      return Math.floor(ceiling);
-    case "equal":
-      return Math.floor(ceiling / 2 + (random() * ceiling) / 2);
-    default:
-      return Math.floor(random() * ceiling);
-  }
+  return computeBackoffDelay(retry.backoff, attempt, random);
 }
 
 /**

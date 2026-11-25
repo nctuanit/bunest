@@ -38,8 +38,7 @@ describeConformance(
     describe("transform", () => {
       describe("when undefined value", () => {
         describe("and optional disabled", () => {
-          // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should throw an exception", async () => {
+          it("should throw an exception", async () => {
             target = new ParseArrayPipe({ optional: false });
 
             return expect(
@@ -61,8 +60,7 @@ describeConformance(
 
       describe("when empty string", () => {
         describe("and optional disabled", () => {
-          // BUNEST_BUG: ParseArrayPipe splits empty string "" into [] instead of NestJS [""] (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should parse to a single empty item", async () => {
+          it("should parse to a single empty item", async () => {
             target = new ParseArrayPipe({ optional: false });
 
             expect(await target.transform("", {} as ArgumentMetadata)).toEqual([
@@ -72,8 +70,7 @@ describeConformance(
         });
 
         describe("and optional enabled", () => {
-          // BUNEST_BUG: ParseArrayPipe splits empty string "" into [] instead of NestJS [""] (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should parse to a single empty item", async () => {
+          it("should parse to a single empty item", async () => {
             target = new ParseArrayPipe({ optional: true });
 
             expect(await target.transform("", {} as ArgumentMetadata)).toEqual([
@@ -88,30 +85,26 @@ describeConformance(
           target = new ParseArrayPipe();
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an exception (boolean)", async () => {
+        it("should throw an exception (boolean)", async () => {
           return expect(
             target.transform(true, {} as ArgumentMetadata),
           ).rejects.toThrow(BadRequestException);
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an exception (number)", async () => {
+        it("should throw an exception (number)", async () => {
           return expect(
             target.transform(3, {} as ArgumentMetadata),
           ).rejects.toThrow(BadRequestException);
         });
 
-        // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an exception (object)", async () => {
+        it("should throw an exception (object)", async () => {
           return expect(
             target.transform({}, {} as ArgumentMetadata),
           ).rejects.toThrow(BadRequestException);
         });
 
         describe('and "optional" is enabled', () => {
-          // BUNEST_BUG: createPipeException throws base HttpException(status=400) instead of BadRequestException (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should throw an exception", async () => {
+          it("should throw an exception", async () => {
             const pipe = new ParseArrayPipe({
               optional: true,
               items: String,
@@ -149,8 +142,7 @@ describeConformance(
         });
 
         describe("and type is specified", () => {
-          // BUNEST_BUG: ParseArrayPipe throws base HttpException with unindexed message "Validation failed (numeric array item expected)" instead of BadRequestException with "[2] item must be a number", and lacks `stopAtFirstError: false` error aggregation (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should parse & validate the array", async () => {
+          it("should parse & validate the array", async () => {
             target = new ParseArrayPipe({ separator: ".", items: Number });
 
             expect(
@@ -205,8 +197,7 @@ describeConformance(
       describe("when items type is determined", () => {
         class ArrItem {}
 
-        // BUNEST_BUG: ParseArrayPipe does not transform or validate DTO class items (e.g. `items: ArrItem`) — leaves plain objects and JSON strings untouched instead of instantiating via ValidationPipe (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should validate and transform each item", async () => {
+        it("should validate and transform each item", async () => {
           target = new ParseArrayPipe({
             items: ArrItem,
             forbidUnknownValues: false,
@@ -244,8 +235,7 @@ describeConformance(
           ).toEqual([true, false]);
         });
 
-        // BUNEST_BUG: ParseArrayPipe error message is "Validation failed (numeric array item expected)" instead of NestJS indexed "[1] item must be a number" (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should reject items that are not numbers when items is Number", async () => {
+        it("should reject items that are not numbers when items is Number", async () => {
           target = new ParseArrayPipe({ items: Number });
 
           for (const [value, index] of [
@@ -280,8 +270,7 @@ describeConformance(
           ).toEqual([1, 2, -3.5, 1000, 1, 4, 0.5]);
         });
 
-        // BUNEST_BUG: ParseArrayPipe error message is "Validation failed (numeric array item expected)" instead of NestJS indexed "[0] item must be a number" (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should reject an array nested in the array when items is Number", async () => {
+        it("should reject an array nested in the array when items is Number", async () => {
           target = new ParseArrayPipe({ items: Number });
 
           for (const [value, index] of [
@@ -296,8 +285,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseArrayPipe error message is "Validation failed (boolean array item expected)" instead of NestJS indexed "[0] item must be a boolean value" (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should reject an array nested in the array when items is Boolean", async () => {
+        it("should reject an array nested in the array when items is Boolean", async () => {
           target = new ParseArrayPipe({ items: Boolean });
 
           for (const [value, index] of [
@@ -311,8 +299,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseArrayPipe ignores DTO class `items` instead of validating with ValidationPipe (returns raw nested array instead of throwing BadRequestException) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should not parse a JSON string nested in the array when items is a class", async () => {
+        it("should not parse a JSON string nested in the array when items is a class", async () => {
           class ArrItemWithProp {
             @IsNumber()
             number!: number;
@@ -324,8 +311,7 @@ describeConformance(
           ).rejects.toThrow(BadRequestException);
         });
 
-        // BUNEST_BUG: ParseArrayPipe ignores DTO class `items` instead of rejecting non-objects and instantiating valid JSON object items (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should reject items that are not objects when items is a class", async () => {
+        it("should reject items that are not objects when items is a class", async () => {
           class ArrItemAllOptional {
             @IsOptional()
             @IsNumber()
@@ -367,8 +353,7 @@ describeConformance(
           ).toEqual([true, false]);
         });
 
-        // BUNEST_BUG: ParseArrayPipe lacks internal `validationPipe` for DTO class `items` validation (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should stop validating at the first invalid item", async () => {
+        it("should stop validating at the first invalid item", async () => {
           class ArrItemWithProp {
             @IsDefined()
             number!: number;
@@ -386,8 +371,7 @@ describeConformance(
           expect(transformSpy).toHaveBeenCalledTimes(2);
         });
 
-        // BUNEST_BUG: ParseArrayPipe lacks internal `validationPipe` for DTO class `items` validation (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should validate one item after the other", async () => {
+        it("should validate one item after the other", async () => {
           class ArrItemLocal {}
           target = new ParseArrayPipe({
             items: ArrItemLocal,
@@ -427,8 +411,7 @@ describeConformance(
           expect(input).toEqual(["1", "2"]);
         });
 
-        // BUNEST_BUG: ParseArrayPipe iterates sparse arrays with `for (const item of rawItems)` yielding undefined for holes and throwing instead of closing sparse gaps (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should close the gaps of a sparse array and leave the input unchanged", async () => {
+        it("should close the gaps of a sparse array and leave the input unchanged", async () => {
           const input = ["1", "2", "3"];
           delete input[1];
           target = new ParseArrayPipe({ items: Number });
@@ -443,8 +426,7 @@ describeConformance(
           expect(1 in input).toBe(false);
         });
 
-        // BUNEST_BUG: ParseArrayPipe does not close gaps of sparse arrays (throws on empty slot at index 0) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should close the gaps of a sparse array when not stopping at the first error", async () => {
+        it("should close the gaps of a sparse array when not stopping at the first error", async () => {
           const input: string[] = [];
           input[1] = "9";
           target = new ParseArrayPipe({
@@ -457,8 +439,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ParseArrayPipe iterates indices linearly via `for..of` instead of skipping sparse holes (throws on undefined index 0) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should only visit the items of a sparse array, whatever its length", async () => {
+        it("should only visit the items of a sparse array, whatever its length", async () => {
           const input: string[] = [];
           input[2 ** 32 - 2] = "1";
           target = new ParseArrayPipe({ items: Number });
@@ -485,8 +466,7 @@ describeConformance(
             expect(input).toEqual(["1", "2"]);
           });
 
-          // BUNEST_BUG: ParseArrayPipe throws base HttpException with unindexed message instead of BadRequestException with ["[1] item must be a number"] and ignores `stopAtFirstError: false` (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should leave the input array unchanged when validation fails", async () => {
+          it("should leave the input array unchanged when validation fails", async () => {
             const input = ["1", "invalid", "3"];
             const pipe = new ParseArrayPipe({
               items: Number,
@@ -504,8 +484,7 @@ describeConformance(
             expect(input).toEqual(["1", "invalid", "3"]);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `stopAtFirstError: false` error concatenation (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should validate each item and concat errors", async () => {
+          it("should validate each item and concat errors", async () => {
             class ArrItemWithProp {
               @IsNumber()
               number!: number;
@@ -535,8 +514,7 @@ describeConformance(
             expect(threw).toBe(true);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` transformation/validation so @Transform error is never invoked (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should rethrow an error thrown by a transformation", async () => {
+          it("should rethrow an error thrown by a transformation", async () => {
             const error = Object.assign(new Error("lookup failed"), {
               code: "ECONNREFUSED",
               address: "10.0.0.5",
@@ -564,8 +542,7 @@ describeConformance(
             ).rejects.toBe(error);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation so async @Validate constraint is never invoked (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should rethrow the rejection of an async constraint", async () => {
+          it("should rethrow the rejection of an async constraint", async () => {
             const error = new Error("lookup failed");
             @ValidatorConstraint({ name: "isKnown", async: true })
             class IsKnown implements ValidatorConstraintInterface {
@@ -598,8 +575,7 @@ describeConformance(
             expect(exceptionFactory).not.toHaveBeenCalled();
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `maxErrorMessagesLength` (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip('should rethrow such an error after "maxErrorMessagesLength" is reached', async () => {
+          it('should rethrow such an error after "maxErrorMessagesLength" is reached', async () => {
             const error = new Error("lookup failed");
             class ArrItemWithTransform {
               @Transform(({ value }) => {
@@ -625,8 +601,7 @@ describeConformance(
             ).rejects.toBe(error);
           });
 
-          // BUNEST_BUG: ParseArrayPipe ignores `stopAtFirstError: false` (stops at first error, returns single string message on HttpException instead of 100-item BadRequestException array) (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should collect the errors without copying them for each item", async () => {
+          it("should collect the errors without copying them for each item", async () => {
             const pipe = new ParseArrayPipe({
               items: Number,
               stopAtFirstError: false,
@@ -676,8 +651,7 @@ describeConformance(
             city!: string;
           }
 
-          // BUNEST_BUG: ParseArrayPipe lacks `stopAtFirstError: false`, `maxErrorMessagesLength`, and `isNumeric` method (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip('should stop at "maxErrorMessagesLength" characters of messages of all the items', async () => {
+          it('should stop at "maxErrorMessagesLength" characters of messages of all the items', async () => {
             const pipe = new ParseArrayPipe({
               items: Number,
               stopAtFirstError: false,
@@ -699,8 +673,7 @@ describeConformance(
             expect(isNumeric).toHaveBeenCalledTimes(4);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation, `stopAtFirstError: false`, and `maxErrorMessagesLength` (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should not start the limit over for each item with nested errors", async () => {
+          it("should not start the limit over for each item with nested errors", async () => {
             class Address {
               @IsString()
               city!: string;
@@ -735,8 +708,7 @@ describeConformance(
             ]);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and default `maxErrorMessagesLength` cap (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should limit the messages of all the items by default", async () => {
+          it("should limit the messages of all the items by default", async () => {
             const pipe = new ParseArrayPipe({
               items: Contact,
               stopAtFirstError: false,
@@ -753,8 +725,7 @@ describeConformance(
             expect(messages.join("").length).toBeLessThan(1_001_000);
           });
 
-          // BUNEST_BUG: ParseArrayPipe ignores `stopAtFirstError: false` and `maxErrorMessagesLength`, emitting unindexed string instead of ["[0] item must be a number"] (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should not say that errors were omitted when none were left out", async () => {
+          it("should not say that errors were omitted when none were left out", async () => {
             const pipe = new ParseArrayPipe({
               items: Number,
               stopAtFirstError: false,
@@ -770,8 +741,7 @@ describeConformance(
             ]);
           });
 
-          // BUNEST_BUG: ParseArrayPipe ignores `stopAtFirstError: false` so exceptionFactory receives only first error string instead of all 10 indexed error strings (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should hand every error to a custom exception factory", async () => {
+          it("should hand every error to a custom exception factory", async () => {
             const exceptionFactory = mock(
               (errors: any) => new BadRequestException(errors),
             );
@@ -792,8 +762,7 @@ describeConformance(
             );
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `maxErrorMessagesLength: Infinity` (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip('should collect every error when "maxErrorMessagesLength" is Infinity', async () => {
+          it('should collect every error when "maxErrorMessagesLength" is Infinity', async () => {
             const pipe = new ParseArrayPipe({
               items: Contact,
               stopAtFirstError: false,
@@ -810,8 +779,7 @@ describeConformance(
             expect(messages.at(-1)).toBe("[3999] city must be a string");
           });
 
-          // BUNEST_BUG: ParseArrayPipe ignores `stopAtFirstError: false` and throws base HttpException with unindexed message instead of collecting all nested array errors (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should report every array nested in the array", async () => {
+          it("should report every array nested in the array", async () => {
             const pipe = new ParseArrayPipe({
               items: Number,
               stopAtFirstError: false,
@@ -828,8 +796,7 @@ describeConformance(
             ]);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation with nested object error concatenation (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should validate each nested object and concat errors", async () => {
+          it("should validate each nested object and concat errors", async () => {
             class RandomObject {
               @IsDefined()
               @IsBoolean()
@@ -886,8 +853,7 @@ describeConformance(
             expect(threw).toBe(true);
           });
 
-          // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation with nested array error concatenation (packages/core/src/common/pipes/built-in.pipes.ts)
-          it.skip("should validate each nested array and concat errors", async () => {
+          it("should validate each nested array and concat errors", async () => {
             class RandomObject {
               @IsDefined()
               @IsBoolean()
@@ -956,8 +922,7 @@ describeConformance(
           });
 
           describe('and "errorFormat" is "grouped"', () => {
-            // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `errorFormat: "grouped"` (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should keep the field and the message of each invalid item", async () => {
+            it("should keep the field and the message of each invalid item", async () => {
               class ArrItemWithProp {
                 @IsNumber()
                 number!: number;
@@ -982,8 +947,7 @@ describeConformance(
               ]);
             });
 
-            // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `errorFormat: "grouped"` (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should keep the path of a nested field", async () => {
+            it("should keep the path of a nested field", async () => {
               class Address {
                 @IsString()
                 city!: string;
@@ -1012,8 +976,7 @@ describeConformance(
               ]);
             });
 
-            // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and `errorFormat: "grouped"` (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should list every message of a field", async () => {
+            it("should list every message of a field", async () => {
               class ArrItemWithProp {
                 @IsDefined()
                 @IsBoolean()
@@ -1035,8 +998,7 @@ describeConformance(
               ]);
             });
 
-            // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation, `errorFormat: "grouped"`, and `maxErrorMessagesLength` (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should not take the note about omitted errors for a path", async () => {
+            it("should not take the note about omitted errors for a path", async () => {
               class ArrItemWithProp {
                 @IsNumber()
                 number!: number;
@@ -1061,8 +1023,7 @@ describeConformance(
               );
             });
 
-            // BUNEST_BUG: ParseArrayPipe lacks DTO class `items` validation and object-shaped error message extraction in `stopAtFirstError: false` mode (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should not fail on a message that is not a list of strings", async () => {
+            it("should not fail on a message that is not a list of strings", async () => {
               class ArrItemWithProp {
                 @IsNumber()
                 number!: number;
@@ -1088,8 +1049,7 @@ describeConformance(
               ]);
             });
 
-            // BUNEST_BUG: ParseArrayPipe lacks `stopAtFirstError: false` and `errorFormat: "grouped"`, emitting unindexed string message instead of ["[1] item must be a number"] (packages/core/src/common/pipes/built-in.pipes.ts)
-            it.skip("should keep the message of a primitive item", async () => {
+            it("should keep the message of a primitive item", async () => {
               const pipe = new ParseArrayPipe({
                 items: Number,
                 stopAtFirstError: false,

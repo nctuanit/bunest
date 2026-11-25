@@ -21,6 +21,7 @@ export class GraphQLDefinitionsFactory {
       path: outputPath,
       outputAs = "interface",
       debug = false,
+      watch = false,
       typeDefs,
       ...generatorOptions
     } = options;
@@ -33,6 +34,74 @@ export class GraphQLDefinitionsFactory {
       generatorOptions,
       typeDefs,
     );
+
+    if (watch && typePaths.length > 0) {
+      const snapshot = new Map<string, string>();
+      const captureSnapshot = async (): Promise<{
+        changed: boolean;
+        anyExists: boolean;
+      }> => {
+        let files: string[] = [];
+        try {
+          files = await this.gqlTypesLoader.getTypesFromPaths(typePaths);
+        } catch {
+          return { changed: false, anyExists: false };
+        }
+        if (files.length === 0) {
+          return { changed: false, anyExists: false };
+        }
+        let changed = false;
+        const currentKeys = new Set(files);
+        for (const existing of snapshot.keys()) {
+          if (!currentKeys.has(existing)) {
+            snapshot.delete(existing);
+            changed = true;
+          }
+        }
+        for (const file of files) {
+          try {
+            const text = await Bun.file(file).text();
+            if (snapshot.get(file) !== text) {
+              snapshot.set(file, text);
+              changed = true;
+            }
+          } catch {
+            // File disappeared mid-poll
+          }
+        }
+        return { changed, anyExists: true };
+      };
+
+      await captureSnapshot();
+
+      let running = false;
+      const timer = setInterval(async () => {
+        if (running) return;
+        running = true;
+        try {
+          const { changed, anyExists } = await captureSnapshot();
+          if (!anyExists) {
+            clearInterval(timer);
+            return;
+          }
+          if (changed) {
+            await this.exploreAndEmit(
+              typePaths,
+              outputPath,
+              outputAs,
+              debug,
+              generatorOptions,
+              typeDefs,
+            );
+          }
+        } catch {
+          // Ignore transient watch errors
+        } finally {
+          running = false;
+        }
+      }, 30);
+      timer.unref?.();
+    }
   }
 
   protected async exploreAndEmit(
@@ -50,7 +119,7 @@ export class GraphQLDefinitionsFactory {
     const inlineSdl = Array.isArray(typeDefs)
       ? typeDefs.join("\n")
       : (typeDefs ?? "");
-    const combinedSdl = [loadedFromPaths, inlineSdl]
+    const combinedSdl = [inlineSdl, loadedFromPaths]
       .filter((part) => part.trim().length > 0)
       .join("\n");
 

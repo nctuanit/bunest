@@ -124,8 +124,7 @@ describeConformance(
         "Uses local ephemeral node:net TCP server (port: 0) instead of fixed port 8889",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-      it.skip(
+      it(
         adaptedTitle(
           ["ADR-001"],
           "should throw an error if is not reachable",
@@ -197,8 +196,7 @@ describeConformance(
         "Probes local ephemeral TCP socket via RMQ options.urls without Docker",
       );
 
-      // BUNEST_BUG: HttpException.toJSON() overwrites HealthCheckException's object `body.error` with the string "HealthCheckException" instead of preserving the indicator error map (packages/core/src/common/exceptions/http.exception.ts:167-177, packages/observability/src/health/health.service.ts:26-41).
-      it.skip(
+      it(
         adaptedTitle(
           ["ADR-001"],
           "should throw an error if is not reachable",

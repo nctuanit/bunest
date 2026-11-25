@@ -392,6 +392,38 @@ export function createReplContext(
     );
   };
 
+  const attachHelp = (fn: Function, description: string): void => {
+    Object.defineProperty(fn, "help", {
+      enumerable: false,
+      configurable: true,
+      get() {
+        return description;
+      },
+    });
+  };
+
+  attachHelp(
+    get,
+    "get(token) / $(token) - Retrieve a singleton provider or controller instance.",
+  );
+  attachHelp(
+    resolve,
+    "resolve(token) - Asynchronously resolve transient or request-scoped providers.",
+  );
+  attachHelp(
+    select,
+    "select(ModuleClass) - Navigate into a specific module context.",
+  );
+  attachHelp(
+    debug,
+    "debug(ModuleClass?) - Print all registered modules, controllers, and providers.",
+  );
+  attachHelp(
+    methods,
+    "methods(tokenOrInstance) - List all public methods on a provider or controller.",
+  );
+  attachHelp(help, "help() - Display available Bunest REPL helper functions.");
+
   return { get, $: get, resolve, select, debug, methods, help };
 }
 

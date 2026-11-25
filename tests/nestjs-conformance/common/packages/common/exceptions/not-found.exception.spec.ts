@@ -17,8 +17,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(404);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Not Found", 404) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Not Found"` in getResponse(), whereas NestJS returns `{ message: "Not Found", statusCode: 404 }`.
-    it.skip('should return "Not Found" as default message', () => {
+    it('should return "Not Found" as default message', () => {
       const exc = new NotFoundException();
       expect(exc.getResponse()).toEqual({
         message: "Not Found",
@@ -35,8 +34,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new NotFoundException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

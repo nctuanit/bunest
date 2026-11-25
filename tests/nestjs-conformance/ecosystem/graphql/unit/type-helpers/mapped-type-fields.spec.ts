@@ -231,8 +231,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: getGraphQLFields() in packages/graphql/src/decorators/type.decorators.ts (lines 734-761) walks the entire prototype chain regardless of GraphQL decorator kind (@ObjectType vs @InputType), causing @InputType() UpdateNoteInput (derived from @InputType() CreateNoteInput extends @ObjectType() Entity) to include Entity's `id: ID` and `isAdmin: Boolean` fields.
-    it.skip("should not map the fields of a parent of another kind of type", () => {
+    it("should not map the fields of a parent of another kind of type", () => {
       expect(print("UpdateNoteInput")).toEqual(
         ["input UpdateNoteInput {", "  text: String", "}"].join("\n"),
       );
@@ -252,8 +251,7 @@ describeConformance(
       ).toEqual(["take", "search"]);
     });
 
-    // BUNEST_BUG: registerMappedTypeMetadataHook() in packages/graphql/src/decorators/type.decorators.ts (lines 865-873) unconditionally overwrites field metadata when intersecting two classes, so PickThenPartial emits nullable `id: ID` instead of keeping the stricter non-nullable `id: ID!`.
-    it.skip("should keep a shared field non-nullable unless both types allow null", () => {
+    it("should keep a shared field non-nullable unless both types allow null", () => {
       expect(print("PickThenPartial")).toEqual(
         ["input PickThenPartial {", "  id: ID!", "  email: String", "}"].join(
           "\n",
@@ -270,8 +268,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: PartialType() in packages/graphql/src/decorators/type.decorators.ts (lines 885-915) does not accept an options object (`{ omitDefaultValues: true }`), throwing TypeError: decorator is not a function.
-    it.skip('should omit the property initializers of a partial type with "omitDefaultValues"', async () => {
+    it('should omit the property initializers of a partial type with "omitDefaultValues"', async () => {
       @InputType()
       class PatchUserInput extends PartialTypeWithOpts(CreateUserInput, {
         omitDefaultValues: true,
@@ -301,8 +298,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: IntersectionType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-881, 944-951) does not auto-apply @ObjectType() onto the generated class (causing getFieldsAndDecoratorForType to throw UnableToFindFieldsError) and does not compute stricter list nullability or merge field.middleware arrays across both sources.
-    it.skip("should keep the stricter list nullability and the middleware of both types", () => {
+    it("should keep the stricter list nullability and the middleware of both types", () => {
       const { fields } = getFieldsAndDecoratorForType(
         IntersectionType(TaggedB, TaggedA),
       );

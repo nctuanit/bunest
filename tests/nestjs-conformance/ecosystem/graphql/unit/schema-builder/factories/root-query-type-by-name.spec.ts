@@ -84,8 +84,7 @@ describeConformance(
         .create([new AccountResolver(), new DeletePayloadResolver()]);
     });
 
-    // BUNEST_BUG: Expected RenamePayload.query: Query! and DeletePayload.query: Query in printed SDL, got String! and String; packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf) falls back to GraphQLString for string type name 'Query' instead of resolving the root Query type.
-    it.skip("prints the payload fields that return the root Query type", () => {
+    it("prints the payload fields that return the root Query type", () => {
       const printedSchema = printSchema(schema);
       expect(printedSchema).toContain(
         "type RenamePayload {\n  name: String!\n  query: Query!\n}",
@@ -95,8 +94,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected RenamePayload.query ofType and DeletePayload.query type to be schema.getQueryType(), got GraphQLScalarType 'String'; packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf) does not resolve string type reference 'Query' to the root Query object type.
-    it.skip("points the fields at the generated root Query type", () => {
+    it("points the fields at the generated root Query type", () => {
       const renameQueryField = (
         schema.getType("RenamePayload") as GraphQLObjectType
       ).getFields().query!;

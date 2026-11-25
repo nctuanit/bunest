@@ -352,6 +352,14 @@ export class MultiMap<K, V> {
     this.store.clear();
   }
 
+  keys(): IterableIterator<K> {
+    return this.store.keys();
+  }
+
+  values(): IterableIterator<V[]> {
+    return this.store.values();
+  }
+
   entries(): IterableIterator<[K, V[]]> {
     return this.store.entries();
   }

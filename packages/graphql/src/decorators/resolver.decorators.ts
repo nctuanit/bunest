@@ -38,10 +38,21 @@ function isPipeLike(value: unknown): value is PipeLike {
  * Optionally binds the resolver to a parent `@ObjectType()` class, thunk, or SDL type name.
  */
 export function Resolver(
-  of?: string | Function | (() => Function),
+  ofOrOptions?: string | Function | (() => Function) | ResolverOptions,
   options: ResolverOptions = {},
-): ClassDecorator {
-  return (target: Function) => {
+): ClassDecorator & MethodDecorator {
+  const isOptionsOnly =
+    typeof ofOrOptions === "object" && ofOrOptions !== null;
+  const of = isOptionsOnly ? undefined : ofOrOptions;
+  const resolvedOptions: ResolverOptions = isOptionsOnly
+    ? ofOrOptions
+    : options;
+
+  return ((
+    target: Function | object,
+    propertyKey?: string | symbol,
+    _descriptor?: PropertyDescriptor,
+  ) => {
     const normalizedOf =
       typeof of === "string"
         ? (() => {
@@ -49,26 +60,50 @@ export function Resolver(
             return nameHolder[of]!;
           })()
         : of;
+
+    if (propertyKey !== undefined && typeof target === "object" && target !== null) {
+      const ctor = target.constructor;
+      if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, ctor)) {
+        MetadataRegistry.define(
+          METADATA_KEYS.INJECTABLE,
+          { scope: Scope.SINGLETON },
+          ctor,
+        );
+      }
+      return;
+    }
+
+    const ctor = target as Function;
+    const parentProto = Object.getPrototypeOf(ctor);
+    const parentMeta =
+      parentProto && parentProto !== Function.prototype
+        ? MetadataRegistry.get<ResolverMetadata>(
+            GRAPHQL_METADATA_KEYS.RESOLVER,
+            parentProto,
+          )
+        : undefined;
+    const effectiveOf = normalizedOf ?? parentMeta?.of;
+
     const meta: ResolverMetadata = {
-      of: normalizedOf,
-      isAbstract: options.isAbstract,
+      of: effectiveOf,
+      isAbstract: resolvedOptions.isAbstract,
     };
-    MetadataRegistry.define(GRAPHQL_METADATA_KEYS.RESOLVER, meta, target);
+    MetadataRegistry.define(GRAPHQL_METADATA_KEYS.RESOLVER, meta, ctor);
     TypeMetadataStorage.addResolverMetadata({
-      target,
-      typeFn: normalizedOf
-        ? () => (typeof normalizedOf === "function" ? normalizedOf : undefined)
+      target: ctor,
+      typeFn: effectiveOf
+        ? () => (typeof effectiveOf === "function" ? effectiveOf : undefined)
         : undefined,
-      isAbstract: options.isAbstract,
+      isAbstract: resolvedOptions.isAbstract,
     });
-    if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, target)) {
+    if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, ctor)) {
       MetadataRegistry.define(
         METADATA_KEYS.INJECTABLE,
         { scope: Scope.SINGLETON },
-        target,
+        ctor,
       );
     }
-  };
+  }) as ClassDecorator & MethodDecorator;
 }
 
 function createOperationDecorator(
@@ -76,9 +111,13 @@ function createOperationDecorator(
   metadataKey: symbol,
 ) {
   return (
-    returnTypeFunc: ReturnTypeFunc,
+    nameOrTypeFunc?: string | ReturnTypeFunc,
     options: OperationOptions & SubscriptionOptions = {},
   ): MethodDecorator => {
+    const returnTypeFunc: ReturnTypeFunc =
+      typeof nameOrTypeFunc === "function" ? nameOrTypeFunc : () => Object;
+    const explicitName =
+      typeof nameOrTypeFunc === "string" ? nameOrTypeFunc : options.name;
     return (
       target: object,
       propertyKey: string | symbol,
@@ -93,7 +132,7 @@ function createOperationDecorator(
       const entry: ResolverOperationMetadata = {
         kind,
         handlerKey: propertyKey,
-        name: options.name ?? String(propertyKey),
+        name: explicitName ?? String(propertyKey),
         returnTypeFn: returnTypeFunc,
         description: options.description,
         nullable: options.nullable,
@@ -110,6 +149,15 @@ function createOperationDecorator(
         [...filtered, entry],
         target.constructor,
       );
+      if (
+        !MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, target.constructor)
+      ) {
+        MetadataRegistry.define(
+          METADATA_KEYS.INJECTABLE,
+          { scope: Scope.SINGLETON },
+          target.constructor,
+        );
+      }
 
       const stored = {
         target: target.constructor,
@@ -155,17 +203,18 @@ export const Subscription = createOperationDecorator(
  * Declares a field resolver method on a `@Resolver(() => ParentType)` class.
  */
 export function ResolveField(): MethodDecorator;
+export function ResolveField(options: ResolveFieldOptions): MethodDecorator;
 export function ResolveField(
   returnTypeFunc: ReturnTypeFunc,
   options?: ResolveFieldOptions,
 ): MethodDecorator;
 export function ResolveField(
-  propertyName: string,
+  propertyName: string | undefined,
   returnTypeFunc?: ReturnTypeFunc,
   options?: ResolveFieldOptions,
 ): MethodDecorator;
 export function ResolveField(
-  nameOrReturnType?: string | ReturnTypeFunc,
+  nameOrReturnType?: string | ReturnTypeFunc | ResolveFieldOptions,
   returnTypeOrOptions?: ReturnTypeFunc | ResolveFieldOptions,
   maybeOptions?: ResolveFieldOptions,
 ): MethodDecorator {
@@ -178,12 +227,28 @@ export function ResolveField(
     if (typeof returnTypeOrOptions === "function") {
       returnTypeFn = returnTypeOrOptions;
       options = maybeOptions ?? {};
-    } else if (returnTypeOrOptions) {
+    } else if (returnTypeOrOptions && typeof returnTypeOrOptions === "object") {
       options = returnTypeOrOptions;
+    } else if (maybeOptions) {
+      options = maybeOptions;
     }
   } else if (typeof nameOrReturnType === "function") {
     returnTypeFn = nameOrReturnType;
-    options = (returnTypeOrOptions as ResolveFieldOptions | undefined) ?? {};
+    options =
+      (returnTypeOrOptions as ResolveFieldOptions | undefined) ??
+      maybeOptions ??
+      {};
+  } else if (nameOrReturnType && typeof nameOrReturnType === "object") {
+    options = nameOrReturnType;
+  } else {
+    if (typeof returnTypeOrOptions === "function") {
+      returnTypeFn = returnTypeOrOptions;
+      options = maybeOptions ?? {};
+    } else if (returnTypeOrOptions && typeof returnTypeOrOptions === "object") {
+      options = returnTypeOrOptions;
+    } else if (maybeOptions) {
+      options = maybeOptions;
+    }
   }
 
   return (
@@ -475,6 +540,19 @@ export function getResolverFields(
       GRAPHQL_METADATA_KEYS.RESOLVE_FIELDS,
       ctor,
     );
+    const ownKeys = new Set<string | symbol>(
+      own ? own.map((rf) => rf.handlerKey) : [],
+    );
+    if (ctor.prototype) {
+      for (const key of byHandler.keys()) {
+        if (
+          Object.prototype.hasOwnProperty.call(ctor.prototype, key) &&
+          !ownKeys.has(key)
+        ) {
+          byHandler.delete(key);
+        }
+      }
+    }
     if (!own) continue;
     for (let i = 0; i < own.length; i++) {
       const rf = own[i];
@@ -490,27 +568,38 @@ export function getResolverMethodParams(
   resolverClass: Function,
   handlerKey: string | symbol,
 ): GqlParamMetadata[] {
+  const protos: object[] = [];
   let proto: object | null = (resolverClass.prototype as object | null) ?? null;
-  let definingProto: object | null = null;
-
   while (proto && proto !== Object.prototype) {
-    if (Object.prototype.hasOwnProperty.call(proto, handlerKey)) {
-      definingProto = proto;
-      break;
-    }
+    protos.push(proto);
     proto = Object.getPrototypeOf(proto) as object | null;
+  }
+
+  // Merge from base class -> derived class so subclass parameter decorators override parent
+  const byIndex = new Map<number, GqlParamMetadata>();
+  let definingProto: object | null = null;
+  for (let i = protos.length - 1; i >= 0; i--) {
+    const p = protos[i]!;
+    if (Object.prototype.hasOwnProperty.call(p, handlerKey)) {
+      definingProto = p;
+    }
+    const ownParams = MetadataRegistry.getOwn<readonly GqlParamMetadata[]>(
+      GRAPHQL_METADATA_KEYS.PARAMS,
+      p,
+      handlerKey,
+    );
+    if (ownParams) {
+      for (const param of ownParams) {
+        byIndex.set(param.index, param);
+      }
+    }
   }
 
   if (!definingProto) {
     return [];
   }
 
-  const rawParams =
-    MetadataRegistry.getOwn<readonly GqlParamMetadata[]>(
-      GRAPHQL_METADATA_KEYS.PARAMS,
-      definingProto,
-      handlerKey,
-    ) ?? [];
+  const rawParams = [...byIndex.values()];
 
   const paramTypes = MetadataRegistry.getOwn<Function[]>(
     DESIGN_METADATA_KEYS.PARAMTYPES,

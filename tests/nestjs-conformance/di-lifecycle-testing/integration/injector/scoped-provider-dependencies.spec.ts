@@ -123,8 +123,7 @@ describeConformance(
       await module.close();
     });
 
-    // BUNEST_BUG: resolve(Consumer) without registerRequestByContextId() throws for @Inject(REQUEST) instead of resolving REQUEST to undefined (packages/core/src/di/di-container.ts:3586)
-    it.skip("should bootstrap when the dependencies are the request, the inquirer or a forward reference", async () => {
+    it("should bootstrap when the dependencies are the request, the inquirer or a forward reference", async () => {
       @Injectable({ scope: Scope.TRANSIENT })
       class TransientWithInquirer {
         constructor(@Inject(INQUIRER) public readonly inquirer: unknown) {}

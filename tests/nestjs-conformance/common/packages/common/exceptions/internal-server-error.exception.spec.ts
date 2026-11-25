@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(500);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Internal Server Error", 500) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Internal Server Error"` in getResponse(), whereas NestJS returns `{ message: "Internal Server Error", statusCode: 500 }`.
-    it.skip('should return "Internal Server Error" as default message', () => {
+    it('should return "Internal Server Error" as default message', () => {
       const exc = new InternalServerErrorException();
       expect(exc.getResponse()).toEqual({
         message: "Internal Server Error",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new InternalServerErrorException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

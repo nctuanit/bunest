@@ -307,6 +307,7 @@ export class QueryBus<QueryBase extends IQuery = IQuery>
       if (!ref) {
         throw new InvalidQueryHandlerException();
       }
+      ref.registerRequestByContextId(resolvedCtx, resolvedCtx.id);
       handler = (await ref.resolve(stored.wrapper.token, resolvedCtx.id, {
         strict: false,
       })) as { execute(query: IQuery): Promise<unknown> | unknown };

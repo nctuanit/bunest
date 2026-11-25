@@ -280,8 +280,7 @@ describeConformance(
           .expect(403);
       });
 
-      // BUNEST_BUG: BunHttpAdapter 404 fallback path does not evaluate csrfProtection before returning 404 NotFoundException (packages/core/src/http/adapter/bun-http.adapter.ts:835-850).
-      it.skip("protects unmatched routes as well", async () => {
+      it("protects unmatched routes as well", async () => {
         await request(app)
           .post("/does-not-exist")
           .set("Host", HOST)
@@ -372,8 +371,7 @@ describeConformance(
           .expect(403);
       });
 
-      // BUNEST_BUG: compileCsrfProtection exclude matching only performs exact string equality and does not support wildcard patterns like "webhooks/*path" (packages/core/src/http/security/csrf-protection.ts:90-140).
-      it.skip("allows an excluded route (declared without the global prefix)", async () => {
+      it("allows an excluded route (declared without the global prefix)", async () => {
         await request(app)
           .post("/api/webhooks/stripe")
           .set("Host", HOST)
@@ -382,8 +380,7 @@ describeConformance(
           .expect(201, { received: true });
       });
 
-      // BUNEST_BUG: BunHttpAdapter skips CSRF check on unmatched 404 routes like "/api/hooks/github/" (returns 404 instead of 403), and compileCsrfProtection erroneously also excludes unprefixed "/hooks/github" when globalPrefix is set (packages/core/src/http/adapter/bun-http.adapter.ts:835-850, packages/core/src/http/security/csrf-protection.ts:97-101).
-      it.skip("only excludes the exact route", async () => {
+      it("only excludes the exact route", async () => {
         const post = (path: string) =>
           request(app)
             .post(path)
@@ -400,8 +397,7 @@ describeConformance(
         await post("/api/hooks/github?x=1").expect(201);
       });
 
-      // BUNEST_BUG: compileCsrfProtection does not support wildcard exclude "webhooks/*path", so /api/webhooks/stripe returns 403 instead of 201 (packages/core/src/http/security/csrf-protection.ts:90-140).
-      it.skip("does not exclude non-canonical paths", async () => {
+      it("does not exclude non-canonical paths", async () => {
         const port = Number(new URL(app.getUrl()!).port);
         const rawPost = (path: string) =>
           new Promise<number>((resolve, reject) => {
@@ -472,8 +468,7 @@ describeConformance(
         }),
       );
 
-      // BUNEST_BUG: compileCsrfProtection does not support wildcard exclude patterns like "hooks/github/*" (packages/core/src/http/security/csrf-protection.ts:90-140).
-      it.skip("does not exclude the parent route through a trailing slash", async () => {
+      it("does not exclude the parent route through a trailing slash", async () => {
         const post = (path: string) =>
           request(app)
             .post(path)
@@ -500,8 +495,7 @@ describeConformance(
         }),
       );
 
-      // BUNEST_BUG: compileCsrfProtection does not support wildcard exclude patterns like "webhooks/*path" (packages/core/src/http/security/csrf-protection.ts:90-140).
-      it.skip("allows a cross-site POST to the route served without the prefix", async () => {
+      it("allows a cross-site POST to the route served without the prefix", async () => {
         const post = (path: string) =>
           request(app)
             .post(path)
@@ -541,8 +535,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: BunestApplication.enableCsrfProtection() does not guard against or throw when called after app.init() (packages/core/src/application/bunest-application.ts).
-    it.skip("throws when enabled after init", async () => {
+    it("throws when enabled after init", async () => {
       await init(() => undefined);
       expect(() => app.enableCsrfProtection()).toThrow(
         /must be called before app\.init\(\)/,

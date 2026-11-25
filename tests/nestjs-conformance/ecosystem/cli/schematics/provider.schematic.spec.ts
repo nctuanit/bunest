@@ -99,8 +99,7 @@ describeConformance(
       "emits @bunest/core @Injectable provider with explicit flat: true",
     );
 
-    // BUNEST_BUG: generateSchematic("provider", { name: "foo" }) defaults flat to false (creating foo/foo.ts) instead of upstream provider/schema.json default flat: true (foo.ts) (packages/cli/src/commands/generate.ts:54)
-    it.skip("should default flat to true for provider schematic when flat option is omitted", async () => {
+    it("should default flat to true for provider schematic when flat option is omitted", async () => {
       const cwd = createTempDir();
       const result = await generateSchematic({
         schematic: "provider",
@@ -199,8 +198,7 @@ describeConformance(
       "normalizes kebab-case provider name to PascalCase class",
     );
 
-    // BUNEST_BUG: parseSchematicName rejects leading underscore ("_bar") instead of generating _bar.ts and _bar.spec.ts with class Bar (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-    it.skip("should keep underscores in provider's file name", () => {
+    it("should keep underscores in provider's file name", () => {
       const planned = buildSchematicFiles(
         "provider",
         parseSchematicName("_bar"),
@@ -234,8 +232,7 @@ describeConformance(
       "Bunest is Bun-only native TypeScript with no JavaScript template variant",
     );
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/app.module.ts providers array (missing module declaration updater and skipImport option in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module", async () => {
+    it("should manage declaration in app module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -255,8 +252,7 @@ describeConformance(
       expect(appModule).toContain("providers: [AppService, Foo]");
     });
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/foo/foo.module.ts providers array (missing module finder & declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in foo module", async () => {
+    it("should manage declaration in foo module", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",
@@ -282,8 +278,7 @@ describeConformance(
       expect(fooModule).toContain("providers: [Foo]");
     });
 
-    // BUNEST_BUG: parseSchematicName rejects dot-separated schematic names ("foo.entity") instead of creating foo.entity.ts with class FooEntity (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX)
-    it.skip("should remove . from name", () => {
+    it("should remove . from name", () => {
       const planned = buildSchematicFiles(
         "provider",
         parseSchematicName("foo.entity"),
@@ -328,8 +323,7 @@ describeConformance(
       ).toBeDefined();
     });
 
-    // BUNEST_BUG: generateSchematic("provider", ...) does not auto-register Foo in src/app.module.ts providers array for ESM projects (missing module declaration updater in packages/cli/src/commands/generate.ts)
-    it.skip("should manage declaration in app module for ESM projects", async () => {
+    it("should manage declaration in app module for ESM projects", async () => {
       const cwd = createTempDir();
       await generateSchematic({
         schematic: "application",

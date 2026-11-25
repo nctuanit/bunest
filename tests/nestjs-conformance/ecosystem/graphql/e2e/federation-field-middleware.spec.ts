@@ -135,8 +135,7 @@ describeConformance(
           await app.close();
         });
 
-        // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) drops model @Field({ middleware }) and @UseFieldMiddleware() when overridden by @ResolveField(); got `resolver(value)` / `global(resolver(value))` instead of `option(decorator(resolver(value)))` / `global(option(decorator(resolver(value))))`.
-        it.skip("should keep the middleware of a model field overridden by a field resolver", async () => {
+        it("should keep the middleware of a model field overridden by a field resolver", async () => {
           const res = await request(app)
             .post("/graphql")
             .send({ query: "{ item { overridden plain } }" })
@@ -151,8 +150,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts) does not bind @ResolveField() (and its @UseFieldMiddleware()) declared on an @InterfaceType() resolver (@Resolver(() => Document)) to implementing @ObjectType()s (Payslip, Memo); got `payslip(value)` / `document(value)` instead of `payslip(resolver(value))` / `document(resolver(value))`.
-        it.skip("should keep the middleware of a model field overridden by an interface field resolver", async () => {
+        it("should keep the middleware of a model field overridden by an interface field resolver", async () => {
           const res = await request(app)
             .post("/graphql")
             .send({ query: "{ payslip { owner } memo { owner } }" })

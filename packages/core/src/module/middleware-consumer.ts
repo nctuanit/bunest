@@ -30,12 +30,77 @@ function normalizeRoutePath(path: string): string {
     : withLeading;
 }
 
-function toRouteInfos(entry: string | Type<unknown> | RouteInfo): RouteInfo[] {
+function joinNormalizedPaths(...parts: string[]): string {
+  const segments: string[] = [];
+  for (const part of parts) {
+    const trimmed = part.trim().replace(/^\/+|\/+$/g, "");
+    if (trimmed.length > 0) {
+      segments.push(trimmed);
+    }
+  }
+  return segments.length === 0 ? "/" : `/${segments.join("/")}`;
+}
+
+function toRouteInfos(
+  entry: string | Type<unknown> | RouteInfo,
+  controllerPrefixes?: ReadonlyMap<Type<unknown>, string[]>,
+): RouteInfo[] {
   if (typeof entry === "string") {
-    return [{ path: normalizeRoutePath(entry), method: RequestMethod.ALL }];
+    const info: RouteInfo = {
+      path: normalizeRoutePath(entry),
+      method: RequestMethod.ALL,
+    };
+    Object.defineProperty(info, "_fromString", {
+      value: true,
+      enumerable: false,
+    });
+    return [info];
   }
 
   if (typeof entry === "function") {
+    const routerPrefixes = controllerPrefixes?.get(entry);
+    const effectivePrefixes =
+      routerPrefixes && routerPrefixes.length > 0 ? routerPrefixes : [""];
+
+    const precompiled = MetadataRegistry.getPrecompiledController(entry);
+    if (precompiled && precompiled.routes.length > 0) {
+      const infos: RouteInfo[] = [];
+      const seen = new Set<string>();
+      for (const routerPrefix of effectivePrefixes) {
+        for (const ctrlPath of precompiled.paths) {
+          for (const routeMeta of precompiled.routes) {
+            const version =
+              routeMeta.methodVersion ?? precompiled.controllerVersion;
+            for (const methodPath of routeMeta.paths) {
+              const path = joinNormalizedPaths(
+                routerPrefix,
+                ctrlPath,
+                methodPath,
+              );
+              const method = routeMeta.method as RequestMethod;
+              const versionKey = Array.isArray(version)
+                ? version.map((v) => String(v)).join(",")
+                : version !== undefined
+                  ? String(version)
+                  : "";
+              const dedupKey = `${String(method)}:${path}:${versionKey}`;
+              if (seen.has(dedupKey)) {
+                continue;
+              }
+              seen.add(dedupKey);
+              const info = {
+                path,
+                method,
+                ...(version !== undefined ? { version } : {}),
+              } as RouteInfo;
+              infos.push(info);
+            }
+          }
+        }
+      }
+      return infos;
+    }
+
     const controllerMeta = MetadataRegistry.get<ControllerMetadata>(
       METADATA_KEYS.CONTROLLER,
       entry,
@@ -45,22 +110,35 @@ function toRouteInfos(entry: string | Type<unknown> | RouteInfo): RouteInfo[] {
         ? controllerMeta.path
         : [controllerMeta.path]
       : ["/"];
+    const ctrlVersion = controllerMeta?.version;
 
     const infos: RouteInfo[] = [];
-    for (const p of rawPaths) {
-      const normalized = normalizeRoutePath(p);
-      infos.push({ path: normalized, method: RequestMethod.ALL });
-      const wildcard = normalized === "/" ? "/*" : `${normalized}/*`;
-      infos.push({ path: wildcard, method: RequestMethod.ALL });
+    for (const routerPrefix of effectivePrefixes) {
+      for (const p of rawPaths) {
+        const normalized = joinNormalizedPaths(routerPrefix, p);
+        infos.push({
+          path: normalized,
+          method: RequestMethod.ALL,
+          ...(ctrlVersion !== undefined ? { version: ctrlVersion } : {}),
+        } as RouteInfo);
+        const wildcard = normalized === "/" ? "/*" : `${normalized}/*`;
+        infos.push({
+          path: wildcard,
+          method: RequestMethod.ALL,
+          ...(ctrlVersion !== undefined ? { version: ctrlVersion } : {}),
+        } as RouteInfo);
+      }
     }
     return infos;
   }
 
+  const version = (entry as RouteInfo & { version?: unknown }).version;
   return [
     {
       path: normalizeRoutePath(entry.path),
       method: entry.method,
-    },
+      ...(version !== undefined ? { version } : {}),
+    } as RouteInfo,
   ];
 }
 
@@ -76,7 +154,9 @@ class CoreMiddlewareProxy implements MiddlewareProxy {
 
   exclude(...routes: Array<string | RouteInfo>): MiddlewareProxy {
     for (const route of routes) {
-      this.excluded.push(...toRouteInfos(route));
+      this.excluded.push(
+        ...toRouteInfos(route, this.consumer.getControllerPrefixes()),
+      );
     }
     return this;
   }
@@ -86,7 +166,9 @@ class CoreMiddlewareProxy implements MiddlewareProxy {
   ): MiddlewareConsumer {
     const included: RouteInfo[] = [];
     for (const route of routes) {
-      included.push(...toRouteInfos(route));
+      included.push(
+        ...toRouteInfos(route, this.consumer.getControllerPrefixes()),
+      );
     }
 
     for (const middleware of this.middlewares) {
@@ -114,7 +196,12 @@ export class CoreMiddlewareConsumer implements MiddlewareConsumer {
     public readonly moduleId: string = "default",
     private readonly httpAdapter?: HttpServer,
     private readonly servedRoutes?: RouteInfo[],
+    private readonly controllerPrefixes?: ReadonlyMap<Type<unknown>, string[]>,
   ) {}
+
+  getControllerPrefixes(): ReadonlyMap<Type<unknown>, string[]> | undefined {
+    return this.controllerPrefixes;
+  }
 
   apply(
     ...middleware: Array<

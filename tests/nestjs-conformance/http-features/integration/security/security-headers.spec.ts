@@ -291,8 +291,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly via finalizeShortCircuitResponse without calling applySecurityHeaders() (packages/core/src/http/pipeline/execution-pipeline.ts:482-515).
-    it.skip("sets them on responses ended by Nest middleware (NestFactory.create())", async () => {
+    it("sets them on responses ended by Nest middleware (NestFactory.create())", async () => {
       app = await NestFactory.create(AppModule, { logger: false });
       app.useSecurityHeaders();
       await app.init();
@@ -303,8 +302,7 @@ describeConformance(
       expectDefaultHeaders(res.headers);
     });
 
-    // BUNEST_BUG: executeMiddlewareChain returns middleware short-circuit Responses directly without calling applySecurityHeaders(), leaving X-Powered-By intact (packages/core/src/http/pipeline/execution-pipeline.ts:482-515).
-    it.skip("removes X-Powered-By from responses ended by earlier middleware and preflight", async () => {
+    it("removes X-Powered-By from responses ended by earlier middleware and preflight", async () => {
       await init((a) => {
         a.use((req: Request, _res: ResponseContext, next: NextFunction) => {
           if (new URL(req.url).pathname === "/early") {
@@ -336,8 +334,7 @@ describeConformance(
       expect(res.headers["content-security-policy"]).toBeUndefined();
     });
 
-    // BUNEST_BUG: compileSecurityHeaders does not validate CSP directive values for ";" injection and fails to throw at startup (packages/core/src/http/security/security-headers.ts).
-    it.skip("rejects an invalid policy at startup", async () => {
+    it("rejects an invalid policy at startup", async () => {
       await expect(
         init((a) =>
           a.useSecurityHeaders({

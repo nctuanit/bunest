@@ -435,8 +435,7 @@ describeConformance(
         defaultPassportInstance.clear();
       });
 
-      // BUNEST_BUG: packages/security/src/auth/auth-strategy.ts (MixinAuthGuard.canActivate lines 345-389) spreads `this.options` directly into `mergedOptions` without stripping module-only keys (`defaultStrategy`, `property`) before invoking `strategy.authenticate(req, options)`.
-      it.skip("should not pass module-only options to the strategy", async () => {
+      it("should not pass module-only options to the strategy", async () => {
         const res = await ctx.request().get("/options-check").expect(200);
         expect(res.body).toEqual({
           account: { id: "account-1" },

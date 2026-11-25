@@ -65,11 +65,14 @@ import {
 } from "../router/route-compiler";
 import { scanControllers } from "../scanner/controller-scanner";
 import {
+  matchesGlobalPrefixExclude,
   matchesRouteInfo,
   normalizePath as normalizeRoutePath,
+  type VersionedRouteRule,
 } from "../scanner/path-normalizer";
 import {
   extractRequestVersions,
+  isRuntimeVersioning,
   normalizeVersionValue,
 } from "../scanner/version-resolver";
 import {
@@ -167,6 +170,18 @@ function parseBodyLimit(value: unknown): number | undefined {
       return Math.floor(num * 1024 * 1024 * 1024);
     default:
       return Math.floor(num);
+  }
+}
+
+function hasMalformedPercentEncoding(pathname: string): boolean {
+  if (!pathname.includes("%")) {
+    return false;
+  }
+  try {
+    decodeURIComponent(pathname);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -448,6 +463,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   private isClosing = false;
   private inFlightRequests = 0;
   private drainResolvers: Array<() => void> = [];
+  private readonly beforeCloseHooks: Array<() => void> = [];
   private baseViewsDir?: string;
   private viewRenderer?: ViewEngineRenderer;
   private logger: LoggerService;
@@ -507,7 +523,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     this.abortOnError = options.abortOnError ?? true;
     this.development = options.development;
     this.httpsOptions = options.httpsOptions;
-    this.forceCloseConnections = options.forceCloseConnections ?? true;
+    this.forceCloseConnections = options.forceCloseConnections ?? false;
     this.return503OnClosing = options.return503OnClosing === true;
     if (options.cookies?.secret !== undefined) {
       this.cookieSecrets = normalizeCookieSecrets(options.cookies.secret);
@@ -561,8 +577,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
   }
 
+  onBeforeClose(hook: () => void): void {
+    this.beforeCloseHooks.push(hook);
+  }
+
   override beforeClose(): void {
     this.isClosing = true;
+    for (const hook of this.beforeCloseHooks.splice(0)) {
+      try {
+        hook();
+      } catch {
+        // Ignore teardown hook errors during close preparation
+      }
+    }
   }
 
   setBridge(bridge: HttpRuntimeBridge): this {
@@ -989,10 +1016,12 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   override setOnRequestHook(onRequestHook: Function): void {
     this.onRequestHookFn = onRequestHook;
+    this.compiledTable = undefined;
   }
 
   override setOnResponseHook(onResponseHook: Function): void {
     this.onResponseHookFn = onResponseHook;
+    this.compiledTable = undefined;
   }
 
   override registerSecurityHook(hook: SecurityRequestHook<Request>): this {
@@ -1506,7 +1535,12 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         : typeof this.globalPrefix === "string"
           ? this.globalPrefix
           : undefined;
-      this.csrfProtection = compileCsrfProtection(this.csrfOptions, prefix);
+      this.csrfProtection = compileCsrfProtection(
+        this.csrfOptions,
+        prefix,
+        this.globalPrefixOptions?.exclude,
+        this.versioningOptions,
+      );
     }
 
     const defaultFilter = new DefaultExceptionFilter({
@@ -1541,6 +1575,18 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       defaultFilter,
       onRequestHook: this.onRequestHookFn,
       onResponseHook: this.onResponseHookFn,
+      onVersionNotFound:
+        this.moduleMiddlewares.length > 0
+          ? async (req, server, pathname) => {
+              const tbl = await this.ensureCompiled();
+              return this.tryDispatchStandaloneModuleMiddlewares(
+                tbl,
+                pathname,
+                req,
+                server,
+              );
+            }
+          : undefined,
       onRouteTriggered: this.onRouteTriggered,
       securityHooks: this.securityHooks,
       mapException: (err) => this.mapException(err),
@@ -1559,7 +1605,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   }
 
   getUrl(): string | undefined {
-    return this.httpServer?.url.toString();
+    const raw = this.httpServer?.url.toString();
+    if (!raw) return undefined;
+    return raw.replace(/^(https?:\/\/)0\.0\.0\.0(?::|\/|$)/, (m, proto) =>
+      m.replace(`${proto}0.0.0.0`, `${proto}127.0.0.1`),
+    );
   }
 
   private async ensureCompiled(): Promise<CompiledRouteTable> {
@@ -1828,6 +1878,25 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       const table = await this.ensureCompiled();
       const pathname = extractPathname(req.url);
 
+      if (hasMalformedPercentEncoding(pathname)) {
+        const ctx = new RequestContext({
+          request: req,
+          server,
+          pathname,
+          trustProxy: this.trustProxy,
+          maxBodyBytes: this.bodyLimit,
+          bodyParser: this.bodyParserEnabled,
+          captureRawBody: this.rawBodyEnabled,
+          multipart: this.multipartOptions,
+          cookieSecrets: this.cookieSecrets,
+        });
+        return executeFallbackException(
+          new BadRequestException("Failed to decode param"),
+          ctx,
+          table.runtime,
+        );
+      }
+
       // 1. WebSocket upgrade check (when server is available)
       if (server && this.websocketRegistrations.size > 0) {
         const wsResult = await this.tryWebSocketUpgrade(pathname, req, server);
@@ -1836,8 +1905,17 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         }
       }
 
-      // 2. Native path table match (exact Bun.serve({ routes }) precedence)
-      const nativeHit = table.nativeMatcher.match(pathname);
+      // 2. Native path table match (exact Bun.serve({ routes }) precedence;
+      //    when ignoreTrailingSlash is enabled, try trimmed path first so catch-all `/*` does not shadow `/foo/`)
+      const nativeLookupPath =
+        this.ignoreTrailingSlash && pathname.length > 1 && pathname.endsWith("/")
+          ? pathname.replace(/\/+$/, "") || "/"
+          : pathname;
+      const nativeHit =
+        table.nativeMatcher.match(nativeLookupPath) ??
+        (nativeLookupPath !== pathname
+          ? table.nativeMatcher.match(pathname)
+          : null);
       if (nativeHit) {
         const res = await nativeHit.target(req, server, nativeHit.params);
         if (res.status === 405 && this.rawRoutes.length > 0) {
@@ -1870,6 +1948,25 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   ): Promise<Response | undefined> {
     const table = await this.ensureCompiled();
     const pathname = extractPathname(req.url);
+
+    if (hasMalformedPercentEncoding(pathname)) {
+      const ctx = new RequestContext({
+        request: req,
+        server,
+        pathname,
+        trustProxy: this.trustProxy,
+        maxBodyBytes: this.bodyLimit,
+        bodyParser: this.bodyParserEnabled,
+        captureRawBody: this.rawBodyEnabled,
+        multipart: this.multipartOptions,
+        cookieSecrets: this.cookieSecrets,
+      });
+      return executeFallbackException(
+        new BadRequestException("Failed to decode param"),
+        ctx,
+        table.runtime,
+      );
+    }
 
     // 1. WebSocket upgrade check
     if (this.websocketRegistrations.size > 0) {
@@ -1905,6 +2002,219 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
     const response = await registration.upgrade(req, server);
     return { handled: true, response };
+  }
+
+  private async tryDispatchStandaloneModuleMiddlewares(
+    table: CompiledRouteTable,
+    pathname: string,
+    req: Request,
+    server: BunServerLike | undefined,
+  ): Promise<Response | null> {
+    const reqMethod = req.method.toUpperCase() as RouteHttpMethod;
+    const normPath =
+      !this.ignoreTrailingSlash && pathname.length > 1 && pathname.endsWith("/")
+        ? pathname
+        : normalizeRoutePath(pathname);
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(normPath);
+    } catch {
+      decodedPath = normPath;
+    }
+
+    const globalPrefixes =
+      this.globalPrefix === undefined
+        ? []
+        : (Array.isArray(this.globalPrefix)
+            ? this.globalPrefix
+            : [this.globalPrefix]
+          )
+            .map((p) => normalizeRoutePath(p))
+            .filter((p) => p !== "/");
+
+    const candidates: string[] = [normPath];
+    for (const gp of globalPrefixes) {
+      if (normPath === gp) {
+        candidates.push("/");
+      } else if (normPath.startsWith(`${gp}/`)) {
+        candidates.push(normPath.slice(gp.length) || "/");
+      }
+    }
+
+    const runtimeVer = isRuntimeVersioning(this.versioningOptions);
+    const reqVersions =
+      runtimeVer && this.versioningOptions
+        ? extractRequestVersions(req, this.versioningOptions)
+        : undefined;
+
+    const matchingMiddlewares: Array<CompiledMiddlewareConfig["middleware"]> = [];
+    for (let i = 0; i < this.moduleMiddlewares.length; i++) {
+      const cfg = this.moduleMiddlewares[i];
+      if (!cfg) continue;
+
+      if (cfg.include && cfg.include.length > 0) {
+        const included = cfg.include.some((rule) => {
+          // If global prefix is configured and this rule is NOT excluded from global prefix,
+          // only match prefixed path unless rule itself is wildcard or matches unprefixed excluded path.
+          const rulePath = typeof rule === "string" ? rule : rule.path;
+          const ruleNorm = normalizeRoutePath(rulePath);
+          const isWild =
+            rulePath.trim() === "*" ||
+            rulePath.trim() === "/*" ||
+            rulePath.trim().startsWith("{*");
+          const isExcludedFromPrefix =
+            globalPrefixes.length === 0 ||
+            isWild ||
+            matchesGlobalPrefixExclude(
+              reqMethod,
+              ruleNorm,
+              this.globalPrefixOptions?.exclude,
+            );
+          const matchTargets =
+            globalPrefixes.length > 0 && !isWild
+              ? isExcludedFromPrefix
+                ? [normPath]
+                : candidates.slice(1)
+              : candidates;
+          if (matchTargets.length === 0) return false;
+          if (
+            !this.ignoreTrailingSlash &&
+            pathname.length > 1 &&
+            pathname.endsWith("/") &&
+            !rulePath.endsWith("/") &&
+            !isWild &&
+            !rulePath.includes("*") &&
+            !rulePath.includes("{") &&
+            !(
+              typeof rule === "string" ||
+              (rule as { _fromString?: boolean })._fromString === true
+            )
+          ) {
+            return false;
+          }
+          return matchesRouteInfo(
+            rule as string | VersionedRouteRule,
+            reqMethod,
+            matchTargets,
+            reqVersions && reqVersions.length > 0 ? reqVersions : undefined,
+            { allowStringPrefixMount: true },
+          );
+        });
+        if (!included) continue;
+      }
+
+      if (cfg.exclude && cfg.exclude.length > 0) {
+        const hasLineTerm = /[\r\n\u2028\u2029]/.test(decodedPath);
+        if (!hasLineTerm) {
+          const excluded = cfg.exclude.some((rule) =>
+            matchesRouteInfo(
+              rule as string | VersionedRouteRule,
+              reqMethod,
+              candidates,
+              reqVersions,
+            ),
+          );
+          if (excluded) continue;
+        }
+      }
+
+      matchingMiddlewares.push(cfg.middleware);
+    }
+
+    if (matchingMiddlewares.length === 0) {
+      return null;
+    }
+
+    const resCtx = this.createResponseContextForRaw();
+    const ctx = new RequestContext({
+      request: req,
+      server,
+      pathname,
+      trustProxy: this.trustProxy,
+      maxBodyBytes: this.bodyLimit,
+      bodyParser: this.bodyParserEnabled,
+      captureRawBody: this.rawBodyEnabled,
+      multipart: this.multipartOptions,
+      cookieSecrets: this.cookieSecrets,
+      responseContext: resCtx,
+    });
+
+    const invokeMiddleware = async (index: number): Promise<Response | null> => {
+      if (index >= matchingMiddlewares.length) {
+        return null;
+      }
+      const entry = matchingMiddlewares[index]!;
+      let resolvedFn:
+        | ((
+            r: Request,
+            res: HttpResponseContext,
+            next: () => Promise<Response>,
+          ) => unknown)
+        | undefined;
+      if (typeof entry === "function") {
+        const isClassCtor =
+          entry.prototype !== undefined &&
+          typeof (entry.prototype as { use?: unknown }).use === "function";
+        if (isClassCtor) {
+          const instance = await this.bridge.resolveEnhancer<{
+            use: (
+              r: Request,
+              res: HttpResponseContext,
+              n: () => Promise<Response>,
+            ) => unknown;
+          }>(entry as unknown as new (...args: unknown[]) => {
+            use: (
+              r: Request,
+              res: HttpResponseContext,
+              n: () => Promise<Response>,
+            ) => unknown;
+          });
+          resolvedFn = (r, res, n) => instance.use(r, res, n);
+        } else {
+          resolvedFn = entry as (
+            r: Request,
+            res: HttpResponseContext,
+            next: () => Promise<Response>,
+          ) => unknown;
+        }
+      } else if (entry && typeof entry === "object" && "use" in entry) {
+        const inst = entry as { use: Function };
+        resolvedFn = (r, res, n) => inst.use(r, res, n);
+      }
+
+      if (!resolvedFn) {
+        return invokeMiddleware(index + 1);
+      }
+
+      let nextResult: Response | null = null;
+      let nextCalled = false;
+      const result = await resolvedFn(req, resCtx, async () => {
+        nextCalled = true;
+        nextResult = await invokeMiddleware(index + 1);
+        return nextResult ?? new Response(null, { status: 404 });
+      });
+
+      const sent = resCtx.getSentResponse();
+      if (nextCalled && nextResult === null && !sent) {
+        return null;
+      }
+      if (result instanceof Response) {
+        return mergeHeadersOntoNativeResponse(result, ctx);
+      }
+      if (sent) {
+        return mergeHeadersOntoNativeResponse(sent, ctx);
+      }
+      if (nextCalled) {
+        return nextResult;
+      }
+      return null;
+    };
+
+    try {
+      return await invokeMiddleware(0);
+    } catch (err) {
+      return executeFallbackException(err, ctx, table.runtime);
+    }
   }
 
   private async dispatchFallback(
@@ -2055,6 +2365,21 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         : preflight;
     }
 
+    // 5.2. Standalone module middleware on unmatched paths (e.g. forRoutes('shop/admin'), forRoutes('*'), forRoutes({ path: 'middleware', method: GET }))
+    if (this.moduleMiddlewares.length > 0) {
+      const standaloneRes = await this.tryDispatchStandaloneModuleMiddlewares(
+        table,
+        pathname,
+        req,
+        server,
+      );
+      if (standaloneRes !== null) {
+        return this.securityHeaders
+          ? applySecurityHeaders(standaloneRes, this.securityHeaders)
+          : standaloneRes;
+      }
+    }
+
     // 5.5. Custom NotFoundHandler (`httpAdapter.setNotFoundHandler`)
     if (this.customNotFoundHandler) {
       const { handler, prefix, excludedRoutes } = this.customNotFoundHandler;
@@ -2127,6 +2452,13 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       multipart: this.multipartOptions,
       cookieSecrets: this.cookieSecrets,
     });
+    if (this.csrfProtection) {
+      try {
+        this.csrfProtection.evaluate(req, pathname);
+      } catch (csrfError) {
+        return executeFallbackException(csrfError, ctx, table.runtime);
+      }
+    }
     return executeFallbackException(
       new NotFoundException(`Cannot ${req.method} ${pathname}`),
       ctx,
@@ -2187,10 +2519,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     };
 
     for (const [path, handler] of Object.entries(table.bunRoutes)) {
+      const safeHandler = async (req: Request, server: BunServerLike) => {
+        if (req.url.includes("#") || req.url.includes("%")) {
+          const pathname = extractPathname(req.url);
+          if (req.url.includes("#") || hasMalformedPercentEncoding(pathname)) {
+            return this.fetch(req, server);
+          }
+        }
+        return handler(req, server);
+      };
       const wrappedHandler =
         this.rawRoutes.length > 0
           ? async (req: Request, server: BunServerLike) => {
-              const res = await handler(req, server);
+              const res = await safeHandler(req, server);
               if (res && res.status === 405 && this.rawRoutes.length > 0) {
                 const rawRes = await this.tryDispatchRawRoutes(
                   table,
@@ -2204,7 +2545,7 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
               }
               return res;
             }
-          : handler;
+          : safeHandler;
 
       if (this.websocketRegistrations.has(path)) {
         serveRoutes[path] = wrapForClosing(async (req, server) => {
@@ -2301,7 +2642,8 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   async close(force?: boolean): Promise<void> {
     this.isClosing = true;
-    if (this.return503OnClosing && this.inFlightRequests > 0) {
+    const shouldForce = force ?? this.forceCloseConnections;
+    if ((this.return503OnClosing || !shouldForce) && this.inFlightRequests > 0) {
       await new Promise<void>((resolve) => {
         if (this.inFlightRequests <= 0) {
           resolve();
@@ -2315,6 +2657,6 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
     const active = this.httpServer;
     this.httpServer = undefined;
-    await active.stop(force ?? this.forceCloseConnections);
+    await active.stop(shouldForce);
   }
 }

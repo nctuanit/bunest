@@ -1,11 +1,29 @@
 import { Scope } from "../common/index";
+import {
+  toBunestErrorReport,
+  type BunestErrorCode,
+  type BunestErrorReport,
+} from "./error-catalog";
 import { formatToken } from "./token-formatter";
 
+/**
+ * Base class for all DI/module bootstrap failures. Subclasses carry a stable
+ * `BUNEST_E*` {@link code} (see `error-catalog.ts` / `docs/errors.md`) so tools
+ * and coding agents can react without parsing messages.
+ */
 export class CoreBootstrapException extends Error {
-  constructor(message: string) {
+  public readonly code: BunestErrorCode | undefined;
+
+  constructor(message: string, code?: BunestErrorCode) {
     super(message);
     this.name = new.target.name;
+    this.code = code;
     Object.setPrototypeOf(this, new.target.prototype);
+  }
+
+  /** Structured, JSON-safe report (code, fixes, docs URL, details). */
+  toJSON(): BunestErrorReport | { name: string; message: string } {
+    return toBunestErrorReport(this) ?? { name: this.name, message: this.message };
   }
 }
 
@@ -37,6 +55,7 @@ export class UnknownDependencyException extends CoreBootstrapException {
     super(
       `UnknownDependencyException: Cannot resolve ${location} (${tokenLabel}) of "${details.requester}" in module "${details.moduleName}".${pathLine}\n` +
         `Fix: Register ${tokenLabel} in "${details.moduleName}.providers", export it from an imported module, or decorate the parameter with @Optional().`,
+      "BUNEST_E001",
     );
     this.details = details;
   }
@@ -61,6 +80,7 @@ export class CircularDependencyException extends CoreBootstrapException {
 
     super(
       `CircularDependencyException: Circular ${details.kind} dependency detected: ${details.chain.join(" -> ")}${reasonSuffix}.\nHint: ${hint}`,
+      "BUNEST_E002",
     );
     this.chain = [...details.chain];
     this.kind = details.kind;
@@ -99,6 +119,7 @@ export class ScopeLeakException extends CoreBootstrapException {
       `ScopeLeakException: ${consumer.scope} "${consumer.name}" cannot depend on ${dependency.scope}-scoped "${dependency.name}".\n` +
         `Chain: ${formattedChain}\n` +
         `Fix: Mark ${targetList} with { scope: Scope.REQUEST }, or read ambient RequestContext inside request handlers.`,
+      "BUNEST_E003",
     );
     this.consumer = consumer;
     this.dependency = dependency;
@@ -123,6 +144,7 @@ export class AmbiguousProviderException extends CoreBootstrapException {
     super(
       `AmbiguousProviderException: Token ${tokenLabel} in module "${details.moduleName}" is exported by multiple ${sourceDesc}: ${details.conflictingModules.join(", ")}.\n` +
         `Fix: Override ${tokenLabel} locally in "${details.moduleName}.providers" or use distinct injection tokens.`,
+      "BUNEST_E004",
     );
     this.details = details;
   }
@@ -132,7 +154,7 @@ export class InvalidModuleException extends CoreBootstrapException {
   constructor(target: unknown, reason?: string) {
     const label = formatToken(target);
     const detail = reason ? `: ${reason}` : " is missing @Module() metadata";
-    super(`InvalidModuleException: Module ${label}${detail}.`);
+    super(`InvalidModuleException: Module ${label}${detail}.`, "BUNEST_E005");
   }
 }
 
@@ -143,6 +165,7 @@ export class DuplicateProviderException extends CoreBootstrapException {
   constructor(token: unknown, moduleName: string) {
     super(
       `DuplicateProviderException: Provider token ${formatToken(token)} is declared more than once in module "${moduleName}".`,
+      "BUNEST_E006",
     );
     this.token = token;
     this.moduleName = moduleName;
@@ -156,6 +179,7 @@ export class InvalidExportException extends CoreBootstrapException {
   constructor(token: unknown, moduleName: string, reason: string) {
     super(
       `InvalidExportException: Module "${moduleName}" cannot export ${formatToken(token)}: ${reason}.`,
+      "BUNEST_E007",
     );
     this.token = token;
     this.moduleName = moduleName;

@@ -268,6 +268,10 @@ export class QueueRegistry {
     return this.flowProducers.get(name) as T | undefined;
   }
 
+  async closeAllWorkers(): Promise<void> {
+    await Promise.all([...this.queues.values()].map((q) => q.closeWorkers()));
+  }
+
   async closeAll(): Promise<void> {
     await Promise.all([
       ...[...this.queues.values()].map((q) => q.close()),
@@ -519,8 +523,12 @@ export class QueueExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Drain in-flight jobs BEFORE detaching @OnQueueEvent/@OnWorkerEvent listeners
-    // so drained completions/failures are still observed by processor event handlers.
+    // Phase 1: drain active workers while queues remain open.
+    await this.registry.closeAllWorkers();
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    // Phase 2: close queues, events, listeners, and driver after workers finish draining.
     await this.registry.closeAll();
 
     for (const qe of this.queueEventsInstances.splice(0)) {

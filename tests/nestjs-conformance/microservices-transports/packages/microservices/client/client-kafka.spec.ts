@@ -460,8 +460,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaClientProxy.connect() never calls this.emitStatus("connected"), so client.status remains "disconnected" and onStatus() listeners are never notified (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("emits connected status via status getter and onStatus listeners on connect()", async () => {
+      it("emits connected status via status getter and onStatus listeners on connect()", async () => {
         const client = trackClient(
           new KafkaClientProxy({ client: kafkaClient }),
         );
@@ -558,8 +557,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaClientProxy.close() never clears subscribedReplyTopics, so reconnecting and sending after close() skips consumer.subscribe() on reply topics (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("re-subscribes reply topics cleanly after close() and reconnect", async () => {
+      it("re-subscribes reply topics cleanly after close() and reconnect", async () => {
         const server = trackServer(new KafkaServer({ client: kafkaClient }));
         server.addMessageHandler("reconnect.op", (d) => ({ ok: d }));
         await server.listen();
@@ -576,8 +574,7 @@ describeConformance(
         expect(await client.send("reconnect.op", 2)).toEqual({ ok: 2 });
       });
 
-      // BUNEST_BUG: KafkaClientProxy.close() awaits consumer.disconnect() without try/finally, so a consumer disconnect failure skips producer.disconnect() (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("still disconnects producer when consumer fails to disconnect", async () => {
+      it("still disconnects producer when consumer fails to disconnect", async () => {
         const consumerDisconnect = createStub().rejects(
           new Error("consumer disconnect failed"),
         );
@@ -603,8 +600,7 @@ describeConformance(
         expect(producerDisconnect.calledOnce).toBe(true);
       });
 
-      // BUNEST_BUG: KafkaClientProxy.close() never calls this.emitStatus("disconnected") (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("emits disconnected status via onStatus when closing a connected client", async () => {
+      it("emits disconnected status via onStatus when closing a connected client", async () => {
         const client = trackClient(
           new KafkaClientProxy({ client: kafkaClient }),
         );
@@ -1251,8 +1247,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaClientProxy.emitRecord() forwards kafka_replyTopic / kafka_replyPartition headers unchanged instead of stripping reply headers on events (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("emitRecord() strips reply-requesting headers (kafka_replyTopic, kafka_replyPartition) so servers handle it as an event", async () => {
+      it("emitRecord() strips reply-requesting headers (kafka_replyTopic, kafka_replyPartition) so servers handle it as an event", async () => {
         const client = trackClient(
           new KafkaClientProxy({ client: kafkaClient }),
         );
@@ -1349,8 +1344,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: KafkaClientProxy.sendRecord() and emitRecord() bypass ClientProxy.send()/emit() and never invoke preRequestHook (packages/microservices/src/transports/kafka.transport.ts)
-      it.skip("invokes setPreRequestHook before sendRecord() and emitRecord()", async () => {
+      it("invokes setPreRequestHook before sendRecord() and emitRecord()", async () => {
         const server = trackServer(new KafkaServer({ client: kafkaClient }));
         server.addMessageHandler("hook.rec", (d) => d);
         await server.listen();

@@ -46,20 +46,23 @@ export class MaxFileSizeValidator extends FileValidator<
   UploadedFileInfo
 > {
   isValid(file?: UploadedFileInfo): boolean {
-    if (!file || !Number.isFinite(this.validationOptions.maxSize)) {
-      return false;
+    if (!this.validationOptions || !file) {
+      return true;
     }
-    if (this.validationOptions.maxSize < 0) {
+    if (
+      !Number.isFinite(this.validationOptions.maxSize) ||
+      this.validationOptions.maxSize < 0
+    ) {
       return false;
     }
     const size =
       typeof file.size === "number"
         ? file.size
         : (file.buffer?.byteLength ?? 0);
-    return size <= this.validationOptions.maxSize;
+    return size < this.validationOptions.maxSize;
   }
 
-  buildErrorMessage(file: UploadedFileInfo): string {
+  buildErrorMessage(file?: UploadedFileInfo): string {
     const { maxSize, message, errorMessage, ...restConfig } =
       this.validationOptions;
     if (errorMessage !== undefined) {
@@ -73,11 +76,12 @@ export class MaxFileSizeValidator extends FileValidator<
     if (typeof message === "string") {
       return message;
     }
-    const actualSize =
-      typeof file?.size === "number"
-        ? file.size
-        : (file?.buffer?.byteLength ?? 0);
-    return `Validation failed (current file size is ${actualSize}, expected size is less than or equal to ${maxSize})`;
+    if (file && (typeof file.size === "number" || file.buffer !== undefined)) {
+      const actualSize =
+        typeof file.size === "number" ? file.size : file.buffer!.byteLength;
+      return `Validation failed (current file size is ${actualSize}, expected size is less than ${maxSize})`;
+    }
+    return `Validation failed (expected size is less than ${maxSize})`;
   }
 }
 
@@ -291,6 +295,10 @@ function isTextBasedMimeType(mimetype: string): boolean {
   );
 }
 
+function escapeRegexLiteral(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function matchesExpectedFileType(
   actualMime: string,
   expected: string | RegExp,
@@ -300,17 +308,31 @@ function matchesExpectedFileType(
     return false;
   }
   if (expected instanceof RegExp) {
-    expected.lastIndex = 0;
-    return expected.test(normalized);
+    return new RegExp(expected.source, expected.flags).test(normalized);
   }
   if (normalized.toLowerCase() === expected.toLowerCase()) {
     return true;
   }
   try {
+    if (!/[()|[\]*?^$\\]/.test(expected)) {
+      const prefix = expected.startsWith("/") ? "" : "(?:^|[/.+])";
+      const suffix = expected.endsWith("/") ? "" : "(?:$|[/.+])";
+      return new RegExp(
+        `${prefix}${escapeRegexLiteral(expected)}${suffix}`,
+        "i",
+      ).test(normalized);
+    }
     return new RegExp(expected, "i").test(normalized);
   } catch {
     return false;
   }
+}
+
+interface FileTypeDetectionState {
+  detected?: string;
+  undetectable?: boolean;
+  usedFallback?: boolean;
+  missingBuffer?: boolean;
 }
 
 /**
@@ -321,13 +343,19 @@ export class FileTypeValidator extends FileValidator<
   FileTypeValidatorOptions,
   UploadedFileInfo
 > {
-  private readonly detectedTypes = new WeakMap<UploadedFileInfo, string>();
+  private readonly detectionState = new WeakMap<
+    UploadedFileInfo,
+    FileTypeDetectionState
+  >();
 
   async isValid(file?: UploadedFileInfo): Promise<boolean> {
+    if (!this.validationOptions || this.validationOptions.fileType === undefined) {
+      return true;
+    }
     if (!file) {
       return false;
     }
-    this.detectedTypes.delete(file);
+    this.detectionState.delete(file);
 
     const {
       fileType,
@@ -338,7 +366,7 @@ export class FileTypeValidator extends FileValidator<
 
     if (skipMagicNumbersValidation) {
       if (file.mimetype) {
-        this.detectedTypes.set(file, file.mimetype);
+        this.detectionState.set(file, { detected: file.mimetype });
       }
       return Boolean(
         file.mimetype && matchesExpectedFileType(file.mimetype, fileType),
@@ -352,22 +380,26 @@ export class FileTypeValidator extends FileValidator<
 
     if (!bytes || bytes.byteLength === 0) {
       if (fallbackToMimetype && file.mimetype) {
-        this.detectedTypes.set(file, file.mimetype);
+        this.detectionState.set(file, {
+          detected: file.mimetype,
+          usedFallback: true,
+        });
         return matchesExpectedFileType(file.mimetype, fileType);
       }
+      this.detectionState.set(file, { missingBuffer: true });
       return false;
     }
 
     const originalMimetype = file.mimetype;
     const detected = detectMagicMimeType(bytes);
     if (detected === "text/plain") {
-      this.detectedTypes.set(file, detected);
+      this.detectionState.set(file, { detected });
       if (
         originalMimetype &&
         isTextBasedMimeType(originalMimetype) &&
         matchesExpectedFileType(originalMimetype, fileType)
       ) {
-        this.detectedTypes.set(file, originalMimetype);
+        this.detectionState.set(file, { detected: originalMimetype });
         return true;
       }
       if (matchesExpectedFileType("text/plain", fileType)) {
@@ -380,7 +412,7 @@ export class FileTypeValidator extends FileValidator<
     }
 
     if (detected !== undefined) {
-      this.detectedTypes.set(file, detected);
+      this.detectionState.set(file, { detected });
       const matched = matchesExpectedFileType(detected, fileType);
       if (matched && overrideMimeType) {
         (file as { mimetype: string }).mimetype = detected;
@@ -389,10 +421,14 @@ export class FileTypeValidator extends FileValidator<
     }
 
     if (fallbackToMimetype && file.mimetype) {
-      this.detectedTypes.set(file, file.mimetype);
+      this.detectionState.set(file, {
+        detected: file.mimetype,
+        usedFallback: true,
+      });
       return matchesExpectedFileType(file.mimetype, fileType);
     }
 
+    this.detectionState.set(file, { undetectable: true });
     return false;
   }
 
@@ -403,14 +439,37 @@ export class FileTypeValidator extends FileValidator<
         ? errorMessage({ file, config })
         : errorMessage;
     }
-    const actual =
-      (file ? this.detectedTypes.get(file) : undefined) ??
-      file?.mimetype ??
-      "unknown";
     const expected =
       this.validationOptions.fileType instanceof RegExp
         ? this.validationOptions.fileType.toString()
         : this.validationOptions.fileType;
-    return `Validation failed (current file type is ${actual}, expected type is ${expected})`;
+
+    if (!file) {
+      return `Validation failed (expected type is ${expected})`;
+    }
+
+    const state = this.detectionState.get(file);
+
+    if (
+      state?.missingBuffer ||
+      (!state &&
+        !this.validationOptions.skipMagicNumbersValidation &&
+        !this.validationOptions.fallbackToMimetype &&
+        (!file.buffer || file.buffer.byteLength === 0) &&
+        !file.file)
+    ) {
+      return `Validation failed (file buffer is not available; file type validation could not be performed; expected type is ${expected})`;
+    }
+
+    if (state?.undetectable) {
+      return `Validation failed (file type could not be detected from its content; expected type is ${expected})`;
+    }
+
+    const actual = state?.detected ?? file.mimetype ?? "unknown";
+    const base = `Validation failed (current file type is ${actual}, expected type is ${expected})`;
+    if (state?.usedFallback) {
+      return `${base} - magic number detection failed, used mimetype fallback`;
+    }
+    return base;
   }
 }

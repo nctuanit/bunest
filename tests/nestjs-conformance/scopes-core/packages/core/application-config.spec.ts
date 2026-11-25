@@ -79,8 +79,7 @@ describeConformance(
         expect(appConfig.getGlobalPipes()).toContain(pipe as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestPipe()/getGlobalRequestPipes() (packages/core/src/application/application-config.ts).
-      it.skip("should add global request pipe", () => {
+      it("should add global request pipe", () => {
         const pipe = "testOne";
         (appConfig as any).addGlobalRequestPipe(pipe);
 
@@ -103,8 +102,7 @@ describeConformance(
         expect(appConfig.getGlobalFilters()).toContain(filter as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestFilter()/getGlobalRequestFilters() (packages/core/src/application/application-config.ts).
-      it.skip("should add request filter", () => {
+      it("should add request filter", () => {
         const filter = "testOne";
         (appConfig as any).addGlobalRequestFilter(filter);
 
@@ -130,8 +128,7 @@ describeConformance(
         expect(appConfig.getGlobalGuards()).toContain(guard as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestGuard()/getGlobalRequestGuards() (packages/core/src/application/application-config.ts).
-      it.skip("should add request guard", () => {
+      it("should add request guard", () => {
         const guard = "testOne";
         (appConfig as any).addGlobalRequestGuard(guard);
 
@@ -146,16 +143,14 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: ApplicationConfig.useGlobalGuards() does not validate that enhancers are instances rather than classes (packages/core/src/application/application-config.ts).
-      it.skip("should throw when given a class", () => {
+      it("should throw when given a class", () => {
         expect(() => appConfig.useGlobalGuards(AuthGuard as any)).toThrow(
           /\(class AuthGuard\)/,
         );
         expect(appConfig.getGlobalGuards()).toEqual([]);
       });
 
-      // BUNEST_BUG: ApplicationConfig.useGlobalGuards() does not validate against Promise enhancers (packages/core/src/application/application-config.ts).
-      it.skip("should throw when given a promise", () => {
+      it("should throw when given a promise", () => {
         const promiseGuard = Promise.resolve(new AuthGuard());
         expect(() => appConfig.useGlobalGuards(promiseGuard as any)).toThrow(
           /\(a promise\)/,
@@ -163,16 +158,14 @@ describeConformance(
         expect(appConfig.getGlobalGuards()).toEqual([]);
       });
 
-      // BUNEST_BUG: ApplicationConfig.useGlobalGuards() does not validate against array enhancers (packages/core/src/application/application-config.ts).
-      it.skip("should throw when given an array", () => {
+      it("should throw when given an array", () => {
         expect(() =>
           appConfig.useGlobalGuards([new AuthGuard()] as any),
         ).toThrow(/\(an array\)/);
         expect(appConfig.getGlobalGuards()).toEqual([]);
       });
 
-      // BUNEST_BUG: ApplicationConfig.useGlobalPipes()/useGlobalInterceptors() do not validate enhancer method presence (packages/core/src/application/application-config.ts).
-      it.skip("should throw for pipes and interceptors too", () => {
+      it("should throw for pipes and interceptors too", () => {
         class SomePipe {}
         expect(() => appConfig.useGlobalPipes(SomePipe as any)).toThrow(
           /The pipe \(class SomePipe\) doesn't provide the "transform" method/,
@@ -182,8 +175,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ApplicationConfig.useGlobalFilters() does not emit a Logger.warn() when passed a filter class instead of an instance (packages/core/src/application/application-config.ts).
-      it.skip("should only warn for an exception filter", () => {
+      it("should only warn for an exception filter", () => {
         const warn = spyOnMethod(Logger.prototype, "warn");
         class HttpExceptionFilter {
           catch() {}
@@ -214,16 +206,14 @@ describeConformance(
     });
 
     describe("PreRequestHooks", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement registerPreRequestHook()/getGlobalPreRequestHooks() (packages/core/src/application/application-config.ts).
-      it.skip("should set global preRequest hooks", () => {
+      it("should set global preRequest hooks", () => {
         const hooks = [() => {}, () => {}];
         (appConfig as any).registerPreRequestHook(...hooks);
 
         expect((appConfig as any).getGlobalPreRequestHooks()).toEqual(hooks);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement registerPreRequestHook()/getGlobalPreRequestHooks() (packages/core/src/application/application-config.ts).
-      it.skip("should accumulate multiple registerPreRequestHook calls", () => {
+      it("should accumulate multiple registerPreRequestHook calls", () => {
         const hook1 = () => {};
         const hook2 = () => {};
         (appConfig as any).registerPreRequestHook(hook1);
@@ -254,8 +244,7 @@ describeConformance(
         expect(appConfig.getGlobalInterceptors()).toContain(interceptor as any);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement addGlobalRequestInterceptor()/getGlobalRequestInterceptors() (packages/core/src/application/application-config.ts).
-      it.skip("should add request interceptor", () => {
+      it("should add request interceptor", () => {
         const interceptor = "testOne";
         (appConfig as any).addGlobalRequestInterceptor(interceptor);
 
@@ -273,8 +262,7 @@ describeConformance(
         expect(appConfig.getVersioning()).toEqual(options);
       });
 
-      // BUNEST_BUG: ApplicationConfig.enableVersioning() does not deduplicate defaultVersion arrays (packages/core/src/application/application-config.ts); returns ["1","2","2","1"] instead of ["1","2"].
-      it.skip("should ignore duplicated versions on defaultVersion array", () => {
+      it("should ignore duplicated versions on defaultVersion array", () => {
         const options = {
           type: VersioningType.URI as const,
           defaultVersion: ["1", "2", "2", "1"],
@@ -307,8 +295,7 @@ describeConformance(
         expect(config.getIoAdapter()).toBe(ioAdapter);
       });
 
-      // BUNEST_BUG: new ApplicationConfig().getIoAdapter() returns undefined instead of null (packages/core/src/application/application-config.ts).
-      it.skip("should default ioAdapter to null", () => {
+      it("should default ioAdapter to null", () => {
         const config = new ApplicationConfig();
 
         expect(config.getIoAdapter()).toBeNull();
@@ -352,21 +339,18 @@ describeConformance(
     });
 
     describe("Route conflict policy", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should default to undefined", () => {
+      it("should default to undefined", () => {
         expect((appConfig as any).getRouteConflictPolicy()).toEqual(undefined);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should store the provided policy", () => {
+      it("should store the provided policy", () => {
         const policy = { duplicate: "error", shadow: "warn" } as const;
         (appConfig as any).setRouteConflictPolicy(policy);
 
         expect((appConfig as any).getRouteConflictPolicy()).toEqual(policy);
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteConflictPolicy()/setRouteConflictPolicy() (packages/core/src/application/application-config.ts).
-      it.skip("should reset to undefined when explicitly cleared", () => {
+      it("should reset to undefined when explicitly cleared", () => {
         (appConfig as any).setRouteConflictPolicy({ duplicate: "warn" });
         (appConfig as any).setRouteConflictPolicy(undefined);
 
@@ -375,15 +359,13 @@ describeConformance(
     });
 
     describe("Route resolution strategy", () => {
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should default to undefined", () => {
+      it("should default to undefined", () => {
         expect((appConfig as any).getRouteResolutionStrategy()).toEqual(
           undefined,
         );
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should store the provided strategy", () => {
+      it("should store the provided strategy", () => {
         (appConfig as any).setRouteResolutionStrategy("specificity");
 
         expect((appConfig as any).getRouteResolutionStrategy()).toEqual(
@@ -391,8 +373,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ApplicationConfig does not implement getRouteResolutionStrategy()/setRouteResolutionStrategy() (packages/core/src/application/application-config.ts).
-      it.skip("should reset to undefined when explicitly cleared", () => {
+      it("should reset to undefined when explicitly cleared", () => {
         (appConfig as any).setRouteResolutionStrategy("specificity");
         (appConfig as any).setRouteResolutionStrategy(undefined);
 

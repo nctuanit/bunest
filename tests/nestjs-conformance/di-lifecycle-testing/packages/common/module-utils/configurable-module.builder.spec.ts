@@ -164,8 +164,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConfigurableModuleBuilder does not yet support `provideInjectionTokensFrom` or throwing getters on `OPTIONS_TYPE`/`ASYNC_OPTIONS_TYPE` or string `RANDOM_TEST_MODULE_OPTIONS` token (packages/core/src/module/configurable-module.builder.ts)
-      it.skip("should resolve provideInjectionTokensFrom and guard OPTIONS_TYPE/ASYNC_OPTIONS_TYPE runtime access", () => {
+      it("should resolve provideInjectionTokensFrom and guard OPTIONS_TYPE/ASYNC_OPTIONS_TYPE runtime access", () => {
         const { OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } =
           new ConfigurableModuleBuilder<Record<string, unknown>>({
             moduleName: "RandomTest",
@@ -196,8 +195,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ConfigurableModuleBuilder.build() generates a fresh Symbol on each build() call instead of sharing one token per builder instance (packages/core/src/module/configurable-module.builder.ts:189)
-      it.skip("should share the token between builders derived from the same builder", () => {
+      it("should share the token between builders derived from the same builder", () => {
         const builder = new ConfigurableModuleBuilder();
         const root = builder.setClassMethodName("forRoot").build();
         const feature = builder.setClassMethodName("forFeature").build();

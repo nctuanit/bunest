@@ -12,6 +12,7 @@ import { runReplCommand } from "./commands/repl";
 import { runStartCommand } from "./commands/start";
 import { runTypegenCommand } from "./commands/typegen";
 import { upgradeProject } from "./commands/upgrade";
+import { runVerifyCommand } from "./commands/verify";
 import { parseCliArgs } from "./parser";
 import type { CliFlagValue, CliIO, CliResult } from "./types";
 import { CLI_VERSION } from "./version";
@@ -88,6 +89,15 @@ Commands:
     --sourceRoot <path>             Source root directory (default: src)
     --tsconfig <path>               Explicit path to tsconfig.json
     --dry-run                       Preview --fix changes without writing files
+
+  verify [test-filter...]           Typecheck + static diagnostics + tests in one AI-friendly report
+    --reporter <agent|pretty|json>  Output format (default: pretty; "agent" = compact, token-cheap)
+    --skip-typecheck                Skip "bun check"
+    --skip-check                    Skip Bunest static diagnostics
+    --skip-tests                    Skip "bun test"
+    --strict                        Treat diagnostic warnings as failures
+    --max-issues <n>                Max issues printed per step (default: 20)
+    --sourceRoot <path>             Source root directory (default: src)
 
   delombok, expand <target>         Expand Class Macro decorators (@Data/@Builder/@WithLogger/...) to explicit TS
     --decorator <Name>              Expand only one specific decorator
@@ -221,7 +231,7 @@ export async function runCli(
         const result = await createProject(
           {
             projectName,
-            dir: getStringFlag(flags, "dir"),
+            dir: getStringFlag(flags, "dir") ?? getStringFlag(flags, "directory"),
             cwd: io.cwd,
             strict,
             skipGit: getBoolFlag(flags, "skip-git"),
@@ -276,7 +286,12 @@ export async function runCli(
         const isConfigSchematic =
           schematic !== undefined &&
           ["config", "configuration"].includes(schematic.trim().toLowerCase());
-        const name = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const baseName = rawName ?? (isConfigSchematic ? "bunest" : undefined);
+        const extraPath = positionals[2]?.trim();
+        const name =
+          baseName && extraPath
+            ? `${extraPath.replace(/\/+$/, "")}/${baseName}`
+            : baseName;
 
         if (!schematic || !name) {
           io.stderr(
@@ -292,6 +307,32 @@ export async function runCli(
             : specFlag !== undefined
               ? specFlag
               : undefined;
+        const flatFlag = getBoolFlag(flags, "flat");
+        const noFlatFlag = getBoolFlag(flags, "no-flat");
+        const flat =
+          noFlatFlag === true
+            ? false
+            : flatFlag !== undefined
+              ? flatFlag
+              : undefined;
+
+        const crudFlag = getBoolFlag(flags, "crud");
+        const noCrudFlag = getBoolFlag(flags, "no-crud");
+        const crud =
+          noCrudFlag === true
+            ? false
+            : crudFlag !== undefined
+              ? crudFlag
+              : undefined;
+        const rawType = getStringFlag(flags, "type");
+        const resourceType =
+          rawType === "rest" ||
+          rawType === "microservice" ||
+          rawType === "ws" ||
+          rawType === "graphql-code-first" ||
+          rawType === "graphql-schema-first"
+            ? rawType
+            : undefined;
 
         const result = await generateSchematic(
           {
@@ -302,8 +343,16 @@ export async function runCli(
             project: getStringFlag(flags, "project"),
             config: getStringFlag(flags, "config"),
             specFileSuffix: getStringFlag(flags, "spec-file-suffix"),
+            language: getStringFlag(flags, "language"),
+            collection: getStringFlag(flags, "collection"),
+            type: resourceType,
+            crud,
+            rootDir: getStringFlag(flags, "root-dir"),
+            prefix: getStringFlag(flags, "prefix"),
+            skipImport: getBoolFlag(flags, "skip-import"),
+            module: getStringFlag(flags, "module"),
             cwd: io.cwd,
-            flat: getBoolFlag(flags, "flat"),
+            flat,
             spec,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             force: getBoolFlag(flags, "force") ?? false,
@@ -327,6 +376,7 @@ export async function runCli(
             entry: getStringFlag(flags, "entry"),
             entryFile: getStringFlag(flags, "entryFile"),
             sourceRoot: getStringFlag(flags, "sourceRoot"),
+            project: getStringFlag(flags, "project") ?? positionals[0],
             config: getStringFlag(flags, "config"),
             path: getStringFlag(flags, "path"),
             watch: getBoolFlag(flags, "watch") ?? false,
@@ -405,6 +455,42 @@ export async function runCli(
             fix: getBoolFlag(flags, "fix") ?? false,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "verify": {
+        const reporterRaw = getStringFlag(flags, "reporter");
+        if (
+          reporterRaw !== undefined &&
+          reporterRaw !== "agent" &&
+          reporterRaw !== "pretty" &&
+          reporterRaw !== "json"
+        ) {
+          io.stderr(
+            `Invalid --reporter "${reporterRaw}". Expected one of: agent, pretty, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const maxIssuesRaw = getStringFlag(flags, "max-issues");
+        const maxIssues =
+          maxIssuesRaw !== undefined && /^\d+$/.test(maxIssuesRaw)
+            ? Number.parseInt(maxIssuesRaw, 10)
+            : undefined;
+        const result = await runVerifyCommand(
+          {
+            cwd: io.cwd,
+            reporter: reporterRaw,
+            skipTypecheck: getBoolFlag(flags, "skip-typecheck") ?? false,
+            skipCheck: getBoolFlag(flags, "skip-check") ?? false,
+            skipTests: getBoolFlag(flags, "skip-tests") ?? false,
+            strict: getBoolFlag(flags, "strict") ?? false,
+            testFilter: positionals.length > 0 ? positionals : undefined,
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            config: getStringFlag(flags, "config"),
+            maxIssues,
           },
           io,
         );
@@ -490,6 +576,7 @@ export async function runCli(
             entry: getStringFlag(flags, "entry"),
             entryFile: getStringFlag(flags, "entryFile"),
             sourceRoot: getStringFlag(flags, "sourceRoot"),
+            project: getStringFlag(flags, "project") ?? positionals[0],
             outdir: getStringFlag(flags, "outdir"),
             config: getStringFlag(flags, "config"),
             path: getStringFlag(flags, "path"),
@@ -575,7 +662,7 @@ export async function runCli(
       }
 
       case "info": {
-        const info = getEnvironmentInfo();
+        const info = getEnvironmentInfo(io.cwd ?? process.cwd());
         io.stdout(formatEnvironmentInfo(info));
         return { exitCode: 0, output: info };
       }

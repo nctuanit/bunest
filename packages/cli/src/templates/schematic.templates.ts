@@ -1,6 +1,6 @@
-import type { SchematicType } from "../types";
+import type { ResourceTransportType, SchematicType } from "../types";
 import type { PlannedFile } from "../utils/fs-writer";
-import type { ParsedSchematicName } from "../utils/naming";
+import { toKebabCase, toPascalCase, type ParsedSchematicName } from "../utils/naming";
 import { buildProjectTemplateFiles } from "./project.templates";
 
 export const SCHEMATIC_ALIASES: Readonly<Record<string, SchematicType>> = {
@@ -90,14 +90,60 @@ function joinRel(...parts: readonly string[]): string {
  * requested schematic. All templates strictly obey `verbatimModuleSyntax: true`
  * (`import type` for interfaces, value imports for DI/DTO classes).
  */
+export interface BuildSchematicOptions {
+  readonly flat: boolean;
+  readonly spec: boolean;
+  readonly specFileSuffix?: string;
+  readonly language?: string;
+  readonly collection?: string;
+  readonly strict?: boolean;
+  readonly minimal?: boolean;
+  readonly packageName?: string;
+  readonly type?: ResourceTransportType;
+  readonly crud?: boolean;
+  readonly rootDir?: string;
+  readonly prefix?: string;
+}
+
+function singularizeName(kebab: string): string {
+  const leading = /^_+/.exec(kebab)?.[0] ?? "";
+  const body = kebab.slice(leading.length);
+  let singular = body;
+  if (body.endsWith("ies") && body.length > 3) {
+    singular = `${body.slice(0, -3)}y`;
+  } else if (
+    (body.endsWith("ses") ||
+      body.endsWith("xes") ||
+      body.endsWith("zes") ||
+      body.endsWith("ches") ||
+      body.endsWith("shes")) &&
+    body.length > 3
+  ) {
+    singular = body.slice(0, -2);
+  } else if (body.endsWith("s") && !body.endsWith("ss") && body.length > 1) {
+    singular = body.slice(0, -1);
+  }
+  return `${leading}${singular}`;
+}
+
+function normalizeSpecFileSuffix(raw?: string): string {
+  const cleaned = (raw ?? "spec").replace(/^\.+/, "");
+  if (!cleaned) return "spec";
+  return cleaned
+    .split(".")
+    .map((part) => toKebabCase(part))
+    .filter((part) => part.length > 0)
+    .join(".") || "spec";
+}
+
 export function buildSchematicFiles(
   schematic: SchematicType,
   parsed: ParsedSchematicName,
-  options: { flat: boolean; spec: boolean; specFileSuffix?: string },
+  options: BuildSchematicOptions,
 ): PlannedFile[] {
   const { subDir, kebab, pascal, camel } = parsed;
   const { flat, spec } = options;
-  const specSuffix = (options.specFileSuffix ?? "spec").replace(/^\.+/, "");
+  const specSuffix = normalizeSpecFileSuffix(options.specFileSuffix);
   const folder = flat ? subDir : joinRel(subDir, kebab);
 
   const files: PlannedFile[] = [];
@@ -252,11 +298,12 @@ describe("${pascal}", () => {
     }
 
     case "decorator": {
+      const metadataKey = kebab.replace(/^_+/, "") || kebab;
       files.push({
         relativePath: joinRel(folder, `${kebab}.decorator.ts`),
         content: `import { SetMetadata } from "@bunest/core";
 
-export const ${pascal.toUpperCase()}_KEY = "${kebab}";
+export const ${pascal.toUpperCase()}_KEY = "${metadataKey}";
 
 export const ${pascal} = (...args: string[]) =>
   SetMetadata(${pascal.toUpperCase()}_KEY, args);
@@ -367,8 +414,9 @@ describe("${pascal}Resolver", () => {
     }
 
     case "configuration": {
-      const configJson = {
-        collection: "@bunest/schematics",
+      const configJson: Record<string, unknown> = {
+        ...(options.language !== undefined ? { language: options.language } : {}),
+        collection: options.collection ?? "@bunest/schematics",
         sourceRoot: "src",
         entryFile: "main",
         compilerOptions: {
@@ -382,15 +430,17 @@ describe("${pascal}Resolver", () => {
           specFileSuffix: "spec",
         },
       };
+      const configDir = kebab === "bunest" ? subDir : joinRel(subDir, kebab);
       files.push({
-        relativePath: joinRel(subDir, "bunest.json"),
+        relativePath: joinRel(configDir, "bunest.json"),
         content: `${JSON.stringify(configJson, null, 2)}\n`,
       });
       break;
     }
 
     case "library": {
-      const libRoot = joinRel(subDir, "libs", kebab);
+      const libRootBase = options.rootDir ?? "libs";
+      const libRoot = joinRel(subDir, libRootBase, kebab);
       const libSrc = joinRel(libRoot, "src");
       files.push({
         relativePath: joinRel(libSrc, "index.ts"),
@@ -432,7 +482,7 @@ export class ${pascal}Module {}
               outDir: `../../dist/libs/${kebab}`,
             },
             include: ["src/**/*"],
-            exclude: ["node_modules", "dist", "test", "**/*spec.ts"],
+            exclude: ["node_modules", "dist", "test", `**/*${specSuffix}.ts`],
           },
           null,
           2,
@@ -462,7 +512,8 @@ describe("${pascal}Service", () => {
     }
 
     case "sub-app": {
-      const appRoot = joinRel(subDir, "apps", kebab);
+      const appRootBase = options.rootDir ?? "apps";
+      const appRoot = joinRel(subDir, appRootBase, kebab);
       const appSrc = joinRel(appRoot, "src");
       files.push({
         relativePath: joinRel(appSrc, "main.ts"),
@@ -528,7 +579,7 @@ export class ${pascal}Module {}
               outDir: `../../dist/apps/${kebab}`,
             },
             include: ["src/**/*"],
-            exclude: ["node_modules", "dist", "test", "**/*spec.ts"],
+            exclude: ["node_modules", "dist", "test", `**/*${specSuffix}.ts`],
           },
           null,
           2,
@@ -565,7 +616,13 @@ describe("${pascal}Controller", () => {
 
     case "application": {
       const appFolder = flat ? subDir : joinRel(subDir, kebab);
-      const templateFiles = buildProjectTemplateFiles(kebab);
+      const pkgName = options.packageName ?? kebab;
+      const templateFiles = buildProjectTemplateFiles(pkgName, {
+        strict: options.strict,
+        spec,
+        specFileSuffix: specSuffix,
+        minimal: options.minimal,
+      });
       for (const f of templateFiles) {
         files.push({
           relativePath: joinRel(appFolder, f.relativePath),
@@ -862,8 +919,531 @@ describe("${pascal}Endpoint", () => {
     }
 
     case "resource": {
+      const resourceType = options.type ?? "rest";
+      const crud = options.crud ?? true;
       const dtoDir = flat ? folder : joinRel(folder, "dto");
+      const entityDir = flat ? folder : joinRel(folder, "entities");
       const dtoImportPrefix = flat ? "." : "./dto";
+      const entityImportPrefix = flat ? "." : "./entities";
+      const singularKebab = singularizeName(kebab);
+      const singularPascal = toPascalCase(singularKebab) || pascal;
+
+      if (resourceType === "microservice") {
+        if (crud) {
+          files.push({
+            relativePath: joinRel(dtoDir, `create-${singularKebab}.dto.ts`),
+            content: `export class Create${singularPascal}Dto {}\n`,
+          });
+          files.push({
+            relativePath: joinRel(dtoDir, `update-${singularKebab}.dto.ts`),
+            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id!: number;\n}\n`,
+          });
+          files.push({
+            relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
+            content: `export class ${singularPascal} {}\n`,
+          });
+        }
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.service.ts`),
+          content: crud
+            ? `import { Injectable } from "@bunest/core";
+import { Create${singularPascal}Dto } from "${dtoImportPrefix}/create-${singularKebab}.dto";
+import { Update${singularPascal}Dto } from "${dtoImportPrefix}/update-${singularKebab}.dto";
+
+@Injectable()
+export class ${pascal}Service {
+  create(create${singularPascal}Dto: Create${singularPascal}Dto) {
+    return create${singularPascal}Dto;
+  }
+
+  findAll() {
+    return [];
+  }
+
+  findOne(id: number) {
+    return { id };
+  }
+
+  update(id: number, update${singularPascal}Dto: Update${singularPascal}Dto) {
+    return { id, ...update${singularPascal}Dto };
+  }
+
+  remove(id: number) {
+    return { id };
+  }
+}
+`
+            : `import { Injectable } from "@bunest/core";
+
+@Injectable()
+export class ${pascal}Service {}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.controller.ts`),
+          content: crud
+            ? `import { Controller } from "@bunest/core";
+import { MessagePattern, Payload } from "@bunest/microservices";
+import { Create${singularPascal}Dto } from "${dtoImportPrefix}/create-${singularKebab}.dto";
+import { Update${singularPascal}Dto } from "${dtoImportPrefix}/update-${singularKebab}.dto";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Controller()
+export class ${pascal}Controller {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+
+  @MessagePattern("create${singularPascal}")
+  create(@Payload() create${singularPascal}Dto: Create${singularPascal}Dto) {
+    return this.${camel}Service.create(create${singularPascal}Dto);
+  }
+
+  @MessagePattern("findAll${pascal}")
+  findAll() {
+    return this.${camel}Service.findAll();
+  }
+
+  @MessagePattern("findOne${singularPascal}")
+  findOne(@Payload() id: number) {
+    return this.${camel}Service.findOne(id);
+  }
+
+  @MessagePattern("update${singularPascal}")
+  update(@Payload() update${singularPascal}Dto: Update${singularPascal}Dto) {
+    return this.${camel}Service.update(update${singularPascal}Dto.id, update${singularPascal}Dto);
+  }
+
+  @MessagePattern("remove${singularPascal}")
+  remove(@Payload() id: number) {
+    return this.${camel}Service.remove(id);
+  }
+}
+`
+            : `import { Controller } from "@bunest/core";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Controller()
+export class ${pascal}Controller {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.module.ts`),
+          content: `import { Module } from "@bunest/core";
+import { ${pascal}Controller } from "./${kebab}.controller";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Module({
+  controllers: [${pascal}Controller],
+  providers: [${pascal}Service],
+})
+export class ${pascal}Module {}
+`,
+        });
+        if (spec) {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.controller.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
+import { Test } from "@bunest/testing";
+import { ${pascal}Controller } from "./${kebab}.controller";
+import { ${pascal}Service } from "./${kebab}.service";
+
+describe("${pascal}Controller", () => {
+  it("should be defined", async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [${pascal}Controller],
+      providers: [${pascal}Service],
+    }).compile();
+    expect(moduleRef.get(${pascal}Controller)).toBeDefined();
+    await moduleRef.close();
+  });
+});
+`,
+          });
+        }
+        break;
+      }
+
+      if (resourceType === "ws") {
+        if (crud) {
+          files.push({
+            relativePath: joinRel(dtoDir, `create-${singularKebab}.dto.ts`),
+            content: `export class Create${singularPascal}Dto {}\n`,
+          });
+          files.push({
+            relativePath: joinRel(dtoDir, `update-${singularKebab}.dto.ts`),
+            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id!: number;\n}\n`,
+          });
+          files.push({
+            relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
+            content: `export class ${singularPascal} {}\n`,
+          });
+        }
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.service.ts`),
+          content: crud
+            ? `import { Injectable } from "@bunest/core";
+import { Create${singularPascal}Dto } from "${dtoImportPrefix}/create-${singularKebab}.dto";
+import { Update${singularPascal}Dto } from "${dtoImportPrefix}/update-${singularKebab}.dto";
+
+@Injectable()
+export class ${pascal}Service {
+  create(create${singularPascal}Dto: Create${singularPascal}Dto) {
+    return create${singularPascal}Dto;
+  }
+
+  findAll() {
+    return [];
+  }
+
+  findOne(id: number) {
+    return { id };
+  }
+
+  update(id: number, update${singularPascal}Dto: Update${singularPascal}Dto) {
+    return { id, ...update${singularPascal}Dto };
+  }
+
+  remove(id: number) {
+    return { id };
+  }
+}
+`
+            : `import { Injectable } from "@bunest/core";
+
+@Injectable()
+export class ${pascal}Service {}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.gateway.ts`),
+          content: crud
+            ? `import { MessageBody, SubscribeMessage, WebSocketGateway } from "@bunest/websockets";
+import { Create${singularPascal}Dto } from "${dtoImportPrefix}/create-${singularKebab}.dto";
+import { Update${singularPascal}Dto } from "${dtoImportPrefix}/update-${singularKebab}.dto";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@WebSocketGateway()
+export class ${pascal}Gateway {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+
+  @SubscribeMessage("create${singularPascal}")
+  create(@MessageBody() create${singularPascal}Dto: Create${singularPascal}Dto) {
+    return this.${camel}Service.create(create${singularPascal}Dto);
+  }
+
+  @SubscribeMessage("findAll${pascal}")
+  findAll() {
+    return this.${camel}Service.findAll();
+  }
+
+  @SubscribeMessage("findOne${singularPascal}")
+  findOne(@MessageBody() id: number) {
+    return this.${camel}Service.findOne(id);
+  }
+
+  @SubscribeMessage("update${singularPascal}")
+  update(@MessageBody() update${singularPascal}Dto: Update${singularPascal}Dto) {
+    return this.${camel}Service.update(update${singularPascal}Dto.id, update${singularPascal}Dto);
+  }
+
+  @SubscribeMessage("remove${singularPascal}")
+  remove(@MessageBody() id: number) {
+    return this.${camel}Service.remove(id);
+  }
+}
+`
+            : `import { WebSocketGateway } from "@bunest/websockets";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@WebSocketGateway()
+export class ${pascal}Gateway {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.module.ts`),
+          content: `import { Module } from "@bunest/core";
+import { ${pascal}Gateway } from "./${kebab}.gateway";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Module({
+  providers: [${pascal}Gateway, ${pascal}Service],
+})
+export class ${pascal}Module {}
+`,
+        });
+        if (spec) {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.gateway.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
+import { Test } from "@bunest/testing";
+import { ${pascal}Gateway } from "./${kebab}.gateway";
+import { ${pascal}Service } from "./${kebab}.service";
+
+describe("${pascal}Gateway", () => {
+  it("should be defined", async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [${pascal}Gateway, ${pascal}Service],
+    }).compile();
+    expect(moduleRef.get(${pascal}Gateway)).toBeDefined();
+    await moduleRef.close();
+  });
+});
+`,
+          });
+        }
+        break;
+      }
+
+      if (resourceType === "graphql-code-first" || resourceType === "graphql-schema-first") {
+        const isCodeFirst = resourceType === "graphql-code-first";
+        if (crud) {
+          files.push({
+            relativePath: joinRel(dtoDir, `create-${singularKebab}.input.ts`),
+            content: isCodeFirst
+              ? `import { Field, InputType, Int } from "@bunest/graphql";
+
+@InputType()
+export class Create${singularPascal}Input {
+  @Field(() => Int)
+  exampleField!: number;
+}
+`
+              : `export class Create${singularPascal}Input {}\n`,
+          });
+          files.push({
+            relativePath: joinRel(dtoDir, `update-${singularKebab}.input.ts`),
+            content: isCodeFirst
+              ? `import { Field, InputType, Int } from "@bunest/graphql";
+import { Create${singularPascal}Input } from "./create-${singularKebab}.input";
+
+@InputType()
+export class Update${singularPascal}Input extends Create${singularPascal}Input {
+  @Field(() => Int)
+  id!: number;
+}
+`
+              : `import { Create${singularPascal}Input } from "./create-${singularKebab}.input";\n\nexport class Update${singularPascal}Input extends Create${singularPascal}Input {\n  id!: number;\n}\n`,
+          });
+          files.push({
+            relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
+            content: isCodeFirst
+              ? `import { Field, Int, ObjectType } from "@bunest/graphql";
+
+@ObjectType()
+export class ${singularPascal} {
+  @Field(() => Int)
+  exampleField!: number;
+}
+`
+              : `export class ${singularPascal} {}\n`,
+          });
+          if (!isCodeFirst) {
+            files.push({
+              relativePath: joinRel(folder, `${kebab}.graphql`),
+              content: `type ${singularPascal} {
+  exampleField: Int
+}
+
+input Create${singularPascal}Input {
+  exampleField: Int
+}
+
+input Update${singularPascal}Input {
+  id: Int!
+}
+
+type Query {
+  ${camel}: [${singularPascal}]!
+  ${singularKebab}(id: Int!): ${singularPascal}
+}
+
+type Mutation {
+  create${singularPascal}(create${singularPascal}Input: Create${singularPascal}Input!): ${singularPascal}!
+  update${singularPascal}(update${singularPascal}Input: Update${singularPascal}Input!): ${singularPascal}!
+  remove${singularPascal}(id: Int!): ${singularPascal}
+}
+`,
+            });
+          }
+        }
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.service.ts`),
+          content: crud
+            ? `import { Injectable } from "@bunest/core";
+import { Create${singularPascal}Input } from "${dtoImportPrefix}/create-${singularKebab}.input";
+import { Update${singularPascal}Input } from "${dtoImportPrefix}/update-${singularKebab}.input";
+
+@Injectable()
+export class ${pascal}Service {
+  create(create${singularPascal}Input: Create${singularPascal}Input) {
+    return create${singularPascal}Input;
+  }
+
+  findAll() {
+    return [];
+  }
+
+  findOne(id: number) {
+    return { id };
+  }
+
+  update(id: number, update${singularPascal}Input: Update${singularPascal}Input) {
+    return { id, ...update${singularPascal}Input };
+  }
+
+  remove(id: number) {
+    return { id };
+  }
+}
+`
+            : `import { Injectable } from "@bunest/core";
+
+@Injectable()
+export class ${pascal}Service {}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.resolver.ts`),
+          content: crud
+            ? `import { Args, Int, Mutation, Query, Resolver } from "@bunest/graphql";
+import { Create${singularPascal}Input } from "${dtoImportPrefix}/create-${singularKebab}.input";
+import { Update${singularPascal}Input } from "${dtoImportPrefix}/update-${singularKebab}.input";
+import { ${singularPascal} } from "${entityImportPrefix}/${singularKebab}.entity";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Resolver(() => ${singularPascal})
+export class ${pascal}Resolver {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+
+  @Mutation(() => ${singularPascal})
+  create${singularPascal}(@Args("create${singularPascal}Input") create${singularPascal}Input: Create${singularPascal}Input) {
+    return this.${camel}Service.create(create${singularPascal}Input);
+  }
+
+  @Query(() => [${singularPascal}], { name: "${camel}" })
+  findAll() {
+    return this.${camel}Service.findAll();
+  }
+
+  @Query(() => ${singularPascal}, { name: "${singularKebab}" })
+  findOne(@Args("id", { type: () => Int }) id: number) {
+    return this.${camel}Service.findOne(id);
+  }
+
+  @Mutation(() => ${singularPascal})
+  update${singularPascal}(@Args("update${singularPascal}Input") update${singularPascal}Input: Update${singularPascal}Input) {
+    return this.${camel}Service.update(update${singularPascal}Input.id, update${singularPascal}Input);
+  }
+
+  @Mutation(() => ${singularPascal})
+  remove${singularPascal}(@Args("id", { type: () => Int }) id: number) {
+    return this.${camel}Service.remove(id);
+  }
+}
+`
+            : `import { Resolver } from "@bunest/graphql";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Resolver()
+export class ${pascal}Resolver {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.module.ts`),
+          content: `import { Module } from "@bunest/core";
+import { ${pascal}Resolver } from "./${kebab}.resolver";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Module({
+  providers: [${pascal}Resolver, ${pascal}Service],
+})
+export class ${pascal}Module {}
+`,
+        });
+        if (spec) {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.resolver.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
+import { Test } from "@bunest/testing";
+import { ${pascal}Resolver } from "./${kebab}.resolver";
+import { ${pascal}Service } from "./${kebab}.service";
+
+describe("${pascal}Resolver", () => {
+  it("should be defined", async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [${pascal}Resolver, ${pascal}Service],
+    }).compile();
+    expect(moduleRef.get(${pascal}Resolver)).toBeDefined();
+    await moduleRef.close();
+  });
+});
+`,
+          });
+        }
+        break;
+      }
+
+      if (!crud) {
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.service.ts`),
+          content: `import { Injectable } from "@bunest/core";
+
+@Injectable()
+export class ${pascal}Service {}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.controller.ts`),
+          content: `import { Controller } from "@bunest/core";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Controller("/${kebab}")
+export class ${pascal}Controller {
+  constructor(private readonly ${camel}Service: ${pascal}Service) {}
+}
+`,
+        });
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.module.ts`),
+          content: `import { Module } from "@bunest/core";
+import { ${pascal}Controller } from "./${kebab}.controller";
+import { ${pascal}Service } from "./${kebab}.service";
+
+@Module({
+  controllers: [${pascal}Controller],
+  providers: [${pascal}Service],
+  exports: [${pascal}Service],
+})
+export class ${pascal}Module {}
+`,
+        });
+        if (spec) {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
+import { Test } from "@bunest/testing";
+import { ${pascal}Module } from "./${kebab}.module";
+import { ${pascal}Service } from "./${kebab}.service";
+
+describe("${pascal}Module", () => {
+  it("resolves ${pascal}Service", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [${pascal}Module],
+    }).compile();
+    expect(moduleRef.get(${pascal}Service)).toBeDefined();
+    await moduleRef.close();
+  });
+});
+`,
+          });
+        }
+        break;
+      }
 
       files.push({
         relativePath: joinRel(dtoDir, `create-${kebab}.dto.ts`),

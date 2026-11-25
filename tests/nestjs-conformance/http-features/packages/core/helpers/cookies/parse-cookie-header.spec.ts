@@ -11,8 +11,7 @@ describeConformance(
     adrs: ["ADR-001"],
   },
   () => {
-    // BUNEST_BUG: parseCookieHeader returns a plain {} object instead of Object.create(null) (packages/core/src/http/security/cookie.ts:126), so Object.getPrototypeOf(cookies) is Object.prototype rather than null.
-    it.skip("should return an empty prototype-less object for a missing header", () => {
+    it("should return an empty prototype-less object for a missing header", () => {
       for (const header of [undefined, null, ""]) {
         const cookies = parseCookieHeader(header);
         expect(Object.keys(cookies)).toEqual([]);
@@ -35,8 +34,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: parseCookieHeader uses String.prototype.trim() instead of trimming only spaces and tabs (packages/core/src/http/security/cookie.ts:144), stripping Unicode whitespace like \u00a0/\ufeff and letting forged cookies shadow __Host- prefixed cookies.
-    it.skip("should trim only spaces and tabs, as user agents do", () => {
+    it("should trim only spaces and tabs, as user agents do", () => {
       // A user agent stores "\u00a0__Host-id" as a cookie without the prefix,
       // so anyone who can set cookies for the domain can set it. Trimming the
       // no-break space would let it pass for, and shadow, "__Host-id".
@@ -87,8 +85,7 @@ describeConformance(
       expect(parseCookieHeader("empty=").empty).toBe("");
     });
 
-    // BUNEST_BUG: parseCookieHeader returns a plain {} object and strips dangerous keys instead of returning Object.create(null) with plain own entries (packages/core/src/http/security/cookie.ts:126, 146).
-    it.skip("should store prototype member names as plain entries", () => {
+    it("should store prototype member names as plain entries", () => {
       const cookies = parseCookieHeader(
         "__proto__=polluted; constructor=ctor; toString=str",
       );
@@ -104,16 +101,14 @@ describeConformance(
       expect(record["toString"] as unknown).toBe("str");
     });
 
-    // BUNEST_BUG: parseCookieHeader returns a plain {} object instead of Object.create(null) (packages/core/src/http/security/cookie.ts:126), so unsent Object.prototype properties (constructor, __proto__, toString) resolve.
-    it.skip("should not resolve prototype members for names that were not sent", () => {
+    it("should not resolve prototype members for names that were not sent", () => {
       const cookies = parseCookieHeader("a=1");
       expect(cookies.constructor).toBeUndefined();
       expect(cookies["__proto__"]).toBeUndefined();
       expect("toString" in cookies).toBe(false);
     });
 
-    // BUNEST_BUG: parseCookieHeader only accepts string | null | undefined and does not join string[] multiple header values (packages/core/src/http/security/cookie.ts:123).
-    it.skip("should join multiple header values", () => {
+    it("should join multiple header values", () => {
       expect({
         ...parseCookieHeader(["a=1", "b=2"] as unknown as string),
       }).toEqual({

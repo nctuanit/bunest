@@ -143,8 +143,7 @@ describeConformance(
         expect(anySpecLike(result.files)).toEqual([]);
       });
 
-      // BUNEST_BUG: buildSchematicFiles does not normalize camelCase specFileSuffix to kebab-case ("integrationTest" produces ".integrationTest.ts" instead of ".integration-test.ts") (packages/cli/src/templates/schematic.templates.ts:100)
-      it.skip("should normalize a camelCased spec file suffix", async () => {
+      it("should normalize a camelCased spec file suffix", async () => {
         const planned = buildSchematicFiles(
           schematic,
           parseSchematicName("foo"),
@@ -213,8 +212,7 @@ describeConformance(
         expect(specFiles(result.files, "spec").length).toBeGreaterThan(0);
       });
 
-      // BUNEST_BUG: buildSchematicFiles("application") delegates to buildProjectTemplateFiles(kebab) which hardcodes "test/app.spec.ts" and ignores specFileSuffix: "test" (packages/cli/src/templates/schematic.templates.ts:574-584, packages/cli/src/templates/project.templates.ts:215)
-      it.skip("should honour a custom spec file suffix", async () => {
+      it("should honour a custom spec file suffix", async () => {
         const planned = buildSchematicFiles(
           "application",
           parseSchematicName("my-app"),
@@ -224,8 +222,7 @@ describeConformance(
         expect(specFiles(planned, "spec")).toEqual([]);
       });
 
-      // BUNEST_BUG: buildSchematicFiles("application") delegates to buildProjectTemplateFiles(kebab) which always emits "test/app.spec.ts" and ignores spec: false (packages/cli/src/templates/schematic.templates.ts:574-584, packages/cli/src/templates/project.templates.ts:215)
-      it.skip("`application` should generate no spec files when spec is disabled", async () => {
+      it("`application` should generate no spec files when spec is disabled", async () => {
         const planned = buildSchematicFiles(
           "application",
           parseSchematicName("my-app"),

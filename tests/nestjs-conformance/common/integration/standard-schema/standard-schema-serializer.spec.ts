@@ -220,8 +220,7 @@ describeConformance(
         }
       }
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor constructor parameter #1 (`secondArg`) lacks `@Optional()`, causing UnknownDependencyException (Cannot resolve constructor parameter #1 Object) whenever registered by class token in `@UseInterceptors(StandardSchemaSerializerInterceptor)` (packages/validation/src/standard-schema-serializer.interceptor.ts:173)
-      it.skip("should instantiate StandardSchemaSerializerInterceptor via DI when passed as a class token", async () => {
+      it("should instantiate StandardSchemaSerializerInterceptor via DI when passed as a class token", async () => {
         ctx = await createTestApp(
           { controllers: [DiClassTokenController] },
           { silentLogger: true },
@@ -258,8 +257,7 @@ describeConformance(
         "@UseStandardSchema",
       );
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor passes an array response directly to `schema["~standard"].validate(response)` instead of mapping over each item when `Array.isArray(response)` (packages/validation/src/standard-schema-serializer.interceptor.ts:204)
-      it.skip("should apply schema to each item in an array response", async () => {
+      it("should apply schema to each item in an array response", async () => {
         await ctx!
           .request()
           .get("/serializer/users")
@@ -320,8 +318,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor's `isNativeResponsePassthrough()` returns `false` for primitives (`"plain string"`), causing primitive responses to be passed to the schema and fail with HTTP 500 (packages/validation/src/standard-schema-serializer.interceptor.ts:106-109)
-      it.skip("should pass primitive values through even when a schema is set", async () => {
+      it("should pass primitive values through even when a schema is set", async () => {
         await ctx!
           .request()
           .get("/serializer/primitive")
@@ -331,8 +328,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: StandardSchemaSerializerInterceptor only reads Bunest's `@UseStandardSchema()` (`STANDARD_SCHEMA_SERIALIZER_METADATA`) and ignores NestJS v12 `@SerializeOptions({ schema })` (`CLASS_SERIALIZER_OPTIONS`) (packages/validation/src/standard-schema-serializer.interceptor.ts:228-239, packages/validation/src/serialize-options.decorator.ts)
-      it.skip("should read schema from @SerializeOptions({ schema }) (NestJS v12 parity)", async () => {
+      it("should read schema from @SerializeOptions({ schema }) (NestJS v12 parity)", async () => {
         await ctx!
           .request()
           .get("/serializer/serialize-options-parity")

@@ -55,16 +55,14 @@ describeConformance(
       ) as
         { target: Function; classMetadata?: { target: Function } } | undefined;
 
-    // BUNEST_BUG: Expected midQuery.target and classMetadata.target to be LeafResolver after TypeMetadataStorage.compile(), got target=MidResolver and classMetadata=undefined; packages/graphql/src/schema/type-metadata.storage.ts (compile:349-357) does not re-attribute base resolver queries to derived resolvers or attach classMetadata.
-    it.skip("should re-attribute a query declared on a base resolver to the derived resolver", () => {
+    it("should re-attribute a query declared on a base resolver to the derived resolver", () => {
       const query = queryFor("midQuery");
 
       expect(query?.target).toBe(LeafResolverRef);
       expect(query?.classMetadata?.target).toBe(LeafResolverRef);
     });
 
-    // BUNEST_BUG: Expected inheritedQuery.target and classMetadata.target to be LeafResolver across BaseResolver -> MidResolver -> LeafResolver, got target=BaseResolver and classMetadata=undefined; packages/graphql/src/schema/type-metadata.storage.ts (compile:349-357) does not walk resolver inheritance chains during compile().
-    it.skip("should follow the whole chain when a resolver is extended more than once", () => {
+    it("should follow the whole chain when a resolver is extended more than once", () => {
       // inheritedQuery starts on BaseResolver, moves to MidResolver, then on to LeafResolver.
       const query = queryFor("inheritedQuery");
 

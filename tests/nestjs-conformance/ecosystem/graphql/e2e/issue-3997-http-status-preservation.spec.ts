@@ -159,8 +159,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected HTTP 403 from extensions.http.status when preserveHttpStatusForExecutionErrors is false; actual HTTP 200 because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.executeQuery) always returns status: 200 and does not implement preserveHttpStatusForExecutionErrors.
-      it.skip("should preserve HTTP status from GraphQL errors when preserve flag is false", async () => {
+      it("should preserve HTTP status from GraphQL errors when preserve flag is false", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwGraphqlErrorWithHttpStatus }" });
@@ -205,8 +204,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected HTTP 403 from extensions.http.status when autoTransformHttpErrors and preserveHttpStatusForExecutionErrors are false; actual HTTP 200 because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.executeQuery) does not support preserveHttpStatusForExecutionErrors.
-      it.skip("should preserve HTTP status from GraphQL errors when autoTransform is disabled", async () => {
+      it("should preserve HTTP status from GraphQL errors when autoTransform is disabled", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwGraphqlErrorWithHttpStatus }" });
@@ -240,8 +238,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected HTTP 403 from extensions.http.status when both flags are disabled; actual HTTP 200 because packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.executeQuery) does not implement preserveHttpStatusForExecutionErrors or autoTransformHttpErrors.
-      it.skip("should preserve GraphQL error HTTP status without any transformation", async () => {
+      it("should preserve GraphQL error HTTP status without any transformation", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwGraphqlErrorWithHttpStatus }" });

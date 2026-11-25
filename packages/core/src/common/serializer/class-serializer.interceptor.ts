@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from "../decorators/core.decorators";
+import { StreamableFile } from "../http/streamable-file";
 import { DecoratorRegistry } from "../metadata/decorator-registry";
 import type {
   BunestInterceptor,
@@ -34,6 +35,9 @@ function isReflectorLike(value: unknown): value is Reflector {
 
 function isPassthroughValue(value: unknown): boolean {
   if (typeof value !== "object" || value === null) {
+    return true;
+  }
+  if (value instanceof StreamableFile) {
     return true;
   }
 
@@ -124,6 +128,37 @@ export class ClassSerializerInterceptor implements BunestInterceptor {
     };
 
     const response = await next.handle();
+    if (context.getType?.() === "http") {
+      if (
+        typeof ReadableStream !== "undefined" &&
+        response instanceof ReadableStream
+      ) {
+        const self = this;
+        return response.pipeThrough(
+          new TransformStream({
+            transform(chunk, controller) {
+              controller.enqueue(self.serialize(chunk, mergedOptions));
+            },
+          }),
+        );
+      }
+      if (
+        response !== null &&
+        typeof response === "object" &&
+        !(response instanceof StreamableFile) &&
+        !(typeof Response !== "undefined" && response instanceof Response) &&
+        typeof (response as { [Symbol.asyncIterator]?: unknown })[
+          Symbol.asyncIterator
+        ] === "function"
+      ) {
+        const self = this;
+        return (async function* () {
+          for await (const chunk of response as AsyncIterable<unknown>) {
+            yield self.serialize(chunk, mergedOptions);
+          }
+        })();
+      }
+    }
     return this.serialize(response, mergedOptions);
   }
 
@@ -205,6 +240,17 @@ export class ClassSerializerInterceptor implements BunestInterceptor {
   ): ClassSerializerContextOptions | undefined {
     const controllerClass = context.getClass();
     const handler = context.getHandler();
+
+    if (typeof this.reflector.getAllAndOverride === "function") {
+      const overridden =
+        this.reflector.getAllAndOverride<ClassSerializerContextOptions>(
+          CLASS_SERIALIZER_OPTIONS,
+          [handler, controllerClass],
+        );
+      if (overridden !== undefined) {
+        return overridden;
+      }
+    }
 
     const classOptions = controllerClass
       ? this.reflector.get<ClassSerializerContextOptions>(

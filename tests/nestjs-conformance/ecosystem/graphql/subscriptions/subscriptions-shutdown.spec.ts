@@ -129,8 +129,7 @@ describeConformance(
         closePromise = undefined;
       });
 
-      // BUNEST_BUG: During app.close(), BunHttpAdapter.close() stops the Bun server (terminating open WS connections with abnormal close code 1006) before GraphQLService's onModuleDestroy/onApplicationShutdown calls GraphQLWsHandler.closeAll(1001), so clients observe 1006 instead of 1001 Going Away (packages/graphql/src/driver/graphql-http.handler.ts:146-162 & packages/core/src/application/bunest-application-context.ts:387-395).
-      it.skip("closes open graphql-ws connections when the application closes", async () => {
+      it("closes open graphql-ws connections when the application closes", async () => {
         socket = new WebSocket(
           `ws://127.0.0.1:${port}/graphql`,
           GRAPHQL_TRANSPORT_WS_PROTOCOL,

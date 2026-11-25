@@ -443,8 +443,7 @@ describeConformance(
         host = undefined;
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_GUARD global enhancers (packages/microservices/src/microservice-host.ts:329-342).
-      it.skip("should deny the message when the global guard is transient", async () => {
+      it("should deny the message when the global guard is transient", async () => {
         await listen([{ provide: APP_GUARD, useClass: TransientDenyGuard }]);
 
         await expect(client!.send("read", {})).rejects.toThrow(
@@ -452,15 +451,13 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_PIPE global enhancers (packages/microservices/src/microservice-host.ts:345-356).
-      it.skip("should transform the payload when the global pipe is transient", async () => {
+      it("should transform the payload when the global pipe is transient", async () => {
         await listen([{ provide: APP_PIPE, useClass: SuffixPipe }]);
 
         await expect(client!.send("echo", "nest")).resolves.toBe("nest-piped");
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_INTERCEPTOR global enhancers (packages/microservices/src/microservice-host.ts:360-375).
-      it.skip("should wrap the response when the global interceptor is transient", async () => {
+      it("should wrap the response when the global interceptor is transient", async () => {
         await listen([
           { provide: APP_INTERCEPTOR, useClass: PrefixInterceptor },
         ]);
@@ -468,8 +465,7 @@ describeConformance(
         await expect(client!.send("read", {})).resolves.toBe("intercepted:ok");
       });
 
-      // BUNEST_BUG: MicroserviceHost does not collect or execute DI APP_FILTER global enhancers (packages/microservices/src/microservice-host.ts:379-392).
-      it.skip("should handle the error when the global filter is transient", async () => {
+      it("should handle the error when the global filter is transient", async () => {
         await listen([{ provide: APP_FILTER, useClass: RecoveringRpcFilter }]);
 
         await expect(client!.send("fail", {})).resolves.toBe("recovered");
@@ -508,8 +504,7 @@ describeConformance(
         app = undefined;
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should deny the call when the global guard is transient", async () => {
+      it("should deny the call when the global guard is transient", async () => {
         const handler = await createHandler([
           { provide: APP_GUARD, useClass: TransientDenyGuard },
         ]);
@@ -517,8 +512,7 @@ describeConformance(
         await expect(handler()).rejects.toThrow("Forbidden resource");
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_INTERCEPTOR multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should wrap the result when the global interceptor is transient", async () => {
+      it("should wrap the result when the global interceptor is transient", async () => {
         const handler = await createHandler([
           { provide: APP_INTERCEPTOR, useClass: PrefixInterceptor },
         ]);
@@ -526,15 +520,13 @@ describeConformance(
         await expect(handler()).resolves.toBe("intercepted:ok");
       });
 
-      // BUNEST_BUG: ExternalContextCreator resolves method-level guard classes against root module instead of EntryProvider's owning TestModule (packages/core/src/helpers/external-context-creator.ts:103 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should give the provider a constructed instance of a method level transient guard", async () => {
+      it("should give the provider a constructed instance of a method level transient guard", async () => {
         const handler = await createHandler([], "guarded");
 
         await expect(handler()).rejects.toThrow("Forbidden resource");
       });
 
-      // BUNEST_BUG: ExternalContextCreator.create() does not execute global APP_GUARD multi-providers (packages/core/src/helpers/external-context-creator.ts).
-      it.skip("should bootstrap when the guard depends on a provider that waits for the entry provider", async () => {
+      it("should bootstrap when the guard depends on a provider that waits for the entry provider", async () => {
         const handler = await createHandler([
           EntryProviderConsumer,
           { provide: APP_GUARD, useClass: EntryProviderConsumerGuard },
@@ -592,8 +584,7 @@ describeConformance(
         }
       };
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should deny the message with a transient guard bound by class (arrow)", async () => {
+      it("should deny the message with a transient guard bound by class (arrow)", async () => {
         const reply = await send("arrow");
 
         // ADR-001: BunWebSocketAdapter emits `{ event: "error", data: ... }` for WS exceptions.
@@ -601,8 +592,7 @@ describeConformance(
         expect(reply.data?.message ?? reply.message).toContain("Forbidden");
       });
 
-      // BUNEST_BUG: WsGatewayExplorer.resolveEnhancer() resolves gateway @UseGuards() against root module instead of the gateway's owning TestModule (packages/core/src/ws/explorer/ws-gateway.explorer.ts:78 & packages/core/src/di/di-container.ts:1633); throws UnknownDependencyException for Gate.
-      it.skip("should deny the message with a transient guard bound by class (method)", async () => {
+      it("should deny the message with a transient guard bound by class (method)", async () => {
         const reply = await send("method");
 
         // ADR-001: BunWebSocketAdapter emits `{ event: "error", data: ... }` for WS exceptions.

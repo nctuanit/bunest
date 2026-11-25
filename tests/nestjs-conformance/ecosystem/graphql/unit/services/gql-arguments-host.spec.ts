@@ -79,8 +79,7 @@ describeConformance(
       expect(host.getInfo<string>()).toBe("info");
     });
 
-    // BUNEST_BUG: GqlArgumentsHost.create() in packages/graphql/src/context/gql-execution-context.ts (lines 128-138) does not align 3-argument Federation reference resolver calls ([reference, ctx, info]) into [reference, undefined, ctx, info], so getArgs() returns "ctx" instead of undefined.
-    it.skip('should align the positions of a reference resolver call (no "args")', () => {
+    it('should align the positions of a reference resolver call (no "args")', () => {
       const host = GqlArgumentsHost.create(
         createHost([{ __typename: "User", id: 1 }, "ctx", "info"]),
       );
@@ -90,8 +89,7 @@ describeConformance(
       expect(host.getInfo<string>()).toBe("info");
     });
 
-    // BUNEST_BUG: GqlArgumentsHost.create() in packages/graphql/src/context/gql-execution-context.ts (lines 128-138) does not align 4-argument resolveType calls ([value, ctx, info, abstractType]) where args is omitted, so getArgs() returns "ctx" instead of undefined.
-    it.skip('should align the positions of a "resolveType" call (no "args")', () => {
+    it('should align the positions of a "resolveType" call (no "args")', () => {
       const abstractType = new GraphQLObjectType({ name: "Node", fields: {} });
       const host = GqlArgumentsHost.create(
         createHost([{ id: 1 }, "ctx", "info", abstractType]),

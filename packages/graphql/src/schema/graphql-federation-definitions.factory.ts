@@ -33,7 +33,7 @@ export class GraphQLFederationDefinitionsFactory extends GraphQLDefinitionsFacto
     const inlineSdl = Array.isArray(typeDefs)
       ? typeDefs.join("\n")
       : (typeDefs ?? "");
-    const combinedSdl = [loadedFromPaths, inlineSdl]
+    const combinedSdl = [inlineSdl, loadedFromPaths]
       .filter((part) => part.trim().length > 0)
       .join("\n");
 

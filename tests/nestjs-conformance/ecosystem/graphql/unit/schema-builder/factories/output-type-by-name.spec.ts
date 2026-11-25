@@ -52,13 +52,11 @@ describeConformance(
       schema = await schemaFactory.create([new AuthorResolver()]);
     });
 
-    // BUNEST_BUG: Expected @Query(() => 'Author') to resolve to @ObjectType('Author') ('author: Author!'), got 'author: String!'; packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf) falls back to GraphQLString for string type references instead of looking up registered types by GraphQL name (and ReturnTypeFuncValue omits string in packages/graphql/src/interfaces/graphql.interface.ts).
-    it.skip("builds the schema when a resolver returns an output type by GraphQL name", () => {
+    it("builds the schema when a resolver returns an output type by GraphQL name", () => {
       expect(printSchema(schema)).toContain("author: Author!");
     });
 
-    // BUNEST_BUG: Expected author field ofType to be GraphQLObjectType 'Author', got GraphQLScalarType 'String' (schema.getType('Author') is undefined); packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf) does not resolve output types referenced by string name.
-    it.skip("resolves the query field to the named output type", () => {
+    it("resolves the query field to the named output type", () => {
       const queryType = schema.getQueryType();
       const authorField = queryType?.getFields().author;
 

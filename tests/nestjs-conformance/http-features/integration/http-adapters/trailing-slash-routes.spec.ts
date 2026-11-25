@@ -78,8 +78,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: matchesPathPattern treats target ":id" segments as matching literal exclude patterns like "files/public", erroneously excluding /files/:id from middleware (packages/core/src/http/scanner/path-normalizer.ts:151).
-      it.skip("should run the middleware for every path except the exact excluded route", async () => {
+      it("should run the middleware for every path except the exact excluded route", async () => {
         const excluded = ["/files/public"];
         for (const path of [
           "/files/public",
@@ -125,8 +124,7 @@ describeConformance(
         await app.close();
       });
 
-      // BUNEST_BUG: BunHttpAdapter.fetch() runs nativeMatcher.match(pathname) before dispatchFallback() checks ignoreTrailingSlash, so sibling wildcard /files/* intercepts /files/public/ and /files/42/ instead of stripping the trailing slash (packages/core/src/http/adapter/bun-http.adapter.ts:657-732).
-      it.skip("should send a path ending with '/' to the route it would go to without it", async () => {
+      it("should send a path ending with '/' to the route it would go to without it", async () => {
         for (const path of ["/files/public", "/files/42", "/files/a/b"]) {
           const [res, withSlash] = await Promise.all([
             request(app).get(path),

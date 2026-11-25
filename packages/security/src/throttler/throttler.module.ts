@@ -17,8 +17,8 @@ export class ThrottlerModule {
       ? options.storage
       : undefined;
     const isGlobal = !isThrottlerOptionsArray(options)
-      ? options.global
-      : undefined;
+      ? (options.global ?? true)
+      : true;
 
     const storageProvider: Provider = customStorage
       ? { provide: THROTTLER_STORAGE, useValue: customStorage }
@@ -39,7 +39,7 @@ export class ThrottlerModule {
   static forRootAsync(options: ThrottlerAsyncOptions): DynamicModule {
     return {
       module: ThrottlerModule,
-      global: options.global,
+      global: options.global ?? true,
       imports: options.imports,
       providers: [
         ...this.createAsyncProviders(options),

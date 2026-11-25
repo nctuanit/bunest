@@ -237,8 +237,7 @@ describeConformance(
 
       // FIXME: Remove this in v13, the returned value is ignored (#2796)
       describe("without withSuccessData() (deprecated)", () => {
-        // BUNEST_BUG: HealthCheckAttempt.resolveSuccessData() in packages/observability/src/health/health-indicator.service.ts:394-406 merges the returned object directly via sanitizeAttemptData() without logging a deprecation warning mentioning "withSuccessData()" once per indicator (expected 2 warnings, received []).
-        it.skip("should add the returned value, with a warning once per indicator", async () => {
+        it("should add the returned value, with a warning once per indicator", async () => {
           const first = await svc.check(key()).attempt(() => ({ ok: 1 }));
           expect(first[key()]).toEqual({
             status: "up",
@@ -256,8 +255,7 @@ describeConformance(
           ]);
         });
 
-        // BUNEST_BUG: HealthCheckAttempt.resolveSuccessData() in packages/observability/src/health/health-indicator.service.ts:394-406 merges the returned object when only static data is set without emitting the deprecation warning mentioning "withSuccessData()" (expected length 1, received 0).
-        it.skip("should still add the returned value when only static data is set", async () => {
+        it("should still add the returned value when only static data is set", async () => {
           const result = await svc
             .check(key())
             .attempt(() => ({ ok: 1 }))

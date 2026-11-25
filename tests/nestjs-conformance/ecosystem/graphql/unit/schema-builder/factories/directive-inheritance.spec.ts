@@ -54,8 +54,7 @@ describeConformance(
       schemaFactory = moduleRef.get(GraphQLSchemaFactory);
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1004-1020) never parses @Directive() SDL into GraphQLObjectType.astNode.directives (expected ["key"], actual []).
-    it.skip("should propagate class-level directives from an abstract parent to the derived type", async () => {
+    it("should propagate class-level directives from an abstract parent to the derived type", async () => {
       const schema = await schemaFactory.create([new DerivedUserResolver()], {
         buildSchemaOptions: { skipCheck: true },
       });

@@ -115,8 +115,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: app.useGlobalPipes(...) (and APP_PIPE) are never wired into GraphQLService / GraphQLSchemaFactory (packages/graphql/src/driver/graphql-http.handler.ts only queries APP_FILTER and never reads ApplicationConfig global pipes or APP_PIPE). Expected ValidationPipe to reject missing/short `description` with BAD_REQUEST error; actual mutation succeeds without running the global pipe.
-    it.skip("should throw an error when app.useGlobalPipes(ValidationPipe) rejects invalid GraphQL input", async () => {
+    it("should throw an error when app.useGlobalPipes(ValidationPipe) rejects invalid GraphQL input", async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [GlobalPipeAppModule],
       }).compile({ logger: false });
@@ -143,7 +142,7 @@ describeConformance(
             locations: [{ line: 2, column: 3 }],
             extensions: {
               code: "BAD_REQUEST",
-              statusCode: 400,
+              originalError: { statusCode: 400 },
             },
           },
         ],
@@ -205,7 +204,10 @@ describeConformance(
             message: string;
             locations: Array<{ line: number; column: number }>;
             path: string[];
-            extensions: { code: string; statusCode: number };
+            extensions: {
+              code: string;
+              originalError: { statusCode: number };
+            };
           }>;
         };
 
@@ -217,7 +219,7 @@ describeConformance(
           path: ["addRecipe"],
           extensions: {
             code: "BAD_REQUEST",
-            statusCode: 400,
+            originalError: { statusCode: 400 },
           },
         });
       },
@@ -277,7 +279,7 @@ describeConformance(
             path: string[];
             extensions: {
               code: string;
-              statusCode: number;
+              originalError: { statusCode: number };
               details: Array<{ field: string; messages: string[] }>;
             };
           }>;
@@ -287,7 +289,7 @@ describeConformance(
         expect(body.errors[0]?.message).toBe("Validation failed");
         expect(body.errors[0]?.path).toEqual(["addRecipe"]);
         expect(body.errors[0]?.extensions.code).toBe("BAD_REQUEST");
-        expect(body.errors[0]?.extensions.statusCode).toBe(400);
+        expect(body.errors[0]?.extensions.originalError.statusCode).toBe(400);
         const descDetail = body.errors[0]?.extensions.details.find(
           (d) => d.field === "description",
         );

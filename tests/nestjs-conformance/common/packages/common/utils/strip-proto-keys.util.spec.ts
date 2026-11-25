@@ -130,8 +130,7 @@ describeConformance(
         expect(() => stripProtoKeys(value)).not.toThrow();
       });
 
-      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, reading every hole index `0..999` and `length` on sparse arrays (packages/core/src/common/utils/common.utils.ts:108-112)
-      it.skip("should only read the items of a sparse array, not every index", () => {
+      it("should only read the items of a sparse array, not every index", () => {
         const items: unknown[] = [];
         items[999] = { constructor: "malicious" };
         const reads: PropertyKey[] = [];
@@ -150,8 +149,7 @@ describeConformance(
         ).toBe(false);
       });
 
-      // BUNEST_BUG: stripProtoKeys() iterates arrays via `for (let i = 0; i < node.length; i++)` instead of `Object.keys(node)`, which iterates 4,294,967,295 times and hangs on a max-index sparse array (packages/core/src/common/utils/common.utils.ts)
-      it.skip("should strip the items of a sparse array with the largest index", () => {
+      it("should strip the items of a sparse array with the largest index", () => {
         const items: unknown[] = [];
         items[2 ** 32 - 2] = { constructor: "malicious" };
         stripProtoKeys({ items });

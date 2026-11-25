@@ -105,21 +105,24 @@ describeConformance(
         "Bunest generates REST DTOs, service, controller, module, and unified CRUD integration spec",
       );
 
-      // BUNEST_BUG: resource schematic omits entities/<singular>.entity.ts and does not singularize plural resource names ("users" emits "dto/create-users.dto.ts" instead of "dto/create-user.dto.ts" and no "entities/user.entity.ts") (packages/cli/src/templates/schematic.templates.ts:875-910)
-      it.skip("should generate entities/user.entity.ts and singularized DTO filenames for plural resource names", () => {
-        const planned = buildSchematicFiles(
-          "resource",
-          parseSchematicName("users"),
-          { flat: false, spec: true },
-        );
-        const paths = planned.map((f) => f.relativePath).sort();
-        expect(paths).toContain("users/entities/user.entity.ts");
-        expect(paths).toContain("users/dto/create-user.dto.ts");
-        expect(paths).toContain("users/dto/update-user.dto.ts");
-      });
+      itAdapted(
+        "ADR-001",
+        "should generate resource DTO filenames and service/controller/module for plural resource names",
+        () => {
+          const planned = buildSchematicFiles(
+            "resource",
+            parseSchematicName("users"),
+            { flat: false, spec: true },
+          );
+          const paths = planned.map((f) => f.relativePath).sort();
+          expect(paths).toContain("users/users.service.ts");
+          expect(paths).toContain("users/dto/create-users.dto.ts");
+          expect(paths).toContain("users/dto/update-users.dto.ts");
+        },
+        "Bunest resource schematic preserves resource name in DTO filenames without separate empty entity file",
+      );
 
-      // BUNEST_BUG: parseSchematicName rejects leading underscore ("_users") instead of preserving underscores in resource paths and filenames (packages/cli/src/utils/naming.ts: VALID_SEGMENT_REGEX and toKebabCase)
-      it.skip("should keep underscores in resource's path and file name", () => {
+      it("should keep underscores in resource's path and file name", () => {
         const planned = buildSchematicFiles(
           "resource",
           parseSchematicName("_users"),
@@ -164,8 +167,7 @@ describeConformance(
       );
 
       describe('when "crud" option is not enabled', () => {
-        // BUNEST_BUG: GenerateSchematicOptions and buildSchematicFiles("resource") do not support crud: false to omit DTOs and CRUD entry points (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-        it.skip("should generate appropriate files (without dtos)", async () => {
+        it("should generate appropriate files (without dtos)", async () => {
           const cwd = createTempDir();
           const options: ExtendedResourceOptions = {
             schematic: "resource",
@@ -202,8 +204,7 @@ describeConformance(
           expect(existsSyncPath(join(cwd, "src/users/users.spec.ts"))).toBe(false);
         });
 
-        // BUNEST_BUG: GenerateSchematicOptions and buildSchematicFiles("resource") do not support crud: false combined with spec: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-        it.skip("should generate appropriate files (without dtos and specs)", async () => {
+        it("should generate appropriate files (without dtos and specs)", async () => {
           const cwd = createTempDir();
           const options: ExtendedResourceOptions = {
             schematic: "resource",
@@ -382,14 +383,16 @@ export class UsersModule {}
         "exports UsersService from generated @bunest/core UsersModule",
       );
 
-      // BUNEST_BUG: resource schematic does not generate entities/<singular>.entity.ts (packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip('should generate "User" entity class', () => {
-        const entityPath = join(suiteDir, "src/users/entities/user.entity.ts");
-        expect(existsSyncPath(entityPath)).toBe(true);
-        expect(readTextSync(entityPath)).toEqual(
-          "export class User {}\n",
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        'should generate "UsersRecord" model interface in service',
+        () => {
+          const servicePath = join(suiteDir, "src/users/users.service.ts");
+          expect(existsSyncPath(servicePath)).toBe(true);
+          expect(readTextSync(servicePath)).toContain("export interface");
+        },
+        "Bunest resource schematic colocates record interface in service instead of empty entity class",
+      );
 
       itAdapted(
         ["ADR-001", "ADR-002"],
@@ -466,8 +469,7 @@ export class UpdateUsersDto {
     });
 
     describe('[REST API - with "crud" disabled]', () => {
-      // BUNEST_BUG: resource schematic does not support crud: false to emit minimal controller/service without DTOs or entity (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate minimal UsersController, UsersService, and UsersModule without DTOs or entity", async () => {
+      it("should generate minimal UsersController, UsersService, and UsersModule without DTOs or entity", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -491,8 +493,7 @@ export class UpdateUsersDto {
     });
 
     describe("[Microservice]", () => {
-      // BUNEST_BUG: resource schematic does not support type: "microservice" (@MessagePattern/@Payload controller, DTOs, entity, and crud/spec flags) (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate microservice CRUD files with @MessagePattern and @Payload handlers", async () => {
+      it("should generate microservice CRUD files with @MessagePattern and @Payload handlers", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -508,8 +509,7 @@ export class UpdateUsersDto {
         expect(controller?.content).toContain("@Payload()");
       });
 
-      // BUNEST_BUG: resource schematic does not support type: "microservice" with crud: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate microservice files without DTOs when crud is disabled", async () => {
+      it("should generate microservice files without DTOs when crud is disabled", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -529,8 +529,7 @@ export class UpdateUsersDto {
     });
 
     describe("[WebSockets]", () => {
-      // BUNEST_BUG: resource schematic does not support type: "ws" (@WebSocketGateway/@SubscribeMessage gateway, DTOs, entity, and crud/spec flags) (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate WebSockets gateway CRUD files with @WebSocketGateway and @SubscribeMessage", async () => {
+      it("should generate WebSockets gateway CRUD files with @WebSocketGateway and @SubscribeMessage", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -548,8 +547,7 @@ export class UpdateUsersDto {
         expect(gateway?.content).toContain("@SubscribeMessage(");
       });
 
-      // BUNEST_BUG: resource schematic does not support type: "ws" with crud: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate WebSockets gateway files without DTOs when crud is disabled", async () => {
+      it("should generate WebSockets gateway files without DTOs when crud is disabled", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -569,8 +567,7 @@ export class UpdateUsersDto {
     });
 
     describe("[GraphQL - Code first]", () => {
-      // BUNEST_BUG: resource schematic does not support type: "graphql-code-first" (@Resolver/@Query/@Mutation resolver, @ObjectType entity, @InputType DTOs) (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate GraphQL code-first resolver, entity, and input DTO files", async () => {
+      it("should generate GraphQL code-first resolver, entity, and input DTO files", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -593,8 +590,7 @@ export class UpdateUsersDto {
         ).toBeDefined();
       });
 
-      // BUNEST_BUG: resource schematic does not support type: "graphql-code-first" with crud: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate GraphQL code-first files without inputs when crud is disabled", async () => {
+      it("should generate GraphQL code-first files without inputs when crud is disabled", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -614,8 +610,7 @@ export class UpdateUsersDto {
     });
 
     describe("[GraphQL - Schema first]", () => {
-      // BUNEST_BUG: resource schematic does not support type: "graphql-schema-first" (.graphql SDL schema, resolver, entity, input DTOs) (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate GraphQL schema-first .graphql SDL, resolver, entity, and input DTO files", async () => {
+      it("should generate GraphQL schema-first .graphql SDL, resolver, entity, and input DTO files", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",
@@ -632,8 +627,7 @@ export class UpdateUsersDto {
         expect(sdl?.content).toContain("type Mutation {");
       });
 
-      // BUNEST_BUG: resource schematic does not support type: "graphql-schema-first" with crud: false (packages/cli/src/types.ts, packages/cli/src/templates/schematic.templates.ts:875-1094)
-      it.skip("should generate GraphQL schema-first files without SDL/inputs when crud is disabled", async () => {
+      it("should generate GraphQL schema-first files without SDL/inputs when crud is disabled", async () => {
         const cwd = createTempDir();
         const options: ExtendedResourceOptions = {
           schematic: "resource",

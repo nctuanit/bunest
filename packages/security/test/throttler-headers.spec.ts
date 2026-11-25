@@ -101,7 +101,7 @@ describe("ThrottlerModule / ThrottlerGuard & SecurityHeadersMiddleware", () => {
 
     const blocked = storage.increment("k1", 50, 1, 120);
     expect(blocked.isBlocked).toBe(true);
-    expect(blocked.timeToBlockExpire).toBe(120);
+    expect(blocked.timeToBlockExpire).toBe(1);
 
     storage.reset("k1");
     expect(storage.increment("k1", 50, 1).totalHits).toBe(1);

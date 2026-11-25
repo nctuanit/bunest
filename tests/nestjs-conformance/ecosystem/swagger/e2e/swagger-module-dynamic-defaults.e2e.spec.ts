@@ -116,8 +116,7 @@ describeConformance(
         "x-since"
       ]?.schema;
 
-    // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1842-1843) copies inline @ApiQuery({ schema: { default: new Date(...) } }) verbatim without stripping dynamic defaults when excludeDynamicDefaults: true
-    it.skip("strips dynamic defaults from query parameters", async () => {
+    it("strips dynamic defaults from query parameters", async () => {
       const app = await BunestFactory.create(AppModule, { logger: false });
       try {
         await app.init();
@@ -144,8 +143,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: SwaggerModule (packages/swagger/src/swagger-module.ts:1936,2128) does not run a document-wide stripDynamicDefaults pass over inline @ApiBody, @ApiResponse, @ApiOperation, header, and parameter content schemas
-    it.skip("strips dynamic defaults from inline body and response schemas", async () => {
+    it("strips dynamic defaults from inline body and response schemas", async () => {
       const app = await BunestFactory.create(AppModule, { logger: false });
       try {
         await app.init();

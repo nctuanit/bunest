@@ -87,8 +87,7 @@ describeConformance(
       expect(props.tags?.default).toEqual(["a", "b"]);
     });
 
-    // BUNEST_BUG: SchemaExplorer.applyApiPropertyOptionsToSchema (packages/swagger/src/schema-explorer.ts:718-720) only treats functions and Date as dynamic defaults, missing non-plain class instances (new Foo())
-    it.skip("should remove class instance defaults that are not Date", () => {
+    it("should remove class instance defaults that are not Date", () => {
       class Foo {}
       class Dto {
         @ApiProperty({ type: "object", default: new Foo() })
@@ -105,8 +104,7 @@ describeConformance(
       expect(props.foo?.default).toBeUndefined();
     });
 
-    // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:717-726,801-803) does not recursively strip dynamic defaults inside nested allOf/oneOf/anyOf schemas
-    it.skip("should strip defaults from nested allOf/oneOf/anyOf schemas", () => {
+    it("should strip defaults from nested allOf/oneOf/anyOf schemas", () => {
       class Dto {
         @ApiProperty({
           allOf: [
@@ -128,8 +126,7 @@ describeConformance(
       expect(composed.allOf[0].properties.ts.default).toBeUndefined();
     });
 
-    // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:717-726,795-797) does not strip dynamic defaults inside additionalProperties schemas
-    it.skip("should strip defaults from additionalProperties schemas", () => {
+    it("should strip defaults from additionalProperties schemas", () => {
       class Dto {
         @ApiProperty({
           type: "object",

@@ -99,6 +99,11 @@ export interface BunestMetadataPluginOptions {
    */
   outDir?: string;
   /**
+   * Custom output filename for static `generateMetadataFile()`.
+   * @default "metadata.ts"
+   */
+  filename?: string;
+  /**
    * Project root directory for resolving relative paths.
    */
   rootDir?: string;
@@ -2059,6 +2064,26 @@ function toImportSpecifier(
   return esmCompatible ? `${rel}.js` : rel;
 }
 
+async function detectTsconfigEsmCompatible(rootDir: string): Promise<boolean> {
+  const tsconfigPath = join(rootDir, "tsconfig.json");
+  try {
+    const file = Bun.file(tsconfigPath);
+    if (!(await file.exists())) return false;
+    const raw = await file.text();
+    const stripped = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/,\s*([}\]])/g, "$1");
+    const parsed = JSON.parse(stripped) as {
+      compilerOptions?: { moduleResolution?: string };
+    };
+    const mr = parsed.compilerOptions?.moduleResolution?.toLowerCase();
+    return mr === "nodenext" || mr === "node16";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build-time static metadata generator emitting a `metadata.ts` file directly
  * loadable by `SwaggerModule.loadPluginMetadata(metadata)` (compatible with
@@ -2070,8 +2095,11 @@ export async function generateMetadataFile(
   const rootDir = resolve(options.rootDir ?? process.cwd());
   const sourceDir = resolve(rootDir, options.pathToSource ?? "src");
   const outDir = resolve(rootDir, options.outDir ?? sourceDir);
-  const outputPath = join(outDir, "metadata.ts");
-  const esmCompatible = options.esmCompatible === true;
+  const outputPath = join(outDir, options.filename ?? "metadata.ts");
+  const esmCompatible =
+    options.esmCompatible !== undefined
+      ? options.esmCompatible === true
+      : await detectTsconfigEsmCompatible(rootDir);
   const dtoSuffixes = normalizeSuffixes(
     options.dtoFileNameSuffix,
     DEFAULT_DTO_SUFFIXES,
@@ -2214,7 +2242,12 @@ ${controllerEntries.join(",\n")}
 `;
 
   await ensureDir(dirname(outputPath));
-  await Bun.write(outputPath, code);
+  const existingFile = Bun.file(outputPath);
+  const shouldWrite =
+    !(await existingFile.exists()) || (await existingFile.text()) !== code;
+  if (shouldWrite) {
+    await Bun.write(outputPath, code);
+  }
 
   return {
     outputPath,

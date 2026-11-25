@@ -96,8 +96,7 @@ describeConformance(
     const isOneOf = (name: string) =>
       (schema.getType(name) as GraphQLInputObjectType).isOneOf;
 
-    // BUNEST_BUG: Expected ProjectLookupInput.isOneOf and TeamLookupInput.isOneOf to inherit true from abstract parent LookupInput (@InputType({ isOneOf: true })), got false; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateInputType) reads only own InputTypeMetadata where child @InputType() overwrites isOneOf with undefined instead of walking the prototype chain.
-    it.skip('should inherit "isOneOf" from a parent input type', () => {
+    it('should inherit "isOneOf" from a parent input type', () => {
       expect(isOneOf("ProjectLookupInput")).toBe(true);
       expect(isOneOf("TeamLookupInput")).toBe(true);
     });
@@ -106,8 +105,7 @@ describeConformance(
       expect(isOneOf("ProjectFilterInput")).toBe(false);
     });
 
-    // BUNEST_BUG: Expected AccountSelector and DerivedAccountSelector decorated with @Directive('@oneOf') to have GraphQLInputObjectType.isOneOf === true, got false; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateInputType) does not inspect @Directive('@oneOf') annotations on the class or its ancestors.
-    it.skip('should mark an input type with the "@oneOf" directive as OneOf', () => {
+    it('should mark an input type with the "@oneOf" directive as OneOf', () => {
       expect(isOneOf("AccountSelector")).toBe(true);
       expect(isOneOf("DerivedAccountSelector")).toBe(true);
       expect(isOneOf("PlainInput")).toBe(false);

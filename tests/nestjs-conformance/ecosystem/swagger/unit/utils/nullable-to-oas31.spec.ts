@@ -102,8 +102,7 @@ describeConformance(
     });
 
     describe("enums", () => {
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) does not append null to `enum` values when nullable: true in OAS 3.1
-      it.skip("adds null to the enum values", () => {
+      it("adds null to the enum values", () => {
         expect(
           exploreProperty31({
             type: "string",
@@ -129,8 +128,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) wraps a typeless enum in anyOf instead of appending null to enum values
-      it.skip("adds null to an enum that declares no type", () => {
+      it("adds null to an enum that declares no type", () => {
         expect(
           exploreProperty31({
             schema: { enum: ["a"] },
@@ -166,8 +164,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) does not unwrap OAS 3.0 single-element allOf: [{ $ref }] + type: "object" into OAS 3.1 anyOf: [{ $ref }, { type: "null" }]
-      it.skip("unwraps the 3.0 allOf wrapper emitted for nullable references", () => {
+      it("unwraps the 3.0 allOf wrapper emitted for nullable references", () => {
         expect(
           exploreProperty31({
             schema: {
@@ -199,8 +196,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) wraps sibling keywords (title, deprecated) inside the anyOf branch instead of keeping them outside the union
-      it.skip("keeps sibling keywords outside the union", () => {
+      it("keeps sibling keywords outside the union", () => {
         expect(
           exploreProperty31({
             schema: {
@@ -224,8 +220,7 @@ describeConformance(
     });
 
     describe("untyped and non-nullable schemas", () => {
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) wraps a pure annotation schema ({ description }) in anyOf instead of dropping redundant nullable
-      it.skip("drops a nullable keyword that asserts nothing", () => {
+      it("drops a nullable keyword that asserts nothing", () => {
         expect(
           exploreProperty31({
             schema: { description: "anything" },
@@ -254,8 +249,7 @@ describeConformance(
     });
 
     describe("exclusive bounds", () => {
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:747-755) does not convert OAS 3.0 boolean exclusiveMinimum/exclusiveMaximum + minimum/maximum into OAS 3.1 numeric bounds
-      it.skip("turns boolean exclusive bounds into the bounds they qualify", () => {
+      it("turns boolean exclusive bounds into the bounds they qualify", () => {
         expect(
           exploreProperty31({
             type: "integer",
@@ -271,8 +265,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:747-755) does not strip boolean exclusiveMinimum: false / exclusiveMaximum: false for OAS 3.1
-      it.skip("drops exclusive bounds set to false", () => {
+      it("drops exclusive bounds set to false", () => {
         expect(
           exploreProperty31({
             type: "number",
@@ -288,8 +281,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:747-755) does not drop dangling boolean exclusiveMinimum: true without minimum for OAS 3.1
-      it.skip("drops a boolean exclusive bound that has no bound to qualify", () => {
+      it("drops a boolean exclusive bound that has no bound to qualify", () => {
         expect(
           exploreProperty31({ type: "number", exclusiveMinimum: true }),
         ).toEqual({
@@ -311,8 +303,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: SchemaExplorer (packages/swagger/src/schema-explorer.ts:747-755) does not convert boolean exclusiveMinimum on nullable OAS 3.1 schemas
-      it.skip("converts the bounds of a nullable schema", () => {
+      it("converts the bounds of a nullable schema", () => {
         expect(
           exploreProperty31({
             type: "integer",
@@ -328,8 +319,7 @@ describeConformance(
     });
 
     describe("nested positions", () => {
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) does not recursively convert nested items, additionalProperties, or patternProperties
-      it.skip("converts nested properties, items and additionalProperties", () => {
+      it("converts nested properties, items and additionalProperties", () => {
         expect(
           exploreProperty31({
             type: "object",
@@ -371,8 +361,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: applyNullable31 (packages/swagger/src/schema-explorer.ts:360-380) does not recursively convert nullable inside allOf/oneOf/anyOf/not combinators
-      it.skip('converts schemas nested inside combinators and "not"', () => {
+      it('converts schemas nested inside combinators and "not"', () => {
         expect(
           exploreProperty31({
             schema: {
@@ -435,8 +424,7 @@ describeConformance(
     });
 
     describe("document positions outside components.schemas", () => {
-      // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts) does not run a document-wide OAS 3.1 nullable normalization pass over parameters, headers, inline requestBodies, and response headers
-      it.skip("converts parameters, request bodies, responses and headers", async () => {
+      it("converts parameters, request bodies, responses and headers", async () => {
         class EventPayload {
           @ApiProperty({ type: "string", nullable: true })
           val!: string | null;
@@ -489,8 +477,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: SwaggerModule.createDocument (packages/swagger/src/swagger-module.ts:2116) does not convert nullable schemas inside response headers (e.g. default response x-request-id header) for OAS 3.1
-      it.skip("converts the default response and skips extensions next to it", async () => {
+      it("converts the default response and skips extensions next to it", async () => {
         class ErrorModel {
           @ApiProperty()
           msg!: string;
@@ -533,8 +520,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: SwaggerModule.buildParameters (packages/swagger/src/swagger-module.ts:1858) leaves raw nullable: true on @ApiQuery parameter schemas instead of converting to OAS 3.1 type unions
-      it.skip("converts entries named like data keywords in other name-keyed maps", async () => {
+      it("converts entries named like data keywords in other name-keyed maps", async () => {
         @Controller("cats")
         class KeywordNamesController {
           @Post()

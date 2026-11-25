@@ -22,7 +22,13 @@ export class FrameDecoder {
   private readonly maxFrameBytes: number;
 
   constructor(maxFrameBytes: number = DEFAULT_MAX_FRAME_BYTES) {
-    this.maxFrameBytes = Math.max(1024, Math.floor(maxFrameBytes));
+    if (typeof maxFrameBytes !== "number" || Number.isNaN(maxFrameBytes)) {
+      this.maxFrameBytes = DEFAULT_MAX_FRAME_BYTES;
+    } else if (maxFrameBytes === Infinity) {
+      this.maxFrameBytes = Infinity;
+    } else {
+      this.maxFrameBytes = Math.max(1024, Math.floor(maxFrameBytes));
+    }
   }
 
   push<T = unknown>(chunk: Uint8Array | Buffer): T[] {
@@ -62,6 +68,10 @@ export class FrameDecoder {
     }
 
     return messages;
+  }
+
+  get hasPendingBytes(): boolean {
+    return this.buffer.byteLength > 0;
   }
 
   reset(): void {

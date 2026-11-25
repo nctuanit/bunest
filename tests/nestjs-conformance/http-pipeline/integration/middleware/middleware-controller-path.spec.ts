@@ -86,8 +86,7 @@ describeConformance(
       await request(app!).get("/cats").expect(200, MIDDLEWARE_VALUE);
     });
 
-    // BUNEST_BUG: Expected GET /parent/tail/child to run middleware ("middleware"), got "test". packages/core/src/module/middleware-consumer.ts (toRouteInfos) derives controller routes solely from @Controller() metadata ("/tail", "/tail/*") without RouterModule prefixes, while packages/core/src/http/scanner/controller-scanner.ts prepends RouterModule prefix into rawPathWithoutPrefix ("/parent/tail/child"), causing matchesMiddlewareForRoute to miss.
-    it.skip("runs for a controller path ending in a slash under a RouterModule path", async () => {
+    it("runs for a controller path ending in a slash under a RouterModule path", async () => {
       await createApp([
         RouterModule.register([{ path: "parent", module: TestModule }]),
       ]);

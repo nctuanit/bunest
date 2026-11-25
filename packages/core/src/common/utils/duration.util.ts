@@ -46,10 +46,10 @@ export function parseDuration(duration: Duration): number {
     }
     return duration;
   }
-  const matched = DURATION_PATTERN.exec(duration);
+  const matched = isString(duration) ? DURATION_PATTERN.exec(duration) : null;
   if (not(Boolean(matched))) {
     throw new TypeError(
-      `Invalid duration "${duration}". Use milliseconds or a string such as "15m" or "3d".`,
+      `Invalid duration "${String(duration)}". Use milliseconds or a string such as "15m" or "3d".`,
     );
   }
   const amount = Number(matched![1]);

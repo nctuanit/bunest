@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(421);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Misdirected", 421) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Misdirected"` in getResponse(), whereas NestJS returns `{ message: "Misdirected", statusCode: 421 }`.
-    it.skip('should return "Misdirected" as default message', () => {
+    it('should return "Misdirected" as default message', () => {
       const exc = new MisdirectedException();
       expect(exc.getResponse()).toEqual({
         message: "Misdirected",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new MisdirectedException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

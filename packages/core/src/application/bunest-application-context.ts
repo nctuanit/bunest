@@ -1,4 +1,5 @@
 import {
+  ConsoleLogger,
   Logger,
   ShutdownSignal,
   isDynamicModule,
@@ -151,10 +152,13 @@ export class BunestApplicationContext {
   protected logger: LoggerService;
   protected isInitialized = false;
   protected isClosed = false;
+  protected initPromise?: Promise<this>;
   protected scopeModuleId: string;
   protected readonly strictDefault: boolean;
   protected contextModule?: ModuleNode;
   protected readonly appOptions: BunestApplicationContextOptions;
+  private didOverrideGlobalLogger = false;
+  private previousGlobalLogger?: LoggerService;
 
   constructor(
     protected readonly container: DIContainer,
@@ -185,12 +189,29 @@ export class BunestApplicationContext {
       }
     });
 
+    if ((options as { forceConsole?: boolean }).forceConsole === true) {
+      if (!this.didOverrideGlobalLogger) {
+        this.didOverrideGlobalLogger = true;
+        this.previousGlobalLogger = Logger.staticInstanceRef;
+      }
+      Logger.overrideLogger(new ConsoleLogger({ forceConsole: true }));
+    }
+
     const initialLogger = resolveLoggerService(options.logger);
     this.loggerAdapter = new ApplicationLoggerAdapter(
       initialLogger,
       options.bufferLogs === true,
     );
     this.logger = this.loggerAdapter;
+
+    if (options.bufferLogs === true) {
+      if (!this.didOverrideGlobalLogger) {
+        this.didOverrideGlobalLogger = true;
+        this.previousGlobalLogger = Logger.staticInstanceRef;
+      }
+      Logger.overrideLogger(this.loggerAdapter);
+      Logger.attachBuffer();
+    }
 
     if (options.shutdownHooks) {
       this.enableShutdownHooks();
@@ -201,11 +222,30 @@ export class BunestApplicationContext {
     if (this.isInitialized && this.lifecycle.getIsInitialized()) {
       return this;
     }
-    const groups = this.container.getSingletonInstancesByModule();
-    await this.lifecycle.callModuleInit(groups);
-    await this.lifecycle.callApplicationBootstrap(groups);
-    this.isInitialized = true;
-    return this;
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+    const runInit = async (): Promise<this> => {
+      try {
+        const groups = this.container.getSingletonInstancesByModule();
+        await this.lifecycle.callModuleInit(groups);
+        await this.lifecycle.callApplicationBootstrap(groups);
+        this.isInitialized = true;
+        return this;
+      } catch (err) {
+        this.flushLogsIfAutoFlushEnabled();
+        this.restoreGlobalLogger();
+        throw err;
+      } finally {
+        this.flushLogsIfAutoFlushEnabled();
+      }
+    };
+    this.initPromise = runInit();
+    try {
+      return await this.initPromise;
+    } finally {
+      this.initPromise = undefined;
+    }
   }
 
   get<K extends keyof BunestTokenRegistry>(
@@ -236,11 +276,19 @@ export class BunestApplicationContext {
       strict: options?.strict ?? this.strictDefault,
       each: options?.each,
     };
-    return this.container.getSync<TResult>(
-      token as InjectionToken<TResult>,
-      this.scopeModuleId,
-      resolvedOptions,
-    );
+    try {
+      return this.container.getSync<TResult>(
+        token as InjectionToken<TResult>,
+        this.scopeModuleId,
+        resolvedOptions,
+      );
+    } catch (err) {
+      if (this.options.abortOnError === true) {
+        process.exit(1);
+        return undefined as unknown as TResult;
+      }
+      throw err;
+    }
   }
 
   resolve<K extends keyof BunestTokenRegistry>(
@@ -303,10 +351,16 @@ export class BunestApplicationContext {
    */
   select<T>(
     moduleType: Type<T> | DynamicModule,
-    _options?: { abortOnError?: boolean },
+    selectOptions?: { abortOnError?: boolean },
   ): BunestApplicationContext {
+    const effectiveAbortOnError =
+      selectOptions?.abortOnError ?? this.options.abortOnError;
     const targetNode = this.findModuleNode(moduleType);
     if (!targetNode) {
+      if (effectiveAbortOnError === true) {
+        process.exit(1);
+        return this;
+      }
       const label = isDynamicModule(moduleType)
         ? moduleType.module.name || "<DynamicModule>"
         : moduleType.name || "<anonymous>";
@@ -319,6 +373,9 @@ export class BunestApplicationContext {
       this.container,
       {
         ...this.options,
+        ...(selectOptions?.abortOnError !== undefined
+          ? { abortOnError: selectOptions.abortOnError }
+          : {}),
         shutdownHooks: false,
         lifecycleManager: this.lifecycle,
       },
@@ -336,6 +393,9 @@ export class BunestApplicationContext {
 
   flushLogs(): void {
     this.loggerAdapter.flush();
+    if (this.options.bufferLogs === true) {
+      Logger.flush();
+    }
   }
 
   flushLogsOnOverride(): void {
@@ -385,28 +445,56 @@ export class BunestApplicationContext {
   }
 
   async close(signal?: string): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise.catch(() => {});
+    }
     if (this.isClosed && this.lifecycle.getIsClosed()) {
+      this.lifecycle.cleanupShutdownHooks();
       return;
     }
     this.isClosed = true;
-    await this.prepareClose();
+    const prep = this.prepareClose();
+    if (prep) {
+      await prep;
+    }
     if (this.lifecycle.getIsClosed()) {
       try {
         await this.dispose();
       } finally {
         await this.container.destroyContextContainers();
+        this.restoreGlobalLogger();
       }
       return;
     }
     const groups = this.container.getSingletonInstancesByModule();
-    await this.lifecycle.callShutdown(groups, signal, async () => {
-      await this.dispose();
-      await this.container.destroyContextContainers();
-    });
+    try {
+      await this.lifecycle.callShutdown(groups, signal, () => {
+        const disposed = this.dispose();
+        if (disposed) {
+          return disposed.then(() => this.container.destroyContextContainers());
+        }
+        return this.container.destroyContextContainers();
+      });
+    } finally {
+      this.restoreGlobalLogger();
+    }
   }
 
-  protected async stopTransport(): Promise<void> {
+  protected restoreGlobalLogger(): void {
+    if (this.didOverrideGlobalLogger) {
+      this.didOverrideGlobalLogger = false;
+      Logger.detachBuffer();
+      Logger.overrideLogger(this.previousGlobalLogger ?? true);
+      this.previousGlobalLogger = undefined;
+    }
+  }
+
+  protected stopTransport(): Promise<void> | void {
     // Subclasses (e.g. BunestApplication) override to stop HTTP/WS servers before destroy hooks
+  }
+
+  protected dispose(): Promise<void> | void {
+    return this.stopTransport();
   }
 
   protected flushLogsIfAutoFlushEnabled(): void {
@@ -447,12 +535,8 @@ export class BunestApplicationContext {
     await this.close(signal);
   }
 
-  protected async prepareClose(): Promise<void> {
+  protected prepareClose(): Promise<void> | void {
     // Subclasses override to enter closing/draining state before shutdown hooks
-  }
-
-  protected async dispose(): Promise<void> {
-    await this.stopTransport();
   }
 
   protected async shutdown(signal?: string): Promise<void> {

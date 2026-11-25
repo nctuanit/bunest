@@ -150,8 +150,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: SwaggerModule.buildRequestBody (packages/swagger/src/swagger-module.ts:1933) returns early on @ApiBody before applying @Body({ schema }) overrides, and buildParameters (:1687-1743) ignores rp.schema for @Query({ schema }) / @Param("id", { schema })
-    it.skip("should generate standard schema overrides for body, query, param, unions, enums, and nested metadata", () => {
+    it("should generate standard schema overrides for body, query, param, unions, enums, and nested metadata", () => {
       const document = SwaggerModule.createDocument(
         app,
         new DocumentBuilder()

@@ -11,6 +11,7 @@ import {
 import {
   extractRequestCookies,
   extractSignedCookies,
+  parseCookieHeader,
   signCookieValue,
 } from "../security/cookie";
 import { extractClientIp } from "../security/ip";
@@ -114,6 +115,8 @@ export class RequestContext {
   private maxBodyBytes?: number;
 
   private _responseContext?: HttpResponseContext;
+  private _sseAbortController?: AbortController;
+  private _sseSignalEnabled = false;
   private _corsHeaders?: Headers;
   private _pathname?: string;
   private _params?: Record<string, string>;
@@ -184,6 +187,35 @@ export class RequestContext {
     return this.request.signal;
   }
 
+  enableSseSignal(): void {
+    this._sseSignalEnabled = true;
+  }
+
+  getSseSignal(): AbortSignal {
+    if (!this._sseSignalEnabled && !this._sseAbortController) {
+      return this.request.signal;
+    }
+    if (!this._sseAbortController) {
+      const ac = new AbortController();
+      this._sseAbortController = ac;
+      const reqSignal = this.request.signal;
+      if (reqSignal.aborted) {
+        ac.abort(reqSignal.reason);
+      } else {
+        reqSignal.addEventListener("abort", () => ac.abort(reqSignal.reason), {
+          once: true,
+        });
+      }
+    }
+    return this._sseAbortController.signal;
+  }
+
+  abortSseSignal(): void {
+    if (this._sseAbortController && !this._sseAbortController.signal.aborted) {
+      this._sseAbortController.abort();
+    }
+  }
+
   get params(): Record<string, string> {
     if (!this._params) {
       if (!this._rawParams) {
@@ -233,9 +265,15 @@ export class RequestContext {
   }
 
   get signedCookies(): Record<string, string> {
+    if (!this.cookieSecrets || this.cookieSecrets.length === 0) {
+      throw new Error(
+        "Cookie secret is required to read signed cookies. Configure { cookies: { secret } } when creating the application.",
+      );
+    }
     if (!this.cachedSignedCookies) {
+      const rawCookies = parseCookieHeader(this.request.headers.get("cookie"));
       this.cachedSignedCookies = extractSignedCookies(
-        this.cookies,
+        rawCookies,
         this.cookieSecrets,
       );
     }
@@ -308,5 +346,24 @@ export class RequestContext {
   async getUploadedFiles(): Promise<readonly UploadedFileInfo[]> {
     const parsed = await this.ensureBodyParsed();
     return parsed.files;
+  }
+
+  async cleanupUploadedDiskFiles(): Promise<void> {
+    if (!this.bodyPromise) {
+      return;
+    }
+    try {
+      const parsed = await this.bodyPromise;
+      for (let i = 0; i < parsed.files.length; i++) {
+        const file = parsed.files[i] as UploadedFileInfo & { path?: string };
+        if (file?.path) {
+          await Bun.file(file.path)
+            .delete()
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // Body parsing itself already failed and cleaned up its own partial files
+    }
   }
 }

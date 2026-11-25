@@ -55,8 +55,7 @@ describeConformance(
       return { JWT_SECRET: "from-secret-store" };
     };
 
-    // BUNEST_BUG: Plain `ConfigModule` (without .forRoot()) declares empty `@Module({})` instead of providing/exporting `ConfigService` via a shared ConfigHostModule, throwing UnknownDependencyException for ConfigService in AuthModule (packages/core/src/config/config.module.ts:27)
-    it.skip('should provide ConfigService to a plain "ConfigModule" import once async "load" factories are merged', async () => {
+    it('should provide ConfigService to a plain "ConfigModule" import once async "load" factories are merged', async () => {
       @Module({
         imports: [ConfigModule],
         providers: [
@@ -82,8 +81,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: ConfigModule.forFeature() only exports configFactory.KEY and does not provide/export ConfigService (nor wait for async feature factory before ConfigService is injected in non-global setups), throwing UnknownDependencyException for ConfigService in AuthModule (packages/core/src/config/config.module.ts:209-233)
-    it.skip('should provide ConfigService of "forFeature" once its async factory is merged', async () => {
+    it('should provide ConfigService of "forFeature" once its async factory is merged', async () => {
       const authConfig = registerAs("auth", async () => {
         await Bun.sleep(20);
         return { secret: "from-secret-store" };
@@ -111,8 +109,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: Plain `ConfigModule` declares `@Module({})` without providing/exporting `ConfigService`, throwing UnknownDependencyException when imported without .forRoot() (packages/core/src/config/config.module.ts:27)
-    it.skip('should provide ConfigService to a plain "ConfigModule" import without "forRoot"', async () => {
+    it('should provide ConfigService to a plain "ConfigModule" import without "forRoot"', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [ConfigModule],
       }).compile();

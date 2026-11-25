@@ -315,8 +315,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, throwing `Unknown directive "@key". Cannot extend type "Query" because it is not defined.` on schema-first Federation SDL.
-      it.skip("should return query result", async () => {
+      it("should return query result", async () => {
         await request(app)
           .post("/graphql")
           .send({
@@ -340,8 +339,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation`, rejects Federation SDL (`@key`, `extend type Query`), and does not synthesize `_service`/`_entities` or bind `@ResolveReference()` in schema-first mode.
-      it.skip("should resolve references", async () => {
+      it("should resolve references", async () => {
         await request(app)
           .post("/graphql")
           .send({
@@ -401,8 +399,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, throwing SDL errors (`Unknown directive "@key"`, `Unknown directive "@external"`, `Cannot extend type "User"/"Query"/"Mutation"`).
-      it.skip("should return query result", async () => {
+      it("should return query result", async () => {
         await request(app)
           .post("/graphql")
           .send({
@@ -430,8 +427,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, rejecting `extend type User @key(fields: "id")` and `@external`.
-      it.skip("should return a stripped reference", async () => {
+      it("should return a stripped reference", async () => {
         await request(app)
           .post("/graphql")
           .send({
@@ -465,8 +461,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` (rejecting Federation SDL `extend type Mutation` / `@key`) AND never binds `@Scalar()` (`DateScalar`) providers in schema-first mode.
-      it.skip("should handle scalars", async () => {
+      it("should handle scalars", async () => {
         await request(app)
           .post("/graphql")
           .send({
@@ -494,8 +489,7 @@ describeConformance(
           });
       });
 
-      // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, rejecting `extend type Query` / `@key` / `@external`.
-      it.skip("should accept enum as query input", async () => {
+      it("should accept enum as query input", async () => {
         await request(app)
           .post("/graphql")
           .send({

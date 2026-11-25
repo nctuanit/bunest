@@ -140,8 +140,7 @@ describeConformance(
           },
         );
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse trailing `{ schema, pipes }` options objects (treats options object as a pipe entry in `restPipes`).
-        it.skip("should preserve custom data with trailing schema and pipe options", () => {
+        it("should preserve custom data with trailing schema and pipe options", () => {
           const data = { schema: "public", region: "eu" };
           const pipe = new ParseIntPipe();
           class Test {
@@ -250,8 +249,7 @@ describeConformance(
           },
         };
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse NestJS v12 `{ schema, pipes }` options objects (treats them as `data`).
-        it.skip("should accept options with a schema and pipe classes and instances", () => {
+        it("should accept options with a schema and pipe classes and instances", () => {
           const pipe = new ParseIntPipe();
           class Test {
             public test(
@@ -273,8 +271,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ pipes }` options objects.
-        it.skip("should accept pipes-only options before positional pipes", () => {
+        it("should accept pipes-only options before positional pipes", () => {
           const pipe = new ParseIntPipe();
           class Test {
             public test(
@@ -292,8 +289,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ pipes: [] }` options objects.
-        it.skip("should accept an empty pipes array as options", () => {
+        it("should accept an empty pipes array as options", () => {
           class Test {
             public test(@Decorator({ pipes: [] } as any) _param: unknown) {}
           }
@@ -303,8 +299,7 @@ describeConformance(
           expect(params[0]?.pipes ?? []).toEqual([]);
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not parse `{ schema }` options objects with callable Standard Schema.
-        it.skip("should accept a callable Standard Schema in options", () => {
+        it("should accept a callable Standard Schema in options", () => {
           const schema = Object.assign((value: unknown) => value, {
             "~standard": mockSchema["~standard"],
           });
@@ -317,8 +312,7 @@ describeConformance(
           expect(params[0]?.schema).toBe(schema);
         });
 
-        // BUNEST_BUG: createParamDecorator() in packages/core/src/common/decorators/params.decorators.ts:260-295 does not recognize options objects with undefined schema/pipes fields.
-        it.skip.each([
+        it.each([
           ["schema", { schema: undefined }],
           ["pipes", { pipes: undefined }],
           ["both", { schema: undefined, pipes: undefined }],
@@ -339,8 +333,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not parse trailing `{ schema }` options.
-          it.skip('should enhance param with "data" and "schema"', () => {
+          it('should enhance param with "data" and "schema"', () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]).toMatchObject({
               data: "testData",
@@ -358,8 +351,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not parse `{ schema }` options.
-          it.skip("should enhance param with schema and no data", () => {
+          it("should enhance param with schema and no data", () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]).toMatchObject({
               data: undefined,
@@ -382,8 +374,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not parse `{ schema, pipes }` options.
-          it.skip("should still treat the object as options", () => {
+          it("should still treat the object as options", () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]?.data).toBeUndefined();
             expect(params[0]?.schema).toBe(mockSchema);
@@ -401,8 +392,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not parse trailing `{ schema }` after positional pipes.
-          it.skip('should enhance param with "data", pipes, and schema', () => {
+          it('should enhance param with "data", pipes, and schema', () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]).toMatchObject({
               data: "testData",
@@ -424,8 +414,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not extract pipes/schema from options object.
-          it.skip('should enhance param with "data", pipes from options, and schema', () => {
+          it('should enhance param with "data", pipes from options, and schema', () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]).toMatchObject({
               data: "testData",
@@ -446,8 +435,7 @@ describeConformance(
             ) {}
           }
 
-          // BUNEST_BUG: createParamDecorator() does not extract `{ pipes }` options object.
-          it.skip('should enhance param with "data" and pipes from options', () => {
+          it('should enhance param with "data" and pipes from options', () => {
             const params = MetadataRegistry.getRouteParameters(Test, "test");
             expect(params[0]).toMatchObject({
               data: "testData",
@@ -461,8 +449,7 @@ describeConformance(
         describe("with options followed by a positional pipe", () => {
           const pipe = new ParseIntPipe();
 
-          // BUNEST_BUG: createParamDecorator() does not merge options placed between data and positional pipes.
-          it.skip("should merge options placed between data and the pipe", () => {
+          it("should merge options placed between data and the pipe", () => {
             class Test {
               public test(
                 @Decorator(
@@ -484,8 +471,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: createParamDecorator() does not merge options placed after undefined data.
-          it.skip("should merge options placed after undefined data", () => {
+          it("should merge options placed after undefined data", () => {
             class Test {
               public test(
                 @Decorator(undefined, { schema: mockSchema } as any, pipe)
@@ -503,8 +489,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: createParamDecorator() does not merge options placed between two pipes.
-          it.skip("should merge options placed between two pipes", () => {
+          it("should merge options placed between two pipes", () => {
             class Test {
               public test(
                 @Decorator(ParseIntPipe, { schema: mockSchema } as any, pipe)
@@ -522,8 +507,7 @@ describeConformance(
             });
           });
 
-          // BUNEST_BUG: createParamDecorator() does not merge consecutive options objects.
-          it.skip("should merge consecutive options objects", () => {
+          it("should merge consecutive options objects", () => {
             class Test {
               public test(
                 @Decorator(
@@ -610,8 +594,7 @@ describeConformance(
     });
 
     describe("when enhancers are passed", () => {
-      // BUNEST_BUG: createParamDecorator(factory, enhancers?) in packages/core/src/common/decorators/params.decorators.ts:260 does not accept or invoke the 2nd `enhancers?: ParamDecoratorEnhancer[]` parameter.
-      it.skip("should apply each enhancer to the decorated parameter", () => {
+      it("should apply each enhancer to the decorated parameter", () => {
         const factoryFn = (_data: unknown, _req: unknown) => true;
         const enhancer = createSpy();
         const anotherEnhancer = createSpy();

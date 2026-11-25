@@ -117,8 +117,7 @@ describeConformance(
         ).toBeUndefined();
       });
 
-      // BUNEST_BUG: W3C Trace Context §3.2.2.1 mandates lowercase hex only and requires rejecting uppercase hex traceparent headers, but `parseTraceParent()` in `packages/observability/src/tracing/trace-context.ts:79` calls `header.trim().toLowerCase()` and accepts uppercase hex.
-      it.skip("refuses upper-case hex per W3C Trace Context §3.2.2.1", () => {
+      it("refuses upper-case hex per W3C Trace Context §3.2.2.1", () => {
         expect(parseTraceParent(TRACEPARENT.toUpperCase())).toBeNull();
         expect(
           extractTraceContext({ traceparent: TRACEPARENT.toUpperCase() }),
@@ -131,8 +130,7 @@ describeConformance(
         ).toBeUndefined();
       });
 
-      // BUNEST_BUG: `parseTraceState()` in `packages/observability/src/tracing/trace-context.ts:143-162` does not validate/reject CR/LF control characters (`\r\n`) in `tracestate` values, allowing header-injection characters through instead of dropping invalid tracestate.
-      it.skip("drops a tracestate containing CRLF characters that an HTTP header cannot carry", () => {
+      it("drops a tracestate containing CRLF characters that an HTTP header cannot carry", () => {
         expect(
           extractTraceContext({
             traceparent: TRACEPARENT,

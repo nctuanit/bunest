@@ -172,8 +172,7 @@ describeConformance(
       ])('when "context" is %s', (_, createContextOption) => {
         beforeEach(() => bootstrap(createContextOption()));
 
-        // BUNEST_BUG: Expected each sequential request to receive a fresh shallow-cloned context with its own req without mutating sharedContext; actual (1) when context is a plain object, packages/graphql/src/driver/graphql-http.handler.ts:829 calls `this.options.context({ req, res })` causing HTTP 500 TypeError, and (2) when context is `() => sharedContext`, lines 831-836 mutate sharedContext in place (`contextValue.req = req`) so subsequent requests skip assignment and all return "first".
-        it.skip('should give each sequential request its own context and "req"', async () => {
+        it('should give each sequential request its own context and "req"', async () => {
           for (const id of ["first", "second", "third"]) {
             await queryRequestId(id).expect(200, {
               data: { requestId: id },
@@ -184,8 +183,7 @@ describeConformance(
           expect(Reflect.ownKeys(sharedContext)).toEqual(["tenant"]);
         });
 
-        // BUNEST_BUG: Expected each concurrent request to receive its own cloned context & req; actual (1) object context throws HTTP 500 TypeError (never enters resolver, times out barrier), and (2) function returning sharedContext mutates sharedContext.req in place so all 5 concurrent requests receive "a" instead of ["a","b","c","d","e"] in packages/graphql/src/driver/graphql-http.handler.ts (executeHttpOperation).
-        it.skip('should give each concurrent request its own context and "req"', async () => {
+        it('should give each concurrent request its own context and "req"', async () => {
           const ids = ["a", "b", "c", "d", "e"];
           let release!: () => void;
           SharedContextResolver.BARRIER = new Promise<void>(
@@ -215,8 +213,7 @@ describeConformance(
       ])(
         'when "context" is %s with its own "req"',
         (_, createContextOption) => {
-          // BUNEST_BUG: Expected static context.req to be preserved while cloning a distinct context object per request (Set size === 2); actual (1) object context throws HTTP 500 TypeError, and (2) function returning sharedContext reuses the same object reference across requests (Set size === 1) in packages/graphql/src/driver/graphql-http.handler.ts (executeHttpOperation).
-          it.skip('should keep that "req" while still giving each request its own context', async () => {
+          it('should keep that "req" while still giving each request its own context', async () => {
             sharedContext.req = { headers: { "x-request-id": "static" } };
             await bootstrap(createContextOption());
 
@@ -262,8 +259,7 @@ describeConformance(
             await app.listen(0);
           });
 
-          // BUNEST_BUG: Expected graphql-ws upgrade on ws://localhost:<port>/graphql to succeed and clone sharedContext per operation; actual WebSocket upgrade fails with non-101 status because packages/graphql/src/driver/graphql-http.handler.ts (onApplicationBootstrap) only calls attachWebSocket() if options.httpAdapter is manually passed (ignores HttpAdapterHost), AND packages/graphql/src/subscriptions/graphql-ws.handler.ts does not inherit GraphQLModuleOptions.context or support object-form context.
-          it.skip("should give each operation its own context", async () => {
+          it("should give each operation its own context", async () => {
             const url =
               app.getUrl()!.replace(/\/$/, "").replace(/^http/, "ws") +
               "/graphql";

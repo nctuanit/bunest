@@ -36,8 +36,7 @@ describeConformance(
       const v8 = "2489e9ad-2ee2-8e00-8ec9-32d5f69181c0";
 
       describe("when validation passes", () => {
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX.all rejects RFC 9562 nil ("00000000-...") and max ("ffffffff-...") UUIDs (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should return string if value is uuid and version is "all"', async () => {
+        it('should return string if value is uuid and version is "all"', async () => {
           target = new ParseUUIDPipe({ version: "all", exceptionFactory });
           for (const uuid of [
             v1,
@@ -57,8 +56,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX & UUIDVersion omit versions "1", "2", "6", "8" and numeric versions (version: 1 crashes with TypeError on undefined regex) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid and version is a number", async () => {
+        it("should return string if value is uuid and version is a number", async () => {
           target = new ParseUUIDPipe({
             version: 1 as unknown as UUIDVersion,
             exceptionFactory,
@@ -94,8 +92,7 @@ describeConformance(
           expect(await target.transform(v5, {} as ArgumentMetadata)).toBe(v5);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe default "all" regex rejects RFC 9562 nil ("00000000-...") and max ("ffffffff-..." / "FFFFFFFF-...") UUIDs (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid v1, v2, v6, v7, v8, nil or max", async () => {
+        it("should return string if value is uuid v1, v2, v6, v7, v8, nil or max", async () => {
           target = new ParseUUIDPipe({ exceptionFactory });
           for (const uuid of [
             v1,
@@ -113,8 +110,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX omits version "1" (throws TypeError) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid v1", async () => {
+        it("should return string if value is uuid v1", async () => {
           target = new ParseUUIDPipe({
             version: "1" as unknown as UUIDVersion,
             exceptionFactory,
@@ -122,8 +118,7 @@ describeConformance(
           expect(await target.transform(v1, {} as ArgumentMetadata)).toBe(v1);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX omits version "2" (throws TypeError) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid v2", async () => {
+        it("should return string if value is uuid v2", async () => {
           target = new ParseUUIDPipe({
             version: "2" as unknown as UUIDVersion,
             exceptionFactory,
@@ -146,8 +141,7 @@ describeConformance(
           expect(await target.transform(v5, {} as ArgumentMetadata)).toBe(v5);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX omits version "6" (throws TypeError) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid v6", async () => {
+        it("should return string if value is uuid v6", async () => {
           target = new ParseUUIDPipe({
             version: "6" as unknown as UUIDVersion,
             exceptionFactory,
@@ -160,8 +154,7 @@ describeConformance(
           expect(await target.transform(v7, {} as ArgumentMetadata)).toBe(v7);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe UUID_REGEX omits version "8" (throws TypeError) (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should return string if value is uuid v8", async () => {
+        it("should return string if value is uuid v8", async () => {
           target = new ParseUUIDPipe({
             version: "8" as unknown as UUIDVersion,
             exceptionFactory,
@@ -180,24 +173,21 @@ describeConformance(
       });
 
       describe("when validation fails", () => {
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (returns Promise in NestJS), causing `expect(target.transform(...)).rejects` to throw synchronously (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error", async () => {
+        it("should throw an error", async () => {
           target = new ParseUUIDPipe({ exceptionFactory });
           await expect(
             target.transform("123a", {} as ArgumentMetadata),
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should throw an error with "uuid is expected" when version is "all"', async () => {
+        it('should throw an error with "uuid is expected" when version is "all"', async () => {
           target = new ParseUUIDPipe({ version: "all" });
           await expect(
             target.transform("invalid-uuid", {} as ArgumentMetadata),
           ).rejects.toThrow("Validation failed (uuid is expected)");
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async, AND formats message as "Validation failed (uuid v4 is expected)" instead of NestJS "Validation failed (uuid v 4 is expected)" (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip('should throw an error with "uuid v 4 is expected" when version is number 4', async () => {
+        it('should throw an error with "uuid v 4 is expected" when version is number 4', async () => {
           target = new ParseUUIDPipe({
             version: 4 as unknown as ParseUUIDPipeOptions["version"],
           });
@@ -206,8 +196,7 @@ describeConformance(
           ).rejects.toThrow("Validation failed (uuid v 4 is expected)");
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error when numeric version does not match", async () => {
+        it("should throw an error when numeric version does not match", async () => {
           target = new ParseUUIDPipe({
             version: 4 as unknown as UUIDVersion,
             exceptionFactory,
@@ -217,16 +206,14 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - not a string", async () => {
+        it("should throw an error - not a string", async () => {
           target = new ParseUUIDPipe({ exceptionFactory });
           await expect(
             target.transform(undefined!, {} as ArgumentMetadata),
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID with an invalid version", async () => {
+        it("should throw an error for a UUID with an invalid version", async () => {
           target = new ParseUUIDPipe({ exceptionFactory });
           for (const invalid of [
             // same as `v4` but with version nibble `0` or `f` instead of `4`
@@ -239,8 +226,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID with an invalid variant", async () => {
+        it("should throw an error for a UUID with an invalid variant", async () => {
           target = new ParseUUIDPipe({ exceptionFactory });
           for (const invalid of [
             // same as `v4` but with variant nibble `0` or `c` instead of `9`
@@ -253,8 +239,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v3", async () => {
+        it("should throw an error - v3", async () => {
           target = new ParseUUIDPipe({ version: "3", exceptionFactory });
           await expect(
             target.transform("123a", {} as ArgumentMetadata),
@@ -267,8 +252,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v3 with an invalid variant", async () => {
+        it("should throw an error for a UUID v3 with an invalid variant", async () => {
           target = new ParseUUIDPipe({ version: "3", exceptionFactory });
           await expect(
             target.transform(
@@ -279,8 +263,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v4", async () => {
+        it("should throw an error - v4", async () => {
           target = new ParseUUIDPipe({ version: "4", exceptionFactory });
           await expect(
             target.transform("123a", {} as ArgumentMetadata),
@@ -293,8 +276,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v5", async () => {
+        it("should throw an error - v5", async () => {
           target = new ParseUUIDPipe({ version: "5", exceptionFactory });
           await expect(
             target.transform("123a", {} as ArgumentMetadata),
@@ -307,8 +289,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v7", async () => {
+        it("should throw an error - v7", async () => {
           target = new ParseUUIDPipe({ version: "7", exceptionFactory });
           await expect(
             target.transform("123a", {} as ArgumentMetadata),
@@ -324,8 +305,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe.transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v7 with an invalid variant", async () => {
+        it("should throw an error for a UUID v7 with an invalid variant", async () => {
           target = new ParseUUIDPipe({ version: "7", exceptionFactory });
           await expect(
             target.transform(
@@ -336,8 +316,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "1" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v1", async () => {
+        it("should throw an error - v1", async () => {
           target = new ParseUUIDPipe({
             version: "1" as unknown as UUIDVersion,
             exceptionFactory,
@@ -349,8 +328,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "1" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v1 with an invalid variant", async () => {
+        it("should throw an error for a UUID v1 with an invalid variant", async () => {
           target = new ParseUUIDPipe({
             version: "1" as unknown as UUIDVersion,
             exceptionFactory,
@@ -363,8 +341,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "2" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v2", async () => {
+        it("should throw an error - v2", async () => {
           target = new ParseUUIDPipe({
             version: "2" as unknown as UUIDVersion,
             exceptionFactory,
@@ -376,8 +353,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "2" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v2 with an invalid variant", async () => {
+        it("should throw an error for a UUID v2 with an invalid variant", async () => {
           target = new ParseUUIDPipe({
             version: "2" as unknown as UUIDVersion,
             exceptionFactory,
@@ -390,8 +366,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "6" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v6", async () => {
+        it("should throw an error - v6", async () => {
           target = new ParseUUIDPipe({
             version: "6" as unknown as UUIDVersion,
             exceptionFactory,
@@ -403,8 +378,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "6" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v6 with an invalid variant", async () => {
+        it("should throw an error for a UUID v6 with an invalid variant", async () => {
           target = new ParseUUIDPipe({
             version: "6" as unknown as UUIDVersion,
             exceptionFactory,
@@ -417,8 +391,7 @@ describeConformance(
           ).rejects.toThrow(TestException);
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "8" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error - v8", async () => {
+        it("should throw an error - v8", async () => {
           target = new ParseUUIDPipe({
             version: "8" as unknown as UUIDVersion,
             exceptionFactory,
@@ -430,8 +403,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: ParseUUIDPipe omits version "8" from UUID_REGEX (TypeError) and transform() is synchronous instead of async (packages/core/src/common/pipes/built-in.pipes.ts)
-        it.skip("should throw an error for a UUID v8 with an invalid variant", async () => {
+        it("should throw an error for a UUID v8 with an invalid variant", async () => {
           target = new ParseUUIDPipe({
             version: "8" as unknown as UUIDVersion,
             exceptionFactory,

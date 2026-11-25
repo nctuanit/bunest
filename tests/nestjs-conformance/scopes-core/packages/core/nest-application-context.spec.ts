@@ -99,8 +99,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: LifecycleManager.enableShutdownHooks() does not trim/uppercase/normalize signal names before deduplicating and attaching listeners (packages/core/src/lifecycle/lifecycle-manager.ts).
-      it.skip("should normalize signals before removing duplicates", async () => {
+      it("should normalize signals before removing duplicates", async () => {
         const signal: NodeJS.Signals = "SIGTERM";
         const listeners = new Set(
           process.listeners(signal) as Array<(...args: any[]) => void>,
@@ -142,8 +141,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: BunestApplicationContext.close() returns early when already closed without calling cleanupShutdownHooks(), leaving listeners registered after close() attached (packages/core/src/application/bunest-application-context.ts).
-      it.skip("should allow shutdown hooks to be enabled after close", async () => {
+      it("should allow shutdown hooks to be enabled after close", async () => {
         const signal: NodeJS.Signals = "SIGTERM";
         const listeners = new Set(
           process.listeners(signal) as Array<(...args: any[]) => void>,
@@ -167,8 +165,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: LifecycleManager.enableShutdownHooks() clears previously registered signal listeners before registering new signals instead of accumulating them (packages/core/src/lifecycle/lifecycle-manager.ts).
-      it.skip("should remove signal listeners registered by separate calls across multiple signals", async () => {
+      it("should remove signal listeners registered by separate calls across multiple signals", async () => {
         const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
         const listeners = signals.map(
           (signal) =>
@@ -244,8 +241,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: BunestApplicationContext.close() does not await an in-flight init() promise before invoking onApplicationShutdown hooks (packages/core/src/application/bunest-application-context.ts).
-      it.skip("should defer shutdown until all init hooks are resolved", async () => {
+      it("should defer shutdown until all init hooks are resolved", async () => {
         const onModuleInitStub = createSpy();
         const onApplicationShutdownStub = createSpy();
 
@@ -354,8 +350,7 @@ describeConformance(
         await applicationContext.close();
       });
 
-      // BUNEST_BUG: BunestApplicationContext.init() does not auto-flush buffered logs in a finally/catch block when initialization fails (packages/core/src/application/bunest-application-context.ts).
-      it.skip("should flush buffered logs when initialization fails", async () => {
+      it("should flush buffered logs when initialization fails", async () => {
         const capturingLogger = new CapturingLogger();
 
         @Injectable()
@@ -561,8 +556,7 @@ describeConformance(
       });
 
       describe("when scope = TRANSIENT", () => {
-        // BUNEST_BUG: DIContainer.resolveAsync() does not cache Scope.TRANSIENT instances per explicit contextId (packages/core/src/di/di-container.ts:3378-3390); two resolve(key, contextId) calls return distinct instances instead of the same instance.
-        it.skip("should resolve value with function injection key (same contextId returns same instance)", async () => {
+        it("should resolve value with function injection key (same contextId returns same instance)", async () => {
           const key = A;
           const applicationContext = await testHelper(key, Scope.TRANSIENT);
 
@@ -577,8 +571,7 @@ describeConformance(
           expect(a2).toBe(a3);
         });
 
-        // BUNEST_BUG: DIContainer.resolveAsync() does not cache Scope.TRANSIENT instances per explicit contextId (packages/core/src/di/di-container.ts:3378-3390).
-        it.skip("should resolve value with string injection key (same contextId returns same instance)", async () => {
+        it("should resolve value with string injection key (same contextId returns same instance)", async () => {
           const key = "KEY_A";
           const applicationContext = await testHelper(key, Scope.TRANSIENT);
 
@@ -593,8 +586,7 @@ describeConformance(
           expect(a2).toBe(a3);
         });
 
-        // BUNEST_BUG: DIContainer.resolveAsync() does not cache Scope.TRANSIENT instances per explicit contextId (packages/core/src/di/di-container.ts:3378-3390).
-        it.skip("should resolve value with symbol injection key (same contextId returns same instance)", async () => {
+        it("should resolve value with symbol injection key (same contextId returns same instance)", async () => {
           const key = Symbol("KEY_A");
           const applicationContext = await testHelper(key, Scope.TRANSIENT);
 

@@ -264,8 +264,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, throwing SDL errors (`Unknown directive "@key"`, `Unknown directive "@external"`, `Cannot extend type "User"/"Query"/"Mutation" because it is not defined`) during `app.init()`.
-    it.skip("GraphQLSchemaHost should contain schema", () => {
+    it("GraphQLSchemaHost should contain schema", () => {
       const schemaHost = app.get(GraphQLSchemaHost);
 
       expect(schemaHost.schema).toBeInstanceOf(GraphQLSchema);

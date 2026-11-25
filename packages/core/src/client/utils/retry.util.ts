@@ -1,3 +1,5 @@
+import { definedOnly } from "../../common/utils/object.util";
+import { computeBackoffDelay } from "../../common/utils/retry.util";
 import { HttpNetworkError } from "../errors/http-network.error";
 import { HttpTimeoutError } from "../errors/http-timeout.error";
 import type { HttpRequest } from "../interfaces/http-request.interface";
@@ -266,20 +268,5 @@ export function backoffDelay(
       error,
     );
   }
-  const { delay, factor, maxDelay, jitter } = retry.backoff;
-  const ceiling = Math.min(maxDelay, delay * factor ** (attempt - 1));
-  switch (jitter) {
-    case "none":
-      return Math.floor(ceiling);
-    case "equal":
-      return Math.floor(ceiling / 2 + (random() * ceiling) / 2);
-    default:
-      return Math.floor(random() * ceiling);
-  }
-}
-
-function definedOnly(value: object): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined),
-  );
+  return computeBackoffDelay(retry.backoff, attempt, random);
 }

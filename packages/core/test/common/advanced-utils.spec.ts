@@ -324,6 +324,8 @@ describe("6. Data Structures (LruCache, RingBuffer, BiMap, MultiMap, PriorityQue
     const mm = new MultiMap<string, number>();
     mm.add("a", 1).add("a", 2).add("b", 3);
     expect(mm.get("a")).toEqual([1, 2]);
+    expect([...mm.keys()]).toEqual(["a", "b"]);
+    expect([...mm.values()]).toEqual([[1, 2], [3]]);
     expect(mm.size).toBe(3);
     expect(mm.deleteValue("a", 1)).toBe(true);
     expect(mm.get("a")).toEqual([2]);

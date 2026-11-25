@@ -34,8 +34,7 @@ describeConformance(
         expect(configService.get("NAME")).toEqual("TEST");
       });
 
-      // BUNEST_BUG: ConfigModule copies runtime process.env into CONFIG_STORE_TOKEN at bootstrap and ConfigService.get() reads this.store before live process.env even when cache is false (expected "CHANGED", received "TEST"; packages/core/src/config/config.module.ts:130, packages/core/src/config/config.service.ts:278-286)
-      it.skip("should return new vars", () => {
+      it("should return new vars", () => {
         process.env["NAME"] = "CHANGED";
         const configService = app.get(ConfigService);
         expect(configService.get("NAME")).toEqual("CHANGED");

@@ -13,7 +13,12 @@ function buildExceptionArgs(
     descriptionOrOptions,
     defaultDescription,
   );
-  const body = HttpException.createBody(objectOrError, description, statusCode);
+  const body = HttpException.createBody(
+    objectOrError,
+    description,
+    statusCode,
+    options?.errorCode,
+  );
   return { body, options };
 }
 

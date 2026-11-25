@@ -34,8 +34,7 @@ describeConformance(
     });
 
     describe("getById", () => {
-      // BUNEST_BUG: ModulesContainer.getById(id) delegates to Map.get(id) instead of searching values by module.id (packages/core/src/di/modules-container.ts).
-      it.skip("should return a module by its id even when stored under a different map key", () => {
+      it("should return a module by its id even when stored under a different map key", () => {
         const mockModule = { id: "test-id" } as any;
         container.set("key", mockModule);
 
@@ -55,16 +54,14 @@ describeConformance(
     });
 
     describe("getRpcTargetRegistry / addRpcTarget", () => {
-      // BUNEST_BUG: ModulesContainer does not implement addRpcTarget()/getRpcTargetRegistry() (packages/core/src/di/modules-container.ts).
-      it.skip("should expose addRpcTarget and getRpcTargetRegistry for dynamically registered RPC targets", () => {
+      it("should expose addRpcTarget and getRpcTargetRegistry for dynamically registered RPC targets", () => {
         const target = { pattern: "test" };
         (container as any).addRpcTarget(target);
         const registry = (container as any).getRpcTargetRegistry();
         expect(registry).toBeDefined();
       });
 
-      // BUNEST_BUG: ModulesContainer does not implement addRpcTarget()/getRpcTargetRegistry() (packages/core/src/di/modules-container.ts).
-      it.skip("should preserve previously added RPC targets for later consumers", () => {
+      it("should preserve previously added RPC targets for later consumers", () => {
         (container as any).addRpcTarget("first");
         (container as any).addRpcTarget("second");
         const registry = (container as any).getRpcTargetRegistry();

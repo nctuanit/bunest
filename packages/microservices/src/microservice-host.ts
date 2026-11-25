@@ -1,9 +1,15 @@
 import {
+  APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_PIPE,
   Inject,
   Injectable,
   METADATA_KEYS,
   MetadataRegistry,
   Optional,
+  Scope,
+  getInjectableScope,
   type ArgumentMetadata,
   type BunestInterceptor,
   type CanActivate,
@@ -17,9 +23,11 @@ import {
   type LoggerService,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
+  type ParameterMetadata,
   type PipeLike,
   type PipeTransform,
   type PreRequestHook,
+  type RequestContainer,
   type Type,
   type WebSocketAdapter,
 } from "@bunest/core";
@@ -70,25 +78,104 @@ function collectMergedClassArray<T>(
   return merged;
 }
 
-function collectLoadedInstances(
+interface DiscoveredRpcTarget {
+  readonly ctor: Type<unknown>;
+  readonly instance?: object;
+  readonly moduleId?: string;
+  readonly isRequestScoped: boolean;
+  readonly staticEnhancerCache: Map<unknown, unknown>;
+}
+
+interface ScopedEnhancerSpec<T> {
+  readonly spec: T;
+  readonly owningModule?: unknown;
+}
+
+type RpcEnhancerKind = "guard" | "pipe" | "interceptor" | "filter";
+
+interface MicroserviceContainerLike {
+  createRequestContainer(
+    request: Request,
+    responseContext?: unknown,
+    requestContext?: unknown,
+  ): RequestContainer;
+  resolveEnhancer<T = unknown>(
+    enhancer: Type<T> | T,
+    requestContainer?: RequestContainer,
+    owningModule?: unknown,
+    kind?: RpcEnhancerKind,
+  ): Promise<T>;
+  requiresEnhancerRequestScope?(
+    enhancer: unknown,
+    kind?: RpcEnhancerKind,
+    controllerToken?: Type<unknown>,
+  ): boolean;
+  getMultiProviderEntries?(token: InjectionToken): ReadonlyArray<{
+    module: unknown;
+    provider: { useClass?: Type<unknown>; scope?: Scope };
+    instance?: unknown;
+    syntheticToken?: Type<unknown>;
+  }>;
+  getModuleByKey?(moduleKey: string): unknown;
+  resolveAsync<T = unknown>(
+    token: InjectionToken<T>,
+    moduleId: string,
+    contextIdOrContainer?: ContextId | RequestContainer,
+    options?: { strict?: boolean },
+  ): Promise<T>;
+  getGraph?(): { root: { id: string } };
+}
+
+function collectDiscoveredTargets(
   discoveryService: DiscoveryService | undefined,
-): object[] {
+): DiscoveredRpcTarget[] {
   if (!discoveryService) {
     return [];
   }
-  const seen = new Set<object>();
-  const instances: object[] = [];
+  const seenInstances = new Set<object>();
+  const seenScoped = new Set<string>();
+  const targets: DiscoveredRpcTarget[] = [];
   for (const wrapper of [
     ...discoveryService.getControllers(),
     ...discoveryService.getProviders(),
   ]) {
-    const instance = wrapper.instance;
-    if (instance && typeof instance === "object" && !seen.has(instance)) {
-      seen.add(instance);
-      instances.push(instance);
+    const instance =
+      wrapper.instance && typeof wrapper.instance === "object"
+        ? (wrapper.instance as object)
+        : undefined;
+    const ctor = (wrapper.metatype ??
+      (instance ? instance.constructor : undefined)) as
+      | Type<unknown>
+      | undefined;
+    if (typeof ctor !== "function") {
+      continue;
     }
+
+    const isRequestScoped =
+      wrapper.scope === Scope.REQUEST || instance === undefined;
+
+    if (instance) {
+      if (seenInstances.has(instance)) {
+        continue;
+      }
+      seenInstances.add(instance);
+    } else {
+      const key = `${wrapper.moduleId}:${ctor.name}`;
+      if (seenScoped.has(key)) {
+        continue;
+      }
+      seenScoped.add(key);
+    }
+
+    targets.push({
+      ctor,
+      instance,
+      moduleId: wrapper.moduleId,
+      isRequestScoped,
+      staticEnhancerCache: new Map(),
+    });
   }
-  return instances;
+  return targets;
 }
 
 /**
@@ -343,9 +430,9 @@ export class MicroserviceHost
     }
     this.discovered = true;
 
-    const instances = collectLoadedInstances(this.discoveryService);
-    for (const instance of instances) {
-      this.bindInstance(instance);
+    const targets = collectDiscoveredTargets(this.discoveryService);
+    for (const target of targets) {
+      this.bindTarget(target);
     }
   }
 
@@ -356,28 +443,77 @@ export class MicroserviceHost
   bindInstance(instance: object): void {
     const ctor = (instance as { constructor?: Type<unknown> }).constructor;
     if (!ctor) return;
-
-    // Bind `@Client(...)` property decorators
-    const clientKeys = collectMergedClassArray<string | symbol>(
-      CLIENT_METADATA,
+    this.bindTarget({
       ctor,
-    );
-    const seenClientKeys = new Set<string | symbol>();
-    for (const key of clientKeys) {
-      if (seenClientKeys.has(key)) continue;
-      seenClientKeys.add(key);
-      const currentVal = (instance as Record<string | symbol, unknown>)[key];
-      if (currentVal !== null && currentVal !== undefined) {
-        continue;
+      instance,
+      isRequestScoped: false,
+      staticEnhancerCache: new Map(),
+    });
+  }
+
+  private getContainer(): MicroserviceContainerLike | undefined {
+    const host = (
+      this.moduleRef as unknown as { host?: MicroserviceContainerLike }
+    ).host;
+    if (host && typeof host.resolveEnhancer === "function") {
+      return host;
+    }
+    return undefined;
+  }
+
+  private collectDiGlobalEnhancers<T>(
+    token: InjectionToken,
+  ): ScopedEnhancerSpec<T>[] {
+    const container = this.getContainer();
+    const entries = container?.getMultiProviderEntries?.(token) ?? [];
+    const out: ScopedEnhancerSpec<T>[] = [];
+    for (const entry of entries) {
+      if (entry.syntheticToken) {
+        out.push({
+          spec: entry.syntheticToken as unknown as T,
+          owningModule: entry.module,
+        });
+      } else if (entry.instance !== undefined) {
+        out.push({
+          spec: entry.instance as T,
+          owningModule: entry.module,
+        });
+      } else if (entry.provider.useClass) {
+        out.push({
+          spec: entry.provider.useClass as unknown as T,
+          owningModule: entry.module,
+        });
       }
-      const clientOpts = MetadataRegistry.get<ClientOptions>(
-        CLIENT_CONFIGURATION_METADATA,
-        ctor.prototype as object,
-        key,
+    }
+    return out;
+  }
+
+  private bindTarget(target: DiscoveredRpcTarget): void {
+    const { ctor, instance } = target;
+
+    // Bind `@Client(...)` property decorators on static instances
+    if (instance) {
+      const clientKeys = collectMergedClassArray<string | symbol>(
+        CLIENT_METADATA,
+        ctor,
       );
-      const proxy = ClientProxyFactory.create(clientOpts as ClientOptions);
-      this.managedClients.push(proxy);
-      Reflect.set(instance, key, proxy);
+      const seenClientKeys = new Set<string | symbol>();
+      for (const key of clientKeys) {
+        if (seenClientKeys.has(key)) continue;
+        seenClientKeys.add(key);
+        const currentVal = (instance as Record<string | symbol, unknown>)[key];
+        if (currentVal !== null && currentVal !== undefined) {
+          continue;
+        }
+        const clientOpts = MetadataRegistry.get<ClientOptions>(
+          CLIENT_CONFIGURATION_METADATA,
+          ctor.prototype as object,
+          key,
+        );
+        const proxy = ClientProxyFactory.create(clientOpts as ClientOptions);
+        this.managedClients.push(proxy);
+        Reflect.set(instance, key, proxy);
+      }
     }
 
     if (this.servers.length === 0) {
@@ -397,15 +533,16 @@ export class MicroserviceHost
       ctor,
     );
 
+    const proto = ctor.prototype as Record<string | symbol, unknown>;
+
     for (const meta of [...messageMetas, ...eventMetas]) {
-      const fn = (instance as Record<string | symbol, unknown>)[
-        meta.methodName
-      ];
+      const fn = instance
+        ? (instance as Record<string | symbol, unknown>)[meta.methodName]
+        : proto[meta.methodName];
       if (typeof fn !== "function") continue;
 
       const compiled = this.compileHandler(
-        ctor,
-        instance,
+        target,
         meta.methodName,
         fn as Function,
       );
@@ -420,14 +557,13 @@ export class MicroserviceHost
     }
 
     for (const meta of grpcMetas) {
-      const fn = (instance as Record<string | symbol, unknown>)[
-        meta.methodName
-      ];
+      const fn = instance
+        ? (instance as Record<string | symbol, unknown>)[meta.methodName]
+        : proto[meta.methodName];
       if (typeof fn !== "function") continue;
 
       const compiled = this.compileHandler(
-        ctor,
-        instance,
+        target,
         meta.methodName,
         fn as Function,
       );
@@ -453,11 +589,17 @@ export class MicroserviceHost
   }
 
   private compileHandler(
-    targetClass: Type<unknown>,
-    instance: object,
+    target: DiscoveredRpcTarget,
     methodName: string | symbol,
     handlerFn: Function,
   ): (data: unknown, ctx: RpcContext) => Promise<unknown> {
+    const targetClass = target.ctor;
+    const container = this.getContainer();
+    const targetModule =
+      target.moduleId && container?.getModuleByKey
+        ? container.getModuleByKey(target.moduleId)
+        : undefined;
+
     const classGuards = MetadataRegistry.getMergedClassArray<GuardLike>(
       METADATA_KEYS.GUARDS,
       targetClass,
@@ -467,7 +609,10 @@ export class MicroserviceHost
         METADATA_KEYS.GUARDS,
         handlerFn,
       ) ?? [];
-    const guards = [...classGuards, ...methodGuards];
+    const localGuards: ScopedEnhancerSpec<GuardLike>[] = [
+      ...classGuards,
+      ...methodGuards,
+    ].map((spec) => ({ spec, owningModule: targetModule }));
 
     const classPipes = MetadataRegistry.getMergedClassArray<PipeLike>(
       METADATA_KEYS.PIPES,
@@ -478,7 +623,10 @@ export class MicroserviceHost
         METADATA_KEYS.PIPES,
         handlerFn,
       ) ?? [];
-    const sharedPipes = [...classPipes, ...methodPipes];
+    const localPipes: ScopedEnhancerSpec<PipeLike>[] = [
+      ...classPipes,
+      ...methodPipes,
+    ].map((spec) => ({ spec, owningModule: targetModule }));
 
     const classInterceptors =
       MetadataRegistry.getMergedClassArray<InterceptorLike>(
@@ -490,7 +638,10 @@ export class MicroserviceHost
         METADATA_KEYS.INTERCEPTORS,
         handlerFn,
       ) ?? [];
-    const interceptors = [...classInterceptors, ...methodInterceptors];
+    const localInterceptors: ScopedEnhancerSpec<InterceptorLike>[] = [
+      ...classInterceptors,
+      ...methodInterceptors,
+    ].map((spec) => ({ spec, owningModule: targetModule }));
 
     const classFilters =
       MetadataRegistry.getMergedClassArray<ExceptionFilterLike>(
@@ -503,7 +654,10 @@ export class MicroserviceHost
         handlerFn,
       ) ?? [];
     // Method filters take precedence over class filters
-    const filters = [...methodFilters, ...classFilters];
+    const localFilters: ScopedEnhancerSpec<ExceptionFilterLike>[] = [
+      ...methodFilters,
+      ...classFilters,
+    ].map((spec) => ({ spec, owningModule: targetModule }));
 
     const paramMetas =
       MetadataRegistry.get<readonly RpcParamMetadata[]>(
@@ -511,6 +665,15 @@ export class MicroserviceHost
         targetClass.prototype as object,
         methodName,
       ) ?? [];
+    const customParamMetas = (
+      MetadataRegistry.get<readonly ParameterMetadata[]>(
+        METADATA_KEYS.ROUTE_PARAMS,
+        targetClass.prototype as object,
+        methodName,
+      ) ?? []
+    ).filter(
+      (p) => p.source === "custom" && typeof p.factory === "function",
+    );
     const paramTypes =
       MetadataRegistry.getParamTypes(
         targetClass.prototype as object,
@@ -525,15 +688,34 @@ export class MicroserviceHost
         data,
         rpcCtx,
       );
+      const rpcRequest = {
+        data,
+        context: rpcCtx,
+        pattern: rpcCtx.pattern,
+        getData: () => data,
+        getContext: () => rpcCtx,
+        getPattern: () => rpcCtx.pattern,
+      };
+      const activeContainer = this.getContainer();
+      const reqContainer = activeContainer?.createRequestContainer(
+        rpcRequest as unknown as Request,
+      );
 
       try {
-        // 1. Guards (global -> class -> method)
-        const allGuards =
-          this.globalGuards.length > 0
-            ? [...this.globalGuards, ...guards]
-            : guards;
-        for (const guardLike of allGuards) {
-          const guard = await this.resolveEnhancer<CanActivate>(guardLike);
+        // 1. Guards (DI global -> imperative global -> class -> method)
+        const allGuards: ScopedEnhancerSpec<GuardLike>[] = [
+          ...this.collectDiGlobalEnhancers<GuardLike>(APP_GUARD),
+          ...this.globalGuards.map((spec) => ({ spec })),
+          ...localGuards,
+        ];
+        for (const guardEntry of allGuards) {
+          const guard = await this.resolveEnhancer<CanActivate>(
+            guardEntry.spec,
+            reqContainer,
+            guardEntry.owningModule,
+            "guard",
+            target,
+          );
           const allowed = await guard.canActivate(execCtx);
           if (!allowed) {
             throw new RpcException({
@@ -543,33 +725,70 @@ export class MicroserviceHost
           }
         }
 
+        // Resolve controller/provider instance (for Scope.REQUEST, resolve per message)
+        let activeInstance: object;
+        if (!target.isRequestScoped && target.instance) {
+          activeInstance = target.instance;
+        } else if (activeContainer) {
+          const modId =
+            target.moduleId ?? activeContainer.getGraph?.().root.id ?? "";
+          activeInstance = (await activeContainer.resolveAsync(
+            targetClass,
+            modId,
+            reqContainer,
+            { strict: false },
+          )) as object;
+        } else {
+          activeInstance = (await this.moduleRef.resolve(
+            targetClass,
+            undefined,
+            { strict: false },
+          )) as object;
+        }
+
         // 2. Interceptors + Parameter resolution + Pipes + Handler invocation
-        const allPipes =
-          this.globalPipes.length > 0
-            ? [...this.globalPipes, ...sharedPipes]
-            : sharedPipes;
+        const allPipes: ScopedEnhancerSpec<PipeLike>[] = [
+          ...this.collectDiGlobalEnhancers<PipeLike>(APP_PIPE),
+          ...this.globalPipes.map((spec) => ({ spec })),
+          ...localPipes,
+        ];
         const invokeCore = async (): Promise<unknown> => {
           const args = await this.resolveArgs(
             data,
             rpcCtx,
+            execCtx,
             paramMetas,
+            customParamMetas,
             paramTypes,
             allPipes,
+            reqContainer,
+            targetModule,
+            target,
           );
-          return await handlerFn.apply(instance, args);
+          const boundFn =
+            (activeInstance as Record<string | symbol, unknown>)[methodName];
+          const fnToCall =
+            typeof boundFn === "function" ? (boundFn as Function) : handlerFn;
+          return await fnToCall.apply(activeInstance, args);
         };
 
-        const allInterceptors =
-          this.globalInterceptors.length > 0
-            ? [...this.globalInterceptors, ...interceptors]
-            : interceptors;
+        const allInterceptors: ScopedEnhancerSpec<InterceptorLike>[] = [
+          ...this.collectDiGlobalEnhancers<InterceptorLike>(APP_INTERCEPTOR),
+          ...this.globalInterceptors.map((spec) => ({ spec })),
+          ...localInterceptors,
+        ];
         let nextFn: () => Promise<unknown> = invokeCore;
         for (let i = allInterceptors.length - 1; i >= 0; i--) {
-          const interceptorLike = allInterceptors[i]!;
+          const interceptorEntry = allInterceptors[i]!;
           const downstream = nextFn;
           nextFn = async () => {
-            const interceptor =
-              await this.resolveEnhancer<BunestInterceptor>(interceptorLike);
+            const interceptor = await this.resolveEnhancer<BunestInterceptor>(
+              interceptorEntry.spec,
+              reqContainer,
+              interceptorEntry.owningModule,
+              "interceptor",
+              target,
+            );
             return await interceptor.intercept(execCtx, {
               handle: downstream,
             });
@@ -578,21 +797,37 @@ export class MicroserviceHost
 
         return await nextFn();
       } catch (err) {
-        const allFilters =
-          this.globalFilters.length > 0
-            ? [...filters, ...this.globalFilters]
-            : filters;
+        const allFilters: ScopedEnhancerSpec<ExceptionFilterLike>[] = [
+          ...localFilters,
+          ...this.globalFilters.map((spec) => ({ spec })),
+          ...this.collectDiGlobalEnhancers<ExceptionFilterLike>(APP_FILTER),
+        ];
         if (allFilters.length > 0) {
-          for (const filterLike of allFilters) {
-            if (!this.filterMatches(filterLike, err)) {
+          for (const filterEntry of allFilters) {
+            if (!this.filterMatches(filterEntry.spec, err)) {
               continue;
             }
-            const filter =
-              await this.resolveEnhancer<ExceptionFilter>(filterLike);
+            let filter: ExceptionFilter;
+            try {
+              filter = await this.resolveEnhancer<ExceptionFilter>(
+                filterEntry.spec,
+                reqContainer,
+                filterEntry.owningModule,
+                "filter",
+                target,
+              );
+            } catch {
+              // If the exception filter itself fails to resolve (e.g. depends on
+              // the same failing request-scoped provider), skip it and let the
+              // next filter or default RPC filter handle the original error.
+              continue;
+            }
             return await filter.catch(err, execCtx);
           }
         }
         throw err;
+      } finally {
+        await reqContainer?.destroy();
       }
     };
   }
@@ -600,11 +835,16 @@ export class MicroserviceHost
   private async resolveArgs(
     data: unknown,
     rpcCtx: RpcContext,
+    execCtx: RpcExecutionContext,
     paramMetas: readonly RpcParamMetadata[],
+    customParamMetas: readonly ParameterMetadata[],
     paramTypes: readonly unknown[],
-    sharedPipes: readonly PipeLike[],
+    sharedPipes: readonly ScopedEnhancerSpec<PipeLike>[],
+    reqContainer: RequestContainer | undefined,
+    targetModule: unknown,
+    target: DiscoveredRpcTarget,
   ): Promise<unknown[]> {
-    if (paramMetas.length === 0) {
+    if (paramMetas.length === 0 && customParamMetas.length === 0) {
       let transformed = data;
       const meta: ArgumentMetadata = {
         type: "custom",
@@ -613,14 +853,23 @@ export class MicroserviceHost
             ? (paramTypes[0] as Type<unknown>)
             : undefined,
       };
-      for (const pipeLike of sharedPipes) {
-        const pipe = await this.resolveEnhancer<PipeTransform>(pipeLike);
+      for (const pipeEntry of sharedPipes) {
+        const pipe = await this.resolveEnhancer<PipeTransform>(
+          pipeEntry.spec,
+          reqContainer,
+          pipeEntry.owningModule,
+          "pipe",
+          target,
+        );
         transformed = await pipe.transform(transformed, meta);
       }
       return [transformed, rpcCtx];
     }
 
-    const maxIndex = Math.max(...paramMetas.map((p) => p.index));
+    const maxIndex = Math.max(
+      ...paramMetas.map((p) => p.index),
+      ...customParamMetas.map((p) => p.index),
+    );
     const args: unknown[] = new Array(maxIndex + 1).fill(undefined);
 
     for (const param of paramMetas) {
@@ -645,12 +894,59 @@ export class MicroserviceHost
         data: param.property,
       };
 
-      const pipes = [...sharedPipes, ...(param.pipes ?? [])];
-      for (const pipeLike of pipes) {
-        const pipe = await this.resolveEnhancer<PipeTransform>(pipeLike);
+      const pipes: ScopedEnhancerSpec<PipeLike>[] = [
+        ...sharedPipes,
+        ...(param.pipes ?? []).map((spec) => ({
+          spec,
+          owningModule: targetModule,
+        })),
+      ];
+      for (const pipeEntry of pipes) {
+        const pipe = await this.resolveEnhancer<PipeTransform>(
+          pipeEntry.spec,
+          reqContainer,
+          pipeEntry.owningModule,
+          "pipe",
+          target,
+        );
         value = await pipe.transform(value, argMeta);
       }
       args[param.index] = value;
+    }
+
+    for (const customParam of customParamMetas) {
+      let value: unknown = await customParam.factory!(
+        customParam.data,
+        execCtx,
+      );
+
+      const argMeta: ArgumentMetadata = {
+        type: "custom",
+        metatype:
+          typeof paramTypes[customParam.index] === "function"
+            ? (paramTypes[customParam.index] as Type<unknown>)
+            : undefined,
+        data: customParam.key,
+      };
+
+      const pipes: ScopedEnhancerSpec<PipeLike>[] = [
+        ...sharedPipes,
+        ...(customParam.pipes ?? []).map((spec) => ({
+          spec,
+          owningModule: targetModule,
+        })),
+      ];
+      for (const pipeEntry of pipes) {
+        const pipe = await this.resolveEnhancer<PipeTransform>(
+          pipeEntry.spec,
+          reqContainer,
+          pipeEntry.owningModule,
+          "pipe",
+          target,
+        );
+        value = await pipe.transform(value, argMeta);
+      }
+      args[customParam.index] = value;
     }
 
     return args;
@@ -678,11 +974,42 @@ export class MicroserviceHost
     );
   }
 
-  private async resolveEnhancer<T>(enhancer: Type<T> | T): Promise<T> {
+  private async resolveEnhancer<T>(
+    enhancer: Type<T> | T,
+    reqContainer?: RequestContainer,
+    owningModule?: unknown,
+    kind?: RpcEnhancerKind,
+    target?: DiscoveredRpcTarget,
+  ): Promise<T> {
     if (typeof enhancer !== "function") {
       return enhancer;
     }
     const cls = enhancer as Type<T>;
+    const container = this.getContainer();
+    if (container) {
+      const isReqScoped =
+        container.requiresEnhancerRequestScope?.(cls, kind, target?.ctor) ??
+        getInjectableScope(cls) === Scope.REQUEST;
+      const useStaticTargetCache =
+        target !== undefined && !target.isRequestScoped && !isReqScoped;
+
+      if (useStaticTargetCache && target.staticEnhancerCache.has(cls)) {
+        return target.staticEnhancerCache.get(cls) as T;
+      }
+
+      const resolved = await container.resolveEnhancer<T>(
+        cls,
+        reqContainer,
+        owningModule,
+        kind,
+      );
+
+      if (useStaticTargetCache) {
+        target.staticEnhancerCache.set(cls, resolved);
+      }
+      return resolved;
+    }
+
     try {
       return this.moduleRef.get(cls, { strict: false });
     } catch {

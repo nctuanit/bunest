@@ -35,8 +35,7 @@ describeConformance(
     category: "DIRECT_PORT",
   },
   () => {
-    // BUNEST_BUG: ModuleRef.get(ModuleClass) throws UnknownDependencyException because Bunest does not register module classes as resolvable tokens in their own container (packages/core/src/di/di-container.ts:2310)
-    it.skip('should auto-generate "forRoot" method and resolve module instance via moduleRef.get(IntegrationModule)', async () => {
+    it('should auto-generate "forRoot" method and resolve module instance via moduleRef.get(IntegrationModule)', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
           IntegrationModule.forRoot({
@@ -76,8 +75,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: ModuleRef.get(ModuleClass) throws UnknownDependencyException for dynamic ConfigurableModuleClass subclasses (packages/core/src/di/di-container.ts:2310)
-    it.skip('should auto-generate "forRootAsync" method and resolve module instance via moduleRef.get(IntegrationModule)', async () => {
+    it('should auto-generate "forRootAsync" method and resolve module instance via moduleRef.get(IntegrationModule)', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
           IntegrationModule.forRootAsync({
@@ -121,8 +119,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: ConfigurableModuleBuilder.registerAsync() lacks `provideInjectionTokensFrom` AND defaults ExtraModuleDefinitionOptions to `Record<string, never>`, causing TS2345 when setExtras() is omitted (packages/core/src/module/configurable-module.builder.ts:48)
-    it.skip('should resolve an alias supplied through "provideInjectionTokensFrom"', async () => {
+    it('should resolve an alias supplied through "provideInjectionTokensFrom"', async () => {
       const {
         ConfigurableModuleClass: FeatureBase,
         MODULE_OPTIONS_TOKEN: FEATURE_TOKEN,

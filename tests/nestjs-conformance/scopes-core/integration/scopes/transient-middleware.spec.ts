@@ -89,8 +89,7 @@ describeConformance(
         .expect(200, "cats");
     });
 
-    // BUNEST_BUG: BunHttpAdapter pre-resolves Scope.TRANSIENT middleware into singletonMiddlewares at route compilation instead of resolving per request (packages/core/src/http/adapter/bun-http.adapter.ts & packages/core/src/http/pipeline/execution-pipeline.ts:615-634); TransientAuthMiddleware.COUNTER was 1 instead of 2 across 2 requests.
-    it.skip("should create the middleware for each request", async () => {
+    it("should create the middleware for each request", async () => {
       await request(app).get("/cats").expect(401);
       await request(app).get("/cats").expect(401);
 

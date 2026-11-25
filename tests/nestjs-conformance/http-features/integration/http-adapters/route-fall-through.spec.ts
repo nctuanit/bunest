@@ -164,8 +164,7 @@ describeConformance(
             [method](path)
             .set(v ? version(v) : {});
 
-        // BUNEST_BUG: Under runtime versioning (HEADER/MEDIA_TYPE/CUSTOM), a native static route (e.g. /items/me @Version('2')) returns 404 directly on version miss instead of falling through to a less specific route like /items/:id @Version('1') (packages/core/src/http/router/route-compiler.ts:826-933).
-        it.skip('should fall through to ":id" when the literal route is for another version', async () => {
+        it('should fall through to ":id" when the literal route is for another version', async () => {
           const v1 = await send("get", "/items/me", "1");
           const v2 = await send("get", "/items/me", "2");
 
@@ -179,8 +178,7 @@ describeConformance(
           expect((await send("get", "/items/5", "9")).status).toBe(404);
         });
 
-        // BUNEST_BUG: Under runtime versioning, static route /neutral/me @Version('2') returns 404 on version miss instead of falling through to version-neutral /neutral/:id (packages/core/src/http/router/route-compiler.ts:826-933).
-        it.skip("should fall through to a version-neutral route", async () => {
+        it("should fall through to a version-neutral route", async () => {
           expect((await send("get", "/neutral/me", "1")).text).toBe(
             "id neutral me",
           );
@@ -190,14 +188,12 @@ describeConformance(
           expect((await send("get", "/neutral/me", "2")).text).toBe("me v2");
         });
 
-        // BUNEST_BUG: Under runtime versioning, static route /many/me @Version('2') returns 404 on version miss instead of falling through to multi-version /many/:id (packages/core/src/http/router/route-compiler.ts:826-933).
-        it.skip("should fall through to a route for several versions", async () => {
+        it("should fall through to a route for several versions", async () => {
           expect((await send("get", "/many/me", "3")).text).toBe("id v1|v3 me");
           expect((await send("get", "/many/me", "4")).status).toBe(404);
         });
 
-        // BUNEST_BUG: Under runtime versioning, static route /any/me @Version('2') returns 404 on version miss instead of falling through to @All(':id') @Version('1') (packages/core/src/http/router/route-compiler.ts:826-933).
-        it.skip("should fall through to a route for every method", async () => {
+        it("should fall through to a route for every method", async () => {
           expect((await send("get", "/any/me", "1")).text).toBe("all v1 me");
           expect((await send("delete", "/any/me", "1")).text).toBe("all v1 me");
         });
@@ -215,8 +211,7 @@ describeConformance(
         await app.init();
       });
 
-      // BUNEST_BUG: Under globalPrefix + runtime header versioning, static route /api/items/me @Version('2') returns 404 on version miss instead of falling through to /api/items/:id @Version('1') (packages/core/src/http/router/route-compiler.ts:826-933).
-      it.skip("should fall through under the prefix", async () => {
+      it("should fall through under the prefix", async () => {
         const res = await request(app).get("/api/items/me").set("v", "1");
         expect(res.text).toBe("id v1 me");
       });

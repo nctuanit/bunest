@@ -47,7 +47,12 @@ import {
 } from "../pipeline/execution-pipeline";
 import { compileParameters } from "../pipeline/param-extractor";
 import type { ScannedRoute } from "../scanner/controller-scanner";
-import { matchesMiddlewareForRoute } from "../scanner/path-normalizer";
+import {
+  evaluateMiddlewareForRoute,
+  matchesRouteInfo,
+  normalizePath,
+  type VersionedRouteRule,
+} from "../scanner/path-normalizer";
 import {
   extractRequestVersions,
   isRuntimeVersioning,
@@ -112,6 +117,11 @@ export interface RouteCompilerInput {
   readonly defaultFilter: DefaultExceptionFilter;
   readonly onRequestHook?: Function;
   readonly onResponseHook?: Function;
+  readonly onVersionNotFound?: (
+    req: Request,
+    server: BunServerLike | undefined,
+    pathname: string,
+  ) => Promise<Response | null>;
   readonly onRouteTriggered?: (
     requestMethod: RequestMethod,
     path: string,
@@ -164,7 +174,18 @@ function matchCompiledVersionGroup(
       }
     }
   }
-  return group.neutral;
+  if (group.neutral) {
+    const versions = group.neutral.route.versions;
+    const hasExplicitAlongWithNeutral =
+      versions !== undefined &&
+      versions.length > 1 &&
+      versions.includes(VERSION_NEUTRAL);
+    if (hasExplicitAlongWithNeutral && requestedVersions.length > 0) {
+      return undefined;
+    }
+    return group.neutral;
+  }
+  return undefined;
 }
 
 function computeAllowHeaderForVersion(
@@ -317,6 +338,23 @@ function singleSegmentCanOverlap(
  * `/archive/:year` shadowing `/archive/:year/:month?`, mid-path wildcards,
  * or trailing catch-all wildcards shadowing any fallback route under that prefix).
  */
+function expandFallbackOptionalGroups(rawPath: string): string[] {
+  const openIdx = rawPath.indexOf("{");
+  if (openIdx === -1) {
+    const cleaned = rawPath.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+    return [cleaned];
+  }
+  const closeIdx = rawPath.indexOf("}", openIdx + 1);
+  if (closeIdx === -1) return [rawPath];
+  const before = rawPath.slice(0, openIdx);
+  const inside = rawPath.slice(openIdx + 1, closeIdx);
+  const after = rawPath.slice(closeIdx + 1);
+  return [
+    ...expandFallbackOptionalGroups(before + inside + after),
+    ...expandFallbackOptionalGroups(before + after),
+  ];
+}
+
 function canNativePathOverlapFallback(
   nativePath: string,
   fallbackPath: string,
@@ -324,59 +362,81 @@ function canNativePathOverlapFallback(
 ): boolean {
   const nativeHasParamOrWildcard =
     nativePath.includes(":") || nativePath.includes("*");
+  const fallbackHasMixedOrOptional =
+    fallbackPath.includes("{") ||
+    fallbackPath
+      .split("/")
+      .some((s) => s.includes(":") && !/^:[A-Za-z_][A-Za-z0-9_]*$/.test(s));
 
-  if (!nativeHasParamOrWildcard && !fallbackHasHost) {
+  if (
+    !nativeHasParamOrWildcard &&
+    !fallbackHasHost &&
+    !fallbackHasMixedOrOptional
+  ) {
     return false;
   }
 
+  const variants = fallbackPath.includes("{")
+    ? expandFallbackOptionalGroups(fallbackPath)
+    : [fallbackPath];
   const nSegs = nativePath === "/" ? [] : nativePath.slice(1).split("/");
-  const fSegs = fallbackPath === "/" ? [] : fallbackPath.slice(1).split("/");
-  const memo = new Map<string, boolean>();
 
-  const overlaps = (ni: number, fi: number): boolean => {
-    const key = `${ni}:${fi}`;
-    const cached = memo.get(key);
-    if (cached !== undefined) {
-      return cached;
-    }
+  for (const variant of variants) {
+    const fSegs = variant === "/" ? [] : variant.slice(1).split("/");
+    const memo = new Map<string, boolean>();
 
-    let result = false;
+    const overlaps = (ni: number, fi: number): boolean => {
+      const key = `${ni}:${fi}`;
+      const cached = memo.get(key);
+      if (cached !== undefined) {
+        return cached;
+      }
 
-    if (ni === nSegs.length && fi === fSegs.length) {
-      result = true;
-    } else if (
-      fi < fSegs.length &&
-      isOptionalFallbackSegment(fSegs[fi]!) &&
-      overlaps(ni, fi + 1)
-    ) {
-      result = true;
-    } else if (ni < nSegs.length && nSegs[ni] === "*") {
-      result = true;
-    } else if (ni < nSegs.length && fi < fSegs.length) {
-      const nSeg = nSegs[ni]!;
-      const fSeg = fSegs[fi]!;
+      let result = false;
 
-      if (fSeg === "*") {
-        if (fi === fSegs.length - 1) {
-          result = true;
-        } else {
-          for (let nextNi = ni + 1; nextNi <= nSegs.length; nextNi++) {
-            if (overlaps(nextNi, fi + 1)) {
-              result = true;
-              break;
+      if (ni === nSegs.length && fi === fSegs.length) {
+        result = true;
+      } else if (
+        fi < fSegs.length &&
+        isOptionalFallbackSegment(fSegs[fi]!) &&
+        overlaps(ni, fi + 1)
+      ) {
+        result = true;
+      } else if (ni < nSegs.length && nSegs[ni] === "*") {
+        result = true;
+      } else if (ni < nSegs.length && fi < fSegs.length) {
+        const nSeg = nSegs[ni]!;
+        const fSeg = fSegs[fi]!;
+
+        if (fSeg === "*" || fSeg.startsWith("*")) {
+          if (fi === fSegs.length - 1) {
+            result = true;
+          } else {
+            for (let nextNi = ni + 1; nextNi <= nSegs.length; nextNi++) {
+              if (overlaps(nextNi, fi + 1)) {
+                result = true;
+                break;
+              }
             }
           }
+        } else if (
+          fSeg.includes(":") ||
+          singleSegmentCanOverlap(nSeg, fSeg)
+        ) {
+          result = overlaps(ni + 1, fi + 1);
         }
-      } else if (singleSegmentCanOverlap(nSeg, fSeg)) {
-        result = overlaps(ni + 1, fi + 1);
       }
+
+      memo.set(key, result);
+      return result;
+    };
+
+    if (overlaps(0, 0)) {
+      return true;
     }
+  }
 
-    memo.set(key, result);
-    return result;
-  };
-
-  return overlaps(0, 0);
+  return false;
 }
 
 async function resolveMiddlewareSingleton(
@@ -498,20 +558,142 @@ export async function compileRoutes(
     const route = scannedRoutes[i];
     if (!route) continue;
 
-    // Pre-match module middlewares at bootstrap (zero per-request path matching)
+    // Pre-match module middlewares at bootstrap (zero per-request path matching for static routes;
+    // runtime guard only when dynamic exclude or runtime-versioned include/exclude applies)
     const matchedModuleMiddlewares: MiddlewareEntry[] = [];
+    const matchedMiddlewareFilters: ExceptionFilterLike[] = [];
+    const collectMwFilters = (mw: MiddlewareEntry): void => {
+      if (!isMiddlewareClassCtor(mw)) return;
+      const useFn = (mw as { prototype?: { use?: unknown } }).prototype?.use;
+      if (typeof useFn === "function") {
+        const methodFilters = MetadataRegistry.get<ExceptionFilterLike[]>(
+          METADATA_KEYS.EXCEPTION_FILTERS,
+          useFn,
+        );
+        if (methodFilters && methodFilters.length > 0) {
+          matchedMiddlewareFilters.push(...methodFilters);
+        }
+      }
+      const classFilters = MetadataRegistry.get<ExceptionFilterLike[]>(
+        METADATA_KEYS.EXCEPTION_FILTERS,
+        mw,
+      );
+      if (classFilters && classFilters.length > 0) {
+        matchedMiddlewareFilters.push(...classFilters);
+      }
+    };
+    const isMiddlewareTransient = (mw: MiddlewareEntry): boolean => {
+      if (!isMiddlewareClassCtor(mw)) return false;
+      const meta = MetadataRegistry.get<InjectableMetadata>(
+        METADATA_KEYS.INJECTABLE,
+        mw,
+      );
+      return meta?.scope === Scope.TRANSIENT;
+    };
+
     for (let m = 0; m < moduleMiddlewares.length; m++) {
       const cfg = moduleMiddlewares[m];
-      if (
-        cfg &&
-        matchesMiddlewareForRoute(
-          cfg,
-          route.method,
-          route.fullPath,
-          route.rawPathWithoutPrefix,
-        )
-      ) {
+      if (!cfg) continue;
+      const mode = evaluateMiddlewareForRoute(
+        cfg,
+        route.method,
+        route.fullPath,
+        route.rawPathWithoutPrefix,
+        route.versions,
+        runtimeVersioning,
+      );
+      if (mode === "always") {
+        collectMwFilters(cfg.middleware);
         matchedModuleMiddlewares.push(cfg.middleware);
+      } else if (mode === "runtime") {
+        collectMwFilters(cfg.middleware);
+        const transientMw = isMiddlewareTransient(cfg.middleware);
+        const innerMw = transientMw
+          ? undefined
+          : await resolveMiddlewareSingleton(
+              cfg.middleware,
+              bridge,
+              route.controller,
+            );
+        const rawPrefixLen =
+          route.fullPath !== route.rawPathWithoutPrefix &&
+          route.fullPath.endsWith(route.rawPathWithoutPrefix)
+            ? route.fullPath.length - route.rawPathWithoutPrefix.length
+            : 0;
+        const wrappedMw: MiddlewareEntry = async (req, res, next) => {
+          const url = new URL(req.url);
+          const rawPathname = url.pathname;
+          let decodedPathname: string;
+          try {
+            decodedPathname = decodeURIComponent(rawPathname);
+          } catch {
+            decodedPathname = rawPathname;
+          }
+          const reqMethod = req.method.toUpperCase() as HttpMethod;
+          const reqVersions =
+            runtimeVersioning && versioning
+              ? extractRequestVersions(req, versioning)
+              : route.versions;
+          const strippedPathname =
+            rawPrefixLen > 0 && rawPathname.length >= rawPrefixLen
+              ? normalizePath(rawPathname.slice(rawPrefixLen))
+              : rawPathname;
+          const runtimeCandidates =
+            strippedPathname === rawPathname
+              ? [rawPathname]
+              : [rawPathname, strippedPathname];
+
+          if (cfg.include && cfg.include.length > 0) {
+            const included = cfg.include.some((rule) =>
+              matchesRouteInfo(
+                rule as string | VersionedRouteRule,
+                reqMethod,
+                runtimeCandidates,
+                reqVersions,
+                { allowStringPrefixMount: true },
+              ),
+            );
+            if (!included) {
+              return next();
+            }
+          }
+
+          if (cfg.exclude && cfg.exclude.length > 0) {
+            // Line terminators in decoded pathname must never bypass middleware via exclude patterns
+            const hasLineTerminator = /[\r\n\u2028\u2029]/.test(decodedPathname);
+            if (!hasLineTerminator) {
+              const excluded = cfg.exclude.some((rule) =>
+                matchesRouteInfo(
+                  rule as string | VersionedRouteRule,
+                  reqMethod,
+                  runtimeCandidates,
+                  reqVersions,
+                ),
+              );
+              if (excluded) {
+                return next();
+              }
+            }
+          }
+
+          if (transientMw) {
+            const freshMw = await resolveMiddlewareSingleton(
+              cfg.middleware,
+              bridge,
+              route.controller,
+            );
+            return typeof freshMw === "function"
+              ? freshMw(req, res, next)
+              : freshMw.use(req, res, next);
+          }
+          if (innerMw) {
+            return typeof innerMw === "function"
+              ? innerMw(req, res, next)
+              : innerMw.use(req, res, next);
+          }
+          return next();
+        };
+        matchedModuleMiddlewares.push(wrappedMw);
       }
     }
 
@@ -523,23 +705,29 @@ export async function compileRoutes(
     ];
 
     // Strict ADR-008 §3 enhancer precedence
+    const skipHttpGlobalEnhancers =
+      MetadataRegistry.get<boolean>(
+        Symbol.for("bunest:skip_http_global_enhancers"),
+        route.controller,
+      ) === true;
     const guardSpecs: GuardLike[] = [
-      ...globalGuards,
+      ...(skipHttpGlobalEnhancers ? [] : globalGuards),
       ...route.controllerGuards,
       ...route.methodGuards,
     ];
     const interceptorSpecs: InterceptorLike[] = [
-      ...globalInterceptors,
+      ...(skipHttpGlobalEnhancers ? [] : globalInterceptors),
       ...route.controllerInterceptors,
       ...route.methodInterceptors,
     ];
     const sharedPipeSpecs: PipeLike[] = [
-      ...globalPipes,
+      ...(skipHttpGlobalEnhancers ? [] : globalPipes),
       ...route.controllerPipes,
       ...route.methodPipes,
     ];
-    // Exception Filters: Method -> Controller -> Global (most specific first)
+    // Exception Filters: Middleware -> Method -> Controller -> Global (most specific first)
     const filterSpecs = [
+      ...matchedMiddlewareFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.methodFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.controllerFilters.map((f) =>
         buildFilterSpecWithBridge(f, bridge),
@@ -578,11 +766,12 @@ export async function compileRoutes(
         middlewareSpecs.some(
           (mw) =>
             isMiddlewareClassCtor(mw) &&
-            bridge.requiresEnhancerRequestScope!(
-              mw,
-              undefined,
-              route.controller,
-            ),
+            (isMiddlewareTransient(mw) ||
+              bridge.requiresEnhancerRequestScope!(
+                mw,
+                undefined,
+                route.controller,
+              )),
         ) ||
         guardSpecs.some((g) =>
           bridge.requiresEnhancerRequestScope!(g, "guard", route.controller),
@@ -812,11 +1001,23 @@ export async function compileRoutes(
     );
   };
 
+  // Under runtime versioning (HEADER/MEDIA_TYPE/CUSTOM), a version miss on a more specific
+  // route (e.g. `/items/me` @Version('2')) must fall through to a less specific route
+  // (e.g. `/items/:id` @Version('1') or `/*`). Demote all routes into FallbackRadixRouter
+  // whenever runtime versioning has both static/param/wildcard routes that can fall through.
+  const hasDynamicVersionedRoutes =
+    runtimeVersioning &&
+    Array.from(groupedByCanonicalPath.values()).some((g) => {
+      const p = g[0]?.route.fullPath ?? "";
+      return p.includes(":") || p.includes("*");
+    });
+
   for (const group of groupedByCanonicalPath.values()) {
     const first = group[0];
     if (!first) continue;
 
     const allNative =
+      !hasDynamicVersionedRoutes &&
       !shadowsFallbackRoute(first.route.fullPath) &&
       group.every(
         (item) =>
@@ -966,6 +1167,19 @@ export async function compileRoutes(
             runtime,
             versionAllow,
           );
+        }
+
+        if (input.onVersionNotFound) {
+          const mwRes = await input.onVersionNotFound(
+            req,
+            server,
+            ctx.pathname,
+          );
+          if (mwRes !== null) {
+            return securityHeaders
+              ? applySecurityHeaders(mwRes, securityHeaders)
+              : mwRes;
+          }
         }
 
         return executeFallbackException(

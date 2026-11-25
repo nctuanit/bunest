@@ -59,8 +59,7 @@ describeConformance(
       expect(registry.getTimeout("test")).not.toBeUndefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout<T = any>(name: string): T to accept a generic type parameter, but packages/jobs/src/scheduler/scheduler.registry.ts declares getTimeout(name: string) with 0 type parameters.
-    it.skip(`should support generic type parameter for getTimeout`, async () => {
+    it(`should support generic type parameter for getTimeout`, async () => {
       await app!.init();
       const registry = app!.get(SchedulerRegistry);
       // @ts-expect-error BUNEST_BUG: SchedulerRegistry.getTimeout() does not accept a generic type parameter
@@ -90,8 +89,7 @@ describeConformance(
       expect(timeout).toBeDefined();
     });
 
-    // BUNEST_BUG: Expected SchedulerRegistry.getTimeout() missing-timeout error message to match NestJS NO_SCHEDULER_FOUND ("No Timeout was found with the given name (dynamic)..."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'No timeout found with name "dynamic".'.
-    it.skip(`should delete dynamic timeout`, async () => {
+    it(`should delete dynamic timeout`, async () => {
       const service = app!.get(TimeoutService);
       await app!.init();
       service.addTimeout();
@@ -201,8 +199,7 @@ describeConformance(
       },
     );
 
-    // BUNEST_BUG: Expected duplicate timeout error message to match NestJS DUPLICATE_SCHEDULER ("Timeout with the given name (<name>) already exists. Ignored."), but packages/jobs/src/scheduler/scheduler.registry.ts throws 'Timeout with name "<name>" already exists.'.
-    it.skip.each(["shared", "__proto__"])(
+    it.each(["shared", "__proto__"])(
       "should reject duplicate timeout name %s",
       async (name) => {
         @Injectable()
@@ -261,8 +258,7 @@ describeConformance(
       jest.useRealTimers();
     });
 
-    // BUNEST_BUG: Expected Logger.overrideLogger(logger) to intercept SchedulerExplorer instance logger warnings with context "Scheduler", but packages/core/src/common/logger/logger.ts instance methods ignore Logger.overrideLogger() and packages/jobs/src/scheduler/scheduler.explorer.ts uses context "SchedulerExplorer".
-    it.skip(`should log a warning when trying to register an timeout in a request scoped provider`, async () => {
+    it(`should log a warning when trying to register an timeout in a request scoped provider`, async () => {
       const logger = {
         log: mock(() => {}),
         error: mock(() => {}),

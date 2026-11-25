@@ -240,31 +240,27 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected User.email field astNode.directives to contain ['cacheControl', 'auth'], got [] (astNode is undefined); packages/graphql/src/schema/graphql-schema.factory.ts does not populate astNode.directives on code-first GraphQLField configs and does not merge @Directive() metadata from @ResolveField() handler methods.
-    it.skip("should keep the handler's directives next to the model's", () => {
+    it("should keep the handler's directives next to the model's", () => {
       expect(getDirectiveNames(getField(baseSchema, "User", "email"))).toEqual([
         "cacheControl",
         "auth",
       ]);
     });
 
-    // BUNEST_BUG: Expected User.phone field extensions to contain { role: 'ADMIN' } from @Extensions() on UserResolver.phone(), got {}; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateObjectType:1102-1135) does not read @Extensions() metadata from @ResolveField() handler methods when merging into object type fields.
-    it.skip("should apply the handler's extensions to a field the model declares", () => {
+    it("should apply the handler's extensions to a field the model declares", () => {
       expect(getField(baseSchema, "User", "phone").extensions).toEqual(
         expect.objectContaining({ role: "ADMIN" }),
       );
     });
 
-    // BUNEST_BUG: Expected User.status to become nullable with description 'handler description' from @ResolveField('status', undefined, { nullable: true, description }), got String! with description undefined; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField:176-184) ignores the 3rd maybeOptions argument when the 2nd returnTypeOrOptions argument is undefined.
-    it.skip("should apply the handler's nullability and description over the model's", () => {
+    it("should apply the handler's nullability and description over the model's", () => {
       const field = getField(baseSchema, "User", "status");
 
       expect(field.type).not.toBeInstanceOf(GraphQLNonNull);
       expect(field.description).toBe("handler description");
     });
 
-    // BUNEST_BUG: Expected Employee.email and Customer.email to keep interface Account.email extensions ({ role: 'ADMIN' }) and directives (['auth']), got extensions {} and astNode undefined; packages/graphql/src/schema/graphql-schema.factory.ts (getOrCreateObjectType:1029-1056 & 1102-1135) does not copy extensions/astNode.directives from implemented @InterfaceType() fields or preserve them across @ResolveField() merging.
-    it.skip("should keep an interface field's extensions and directives on an implementing type with a handler", () => {
+    it("should keep an interface field's extensions and directives on an implementing type with a handler", () => {
       const employeeEmail = getField(baseSchema, "Employee", "email");
 
       expect(employeeEmail.extensions).toEqual(
@@ -276,8 +272,7 @@ describeConformance(
       );
     });
 
-    // BUNEST_BUG: Expected Memo.body and Report.body to publish per-implementer args while leaving Document.body args empty, but schemaFactory.create throws 'Schema must contain uniquely named types but contains multiple types named "Document"'; packages/graphql/src/schema/graphql-schema.factory.ts (resolveOutputLeaf:791 & getOrCreateInterfaceType:850) uses prototype-walking MetadataRegistry.has/get instead of hasOwn/getOwn, misclassifying @ObjectType subclasses extending @InterfaceType Document as duplicate interface types.
-    it.skip("should publish each implementing type's own handler arguments, leaving the interface field alone", async () => {
+    it("should publish each implementing type's own handler arguments, leaving the interface field alone", async () => {
       const schema = await schemaFactory.create(
         [new MemoResolver(), new ReportResolver()],
         { buildSchemaOptions: { skipCheck: true } },

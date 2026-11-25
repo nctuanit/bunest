@@ -207,8 +207,7 @@ describeConformance(
     });
 
     describe("pattern complexity limits (NestJS v12 DoS protection parity)", () => {
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts returns "null" / undefined instead of passing non-string/number/object values through unchanged (matching NestJS transformPatternToRoute).
-      it.skip("should return non-string/number/object values unchanged", () => {
+      it("should return non-string/number/object values unchanged", () => {
         const sym = Symbol(213);
         expect(normalizePattern(null as unknown as PatternInput)).toBeNull();
         expect(
@@ -219,8 +218,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max depth (6) or max keys (20) limits and does not export exceedsPatternLimits().
-      it.skip("should return special sentinel strings when exceeding max depth or max keys", () => {
+      it("should return special sentinel strings when exceeding max depth or max keys", () => {
         const deepNestedPattern = {
           a: { b: { c: { d: { e: { f: { g: "too deep" } } } } } },
         };
@@ -234,8 +232,7 @@ describeConformance(
         expect(normalizePattern(tooManyKeysPattern)).toBe("[TOO_MANY_KEYS]");
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max key length (256 chars) limit.
-      it.skip("should return [KEY_TOO_LONG] when a key exceeds max key length", () => {
+      it("should return [KEY_TOO_LONG] when a key exceeds max key length", () => {
         const longestKey = "k".repeat(256);
         expect(normalizePattern({ [`${longestKey}k`]: "value" })).toBe(
           "[KEY_TOO_LONG]",
@@ -245,24 +242,21 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max array length (20 items) limit.
-      it.skip("should return [TOO_MANY_KEYS] for an array with more items than max keys", () => {
+      it("should return [TOO_MANY_KEYS] for an array with more items than max keys", () => {
         const items = Array(21).fill(0);
         expect(normalizePattern({ cmd: items })).toBe(
           '{"cmd":[TOO_MANY_KEYS]}',
         );
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max string value length (4096 chars) limit.
-      it.skip("should return [VALUE_TOO_LONG] when a string value exceeds max value length", () => {
+      it("should return [VALUE_TOO_LONG] when a string value exceeds max value length", () => {
         const longestValue = "v".repeat(4096);
         expect(normalizePattern({ cmd: `${longestValue}v` })).toBe(
           '{"cmd":[VALUE_TOO_LONG]}',
         );
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts does not enforce max total keys (100) across nested objects.
-      it.skip("should return [TOO_MANY_KEYS] when total keys across nested objects exceed limit", () => {
+      it("should return [TOO_MANY_KEYS] when total keys across nested objects exceed limit", () => {
         const objectOfKeys = (count: number) =>
           Object.fromEntries(
             Array.from({ length: count }, (_, i) => [`key${i}`, i]),

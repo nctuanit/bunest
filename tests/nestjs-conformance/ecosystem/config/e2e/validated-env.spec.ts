@@ -55,8 +55,7 @@ describeConformance(
     });
 
     describe("a variable the validator maps to undefined", () => {
-      // BUNEST_BUG: ConfigService.get() falls back to live process.env whenever store[key] === undefined instead of respecting keys explicitly mapped to undefined by a validator (expected undefined, received "*"; packages/core/src/config/config.service.ts:280-286, packages/core/src/config/validator.ts:200)
-      it.skip("should not be served from process.env", async () => {
+      it("should not be served from process.env", async () => {
         process.env.CORS_ORIGIN = "*";
         process.env.ADMIN_API_TOKEN = "";
 
@@ -112,8 +111,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: ConfigModule.forRoot() writes raw fileValues to process.env before validation AND validateConfiguration() spreads `{ ...baseForMerge, ...result.value }`, restoring keys explicitly stripped by the schema (expected undefined, received "true"; packages/core/src/config/config.module.ts:60-69, packages/core/src/config/validator.ts:200)
-    it.skip("should not restore a variable the schema strips", async () => {
+    it("should not restore a variable the schema strips", async () => {
       const envFilePath = writeEnvFile(".env", [
         "ALLOW_INSECURE_COOKIES=true",
         "PORT=3000",
@@ -187,8 +185,7 @@ describeConformance(
       expect(configService.get("PORT")).toBe(3000);
     });
 
-    // BUNEST_BUG: validateConfiguration() does not inspect schema declared keys (e.g. Joi `.describe().keys`) to filter undeclared process.env keys out of result.value when skipProcessEnv is true (expected CLOUD_SECRET_KEY=undefined, received "hunter2"; packages/core/src/config/validator.ts:199-201)
-    it.skip('should not serve undeclared process.env variables with "skipProcessEnv" (joi)', async () => {
+    it('should not serve undeclared process.env variables with "skipProcessEnv" (joi)', async () => {
       process.env.CLOUD_SECRET_KEY = "hunter2";
       process.env.PORT = "3000";
       const joiPortSchema = Object.assign(
@@ -210,8 +207,7 @@ describeConformance(
       expect(configService.get("PORT")).toBe(3000);
     });
 
-    // BUNEST_BUG: Importing multiple ConfigModule.forRoot() instances throws AmbiguousProviderException on ConfigService because ConfigModule registers a separate ConfigService provider per forRoot() call instead of sharing a global ConfigHostModule (packages/core/src/config/config.module.ts:98-183)
-    it.skip('should keep the values converted by each validated "forRoot"', async () => {
+    it('should keep the values converted by each validated "forRoot"', async () => {
       const appEnvFilePath = writeEnvFile(".env.app", [
         "PORT=4000",
         "DISABLE_AUTH=false",
@@ -302,8 +298,7 @@ describeConformance(
       expect(configService.get("NODE_ENV")).toBe("development");
     });
 
-    // BUNEST_BUG: validateConfiguration() spreads `{ ...result }` on the return value of validate(), stripping class prototype getters like `get PORT()` (expected 3000, received "3000" from process.env; packages/core/src/config/validator.ts:255)
-    it.skip('should serve the members of a class instance returned by "validate"', async () => {
+    it('should serve the members of a class instance returned by "validate"', async () => {
       process.env.PORT = "3000";
       class EnvironmentVariables {
         readonly #port: number;
@@ -322,8 +317,7 @@ describeConformance(
       expect(configService.get("PORT")).toBe(3000);
     });
 
-    // BUNEST_BUG: When validatePredefined is false, ConfigModule unconditionally runs `Object.assign(store, validated, snapshot.runtimeEnv)`, overwriting schema-converted values with raw process.env strings even when the raw predefined value equals the env file value (expected 3000, received "3000"; packages/core/src/config/config.module.ts:142)
-    it.skip("should serve the converted value of a predefined variable that equals the env file value", async () => {
+    it("should serve the converted value of a predefined variable that equals the env file value", async () => {
       process.env.PORT = "3000";
       const envFilePath = writeEnvFile(".env", ["PORT=3000"]);
       const schema = createStandardSchema<Record<string, unknown>>((raw) => {
@@ -375,8 +369,7 @@ describeConformance(
     describe("validation error", () => {
       const apiKey = "deadbeefdeadbeefdeadbeefdeadbee";
 
-      // BUNEST_BUG: validateConfiguration() does not inject Joi default pattern message templates or redact rejected secret values from Standard Schema issue messages (leaks raw apiKey in error message; packages/core/src/config/validator.ts:185-198)
-      it.skip("should not contain the value Joi rejects", async () => {
+      it("should not contain the value Joi rejects", async () => {
         process.env.API_KEY = apiKey;
 
         const joiPatternSchema = createStandardSchema<Record<string, unknown>>(
@@ -413,8 +406,7 @@ describeConformance(
         await expect(result).rejects.not.toThrow(apiKey);
       });
 
-      // BUNEST_BUG: validateConfiguration() does not redact quoted rejected secret values to `[redacted]` and formats errors as "Configuration Standard Schema validation failed:\n  - ..." instead of "Config validation error: ..." (packages/core/src/config/validator.ts:185-198)
-      it.skip("should not contain the rejected value quoted by any schema library", async () => {
+      it("should not contain the rejected value quoted by any schema library", async () => {
         process.env.API_KEY = apiKey;
         const validationSchema: StandardSchemaV1<
           Record<string, unknown>,

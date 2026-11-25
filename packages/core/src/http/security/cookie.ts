@@ -1,8 +1,34 @@
 import { timingSafeEqualBytes, type CookieOptions } from "../../common/index";
 import { isDangerousKey } from "./prototype-sanitizer";
 
-const INVALID_COOKIE_NAME_RE = /[\x00-\x1f\x7f\s;,=]/;
-const INVALID_HEADER_VALUE_RE = /[\r\n]/;
+const VALID_COOKIE_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const VALID_COOKIE_PATH_RE = /^[\x20-\x3a\x3c-\x7e]*$/;
+const VALID_COOKIE_DOMAIN_RE =
+  /^\.?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*$/;
+
+const SAME_SITE_MAP = new Map<string, "Strict" | "Lax" | "None">([
+  ["strict", "Strict"],
+  ["lax", "Lax"],
+  ["none", "None"],
+]);
+
+const PRIORITY_MAP = new Map<string, "Low" | "Medium" | "High">([
+  ["low", "Low"],
+  ["medium", "Medium"],
+  ["high", "High"],
+]);
+
+function trimSpaceAndTab(input: string): string {
+  let start = 0;
+  let end = input.length;
+  while (start < end && (input.charCodeAt(start) === 0x20 || input.charCodeAt(start) === 0x09)) {
+    start++;
+  }
+  while (end > start && (input.charCodeAt(end - 1) === 0x20 || input.charCodeAt(end - 1) === 0x09)) {
+    end--;
+  }
+  return input.slice(start, end);
+}
 
 /**
  * Validates and normalizes cookie signing secrets (`cookies.secret`).
@@ -27,10 +53,11 @@ export function normalizeCookieSecrets(
   return Object.freeze([...list]);
 }
 
-function hmacSignBase64Url(value: string, secret: string): string {
+function hmacSignBase64(value: string, secret: string): string {
   return new Bun.CryptoHasher("sha256", secret)
     .update(value)
-    .digest("base64url");
+    .digest("base64")
+    .replace(/=+$/, "");
 }
 
 export const SIGNED_COOKIE_PREFIX = "s:";
@@ -63,10 +90,7 @@ export class CookieSigner {
    * any of the secrets, or `undefined` otherwise. The `s:` prefix is optional.
    */
   unsign(input: string): string | undefined {
-    const candidate = input.startsWith(SIGNED_COOKIE_PREFIX)
-      ? input
-      : `${SIGNED_COOKIE_PREFIX}${input}`;
-    const result = unsignCookieValue(candidate, this.secrets);
+    const result = unsignCookieValue(input, this.secrets);
     return result === false ? undefined : result;
   }
 
@@ -79,26 +103,29 @@ export class CookieSigner {
 }
 
 /**
- * Signs a cookie value with HMAC-SHA256 (`s:<value>.<sig>`).
+ * Signs a cookie value with HMAC-SHA256 (`s:<value>.<sig>`), using standard
+ * unpadded base64 matching `cookie-signature` / NestJS v12.
  */
 export function signCookieValue(value: string, secret: string): string {
-  return `s:${value}.${hmacSignBase64Url(value, secret)}`;
+  return `s:${value}.${hmacSignBase64(value, secret)}`;
 }
 
 /**
  * Verifies a signed cookie value against one or more secrets using constant-time
- * comparison (supports secret rotation). Returns the original unsigned value if valid.
+ * comparison (supports secret rotation). Accepts payloads with or without the `s:` prefix.
  */
 export function unsignCookieValue(
   signedValue: string,
   secrets: readonly string[],
 ): string | false {
-  if (!signedValue.startsWith("s:")) {
+  if (typeof signedValue !== "string") {
     return false;
   }
-  const body = signedValue.slice(2);
+  const body = signedValue.startsWith(SIGNED_COOKIE_PREFIX)
+    ? signedValue.slice(SIGNED_COOKIE_PREFIX.length)
+    : signedValue;
   const dotIdx = body.lastIndexOf(".");
-  if (dotIdx <= 0) {
+  if (dotIdx < 0) {
     return false;
   }
   const rawValue = body.slice(0, dotIdx);
@@ -111,7 +138,7 @@ export function unsignCookieValue(
   for (let i = 0; i < secrets.length; i++) {
     const secret = secrets[i];
     if (!secret) continue;
-    const expectedSig = hmacSignBase64Url(rawValue, secret);
+    const expectedSig = hmacSignBase64(rawValue, secret);
     const expectedBuf = Buffer.from(expectedSig, "utf8");
     if (timingSafeEqualBytes(providedBuf, expectedBuf)) {
       return rawValue;
@@ -128,20 +155,16 @@ export function extractSignedCookies(
   cookies: Record<string, string>,
   secrets: readonly string[] | undefined,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null);
   if (!secrets || secrets.length === 0) {
     return out;
   }
   for (const [name, val] of Object.entries(cookies)) {
     if (isDangerousKey(name)) continue;
+    if (!val.startsWith(SIGNED_COOKIE_PREFIX)) continue;
     const verified = unsignCookieValue(val, secrets);
     if (verified !== false) {
-      Object.defineProperty(out, name, {
-        value: verified,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+      out[name] = verified;
     }
   }
   return out;
@@ -156,29 +179,36 @@ function safeDecodeURIComponent(value: string): string {
 }
 
 /**
- * Parses an HTTP `Cookie` header string into a sanitized key-value record.
+ * Parses an HTTP `Cookie` header string (or array of header values) into a
+ * prototype-less (`Object.create(null)`) key-value record.
  */
 export function parseCookieHeader(
-  header: string | null | undefined,
+  header: string | readonly string[] | null | undefined,
 ): Record<string, string> {
-  const cookies: Record<string, string> = {};
+  const cookies: Record<string, string> = Object.create(null);
   if (!header) {
     return cookies;
   }
+  const rawHeader: string = Array.isArray(header)
+    ? header.join("; ")
+    : (header as string);
+  if (!rawHeader) {
+    return cookies;
+  }
 
-  const pairs = header.split(";");
+  const pairs = rawHeader.split(";");
   for (let i = 0; i < pairs.length; i++) {
     const part = pairs[i];
     if (!part) continue;
     const eqIndex = part.indexOf("=");
     if (eqIndex <= 0) continue;
 
-    const rawName = part.slice(0, eqIndex).trim();
-    if (!rawName || isDangerousKey(rawName)) {
+    const rawName = trimSpaceAndTab(part.slice(0, eqIndex));
+    if (!rawName) {
       continue;
     }
 
-    let rawValue = part.slice(eqIndex + 1).trim();
+    let rawValue = trimSpaceAndTab(part.slice(eqIndex + 1));
     if (
       rawValue.length >= 2 &&
       rawValue.charCodeAt(0) === 34 &&
@@ -188,12 +218,7 @@ export function parseCookieHeader(
     }
 
     if (!Object.prototype.hasOwnProperty.call(cookies, rawName)) {
-      Object.defineProperty(cookies, rawName, {
-        value: safeDecodeURIComponent(rawValue),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+      cookies[rawName] = safeDecodeURIComponent(rawValue);
     }
   }
 
@@ -216,26 +241,27 @@ export function extractRequestCookies(req: Request): Record<string, string> {
     bunCookies !== null &&
     typeof bunCookies[Symbol.iterator] === "function"
   ) {
-    const out: Record<string, string> = {};
+    const out: Record<string, string> = Object.create(null);
     let hasEntries = false;
     for (const [rawName, rawValue] of bunCookies) {
       hasEntries = true;
       if (!rawName || isDangerousKey(rawName)) {
         continue;
       }
-      Object.defineProperty(out, rawName, {
-        value: rawValue,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+      out[rawName] = rawValue;
     }
     if (hasEntries) {
       return out;
     }
   }
 
-  return parseCookieHeader(req.headers.get("cookie"));
+  const parsed = parseCookieHeader(req.headers.get("cookie"));
+  for (const key of Object.keys(parsed)) {
+    if (isDangerousKey(key)) {
+      delete parsed[key];
+    }
+  }
+  return parsed;
 }
 
 /**
@@ -246,58 +272,108 @@ export function serializeCookie(
   value: string,
   options: CookieOptions = {},
 ): string {
-  if (!name || INVALID_COOKIE_NAME_RE.test(name)) {
+  if (typeof name !== "string" || !name || !VALID_COOKIE_NAME_RE.test(name)) {
     throw new TypeError(`Invalid cookie name: "${name}"`);
   }
-  if (options.maxAge !== undefined && !Number.isFinite(options.maxAge)) {
-    throw new TypeError(`Invalid cookie maxAge: ${options.maxAge}`);
+  if (typeof value !== "string") {
+    throw new TypeError("Cookie value must be a string");
   }
-  if (options.domain !== undefined && INVALID_HEADER_VALUE_RE.test(options.domain)) {
-    throw new TypeError("Invalid cookie domain");
+
+  let encodedValue: string;
+  try {
+    encodedValue = encodeURIComponent(value);
+  } catch {
+    throw new TypeError("Cookie value is not a well-formed UTF-16 string");
   }
-  if (options.path !== undefined && INVALID_HEADER_VALUE_RE.test(options.path)) {
+
+  const path = options.path === undefined ? "/" : options.path;
+  if (typeof path !== "string" || !VALID_COOKIE_PATH_RE.test(path)) {
     throw new TypeError("Invalid cookie path");
   }
 
-  const sameSite: "strict" | "lax" | "none" | undefined =
-    options.sameSite === true || options.sameSite === "strict"
-      ? "strict"
-      : options.sameSite === "lax"
-        ? "lax"
-        : options.sameSite === "none"
-          ? "none"
-          : undefined;
-
-  const cookie = new Bun.Cookie(name, value, {
-    ...(options.domain !== undefined ? { domain: options.domain } : {}),
-    ...(options.path !== undefined ? { path: options.path } : {}),
-    ...(options.maxAge !== undefined
-      ? { maxAge: Math.floor(options.maxAge) }
-      : {}),
-    ...(options.expires !== undefined ? { expires: options.expires } : {}),
-    ...(options.httpOnly ? { httpOnly: true } : {}),
-    ...(options.secure ? { secure: true } : {}),
-    ...(options.partitioned ? { partitioned: true } : {}),
-    ...(sameSite !== undefined ? { sameSite } : {}),
-  });
-
-  let serialized = cookie.serialize();
-  if (options.path === undefined) {
-    // Bun.Cookie defaults Path=/ when omitted; strip default Path=/ if caller explicitly left path undefined
-    serialized = serialized.replace(/;\s*Path=\//, "");
+  if (
+    options.domain !== undefined &&
+    (typeof options.domain !== "string" ||
+      !VALID_COOKIE_DOMAIN_RE.test(options.domain))
+  ) {
+    throw new TypeError("Invalid cookie domain");
   }
-  if (sameSite === undefined) {
-    // Bun.Cookie defaults SameSite=Lax when omitted; strip default SameSite=Lax if caller did not specify sameSite
-    serialized = serialized.replace(/;\s*SameSite=Lax/, "");
+
+  if (
+    options.maxAge !== undefined &&
+    (typeof options.maxAge !== "number" || !Number.isSafeInteger(options.maxAge))
+  ) {
+    throw new TypeError(`Invalid cookie maxAge: ${String(options.maxAge)}`);
   }
+
+  if (
+    options.expires !== undefined &&
+    (!(options.expires instanceof Date) ||
+      Number.isNaN(options.expires.getTime()))
+  ) {
+    throw new TypeError("Invalid cookie expires date");
+  }
+
+  let sameSite: "Strict" | "Lax" | "None" | undefined;
+  if (options.sameSite !== undefined && options.sameSite !== false) {
+    if (options.sameSite === true) {
+      sameSite = "Strict";
+    } else if (typeof options.sameSite === "string") {
+      sameSite = SAME_SITE_MAP.get(options.sameSite.toLowerCase());
+      if (!sameSite) {
+        throw new TypeError(`Invalid cookie sameSite: "${options.sameSite}"`);
+      }
+    } else {
+      throw new TypeError(`Invalid cookie sameSite: ${String(options.sameSite)}`);
+    }
+  }
+
+  if (sameSite === "None" && !options.secure) {
+    throw new TypeError('Cookie with SameSite="None" requires "secure: true"');
+  }
+
+  if (options.partitioned && !options.secure) {
+    throw new TypeError('Partitioned cookie requires "secure: true"');
+  }
+
+  let priority: "Low" | "Medium" | "High" | undefined;
   if (options.priority !== undefined) {
-    const cap =
-      options.priority === "high"
-        ? "High"
-        : options.priority === "medium"
-          ? "Medium"
-          : "Low";
-    serialized += `; Priority=${cap}`;
+    if (typeof options.priority !== "string") {
+      throw new TypeError(`Invalid cookie priority: ${String(options.priority)}`);
+    }
+    priority = PRIORITY_MAP.get(options.priority.toLowerCase());
+    if (!priority) {
+      throw new TypeError(`Invalid cookie priority: "${options.priority}"`);
+    }
   }
-  return serialized;
+
+  const parts: string[] = [`${name}=${encodedValue}`];
+  if (path) {
+    parts.push(`Path=${path}`);
+  }
+  if (options.domain !== undefined) {
+    parts.push(`Domain=${options.domain}`);
+  }
+  if (options.maxAge !== undefined) {
+    parts.push(`Max-Age=${options.maxAge}`);
+  }
+  if (options.expires !== undefined) {
+    parts.push(`Expires=${options.expires.toUTCString()}`);
+  }
+  if (options.httpOnly) {
+    parts.push("HttpOnly");
+  }
+  if (options.secure) {
+    parts.push("Secure");
+  }
+  if (options.partitioned) {
+    parts.push("Partitioned");
+  }
+  if (priority !== undefined) {
+    parts.push(`Priority=${priority}`);
+  }
+  if (sameSite !== undefined) {
+    parts.push(`SameSite=${sameSite}`);
+  }
+  return parts.join("; ");
 }

@@ -97,8 +97,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: Expected { ticket: { comments: ["staff only"] } } on each request; actual fails with TypeError because comments is undefined. GraphQLSchemaFactory.getOrCreateObjectType (packages/graphql/src/schema/graphql-schema.factory.ts:1058-1099) ignores fieldMeta.defaultValue on @ObjectType() @Field() definitions.
-    it.skip("should not share an object type field default across requests", async () => {
+    it("should not share an object type field default across requests", async () => {
       for (let i = 0; i < 2; i++) {
         const res = await request(app)
           .post("/graphql")
@@ -111,8 +110,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected { tagCount: 1 } on every request; actual returns { tagCount: 2 } on the 2nd request because GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1221) passes the raw mutable defaultValue array reference without cloning per request.
-    it.skip("should not share an argument default across requests", async () => {
+    it("should not share an argument default across requests", async () => {
       for (let i = 0; i < 2; i++) {
         const res = await request(app)
           .post("/graphql")
@@ -123,8 +121,7 @@ describeConformance(
       }
     });
 
-    // BUNEST_BUG: Expected omitted { posts } to complete filter: {} with PostFilter field defaults (limit: 2, tags: ["mutated"]); actual returns "{}" because GraphQLSchemaFactory.buildArgsConfig (packages/graphql/src/schema/graphql-schema.factory.ts:1221) does not coerce/complete omitted @InputType() argument defaultValue objects with nested input field defaults or clone them per request.
-    it.skip("should complete an omitted argument default with the input field defaults", async () => {
+    it("should complete an omitted argument default with the input field defaults", async () => {
       for (let i = 0; i < 2; i++) {
         const omitted = await request(app)
           .post("/graphql")

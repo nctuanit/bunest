@@ -703,8 +703,7 @@ describeConformance(
     });
 
     describe("NestJS v12 hardening & graceful shutdown parity (unimplemented)", () => {
-      // BUNEST_BUG: TcpServer.handleEnvelope() in packages/microservices/src/transports/tcp.transport.ts does not validate `envelope.id` (rejecting non-string/number IDs or IDs > 256 chars with InvalidPacketIdException), allowing oversized/nested IDs to be echoed back in every reply.
-      it.skip("should drop a request whose id is neither a number nor a short string (<= 256 chars)", async () => {
+      it("should drop a request whose id is neither a number nor a short string (<= 256 chars)", async () => {
         const server = await createListeningServer();
         const handler = createSpy(() => "should-not-run");
         server.addMessageHandler("test", handler);
@@ -726,8 +725,7 @@ describeConformance(
         expect(conn.responses).toHaveLength(0);
       });
 
-      // BUNEST_BUG: TcpTransportOptions and TcpServer in packages/microservices/src/transports/tcp.transport.ts do not support `gracefulShutdown` / `gracePeriod` (close() terminates all sockets immediately without waiting for in-flight handlers).
-      it.skip("should wait for in-flight handlers up to gracePeriod before closing sockets when gracefulShutdown is enabled", async () => {
+      it("should wait for in-flight handlers up to gracePeriod before closing sockets when gracefulShutdown is enabled", async () => {
         const server = new TcpServer({
           host: "127.0.0.1",
           port: 0,
@@ -757,8 +755,7 @@ describeConformance(
         await closing;
       });
 
-      // BUNEST_BUG: TcpTransportOptions and TcpServer in packages/microservices/src/transports/tcp.transport.ts do not support `maxConcurrentMessages` per-socket concurrency throttling.
-      it.skip("should hold excess messages per peer while maxConcurrentMessages handlers are in flight", async () => {
+      it("should hold excess messages per peer while maxConcurrentMessages handlers are in flight", async () => {
         const server = new TcpServer({
           host: "127.0.0.1",
           port: 0,
@@ -787,8 +784,7 @@ describeConformance(
         expect(handler.callCount).toBe(4);
       });
 
-      // BUNEST_BUG: normalizePattern() in packages/microservices/src/interfaces.ts has no recursion depth guard, so deeply nested patterns (e.g. depth 100_000) overflow the call stack instead of gracefully returning a 404 / NO_MESSAGE_HANDLER error.
-      it.skip("should handle deeply nested object patterns without overflowing the stack", async () => {
+      it("should handle deeply nested object patterns without overflowing the stack", async () => {
         const server = await createListeningServer();
         const client = new TcpClientProxy({
           host: "127.0.0.1",

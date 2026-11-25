@@ -138,8 +138,7 @@ describeConformance(
           });
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() inserts nodes into staticModuleNodes before instantiateModuleSingletons() resolves, so a concurrent load() returns a ModuleRef whose singletons are not yet initialized (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should return the providers after the first load() built them", async () => {
+        it("should return the providers after the first load() built them", async () => {
           const first = lazyModuleLoader.load(() => ReportsModule);
           await connectionRequested;
           const second = loadReportsService();
@@ -164,8 +163,7 @@ describeConformance(
           expect(constructionsCount).toBe(1);
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() only deduplicates by root loadKey and registers imported modules into staticModuleNodes before singleton instantiation completes, so loading an imported module concurrently throws "has not been initialized yet" (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should wait for a load() that builds the module as an import", async () => {
+        it("should wait for a load() that builds the module as an import", async () => {
           const dashboard = lazyModuleLoader.load(() => DashboardModule);
           await connectionRequested;
           const reports = loadReportsService();
@@ -244,8 +242,7 @@ describeConformance(
           constructionsCount = 0;
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() does not reuse an imported module built concurrently by another load() while scanning, re-instantiating SessionRegistry twice (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should not build the module again", async () => {
+        it("should not build the module again", async () => {
           const documents = lazyModuleLoader.load(createDocumentsModule);
           await delayTick();
 
@@ -387,8 +384,7 @@ describeConformance(
           expect(discoveryService.getModules().length).toBe(initialModuleCount);
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() rollback evicts shared imported modules without tracking concurrent load references, causing SharedService to be re-instantiated (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should not evict a module that a concurrent load() still uses", async () => {
+        it("should not evict a module that a concurrent load() still uses", async () => {
           const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
           let sharedInstances = 0;
 
@@ -433,8 +429,7 @@ describeConformance(
           expect(sharedInstances).toBe(instancesBefore);
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() does not propagate a failing shared import to a concurrent dependent load() and leaves inconsistent retry state (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should allow a retry after a failure while another load is in flight", async () => {
+        it("should allow a retry after a failure while another load is in flight", async () => {
           let xCalls = 0;
           const xProvider = {
             provide: "X_PROVIDER",
@@ -474,8 +469,7 @@ describeConformance(
           expect(retryAfter).toBe(retry);
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() calls new ModuleScanner().scan(loaded) without forwarding moduleOverrides from TestingModuleBuilder.overrideModule() (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should roll back an overridden module when its load fails", async () => {
+        it("should roll back an overridden module when its load fails", async () => {
           let overriddenCalls = 0;
           const failingProvider = {
             provide: "FAILING_OVERRIDE",
@@ -512,8 +506,7 @@ describeConformance(
           expect(overriddenCalls).toBe(2);
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() rollback evicts concurrently loaded sibling module (OtherMod) when a global module load fails concurrently (packages/core/src/di/di-container.ts:1991-2139).
-        it.skip("should unlink a failed global module from another module loaded concurrently", async () => {
+        it("should unlink a failed global module from another module loaded concurrently", async () => {
           const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
           @Global()
@@ -962,8 +955,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: DIContainer.loadLazyModule() updates modulesMap but never registers lazily loaded modules into ModulesContainer (packages/core/src/di/di-container.ts:1991-2139); modulesContainer.size stays 3 instead of 4.
-        it.skip("should register lazily loaded modules inside ModulesContainer", async () => {
+        it("should register lazily loaded modules inside ModulesContainer", async () => {
           @Module({})
           class TrackedLazyModule {}
 

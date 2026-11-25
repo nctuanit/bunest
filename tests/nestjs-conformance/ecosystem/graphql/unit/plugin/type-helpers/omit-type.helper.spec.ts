@@ -23,8 +23,7 @@ describeConformance(
   () => {
     class UpdateUserDto extends OmitType(CreateUserDto, ["login", "_id"]) {}
 
-    // BUNEST_BUG: OmitType() in packages/graphql/src/decorators/type.decorators.ts (lines 854-939) does not auto-apply the source @ObjectType() decorator to the generated class (getFieldsAndDecoratorForType throws UnableToFindFieldsError) and does not clone @Directive()/@Extensions() metadata onto mapped types.
-    it.skip('should inherit all fields except for "login" and "_id"', () => {
+    it('should inherit all fields except for "login" and "_id"', () => {
       const prototype = Object.getPrototypeOf(UpdateUserDto);
       const { fields } = getFieldsAndDecoratorForType(prototype);
       expect(fields.length).toEqual(1);
@@ -40,8 +39,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: OmitType() in packages/graphql/src/decorators/type.decorators.ts (lines 932-939) does not inherit the source @ObjectType() decorator onto the generated mapped class ("OmitPricesDto"), causing getFieldsAndDecoratorForType(Object.getPrototypeOf(PublicPricesDto)) to throw UnableToFindFieldsError.
-    it.skip("should handle a field whose key is a number", () => {
+    it("should handle a field whose key is a number", () => {
       @ObjectType()
       class PricesDto {
         @IsNumber()

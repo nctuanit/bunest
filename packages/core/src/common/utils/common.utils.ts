@@ -1,4 +1,4 @@
-import { METADATA_KEYS } from "../constants/metadata-keys";
+import { DESIGN_METADATA_KEYS, METADATA_KEYS } from "../constants/metadata-keys";
 import { Scope } from "../enums/scope.enum";
 import type {
   ParamData,
@@ -19,12 +19,15 @@ export function mixin<T extends Type<unknown>>(mixinClass: T): T {
     value: `${mixinClass.name || "Mixin"}_${++mixinCounter}`,
     configurable: true,
   });
-  if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, mixinClass)) {
+  if (!MetadataRegistry.has(METADATA_KEYS.INJECTABLE, mixinClass)) {
     MetadataRegistry.define(
       METADATA_KEYS.INJECTABLE,
       { scope: Scope.SINGLETON },
       mixinClass,
     );
+  }
+  if (!MetadataRegistry.has(DESIGN_METADATA_KEYS.PARAMTYPES, mixinClass)) {
+    MetadataRegistry.define(DESIGN_METADATA_KEYS.PARAMTYPES, [], mixinClass);
   }
   return mixinClass;
 }
@@ -69,7 +72,7 @@ export function assignMetadata<
     [`${String(paramtype)}:${index}`]: {
       index,
       data,
-      ...(pipes.length > 0 ? { pipes } : {}),
+      pipes,
     },
   };
 }
@@ -110,8 +113,10 @@ export function stripProtoKeys<T>(value: T): T {
     visited.add(node);
 
     if (Array.isArray(node)) {
-      for (let i = 0; i < node.length; i++) {
-        walk(node[i]);
+      // Iterate own keys only: `for (i < length)` visits every hole of a sparse
+      // array (up to 2^32-1 iterations -> DoS) and reads `length` through proxies.
+      for (const key of Object.keys(node)) {
+        walk((node as unknown as Record<string, unknown>)[key]);
       }
       return;
     }

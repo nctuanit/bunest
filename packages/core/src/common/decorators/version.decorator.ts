@@ -10,7 +10,7 @@ export function Version(
   version: VersionValue,
 ): ClassDecorator & MethodDecorator {
   const normalized: VersionValue = Array.isArray(version)
-    ? [...version]
+    ? [...new Set(version)]
     : version;
 
   const decorator = (

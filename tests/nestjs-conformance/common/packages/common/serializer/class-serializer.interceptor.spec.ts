@@ -70,8 +70,7 @@ describeConformance(
         expect(interceptor).toBeInstanceOf(ClassSerializerInterceptor);
       });
 
-      // BUNEST_BUG: ClassSerializerInterceptor hardcodes `import { instanceToPlain, plainToInstance } from "class-transformer"` and ignores `options.transformerPackage` (packages/validation/src/serializer.interceptor.ts)
-      it.skip("should use provided transformer package from options", () => {
+      it("should use provided transformer package from options", () => {
         const customTransformer = {
           classToPlain: createStub().returns({ custom: true }),
           plainToInstance: createStub(),
@@ -211,8 +210,7 @@ describeConformance(
         "Promise CallHandler",
       );
 
-      // BUNEST_BUG: ClassSerializerInterceptor.getContextOptions() calls `reflector.get()` separately for class and handler instead of `reflector.getAllAndOverride(CLASS_SERIALIZER_OPTIONS, [handler, class])` (packages/validation/src/serializer.interceptor.ts:166-193)
-      it.skip("should call reflector getAllAndOverride with handler and class", async () => {
+      it("should call reflector getAllAndOverride with handler and class", async () => {
         const response = { id: 1 };
         const mockHandler = {};
         const mockClass = {};
@@ -291,8 +289,7 @@ describeConformance(
           );
         });
 
-        // BUNEST_BUG: ClassSerializerInterceptor passes AsyncIterable / Readable / ReadableStream through untouched even over HTTP instead of serializing yielded objects via mapStreamingBody (packages/validation/src/serializer.interceptor.ts:120)
-        it.skip.each<[string, (chunks: unknown[]) => unknown]>([
+        it.each<[string, (chunks: unknown[]) => unknown]>([
           [
             "an async generator",
             (chunks) =>
@@ -472,8 +469,7 @@ describeConformance(
         expect(interceptor.serialize(undefined, {})).toBeUndefined();
       });
 
-      // BUNEST_BUG: ClassSerializerInterceptor's `isPassthroughValue()` does not check `value instanceof StreamableFile`, so `instanceToPlain()` corrupts StreamableFile into a plain object instead of returning it unchanged (packages/validation/src/serializer.interceptor.ts:27-65)
-      it.skip("should return StreamableFile unchanged", () => {
+      it("should return StreamableFile unchanged", () => {
         const streamableFile = new StreamableFile(Buffer.from("test"));
         const result = interceptor.serialize(streamableFile, {});
 
@@ -625,8 +621,7 @@ describeConformance(
         );
       });
 
-      // BUNEST_BUG: ClassSerializerInterceptor.getContextOptions() calls `reflector.get()` separately instead of `reflector.getAllAndOverride(CLASS_SERIALIZER_OPTIONS, [handler, class])` (packages/validation/src/serializer.interceptor.ts:166-193)
-      it.skip("should call reflector getAllAndOverride with correct arguments", () => {
+      it("should call reflector getAllAndOverride with correct arguments", () => {
         const mockHandler = {};
         const mockClass = {};
         const mockContext = {

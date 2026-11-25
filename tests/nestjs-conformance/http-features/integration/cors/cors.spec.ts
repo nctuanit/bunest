@@ -122,8 +122,7 @@ describeConformance(
       });
 
       describe("CorsOptionsDelegate callback parity (enableCors(fn) / { cors: fn })", () => {
-        // BUNEST_BUG: BunHttpAdapter.enableCors() does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/core/src/http/security/cors.ts, packages/core/src/http/adapter/bun-http.adapter.ts).
-        it.skip("should support NestJS CorsOptionsDelegate callback in enableCors()", async () => {
+        it("should support NestJS CorsOptionsDelegate callback in enableCors()", async () => {
           const moduleRef = await Test.createTestingModule({
             imports: [AppModule],
           }).compile();
@@ -161,8 +160,7 @@ describeConformance(
           }
         });
 
-        // BUNEST_BUG: BunestApplicationOptions.cors does not support NestJS CorsOptionsDelegate callback functions `(req, cb) => cb(null, options)` — falls back to wildcard "*" (packages/core/src/http/security/cors.ts, packages/core/src/application/bunest-application.ts).
-        it.skip("should support NestJS CorsOptionsDelegate callback in Application Options", async () => {
+        it("should support NestJS CorsOptionsDelegate callback in Application Options", async () => {
           const moduleRef = await Test.createTestingModule({
             imports: [AppModule],
           }).compile();

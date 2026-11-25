@@ -132,8 +132,7 @@ describeConformance(
         warnSpy.mockClear();
       });
 
-      // BUNEST_BUG: ApiTags (packages/swagger/src/decorators/api.decorators.ts:45-72) does not emit a Logger.prototype.warn warning when hierarchy field `parent` is passed on @ApiTags
-      it.skip("should warn when parent is set on @ApiTags", () => {
+      it("should warn when parent is set on @ApiTags", () => {
         class TestController {
           @ApiTags({ name: "Cats", parent: "Animals" })
           withParent() {}
@@ -145,8 +144,7 @@ describeConformance(
         expect(String(warnSpy.mock.calls[0]?.[0])).toContain("parent/kind");
       });
 
-      // BUNEST_BUG: ApiTags (packages/swagger/src/decorators/api.decorators.ts:45-72) does not emit a Logger.prototype.warn warning when hierarchy field `kind` is passed on @ApiTags
-      it.skip("should warn when kind is set on @ApiTags", () => {
+      it("should warn when kind is set on @ApiTags", () => {
         class TestController {
           @ApiTags({ name: "Internal", kind: "reference" })
           withKind() {}
@@ -157,8 +155,7 @@ describeConformance(
         expect(String(warnSpy.mock.calls[0]?.[0])).toContain('"Internal"');
       });
 
-      // BUNEST_BUG: ApiTags (packages/swagger/src/decorators/api.decorators.ts:45-72) does not emit a Logger.prototype.warn warning per object tag carrying hierarchy fields
-      it.skip("should warn once per object tag carrying hierarchy fields", () => {
+      it("should warn once per object tag carrying hierarchy fields", () => {
         class TestController {
           @ApiTags({ name: "Cats", parent: "Animals" }, "Dogs", {
             name: "Birds",

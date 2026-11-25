@@ -141,8 +141,7 @@ describeConformance(
         });
     });
 
-    // BUNEST_BUG: Expected app.get(GraphQLModule) to return the GraphQLModule instance with completeOptions containing { path: "/graphql", schema: GraphQLSchema }; actual app.get(GraphQLModule) throws UnknownDependencyException (packages/core/src/di/di-container.ts does not resolve module classes via ModuleRef.get) AND packages/graphql/src/graphql.module.ts does not merge default path or compiled schema into completeOptions when no custom driver is configured.
-    it.skip("should return complete options", () => {
+    it("should return complete options", () => {
       const graphql = app.get(GraphQLModule);
 
       expect(graphql.completeOptions).toHaveProperty("path", "/graphql");

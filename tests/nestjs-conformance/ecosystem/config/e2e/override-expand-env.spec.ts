@@ -122,8 +122,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: expandEnvEntries() reads options.processEnv for lookups but never writes expanded values back into the custom processEnv target (expected processEnv.EXISTING_VAR="file_value", received "custom_value"; packages/core/src/config/env-parser.ts:326-375)
-    it.skip('should write the expanded values to a custom "processEnv" target when "override" is true', async () => {
+    it('should write the expanded values to a custom "processEnv" target when "override" is true', async () => {
       const processEnv: Record<string, string> = {
         EXISTING_VAR: "custom_value",
       };
@@ -143,8 +142,7 @@ describeConformance(
       await moduleRef.close();
     });
 
-    // BUNEST_BUG: expandEnvEntries() seeds visiting with `new Set([key])` at line 365, causing resolveVariable() at line 301 to return "" for self-references before calling lookup(key), making the override self-reference branch at line 335 dead code (expected "/opt/app/plugins:/usr/plugins", received "/opt/app/plugins:"; packages/core/src/config/env-parser.ts:301-303,335-337,365)
-    it.skip('should expand a self-reference to the previous value when "override" is true', async () => {
+    it('should expand a self-reference to the previous value when "override" is true', async () => {
       process.env.PLUGIN_PATH = "/usr/plugins";
       const prependEnvFilePath = join(
         tmpDir,

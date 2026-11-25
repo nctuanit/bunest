@@ -183,8 +183,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never invokes errorLogger or destroys response when headers are sent.
-        it.skip("should log the error and destroy the response when headers are already sent", () => {
+        it("should log the error and destroy the response when headers are already sent", () => {
           const stream = new ReadableStream<Uint8Array>();
           const errorLogger = createSpy();
           const streamableFile = new StreamableFile(stream).setErrorLogger(
@@ -208,8 +207,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never invokes errorLogger or calls res.end().
-        it.skip("should not destroy the response when the stream fails after it ended", async () => {
+        it("should not destroy the response when the stream fails after it ended", async () => {
           const stream = new ReadableStream<Uint8Array>({
             start(controller) {
               controller.enqueue(new TextEncoder().encode("data"));
@@ -238,8 +236,7 @@ describeConformance(
           expect(res.end.callCount).toBe(1);
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — never calls res.end() when headersSent is true.
-        it.skip("should call res.end() when headers are already sent and the response has no destroy()", () => {
+        it("should call res.end() when headers are already sent and the response has no destroy()", () => {
           const stream = new ReadableStream<Uint8Array>();
           const streamableFile = new StreamableFile(stream).setErrorLogger(
             createSpy(),
@@ -258,8 +255,7 @@ describeConformance(
           expect(res.send).not.toHaveBeenCalled();
         });
 
-        // BUNEST_BUG: StreamableFile default errorHandler is an empty no-op stub (packages/core/src/common/http/streamable-file.ts:35-36) — leaves statusCode at 200 instead of 400 and never logs/sends "Bad Request".
-        it.skip("should set status code to BAD_REQUEST and log the error instead of sending its message", () => {
+        it("should set status code to BAD_REQUEST and log the error instead of sending its message", () => {
           const stream = new ReadableStream<Uint8Array>();
           const errorLogger = createSpy();
           const streamableFile = new StreamableFile(stream).setErrorLogger(
@@ -315,8 +311,7 @@ describeConformance(
       });
 
       describe("default error logger behavior", () => {
-        // BUNEST_BUG: StreamableFile default errorLogger is a no-op stub with no internal Logger instance (packages/core/src/common/http/streamable-file.ts:36).
-        it.skip("should call logger.error with the error", () => {
+        it("should call logger.error with the error", () => {
           const stream = new ReadableStream<Uint8Array>();
           const streamableFile = new StreamableFile(stream);
           const internalLogger = (

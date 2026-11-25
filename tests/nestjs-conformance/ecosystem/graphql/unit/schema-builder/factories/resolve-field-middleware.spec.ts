@@ -41,8 +41,7 @@ describeConformance(
       expect(meta?.middleware).toEqual([trimMiddleware]);
     });
 
-    // BUNEST_BUG: Expected @ResolveField({ middleware: [trimMiddleware] }) to preserve middleware, got undefined; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField) lacks an options-only overload and ignores non-string/non-function first arguments.
-    it.skip("should preserve middleware when called with options only (no typeFunc)", () => {
+    it("should preserve middleware when called with options only (no typeFunc)", () => {
       class WithoutTypeFn {
         @rawResolveField({ middleware: [trimMiddleware] })
         sample() {
@@ -80,8 +79,7 @@ describeConformance(
         };
       };
 
-      // BUNEST_BUG: Expected @ResolveField('aliased', undefined, { middleware }) to preserve middleware, got undefined; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField:176-184) ignores the 3rd maybeOptions argument when the 2nd returnTypeOrOptions argument is undefined.
-      it.skip("should preserve options when called with propertyName, undefined typeFunc and options", () => {
+      it("should preserve options when called with propertyName, undefined typeFunc and options", () => {
         class WithUndefinedTypeFn {
           @ResolveField("aliased", undefined, { middleware: [trimMiddleware] })
           sample() {
@@ -95,8 +93,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected @ResolveField(undefined, () => String, { name: 'aliased', middleware }) to preserve name 'aliased' and middleware, got { name: 'sample', middleware: undefined }; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField:176-187) drops all subsequent arguments when the 1st argument is undefined.
-      it.skip("should preserve options when called with undefined propertyName, typeFunc and options", () => {
+      it("should preserve options when called with undefined propertyName, typeFunc and options", () => {
         class WithUndefinedName {
           @rawResolveField(undefined, () => String, {
             name: "aliased",
@@ -113,8 +110,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected @ResolveField(undefined, undefined, { name: 'aliased', middleware }) to preserve name 'aliased' and middleware, got { name: 'sample', middleware: undefined }; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField:176-187) drops all subsequent arguments when the 1st argument is undefined.
-      it.skip("should preserve options when called with undefined propertyName and typeFunc", () => {
+      it("should preserve options when called with undefined propertyName and typeFunc", () => {
         class WithUndefinedNameAndTypeFn {
           @rawResolveField(undefined, undefined, {
             name: "aliased",
@@ -131,8 +127,7 @@ describeConformance(
         });
       });
 
-      // BUNEST_BUG: Expected @ResolveField(undefined, { name: 'aliased', middleware }) to preserve name 'aliased' and middleware, got { name: 'sample', middleware: undefined }; packages/graphql/src/decorators/resolver.decorators.ts (ResolveField:176-187) drops all subsequent arguments when the 1st argument is undefined.
-      it.skip("should preserve options when called with undefined propertyName and options", () => {
+      it("should preserve options when called with undefined propertyName and options", () => {
         class WithUndefinedNameOnly {
           @rawResolveField(undefined, {
             name: "aliased",

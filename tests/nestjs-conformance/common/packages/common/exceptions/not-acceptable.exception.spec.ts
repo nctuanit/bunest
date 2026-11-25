@@ -18,8 +18,7 @@ describeConformance(
       expect(exc.getStatus()).toBe(406);
     });
 
-    // BUNEST_BUG: HttpException.createBody(undefined, "Not Acceptable", 406) in packages/core/src/common/exceptions/http.exception.ts:189 includes `error: "Not Acceptable"` in getResponse(), whereas NestJS returns `{ message: "Not Acceptable", statusCode: 406 }`.
-    it.skip('should return "Not Acceptable" as default message', () => {
+    it('should return "Not Acceptable" as default message', () => {
       const exc = new NotAcceptableException();
       expect(exc.getResponse()).toEqual({
         message: "Not Acceptable",
@@ -36,8 +35,7 @@ describeConformance(
       });
     });
 
-    // BUNEST_BUG: HttpException.createBody({ foo: "bar" }, ...) in packages/core/src/common/exceptions/http.exception.ts:205 merges `{ statusCode, error, message }` into custom objects instead of returning `{ foo: "bar" }` verbatim.
-    it.skip("should accept a custom object", () => {
+    it("should accept a custom object", () => {
       const exc = new NotAcceptableException({ foo: "bar" });
       expect(exc.getResponse()).toEqual({ foo: "bar" });
     });

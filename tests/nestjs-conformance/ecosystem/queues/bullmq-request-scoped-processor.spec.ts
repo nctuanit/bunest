@@ -70,8 +70,7 @@ describeConformance(
       await moduleRef?.close();
     });
 
-    // BUNEST_BUG: Expected `this.worker` inside `process()` of a Scope.REQUEST WorkerHost processor to return the instantiated worker, actual throws `"Worker" has not yet been initialized...` because BullMQExplorer.registerProcessor (packages/jobs/src/queues/adapters/bullmq.adapter.ts) never assigns `_worker = worker` on per-job resolved request-scoped instances.
-    it.skip('should expose the worker inside "process" of a request-scoped processor', async () => {
+    it('should expose the worker inside "process" of a request-scoped processor', async () => {
       bullExplorer.register();
       const processorFunction = workerCtorSpy.mock.calls[0]?.[1] as
         ((job: unknown) => Promise<unknown>) | undefined;

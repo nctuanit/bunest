@@ -89,6 +89,18 @@ export {
   type UnknownDependencyDetails,
 } from "./errors/core.exceptions";
 export { formatToken } from "./errors/token-formatter";
+export {
+  BUNEST_ERROR_CATALOG,
+  BUNEST_ERROR_DOCS_BASE_URL,
+  formatBunestErrorForAgent,
+  getErrorCatalogEntry,
+  getErrorDocsUrl,
+  isBunestErrorCode,
+  toBunestErrorReport,
+  type BunestErrorCatalogEntry,
+  type BunestErrorCode,
+  type BunestErrorReport,
+} from "./errors/error-catalog";
 
 // Core Interfaces, ContextId & Enhancer Override Markers
 export {
@@ -223,6 +235,7 @@ export { RequestContainer } from "./di/request-container";
 
 // NestJS Core Compatibility Helpers & Base Exception Filter
 export { ApplicationConfig } from "./application/application-config";
+export { ExecutionContextHost } from "./helpers/execution-context-host";
 export { HttpAdapterHost } from "./helpers/http-adapter-host";
 export {
   ExternalContextCreator,

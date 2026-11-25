@@ -133,8 +133,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: GraphQLSchemaFactory.buildSchemaFirst (packages/graphql/src/schema/graphql-schema.factory.ts:1600) ignores `options.federation` and calls raw `buildASTSchema(parse(sdl))`, throwing `Unknown directive "@key". Cannot extend type "Query" because it is not defined.` on schema-first Federation SDL.
-    it.skip("should return query result", async () => {
+    it("should return query result", async () => {
       await request(app)
         .post("/graphql")
         .send({

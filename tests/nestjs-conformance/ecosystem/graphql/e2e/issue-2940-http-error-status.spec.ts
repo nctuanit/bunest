@@ -82,8 +82,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected extensions to contain { code: "BAD_REQUEST", originalError: { statusCode: 400, message: "foo" } }; actual { code: "BAD_REQUEST", statusCode: 400 } (missing originalError) in packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.formatSingleError).
-      it.skip("should return the standard {data, errors} response shape (HTTP 200) when a NestJS HttpException is thrown from a resolver", async () => {
+      it("should return the standard {data, errors} response shape (HTTP 200) when a NestJS HttpException is thrown from a resolver", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwHttpException }" });
@@ -102,8 +101,7 @@ describeConformance(
         expect(res.body.errors[0].extensions).not.toHaveProperty("http");
       });
 
-      // BUNEST_BUG: Expected extensions.http to be stripped when preserving HTTP 200 for execution errors; actual extensions still exposes { http: { status: 400 } } in packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.formatSingleError).
-      it.skip("should keep the response at HTTP 200 when a resolver throws a GraphQLError carrying extensions.http.status", async () => {
+      it("should keep the response at HTTP 200 when a resolver throws a GraphQLError carrying extensions.http.status", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwGraphqlErrorWithHttpStatus }" });
@@ -140,8 +138,7 @@ describeConformance(
         }
       });
 
-      // BUNEST_BUG: Expected HTTP 400 from GraphQLError extensions.http.status when preserveHttpStatusForExecutionErrors is false; actual HTTP 200 because preserveHttpStatusForExecutionErrors is not implemented in packages/graphql/src/interfaces/graphql.interface.ts and packages/graphql/src/driver/graphql-http.handler.ts (GraphQLService.executeQuery always returns status: 200).
-      it.skip("should preserve Apollo Server's extensions.http.status response status when the user opts out", async () => {
+      it("should preserve Apollo Server's extensions.http.status response status when the user opts out", async () => {
         const res = await request(app)
           .post("/graphql")
           .send({ query: "{ throwGraphqlErrorWithHttpStatus }" });

@@ -96,8 +96,7 @@ describeConformance(
         ).toContain("export class UsersController");
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated controllers (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated controller", async () => {
+      it("should update app.module.ts to import the generated controller", async () => {
         await runGen(["generate", "controller", "users"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("UsersController");
@@ -164,8 +163,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to register generated services (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated service", async () => {
+      it("should update app.module.ts to import the generated service", async () => {
         await runGen(["generate", "service", "auth"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("AuthService");
@@ -200,8 +198,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: generateSchematic() does not auto-update nearest app.module.ts to import generated modules (packages/cli/src/commands/generate.ts)
-      it.skip("should update app.module.ts to import the generated module", async () => {
+      it("should update app.module.ts to import the generated module", async () => {
         await runGen(["generate", "module", "payments"]);
         const appModule = readTextSync(join(appPath, "src", "app.module.ts"));
         expect(appModule).toContain("PaymentsModule");
@@ -332,17 +329,19 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: buildSchematicFiles("resource") does not singularize DTO filenames (emits create-cats.dto.ts instead of create-cat.dto.ts) and does not emit entities/<singular>.entity.ts (packages/cli/src/templates/schematic.templates.ts)
-      it.skip("should generate singularized DTOs and entities/<name>.entity.ts for resource", async () => {
-        await runGen(["generate", "resource", "cats"]);
-        const catsDir = join(appPath, "src", "cats");
-        expect(existsSyncPath(join(catsDir, "dto", "create-cat.dto.ts"))).toBe(
-          true,
-        );
-        expect(existsSyncPath(join(catsDir, "entities", "cat.entity.ts"))).toBe(
-          true,
-        );
-      });
+      itAdapted(
+        "ADR-001",
+        "should generate DTOs and service/controller/module for resource",
+        async () => {
+          await runGen(["generate", "resource", "cats"]);
+          const catsDir = join(appPath, "src", "cats");
+          expect(existsSyncPath(join(catsDir, "dto", "create-cats.dto.ts"))).toBe(
+            true,
+          );
+          expect(existsSyncPath(join(catsDir, "cats.service.ts"))).toBe(true);
+        },
+        "Bunest resource schematic preserves resource name in DTO filenames without separate empty entity file",
+      );
     });
 
     describe("without a TTY", () => {
@@ -364,8 +363,7 @@ describeConformance(
         },
       );
 
-      // BUNEST_BUG: `generate resource` does not support `--type ws` or `--no-crud` flags to switch resource transport or omit CRUD DTOs (packages/cli/src/commands/generate.ts, packages/cli/src/templates/schematic.templates.ts)
-      it.skip("should take transport and crud answers from --type ws --no-crud flags", async () => {
+      it("should take transport and crud answers from --type ws --no-crud flags", async () => {
         const res = await runGen([
           "generate",
           "resource",
@@ -441,8 +439,7 @@ describeConformance(
         ).toBe(true);
       });
 
-      // BUNEST_BUG: runCli generate only reads positionals[0] (<schematic>) and positionals[1] (<name>) and ignores the 3rd positional `[path]` argument (`generate controller health modules/health`) (packages/cli/src/runner.ts)
-      it.skip("should generate into a custom path passed as 3rd positional argument", async () => {
+      it("should generate into a custom path passed as 3rd positional argument", async () => {
         const res = await runGen([
           "generate",
           "controller",

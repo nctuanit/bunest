@@ -141,8 +141,7 @@ describeConformance(
         expect(gitignore).toContain(".env.local");
       });
 
-      // BUNEST_BUG: Default project `.gitignore` template omits common IDE directories (`/.idea`, `.vscode`) included in upstream NestJS defaultGitIgnore (packages/cli/src/templates/project.templates.ts:160-166)
-      it.skip("should include IDE directories (/.idea, .vscode) in .gitignore", () => {
+      it("should include IDE directories (/.idea, .vscode) in .gitignore", () => {
         const gitignore = byPath.get(".gitignore")!;
         expect(gitignore).toContain(".idea");
         expect(gitignore).toContain(".vscode");

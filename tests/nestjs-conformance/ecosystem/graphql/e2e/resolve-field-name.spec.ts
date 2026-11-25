@@ -84,8 +84,7 @@ describeConformance(
       await app.close();
     });
 
-    // BUNEST_BUG: @ResolveField({ name: "displayName" }) options-object-only overload is unsupported in packages/graphql/src/decorators/resolver.decorators.ts (lines 176-187 only check string or function first arg, leaving the schema field named "resolveDisplayName" instead of "displayName").
-    it.skip("exposes the field under the configured name", () => {
+    it("exposes the field under the configured name", () => {
       const { schema } = app.get(GraphQLSchemaHost);
       const authorType = schema.getType("Author") as GraphQLObjectType;
       const fields = authorType.getFields();
@@ -94,8 +93,7 @@ describeConformance(
       expect(fields.resolveDisplayName).toBeUndefined();
     });
 
-    // BUNEST_BUG: @ResolveField({ name: "displayName" }) options-object-only overload is ignored in packages/graphql/src/decorators/resolver.decorators.ts, so querying `displayName` fails with GraphQL validation error "Cannot query field \"displayName\" on type \"Author\"."
-    it.skip("resolves the field through the decorated method", async () => {
+    it("resolves the field through the decorated method", async () => {
       const response = await request(app)
         .post("/graphql")
         .send({ query: "{ author { id displayName } }" })

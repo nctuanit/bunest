@@ -1,9 +1,15 @@
 import { Inject, Injectable, Optional } from "../common/index";
 import { CONFIG_OPTIONS_TOKEN, CONFIG_STORE_TOKEN } from "./constants";
-import { getDefaultParser, loadEnvironmentVariables } from "./env-parser";
+import {
+  expandSingleEnvValue,
+  getDefaultParser,
+  loadEnvironmentVariables,
+  MAX_EXPANDED_ENV_VALUE_LENGTH,
+} from "./env-parser";
 import type {
   ConfigObject,
   ConfigServiceInternalOptions,
+  EnvExpansionContext,
   SecretRedactorOptions,
 } from "./interfaces/config.interface";
 import type {
@@ -25,6 +31,57 @@ import type {
 
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+const BUILTIN_PROTOTYPES = new Set<object>(
+  [
+    Object.prototype,
+    Array.prototype,
+    Function.prototype,
+    String.prototype,
+    Number.prototype,
+    Boolean.prototype,
+    Date.prototype,
+    RegExp.prototype,
+    Map.prototype,
+    Set.prototype,
+    WeakMap.prototype,
+    WeakSet.prototype,
+    Error.prototype,
+    Promise.prototype,
+    ArrayBuffer.prototype,
+    Uint8Array.prototype,
+    Object.getPrototypeOf(Uint8Array.prototype),
+    typeof Buffer !== "undefined" ? Buffer.prototype : undefined,
+  ].filter((p): p is object => p != null),
+);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function hasSafeProperty(target: unknown, key: string): boolean {
+  if (target === null || target === undefined || DANGEROUS_KEYS.has(key)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(target, key)) {
+    return true;
+  }
+  if (typeof target !== "object") {
+    return false;
+  }
+  let proto = Object.getPrototypeOf(target);
+  while (proto && !BUILTIN_PROTOTYPES.has(proto)) {
+    if (Object.prototype.hasOwnProperty.call(proto, key)) {
+      return true;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+
 type ValidatedResult<
   WasValidated extends boolean,
   T,
@@ -41,29 +98,29 @@ function isGetOptionsObject(value: unknown): value is ConfigGetOptions {
   );
 }
 
-function readDotPath(
-  source: Record<PropertyKey, unknown> | NodeJS.ProcessEnv,
+export function readDotPathWithPresence(
+  source: Record<PropertyKey, unknown> | NodeJS.ProcessEnv | object,
   propertyPath: PropertyKey,
-): unknown {
+): { found: boolean; value: unknown } {
   const map = source as Record<PropertyKey, unknown>;
   if (typeof propertyPath === "symbol") {
     return Object.prototype.hasOwnProperty.call(map, propertyPath)
-      ? map[propertyPath]
-      : undefined;
+      ? { found: true, value: map[propertyPath] }
+      : { found: false, value: undefined };
   }
 
   const keyStr = String(propertyPath);
   if (DANGEROUS_KEYS.has(keyStr)) {
-    return undefined;
+    return { found: false, value: undefined };
   }
 
-  // Exact top-level key lookup first (supports flat env keys and keys literally containing `.`)
-  if (Object.prototype.hasOwnProperty.call(map, keyStr)) {
-    return map[keyStr];
+  // Exact top-level key lookup first (supports flat env keys, keys literally containing `.`, and class getters)
+  if (hasSafeProperty(map, keyStr)) {
+    return { found: true, value: map[keyStr] };
   }
 
   if (!keyStr.includes(".")) {
-    return undefined;
+    return { found: false, value: undefined };
   }
 
   const segments = keyStr.split(".");
@@ -71,28 +128,30 @@ function readDotPath(
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    if (
-      !segment ||
-      DANGEROUS_KEYS.has(segment) ||
-      current === null ||
-      typeof current !== "object"
-    ) {
-      return undefined;
+    if (!segment || DANGEROUS_KEYS.has(segment) || current === null || current === undefined) {
+      return { found: false, value: undefined };
     }
-    const record = current as Record<string, unknown>;
-    if (!Object.prototype.hasOwnProperty.call(record, segment)) {
-      return undefined;
+    if (!hasSafeProperty(current, segment)) {
+      return { found: false, value: undefined };
     }
-    current = record[segment];
+    current = (current as Record<string, unknown>)[segment];
   }
 
-  return current;
+  return { found: true, value: current };
 }
 
-function writeDotPath(
+export function readDotPath(
+  source: Record<PropertyKey, unknown> | NodeJS.ProcessEnv | object,
+  propertyPath: PropertyKey,
+): unknown {
+  return readDotPathWithPresence(source, propertyPath).value;
+}
+
+export function writeDotPath(
   target: Record<PropertyKey, unknown>,
   propertyPath: PropertyKey,
   value: unknown,
+  forceFlat = false,
 ): boolean {
   if (typeof propertyPath === "symbol") {
     target[propertyPath] = value;
@@ -105,6 +164,7 @@ function writeDotPath(
   }
 
   if (
+    forceFlat ||
     !keyStr.includes(".") ||
     Object.prototype.hasOwnProperty.call(target, keyStr)
   ) {
@@ -172,13 +232,12 @@ export class ConfigService<
 > {
   private readonly store: Record<PropertyKey, unknown>;
   private readonly options: ConfigServiceInternalOptions;
-  private readonly redactor: <T>(value: T) => T;
+  private redactor: <T>(value: T) => T;
   private readonly cache = new Map<PropertyKey, unknown>();
+  private readonly explicitlySetKeys = new Set<string>();
   private readonly changeListeners = new Set<
     (event: ConfigChangeEvent<any, any>) => void
   >();
-  private _isCacheEnabled: boolean;
-  private _skipProcessEnv: boolean;
   private envFilePaths: string[];
   private parser: Parser;
 
@@ -190,15 +249,38 @@ export class ConfigService<
     @Inject(CONFIG_OPTIONS_TOKEN)
     options: ConfigServiceInternalOptions = {},
   ) {
-    this.store = { ...store };
+    this.store = Object.isFrozen(store) ? { ...store } : store;
     this.options = options;
-    this._isCacheEnabled = Boolean(options.cache);
-    this._skipProcessEnv = Boolean(options.skipProcessEnv);
     this.envFilePaths = options.envFilePaths ? [...options.envFilePaths] : [];
     this.parser = options.parser ?? getDefaultParser();
     this.redactor = createSecretRedactor({
       secretKeys: options.secretKeys,
       redactionMask: options.redactionMask,
+    });
+  }
+
+  private get _isCacheEnabled(): boolean {
+    return Boolean(this.options.cache);
+  }
+
+  private get _skipProcessEnv(): boolean {
+    return Boolean(this.options.skipProcessEnv);
+  }
+
+  /**
+   * Internal hook called by `ConfigModule.forRoot()` when updating shared options
+   * (such as `secretKeys`, `redactionMask`, `envFilePaths`, `parser`).
+   */
+  syncInternalOptions(): void {
+    if (this.options.envFilePaths) {
+      this.envFilePaths = [...this.options.envFilePaths];
+    }
+    if (this.options.parser) {
+      this.parser = this.options.parser;
+    }
+    this.redactor = createSecretRedactor({
+      secretKeys: this.options.secretKeys,
+      redactionMask: this.options.redactionMask,
     });
   }
 
@@ -295,14 +377,43 @@ export class ConfigService<
       return cached === undefined ? defaultValue : cached;
     }
 
-    let value = readDotPath(this.store, propertyPath);
+    const fromStore = readDotPathWithPresence(this.store, propertyPath);
+    let found = fromStore.found;
+    let value = fromStore.value;
+
+    // Check class instances returned by custom validate() (preserving prototype getters)
+    if (!found && this.options.validatedSources) {
+      for (let i = this.options.validatedSources.length - 1; i >= 0; i--) {
+        const src = this.options.validatedSources[i];
+        if (!src) continue;
+        const fromValidated = readDotPathWithPresence(src, propertyPath);
+        if (fromValidated.found) {
+          found = true;
+          value = fromValidated.value;
+          break;
+        }
+      }
+    }
+
+    // If explicitly mapped to `undefined` by a validator or explicitly set, do NOT fall back to process.env
+    const blockedFallback =
+      found &&
+      value === undefined &&
+      typeof propertyPath === "string" &&
+      (this.options.validatedKeys?.has(propertyPath) ||
+        this.explicitlySetKeys.has(propertyPath) ||
+        propertyPath.includes("."));
 
     if (
+      !blockedFallback &&
       value === undefined &&
       this.canReadLiveProcessEnv() &&
       typeof propertyPath === "string"
     ) {
-      value = readDotPath(process.env, propertyPath);
+      const fromEnv = readDotPathWithPresence(process.env, propertyPath);
+      if (fromEnv.found) {
+        value = fromEnv.value;
+      }
     }
 
     if (this._isCacheEnabled && value !== undefined) {
@@ -375,8 +486,161 @@ export class ConfigService<
     const key = propertyPath as PropertyKey;
     const oldValue = (this.get as (path: PropertyKey) => unknown)(key);
 
-    if (!writeDotPath(this.store, key, value)) {
+    const contexts = this.options.envExpansionContexts;
+    const isStringKey = typeof key === "string";
+    const isEnvRawKey =
+      isStringKey &&
+      Boolean(contexts?.some((ctx) => ctx.rawEntries.has(key)));
+
+    // Pre-compute dependent variable re-expansions in a staging pass BEFORE mutating
+    // process.env or this.store so size-limit errors leave state untouched.
+    const stagedPlans: Array<{
+      ctx: EnvExpansionContext;
+      updates: Array<[string, string]>;
+    }> = [];
+
+    if (
+      isStringKey &&
+      contexts &&
+      contexts.length > 0 &&
+      (typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean")
+    ) {
+      const strValue = String(value);
+      for (const ctx of contexts) {
+        if (ctx.rawEntries.size === 0) continue;
+        const targetEnv =
+          ctx.expandOptions.processEnv ??
+          (ctx.envSource ? undefined : process.env);
+        const staged = new Map<string, string>([[key, strValue]]);
+        const updates: Array<[string, string]> = [];
+
+        const makeLookup = (name: string): string | undefined => {
+          if (DANGEROUS_KEYS.has(name)) return undefined;
+          if (staged.has(name)) return staged.get(name);
+          if (
+            targetEnv &&
+            Object.prototype.hasOwnProperty.call(targetEnv, name) &&
+            targetEnv[name] !== undefined
+          ) {
+            return targetEnv[name];
+          }
+          if (Object.prototype.hasOwnProperty.call(this.store, name)) {
+            const v = this.store[name];
+            if (
+              typeof v === "string" ||
+              typeof v === "number" ||
+              typeof v === "boolean"
+            ) {
+              return String(v);
+            }
+          }
+          if (
+            !ctx.expandOptions.ignoreProcessEnv &&
+            !ctx.ignoreEnvVars &&
+            !ctx.expandOptions.processEnv &&
+            Object.prototype.hasOwnProperty.call(process.env, name) &&
+            process.env[name] !== undefined
+          ) {
+            return process.env[name];
+          }
+          return undefined;
+        };
+
+        for (const [depKey, entry] of ctx.rawEntries.entries()) {
+          if (
+            depKey === key ||
+            entry.singleQuoted ||
+            ctx.predefinedKeys.has(depKey) ||
+            this.explicitlySetKeys.has(depKey)
+          ) {
+            continue;
+          }
+          const nextVal = expandSingleEnvValue(
+            depKey,
+            entry.value,
+            makeLookup,
+            MAX_EXPANDED_ENV_VALUE_LENGTH,
+          );
+          staged.set(depKey, nextVal);
+          updates.push([depKey, nextVal]);
+        }
+
+        if (updates.length > 0) {
+          stagedPlans.push({ ctx, updates });
+        }
+      }
+    }
+
+    if (!writeDotPath(this.store, key, value, isEnvRawKey)) {
       return;
+    }
+
+    if (isStringKey) {
+      this.explicitlySetKeys.add(key);
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        const strValue = String(value);
+        if (contexts) {
+          for (const ctx of contexts) {
+            if (ctx.expandOptions.processEnv) {
+              ctx.expandOptions.processEnv[key] = strValue;
+            }
+          }
+        }
+        if (
+          !this.options.ignoreEnvVars &&
+          !this.options.envSource &&
+          (!key.includes(".") ||
+            isEnvRawKey ||
+            Object.prototype.hasOwnProperty.call(process.env, key))
+        ) {
+          process.env[key] = strValue;
+          this.options.onEnvAssigned?.(key, strValue);
+        }
+      }
+    }
+
+    for (const { ctx, updates } of stagedPlans) {
+      for (const [depKey, nextVal] of updates) {
+        if (ctx.expandOptions.processEnv) {
+          ctx.expandOptions.processEnv[depKey] = nextVal;
+        }
+        if (!ctx.ignoreEnvVars && !ctx.envSource && !ctx.expandOptions.processEnv) {
+          process.env[depKey] = nextVal;
+          this.options.onEnvAssigned?.(depKey, nextVal);
+        }
+
+        const hasConvertedValidatedValue =
+          this.options.validatedKeys?.has(depKey) &&
+          Object.prototype.hasOwnProperty.call(this.store, depKey) &&
+          typeof this.store[depKey] !== "string" &&
+          this.store[depKey] !== undefined;
+
+        if (
+          !hasConvertedValidatedValue &&
+          (Object.prototype.hasOwnProperty.call(this.store, depKey) ||
+            ctx.skipProcessEnv ||
+            ctx.ignoreEnvVars ||
+            Boolean(ctx.expandOptions.processEnv) ||
+            Boolean(ctx.envSource))
+        ) {
+          Object.defineProperty(this.store, depKey, {
+            value: nextVal,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+        }
+
+        if (this._isCacheEnabled) {
+          this.invalidateCacheForPath(depKey);
+        }
+      }
     }
 
     if (this._isCacheEnabled) {
@@ -436,14 +700,17 @@ export class ConfigService<
     ) {
       return;
     }
-    const existing = this.store[namespace];
-    if (existing && typeof existing === "object" && !Array.isArray(existing)) {
-      this.store[namespace] = {
-        ...(existing as Record<string, unknown>),
+    const existing = readDotPath(this.store, namespace);
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      writeDotPath(this.store, namespace, {
+        ...existing,
         ...value,
-      };
+      });
+    } else if (isPlainObject(value)) {
+      writeDotPath(this.store, namespace, { ...value });
     } else {
-      this.store[namespace] = { ...value };
+      // Preserve class instances (and their prototype getters)
+      writeDotPath(this.store, namespace, value);
     }
     if (this._isCacheEnabled) {
       this.invalidateCacheForPath(namespace);

@@ -1,3 +1,4 @@
+import { createRedactor, type Redactor } from "./redactor";
 import {
   LOG_LEVEL_COLORS,
   clc,
@@ -95,19 +96,101 @@ function inspect(value: unknown, options: ConsoleInspectOptions): string {
     }
     if (obj instanceof Error) {
       const header = `${obj.name}: ${obj.message}`;
-      if (obj.stack) {
-        return obj.stack.startsWith(header)
+      const base = obj.stack
+        ? obj.stack.startsWith(header)
           ? obj.stack
-          : `${header}\n${obj.stack}`;
+          : `${header}\n${obj.stack}`
+        : header;
+      const extraKeys = Object.keys(obj);
+      if (extraKeys.length === 0) {
+        return base;
       }
-      return header;
+      if (ancestors.has(obj)) {
+        return `${base} [Circular]`;
+      }
+      ancestors.add(obj);
+      try {
+        const nextIndent = `${indent}  `;
+        const entries = extraKeys.map((k) => {
+          const v = (obj as unknown as Record<string, unknown>)[k];
+          return `${formatPropertyKey(k)}: ${format(v, depth + 1, nextIndent)}`;
+        });
+        const singleLine = `{ ${entries.join(", ")} }`;
+        if (
+          compact !== false &&
+          !singleLine.includes("\n") &&
+          (compact === true || singleLine.length <= breakLength)
+        ) {
+          return `${base} ${singleLine}`;
+        }
+        return `${base} {\n${entries.map((e) => `${nextIndent}${e}`).join(",\n")}\n${indent}}`;
+      } finally {
+        ancestors.delete(obj);
+      }
     }
-    if (
-      obj instanceof Map ||
-      obj instanceof Set ||
-      ArrayBuffer.isView(obj) ||
-      obj instanceof ArrayBuffer
-    ) {
+    if (obj instanceof Map) {
+      if (ancestors.has(obj)) {
+        return options.colors ? "\x1b[36m[Circular]\x1b[39m" : "[Circular]";
+      }
+      if (obj.size === 0) {
+        return "Map(0) {}";
+      }
+      if (depth > maxDepth) {
+        return options.colors ? "\x1b[36m[Map]\x1b[39m" : "[Map]";
+      }
+      ancestors.add(obj);
+      try {
+        const nextIndent = `${indent}  `;
+        const entries: string[] = [];
+        for (const [k, v] of obj.entries()) {
+          entries.push(
+            `${format(k, depth + 1, nextIndent)} => ${format(v, depth + 1, nextIndent)}`,
+          );
+        }
+        const singleLine = `Map(${obj.size}) { ${entries.join(", ")} }`;
+        if (
+          compact !== false &&
+          !singleLine.includes("\n") &&
+          (compact === true || singleLine.length <= breakLength)
+        ) {
+          return singleLine;
+        }
+        return `Map(${obj.size}) {\n${entries.map((e) => `${nextIndent}${e}`).join(",\n")}\n${indent}}`;
+      } finally {
+        ancestors.delete(obj);
+      }
+    }
+    if (obj instanceof Set) {
+      if (ancestors.has(obj)) {
+        return options.colors ? "\x1b[36m[Circular]\x1b[39m" : "[Circular]";
+      }
+      if (obj.size === 0) {
+        return "Set(0) {}";
+      }
+      if (depth > maxDepth) {
+        return options.colors ? "\x1b[36m[Set]\x1b[39m" : "[Set]";
+      }
+      ancestors.add(obj);
+      try {
+        const nextIndent = `${indent}  `;
+        const entries: string[] = [];
+        for (const v of obj.values()) {
+          entries.push(format(v, depth + 1, nextIndent));
+        }
+        const singleLine = `Set(${obj.size}) { ${entries.join(", ")} }`;
+        if (
+          compact !== false &&
+          !singleLine.includes("\n") &&
+          (compact === true || singleLine.length <= breakLength)
+        ) {
+          return singleLine;
+        }
+        return `Set(${obj.size}) {\n${entries.map((e) => `${nextIndent}${e}`).join(",\n")}\n${indent}}`;
+      } finally {
+        ancestors.delete(obj);
+      }
+    }
+    if (ArrayBuffer.isView(obj) || obj instanceof ArrayBuffer) {
       return Bun.inspect(obj, {
         colors: options.colors,
         depth: maxDepth === Infinity ? Infinity : Math.max(0, maxDepth - depth),
@@ -216,65 +299,103 @@ function inspect(value: unknown, options: ConsoleInspectOptions): string {
 }
 
 /**
- * Canonical log levels ordered from least verbose (`fatal`) to most verbose (`verbose`),
+ * Canonical log levels ordered from most verbose (`verbose`) to most severe (`fatal`),
  * matching NestJS `LOG_LEVELS`.
  */
 export const LOG_LEVELS: readonly LogLevel[] = Object.freeze([
-  "fatal",
-  "error",
-  "warn",
-  "log",
-  "debug",
   "verbose",
+  "debug",
+  "log",
+  "warn",
+  "error",
+  "fatal",
 ]);
 
-const LOG_LEVEL_PRIORITY: Readonly<Record<LogLevel, number>> = {
-  fatal: 0,
-  error: 1,
-  warn: 2,
-  log: 3,
-  debug: 4,
-  verbose: 5,
+const LOG_LEVEL_VALUES: Readonly<Record<LogLevel, number>> = {
+  verbose: 0,
+  debug: 1,
+  log: 2,
+  warn: 3,
+  error: 4,
+  fatal: 5,
 };
 
-/**
- * Parses NestJS-style log level filter strings (`"warn"`, `">=debug"`, `"warn,error"`)
- * into an enabled `LogLevel[]` list (matching NestJS v12 `filterLogLevels()`).
- */
-export function filterLogLevels(parseableString = ""): LogLevel[] {
+export function isLogLevelEnabled(
+  targetLevel: LogLevel,
+  logLevels: readonly LogLevel[] | undefined,
+): boolean {
+  if (!logLevels || logLevels.length === 0) {
+    return false;
+  }
+  if (logLevels.includes(targetLevel)) {
+    return true;
+  }
+  let highestLogLevelValue = -1;
+  for (const level of logLevels) {
+    const val = LOG_LEVEL_VALUES[level];
+    if (val !== undefined && val > highestLogLevelValue) {
+      highestLogLevelValue = val;
+    }
+  }
+  if (highestLogLevelValue < 0) {
+    return false;
+  }
+  return LOG_LEVEL_VALUES[targetLevel] >= highestLogLevelValue;
+}
+
+function parseLogLevelsStrict(parseableString: string): {
+  levels: LogLevel[];
+  valid: boolean;
+} {
   const sanitized = parseableString.trim().toLowerCase();
   if (!sanitized) {
-    return [...LOG_LEVELS];
+    return { levels: [...LOG_LEVELS], valid: true };
   }
 
   if (sanitized.startsWith(">=")) {
-    const threshold = sanitized.slice(2).trim() as LogLevel;
-    const maxPriority = LOG_LEVEL_PRIORITY[threshold];
-    if (maxPriority === undefined) {
-      return [...LOG_LEVELS];
+    const threshold = sanitized.slice(2).trim();
+    const idx = LOG_LEVELS.indexOf(threshold as LogLevel);
+    if (idx === -1) {
+      return { levels: [...LOG_LEVELS], valid: false };
     }
-    return LOG_LEVELS.filter(
-      (level) => LOG_LEVEL_PRIORITY[level] <= maxPriority,
-    );
+    return { levels: LOG_LEVELS.slice(idx), valid: true };
+  }
+
+  if (sanitized.startsWith(">")) {
+    const threshold = sanitized.slice(1).trim();
+    const idx = LOG_LEVELS.indexOf(threshold as LogLevel);
+    if (idx === -1) {
+      return { levels: [...LOG_LEVELS], valid: false };
+    }
+    return { levels: LOG_LEVELS.slice(idx + 1), valid: true };
   }
 
   if (sanitized.includes(",")) {
-    const parts = sanitized
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const valid = parts.filter((p): p is LogLevel => p in LOG_LEVEL_PRIORITY);
-    return valid.length > 0 ? valid : [...LOG_LEVELS];
+    const rawParts = sanitized.split(",");
+    const levels: LogLevel[] = [];
+    for (const part of rawParts) {
+      const token = part.trim();
+      if (!token || !(token in LOG_LEVEL_VALUES)) {
+        return { levels: [...LOG_LEVELS], valid: false };
+      }
+      levels.push(token as LogLevel);
+    }
+    return { levels, valid: levels.length > 0 };
   }
 
-  if (sanitized in LOG_LEVEL_PRIORITY) {
-    const maxPriority = LOG_LEVEL_PRIORITY[sanitized as LogLevel];
-    return LOG_LEVELS.filter(
-      (level) => LOG_LEVEL_PRIORITY[level] <= maxPriority,
-    );
+  if (sanitized in LOG_LEVEL_VALUES) {
+    return { levels: [sanitized as LogLevel], valid: true };
   }
 
-  return [...LOG_LEVELS];
+  return { levels: [...LOG_LEVELS], valid: false };
+}
+
+/**
+ * Parses NestJS-style log level filter strings (`"warn"`, `">=debug"`, `">warn"`, `"warn,error"`)
+ * into an enabled `LogLevel[]` list (matching NestJS v12 `filterLogLevels()`).
+ */
+export function filterLogLevels(parseableString = ""): LogLevel[] {
+  return parseLogLevelsStrict(parseableString).levels;
 }
 
 export interface ConsoleLoggerOptions {
@@ -323,9 +444,11 @@ export class ConsoleLogger implements LoggerService {
   protected originalContext?: string;
   protected inspectOptions: InspectOptions;
   protected static lastTimestampAt?: number;
+  private static warnedInvalidEnvValues = new Set<string>();
 
   private readonly redactPaths?: readonly string[][];
   private readonly redactCensor: string = "[REDACTED]";
+  private redactor?: Redactor;
   private resolvedDefaultLevels?: LogLevel[];
 
   constructor();
@@ -344,6 +467,10 @@ export class ConsoleLogger implements LoggerService {
       this.options = { ...(contextOrOptions ?? {}) };
       this.context = this.options.context;
       this.originalContext = this.options.context;
+    }
+
+    if (this.options.prefix === undefined) {
+      this.options.prefix = "Nest";
     }
 
     if (this.options.redact) {
@@ -437,18 +564,28 @@ export class ConsoleLogger implements LoggerService {
 
   isLevelEnabled(level: LogLevel): boolean {
     const levels = this.options.logLevels ?? this.getDefaultLogLevels();
-    return levels.includes(level);
+    return isLogLevelEnabled(level, levels);
   }
 
   protected getDefaultLogLevels(): LogLevel[] {
-    if (!this.resolvedDefaultLevels) {
-      const envLevels =
-        process.env.BUNEST_LOG_LEVEL ?? process.env.NEST_LOG_LEVEL;
-      this.resolvedDefaultLevels = envLevels
-        ? filterLogLevels(envLevels)
-        : [...LOG_LEVELS];
+    const envLevels =
+      process.env.BUNEST_LOG_LEVEL ?? process.env.NEST_LOG_LEVEL;
+    if (envLevels !== undefined && envLevels.trim().length > 0) {
+      const parsed = parseLogLevelsStrict(envLevels);
+      if (!parsed.valid && !ConsoleLogger.warnedInvalidEnvValues.has(envLevels)) {
+        ConsoleLogger.warnedInvalidEnvValues.add(envLevels);
+        this.printMessages(
+          [
+            `Invalid NEST_LOG_LEVEL value "${envLevels}". Falling back to all log levels.`,
+          ],
+          "ConsoleLogger",
+          "warn",
+          "stdout",
+        );
+      }
+      return parsed.levels;
     }
-    return this.resolvedDefaultLevels;
+    return [...LOG_LEVELS];
   }
 
   protected getTimestamp(): string {
@@ -547,62 +684,39 @@ export class ConsoleLogger implements LoggerService {
     if (!this.redactPaths || this.redactPaths.length === 0) {
       return value;
     }
-    const seen = new WeakSet<object>();
-    const matchesPath = (trail: readonly string[]): boolean => {
-      for (const pattern of this.redactPaths!) {
-        if (pattern.length > trail.length) continue;
-        let matched = true;
-        for (let i = 0; i < pattern.length; i++) {
-          if (trail[trail.length - pattern.length + i] !== pattern[i]) {
-            matched = false;
-            break;
-          }
-        }
-        if (matched) return true;
-      }
-      return false;
-    };
-
-    const walk = (node: unknown, trail: string[]): unknown => {
-      if (node === null || typeof node !== "object") return node;
-      if (seen.has(node)) return "[Circular]";
-      if (node instanceof Date || node instanceof RegExp) return node;
-      seen.add(node);
-      try {
-        if (Array.isArray(node)) {
-          return node.map((item) => walk(item, trail));
-        }
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(node)) {
-          const nextTrail = [...trail, k.toLowerCase()];
-          out[k] = matchesPath(nextTrail)
-            ? this.redactCensor
-            : walk(v, nextTrail);
-        }
-        return out;
-      } finally {
-        seen.delete(node);
-      }
-    };
-
-    return walk(value, []);
+    this.redactor ??= createRedactor(
+      this.redactPaths.map((segs) => segs.join(".")),
+      this.redactCensor,
+    );
+    return this.redactor(value);
   }
 
   protected serializeError(
     error: Error,
     depth = 0,
     ancestors = new Set<Error>(),
-  ): Record<string, unknown> {
-    if (ancestors.has(error) || depth > 5) {
-      return { name: error.name, message: error.message };
+  ): Record<string, unknown> | string {
+    if (ancestors.has(error)) {
+      return "[Circular]";
+    }
+    if (depth > 5) {
+      return "[Truncated]";
+    }
+    const source = depth === 0 ? (this.redact(error) as Error) : error;
+    if (!(source instanceof Error)) {
+      return source as unknown as string;
     }
     ancestors.add(error);
+    if (source !== error) {
+      ancestors.add(source);
+    }
     const out: Record<string, unknown> = {
-      name: error.name,
-      message: error.message,
-      ...(error.stack ? { stack: error.stack } : {}),
+      name: source.name,
+      message: source.message,
+      ...(source.stack ? { stack: source.stack } : {}),
     };
-    for (const [key, val] of Object.entries(error)) {
+    for (const [key, val] of Object.entries(source)) {
+      if (key === "cause" || key === "errors") continue;
       if (
         typeof val === "string" ||
         typeof val === "number" ||
@@ -611,15 +725,23 @@ export class ConsoleLogger implements LoggerService {
         out[key] = val;
       }
     }
-    if ("cause" in error && error.cause instanceof Error) {
-      out.cause = this.serializeError(error.cause, depth + 1, ancestors);
+    if ("cause" in source && source.cause !== undefined) {
+      out.cause =
+        source.cause instanceof Error
+          ? this.serializeError(source.cause, depth + 1, ancestors)
+          : this.redact(source.cause);
     }
-    if (error instanceof AggregateError && Array.isArray(error.errors)) {
-      out.errors = error.errors.map((e) =>
-        e instanceof Error ? this.serializeError(e, depth + 1, ancestors) : e,
+    if (source instanceof AggregateError && Array.isArray(source.errors)) {
+      out.errors = source.errors.map((e) =>
+        e instanceof Error
+          ? this.serializeError(e, depth + 1, ancestors)
+          : this.redact(e),
       );
     }
     ancestors.delete(error);
+    if (source !== error) {
+      ancestors.delete(source);
+    }
     return out;
   }
 
@@ -628,11 +750,30 @@ export class ConsoleLogger implements LoggerService {
     if (typeof resolved === "string") {
       return this.colorize(resolved, logLevel);
     }
-    return inspect(this.redact(resolved), this.inspectOptions);
+    const redacted = this.redact(resolved);
+    if (Array.isArray(redacted)) {
+      const formatted = inspect(redacted, {
+        ...this.inspectOptions,
+        compact: false,
+      });
+      return `Array(${redacted.length}) ${formatted}`;
+    }
+    if (isPlainObject(redacted)) {
+      const formatted = inspect(redacted, {
+        ...this.inspectOptions,
+        compact: false,
+      });
+      return `Object(${Object.keys(redacted).length}) ${formatted}`;
+    }
+    return inspect(redacted, this.inspectOptions);
   }
 
   protected stringifyParams(params: Record<string, unknown>): string {
-    return inspect(this.redact(params), this.inspectOptions);
+    const paramInspectOptions: InspectOptions = {
+      ...this.inspectOptions,
+      compact: this.options.compact ?? true,
+    };
+    return inspect(this.redact(params), paramInspectOptions);
   }
 
   protected formatMessage(
@@ -653,24 +794,125 @@ export class ConsoleLogger implements LoggerService {
     if (typeof value === "bigint") {
       return value.toString();
     }
+    if (typeof value === "symbol") {
+      return value.toString();
+    }
+    if (value instanceof Map || value instanceof Set) {
+      return inspect(value, {
+        ...this.inspectOptions,
+        colors: false,
+        compact: true,
+      });
+    }
     return value;
   }
 
   protected stringifyJsonLogObject(logObject: Record<string, unknown>): string {
-    const seen = new WeakSet<object>();
-    try {
-      const json = JSON.stringify(logObject, (k, v) => {
-        const replaced = this.stringifyReplacer(k, v);
-        if (replaced !== null && typeof replaced === "object") {
-          if (seen.has(replaced)) return "[Circular]";
-          seen.add(replaced);
+    const ancestors = new Set<object>();
+    const seen = new Set<object>();
+    let repeatedBytes = 0;
+
+    const serializeValue = (key: string, raw: unknown): string | undefined => {
+      if (raw !== null && typeof raw === "object") {
+        if (ancestors.has(raw)) {
+          return '"[Circular]"';
         }
-        return replaced;
-      });
-      if (json.length > MAX_JSON_LENGTH) {
-        return `${json.slice(0, MAX_JSON_LENGTH)}[Truncated]`;
+        if (repeatedBytes >= MAX_JSON_LENGTH) {
+          return '"[Truncated]"';
+        }
       }
-      return json;
+
+      const isRepeat =
+        raw !== null && typeof raw === "object" && seen.has(raw);
+      if (raw !== null && typeof raw === "object") {
+        seen.add(raw);
+      }
+
+      let current = raw;
+      if (
+        current !== null &&
+        typeof current === "object" &&
+        typeof (current as { toJSON?: unknown }).toJSON === "function"
+      ) {
+        current = (current as { toJSON: (k: string) => unknown }).toJSON(key);
+      }
+
+      const replaced = this.stringifyReplacer(key, current);
+
+      if (replaced === undefined || typeof replaced === "function") {
+        return undefined;
+      }
+      if (
+        replaced === null ||
+        typeof replaced === "boolean" ||
+        typeof replaced === "number" ||
+        typeof replaced === "string"
+      ) {
+        const encoded = JSON.stringify(replaced);
+        if (isRepeat && encoded) {
+          repeatedBytes += encoded.length;
+        }
+        return encoded;
+      }
+      if (typeof replaced === "bigint" || typeof replaced === "symbol") {
+        const encoded = JSON.stringify(replaced.toString());
+        if (isRepeat) {
+          repeatedBytes += encoded.length;
+        }
+        return encoded;
+      }
+
+      const obj = replaced as object;
+      if (ancestors.has(obj)) {
+        return '"[Circular]"';
+      }
+      if (obj !== raw && seen.has(obj) && repeatedBytes >= MAX_JSON_LENGTH) {
+        return '"[Truncated]"';
+      }
+
+      const objIsRepeat = isRepeat || (obj !== raw && seen.has(obj));
+      seen.add(obj);
+      ancestors.add(obj);
+      if (raw !== null && typeof raw === "object" && raw !== obj) {
+        ancestors.add(raw);
+      }
+
+      try {
+        let encoded: string;
+        if (Array.isArray(obj)) {
+          const parts: string[] = [];
+          for (let i = 0; i < obj.length; i++) {
+            const itemStr = serializeValue(String(i), obj[i]);
+            parts.push(itemStr === undefined ? "null" : itemStr);
+          }
+          encoded = `[${parts.join(",")}]`;
+        } else {
+          const parts: string[] = [];
+          for (const prop of Object.keys(obj)) {
+            const valStr = serializeValue(
+              prop,
+              (obj as Record<string, unknown>)[prop],
+            );
+            if (valStr !== undefined) {
+              parts.push(`${JSON.stringify(prop)}:${valStr}`);
+            }
+          }
+          encoded = `{${parts.join(",")}}`;
+        }
+        if (objIsRepeat) {
+          repeatedBytes += encoded.length;
+        }
+        return encoded;
+      } finally {
+        ancestors.delete(obj);
+        if (raw !== null && typeof raw === "object" && raw !== obj) {
+          ancestors.delete(raw);
+        }
+      }
+    };
+
+    try {
+      return serializeValue("", logObject) ?? "{}";
     } catch {
       return inspect(logObject, this.inspectOptions);
     }
@@ -732,11 +974,8 @@ export class ConsoleLogger implements LoggerService {
       ...(errorObj ? { error: this.serializeError(errorObj) } : {}),
     };
     if (options.params) {
-      const redactedParams = this.redact(options.params) as Record<
-        string,
-        unknown
-      >;
-      if (this.options.flattenParams) {
+      const redactedParams = this.redact(options.params);
+      if (this.options.flattenParams && isPlainObject(redactedParams)) {
         Object.assign(payload, redactedParams);
       } else {
         payload.params = redactedParams;
@@ -757,8 +996,11 @@ export class ConsoleLogger implements LoggerService {
     },
   ): void {
     const payload = this.getJsonLogObject(message, options);
-    const line = `${this.stringifyJsonLogObject(payload)}\n`;
-    this.writeLine(line, options.writeStreamType ?? "stdout");
+    const formatted =
+      this.options.compact === false
+        ? inspect(payload, this.inspectOptions)
+        : this.stringifyJsonLogObject(payload);
+    this.writeLine(`${formatted}\n`, options.writeStreamType ?? "stdout");
   }
 
   protected printMessages(
@@ -790,9 +1032,9 @@ export class ConsoleLogger implements LoggerService {
       logLevel,
     );
     const contextMessage = this.formatContext(context);
-    const timestampDiff = this.updateAndGetTimestampDiff();
 
     for (const msg of messages) {
+      const timestampDiff = this.updateAndGetTimestampDiff();
       const formatted = this.formatMessage(
         logLevel,
         msg,
@@ -816,7 +1058,34 @@ export class ConsoleLogger implements LoggerService {
 
   protected isStackFormat(stack: unknown): boolean {
     if (typeof stack !== "string") return false;
-    return /^(.)+\n\s+at .+:\d+:\d+/.test(stack);
+    return /^[\s\S]+\n\s+at .+:\d+:\d+/.test(stack);
+  }
+
+  private extractStructuredParams(rest: unknown[]): {
+    messages: unknown[];
+    params?: Record<string, unknown>;
+  } {
+    if (this.options.structuredParams === false || rest.length <= 1) {
+      return { messages: rest };
+    }
+    const messages: unknown[] = [rest[0]];
+    const paramObjects: Record<string, unknown>[] = [];
+    for (let i = 1; i < rest.length; i++) {
+      const arg = rest[i];
+      if (isPlainObject(arg)) {
+        paramObjects.push(arg);
+      } else {
+        messages.push(arg);
+      }
+    }
+    if (paramObjects.length === 0) {
+      return { messages };
+    }
+    const merged: Record<string, unknown> = {};
+    for (const obj of paramObjects) {
+      Object.assign(merged, obj);
+    }
+    return { messages, params: merged };
   }
 
   protected getContextAndMessagesToPrint(args: unknown[]): {
@@ -834,15 +1103,8 @@ export class ConsoleLogger implements LoggerService {
       context = last;
       rest.pop();
     }
-    let params: Record<string, unknown> | undefined;
-    if (
-      this.options.structuredParams !== false &&
-      rest.length > 1 &&
-      isPlainObject(rest[rest.length - 1])
-    ) {
-      params = rest.pop() as Record<string, unknown>;
-    }
-    return { messages: rest, context, ...(params ? { params } : {}) };
+    const { messages, params } = this.extractStructuredParams(rest);
+    return { messages, context, ...(params ? { params } : {}) };
   }
 
   protected getContextAndStackAndMessagesToPrint(args: unknown[]): {
@@ -859,16 +1121,20 @@ export class ConsoleLogger implements LoggerService {
     let stack: string | undefined;
 
     const last = rest[rest.length - 1];
-    if (typeof last === "string") {
+    if (last === undefined) {
+      rest.pop();
+    } else if (typeof last === "string") {
       if (this.isStackFormat(last)) {
         stack = last;
         rest.pop();
       } else {
         context = last;
         rest.pop();
-        if (rest.length > 1 && typeof rest[rest.length - 1] === "string") {
-          const maybeStack = rest[rest.length - 1] as string;
-          if (this.isStackFormat(maybeStack) || rest.length === 2) {
+        if (rest.length > 1) {
+          const maybeStack = rest[rest.length - 1];
+          if (maybeStack === undefined) {
+            rest.pop();
+          } else if (typeof maybeStack === "string") {
             stack = maybeStack;
             rest.pop();
           }
@@ -876,17 +1142,10 @@ export class ConsoleLogger implements LoggerService {
       }
     }
 
-    let params: Record<string, unknown> | undefined;
-    if (
-      this.options.structuredParams !== false &&
-      rest.length > 1 &&
-      isPlainObject(rest[rest.length - 1])
-    ) {
-      params = rest.pop() as Record<string, unknown>;
-    }
+    const { messages, params } = this.extractStructuredParams(rest);
 
     return {
-      messages: rest,
+      messages,
       context,
       ...(stack !== undefined ? { stack } : {}),
       ...(params ? { params } : {}),
