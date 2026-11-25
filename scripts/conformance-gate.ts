@@ -95,7 +95,13 @@ export async function findUnannotatedSkips(): Promise<string[]> {
 }
 
 async function runSuite(extraArgs: string[] = []): Promise<string> {
-  const tmp = `${Bun.env.TMPDIR ?? "/tmp"}/bunest-conformance-${crypto.randomUUID()}.xml`;
+  const tmpDir = (
+    Bun.env.TMPDIR ??
+    Bun.env.TEMP ??
+    Bun.env.TMP ??
+    "/tmp"
+  ).replace(/[\\/]+$/, "");
+  const tmp = `${tmpDir}/bunest-conformance-${crypto.randomUUID()}.xml`;
   const proc = Bun.spawn(
     ["bun", "test", SUITE, "--reporter=junit", `--reporter-outfile=${tmp}`, ...extraArgs],
     { cwd: REPO, stdout: "ignore", stderr: "ignore" },
@@ -104,7 +110,7 @@ async function runSuite(extraArgs: string[] = []): Promise<string> {
   const file = Bun.file(tmp);
   if (!(await file.exists())) throw new Error(`bun test produced no JUnit report (exit ${proc.exitCode})`);
   const xml = await file.text();
-  await Bun.$`rm -f ${tmp}`.quiet();
+  await file.delete().catch(() => {});
   return xml;
 }
 
@@ -171,7 +177,13 @@ function parseCases(xml: string): Map<string, "pass" | "fail" | "skip"> {
 }
 
 async function runFileJunit(rel: string, timeoutMs: number): Promise<{ xml?: string; timedOut: boolean }> {
-  const tmp = `${Bun.env.TMPDIR ?? "/tmp"}/bunest-stale-${crypto.randomUUID()}.xml`;
+  const tmpDir = (
+    Bun.env.TMPDIR ??
+    Bun.env.TEMP ??
+    Bun.env.TMP ??
+    "/tmp"
+  ).replace(/[\\/]+$/, "");
+  const tmp = `${tmpDir}/bunest-stale-${crypto.randomUUID()}.xml`;
   const proc = Bun.spawn(
     ["bun", "test", "--timeout", "10000", "--reporter=junit", `--reporter-outfile=${tmp}`, `./${rel}`],
     { cwd: REPO, stdout: "ignore", stderr: "ignore" },
@@ -185,7 +197,7 @@ async function runFileJunit(rel: string, timeoutMs: number): Promise<{ xml?: str
   clearTimeout(timer);
   const f = Bun.file(tmp);
   const xml = (await f.exists()) ? await f.text() : undefined;
-  await Bun.$`rm -f ${tmp}`.quiet();
+  await f.delete().catch(() => {});
   return { xml, timedOut };
 }
 
