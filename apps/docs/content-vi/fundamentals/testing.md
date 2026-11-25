@@ -1,4 +1,4 @@
-# Testing
+# Kiểm thử (Testing)
 
 `@bunest/testing` mang **độ tương thích API đầy đủ với `@nestjs/testing`** trực tiếp lên **Bun** (`bun:test`) — kết hợp `Test.createTestingModule()`, ghi đè provider/enhancer/module, auto-mocking không phụ thuộc thư viện ngoài (`useMocker` + `createAutoMocker`), kiểm thử `ContextId` cho request-scope, và assertion log có cấu trúc (`TestingLogger` / `CapturingLogger`) cùng với **kiểm thử E2E HTTP trong bộ nhớ không cần socket** (`request(app)`, `TestClient`, `app.inject()`), kiểm thử cổng tạm thời trực tiếp (`app.listen(0)`), các helper luồng SSE, và cầu nối `http.Server` của Node tùy chọn cho `supertest` cũ.
 

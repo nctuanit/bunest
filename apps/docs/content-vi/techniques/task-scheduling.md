@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/jobs/scheduler
+bun add @bunest/jobs
 ```
 
 ## Thiết lập Module

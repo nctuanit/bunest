@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/core/ws
+bun add @bunest/core
 ```
 
 ## Tạo Gateway

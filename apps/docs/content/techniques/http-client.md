@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/core/client
+bun add @bunest/core
 ```
 
 ## Using `@bunest/core/client`

@@ -537,7 +537,7 @@
           href: withBase("/architecture/hybrid-router"),
           headingText: "Native Zig routes + Fallback Radix Router",
           snippet:
-            "Verified Bun 1.4.3 routes matrix, O(1) 405 + Allow, and CORS preflight.",
+            "Verified Bun 1.4.5+ routes matrix, O(1) 405 + Allow, and CORS preflight.",
         },
       ];
       currentSearchMatches = suggested;

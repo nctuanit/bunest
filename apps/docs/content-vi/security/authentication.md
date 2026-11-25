@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/security/auth
+bun add @bunest/security
 ```
 
 ## Các tính năng chính

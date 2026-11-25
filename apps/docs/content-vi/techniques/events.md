@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/messaging/events
+bun add @bunest/messaging
 ```
 
 ## Thiết lập Module

@@ -5,7 +5,7 @@ Applications run across development, staging, test, and production environments.
 ## Installation
 
 ```bash
-bun add @bunest/core/config
+bun add @bunest/core
 ```
 
 ## Getting Started

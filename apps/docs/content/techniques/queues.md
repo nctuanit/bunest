@@ -5,7 +5,7 @@ Bunest provides background job processing directly through **`@bunest/jobs/queue
 ## Installation
 
 ```bash
-bun add @bunest/jobs/queues
+bun add @bunest/jobs
 ```
 
 ## Native `@bunest/jobs/queues`

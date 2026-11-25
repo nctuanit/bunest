@@ -75,7 +75,7 @@ export async function compilePage(
   }
 
   const raw = await primaryFile.text();
-  const rendered = renderMarkdown(raw, { basePath: langBase });
+  const rendered = renderMarkdown(raw, { basePath: langBase, lang });
   const pageHref = withBasePath(page.href, langBase);
   const meta = getPageMeta(page.slug, page.title, page.description, lang);
   const categoryTitle = getCategoryTitle(

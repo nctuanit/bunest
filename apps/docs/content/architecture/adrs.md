@@ -12,7 +12,7 @@ Bunest's core architecture is governed by authoritative **Architecture Decision 
 
 | ADR         | Decision Summary                                                                                                                      | Status   | Date       |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------- |
-| **ADR-001** | Bun-Only Runtime (`>= 1.4.3`, zero Express/Fastify/Node HTTP in core)                                                                 | Accepted | 2026-11-20 |
+| **ADR-001** | Bun-Only Runtime (`>= 1.4.5`, zero Express/Fastify/Node HTTP in core)                                                                 | Accepted | 2026-11-20 |
 | **ADR-002** | Legacy TypeScript Decorators (`experimentalDecorators`, `emitDecoratorMetadata`, `verbatimModuleSyntax: true` + value-import classes) | Accepted | 2026-11-20 |
 
 ## Routing & Parameter Binding
@@ -23,7 +23,7 @@ Bunest's core architecture is governed by authoritative **Architecture Decision 
 | **ADR-004** | Legacy Parameter Decorators Replacing `static parameters` (index-keyed, cached body parsing)      | Accepted | [Controllers](/overview/controllers)                           |
 | **ADR-006** | `@Controller()` Class Decorator, HTTP Method Decorators & Controller Scanner Contract             | Accepted | [Controllers](/overview/controllers)                           |
 | **ADR-010** | Response Serialization Contract, Default Status Codes (`POST -> 201`) & Response Decorators       | Accepted | [Response Serialization](/architecture/response-serialization) |
-| **ADR-011** | `Bun.serve({ routes })` Native Routes Support Matrix (Bun 1.4.3) & Controlled Fallback Dispatcher | Accepted | [Hybrid Router](/architecture/hybrid-router)                   |
+| **ADR-011** | `Bun.serve({ routes })` Native Routes Support Matrix (Bun 1.4.5) & Controlled Fallback Dispatcher | Accepted | [Hybrid Router](/architecture/hybrid-router)                   |
 
 ## Dependency Injection & Modules
 

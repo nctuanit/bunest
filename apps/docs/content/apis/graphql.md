@@ -8,7 +8,7 @@ Bunest provides full `@nestjs/graphql` v14 and `@nestjs/apollo` parity natively 
 ## Installation
 
 ```bash
-bun add @bunest/graphql @bunest/graphql/apollo graphql
+bun add @bunest/graphql graphql
 ```
 
 ## Code-First Quick Start

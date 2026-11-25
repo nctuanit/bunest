@@ -5,7 +5,7 @@ Bunest cung cấp cơ chế xử lý tác vụ nền trực tiếp thông qua **
 ## Cài đặt
 
 ```bash
-bun add @bunest/jobs/queues
+bun add @bunest/jobs
 ```
 
 ## `@bunest/jobs/queues` gốc

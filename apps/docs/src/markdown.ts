@@ -1,4 +1,5 @@
 import { renderComponent } from "./components";
+import type { DocsLang } from "./i18n";
 import { withBasePath } from "./navigation";
 
 export interface TocItem {
@@ -567,9 +568,10 @@ function isTableSeparator(line: string): boolean {
 
 export function renderMarkdown(
   rawMarkdown: string,
-  options: { basePath?: string } = {},
+  options: { basePath?: string; lang?: DocsLang } = {},
 ): RenderedMarkdown {
   const basePath = options.basePath ?? "";
+  const lang: DocsLang = options.lang ?? "en";
   const normalized = rawMarkdown.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
   const toc: TocItem[] = [];
@@ -617,7 +619,7 @@ export function renderMarkdown(
     // Custom embedded visual component: @@component(name)
     const compMatch = trimmed.match(/^@@component\((.+)\)$/);
     if (compMatch) {
-      htmlParts.push(renderComponent(compMatch[1]!, basePath));
+      htmlParts.push(renderComponent(compMatch[1]!, basePath, lang));
       i += 1;
       continue;
     }

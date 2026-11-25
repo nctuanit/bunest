@@ -1,4 +1,4 @@
-# Module reference
+# Tham chiếu Module (ModuleRef)
 
 Bunest cung cấp `ModuleRef` từ `@bunest/core` để các service có thể chủ động tra cứu các singleton provider hiện có, resolve các instance transient/request-scoped, hoặc khởi tạo động các class với đầy đủ cơ chế DI qua constructor.
 

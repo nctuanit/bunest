@@ -1,3 +1,4 @@
+import type { DocsLang } from "./i18n";
 import { withBasePath } from "./navigation";
 
 /**
@@ -156,12 +157,65 @@ function escapeHtml(input: string): string {
   return Bun.escapeHTML(input);
 }
 
-function renderHeroCards(basePath = ""): string {
+function renderHeroCards(basePath = "", lang: DocsLang = "en"): string {
   const href = (p: string) => withBasePath(p, basePath);
+  if (lang === "vi") {
+    return `<div class="bn-hero-banner">
+  <div class="bn-hero-badge">
+    <span class="bn-pulse-dot"></span>
+    <span>Thuần Bun 1.4.5+ &bull; Không Express/Fastify &bull; Không Reflection mỗi Request</span>
+  </div>
+  <p class="bn-hero-lead">
+    Xây dựng ứng dụng backend TypeScript mô-đun, dễ mở rộng với <strong>trải nghiệm kiến trúc quen thuộc của NestJS</strong> — biên dịch một lần lúc khởi động thành route closure gốc của <code>Bun.serve()</code>.
+  </p>
+  <div class="bn-hero-actions">
+    <a class="bn-btn bn-btn-primary" href="${href("/overview/first-steps")}" data-spa-link>
+      <span>Bắt đầu ngay</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+    <a class="bn-btn bn-btn-secondary" href="${href("/architecture/execution-pipeline")}" data-spa-link>
+      <span>Pipeline 11 bước</span>
+    </a>
+    <a class="bn-btn bn-btn-ghost" href="${href("/architecture/adrs")}" data-spa-link>
+      <span>Xem 18 ADRs</span>
+    </a>
+  </div>
+</div>
+<div class="bn-feature-grid">
+  <a class="bn-feature-card" href="${href("/overview/controllers")}" data-spa-link>
+    <div class="bn-feature-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    </div>
+    <h3>Định tuyến biên dịch lúc khởi động</h3>
+    <p><code>@Controller</code> &amp; các HTTP decorator được biên dịch một lần thành closure gốc của <code>Bun.serve({ routes })</code> mà không dùng reflection trên hot-path.</p>
+  </a>
+  <a class="bn-feature-card" href="${href("/overview/modules")}" data-spa-link>
+    <div class="bn-feature-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    </div>
+    <h3>DI mô-đun chặt chẽ</h3>
+    <p>Đóng gói module mặc định private, khởi tạo theo thứ tự phụ thuộc, chẩn đoán vòng phụ thuộc và chặn sớm <code>ScopeLeakException</code>.</p>
+  </a>
+  <a class="bn-feature-card" href="${href("/techniques/validation")}" data-spa-link>
+    <div class="bn-feature-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
+    <h3>Validation an toàn mặc định</h3>
+    <p><code>ValidationPipe</code> bật sẵn <code>whitelist</code>, <code>forbidNonWhitelisted</code>, chống prototype pollution và hỗ trợ Standard Schema (Zod/Valibot).</p>
+  </a>
+  <a class="bn-feature-card" href="${href("/overview/interceptors")}" data-spa-link>
+    <div class="bn-feature-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </div>
+    <h3>Onion Pipeline không RxJS</h3>
+    <p>Interceptor thuần <code>Promise</code> async/await, Web <code>Request</code>/<code>Response</code> gốc, <code>Bun.file()</code> zero-copy và SSE stream.</p>
+  </a>
+</div>`;
+  }
   return `<div class="bn-hero-banner">
   <div class="bn-hero-badge">
     <span class="bn-pulse-dot"></span>
-    <span>Native Bun 1.4.3+ &bull; Zero Express/Fastify &bull; Zero Per-Request Reflection</span>
+    <span>Native Bun 1.4.5+ &bull; Zero Express/Fastify &bull; Zero Per-Request Reflection</span>
   </div>
   <p class="bn-hero-lead">
     Build scalable, modular TypeScript server-side applications with the <strong>exact architectural ergonomics of NestJS</strong> — compiled once at bootstrap into native <code>Bun.serve()</code> route closures.
@@ -175,7 +229,7 @@ function renderHeroCards(basePath = ""): string {
       <span>11-Stage Pipeline</span>
     </a>
     <a class="bn-btn bn-btn-ghost" href="${href("/architecture/adrs")}" data-spa-link>
-      <span>Read 12 ADRs</span>
+      <span>Read 18 ADRs</span>
     </a>
   </div>
 </div>
@@ -336,10 +390,14 @@ function renderRouterArchitecture(): string {
 </div>`;
 }
 
-export function renderComponent(name: string, basePath = ""): string {
+export function renderComponent(
+  name: string,
+  basePath = "",
+  lang: DocsLang = "en",
+): string {
   switch (name.trim()) {
     case "hero-cards":
-      return renderHeroCards(basePath);
+      return renderHeroCards(basePath, lang);
     case "pipeline-diagram":
       return renderPipelineDiagram();
     case "scope-matrix":

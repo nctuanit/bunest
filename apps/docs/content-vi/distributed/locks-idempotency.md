@@ -1,6 +1,6 @@
-# Distributed Locks & Idempotency
+# Khóa phân tán & Idempotency
 
-Bunest cung cấp hai package xử lý đồng thời và khử trùng lặp không dependency ngoài cho môi trường production đa instance:
+`@bunest/resilience` cung cấp hai subpath xử lý đồng thời và khử trùng lặp request cho môi trường production đa instance:
 
 - **`@bunest/resilience/locks`** — Khóa phân tán có thời hạn thuê (leased distributed lock) kèm fencing token đơn điệu, service aspect `@WithLock()` ([ADR-014](/architecture/adrs)), `@OnOneInstance()`, `@WithoutOverlapping()` và `LeaderElection` (kèm helper `./testing`).
 - **`@bunest/resilience/idempotency`** — `@Idempotent()` khử trùng lặp retry an toàn cho các HTTP route, GraphQL mutation và microservice handler (kèm helper `./testing`).
@@ -10,14 +10,14 @@ Bunest cung cấp hai package xử lý đồng thời và khử trùng lặp kh�
 @@tab(@bunest/resilience/locks)
 
 ```bash
-bun add @bunest/resilience/locks
+bun add @bunest/resilience
 ```
 
 @@switch
 @@tab(@bunest/resilience/idempotency)
 
 ```bash
-bun add @bunest/resilience/idempotency
+bun add @bunest/resilience
 ```
 
 ## Khóa phân tán (`@bunest/resilience/locks`)
@@ -45,7 +45,7 @@ export class InventoryService {
 
 Dùng `@OnOneInstance()` và `@WithoutOverlapping()` trên các tác vụ định kỳ để đảm bảo thực thi đơn lẻ trên toàn cụm, hoặc inject `LeaderElection` cho mô hình worker active-standby.
 
-## Request Idempotent (`@bunest/resilience/idempotency`)
+## Idempotency cho Request (`@bunest/resilience/idempotency`)
 
 Đăng ký `IdempotencyModule.forRoot()` và gắn `@Idempotent()` cho các endpoint thay đổi trạng thái để khi client retry với cùng header `Idempotency-Key`, hệ thống phát lại phản hồi ban đầu mà không thực thi lại tác dụng phụ:
 

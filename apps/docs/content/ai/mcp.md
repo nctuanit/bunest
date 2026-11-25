@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/ai/mcp
+bun add @bunest/ai
 ```
 
 ## Module Setup

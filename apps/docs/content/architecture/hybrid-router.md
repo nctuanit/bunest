@@ -1,14 +1,14 @@
 # Hybrid `Bun.serve` Router
 
-`Bun.serve({ routes, fetch, websocket })` provides an ultra-fast native Zig router, yet empirical testing on **Bun 1.4.3** shows specific gaps (such as `405 + Allow`, host-constrained routes, optional/regex params, and mid-path wildcards). **[ADR-011](/architecture/adrs)** specifies Bunest's hybrid compilation strategy that keeps 95%+ of REST routes on Bun's native fast path while handling every edge case cleanly.
+`Bun.serve({ routes, fetch, websocket })` provides an ultra-fast native Zig router, yet empirical testing on **Bun 1.4.5** shows specific gaps (such as `405 + Allow`, host-constrained routes, optional/regex params, and mid-path wildcards). **[ADR-011](/architecture/adrs)** specifies Bunest's hybrid compilation strategy that keeps 95%+ of REST routes on Bun's native fast path while handling every edge case cleanly.
 
 @@component(router-architecture)
 
-## Verified Bun 1.4.3 `routes` Support Matrix
+## Verified Bun 1.4.5 `routes` Support Matrix
 
 Native matching precedence inside `Bun.serve({ routes })` is strictly **`static > :param > * > fetch`**.
 
-| Routing Feature                                       | Bun 1.4.3 Native Behavior                    | Bunest Strategy                                                    |
+| Routing Feature                                       | Bun 1.4.5 Native Behavior                    | Bunest Strategy                                                    |
 | ----------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
 | Static paths (`/`, `/users`, `/api/health`)           | Supported natively                           | Compile into `Bun.serve({ routes })`                               |
 | Named params (`/users/:id`, `/:org/repos/:id`)        | Supported natively; `req.params` URL-decoded | Compile into `Bun.serve({ routes })`                               |

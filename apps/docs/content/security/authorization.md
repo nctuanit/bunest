@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/security/authz
+bun add @bunest/security
 ```
 
 ## Defining a Policy

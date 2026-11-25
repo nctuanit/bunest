@@ -12,7 +12,7 @@ Kiến trúc lõi của Bunest được chi phối bởi các **Bản ghi Quyế
 
 | ADR | Tóm tắt quyết định | Trạng thái | Ngày |
 | --- | --- | --- | --- |
-| **ADR-001** | Runtime chỉ dành cho Bun (`>= 1.4.3`, không dùng Express/Fastify/Node HTTP trong core) | Accepted | 2026-11-20 |
+| **ADR-001** | Runtime chỉ dành cho Bun (`>= 1.4.5`, không dùng Express/Fastify/Node HTTP trong core) | Accepted | 2026-11-20 |
 | **ADR-002** | Legacy TypeScript Decorators (`experimentalDecorators`, `emitDecoratorMetadata`, `verbatimModuleSyntax: true` + value-import cho các class) | Accepted | 2026-11-20 |
 
 ## Định tuyến & Gắn kết Tham số
@@ -23,7 +23,7 @@ Kiến trúc lõi của Bunest được chi phối bởi các **Bản ghi Quyế
 | **ADR-004** | Legacy Parameter Decorators thay thế `static parameters` (khóa theo chỉ số, phân tích body có cache) | Accepted | [Controllers](/overview/controllers) |
 | **ADR-006** | Class Decorator `@Controller()`, HTTP Method Decorators & Hợp đồng Controller Scanner | Accepted | [Controllers](/overview/controllers) |
 | **ADR-010** | Hợp đồng Tuần tự hóa Phản hồi, Mã trạng thái mặc định (`POST -> 201`) & Response Decorators | Accepted | [Response Serialization](/architecture/response-serialization) |
-| **ADR-011** | Ma trận hỗ trợ Native Routes của `Bun.serve({ routes })` (Bun 1.4.3) & Fallback Dispatcher có kiểm soát | Accepted | [Hybrid Router](/architecture/hybrid-router) |
+| **ADR-011** | Ma trận hỗ trợ Native Routes của `Bun.serve({ routes })` (Bun 1.4.5) & Fallback Dispatcher có kiểm soát | Accepted | [Hybrid Router](/architecture/hybrid-router) |
 
 ## Dependency Injection & Module
 

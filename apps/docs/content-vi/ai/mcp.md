@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/ai/mcp
+bun add @bunest/ai
 ```
 
 ## Thiết lập Module

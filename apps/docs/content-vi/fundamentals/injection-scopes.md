@@ -1,4 +1,4 @@
-# Injection scopes
+# Phạm vi DI (Injection scopes)
 
 Mọi provider và controller trong Bunest đều có vòng đời DI được xác định rõ ràng thông qua enum `Scope` (`@bunest/core`, [ADR-012](/architecture/adrs)).
 

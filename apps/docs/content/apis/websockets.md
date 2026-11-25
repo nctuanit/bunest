@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/core/ws
+bun add @bunest/core
 ```
 
 ## Creating a Gateway

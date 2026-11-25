@@ -1,4 +1,4 @@
-# Circular dependency
+# Phụ thuộc vòng (Circular dependency)
 
 Phụ thuộc vòng (circular dependency) xảy ra khi hai class (hoặc hai module) phụ thuộc lẫn nhau (`A -> B -> A`). Mặc dù bạn nên tránh vòng phụ thuộc bất cứ khi nào có thể bằng cách tách logic dùng chung sang một service thứ ba, Bunest vẫn cung cấp cơ chế **phát hiện vòng lặp xác định khi bootstrap** và giải quyết tường minh bằng **`forwardRef()`** khi vòng phụ thuộc là có chủ đích ([ADR-007](/architecture/adrs)).
 

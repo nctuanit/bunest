@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/core/config
+bun add @bunest/core
 ```
 
 ## Bắt đầu

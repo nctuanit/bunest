@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/security/auth
+bun add @bunest/security
 ```
 
 ## Key Capabilities

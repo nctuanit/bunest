@@ -1,4 +1,4 @@
-# Execution context
+# Ngữ cảnh thực thi (Execution context)
 
 Bunest cung cấp `ArgumentsHost` và `ExecutionContext` (kế thừa từ `ArgumentsHost`) nhằm mang lại cho **guards**, **interceptors**, **exception filters** và **custom parameter decorators** quyền truy cập thống nhất vào request hiện tại, ngữ cảnh response, class controller và phương thức handler.
 

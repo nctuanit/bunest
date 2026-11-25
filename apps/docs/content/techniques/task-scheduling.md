@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/jobs/scheduler
+bun add @bunest/jobs
 ```
 
 ## Module Setup

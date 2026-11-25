@@ -1,14 +1,14 @@
 # Hybrid `Bun.serve` Router
 
-`Bun.serve({ routes, fetch, websocket })` cung cấp một router Zig gốc siêu nhanh, nhưng kiểm thử thực nghiệm trên **Bun 1.4.3** cho thấy một số khoảng trống cụ thể (như `405 + Allow`, route ràng buộc host, tham số tùy chọn/regex và wildcard giữa đường dẫn). **[ADR-011](/architecture/adrs)** đặc tả chiến lược biên dịch lai (hybrid) của Bunest giúp giữ hơn 95% REST route trên fast path gốc của Bun trong khi vẫn xử lý gọn mọi trường hợp biên.
+`Bun.serve({ routes, fetch, websocket })` cung cấp một router Zig gốc siêu nhanh, nhưng kiểm thử thực nghiệm trên **Bun 1.4.5** cho thấy một số khoảng trống cụ thể (như `405 + Allow`, route ràng buộc host, tham số tùy chọn/regex và wildcard giữa đường dẫn). **[ADR-011](/architecture/adrs)** đặc tả chiến lược biên dịch lai (hybrid) của Bunest giúp giữ hơn 95% REST route trên fast path gốc của Bun trong khi vẫn xử lý gọn mọi trường hợp biên.
 
 @@component(router-architecture)
 
-## Ma trận hỗ trợ `routes` được kiểm chứng trên Bun 1.4.3
+## Ma trận hỗ trợ `routes` được kiểm chứng trên Bun 1.4.5
 
 Thứ tự ưu tiên khớp gốc bên trong `Bun.serve({ routes })` tuân thủ nghiêm ngặt **`static > :param > * > fetch`**.
 
-| Tính năng định tuyến | Hành vi gốc trên Bun 1.4.3 | Chiến lược của Bunest |
+| Tính năng định tuyến | Hành vi gốc trên Bun 1.4.5 | Chiến lược của Bunest |
 | --- | --- | --- |
 | Đường dẫn tĩnh (`/`, `/users`, `/api/health`) | Hỗ trợ gốc | Biên dịch vào `Bun.serve({ routes })` |
 | Tham số có tên (`/users/:id`, `/:org/repos/:id`) | Hỗ trợ gốc; `req.params` tự giải mã URL | Biên dịch vào `Bun.serve({ routes })` |

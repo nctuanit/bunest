@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/security/authz
+bun add @bunest/security
 ```
 
 ## Định nghĩa Policy

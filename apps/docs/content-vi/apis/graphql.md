@@ -8,7 +8,7 @@ Bunest cung cấp độ tương thích đầy đủ với `@nestjs/graphql` v14 
 ## Cài đặt
 
 ```bash
-bun add @bunest/graphql @bunest/graphql/apollo graphql
+bun add @bunest/graphql graphql
 ```
 
 ## Bắt đầu nhanh với Code-First

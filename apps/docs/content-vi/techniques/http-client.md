@@ -5,7 +5,7 @@
 ## Cài đặt
 
 ```bash
-bun add @bunest/core/client
+bun add @bunest/core
 ```
 
 ## Sử dụng `@bunest/core/client`

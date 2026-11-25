@@ -10,14 +10,14 @@ Bunest đi kèm hai package nhắn tin tin cậy chuẩn production xây dựng 
 @@tab(@bunest/messaging/outbox)
 
 ```bash
-bun add @bunest/messaging/outbox
+bun add @bunest/messaging
 ```
 
 @@switch
 @@tab(@bunest/messaging/webhooks)
 
 ```bash
-bun add @bunest/messaging/webhooks
+bun add @bunest/messaging
 ```
 
 ## Transactional Outbox (`@bunest/messaging/outbox`)

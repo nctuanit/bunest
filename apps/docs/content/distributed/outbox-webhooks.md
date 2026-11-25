@@ -10,14 +10,14 @@ Bunest ships two production-grade reliable messaging packages built on [`@bunest
 @@tab(@bunest/messaging/outbox)
 
 ```bash
-bun add @bunest/messaging/outbox
+bun add @bunest/messaging
 ```
 
 @@switch
 @@tab(@bunest/messaging/webhooks)
 
 ```bash
-bun add @bunest/messaging/webhooks
+bun add @bunest/messaging
 ```
 
 ## Transactional Outbox (`@bunest/messaging/outbox`)

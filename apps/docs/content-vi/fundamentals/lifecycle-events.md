@@ -1,4 +1,4 @@
-# Lifecycle events
+# Sự kiện vòng đời (Lifecycle events)
 
 Bunest quản lý quá trình khởi động và tắt ứng dụng an toàn (graceful shutdown) theo **thứ tự tô-pô xác định** thông qua `LifecycleManager` (`@bunest/core`, [ADR-007](/architecture/adrs)). Các dependency luôn được khởi tạo _trước_ những thành phần phụ thuộc vào chúng và tắt _sau_ những thành phần đó.
 

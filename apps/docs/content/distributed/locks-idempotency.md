@@ -1,6 +1,6 @@
 # Distributed Locks & Idempotency
 
-Bunest provides two zero-dependency concurrency and deduplication packages for multi-instance production deployments:
+`@bunest/resilience` provides two subpaths for concurrency control and request deduplication in multi-instance production deployments:
 
 - **`@bunest/resilience/locks`** — Leased distributed locks with monotonic fencing tokens, `@WithLock()` service aspect ([ADR-014](/architecture/adrs)), `@OnOneInstance()`, `@WithoutOverlapping()`, and `LeaderElection` (with `./testing` helpers).
 - **`@bunest/resilience/idempotency`** — `@Idempotent()` safe retry deduplication for HTTP routes, GraphQL mutations, and microservice handlers (with `./testing` helpers).
@@ -10,14 +10,14 @@ Bunest provides two zero-dependency concurrency and deduplication packages for m
 @@tab(@bunest/resilience/locks)
 
 ```bash
-bun add @bunest/resilience/locks
+bun add @bunest/resilience
 ```
 
 @@switch
 @@tab(@bunest/resilience/idempotency)
 
 ```bash
-bun add @bunest/resilience/idempotency
+bun add @bunest/resilience
 ```
 
 ## Distributed Locks (`@bunest/resilience/locks`)

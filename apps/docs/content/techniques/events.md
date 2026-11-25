@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-bun add @bunest/messaging/events
+bun add @bunest/messaging
 ```
 
 ## Module Setup
