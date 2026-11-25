@@ -5,6 +5,7 @@ import {
   removePath as rm,
 } from "@bunest/core";
 import { DOCS_ROOT, loadAllDocs } from "./content-loader";
+import { SUPPORTED_LANGS } from "./i18n";
 import { getConfiguredBasePath, normalizeBasePath } from "./navigation";
 import { renderNotFoundHtml, renderPageHtml } from "./template";
 
@@ -34,9 +35,6 @@ export async function buildStaticSite(
 
   await rm(outDir, { recursive: true, force: true });
   await mkdir(join(outDir, "assets"), { recursive: true });
-  await mkdir(join(outDir, "data"), { recursive: true });
-
-  const { pages, searchIndex } = await loadAllDocs(basePath);
 
   // Copy styles & bundle/minify client script via Bun.build
   const cssContent = await Bun.file(join(SRC_DIR, "styles.css")).text();
@@ -55,33 +53,46 @@ export async function buildStaticSite(
     );
   }
 
-  // Write search index JSON
-  await Bun.write(
-    join(outDir, "data", "search-index.json"),
-    JSON.stringify(searchIndex),
-  );
+  let totalPages = 0;
+  let totalSearchEntries = 0;
 
-  // Pre-render every documentation page + JSON payload for SPA swaps
-  for (const page of pages.values()) {
-    const html = renderPageHtml(page, basePath);
+  for (const lang of SUPPORTED_LANGS) {
+    const langOutDir = lang === "en" ? outDir : join(outDir, lang);
+    const dataDir = join(langOutDir, "data");
+    await mkdir(dataDir, { recursive: true });
 
-    if (page.slug === "") {
-      await Bun.write(join(outDir, "index.html"), html);
-      await Bun.write(join(outDir, "data", "index.json"), JSON.stringify(page));
-    } else {
-      const htmlTarget = join(outDir, page.slug, "index.html");
-      const jsonTarget = join(outDir, "data", `${page.slug}.json`);
-      await mkdir(dirname(htmlTarget), { recursive: true });
-      await mkdir(dirname(jsonTarget), { recursive: true });
-      await Bun.write(htmlTarget, html);
-      await Bun.write(jsonTarget, JSON.stringify(page));
+    const { pages, searchIndex } = await loadAllDocs(basePath, lang);
+    totalPages += pages.size;
+    totalSearchEntries += searchIndex.length;
+
+    // Write search index JSON for this locale
+    await Bun.write(
+      join(dataDir, "search-index.json"),
+      JSON.stringify(searchIndex),
+    );
+
+    // Pre-render every documentation page + JSON payload for SPA swaps
+    for (const page of pages.values()) {
+      const html = renderPageHtml(page, basePath);
+
+      if (page.slug === "") {
+        await Bun.write(join(langOutDir, "index.html"), html);
+        await Bun.write(join(dataDir, "index.json"), JSON.stringify(page));
+      } else {
+        const htmlTarget = join(langOutDir, page.slug, "index.html");
+        const jsonTarget = join(dataDir, `${page.slug}.json`);
+        await mkdir(dirname(htmlTarget), { recursive: true });
+        await mkdir(dirname(jsonTarget), { recursive: true });
+        await Bun.write(htmlTarget, html);
+        await Bun.write(jsonTarget, JSON.stringify(page));
+      }
     }
   }
 
   // Write 404 fallback page & GitHub Pages .nojekyll marker
   await Bun.write(
     join(outDir, "404.html"),
-    renderNotFoundHtml("/404", basePath),
+    renderNotFoundHtml("/404", basePath, "en"),
   );
   await Bun.write(join(outDir, ".nojekyll"), "");
 
@@ -91,12 +102,12 @@ export async function buildStaticSite(
 
   const elapsed = (performance.now() - start).toFixed(1);
   console.log(
-    `[Bunest Docs] Built ${pages.size} pages & ${searchIndex.length} search sections (basePath="${basePath || "/"}") to ${outDir} in ${elapsed}ms`,
+    `[Bunest Docs] Built ${totalPages} pages (${SUPPORTED_LANGS.join("/")}) & ${totalSearchEntries} search sections (basePath="${basePath || "/"}") to ${outDir} in ${elapsed}ms`,
   );
 
   return {
-    pageCount: pages.size,
-    searchEntryCount: searchIndex.length,
+    pageCount: totalPages,
+    searchEntryCount: totalSearchEntries,
     outDir,
     basePath,
   };

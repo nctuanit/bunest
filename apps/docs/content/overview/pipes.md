@@ -9,7 +9,7 @@ A pipe is a class implementing the `PipeTransform` interface. Pipes execute at *
 
 ## Built-in Parse Pipes
 
-`@bunest/core` (re-exported by `@bunest/core`) ships 7 ready-to-use pipes:
+Bunest includes 7 built-in pipes:
 
 | Pipe               | Purpose                                                          | Example Input &rarr; Output                        |
 | ------------------ | ---------------------------------------------------------------- | -------------------------------------------------- |

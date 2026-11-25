@@ -1,6 +1,6 @@
 # Logger
 
-`@bunest/core` (re-exported by `@bunest/core`) includes a zero-dependency structured **`Logger`** supporting log levels, context labels, JSON output mode for log aggregators, and **automatic deep immutable secret redaction**.
+Bunest includes a structured **`Logger`** supporting log levels, context labels, JSON output mode for log aggregators, and **automatic deep immutable secret redaction**.
 
 ## Basic Usage
 

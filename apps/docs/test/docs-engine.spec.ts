@@ -156,7 +156,7 @@ describe("@bunest/docs engine", () => {
       });
 
       expect(result.basePath).toBe("/bunest");
-      expect(result.pageCount).toBe(ALL_PAGES.length);
+      expect(result.pageCount).toBe(ALL_PAGES.length * 2);
 
       expect(await Bun.file(join(outDir, ".nojekyll")).exists()).toBe(true);
       expect(await Bun.file(join(outDir, "404.html")).exists()).toBe(true);
@@ -169,10 +169,29 @@ describe("@bunest/docs engine", () => {
 
       const indexHtml = await Bun.file(join(outDir, "index.html")).text();
       expect(indexHtml).toContain('data-base-path="/bunest"');
+      expect(indexHtml).toContain('data-lang="en"');
+      expect(indexHtml).toContain('href="/bunest/vi/"');
       expect(indexHtml).toContain('href="/bunest/assets/styles.css"');
       expect(indexHtml).toContain('src="/bunest/assets/client.js"');
       expect(indexHtml).toContain('href="/bunest/overview/first-steps"');
       expect(indexHtml).toContain('href="/bunest/overview/controllers"');
+
+      const viIndexHtml = await Bun.file(
+        join(outDir, "vi", "index.html"),
+      ).text();
+      expect(viIndexHtml).toContain('lang="vi"');
+      expect(viIndexHtml).toContain('data-lang="vi"');
+      expect(viIndexHtml).toContain('href="/bunest/assets/styles.css"');
+      expect(viIndexHtml).toContain('href="/bunest/vi/overview/first-steps"');
+      expect(viIndexHtml).toContain('href="/bunest/"');
+
+      const viSearchIdx = (await Bun.file(
+        join(outDir, "vi", "data", "search-index.json"),
+      ).json()) as Array<{ href: string }>;
+      expect(viSearchIdx.length).toBeGreaterThan(50);
+      for (const entry of viSearchIdx) {
+        expect(entry.href.startsWith("/bunest/vi/")).toBe(true);
+      }
 
       const searchIdx = (await Bun.file(
         join(outDir, "data", "search-index.json"),
@@ -194,6 +213,55 @@ describe("@bunest/docs engine", () => {
       expect(controllersJson.next?.href.startsWith("/bunest/")).toBe(true);
     } finally {
       await removePath(outDir, { recursive: true, force: true });
+    }
+  });
+
+  test("loads all Vietnamese pages, rewrites internal links under /vi, and serves /vi routes", async () => {
+    const { pages, searchIndex } = await loadAllDocs("", "vi");
+    expect(pages.size).toBe(ALL_PAGES.length);
+    expect(searchIndex.length).toBeGreaterThan(pages.size);
+
+    const broken: string[] = [];
+    const hrefRegex = /href="(\/[^"#?]*)/g;
+    for (const page of pages.values()) {
+      expect(page.lang).toBe("vi");
+      expect(page.html.length).toBeGreaterThan(200);
+      for (const match of page.html.matchAll(hrefRegex)) {
+        const target = match[1]!;
+        if (target.startsWith("/assets/") || target.startsWith("/data/")) {
+          continue;
+        }
+        const stripped = target.startsWith("/vi/")
+          ? target.slice(3)
+          : target === "/vi"
+            ? "/"
+            : target;
+        if (!findPageBySlug(stripped)) {
+          broken.push(`${page.href} -> ${target}`);
+        }
+      }
+    }
+    expect(broken).toEqual([]);
+
+    const server = createDocsServer({ port: 0, staticMode: false });
+    try {
+      const base = server.url.toString().replace(/\/$/, "");
+      const [viHome, viEx, viJson, viSearch] = await Promise.all([
+        fetch(`${base}/vi/`),
+        fetch(`${base}/vi/overview/exception-filters`),
+        fetch(`${base}/vi/data/overview/exception-filters.json`),
+        fetch(`${base}/vi/data/search-index.json`),
+      ]);
+      expect(viHome.status).toBe(200);
+      expect(await viHome.text()).toContain('lang="vi"');
+      expect(viEx.status).toBe(200);
+      expect(viJson.status).toBe(200);
+      const parsed = (await viJson.json()) as { lang: string; slug: string };
+      expect(parsed.lang).toBe("vi");
+      expect(parsed.slug).toBe("overview/exception-filters");
+      expect(viSearch.status).toBe(200);
+    } finally {
+      server.stop(true);
     }
   });
 });

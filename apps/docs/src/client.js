@@ -11,16 +11,50 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  // Base path support for GitHub Pages project sites (e.g. "/bunest")
+  // Base path & language support for GitHub Pages project sites (e.g. "/bunest", "/bunest/vi")
   const BASE_PATH = (
     document.body.getAttribute("data-base-path") || ""
   ).replace(/\/+$/, "");
+  const LANG = document.body.getAttribute("data-lang") === "vi" ? "vi" : "en";
+  const LANG_PREFIX = LANG === "vi" ? "/vi" : "";
+  const UI =
+    LANG === "vi"
+      ? {
+          noSubsections: "Trang này không có mục con.",
+          previous: "Trang trước",
+          next: "Trang tiếp",
+          minRead: "phút đọc",
+          copy: "Sao chép",
+          copied: "Đã chép",
+          siteTitle:
+            "Tài liệu | Bunest — Framework TypeScript thuần Bun theo kiến trúc NestJS",
+          titleSuffix: "Tài liệu Bunest",
+          paginationLabel: "Phân trang tài liệu",
+        }
+      : {
+          noSubsections: "No subsections on this page.",
+          previous: "Previous",
+          next: "Next",
+          minRead: "min read",
+          copy: "Copy",
+          copied: "Copied",
+          siteTitle:
+            "Documentation | Bunest — A progressive Bun-native TypeScript framework",
+          titleSuffix: "Bunest Documentation",
+          paginationLabel: "Page pagination",
+        };
 
   function withBase(path) {
     if (!BASE_PATH) return path;
     if (path === "/" || path === "") return `${BASE_PATH}/`;
     if (path === BASE_PATH || path.startsWith(`${BASE_PATH}/`)) return path;
     return `${BASE_PATH}${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  function hrefForLang(slug, lang) {
+    const prefix = lang === "vi" ? "/vi" : "";
+    const raw = slug === "" ? `${prefix || ""}/` : `${prefix}/${slug}`;
+    return withBase(raw);
   }
 
   // Platform shortcut hint
@@ -119,10 +153,10 @@
           await navigator.clipboard.writeText(text);
           btn.classList.add("is-copied");
           const label = btn.querySelector(".bn-copy-label");
-          if (label) label.textContent = "Copied";
+          if (label) label.textContent = UI.copied;
           setTimeout(() => {
             btn.classList.remove("is-copied");
-            if (label) label.textContent = "Copy";
+            if (label) label.textContent = UI.copy;
           }, 1800);
         } catch {}
       });
@@ -263,6 +297,12 @@
     ) {
       stripped = stripped.slice(BASE_PATH.length);
     }
+    if (
+      LANG_PREFIX &&
+      (stripped === LANG_PREFIX || stripped.startsWith(`${LANG_PREFIX}/`))
+    ) {
+      stripped = stripped.slice(LANG_PREFIX.length);
+    }
     const cleaned = stripped.replace(/\/+$/, "").replace(/^\/+/, "");
     if (!cleaned || cleaned === "index.html" || cleaned === "introduction")
       return "";
@@ -279,7 +319,7 @@
 
   function renderTocHtml(toc) {
     if (!toc || toc.length === 0) {
-      return '<p class="bn-toc-empty">No subsections on this page.</p>';
+      return `<p class="bn-toc-empty">${escapeHtml(UI.noSubsections)}</p>`;
     }
     return `<ul class="bn-toc-list">${toc
       .map(
@@ -291,24 +331,33 @@
 
   function renderPagerHtml(prev, next) {
     const prevHtml = prev
-      ? `<a class="bn-pager-card bn-pager-prev" href="${escapeHtml(prev.href)}" data-spa-link><span class="bn-pager-dir">&larr; Previous &bull; ${escapeHtml(prev.categoryTitle)}</span><strong class="bn-pager-title">${escapeHtml(prev.title)}</strong></a>`
+      ? `<a class="bn-pager-card bn-pager-prev" href="${escapeHtml(prev.href)}" data-spa-link><span class="bn-pager-dir">&larr; ${escapeHtml(UI.previous)} &bull; ${escapeHtml(prev.categoryTitle)}</span><strong class="bn-pager-title">${escapeHtml(prev.title)}</strong></a>`
       : '<div class="bn-pager-spacer"></div>';
     const nextHtml = next
-      ? `<a class="bn-pager-card bn-pager-next" href="${escapeHtml(next.href)}" data-spa-link><span class="bn-pager-dir">${escapeHtml(next.categoryTitle)} &bull; Next &rarr;</span><strong class="bn-pager-title">${escapeHtml(next.title)}</strong></a>`
+      ? `<a class="bn-pager-card bn-pager-next" href="${escapeHtml(next.href)}" data-spa-link><span class="bn-pager-dir">${escapeHtml(next.categoryTitle)} &bull; ${escapeHtml(UI.next)} &rarr;</span><strong class="bn-pager-title">${escapeHtml(next.title)}</strong></a>`
       : '<div class="bn-pager-spacer"></div>';
-    return `<nav class="bn-pager" aria-label="Page pagination">${prevHtml}${nextHtml}</nav>`;
+    return `<nav class="bn-pager" aria-label="${escapeHtml(UI.paginationLabel)}">${prevHtml}${nextHtml}</nav>`;
   }
 
   async function fetchPageData(slug) {
     if (pageCache.has(slug)) return pageCache.get(slug);
     const dataUrl = withBase(
-      slug === "" ? "/data/index.json" : `/data/${slug}.json`,
+      slug === ""
+        ? `${LANG_PREFIX}/data/index.json`
+        : `${LANG_PREFIX}/data/${slug}.json`,
     );
     const res = await fetch(dataUrl);
     if (!res.ok) return null;
     const json = await res.json();
     pageCache.set(slug, json);
     return json;
+  }
+
+  function syncLangSwitcher(slug) {
+    const enLink = $("#bn-lang-en");
+    const viLink = $("#bn-lang-vi");
+    if (enLink) enLink.setAttribute("href", hrefForLang(slug, "en"));
+    if (viLink) viLink.setAttribute("href", hrefForLang(slug, "vi"));
   }
 
   async function navigateTo(href, pushHistory = true) {
@@ -349,7 +398,7 @@
 
     if (contentEl) contentEl.innerHTML = page.html;
     if (kickerEl) kickerEl.textContent = page.categoryTitle;
-    if (readEl) readEl.textContent = `${page.readingMinutes} min read`;
+    if (readEl) readEl.textContent = `${page.readingMinutes} ${UI.minRead}`;
     if (badgeSlot) {
       badgeSlot.innerHTML = page.badge
         ? `<span class="bn-meta-badge">${escapeHtml(page.badge)}</span>`
@@ -361,14 +410,15 @@
     document.body.setAttribute("data-current-slug", page.slug);
     document.title =
       page.slug === ""
-        ? "Documentation | Bunest — A progressive Bun-native TypeScript framework"
-        : `${page.title} | Bunest Documentation`;
+        ? UI.siteTitle
+        : `${page.title} | ${UI.titleSuffix}`;
 
     if (pushHistory) {
       history.pushState({ slug: page.slug }, "", url.pathname + url.hash);
     }
 
     syncSidebarActive(page.slug);
+    syncLangSwitcher(page.slug);
     if (contentEl) bindArticleInteractions(contentEl);
     setupTocScrollSpy();
 
@@ -417,7 +467,7 @@
   async function ensureSearchIndex() {
     if (searchIndex) return searchIndex;
     try {
-      const res = await fetch(withBase("/data/search-index.json"));
+      const res = await fetch(withBase(`${LANG_PREFIX}/data/search-index.json`));
       searchIndex = await res.json();
     } catch {
       searchIndex = [];

@@ -1,6 +1,6 @@
 # Mapped Types
 
-Bunest provides built-in `@nestjs/mapped-types` v12 parity directly in **`@bunest/validation`** (also re-exported from **`@bunest/core`**) for deriving DTO classes from existing DTOs while preserving `@bunest/validation` (and upstream `class-validator`/`class-transformer`) and OpenAPI metadata.
+Bunest provides built-in `@nestjs/mapped-types` v12 parity in **`@bunest/validation`** and **`@bunest/core`** for deriving DTO classes from existing DTOs while preserving `@bunest/validation` (and upstream `class-validator`/`class-transformer`) and OpenAPI metadata.
 
 ## Installation
 

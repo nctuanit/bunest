@@ -3,7 +3,7 @@
 Bunest provides zero-dependency file, object storage, and static asset serving:
 
 - **`@bunest/storage`** — Unified multi-disk object storage API across local NTFS/POSIX disks (`LocalDisk`), in-memory testing disks (`InMemoryDisk`), and S3-compatible services (`S3Disk` for AWS S3, Cloudflare R2, MinIO) using native WebCrypto SigV4 signing over `fetch()`, streamed uploads, and presigned URLs.
-- **`@bunest/core/http` (`ServeStaticModule`)** — Native static asset serving (`BunStaticLoader` over zero-copy `Bun.file()`, ETag/`304`, `Range`/`206`, and SPA fallback) built directly into `@bunest/core/http` (also re-exported from `@bunest/core`).
+- **`ServeStaticModule`** — Native static asset serving (`BunStaticLoader` over zero-copy `Bun.file()`, ETag/`304`, `Range`/`206`, and SPA fallback) built into `@bunest/core`.
 
 ## Installation
 

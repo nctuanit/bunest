@@ -1,5 +1,6 @@
 import { join } from "@bunest/core";
 import { DOCS_ROOT, loadAllDocs, loadSinglePage } from "./content-loader";
+import { detectLangFromPathname } from "./i18n";
 import {
   getConfiguredBasePath,
   normalizeBasePath,
@@ -96,16 +97,19 @@ export function createDocsServer(
         });
       }
 
+      // Locale-aware routing (/vi/... for Vietnamese, /... for English)
+      const { lang, strippedPath } = detectLangFromPathname(pathname);
+
       // JSON API for Instant SPA Navigation & Search
-      if (pathname === "/data/search-index.json") {
-        const { searchIndex } = await loadAllDocs(basePath);
+      if (strippedPath === "/data/search-index.json") {
+        const { searchIndex } = await loadAllDocs(basePath, lang);
         return jsonResponse(searchIndex);
       }
 
-      if (pathname.startsWith("/data/") && pathname.endsWith(".json")) {
-        const rawSlug = pathname.slice("/data/".length, -".json".length);
+      if (strippedPath.startsWith("/data/") && strippedPath.endsWith(".json")) {
+        const rawSlug = strippedPath.slice("/data/".length, -".json".length);
         const slug = rawSlug === "index" ? "" : rawSlug;
-        const page = await loadSinglePage(slug, basePath);
+        const page = await loadSinglePage(slug, basePath, lang);
         if (!page) {
           return jsonResponse({ error: "Page not found" }, 404);
         }
@@ -113,10 +117,10 @@ export function createDocsServer(
       }
 
       // SSR HTML routes
-      const slug = normalizePathname(pathname);
-      const page = await loadSinglePage(slug, basePath);
+      const slug = normalizePathname(strippedPath);
+      const page = await loadSinglePage(slug, basePath, lang);
       if (!page) {
-        return htmlResponse(renderNotFoundHtml(pathname, basePath), 404);
+        return htmlResponse(renderNotFoundHtml(pathname, basePath, lang), 404);
       }
       return htmlResponse(renderPageHtml(page, basePath));
     },

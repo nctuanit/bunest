@@ -61,7 +61,7 @@ export class AuditErrorFilter implements ExceptionFilter<HttpException> {
 
 ## Reading Metadata with `Reflector`
 
-`Reflector` (`@bunest/core`, re-exported by `@bunest/core`) reads metadata attached via `@SetMetadata()` or `Reflector.createDecorator()`:
+`Reflector` reads metadata attached via `@SetMetadata()` or `Reflector.createDecorator()`:
 
 | Method                            | Behavior across `[handler, controllerClass]`                      |
 | --------------------------------- | ----------------------------------------------------------------- |

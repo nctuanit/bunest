@@ -4,7 +4,7 @@ Bunest includes a centralized exception handling layer that catches every unhand
 
 ## Throwing Standard Exceptions
 
-`@bunest/core` (re-exported by `@bunest/core`) provides `HttpException` and 16 ready-to-use HTTP exception subclasses:
+Bunest provides `HttpException` and 16 built-in HTTP exception subclasses:
 
 @@filename(users.controller.ts)
 
