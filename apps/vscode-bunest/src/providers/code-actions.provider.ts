@@ -106,7 +106,91 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
 
       const fixKind = matched.fixData.kind;
 
-      if (fixKind === "addProviderToModule") {
+      if (fixKind === "addExportToModule") {
+        const ownerModFile = String(matched.fixData.ownerModuleFile ?? matched.fixData.moduleFile ?? "");
+        const ownerModName = String(matched.fixData.ownerModuleName ?? matched.fixData.moduleName ?? "");
+        const providerName = String(matched.fixData.providerName ?? "");
+        const ownerSf = ownerModFile ? ctx.analyzer.getSourceFile(ownerModFile) : undefined;
+        if (ownerSf && ownerModName && providerName) {
+          const openOwnerDoc = (vscode.workspace.textDocuments ?? []).find(
+            (d) => d.uri?.scheme === "file" && d.uri.fsPath === ownerModFile,
+          );
+          const res = buildAddProviderToModuleEdit({
+            sourceFile: ownerSf,
+            moduleClassName: ownerModName,
+            symbolName: providerName,
+            arrayProperty: "exports",
+          });
+          const wsEdit = toWorkspaceEdit(res, openOwnerDoc);
+          if (wsEdit) {
+            const act = new vscode.CodeAction(
+              `Bunest: Export ${providerName} from ${ownerModName}`,
+              vscode.CodeActionKind.QuickFix,
+            );
+            act.edit = wsEdit;
+            act.diagnostics = [vDiag];
+            act.isPreferred = true;
+            actions.push(act);
+          }
+        }
+      } else if (fixKind === "addProviderToModule") {
+        const providerName = String(matched.fixData.providerName);
+        const consumerModName = String(matched.fixData.moduleName);
+        let offeredDeterministicExport = false;
+
+        // P0.2 deterministic single-owner rule for BUNEST001:
+        // If the missing provider is owned by a single imported module and not exported
+        // (and neither module uses autoDiscover or has unknown dynamic registrations),
+        // offer `addExportToModule` as the preferred deterministic quick fix.
+        if (code === "BUNEST001") {
+          const consumerMod = snap.moduleGraph.moduleByName.get(consumerModName);
+          const unknowns = snap.moduleGraph.unknownRegistrations ?? [];
+          const consumerHasUnknowns =
+            Boolean(consumerMod?.autoDiscover) ||
+            unknowns.some((u) => u.moduleName === consumerModName);
+          if (consumerMod && !consumerHasUnknowns) {
+            const ownerModules = snap.moduleGraph.modules.filter(
+              (m) =>
+                m.name !== consumerMod.name &&
+                m.providers.includes(providerName),
+            );
+            if (ownerModules.length === 1) {
+              const ownerMod = ownerModules[0]!;
+              const ownerHasUnknowns =
+                Boolean(ownerMod.autoDiscover) ||
+                unknowns.some((u) => u.moduleName === ownerMod.name);
+              const importedByConsumer = consumerMod.imports.includes(ownerMod.name);
+              const alreadyExported = ownerMod.exports.includes(providerName);
+              if (importedByConsumer && !alreadyExported && !ownerHasUnknowns) {
+                const ownerSf = ctx.analyzer.getSourceFile(ownerMod.sourceFile);
+                if (ownerSf) {
+                  const openOwnerDoc = (vscode.workspace.textDocuments ?? []).find(
+                    (d) => d.uri?.scheme === "file" && d.uri.fsPath === ownerMod.sourceFile,
+                  );
+                  const exportRes = buildAddProviderToModuleEdit({
+                    sourceFile: ownerSf,
+                    moduleClassName: ownerMod.name,
+                    symbolName: providerName,
+                    arrayProperty: "exports",
+                  });
+                  const exportWsEdit = toWorkspaceEdit(exportRes, openOwnerDoc);
+                  if (exportWsEdit) {
+                    const exportAct = new vscode.CodeAction(
+                      `Bunest: Export ${providerName} from ${ownerMod.name}`,
+                      vscode.CodeActionKind.QuickFix,
+                    );
+                    exportAct.edit = exportWsEdit;
+                    exportAct.diagnostics = [vDiag];
+                    exportAct.isPreferred = true;
+                    actions.push(exportAct);
+                    offeredDeterministicExport = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+
         const modFile = String(matched.fixData.moduleFile);
         const modSf = ctx.analyzer.getSourceFile(modFile);
         if (modSf) {
@@ -117,20 +201,20 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
           if (!rel.startsWith(".")) rel = `./${rel}`;
           const res = buildAddProviderToModuleEdit({
             sourceFile: modSf,
-            moduleClassName: String(matched.fixData.moduleName),
-            symbolName: String(matched.fixData.providerName),
+            moduleClassName: consumerModName,
+            symbolName: providerName,
             arrayProperty: "providers",
             importSpecifier: modFile === provFile ? undefined : rel,
           });
           const wsEdit = toWorkspaceEdit(res);
           if (wsEdit) {
             const act = new vscode.CodeAction(
-              `Bunest: Add ${matched.fixData.providerName} to ${matched.fixData.moduleName}.providers`,
+              `Bunest: Add ${providerName} to ${consumerModName}.providers`,
               vscode.CodeActionKind.QuickFix,
             );
             act.edit = wsEdit;
             act.diagnostics = [vDiag];
-            act.isPreferred = true;
+            act.isPreferred = !offeredDeterministicExport;
             actions.push(act);
           }
         }

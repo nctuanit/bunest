@@ -60,6 +60,12 @@ export class BunestCodeLensProvider implements vscode.CodeLensProvider {
           command: "bunest.copyRouteUrl",
           arguments: [route],
         }),
+        new vscode.CodeLens(range, {
+          title: "🔍 Explain",
+          command: "bunest.explainRoute",
+          arguments: [route],
+          tooltip: "Inspect route pipeline, DI dependency trace, and deterministic quick fixes",
+        }),
       );
     }
 

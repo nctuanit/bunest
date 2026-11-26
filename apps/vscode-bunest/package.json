@@ -107,6 +107,11 @@
         "icon": "$(copy)"
       },
       {
+        "command": "bunest.explainRoute",
+        "title": "Bunest: Explain Route & DI",
+        "icon": "$(search)"
+      },
+      {
         "command": "bunest.generateSchematic",
         "title": "Bunest: Generate Component (Module / Controller / Service / Guard...)"
       },
@@ -251,6 +256,11 @@
           "command": "bunest.copyRouteUrl",
           "when": "view == bunest.routesView && viewItem == bunestRoute",
           "group": "inline@2"
+        },
+        {
+          "command": "bunest.explainRoute",
+          "when": "view == bunest.routesView && viewItem == bunestRoute",
+          "group": "inline@3"
         }
       ]
     },

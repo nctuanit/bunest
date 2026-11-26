@@ -14,6 +14,10 @@ import {
   runExecuteRawQueryCommand,
   type RawQueryExecutionRequest,
 } from "./commands/execute-raw-query";
+import {
+  runExplainRouteCommand,
+  type ExplainRouteTarget,
+} from "./commands/explain-route";
 import { runGenerateRepositoryCommand } from "./commands/generate-repository";
 import { runGenerateSchematicCommand } from "./commands/generate-schematic";
 import { runBunestCliCommand } from "./commands/run-cli";
@@ -36,6 +40,10 @@ import { BunestRoutesTreeProvider } from "./views/routes.tree";
 import { BunestDiGraphPanel } from "./webview/di-graph.panel";
 import { BunestHttpStudioPanel } from "./webview/http-studio.panel";
 import { BunestLiveInspectorPanel } from "./webview/live-inspector.panel";
+import {
+  BUNEST_PREVIEW_SCHEME,
+  bunestPreviewProvider,
+} from "./webview/save-as-test";
 import {
   BunestWorkspaceIndex,
   sourceLocationToVscodeLocation,
@@ -106,6 +114,10 @@ export async function activate(
     vscode.window.registerTreeDataProvider("bunest.migrationsView", migrationsTree),
     vscode.window.registerTreeDataProvider("bunest.eventsRpcView", eventsRpcTree),
     vscode.window.registerTreeDataProvider("bunest.modulesView", modulesTree),
+    vscode.workspace.registerTextDocumentContentProvider(
+      BUNEST_PREVIEW_SCHEME,
+      bunestPreviewProvider,
+    ),
   );
 
   // Register Bunest commands (all disk-writing codegen delegates to @bunest/cli)
@@ -181,6 +193,13 @@ export async function activate(
         } else {
           await runSendRequestCommand(route);
         }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "bunest.explainRoute",
+      async (routeOrItem?: ExplainRouteTarget) => {
+        await runExplainRouteCommand(index, routeOrItem);
       },
     ),
 
