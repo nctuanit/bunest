@@ -29,7 +29,10 @@ import { ItemsService } from "../src/items.service";
 import { loadAppConfig } from "../src/config";
 import { BunestFactory } from "@bunest/core";
 
-const APP_DIR = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const APP_DIR = Bun.fileURLToPath(new URL("..", import.meta.url)).replace(
+  /[\\/]$/,
+  "",
+);
 const LOG_DIR = Bun.env.SMOKE_LOG_DIR || `${APP_DIR}/.smoke-logs`;
 
 interface RunningApp {
@@ -81,7 +84,8 @@ async function getFreePort(): Promise<number> {
 }
 
 async function runShell(cmd: string): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["sh", "-c", cmd], {
+  const shell = process.platform === "win32" ? ["cmd", "/c", cmd] : ["sh", "-c", cmd];
+  const proc = Bun.spawn(shell, {
     stdout: "pipe",
     stderr: "pipe",
   });
