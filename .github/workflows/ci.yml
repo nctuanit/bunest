@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   linux-bun-pinned:
@@ -49,6 +49,12 @@ jobs:
 
       - name: Run release verification & CLI clean-project smoke test
         run: bun run verify:release
+
+      - name: Verify staging registry plan
+        run: bun run verify:staging-plan
+
+      - name: Verify package publish dry-run
+        run: bun run publish:dry-run
 
   production-postgres-smoke:
     name: Linux + PostgreSQL 17 Production Smoke (Bun 1.4.5 — Required)
@@ -112,14 +118,33 @@ jobs:
           mkdir -p examples/production-rest-postgres/.smoke-logs
           docker logs bunest-pg-smoke 2>&1 | sed -E 's/(password|secret|token)=[^[:space:]]+/\1=[REDACTED]/gi' > examples/production-rest-postgres/.smoke-logs/postgres.log || true
 
-      - name: Upload smoke logs on failure
-        if: failure()
+      - name: Write production smoke evidence summary
+        if: always()
+        run: |
+          mkdir -p examples/production-rest-postgres/.smoke-logs
+          cat <<EOF > examples/production-rest-postgres/.smoke-logs/evidence-summary.json
+          {
+            "job": "production-postgres-smoke",
+            "status": "${{ job.status }}",
+            "commitSha": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "runId": "${{ github.run_id }}",
+            "runAttempt": "${{ github.run_attempt }}",
+            "bunVersion": "$(bun --version)",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload smoke evidence summary & logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: production-postgres-smoke-logs
-          path: examples/production-rest-postgres/.smoke-logs/*.log
-          if-no-files-found: ignore
-          retention-days: 7
+          name: production-postgres-smoke-evidence
+          path: |
+            examples/production-rest-postgres/.smoke-logs/evidence-summary.json
+            examples/production-rest-postgres/.smoke-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Cleanup PostgreSQL container
         if: always()

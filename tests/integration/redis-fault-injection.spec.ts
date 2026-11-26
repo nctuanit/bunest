@@ -7,6 +7,23 @@ import { RedisQueueDriver } from "../../packages/jobs/src/redis";
 const REDIS_URL = Bun.env.REDIS_URL;
 const REDIS_STOP_CMD = Bun.env.REDIS_STOP_CMD;
 const REDIS_START_CMD = Bun.env.REDIS_START_CMD;
+const REQUIRE_REDIS = process.env.REQUIRE_REDIS === "1";
+
+if (REQUIRE_REDIS && !REDIS_URL) {
+  throw new Error(
+    "REQUIRE_REDIS=1 is set, but REDIS_URL is unset. Provide REDIS_URL (e.g. redis://127.0.0.1:6379) to run the Redis integration & fault-injection suite.",
+  );
+}
+
+if (!REDIS_URL) {
+  console.warn(
+    "[redis-fault-injection] SKIPPING entire Redis integration & fault-injection suite: REDIS_URL is not set. Set REDIS_URL (and optionally REQUIRE_REDIS=1 to fail instead of skipping).",
+  );
+} else if (!REDIS_STOP_CMD || !REDIS_START_CMD) {
+  console.warn(
+    "[redis-fault-injection] SKIPPING live Redis outage fault-injection test: REDIS_STOP_CMD and/or REDIS_START_CMD is not set.",
+  );
+}
 
 async function runShell(cmd: string): Promise<void> {
   const proc = Bun.spawn(["sh", "-c", cmd], {
