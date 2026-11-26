@@ -9,6 +9,7 @@ import {
   resolve,
   statSyncPath,
 } from "../packages/core/src/common/index";
+import { toDistDtsPath } from "./publish-manifest";
 
 interface PackageJson {
   name?: string;
@@ -497,6 +498,14 @@ async function main() {
           if (!existsSyncPath(distFile) || statSyncPath(distFile).size === 0) {
             errors.push(
               `${label}: missing or empty build artifact ${relative(REPO_ROOT, distFile)} for "${subpath}"`,
+            );
+          }
+        }
+        if (entry.types) {
+          const dtsFile = resolve(pkgDir, toDistDtsPath(entry.types));
+          if (!existsSyncPath(dtsFile) || statSyncPath(dtsFile).size === 0) {
+            errors.push(
+              `${label}: missing or empty .d.ts artifact ${relative(REPO_ROOT, dtsFile)} for "${subpath}"`,
             );
           }
         }

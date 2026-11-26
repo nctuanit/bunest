@@ -9,6 +9,19 @@ FROM oven/bun:1.4.5-alpine AS builder
 WORKDIR /workspace
 
 COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
+# Copy minimal workspace manifests for apps/* and sibling examples/* so
+# `bun install --frozen-lockfile` matches root workspaces without pulling in
+# unrelated app/example sources.
+COPY apps/docs/package.json ./apps/docs/
+COPY apps/playground/package.json ./apps/playground/
+COPY apps/vscode-bunest/package.json ./apps/vscode-bunest/
+COPY examples/auth-jwt-sqlite/package.json ./examples/auth-jwt-sqlite/
+COPY examples/distributed-worker/package.json ./examples/distributed-worker/
+COPY examples/hello-world/package.json ./examples/hello-world/
+COPY examples/rest-crud/package.json ./examples/rest-crud/
+COPY examples/starter/package.json ./examples/starter/
+COPY examples/vscode-extension-showcase/package.json ./examples/vscode-extension-showcase/
+COPY examples/websocket-chat/package.json ./examples/websocket-chat/
 COPY packages ./packages
 COPY examples/production-rest-postgres ./examples/production-rest-postgres
 
