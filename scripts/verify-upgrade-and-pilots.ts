@@ -11,6 +11,8 @@
  *
  * Usage:
  *   bun run scripts/verify-upgrade-and-pilots.ts
+ *   bun run scripts/verify-upgrade-and-pilots.ts --from-tarballs=./tarballs-0.1.0 --from-version=0.1.0 --to-version=0.1.1-rc.0 --output=./upgrade-report.json
+ *   bun run scripts/verify-upgrade-and-pilots.ts --from-tarballs=./tarballs-0.1.0 --to-tarballs=./tarballs-0.2.0 --from-version=0.1.0 --to-version=0.2.0
  */
 import {
   dirname,
@@ -39,7 +41,7 @@ interface PkgMeta extends PublishableManifest {
   publishConfig?: { access?: string; registry?: string };
 }
 
-interface PackedTarballRecord {
+export interface PackedTarballRecord {
   name: string;
   version: string;
   tarballFilename: string;
@@ -47,6 +49,20 @@ interface PackedTarballRecord {
   shasum: string;
   integrity: string;
   manifest: Record<string, unknown>;
+}
+
+export interface UpgradeCliOptions {
+  fromTarballsDir?: string;
+  toTarballsDir?: string;
+  fromVersion: string;
+  toVersion: string;
+  outputPath?: string;
+}
+
+export interface ArtifactSourceInfo {
+  mode: "external-tarballs" | "workspace-pack";
+  dir: string | null;
+  version: string;
 }
 
 interface LoadBurstMetrics {
@@ -97,6 +113,234 @@ const PACKAGES_DIR = join(ROOT, "packages");
 const BASE_VERSION = "0.1.0";
 const UPGRADE_VERSION = "0.1.1-rc.0";
 
+export function parseUpgradeCliArgs(argv: readonly string[]): UpgradeCliOptions {
+  const options: UpgradeCliOptions = {
+    fromVersion: BASE_VERSION,
+    toVersion: UPGRADE_VERSION,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (!arg.startsWith("--")) {
+      throw new Error(
+        `Unexpected positional argument "${arg}". Supported flags: --from-tarballs=<dir>, --to-tarballs=<dir>, --from-version=<ver>, --to-version=<ver>, --output=<json-path>`,
+      );
+    }
+
+    const eqIdx = arg.indexOf("=");
+    let key: string;
+    let value: string | undefined;
+
+    if (eqIdx !== -1) {
+      key = arg.slice(2, eqIdx);
+      value = arg.slice(eqIdx + 1);
+    } else {
+      key = arg.slice(2);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        value = next;
+        i++;
+      }
+    }
+
+    const requireValue = (flagName: string): string => {
+      if (!value || value.trim().length === 0) {
+        throw new Error(`Flag --${flagName} requires a non-empty value.`);
+      }
+      return value.trim();
+    };
+
+    switch (key) {
+      case "from-tarballs":
+        options.fromTarballsDir = resolve(requireValue(key));
+        break;
+      case "to-tarballs":
+        options.toTarballsDir = resolve(requireValue(key));
+        break;
+      case "from-version":
+        options.fromVersion = requireValue(key);
+        break;
+      case "to-version":
+        options.toVersion = requireValue(key);
+        break;
+      case "output":
+        options.outputPath = resolve(requireValue(key));
+        break;
+      default:
+        throw new Error(
+          `Unknown flag "--${key}". Supported flags: --from-tarballs=<dir>, --to-tarballs=<dir>, --from-version=<ver>, --to-version=<ver>, --output=<json-path>`,
+        );
+    }
+  }
+
+  return options;
+}
+
+export function extractPackageJsonFromTgz(
+  tgzBytes: Uint8Array,
+  tarballPath: string,
+): Record<string, unknown> {
+  let tarBytes: Uint8Array;
+  try {
+    tarBytes = Bun.gunzipSync(tgzBytes);
+  } catch (err) {
+    throw new Error(
+      `Failed to gunzip tarball "${tarballPath}": ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const decoder = new TextDecoder();
+  let offset = 0;
+
+  while (offset + 512 <= tarBytes.length) {
+    const header = tarBytes.subarray(offset, offset + 512);
+    let allZero = true;
+    for (let i = 0; i < 512; i++) {
+      if (header[i] !== 0) {
+        allZero = false;
+        break;
+      }
+    }
+    if (allZero) break;
+
+    const readNullTerm = (start: number, end: number): string => {
+      let actualEnd = start;
+      while (actualEnd < end && header[actualEnd] !== 0) {
+        actualEnd++;
+      }
+      return decoder.decode(header.subarray(start, actualEnd));
+    };
+
+    const name = readNullTerm(0, 100);
+    const prefix = readNullTerm(345, 500);
+    const rawPath = prefix ? `${prefix}/${name}` : name;
+    const normalizedPath = rawPath.replace(/^\.\//, "");
+
+    const sizeStr = readNullTerm(124, 136).trim();
+    const size = sizeStr.length > 0 ? Number.parseInt(sizeStr, 8) : 0;
+    if (!Number.isFinite(size) || size < 0) {
+      throw new Error(`Invalid tar entry size "${sizeStr}" in "${tarballPath}"`);
+    }
+
+    const typeFlag = header[156];
+    const dataStart = offset + 512;
+    const isRegularFile = typeFlag === 0 || typeFlag === 48;
+
+    if (isRegularFile && normalizedPath === "package/package.json") {
+      if (dataStart + size > tarBytes.length) {
+        throw new Error(`Truncated package/package.json in "${tarballPath}"`);
+      }
+      const text = decoder.decode(tarBytes.subarray(dataStart, dataStart + size));
+      try {
+        return JSON.parse(text) as Record<string, unknown>;
+      } catch (err) {
+        throw new Error(
+          `Invalid JSON in package/package.json inside "${tarballPath}": ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    const paddedSize = Math.ceil(size / 512) * 512;
+    offset = dataStart + paddedSize;
+  }
+
+  throw new Error(`Tarball "${tarballPath}" does not contain package/package.json`);
+}
+
+export async function loadTarballsFromDir(
+  tarballDir: string,
+  pkgs: ReadonlyArray<{ name: string }>,
+  expectedVersion: string,
+): Promise<PackedTarballRecord[]> {
+  const resolvedDir = resolve(tarballDir);
+  if (!existsSyncPath(resolvedDir)) {
+    throw new Error(`External tarball directory does not exist: ${resolvedDir}`);
+  }
+  if (!statSyncPath(resolvedDir).isDirectory()) {
+    throw new Error(`External tarball path is not a directory: ${resolvedDir}`);
+  }
+
+  const missing: string[] = [];
+  const expectedEntries: Array<{
+    name: string;
+    tarballFilename: string;
+    tarballPath: string;
+  }> = [];
+
+  for (const pkg of pkgs) {
+    const safeName = pkg.name.replace(/^@/, "").replace(/\//g, "-");
+    const tarballFilename = `${safeName}-${expectedVersion}.tgz`;
+    const tarballPath = join(resolvedDir, tarballFilename);
+    if (!existsSyncPath(tarballPath)) {
+      missing.push(`${pkg.name} (expected ${tarballFilename})`);
+    } else {
+      expectedEntries.push({ name: pkg.name, tarballFilename, tarballPath });
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `External tarball directory "${resolvedDir}" is missing ${missing.length} of ${pkgs.length} @bunest/* tarballs for version ${expectedVersion}:\n  - ${missing.join("\n  - ")}`,
+    );
+  }
+
+  const records: PackedTarballRecord[] = [];
+  for (const entry of expectedEntries) {
+    const bytes = new Uint8Array(await Bun.file(entry.tarballPath).arrayBuffer());
+    const manifest = extractPackageJsonFromTgz(bytes, entry.tarballPath);
+
+    if (manifest.name !== entry.name) {
+      throw new Error(
+        `Tarball "${entry.tarballPath}" manifest name mismatch: expected "${entry.name}", found "${String(manifest.name)}"`,
+      );
+    }
+    if (manifest.version !== expectedVersion) {
+      throw new Error(
+        `Tarball "${entry.tarballPath}" manifest version mismatch: expected "${expectedVersion}", found "${String(manifest.version)}"`,
+      );
+    }
+
+    const shasum = new Bun.CryptoHasher("sha1").update(bytes).digest("hex");
+    const integrity = `sha512-${new Bun.CryptoHasher("sha512").update(bytes).digest("base64")}`;
+
+    records.push({
+      name: entry.name,
+      version: expectedVersion,
+      tarballFilename: entry.tarballFilename,
+      tarballPath: entry.tarballPath,
+      shasum,
+      integrity,
+      manifest,
+    });
+  }
+
+  console.log(
+    `[tarballs] Loaded ${records.length} external @bunest/* tarballs @ ${expectedVersion} from ${resolvedDir}`,
+  );
+  return records;
+}
+
+async function getGitCommitSha(): Promise<string> {
+  try {
+    const proc = Bun.spawn(["git", "rev-parse", "HEAD"], {
+      cwd: ROOT,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+    if (code === 0) {
+      const sha = stdout.trim();
+      if (sha.length > 0) return sha;
+    }
+  } catch {
+    // git unavailable
+  }
+  return "unknown";
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`ASSERTION FAILED: ${message}`);
@@ -139,7 +383,7 @@ async function runCmd(
   return { stdout, stderr, durationMs };
 }
 
-async function loadPublishablePackages(): Promise<PkgMeta[]> {
+export async function loadPublishablePackages(): Promise<PkgMeta[]> {
   const dirs = readDirSyncNames(PACKAGES_DIR)
     .map((name) => join(PACKAGES_DIR, name))
     .filter((p) => {
@@ -1552,15 +1796,19 @@ async function upgradeAppToVersion(
 
 async function main(): Promise<void> {
   const totalStart = nowMs();
+  const cli = parseUpgradeCliArgs(Bun.argv.slice(2));
+  const { fromVersion, toVersion } = cli;
   const pkgs = await loadPublishablePackages();
   assert(pkgs.length > 0, "No publishable @bunest/* packages found");
 
-  // Ensure packages are built
-  for (const pkg of pkgs) {
-    assert(
-      existsSyncPath(join(pkg.dir, "dist")),
-      `${pkg.name} is missing dist/. Run \`bun run build\` first.`,
-    );
+  // Ensure packages are built whenever we pack from the current workspace
+  if (!cli.fromTarballsDir || !cli.toTarballsDir) {
+    for (const pkg of pkgs) {
+      assert(
+        existsSyncPath(join(pkg.dir, "dist")),
+        `${pkg.name} is missing dist/. Run \`bun run build\` first.`,
+      );
+    }
   }
 
   const workDir = join(
@@ -1572,83 +1820,116 @@ async function main(): Promise<void> {
 
   const registry = new LocalNpmRegistry();
   try {
-    // 1. Pack 0.1.0 tarballs into temp dir & start local HTTP registry
-    const tarballs010 = await packAllPackagesForVersion(
-      pkgs,
-      BASE_VERSION,
-      join(workDir, "stage-0.1.0"),
-      join(workDir, "tarballs-0.1.0"),
-    );
-    registry.registerVersion(tarballs010, "latest");
+    // 1. Load or pack `fromVersion` tarballs & start local HTTP registry
+    const tarballsFrom = cli.fromTarballsDir
+      ? await loadTarballsFromDir(cli.fromTarballsDir, pkgs, fromVersion)
+      : await packAllPackagesForVersion(
+          pkgs,
+          fromVersion,
+          join(workDir, `stage-${fromVersion}`),
+          join(workDir, `tarballs-${fromVersion}`),
+        );
+    registry.registerVersion(tarballsFrom, "latest");
     registry.start();
 
-    // 2. Pilot A @ 0.1.0
-    const pilotASetup = await setupPilotA(workDir, registry.url, BASE_VERSION);
-    const pilotA010 = await verifyPilotA(
+    // 2. Pilot A @ fromVersion
+    const pilotASetup = await setupPilotA(workDir, registry.url, fromVersion);
+    const pilotAFrom = await verifyPilotA(
       pilotASetup.appDir,
-      BASE_VERSION,
+      fromVersion,
       pilotASetup.scaffoldMs,
       pilotASetup.installMs,
     );
 
-    // 3. Pilot B @ 0.1.0
-    const pilotBSetup = await setupPilotB(workDir, registry.url, BASE_VERSION);
-    const pilotB010 = await verifyPilotB(
+    // 3. Pilot B @ fromVersion
+    const pilotBSetup = await setupPilotB(workDir, registry.url, fromVersion);
+    const pilotBFrom = await verifyPilotB(
       pilotBSetup.appDir,
       pilotBSetup.dbPath,
-      BASE_VERSION,
+      fromVersion,
       pilotBSetup.installMs,
-      "V010",
+      "VFROM",
     );
 
-    // 4. Week 5 Upgrade: pack temporary 0.1.1-rc.0 tarballs in temp dir (0 repo edits)
-    console.log(`\n=== [Week 5 Upgrade] Packing & upgrading ${BASE_VERSION} -> ${UPGRADE_VERSION} ===`);
-    const tarballsRc = await packAllPackagesForVersion(
-      pkgs,
-      UPGRADE_VERSION,
-      join(workDir, "stage-0.1.1-rc.0"),
-      join(workDir, "tarballs-0.1.1-rc.0"),
-    );
-    registry.registerVersion(tarballsRc, "next");
+    // 4. Upgrade: load or pack `toVersion` tarballs (0 repo edits)
+    console.log(`\n=== [Upgrade] Loading/packing & upgrading ${fromVersion} -> ${toVersion} ===`);
+    const tarballsTo = cli.toTarballsDir
+      ? await loadTarballsFromDir(cli.toTarballsDir, pkgs, toVersion)
+      : await packAllPackagesForVersion(
+          pkgs,
+          toVersion,
+          join(workDir, `stage-${toVersion}`),
+          join(workDir, `tarballs-${toVersion}`),
+        );
+    registry.registerVersion(tarballsTo, "next");
 
     const pilotAUpgradeInstallMs = await upgradeAppToVersion(
       pilotASetup.appDir,
-      UPGRADE_VERSION,
+      toVersion,
       join(workDir, "bun-cache"),
     );
-    const pilotARc = await verifyPilotA(
+    const pilotATo = await verifyPilotA(
       pilotASetup.appDir,
-      UPGRADE_VERSION,
+      toVersion,
       0,
       pilotAUpgradeInstallMs,
     );
 
     const pilotBUpgradeInstallMs = await upgradeAppToVersion(
       pilotBSetup.appDir,
-      UPGRADE_VERSION,
+      toVersion,
       join(workDir, "bun-cache"),
     );
-    const pilotBRc = await verifyPilotB(
+    const pilotBTo = await verifyPilotB(
       pilotBSetup.appDir,
       pilotBSetup.dbPath,
-      UPGRADE_VERSION,
+      toVersion,
       pilotBUpgradeInstallMs,
-      "V011RC0",
+      "VTO",
     );
 
     const totalMs = round2(nowMs() - totalStart);
-    const summary = {
-      status: "PASS",
-      totalMs,
-      packagesPackedPerVersion: pkgs.length,
-      pilotA_0_1_0: pilotA010,
-      pilotB_0_1_0: pilotB010,
-      pilotA_0_1_1_rc_0: pilotARc,
-      pilotB_0_1_1_rc_0: pilotBRc,
+    const commitSha = await getGitCommitSha();
+    const artifactSources: { from: ArtifactSourceInfo; to: ArtifactSourceInfo } = {
+      from: {
+        mode: cli.fromTarballsDir ? "external-tarballs" : "workspace-pack",
+        dir: cli.fromTarballsDir ?? null,
+        version: fromVersion,
+      },
+      to: {
+        mode: cli.toTarballsDir ? "external-tarballs" : "workspace-pack",
+        dir: cli.toTarballsDir ?? null,
+        version: toVersion,
+      },
     };
 
+    const summary = {
+      status: "PASS",
+      timestamp: new Date().toISOString(),
+      commitSha,
+      bunVersion: Bun.version,
+      artifactSources,
+      totalMs,
+      packagesPackedPerVersion: pkgs.length,
+      pilotA_from: pilotAFrom,
+      pilotB_from: pilotBFrom,
+      pilotA_to: pilotATo,
+      pilotB_to: pilotBTo,
+      pilotA_0_1_0: pilotAFrom,
+      pilotB_0_1_0: pilotBFrom,
+      pilotA_0_1_1_rc_0: pilotATo,
+      pilotB_0_1_1_rc_0: pilotBTo,
+    };
+
+    const reportJson = JSON.stringify(summary, null, 2);
+    if (cli.outputPath) {
+      await ensureDir(dirname(cli.outputPath));
+      await Bun.write(cli.outputPath, reportJson + "\n");
+      console.log(`[harness] Wrote JSON report to ${cli.outputPath}`);
+    }
+
     console.log("\n=== VERIFY UPGRADE & PILOTS SUMMARY ===");
-    console.log(JSON.stringify(summary, null, 2));
+    console.log(reportJson);
   } finally {
     registry.stop();
     await removePath(workDir, { recursive: true, force: true });
@@ -1656,4 +1937,6 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
