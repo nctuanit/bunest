@@ -1,4 +1,11 @@
-import { relative, resolve } from "@bunest/core";
+import {
+  BUNEST_ERROR_CATALOG,
+  getErrorCatalogEntry,
+  getErrorDocsUrl,
+  relative,
+  resolve,
+  type BunestErrorCatalogEntry,
+} from "@bunest/core";
 import {
   BunestStaticAnalyzer,
   explainRoute,
@@ -221,6 +228,206 @@ export async function runExplainRouteCommand(
 
   const format = options.format ?? "pretty";
   const formatted = formatRouteExplainReport(report, format, cwd);
+
+  if (io && !options.silent) {
+    io.stdout(formatted);
+  }
+
+  return {
+    exitCode: 0,
+    report,
+    formatted,
+  };
+}
+
+export type ExplainErrorFormat = ExplainRouteFormat;
+
+export type ErrorExplainCategory = "di" | "routing" | "general";
+
+export interface ExplainErrorOptions {
+  readonly code: string;
+  readonly format?: ExplainErrorFormat;
+  readonly silent?: boolean;
+}
+
+export interface ErrorExplainFoundReport {
+  readonly schemaVersion: "1.0";
+  readonly found: true;
+  readonly code: string;
+  readonly name: string;
+  readonly title: string;
+  readonly category: ErrorExplainCategory;
+  readonly summary: string;
+  readonly explanation: string;
+  readonly firstAction: string;
+  readonly fixes: readonly string[];
+  readonly example?: string;
+  readonly docsPath: string;
+  readonly docsUrl: string;
+}
+
+export interface ErrorExplainNotFoundReport {
+  readonly schemaVersion: "1.0";
+  readonly found: false;
+  readonly code: string;
+  readonly error: string;
+  readonly availableCodes: readonly string[];
+  readonly availableRange: string;
+}
+
+export type ErrorExplainReport =
+  | ErrorExplainFoundReport
+  | ErrorExplainNotFoundReport;
+
+export interface ExplainErrorCommandResult {
+  readonly exitCode: number;
+  readonly report: ErrorExplainReport;
+  readonly formatted: string;
+}
+
+function inferErrorCategory(code: string): ErrorExplainCategory {
+  const match = /^BUNEST_E(\d+)$/.exec(code);
+  if (!match) return "general";
+  const num = Number(match[1]);
+  if (num >= 1 && num < 100) return "di";
+  if (num >= 100 && num < 200) return "routing";
+  return "general";
+}
+
+function getAvailableErrorCodes(): string[] {
+  return Object.keys(BUNEST_ERROR_CATALOG);
+}
+
+function formatAvailableCodeRange(codes: readonly string[]): string {
+  if (codes.length === 0) return "";
+  if (codes.length === 1) return codes[0]!;
+  return `${codes[0]}..${codes[codes.length - 1]}`;
+}
+
+function buildFoundErrorReport(
+  entry: BunestErrorCatalogEntry,
+): ErrorExplainFoundReport {
+  const anchor = entry.code.toLowerCase();
+  return {
+    schemaVersion: "1.0",
+    found: true,
+    code: entry.code,
+    name: entry.name,
+    title: entry.title,
+    category: inferErrorCategory(entry.code),
+    summary: entry.summary,
+    explanation: entry.summary,
+    firstAction: entry.fixes[0] ?? "",
+    fixes: [...entry.fixes],
+    ...(entry.example ? { example: entry.example } : {}),
+    docsPath: `docs/errors.md#${anchor}`,
+    docsUrl: getErrorDocsUrl(entry.code),
+  };
+}
+
+/**
+ * Formats an `ErrorExplainReport` (`schemaVersion: "1.0"`) for terminal (`pretty`),
+ * machine consumers (`json`), or compact AI-agent output (`agent`).
+ */
+export function formatErrorExplainReport(
+  report: ErrorExplainReport,
+  format: ExplainErrorFormat = "pretty",
+): string {
+  if (format === "json") {
+    return JSON.stringify(report, null, 2);
+  }
+
+  if (!report.found) {
+    if (format === "agent") {
+      return [
+        `error: ${report.error}`,
+        `available: ${report.availableCodes.join(", ")} (${report.availableRange})`,
+      ].join("\n");
+    }
+    return [
+      `Error: ${report.error}`,
+      `Available codes (${report.availableRange}): ${report.availableCodes.join(", ")}`,
+    ].join("\n");
+  }
+
+  if (format === "agent") {
+    const lines = [
+      `[${report.code}] ${report.name} — ${report.title} (${report.category})`,
+      `summary: ${report.summary}`,
+      `firstAction: ${report.firstAction}`,
+      "fixes:",
+      ...report.fixes.map((fix, i) => `  ${i + 1}. ${fix}`),
+    ];
+    if (report.example) {
+      lines.push("example:", report.example);
+    }
+    lines.push(`docsPath: ${report.docsPath}`, `docsUrl: ${report.docsUrl}`);
+    return lines.join("\n");
+  }
+
+  const lines = [
+    `[${report.code}] ${report.name} — ${report.title}`,
+    `Category: ${report.category}`,
+    report.summary,
+    "",
+    "First action:",
+    `  ${report.firstAction}`,
+    "",
+    "Ordered fixes:",
+    ...report.fixes.map((fix, i) => `  ${i + 1}. ${fix}`),
+  ];
+  if (report.example) {
+    lines.push("", "Example:", report.example);
+  }
+  lines.push("", `Docs: ${report.docsPath} (${report.docsUrl})`);
+  return lines.join("\n");
+}
+
+/**
+ * Runs `bunest explain error <CODE>` using the core `BUNEST_ERROR_CATALOG`
+ * shared with the MCP `bunest_explain_error` tool.
+ */
+export async function runExplainErrorCommand(
+  options: ExplainErrorOptions,
+  io?: CliIO,
+): Promise<ExplainErrorCommandResult> {
+  const normalizedCode = (options.code ?? "").trim().toUpperCase();
+  const format = options.format ?? "pretty";
+  const entry = normalizedCode
+    ? getErrorCatalogEntry(normalizedCode)
+    : undefined;
+
+  if (!entry) {
+    const availableCodes = getAvailableErrorCodes();
+    const availableRange = formatAvailableCodeRange(availableCodes);
+    const error = normalizedCode
+      ? `Unknown Bunest error code "${normalizedCode}". Available range: ${availableRange}.`
+      : `Missing Bunest error code. Available range: ${availableRange}.`;
+    const report: ErrorExplainNotFoundReport = {
+      schemaVersion: "1.0",
+      found: false,
+      code: normalizedCode,
+      error,
+      availableCodes,
+      availableRange,
+    };
+    const formatted = formatErrorExplainReport(report, format);
+    if (io && !options.silent) {
+      if (format === "json") {
+        io.stdout(formatted);
+      } else {
+        io.stderr(formatted);
+      }
+    }
+    return {
+      exitCode: 1,
+      report,
+      formatted,
+    };
+  }
+
+  const report = buildFoundErrorReport(entry);
+  const formatted = formatErrorExplainReport(report, format);
 
   if (io && !options.silent) {
     io.stdout(formatted);
