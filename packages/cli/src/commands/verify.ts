@@ -1,4 +1,8 @@
 import { relative, resolve } from "@bunest/core";
+import {
+  selectAffectedTests,
+  type AffectedTestsPlan,
+} from "../analyzer/affected-tests";
 import type { CliIO } from "../types";
 import { runCheckCommand } from "./check";
 
@@ -37,6 +41,7 @@ export interface VerifyCommandResult {
   readonly ok: boolean;
   readonly steps: readonly VerifyStepResult[];
   readonly durationMs: number;
+  readonly affected?: AffectedTestsPlan;
 }
 
 export interface CapturedProcess {
@@ -58,6 +63,12 @@ export interface VerifyCommandOptions {
   readonly skipTests?: boolean;
   /** Passed through to `bun test` as a path/name filter. */
   readonly testFilter?: readonly string[];
+  /** Select only tests affected by changed files (with explicit reasons). */
+  readonly affected?: boolean;
+  /** Git base ref used with `--affected` (e.g. `origin/main`, `HEAD~1`). */
+  readonly base?: string;
+  /** Explicit changed file list used with `--affected` (skips git diff). */
+  readonly files?: readonly string[];
   readonly sourceRoot?: string;
   readonly config?: string;
   /** Treat static-analysis warnings as failures. */
@@ -277,39 +288,79 @@ export async function runVerifyCommand(
   }
 
   // 3. Tests
+  let affectedPlan: AffectedTestsPlan | undefined;
   if (options.skipTests) {
     steps.push({ name: "test", status: "skip", summary: "skipped", issues: [], durationMs: 0 });
   } else {
-    const [proc, ms] = await timed(() =>
-      spawn([process.execPath, "test", ...(options.testFilter ?? [])], { cwd }),
-    );
-    const combined = `${proc.stdout}\n${proc.stderr}`;
-    const parsed = parseTestOutput(combined, cwd);
-    if (parsed.noTests && parsed.pass === 0 && parsed.fail === 0) {
-      steps.push({ name: "test", status: "skip", summary: "no tests found", issues: [], durationMs: ms });
-    } else {
-      const failed = proc.exitCode !== 0 || parsed.fail > 0;
-      const issues = [...parsed.failures];
-      if (failed && issues.length === 0) {
-        issues.push({ severity: "error", message: tailLines(combined, 15) || `bun test exited with ${proc.exitCode}` });
+    let testArgs: readonly string[] = options.testFilter ?? [];
+    let skipBecauseNoAffected = false;
+    if (options.affected) {
+      affectedPlan = await selectAffectedTests({
+        cwd,
+        changedFiles: options.files,
+        baseRef: options.base,
+        sourceRoot: options.sourceRoot,
+      });
+      if (!affectedPlan.fallbackToFullSuite) {
+        if (affectedPlan.selectedTests.length === 0) {
+          skipBecauseNoAffected = true;
+        } else {
+          testArgs = [
+            ...affectedPlan.selectedTests.map((t) => t.file),
+            ...(options.testFilter ?? []),
+          ];
+        }
       }
+    }
+
+    if (skipBecauseNoAffected && affectedPlan) {
       steps.push({
         name: "test",
-        status: failed ? "fail" : "pass",
-        summary: `${parsed.pass} pass, ${parsed.fail} fail${parsed.skip ? `, ${parsed.skip} skip` : ""}`,
-        issues,
-        durationMs: ms,
+        status: "skip",
+        summary: `0 affected test(s) (${affectedPlan.skippedTestCount} skipped)`,
+        issues: [],
+        durationMs: 0,
       });
+    } else {
+      const [proc, ms] = await timed(() =>
+        spawn([process.execPath, "test", ...testArgs], { cwd }),
+      );
+      const combined = `${proc.stdout}\n${proc.stderr}`;
+      const parsed = parseTestOutput(combined, cwd);
+      if (parsed.noTests && parsed.pass === 0 && parsed.fail === 0) {
+        steps.push({ name: "test", status: "skip", summary: "no tests found", issues: [], durationMs: ms });
+      } else {
+        const failed = proc.exitCode !== 0 || parsed.fail > 0;
+        const issues = [...parsed.failures];
+        if (failed && issues.length === 0) {
+          issues.push({ severity: "error", message: tailLines(combined, 15) || `bun test exited with ${proc.exitCode}` });
+        }
+        steps.push({
+          name: "test",
+          status: failed ? "fail" : "pass",
+          summary: `${parsed.pass} pass, ${parsed.fail} fail${parsed.skip ? `, ${parsed.skip} skip` : ""}`,
+          issues,
+          durationMs: ms,
+        });
+      }
     }
   }
 
   const ok = steps.every((s) => s.status !== "fail");
-  const result: VerifyCommandResult = {
-    exitCode: ok ? 0 : 1,
-    ok,
-    steps,
-    durationMs: performance.now() - startAll,
-  };
+  const result: VerifyCommandResult = affectedPlan
+    ? {
+        exitCode: ok ? 0 : 1,
+        ok,
+        steps,
+        durationMs: performance.now() - startAll,
+        affected: affectedPlan,
+      }
+    : {
+        exitCode: ok ? 0 : 1,
+        ok,
+        steps,
+        durationMs: performance.now() - startAll,
+      };
 
   if (io) io.stdout(formatVerifyResult(result, reporter, options.maxIssues));
   return result;
@@ -340,6 +391,20 @@ export function formatVerifyResult(
     out.push(
       `VERIFY ${result.ok ? "PASS" : "FAIL"} (${(result.durationMs / 1000).toFixed(1)}s)`,
     );
+    if (result.affected) {
+      if (result.affected.fallbackToFullSuite) {
+        out.push(
+          `[affected] FALLBACK full suite — ${result.affected.fallbackReason ?? "graph incomplete"}`,
+        );
+      } else {
+        out.push(
+          `[affected] ${result.affected.selectedTests.length} selected, ${result.affected.skippedTestCount} skipped`,
+        );
+        for (const sel of result.affected.selectedTests) {
+          out.push(`  + ${sel.file}: ${sel.reasons.join("; ")}`);
+        }
+      }
+    }
     for (const step of result.steps) {
       out.push(`[${step.name}] ${step.status.toUpperCase()} ${step.summary}`);
       if (step.status !== "fail" && step.name !== "check") continue;
@@ -357,6 +422,20 @@ export function formatVerifyResult(
     return out.join("\n");
   }
 
+  if (result.affected) {
+    if (result.affected.fallbackToFullSuite) {
+      out.push(
+        `! affected  full suite fallback: ${result.affected.fallbackReason ?? "graph incomplete"}`,
+      );
+    } else {
+      out.push(
+        `• affected  ${result.affected.selectedTests.length} selected, ${result.affected.skippedTestCount} skipped`,
+      );
+      for (const sel of result.affected.selectedTests) {
+        out.push(`  + ${sel.file} — ${sel.reasons.join("; ")}`);
+      }
+    }
+  }
   for (const step of result.steps) {
     const icon = step.status === "pass" ? "✓" : step.status === "fail" ? "✗" : "-";
     out.push(`${icon} ${step.name.padEnd(9)} ${step.summary} (${step.durationMs.toFixed(0)}ms)`);

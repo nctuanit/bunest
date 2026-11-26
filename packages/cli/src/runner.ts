@@ -108,6 +108,9 @@ Commands:
 
   verify [test-filter...]           Typecheck + static diagnostics + tests in one AI-friendly report
     --reporter <agent|pretty|json>  Output format (default: pretty; "agent" = compact, token-cheap)
+    --affected                      Select and run only tests affected by changed files with explicit reasons
+    --base <ref>                    Git base ref for --affected diff detection (e.g. origin/main, HEAD~1)
+    --files <a,b>                   Comma-separated changed file paths for --affected
     --skip-typecheck                Skip "bun check"
     --skip-check                    Skip Bunest static diagnostics
     --skip-tests                    Skip "bun test"
@@ -529,6 +532,13 @@ export async function runCli(
           maxIssuesRaw !== undefined && /^\d+$/.test(maxIssuesRaw)
             ? Number.parseInt(maxIssuesRaw, 10)
             : undefined;
+        const filesRaw = getStringFlag(flags, "files");
+        const files = filesRaw
+          ? filesRaw
+              .split(",")
+              .map((file) => file.trim())
+              .filter((file) => file.length > 0)
+          : undefined;
         const result = await runVerifyCommand(
           {
             cwd: io.cwd,
@@ -537,6 +547,9 @@ export async function runCli(
             skipCheck: getBoolFlag(flags, "skip-check") ?? false,
             skipTests: getBoolFlag(flags, "skip-tests") ?? false,
             strict: getBoolFlag(flags, "strict") ?? false,
+            affected: getBoolFlag(flags, "affected") ?? false,
+            base: getStringFlag(flags, "base"),
+            files,
             testFilter: positionals.length > 0 ? positionals : undefined,
             sourceRoot: getStringFlag(flags, "sourceRoot"),
             config: getStringFlag(flags, "config"),
