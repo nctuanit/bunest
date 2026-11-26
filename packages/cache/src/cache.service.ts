@@ -453,14 +453,22 @@ export class CacheService extends Cache implements OnApplicationShutdown {
 
     for (let i = 0; i < this.stores.length; i += 1) {
       const store = this.stores[i]!;
-      const value = await store.get<T>(fullKey);
-      if (value !== undefined) {
-        hitValue = value;
-        hitStoreIndex = i;
-        if (typeof store.ttl === "function") {
-          remainingTtl = await store.ttl(fullKey);
+      try {
+        const value = await store.get<T>(fullKey);
+        if (value !== undefined) {
+          hitValue = value;
+          hitStoreIndex = i;
+          if (typeof store.ttl === "function") {
+            try {
+              remainingTtl = await store.ttl(fullKey);
+            } catch {
+              remainingTtl = null;
+            }
+          }
+          break;
         }
-        break;
+      } catch (error) {
+        this.emitEvent("get", { key, error });
       }
     }
 
@@ -541,13 +549,17 @@ export class CacheService extends Cache implements OnApplicationShutdown {
     const flight = (async (): Promise<T> => {
       const computed = await factory();
       if (computed !== undefined) {
-        await this.writeAcrossStores(
-          this.stores,
-          fullKey,
-          computed,
-          resolveSetOptions(computed),
-        );
-        this.emitEvent("set", { key, value: computed });
+        try {
+          await this.writeAcrossStores(
+            this.stores,
+            fullKey,
+            computed,
+            resolveSetOptions(computed),
+          );
+          this.emitEvent("set", { key, value: computed });
+        } catch (error) {
+          this.emitEvent("set", { key, value: computed, error });
+        }
       }
       return computed;
     })();

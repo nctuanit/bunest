@@ -23,15 +23,17 @@ import { CacheModule, MemoryCacheStore } from "@bunest/cache";
     CacheModule.register({
       isGlobal: true,
       ttl: 60_000, // default TTL in ms
-      max: 1_000,
-      store: new MemoryCacheStore({ maxEntries: 1_000 }),
+      maxItems: 1_000,
+      store: new MemoryCacheStore({ maxItems: 1_000 }),
     }),
   ],
 })
 export class AppModule {}
 ```
 
-For multi-instance deployments, pass `new RedisCacheStore({ client: redisClient, keyPrefix: "app:" })`.
+For multi-instance deployments, import `RedisCacheStore` from `@bunest/cache/redis` and pass `new RedisCacheStore({ url: "redis://localhost:6379", keyPrefix: "app:" })` (or `{ client: redisClient, keyPrefix: "app:" }`).
+
+> info **Fail-Open & Health Probes** `CacheService.get()` and `CacheService.wrap()` fail open on transient store errors (emitting `"get"` / `"set"` error events and falling through to the factory function cleanly). Use `await redisStore.ping()` in `/ready` health checks to probe Redis availability safely (`boolean`, never throws).
 
 ## Declarative Service-Layer Caching
 

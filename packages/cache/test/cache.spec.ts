@@ -331,6 +331,132 @@ describe("@bunest/cache", () => {
       await store.close();
       expect(mock.isClosed()).toBe(true);
     });
+
+    it("supports ping() health probe for healthy, failing, and minimal Redis clients", async () => {
+      // 1. Client with native ping() returning "PONG"
+      const pingStore = new RedisCacheStore({
+        client: {
+          ...createMockRedisClient().client,
+          async ping() {
+            return "PONG";
+          },
+        },
+      });
+      expect(await pingStore.ping()).toBe(true);
+
+      // 2. Client with ping() returning unexpected value -> false
+      const badPongStore = new RedisCacheStore({
+        client: {
+          ...createMockRedisClient().client,
+          async ping() {
+            return "ERR";
+          },
+        },
+      });
+      expect(await badPongStore.ping()).toBe(false);
+
+      // 3. Client with ping() throwing -> false without throwing
+      const failingPingStore = new RedisCacheStore({
+        client: {
+          ...createMockRedisClient().client,
+          async ping() {
+            throw new Error("ECONNREFUSED");
+          },
+        },
+      });
+      expect(await failingPingStore.ping()).toBe(false);
+
+      // 4. Client with send("PING", []) -> true when PONG, false on error
+      const sendStore = new RedisCacheStore({
+        client: {
+          ...createMockRedisClient().client,
+          async send(cmd: string) {
+            return cmd === "PING" ? "PONG" : null;
+          },
+        },
+      });
+      expect(await sendStore.ping()).toBe(true);
+
+      // 5. Minimal RedisClientLike without ping()/send() falls back safely
+      const fallbackHealthy = new RedisCacheStore({
+        client: createMockRedisClient().client,
+        keyPrefix: "health:",
+      });
+      expect(await fallbackHealthy.ping()).toBe(true);
+
+      const fallbackFailing = new RedisCacheStore({
+        client: {
+          ...createMockRedisClient().client,
+          async exists() {
+            throw new Error("Redis down");
+          },
+        },
+      });
+      expect(await fallbackFailing.ping()).toBe(false);
+    });
+  });
+
+  describe("CacheService.wrap() fail-open resilience", () => {
+    it("falls through to factory and returns value when store.get() or store.set() throws", async () => {
+      const getErrors: unknown[] = [];
+      const setErrors: unknown[] = [];
+
+      const flakyStore = new RedisCacheStore({
+        client: {
+          async get() {
+            throw new Error("Redis GET timeout");
+          },
+          async set() {
+            throw new Error("Redis SET timeout");
+          },
+          async del() {
+            return 0;
+          },
+        },
+      });
+
+      const service = new CacheService(flakyStore);
+      service.on("get", (e: { error?: unknown }) => {
+        if (e.error) getErrors.push(e.error);
+      });
+      service.on("set", (e: { error?: unknown }) => {
+        if (e.error) setErrors.push(e.error);
+      });
+
+      let factoryCalls = 0;
+      const result = await service.wrap(
+        "resilient:key",
+        async () => {
+          factoryCalls += 1;
+          return { ok: true, attempt: factoryCalls };
+        },
+        5_000,
+      );
+
+      expect(result).toEqual({ ok: true, attempt: 1 });
+      expect(factoryCalls).toBe(1);
+      expect(getErrors).toHaveLength(1);
+      expect(setErrors).toHaveLength(1);
+
+      // Multi-tier L1 failing -> falls through to healthy L2 hit
+      const l2 = new MemoryCacheStore({ cleanupIntervalMs: 0 });
+      l2.set("tiered:key", "from-l2", 5_000);
+      const tieredService = new CacheService(undefined, {
+        stores: [flakyStore, l2],
+      });
+
+      let l2FactoryCalls = 0;
+      const tieredResult = await tieredService.wrap("tiered:key", () => {
+        l2FactoryCalls += 1;
+        return "should-not-run";
+      });
+
+      expect(tieredResult).toBe("from-l2");
+      expect(l2FactoryCalls).toBe(0);
+
+      await service.disconnect();
+      await tieredService.disconnect();
+    });
   });
 
   describe("CacheInterceptor, @CacheKey, @CacheTTL, @NoCache, and CacheModule.registerAsync HTTP integration", () => {

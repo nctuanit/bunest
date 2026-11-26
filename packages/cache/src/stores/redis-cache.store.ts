@@ -12,7 +12,12 @@ export type { RedisClientLike };
 
 export interface RedisCacheStoreOptions {
   /** Pluggable Redis client or native `Bun.RedisClient`. Optional when `url` is provided (or falls back to `Bun.redis`). */
-  client?: RedisClientLike | Bun.RedisClient;
+  client?:
+    | (RedisClientLike & {
+        ping?: () => Promise<unknown>;
+        send?: (command: string, args: string[]) => Promise<unknown>;
+      })
+    | Bun.RedisClient;
   /** Redis connection URL for Bun's native `Bun.RedisClient` (e.g. `"redis://localhost:6379"`). */
   url?: string;
   /**
@@ -58,6 +63,7 @@ function escapeGlob(input: string): string {
  */
 export class RedisCacheStore implements CacheStore {
   private readonly client: RedisClientLike;
+  private readonly nativeClient?: Bun.RedisClient;
   private readonly keyPrefix: string;
   private readonly defaultTtlMs: number;
   private readonly scanCount: number;
@@ -66,12 +72,19 @@ export class RedisCacheStore implements CacheStore {
 
   constructor(options: RedisCacheStoreOptions = {}) {
     if (options.client) {
-      this.client =
-        options.client instanceof Bun.RedisClient
-          ? createBunRedisClient(options.client)
-          : options.client;
+      if (options.client instanceof Bun.RedisClient) {
+        this.nativeClient = options.client;
+        this.client = createBunRedisClient(options.client);
+      } else {
+        this.client = options.client;
+      }
     } else {
-      this.client = createBunRedisClient(options.url);
+      const native =
+        typeof options.url === "string"
+          ? new Bun.RedisClient(options.url)
+          : Bun.redis;
+      this.nativeClient = native;
+      this.client = createBunRedisClient(native);
     }
     this.keyPrefix = options.keyPrefix ?? "";
     this.defaultTtlMs = options.defaultTtlMs ?? options.ttl ?? 0;
@@ -240,6 +253,46 @@ export class RedisCacheStore implements CacheStore {
       await this.client.close();
     } else if (typeof this.client.disconnect === "function") {
       this.client.disconnect();
+    }
+  }
+
+  /**
+   * Probes Redis cache availability using `PING` (with a safe read fallback
+   * when the client does not expose `ping()` or `send()`). Never throws;
+   * returns `true` when reachable and `false` on error.
+   */
+  async ping(): Promise<boolean> {
+    try {
+      const probeClient = this.client as RedisClientLike & {
+        ping?: () => Promise<unknown>;
+        send?: (command: string, args: string[]) => Promise<unknown>;
+      };
+      if (typeof probeClient.ping === "function") {
+        const res = await probeClient.ping();
+        return typeof res === "string"
+          ? res.toUpperCase() === "PONG"
+          : Boolean(res);
+      }
+      if (typeof probeClient.send === "function") {
+        const res = await probeClient.send("PING", []);
+        return typeof res === "string"
+          ? res.toUpperCase() === "PONG"
+          : Boolean(res);
+      }
+      if (this.nativeClient) {
+        const res = await this.nativeClient.send("PING", []);
+        return typeof res === "string"
+          ? res.toUpperCase() === "PONG"
+          : Boolean(res);
+      }
+      if (typeof this.client.exists === "function") {
+        await this.client.exists(this.prefixKey("__ping__"));
+        return true;
+      }
+      await this.client.get(this.prefixKey("__ping__"));
+      return true;
+    } catch {
+      return false;
     }
   }
 
