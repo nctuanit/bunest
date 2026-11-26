@@ -23,6 +23,7 @@ import { runMcpServer } from "./commands/mcp";
 import { runReplCommand } from "./commands/repl";
 import {
   runRoutesDiffCommand,
+  runRoutesSnapshotCommand,
   scanProjectRoutes,
   type RoutesDiffFormat,
 } from "./commands/routes-diff";
@@ -142,9 +143,16 @@ Commands:
   explain error <CODE>              Explain a BUNEST_E* error code with ordered fixes and docs link
     --format <pretty|json|agent>    Output format (default: pretty)
 
-  routes [diff --base <manifest>]   List static-scanned HTTP routes or diff against a base JSON manifest
-    --base <manifest>               Base route manifest JSON file (required for "routes diff")
-    --format <pretty|json>          Output format (default: pretty)
+  routes [snapshot|diff]            List HTTP routes, snapshot manifests, or diff route & body contracts
+    snapshot                        Emit a JSON route manifest (stdout or --out <file>)
+      --out <file>                  Write route snapshot JSON to a file
+      --body                        Include static @Body() DTO validation contracts
+      --commit <sha>                Attach commit SHA metadata to the snapshot
+    diff [<base> <head> | --base]   Diff two manifests or diff --base against current project
+      --base <manifest>             Base route manifest JSON file (scans current project as head)
+      --body                        Compare @Body() DTO validation constraints & breaking candidates
+      --evidence <file.json>        Attach replay evidence JSON for verified HTTP status transitions
+      --format <pretty|json>        Output format (default: pretty)
     --sourceRoot <path>             Source root directory (default: src)
     --tsconfig <path>               Explicit path to tsconfig.json
     -c, --config <path>             Path to bunest.json / nest-cli.json
@@ -722,17 +730,39 @@ export async function runCli(
         }
         const format: RoutesDiffFormat = fmtRaw ?? "pretty";
 
+        if (subcommand === "snapshot") {
+          const result = await runRoutesSnapshotCommand(
+            {
+              cwd: io.cwd,
+              out: getStringFlag(flags, "out"),
+              body: getBoolFlag(flags, "body") ?? false,
+              commit: getStringFlag(flags, "commit"),
+              sourceRoot: getStringFlag(flags, "sourceRoot"),
+              tsconfig: getStringFlag(flags, "tsconfig"),
+              config: getStringFlag(flags, "config"),
+              silent: getBoolFlag(flags, "silent") ?? false,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
         if (subcommand === "diff") {
-          const base = getStringFlag(flags, "base");
+          const baseFlag = getStringFlag(flags, "base");
+          const base = baseFlag ?? positionals[1];
+          const head = baseFlag ? positionals[1] : positionals[2];
           if (!base) {
             io.stderr(
-              "Missing required flag: --base <manifest>.\nUsage: bunest routes diff --base <manifest> [--format pretty|json] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>]",
+              "Missing base route manifest.\nUsage:\n  bunest routes diff <base.json> <head.json> [--body] [--evidence <file.json>] [--format pretty|json]\n  bunest routes diff --base <manifest> [--body] [--evidence <file.json>] [--format pretty|json] [--sourceRoot <dir>]",
             );
             return { exitCode: 1 };
           }
           const result = await runRoutesDiffCommand(
             {
               base,
+              head,
+              body: getBoolFlag(flags, "body") ?? false,
+              evidence: getStringFlag(flags, "evidence"),
               cwd: io.cwd,
               sourceRoot: getStringFlag(flags, "sourceRoot"),
               tsconfig: getStringFlag(flags, "tsconfig"),
@@ -747,7 +777,7 @@ export async function runCli(
 
         if (subcommand !== undefined) {
           io.stderr(
-            `Unknown routes subcommand "${subcommand}".\nUsage:\n  bunest routes [--format pretty|json] [--sourceRoot <dir>]\n  bunest routes diff --base <manifest> [--format pretty|json] [--sourceRoot <dir>]`,
+            `Unknown routes subcommand "${subcommand}".\nUsage:\n  bunest routes [--format pretty|json] [--sourceRoot <dir>]\n  bunest routes snapshot [--out <file>] [--body] [--commit <sha>] [--sourceRoot <dir>]\n  bunest routes diff [<base.json> <head.json> | --base <manifest>] [--body] [--evidence <file.json>] [--format pretty|json]`,
           );
           return { exitCode: 1 };
         }

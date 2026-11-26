@@ -55,8 +55,14 @@ bunx bunest explain route "POST /orders" --format json
 # Explain a BUNEST_E* error code directly from the terminal (same catalog as MCP)
 bunx bunest explain error BUNEST_E001 --format json
 
+# Snapshot static-scanned HTTP routes and @Body() DTO validation contracts
+bunx bunest routes snapshot --body --out routes-base.json
+
+# Diff two route snapshots with @Body() contract analysis and optional replay evidence
+bunx bunest routes diff routes-base.json routes-head.json --body --evidence evidence.json --format pretty
+
 # Diff current static-scanned HTTP routes against a saved base manifest
-bunx bunest routes diff --base routes-base.json --format pretty
+bunx bunest routes diff --base routes-base.json --body --format pretty
 
 # Generate sanitized regression tests from a .http or RequestScenarioV1 JSON file
 bunx bunest test-from-request src/orders/orders.http --dry-run --format diff

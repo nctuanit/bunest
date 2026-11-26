@@ -42,6 +42,7 @@ const BOOLEAN_FLAGS = new Set([
   "fix",
   "with-scenario",
   "save-binary-fixture",
+  "body",
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -85,6 +86,8 @@ const VALUE_FLAGS = new Set([
   "assert-fields",
   "base",
   "files",
+  "evidence",
+  "commit",
 ]);
 
 const REPEATABLE_FLAGS = new Set(["env-file"]);

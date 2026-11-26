@@ -1,4 +1,26 @@
-import { existsSyncPath, readTextSync, relative, resolve } from "@bunest/core";
+import {
+  dirname,
+  existsSyncPath,
+  mkdirSyncPath,
+  readTextSync,
+  relative,
+  resolve,
+  writeTextSync,
+} from "@bunest/core";
+import {
+  diffBodyContracts,
+  formatBodyContractDiffPretty,
+  type BodyContractDiffReport,
+  type BodyContractPayload,
+  type PipeProfileInfo,
+  type ReplayEvidenceRecord as DiffReplayEvidenceRecord,
+  type ReplayVerdict,
+  type RouteBodyContract,
+} from "../analyzer/body-contract-diff";
+import {
+  scanRouteBodyContracts,
+  type RouteBodyContract as ScannedRouteBodyContract,
+} from "../analyzer/body-dto-scanner";
 import { normalizeRoutePath } from "../analyzer/route-explain";
 import {
   Node,
@@ -26,6 +48,34 @@ export interface RouteManifestEntry {
   readonly controller?: string;
   readonly handler?: string;
   readonly sourceFile?: string;
+  readonly body?: BodyContractPayload;
+}
+
+export interface RouteSnapshotManifest {
+  readonly schemaVersion: "1.0";
+  readonly commit?: string;
+  readonly bodyMetadataIncluded?: boolean;
+  readonly routes: readonly RouteManifestEntry[];
+  readonly unknowns: readonly RouteDiffUnknown[];
+}
+
+export interface RoutesSnapshotCommandOptions {
+  readonly cwd?: string;
+  readonly out?: string;
+  readonly body?: boolean;
+  readonly commit?: string;
+  readonly sourceRoot?: string;
+  readonly tsconfig?: string;
+  readonly config?: string;
+  readonly bunestConfig?: BunestConfigLike;
+  readonly silent?: boolean;
+}
+
+export interface RoutesSnapshotCommandResult {
+  readonly exitCode: number;
+  readonly manifest?: RouteSnapshotManifest;
+  readonly formatted: string;
+  readonly outPath?: string;
 }
 
 export interface RouteParamRenameDetail {
@@ -78,10 +128,18 @@ export interface RouteDiffReport {
   readonly paramRenamed: readonly RouteParamRenameEntry[];
   readonly versionChanged: readonly RouteVersionChangeEntry[];
   readonly unknowns: readonly RouteDiffUnknown[];
+  readonly bodyDiff?: BodyContractDiffReport;
 }
 
 export interface RoutesDiffCommandOptions {
   readonly base: string;
+  readonly head?: string;
+  readonly body?: boolean;
+  readonly evidence?: string;
+  readonly baseCommit?: string;
+  readonly headCommit?: string;
+  readonly pipeProfile?: PipeProfileInfo;
+  readonly sampleValues?: Readonly<Record<string, unknown>>;
   readonly cwd?: string;
   readonly sourceRoot?: string;
   readonly tsconfig?: string;
@@ -295,6 +353,7 @@ function normalizeEntry(entry: RouteManifestEntry): RouteManifestEntry {
     ...(entry.controller ? { controller: entry.controller } : {}),
     ...(entry.handler ? { handler: entry.handler } : {}),
     ...(entry.sourceFile ? { sourceFile: entry.sourceFile } : {}),
+    ...(entry.body !== undefined ? { body: entry.body } : {}),
   };
 }
 
@@ -502,18 +561,59 @@ export function diffRouteManifests(
   };
 }
 
-/**
- * Parses a JSON route manifest file (either `RouteManifestEntry[]` or
- * `{ routes: RouteManifestEntry[] }`).
- */
-export function parseRouteManifestJson(rawJson: string): RouteManifestEntry[] {
-  const parsed: unknown = JSON.parse(rawJson);
+function extractBodyPayloadFromRawRoute(
+  rec: Record<string, unknown>,
+): BodyContractPayload | undefined {
+  const rawBody = rec.body;
+  if (rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)) {
+    return rawBody as BodyContractPayload;
+  }
+  if (
+    Array.isArray(rec.fields) ||
+    Array.isArray(rec.unsupportedReasons) ||
+    typeof rec.dtoName === "string"
+  ) {
+    return {
+      ...(typeof rec.dtoName === "string" ? { dtoName: rec.dtoName } : {}),
+      ...(typeof rec.dtoSourceFile === "string"
+        ? { dtoSourceFile: rec.dtoSourceFile }
+        : {}),
+      ...(rec.dtoLocation &&
+      typeof rec.dtoLocation === "object" &&
+      !Array.isArray(rec.dtoLocation)
+        ? {
+            dtoLocation: rec.dtoLocation as BodyContractPayload["dtoLocation"],
+          }
+        : {}),
+      ...(Array.isArray(rec.fields)
+        ? { fields: rec.fields as BodyContractPayload["fields"] }
+        : {}),
+      ...(Array.isArray(rec.unsupportedReasons)
+        ? {
+            unsupportedReasons:
+              rec.unsupportedReasons as BodyContractPayload["unsupportedReasons"],
+          }
+        : {}),
+    };
+  }
+  return undefined;
+}
+
+interface ParsedRouteManifestDocument {
+  readonly routes: RouteManifestEntry[];
+  readonly commit?: string;
+  readonly bodyMetadataIncluded: boolean;
+}
+
+function parseRouteManifestEntriesFromParsed(
+  parsed: unknown,
+): RouteManifestEntry[] {
   const rawList = Array.isArray(parsed)
     ? parsed
     : parsed &&
         typeof parsed === "object" &&
         Array.isArray((parsed as { routes?: unknown }).routes)
-      ? ((parsed as { routes: unknown[] }).routes)
+      ? (parsed as { routes: unknown[] }).routes
       : null;
 
   if (!rawList) {
@@ -548,6 +648,7 @@ export function parseRouteManifestJson(rawJson: string): RouteManifestEntry[] {
           : undefined;
     const sourceFile =
       typeof rec.sourceFile === "string" ? rec.sourceFile : undefined;
+    const body = extractBodyPayloadFromRawRoute(rec);
 
     if (Array.isArray(rec.version)) {
       const versions = rec.version.filter(
@@ -563,6 +664,7 @@ export function parseRouteManifestJson(rawJson: string): RouteManifestEntry[] {
               controller,
               handler,
               sourceFile,
+              ...(body !== undefined ? { body } : {}),
             }),
           );
         }
@@ -578,11 +680,44 @@ export function parseRouteManifestJson(rawJson: string): RouteManifestEntry[] {
         controller,
         handler,
         sourceFile,
+        ...(body !== undefined ? { body } : {}),
       }),
     );
   }
 
   return out;
+}
+
+function parseRouteManifestDocument(
+  rawJson: string,
+): ParsedRouteManifestDocument {
+  const parsed: unknown = JSON.parse(rawJson);
+  const routes = parseRouteManifestEntriesFromParsed(parsed);
+  const obj =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  const commit =
+    typeof obj?.commit === "string" && obj.commit.trim().length > 0
+      ? obj.commit.trim()
+      : undefined;
+  const bodyMetadataIncluded =
+    obj?.bodyMetadataIncluded === true ||
+    routes.some((r) => r.body !== undefined);
+
+  return {
+    routes,
+    ...(commit !== undefined ? { commit } : {}),
+    bodyMetadataIncluded,
+  };
+}
+
+/**
+ * Parses a JSON route manifest file (either `RouteManifestEntry[]` or
+ * `{ routes: RouteManifestEntry[] }`).
+ */
+export function parseRouteManifestJson(rawJson: string): RouteManifestEntry[] {
+  return parseRouteManifestEntriesFromParsed(JSON.parse(rawJson));
 }
 
 /**
@@ -654,6 +789,326 @@ export async function scanProjectRoutes(options: {
   };
 }
 
+function toBodyContractPayload(
+  scanned: ScannedRouteBodyContract,
+): BodyContractPayload {
+  return {
+    dtoName: scanned.dtoName,
+    ...(scanned.dtoSourceFile !== undefined
+      ? { dtoSourceFile: scanned.dtoSourceFile }
+      : {}),
+    ...(scanned.dtoLocation !== undefined
+      ? {
+          dtoLocation: {
+            filePath: scanned.dtoLocation.file,
+            sourceFile: scanned.dtoLocation.file,
+            line: scanned.dtoLocation.line,
+          },
+        }
+      : {}),
+    fields: scanned.fields,
+    unsupportedReasons: scanned.unsupportedReasons,
+  };
+}
+
+function attachBodyContractsToRoutes(
+  routes: readonly RouteManifestEntry[],
+  scannedBodyRoutes: readonly ScannedRouteBodyContract[],
+): RouteManifestEntry[] {
+  const byExactKey = new Map<string, BodyContractPayload>();
+  const byMethodPath = new Map<string, BodyContractPayload>();
+
+  for (const scanned of scannedBodyRoutes) {
+    const method = scanned.method.trim().toUpperCase();
+    const path = normalizeRoutePath(scanned.path);
+    const version = scanned.version?.trim() || "";
+    const payload = toBodyContractPayload(scanned);
+    byExactKey.set(`${method} ${path} ${version}`, payload);
+    if (!byMethodPath.has(`${method} ${path}`)) {
+      byMethodPath.set(`${method} ${path}`, payload);
+    }
+  }
+
+  return routes.map((route) => {
+    const exactKey = routeSortKey(route);
+    const body =
+      byExactKey.get(exactKey) ??
+      byMethodPath.get(`${route.method} ${route.path}`);
+    return body !== undefined ? { ...route, body } : route;
+  });
+}
+
+function mapPipeProfile(raw: unknown): PipeProfileInfo | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const rec = raw as Record<string, unknown>;
+  const name =
+    typeof rec.name === "string"
+      ? rec.name
+      : typeof rec.label === "string"
+        ? rec.label
+        : undefined;
+  const validationPipeApplied =
+    typeof rec.validationPipeApplied === "boolean"
+      ? rec.validationPipeApplied
+      : typeof rec.applied === "boolean"
+        ? rec.applied
+        : undefined;
+  return {
+    ...(name !== undefined ? { name } : {}),
+    ...(typeof rec.whitelist === "boolean" ? { whitelist: rec.whitelist } : {}),
+    ...(typeof rec.forbidNonWhitelisted === "boolean"
+      ? { forbidNonWhitelisted: rec.forbidNonWhitelisted }
+      : {}),
+    ...(typeof rec.transform === "boolean" ? { transform: rec.transform } : {}),
+    ...(validationPipeApplied !== undefined ? { validationPipeApplied } : {}),
+  };
+}
+
+const VALID_REPLAY_VERDICTS = new Set<ReplayVerdict>([
+  "confirmed-breaking",
+  "stripped-accepted",
+  "no-http-change",
+  "environment-error",
+]);
+
+interface ParsedEvidenceFile {
+  readonly records: DiffReplayEvidenceRecord[];
+  readonly inferredBaseCommit?: string;
+  readonly inferredHeadCommit?: string;
+  readonly pipeProfile?: PipeProfileInfo;
+  readonly sampleValues?: Record<string, unknown>;
+}
+
+function parseReplayEvidenceJson(rawJson: string): ParsedEvidenceFile {
+  const parsed: unknown = JSON.parse(rawJson);
+  const envelope =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+
+  const rawList = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(envelope?.records)
+      ? envelope.records
+      : Array.isArray(envelope?.evidence)
+        ? envelope.evidence
+        : null;
+
+  if (!rawList) {
+    throw new Error(
+      'Invalid replay evidence JSON: expected an array of evidence records or an object with a "records" or "evidence" array.',
+    );
+  }
+
+  const envelopeBaseCommit =
+    typeof envelope?.baseCommit === "string" &&
+    envelope.baseCommit.trim().length > 0
+      ? envelope.baseCommit.trim()
+      : undefined;
+  const envelopeHeadCommit =
+    typeof envelope?.headCommit === "string" &&
+    envelope.headCommit.trim().length > 0
+      ? envelope.headCommit.trim()
+      : undefined;
+  const envelopePipeProfile = mapPipeProfile(envelope?.pipeProfile);
+  const envelopeSampleValues =
+    envelope?.sampleValues &&
+    typeof envelope.sampleValues === "object" &&
+    !Array.isArray(envelope.sampleValues)
+      ? (envelope.sampleValues as Record<string, unknown>)
+      : undefined;
+
+  const records: DiffReplayEvidenceRecord[] = [];
+  const inferredSamples: Record<string, unknown> = {};
+  let firstBaseCommit: string | undefined = envelopeBaseCommit;
+  let firstHeadCommit: string | undefined = envelopeHeadCommit;
+  let inferredPipeProfile: PipeProfileInfo | undefined = envelopePipeProfile;
+
+  for (let i = 0; i < rawList.length; i++) {
+    const item = rawList[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(
+        `Invalid replay evidence entry at index ${i}: expected an object.`,
+      );
+    }
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.method !== "string" || typeof rec.path !== "string") {
+      throw new Error(
+        `Invalid replay evidence entry at index ${i}: "method" and "path" must be strings.`,
+      );
+    }
+
+    const baseCommit =
+      typeof rec.baseCommit === "string" && rec.baseCommit.trim().length > 0
+        ? rec.baseCommit.trim()
+        : (envelopeBaseCommit ?? "");
+    const headCommit =
+      typeof rec.headCommit === "string" && rec.headCommit.trim().length > 0
+        ? rec.headCommit.trim()
+        : (envelopeHeadCommit ?? "");
+
+    if (!firstBaseCommit && baseCommit) firstBaseCommit = baseCommit;
+    if (!firstHeadCommit && headCommit) firstHeadCommit = headCommit;
+
+    const pipeProfile = mapPipeProfile(rec.pipeProfile);
+    if (!inferredPipeProfile && pipeProfile && Object.keys(pipeProfile).length > 0) {
+      inferredPipeProfile = pipeProfile;
+    }
+
+    const verdict: ReplayVerdict =
+      typeof rec.verdict === "string" &&
+      VALID_REPLAY_VERDICTS.has(rec.verdict as ReplayVerdict)
+        ? (rec.verdict as ReplayVerdict)
+        : "environment-error";
+
+    const targetField =
+      typeof rec.targetField === "string" ? rec.targetField : undefined;
+
+    if (
+      targetField &&
+      rec.payload &&
+      typeof rec.payload === "object" &&
+      !Array.isArray(rec.payload)
+    ) {
+      for (const [k, v] of Object.entries(
+        rec.payload as Record<string, unknown>,
+      )) {
+        if (k !== targetField && !(k in inferredSamples)) {
+          inferredSamples[k] = v;
+        }
+      }
+    }
+
+    records.push({
+      method: rec.method,
+      path: rec.path,
+      ...(typeof rec.version === "string" ? { version: rec.version } : {}),
+      payload: rec.payload,
+      ...(targetField !== undefined ? { targetField } : {}),
+      baseCommit,
+      headCommit,
+      baseStatus: typeof rec.baseStatus === "number" ? rec.baseStatus : 0,
+      headStatus: typeof rec.headStatus === "number" ? rec.headStatus : 0,
+      ...(Array.isArray(rec.baseErrorFields)
+        ? {
+            baseErrorFields: rec.baseErrorFields.filter(
+              (f): f is string => typeof f === "string",
+            ),
+          }
+        : {}),
+      ...(Array.isArray(rec.headErrorFields)
+        ? {
+            headErrorFields: rec.headErrorFields.filter(
+              (f): f is string => typeof f === "string",
+            ),
+          }
+        : {}),
+      ...(pipeProfile !== undefined ? { pipeProfile } : {}),
+      verdict,
+      ...(typeof rec.environmentError === "string"
+        ? { environmentError: rec.environmentError }
+        : {}),
+    });
+  }
+
+  const mergedSamples =
+    envelopeSampleValues !== undefined
+      ? { ...inferredSamples, ...envelopeSampleValues }
+      : Object.keys(inferredSamples).length > 0
+        ? inferredSamples
+        : undefined;
+
+  return {
+    records,
+    ...(firstBaseCommit !== undefined
+      ? { inferredBaseCommit: firstBaseCommit }
+      : {}),
+    ...(firstHeadCommit !== undefined
+      ? { inferredHeadCommit: firstHeadCommit }
+      : {}),
+    ...(inferredPipeProfile !== undefined
+      ? { pipeProfile: inferredPipeProfile }
+      : {}),
+    ...(mergedSamples !== undefined ? { sampleValues: mergedSamples } : {}),
+  };
+}
+
+/**
+ * Runs `bunest routes snapshot [--out <file>] [--body] [--commit <sha>]`,
+ * scanning project routes (and optional `@Body()` DTO validation contracts)
+ * and emitting a deterministic JSON manifest.
+ */
+export async function runRoutesSnapshotCommand(
+  options: RoutesSnapshotCommandOptions = {},
+  io?: CliIO,
+): Promise<RoutesSnapshotCommandResult> {
+  const cwd = resolve(options.cwd ?? io?.cwd ?? process.cwd());
+  const loaded = await loadCliConfiguration(cwd, options.config);
+  const bunestConfig =
+    options.bunestConfig ?? (await loadBunestConfig(cwd)).config;
+  const sourceRoot =
+    options.sourceRoot ??
+    bunestConfig.typegen?.sourceRoot ??
+    loaded.config.sourceRoot ??
+    "src";
+
+  const scanned = await scanProjectRoutes({
+    cwd,
+    sourceRoot,
+    tsconfig: options.tsconfig,
+    config: options.config,
+    bunestConfig,
+  });
+
+  let routes: readonly RouteManifestEntry[] = scanned.routes;
+  if (options.body) {
+    const bodyScan = await scanRouteBodyContracts(cwd, { sourceRoot });
+    routes = attachBodyContractsToRoutes(scanned.routes, bodyScan.routes);
+  }
+
+  const commit =
+    options.commit !== undefined && options.commit.trim().length > 0
+      ? options.commit.trim()
+      : undefined;
+
+  const manifest: RouteSnapshotManifest = {
+    schemaVersion: "1.0",
+    ...(commit !== undefined ? { commit } : {}),
+    ...(options.body ? { bodyMetadataIncluded: true } : {}),
+    routes,
+    unknowns: scanned.unknowns,
+  };
+
+  const formatted = JSON.stringify(manifest, null, 2);
+
+  if (options.out) {
+    const outPath = resolve(cwd, options.out);
+    mkdirSyncPath(dirname(outPath), { recursive: true });
+    writeTextSync(outPath, `${formatted}\n`);
+    if (io && !options.silent) {
+      io.stdout(`Wrote route snapshot to ${outPath}`);
+    }
+    return {
+      exitCode: 0,
+      manifest,
+      formatted,
+      outPath,
+    };
+  }
+
+  if (io && !options.silent) {
+    io.stdout(formatted);
+  }
+
+  return {
+    exitCode: 0,
+    manifest,
+    formatted,
+  };
+}
+
 function formatRouteLabel(entry: {
   readonly method: string;
   readonly path: string;
@@ -676,63 +1131,75 @@ export function formatRoutesDiffReport(
     `Routes Diff (base: ${report.summary.baseCount}, current: ${report.summary.currentCount})`,
   );
 
-  if (!report.hasChanges) {
+  const hasRouteChanges =
+    report.added.length > 0 ||
+    report.removed.length > 0 ||
+    report.paramRenamed.length > 0 ||
+    report.versionChanged.length > 0 ||
+    report.unknowns.length > 0;
+
+  if (!hasRouteChanges) {
     lines.push("No route changes detected.");
-    return lines.join("\n");
-  }
+  } else {
+    if (report.added.length > 0) {
+      lines.push("", `Added (${report.added.length}):`);
+      for (const r of report.added) {
+        lines.push(`  + ${formatRouteLabel(r)}`);
+      }
+    }
 
-  if (report.added.length > 0) {
-    lines.push("", `Added (${report.added.length}):`);
-    for (const r of report.added) {
-      lines.push(`  + ${formatRouteLabel(r)}`);
+    if (report.removed.length > 0) {
+      lines.push("", `Removed (${report.removed.length}):`);
+      for (const r of report.removed) {
+        lines.push(`  - ${formatRouteLabel(r)}`);
+      }
+    }
+
+    if (report.paramRenamed.length > 0) {
+      lines.push("", `Param Renamed (${report.paramRenamed.length}):`);
+      for (const r of report.paramRenamed) {
+        const renames = r.paramRenames
+          .map((p) => `:${p.from} -> :${p.to}`)
+          .join(", ");
+        const ver = r.version ? ` (v${r.version})` : "";
+        lines.push(
+          `  ~ ${r.method} ${r.fromPath} -> ${r.toPath}${ver} [${renames}]`,
+        );
+      }
+    }
+
+    if (report.versionChanged.length > 0) {
+      lines.push("", `Version Changed (${report.versionChanged.length}):`);
+      for (const r of report.versionChanged) {
+        const fromVer = r.fromVersion ? `v${r.fromVersion}` : "unversioned";
+        const toVer = r.toVersion ? `v${r.toVersion}` : "unversioned";
+        lines.push(`  ~ ${r.method} ${r.path}: ${fromVer} -> ${toVer}`);
+      }
+    }
+
+    if (report.unknowns.length > 0) {
+      lines.push("", `Unknown / Dynamic Routes (${report.unknowns.length}):`);
+      for (const u of report.unknowns) {
+        const loc = u.location
+          ? ` (${(cwd ? relative(cwd, u.location.filePath) : u.location.filePath).replace(/\\/g, "/")}:${u.location.line}:${u.location.column})`
+          : "";
+        lines.push(`  ? [${u.kind}] ${u.reason}${loc}`);
+      }
     }
   }
 
-  if (report.removed.length > 0) {
-    lines.push("", `Removed (${report.removed.length}):`);
-    for (const r of report.removed) {
-      lines.push(`  - ${formatRouteLabel(r)}`);
-    }
-  }
-
-  if (report.paramRenamed.length > 0) {
-    lines.push("", `Param Renamed (${report.paramRenamed.length}):`);
-    for (const r of report.paramRenamed) {
-      const renames = r.paramRenames
-        .map((p) => `:${p.from} -> :${p.to}`)
-        .join(", ");
-      const ver = r.version ? ` (v${r.version})` : "";
-      lines.push(
-        `  ~ ${r.method} ${r.fromPath} -> ${r.toPath}${ver} [${renames}]`,
-      );
-    }
-  }
-
-  if (report.versionChanged.length > 0) {
-    lines.push("", `Version Changed (${report.versionChanged.length}):`);
-    for (const r of report.versionChanged) {
-      const fromVer = r.fromVersion ? `v${r.fromVersion}` : "unversioned";
-      const toVer = r.toVersion ? `v${r.toVersion}` : "unversioned";
-      lines.push(`  ~ ${r.method} ${r.path}: ${fromVer} -> ${toVer}`);
-    }
-  }
-
-  if (report.unknowns.length > 0) {
-    lines.push("", `Unknown / Dynamic Routes (${report.unknowns.length}):`);
-    for (const u of report.unknowns) {
-      const loc = u.location
-        ? ` (${(cwd ? relative(cwd, u.location.filePath) : u.location.filePath).replace(/\\/g, "/")}:${u.location.line}:${u.location.column})`
-        : "";
-      lines.push(`  ? [${u.kind}] ${u.reason}${loc}`);
-    }
+  if (report.bodyDiff) {
+    lines.push("", "Body Contract Diff:", formatBodyContractDiffPretty(report.bodyDiff));
   }
 
   return lines.join("\n");
 }
 
 /**
- * Runs `bunest routes diff --base <manifest>`, comparing a saved JSON route
- * manifest against current static-scanned routes.
+ * Runs `bunest routes diff`, comparing either two JSON manifests
+ * (`<base.json> <head.json>`) or a base manifest against current static-scanned
+ * project routes (`--base <manifest>`), with optional `--body` DTO contract
+ * diffing and `--evidence <file.json>` replay verification.
  */
 export async function runRoutesDiffCommand(
   options: RoutesDiffCommandOptions,
@@ -748,24 +1215,157 @@ export async function runRoutesDiffCommand(
     return { exitCode: 1, formatted: msg };
   }
 
-  let baseRoutes: RouteManifestEntry[];
+  let baseDoc: ParsedRouteManifestDocument;
   try {
-    baseRoutes = parseRouteManifestJson(readTextSync(basePath));
+    baseDoc = parseRouteManifestDocument(readTextSync(basePath));
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (io && !options.silent) io.stderr(`Error reading base manifest: ${msg}`);
     return { exitCode: 1, formatted: msg };
   }
 
-  const current = await scanProjectRoutes({
-    cwd,
-    sourceRoot: options.sourceRoot,
-    tsconfig: options.tsconfig,
-    config: options.config,
-    bunestConfig: options.bunestConfig,
-  });
+  let headRoutes: readonly RouteManifestEntry[];
+  let headUnknowns: readonly RouteDiffUnknown[] = [];
+  let headCommitFromDoc: string | undefined;
+  let headBodyMetadataIncluded = false;
 
-  const report = diffRouteManifests(baseRoutes, current.routes, current.unknowns);
+  if (options.head) {
+    const headPath = resolve(cwd, options.head);
+    if (!existsSyncPath(headPath)) {
+      const msg = `Head route manifest not found: ${headPath}`;
+      if (io && !options.silent) io.stderr(msg);
+      return { exitCode: 1, formatted: msg };
+    }
+    try {
+      const headDoc = parseRouteManifestDocument(readTextSync(headPath));
+      headRoutes = headDoc.routes;
+      headCommitFromDoc = headDoc.commit;
+      headBodyMetadataIncluded = headDoc.bodyMetadataIncluded;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (io && !options.silent) {
+        io.stderr(`Error reading head manifest: ${msg}`);
+      }
+      return { exitCode: 1, formatted: msg };
+    }
+  } else {
+    const loaded = await loadCliConfiguration(cwd, options.config);
+    const bunestConfig =
+      options.bunestConfig ?? (await loadBunestConfig(cwd)).config;
+    const sourceRoot =
+      options.sourceRoot ??
+      bunestConfig.typegen?.sourceRoot ??
+      loaded.config.sourceRoot ??
+      "src";
+
+    const current = await scanProjectRoutes({
+      cwd,
+      sourceRoot,
+      tsconfig: options.tsconfig,
+      config: options.config,
+      bunestConfig,
+    });
+    headRoutes = current.routes;
+    headUnknowns = current.unknowns;
+
+    if (options.body) {
+      const bodyScan = await scanRouteBodyContracts(cwd, { sourceRoot });
+      headRoutes = attachBodyContractsToRoutes(current.routes, bodyScan.routes);
+      headBodyMetadataIncluded = true;
+    }
+  }
+
+  let parsedEvidence: ParsedEvidenceFile | undefined;
+  if (options.evidence) {
+    const evidencePath = resolve(cwd, options.evidence);
+    if (!existsSyncPath(evidencePath)) {
+      const msg = `Replay evidence file not found: ${evidencePath}`;
+      if (io && !options.silent) io.stderr(msg);
+      return { exitCode: 1, formatted: msg };
+    }
+    try {
+      parsedEvidence = parseReplayEvidenceJson(readTextSync(evidencePath));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (io && !options.silent) {
+        io.stderr(`Error reading replay evidence: ${msg}`);
+      }
+      return { exitCode: 1, formatted: msg };
+    }
+  }
+
+  const baseReport = diffRouteManifests(baseDoc.routes, headRoutes, headUnknowns);
+  let report: RouteDiffReport = baseReport;
+
+  if (options.body) {
+    let baseBodyRoutes: readonly RouteBodyContract[];
+    let headBodyRoutes: readonly RouteBodyContract[];
+
+    if (baseDoc.bodyMetadataIncluded && headBodyMetadataIncluded) {
+      const keysWithBody = new Set<string>();
+      for (const r of baseDoc.routes) {
+        if (r.body !== undefined) keysWithBody.add(routeSortKey(r));
+      }
+      for (const r of headRoutes) {
+        if (r.body !== undefined) keysWithBody.add(routeSortKey(r));
+      }
+      baseBodyRoutes = baseDoc.routes.filter((r) =>
+        keysWithBody.has(routeSortKey(r)),
+      );
+      headBodyRoutes = headRoutes.filter((r) =>
+        keysWithBody.has(routeSortKey(r)),
+      );
+    } else {
+      baseBodyRoutes = baseDoc.routes;
+      headBodyRoutes = headRoutes;
+    }
+
+    const hasAuthoritativeCommit =
+      options.baseCommit !== undefined ||
+      options.headCommit !== undefined ||
+      baseDoc.commit !== undefined ||
+      headCommitFromDoc !== undefined;
+    const resolvedBaseCommit = hasAuthoritativeCommit
+      ? (options.baseCommit ?? baseDoc.commit)
+      : parsedEvidence?.inferredBaseCommit;
+    const resolvedHeadCommit = hasAuthoritativeCommit
+      ? (options.headCommit ?? headCommitFromDoc)
+      : parsedEvidence?.inferredHeadCommit;
+
+    const mergedSampleValues =
+      options.sampleValues !== undefined ||
+      parsedEvidence?.sampleValues !== undefined
+        ? {
+            ...(parsedEvidence?.sampleValues ?? {}),
+            ...(options.sampleValues ?? {}),
+          }
+        : undefined;
+
+    const bodyDiff = diffBodyContracts(baseBodyRoutes, headBodyRoutes, {
+      ...(parsedEvidence !== undefined
+        ? { replayEvidence: parsedEvidence.records }
+        : {}),
+      ...(resolvedBaseCommit !== undefined
+        ? { baseCommit: resolvedBaseCommit }
+        : {}),
+      ...(resolvedHeadCommit !== undefined
+        ? { headCommit: resolvedHeadCommit }
+        : {}),
+      ...(options.pipeProfile ?? parsedEvidence?.pipeProfile
+        ? { pipeProfile: options.pipeProfile ?? parsedEvidence?.pipeProfile }
+        : {}),
+      ...(mergedSampleValues !== undefined
+        ? { sampleValues: mergedSampleValues }
+        : {}),
+    });
+
+    report = {
+      ...baseReport,
+      hasChanges: baseReport.hasChanges || bodyDiff.staticFindings.length > 0,
+      bodyDiff,
+    };
+  }
+
   const formatted = formatRoutesDiffReport(report, format, cwd);
 
   if (io && !options.silent) {
