@@ -1,19 +1,122 @@
 # Các bước đầu tiên
 
-Trong hướng dẫn này, bạn sẽ khởi tạo hoặc cấu hình một workspace Bunest, thiết lập các tùy chọn decorator bắt buộc trong `tsconfig.json`, định nghĩa DTO có kiểm tra dữ liệu và tìm hiểu các thành phần cốt lõi của một ứng dụng Bunest.
+Chạy HTTP API đầu tiên với Bunest từ một môi trường sạch chỉ trong vài phút. Sau khi hoàn thành phần mở đầu này, bạn sẽ đạt được:
+
+- `GET /health` trả về HTTP `200` với `{"status":"ok"}`
+- `GET /?name=Dev` trả về HTTP `200` với `{"message":"Hello, Dev!","runtime":"Bun <version>"}`
+- Bộ kiểm thử của example đạt với lệnh `bun run --cwd examples/hello-world test`
+
+> info **Lưu ý giai đoạn Preview** Trong giai đoạn preview, các package `@bunest/*` chưa được phát hành lên npm công khai. Cách nhanh nhất để chạy thử Bunest lúc này là chạy trực tiếp `examples/hello-world` từ kho mã nguồn công khai trên GitHub bên dưới.
 
 ## Yêu cầu hệ thống
 
-Bunest chỉ hỗ trợ **Bun `>= 1.4.5`**. Hãy kiểm tra phiên bản Bun trên máy của bạn trước:
+Đảm bảo máy của bạn đã cài **Git** và **Bun `>= 1.4.5`**:
 
 ```bash
+git --version
 bun --version
-# 1.4.5 or higher
+# Bun 1.4.5 trở lên
 ```
 
-## Khởi tạo dự án mới (Khuyến nghị)
+## Chạy API đầu tiên (Từ mã nguồn Preview)
 
-Dùng `@bunest/cli` để tạo sẵn dự án đầy đủ cấu hình legacy decorator, `bunest.json`, `bunfig.toml`, `preload.ts` và bài kiểm thử E2E mẫu:
+### 1. Clone repo và cài dependency
+
+Clone kho mã nguồn công khai và cài dependency cho workspace từ thư mục gốc của repo (`bunest`). Không cần bước build riêng trước khi khởi chạy example.
+
+```bash
+git clone https://github.com/nctuanit/bunest.git
+cd bunest
+bun install --frozen-lockfile
+```
+
+### 2. Khởi chạy server `hello-world`
+
+Chạy lệnh sau từ thư mục gốc `bunest`:
+
+```bash
+bun run --cwd examples/hello-world start
+```
+
+Bạn sẽ thấy dòng log:
+
+```text
+Bunest hello-world listening on http://localhost:3000
+```
+
+Giữ terminal này đang chạy. Nhấn `Ctrl+C` trong terminal này bất cứ khi nào bạn muốn dừng server.
+
+Nếu cổng `3000` đang bận, hãy đổi biến môi trường `PORT` trước khi chạy:
+
+**macOS / Linux:**
+
+```bash
+PORT=3001 bun run --cwd examples/hello-world start
+```
+
+**Windows PowerShell:**
+
+```powershell
+$env:PORT="3001"; bun run --cwd examples/hello-world start
+```
+
+### 3. Kiểm tra endpoint ở terminal thứ hai
+
+Mở một **terminal thứ hai** và gửi hai request (thay `3000` nếu bạn đã chọn `PORT` khác):
+
+**macOS / Linux (`curl`):**
+
+```bash
+curl -i http://localhost:3000/health
+curl -i "http://localhost:3000/?name=Dev"
+```
+
+**Windows PowerShell (`curl.exe`):**
+
+```powershell
+curl.exe -i http://localhost:3000/health
+curl.exe -i "http://localhost:3000/?name=Dev"
+```
+
+Kết quả mong đợi:
+
+- `GET /health` trả về HTTP `200` với nội dung:
+
+```json
+{"status":"ok"}
+```
+
+- `GET /?name=Dev` trả về HTTP `200` với `message` là `"Hello, Dev!"` và trường `runtime` theo phiên bản Bun thực tế trên máy của bạn:
+
+```json
+{"message":"Hello, Dev!","runtime":"Bun 1.4.5"}
+```
+
+### 4. Chạy bộ kiểm thử của example
+
+Từ thư mục gốc `bunest` (ở terminal thứ hai, hoặc sau khi dừng server bằng `Ctrl+C`), chạy bộ test tự động của example:
+
+```bash
+bun run --cwd examples/hello-world test
+```
+
+Kết quả pass xác nhận `TestingModule` và `app.fetch()` kiểm thử thành công cả `GET /` lẫn `GET /health` mà không cần mở cổng mạng.
+
+## Lộ trình tiếp theo
+
+Sau khi request đầu tiên và bài test đều đạt, bạn có thể chọn bước tiếp theo phù hợp:
+
+- **Tạo dự án bằng CLI** — xem mục **Tạo dự án bằng CLI** ngay bên dưới (yêu cầu package `@bunest/*` đã có trên npm hoặc registry nội bộ).
+- **Tích hợp vào dự án hiện có** — xem mục **Tích hợp vào dự án hiện có** bên dưới để cài thủ công, cấu hình decorator metadata trong `tsconfig.json` và nắm quy tắc value-import với `verbatimModuleSyntax`.
+- **Thêm validation** — xem mục **Thêm validation (DTO)** bên dưới hoặc đọc đầy đủ tại [Xác thực dữ liệu](/techniques/validation).
+
+---
+
+## Tạo dự án bằng CLI
+
+> warning **Điều kiện registry** Luồng `bunx @bunest/cli` bên dưới yêu cầu các package `@bunest/*` đã được phát hành lên npm hoặc có sẵn trên registry bạn cấu hình. Trong giai đoạn preview, hãy dùng luồng chạy từ mã nguồn ở trên hoặc chạy CLI trực tiếp từ bản clone monorepo.
+
+Khi package đã có trên registry, dùng `@bunest/cli` để tạo sẵn dự án đầy đủ cấu hình legacy decorator, `bunest.json`, `bunfig.toml`, `preload.ts` và bài kiểm thử E2E mẫu:
 
 ```bash
 bunx @bunest/cli new my-app
@@ -41,9 +144,9 @@ import { registerBunestPlugin } from "@bunest/cli";
 registerBunestPlugin();
 ```
 
-## Cài đặt thủ công
+## Tích hợp vào dự án hiện có
 
-Nếu muốn tự cấu hình dự án từ đầu, hãy cài đặt `@bunest/core` và `@bunest/validation` (không có runtime dependency ngoài — đã tích hợp sẵn Reflect Metadata shim của Bunest và bộ validate/transform DTO biên dịch một lần):
+Nếu muốn tự cấu hình Bunest vào một dự án sẵn có (khi `@bunest/*` đã sẵn sàng qua npm hoặc workspace link), hãy cài đặt `@bunest/core` và `@bunest/validation` (không có runtime dependency ngoài — đã tích hợp sẵn Reflect Metadata shim của Bunest và bộ validate/transform DTO biên dịch một lần):
 
 ```bash
 bun add @bunest/core @bunest/validation
@@ -52,7 +155,7 @@ bun add -d @types/bun typescript
 
 > info **Gợi ý** `@bunest/core` export các decorator, pipe tích hợp sẵn, các lớp `HttpException`, `Logger`, `Reflector` cùng các subpath lõi HTTP/DI/Config/WS/I18n, và tự động cài đặt ECMAScript Reflect Metadata shim không dependency.
 
-## Cấu hình TypeScript (`tsconfig.json`)
+### Cấu hình TypeScript (`tsconfig.json`)
 
 Bunest sử dụng **Legacy TypeScript Decorators** để hỗ trợ constructor dependency injection (`design:paramtypes`), parameter decorator (`@Body()`, `@Param()`, `@Query()`) và DTO của `@bunest/validation` (hoặc `class-validator`).
 
@@ -79,7 +182,7 @@ Bunest sử dụng **Legacy TypeScript Decorators** để hỗ trợ constructor
 
 > warning **Quy tắc `verbatimModuleSyntax` quan trọng** Luôn giữ `verbatimModuleSyntax: true`. Hãy dùng **value-import** cho các class runtime xuất hiện trong chữ ký có decorator (`import { UsersService }` và `import { CreateUserDto }`), và luôn dùng **`import type`** cho TypeScript interface hoặc type alias (`import type { UserRecord }`). Dùng `import type` cho một DI service hoặc DTO sẽ làm metadata runtime bị xóa thành `Object`, còn value-import một interface sẽ khiến transpiler của Bun lỗi khi chạy.
 
-## Điểm khởi chạy ứng dụng (Entrypoint)
+### Điểm khởi chạy ứng dụng (Entrypoint)
 
 `@bunest/core` tự động nạp Reflect Metadata shim không dependency, nên bạn không cần viết dòng `import "reflect-metadata"` nữa:
 
@@ -104,7 +207,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-## Định nghĩa DTO có Kiểm tra Dữ liệu
+## Thêm validation (DTO)
 
 Import các validation decorator từ `@bunest/validation/validator` (không có dependency bên ngoài) và dùng value-import cho class DTO trong controller:
 

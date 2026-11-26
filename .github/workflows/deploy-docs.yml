@@ -37,6 +37,10 @@ jobs:
           bun check -p apps/docs/tsconfig.json
           bun test apps/docs
 
+      - name: Quickstart smoke test
+        id: quickstart-smoke
+        run: bun run scripts/smoke-quickstart.ts
+
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v5

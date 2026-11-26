@@ -1,13 +1,19 @@
 # Quickstart — Build a Validated REST CRUD API in < 15 Minutes
 
-This guide walks through creating, running, documenting, and testing a complete NestJS-style REST CRUD API with **Bunest** on **Bun >= 1.4.5**.
+> **New to Bunest? Want your first HTTP `200` in under 2 minutes?**
+> Start with the fast source-first [`examples/hello-world`](../examples/hello-world/) path in [First steps](../apps/docs/content/overview/first-steps.md): clone the repo, run `bun install --frozen-lockfile`, start `bun run --cwd examples/hello-world start`, verify `GET /health` and `GET /?name=Dev`, and run `bun run --cwd examples/hello-world test`.
+>
+> This guide is the deeper CRUD walkthrough covering validated DTOs, Swagger/OpenAPI 3.1, and in-memory E2E testing with **Bunest** on **Bun >= 1.4.5**.
 
 ---
 
 ## Prerequisites
 
+- **Git** (`git --version`)
 - **Bun >= 1.4.5** (`bun --version`)
 - No Node.js, Express, or Fastify required.
+
+> **Preview note:** During preview, `@bunest/*` packages are not yet published on the public npm registry. The `bunx @bunest/cli` and `bun add @bunest/*` commands below require packages to be available on npm or a configured registry; until then, run examples or link packages directly from a local clone of this repository (`git clone https://github.com/nctuanit/bunest.git && cd bunest && bun install --frozen-lockfile`).
 
 ---
 
