@@ -19,13 +19,15 @@
 import {
   dirname,
   ensureDir,
+  existsSyncPath,
   join,
+  lstatPath,
   readDirSyncNames,
+  realpathOf,
   removePath,
   resolve,
   statSyncPath,
 } from "../packages/core/src/common/index";
-import { withPublishableManifest } from "./publish-manifest";
 
 interface PkgMeta {
   name: string;
@@ -132,6 +134,64 @@ function topologicalOrder(pkgs: PkgMeta[]): PkgMeta[] {
   return ordered;
 }
 
+async function assertNoMonorepoSymlinks(
+  appDir: string,
+  expectedVersion: string,
+): Promise<number> {
+  const scopeDir = join(appDir, "node_modules", "@bunest");
+  if (!existsSyncPath(scopeDir)) {
+    throw new Error(`Missing installed @bunest scope directory: ${scopeDir}`);
+  }
+  const entries = readDirSyncNames(scopeDir);
+  if (entries.length === 0) {
+    throw new Error(`No @bunest/* packages installed in ${scopeDir}`);
+  }
+
+  const normalizedRoot = (await realpathOf(ROOT)).toLowerCase();
+  const normalizedApp = (await realpathOf(appDir)).toLowerCase();
+
+  for (const name of entries) {
+    const pkgPath = join(scopeDir, name);
+    const lstat = await lstatPath(pkgPath);
+    const real = (await realpathOf(pkgPath)).toLowerCase();
+
+    if (real.startsWith(normalizedRoot)) {
+      throw new Error(
+        `Monorepo symlink leak detected: ${pkgPath} -> ${real}`,
+      );
+    }
+    if (lstat.isSymbolicLink() && !real.startsWith(normalizedApp)) {
+      throw new Error(
+        `Unexpected external symlink for @bunest/${name}: ${pkgPath} -> ${real}`,
+      );
+    }
+
+    const pkgJson = (await Bun.file(join(pkgPath, "package.json")).json()) as {
+      name: string;
+      version: string;
+      exports?: Record<string, string | { bun?: string; import?: string }>;
+    };
+    if (pkgJson.version !== expectedVersion) {
+      throw new Error(
+        `Expected ${pkgJson.name}@${expectedVersion} in ${appDir}, found ${pkgJson.version}`,
+      );
+    }
+    const rootExport = pkgJson.exports?.["."];
+    if (
+      rootExport &&
+      typeof rootExport === "object" &&
+      typeof rootExport.bun === "string" &&
+      rootExport.bun.startsWith("./src/")
+    ) {
+      throw new Error(
+        `Installed ${pkgJson.name}@${pkgJson.version} still has raw ./src/ bun export (${rootExport.bun})`,
+      );
+    }
+  }
+
+  return entries.length;
+}
+
 async function runCmd(
   cmd: string[],
   cwd: string,
@@ -186,29 +246,52 @@ async function main(): Promise<void> {
     return;
   }
 
-  const version =
+  const corePkgJson = (await Bun.file(
+    join(PACKAGES_DIR, "core", "package.json"),
+  ).json()) as { version: string };
+  const coreVersion = corePkgJson.version;
+
+  const explicitVersion =
     typeof args.get("version") === "string"
-      ? (args.get("version") as string)
-      : ordered[0]!.version;
+      ? (args.get("version") as string).trim()
+      : undefined;
+  const version = explicitVersion ?? coreVersion;
 
   if (args.has("publish")) {
-    console.log(
-      `[staging-verify] Publishing ${ordered.length} packages in topological order to ${registry}...`,
-    );
-    for (const pkg of ordered) {
-      await withPublishableManifest(pkg.dir, () =>
-        runCmd(
-          ["bun", "publish", "--registry", registry, "--access", "public"],
-          pkg.dir,
-        ),
+    if (explicitVersion && explicitVersion !== coreVersion) {
+      throw new Error(
+        `Cannot run --publish with --version=${explicitVersion}: workspace packages/core/package.json is at ${coreVersion}. ` +
+          `Update workspace package versions to ${explicitVersion} before publishing, or omit --publish to verify an already-published version from ${registry}.`,
       );
     }
+
+    const tag =
+      typeof args.get("tag") === "string"
+        ? (args.get("tag") as string).trim()
+        : undefined;
+    console.log(
+      `[staging-verify] Delegating publish of ${ordered.length} packages @ ${version} to scripts/publish-packages.ts (registry: ${registry}${tag ? `, tag: ${tag}` : ""})...`,
+    );
+    const publishCmd = [
+      "bun",
+      "run",
+      join(ROOT, "scripts", "publish-packages.ts"),
+      `--registry=${registry}`,
+      `--expect-version=${version}`,
+      "--skip-existing",
+    ];
+    if (tag) {
+      publishCmd.push(`--tag=${tag}`);
+    }
+    await runCmd(publishCmd, ROOT);
   }
 
   const workDir = join(
     Bun.env.TMPDIR ?? Bun.env.TEMP ?? Bun.env.TMP ?? "/tmp",
     `bunest-staging-clean-${Date.now()}-${Math.floor(Math.random() * 10_000)}`,
   );
+  const cacheDir = join(workDir, "bun-cache");
+  const isolatedInstallEnv = { BUN_INSTALL_CACHE_DIR: cacheDir };
   await ensureDir(workDir);
   try {
     // 1. Clean CLI scaffold outside monorepo using ONLY staging registry
@@ -231,9 +314,10 @@ async function main(): Promise<void> {
     );
     await Bun.write(
       join(cliDir, "bunfig.toml"),
-      `[install]\nregistry = "${registry}"\n`,
+      `[install]\nregistry = "${registry}"\n\n[install.cache]\ndisable = true\n`,
     );
-    await runCmd(["bun", "install"], cliDir);
+    await runCmd(["bun", "install", "--no-cache"], cliDir, isolatedInstallEnv);
+    await assertNoMonorepoSymlinks(cliDir, version);
 
     const appDir = join(workDir, "clean-app");
     const bunestCliEntry = join(
@@ -256,15 +340,33 @@ async function main(): Promise<void> {
       ],
       workDir,
     );
+
+    // Pin exact @bunest/* versions in clean-app/package.json
+    const appPkgPath = join(appDir, "package.json");
+    const appPkg = (await Bun.file(appPkgPath).json()) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    for (const section of [appPkg.dependencies, appPkg.devDependencies]) {
+      if (!section) continue;
+      for (const dep of Object.keys(section)) {
+        if (dep.startsWith("@bunest/")) {
+          section[dep] = version;
+        }
+      }
+    }
+    await Bun.write(appPkgPath, JSON.stringify(appPkg, null, 2) + "\n");
+
     const appBunfigPath = join(appDir, "bunfig.toml");
     const existingBunfig = (await Bun.file(appBunfigPath).exists())
       ? await Bun.file(appBunfigPath).text()
       : "";
     await Bun.write(
       appBunfigPath,
-      `${existingBunfig}${existingBunfig.endsWith("\n") || existingBunfig === "" ? "" : "\n"}\n[install]\nregistry = "${registry}"\n`,
+      `${existingBunfig}${existingBunfig.endsWith("\n") || existingBunfig === "" ? "" : "\n"}\n[install]\nregistry = "${registry}"\n\n[install.cache]\ndisable = true\n`,
     );
-    await runCmd(["bun", "install"], appDir);
+    await runCmd(["bun", "install", "--no-cache"], appDir, isolatedInstallEnv);
+    await assertNoMonorepoSymlinks(appDir, version);
     await runCmd(["bun", "run", "typecheck"], appDir);
     await runCmd(["bun", "test"], appDir);
     await runCmd(["bun", "run", "build"], appDir);
@@ -283,7 +385,7 @@ async function main(): Promise<void> {
     for (const section of [prodPkg.dependencies, prodPkg.devDependencies]) {
       if (!section) continue;
       for (const [dep, val] of Object.entries(section)) {
-        if (val.startsWith("workspace:")) {
+        if (val.startsWith("workspace:") || dep.startsWith("@bunest/")) {
           section[dep] = version;
         }
       }
@@ -291,7 +393,7 @@ async function main(): Promise<void> {
     await Bun.write(prodPkgPath, JSON.stringify(prodPkg, null, 2) + "\n");
     await Bun.write(
       join(prodDir, "bunfig.toml"),
-      `[install]\nregistry = "${registry}"\n`,
+      `[install]\nregistry = "${registry}"\n\n[install.cache]\ndisable = true\n`,
     );
     await Bun.write(
       join(prodDir, "tsconfig.json"),
@@ -313,7 +415,8 @@ async function main(): Promise<void> {
         2,
       ),
     );
-    await runCmd(["bun", "install"], prodDir);
+    await runCmd(["bun", "install", "--no-cache"], prodDir, isolatedInstallEnv);
+    await assertNoMonorepoSymlinks(prodDir, version);
     await runCmd(["bun", "run", "typecheck"], prodDir);
     await runCmd(["bun", "test"], prodDir);
     await runCmd(["bun", "run", "build"], prodDir);

@@ -21,7 +21,121 @@ interface LoadOptions {
   metricsToken?: string;
   p95LimitMs: number;
   errorRateLimit: number;
+  maxRssGrowthMb: number;
+  imageTag?: string;
   outputPath?: string;
+}
+
+export interface RssSample {
+  elapsedSec: number;
+  rssMb: number;
+  lagMs: number;
+}
+
+export interface RssStabilityResult {
+  rssStable: boolean;
+  netGrowthMb: number | null;
+  monotonicGrowth: boolean;
+  maxRssGrowthMb: number;
+}
+
+export function evaluateRssStability(
+  samples: readonly RssSample[],
+  maxRssGrowthMb: number,
+): RssStabilityResult {
+  if (samples.length < 2) {
+    return {
+      rssStable: true,
+      netGrowthMb: null,
+      monotonicGrowth: false,
+      maxRssGrowthMb,
+    };
+  }
+
+  const startMb = samples[0]!.rssMb;
+  const endMb = samples[samples.length - 1]!.rssMb;
+  const netGrowthMb = Math.round((endMb - startMb) * 100) / 100;
+
+  let monotonicGrowth = false;
+  if (samples.length >= 3) {
+    monotonicGrowth = samples.every(
+      (sample, idx) => idx === 0 || sample.rssMb > samples[idx - 1]!.rssMb,
+    );
+  }
+
+  const rssStable = !monotonicGrowth && netGrowthMb <= maxRssGrowthMb;
+  return {
+    rssStable,
+    netGrowthMb,
+    monotonicGrowth,
+    maxRssGrowthMb,
+  };
+}
+
+function resolveCommitSha(): string {
+  const fromEnv = Bun.env.GIT_COMMIT_SHA?.trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const proc = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (proc.exitCode === 0) {
+      const sha = new TextDecoder().decode(proc.stdout).trim();
+      if (sha) return sha;
+    }
+  } catch {
+    // ignore if git is unavailable
+  }
+  return "unknown";
+}
+
+function detectTotalMemoryMb(): number | null {
+  try {
+    if (process.platform === "linux") {
+      const proc = Bun.spawnSync(["cat", "/proc/meminfo"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if (proc.exitCode === 0) {
+        const text = new TextDecoder().decode(proc.stdout);
+        const match = /^MemTotal:\s+(\d+)\s+kB/m.exec(text);
+        if (match) {
+          return Math.round(Number(match[1]) / 1024);
+        }
+      }
+    } else if (process.platform === "darwin") {
+      const proc = Bun.spawnSync(["sysctl", "-n", "hw.memsize"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if (proc.exitCode === 0) {
+        const bytes = Number(new TextDecoder().decode(proc.stdout).trim());
+        if (Number.isFinite(bytes) && bytes > 0) {
+          return Math.round(bytes / (1024 * 1024));
+        }
+      }
+    } else if (process.platform === "win32") {
+      const proc = Bun.spawnSync(
+        [
+          "powershell",
+          "-NoProfile",
+          "-Command",
+          "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      if (proc.exitCode === 0) {
+        const bytes = Number(new TextDecoder().decode(proc.stdout).trim());
+        if (Number.isFinite(bytes) && bytes > 0) {
+          return Math.round(bytes / (1024 * 1024));
+        }
+      }
+    }
+  } catch {
+    // ignore platform detection errors
+  }
+  return null;
 }
 
 function parseDurationMs(raw: string): number {
@@ -62,6 +176,8 @@ function parseArgs(argv: string[]): LoadOptions {
     metricsToken: map.get("metrics-token") ?? Bun.env.METRICS_TOKEN,
     p95LimitMs: Number(map.get("p95-limit-ms") ?? 200),
     errorRateLimit: Number(map.get("error-rate-limit") ?? 0.001),
+    maxRssGrowthMb: Number(map.get("max-rss-growth-mb") ?? 64),
+    imageTag: map.get("image-tag") ?? Bun.env.APP_IMAGE_TAG,
     outputPath: map.get("output"),
   };
 }
@@ -201,19 +317,25 @@ async function main(): Promise<void> {
 
   const rssStartMb = rssSamples[0]?.rssMb ?? null;
   const rssEndMb = rssSamples[rssSamples.length - 1]?.rssMb ?? null;
+  const rssCheck = evaluateRssStability(rssSamples, opts.maxRssGrowthMb);
   const maxLagMs =
     rssSamples.length > 0
       ? Math.max(...rssSamples.map((s) => s.lagMs))
       : null;
+  const commitSha = resolveCommitSha();
+  const totalMemoryMb = detectTotalMemoryMb();
 
   const report = {
     startedAt,
     finishedAt: new Date().toISOString(),
+    commitSha,
+    imageTag: opts.imageTag ?? null,
     environment: {
       bunVersion: Bun.version,
       platform: process.platform,
       arch: process.arch,
       cpus: navigator.hardwareConcurrency,
+      totalMemoryMb,
     },
     command: `bun run --cwd examples/production-rest-postgres load --url=${opts.url} --duration=${opts.durationMs}ms --concurrency=${opts.concurrency}`,
     summary: {
@@ -234,6 +356,7 @@ async function main(): Promise<void> {
       rssMb: {
         start: rssStartMb,
         end: rssEndMb,
+        netGrowthMb: rssCheck.netGrowthMb,
         samples: rssSamples,
       },
       maxEventLoopLagMs: maxLagMs,
@@ -243,6 +366,10 @@ async function main(): Promise<void> {
       p95LimitMs: opts.p95LimitMs,
       errorRateUnderLimit: error5xxRate < opts.errorRateLimit,
       errorRateLimit: opts.errorRateLimit,
+      rssStable: rssCheck.rssStable,
+      maxRssGrowthMb: opts.maxRssGrowthMb,
+      rssNetGrowthMb: rssCheck.netGrowthMb,
+      rssMonotonicGrowth: rssCheck.monotonicGrowth,
     },
   };
 
@@ -252,10 +379,16 @@ async function main(): Promise<void> {
     await Bun.write(opts.outputPath, json + "\n");
   }
 
-  if (!report.gates.p95UnderLimit || !report.gates.errorRateUnderLimit) {
+  if (
+    !report.gates.p95UnderLimit ||
+    !report.gates.errorRateUnderLimit ||
+    !report.gates.rssStable
+  ) {
     console.error("[load-test] FAILED performance/reliability gate!");
     process.exit(1);
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
