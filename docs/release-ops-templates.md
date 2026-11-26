@@ -221,7 +221,7 @@ Use for every `0.1.x` / `0.2.x` / `1.0` release to verify registry integrity on 
 
 #### 3. Security Escalation Check
 - [ ] Confirmed zero unresolved security reports outside private channels.
-- [ ] Any suspected vulnerability was escalated strictly via [`SECURITY.md`](../SECURITY.md) (GitHub Security Advisories or `security@bunest.dev`; 48h acknowledgement, 5-business-day triage, coordinated patch disclosure — never public GitHub issues).
+- [ ] Any suspected vulnerability was escalated strictly via [`SECURITY.md`](../SECURITY.md) (GitHub Security Advisories or `security@bunest.dev`, with PGP fallback; per-severity SLAs — Critical: 24h ack / 2d triage / 7d patch; High: 48h ack / 3d triage / 14d patch; Medium: 48h ack / 5d triage / 30d patch; Low: 5d ack / 10d triage / next release; up to 90-day coordinated embargo — never public GitHub issues).
 ```
 
 ---
@@ -278,12 +278,13 @@ Use at **Week 0 / Week 1** to lock capacity and staging budget inputs, and befor
 
 | Surface / Package | Security Properties to Audit | Included in `1.0` Audit? |
 | --- | --- | --- |
-| `@bunest/core` & `@bunest/http` | Routing, `bodyLimit` (`413`), malformed JSON (`400`), prototype pollution defense, `trustProxy`, CORS allowlists, production error redaction, graceful shutdown | `YES` |
+| `@bunest/core` & `@bunest/core/http` | Routing, `bodyLimit` (`413`), malformed JSON (`400`), prototype pollution defense, `trustProxy`, CORS allowlists, production error redaction, graceful shutdown | `YES` |
 | `@bunest/validation` | `ValidationPipe` defaults (`whitelist`, `forbidNonWhitelisted`, `forbidUnknownValues`), nested DTO validation, sensitive value redaction | `YES` |
 | `@bunest/orm` | PostgreSQL `Bun.SQL` query parameterization, transaction/savepoint isolation, migration safety | `YES` |
-| `@bunest/security` | WebCrypto `JwtService` (constant-time verify, `alg: "none"` & key-confusion defense), `Bun.password` (`argon2id`), `SessionCookieService`, `CsrfGuard`, `ThrottlerGuard`, `SecurityHeadersMiddleware`, `LocalStorageAdapter` path-traversal containment | `YES` |
+| `@bunest/security` | WebCrypto `JwtService` (constant-time verify, `alg: "none"` & key-confusion defense), `Bun.password` (`argon2id`), `SessionCookieService`, `CsrfGuard`, `ThrottlerGuard`, `SecurityHeadersMiddleware` | `YES` |
+| `@bunest/storage` & `@bunest/storage/local` | `LocalStorageAdapter` two-layer path-traversal containment (`assertSafeStorageKey()` rejecting `..`, `.`, null/control bytes, absolute paths, drive prefixes, and NTFS ADS) | `YES` |
 | `@bunest/observability` | Structured log secret redaction, `DevtoolsModule` production gate (`/_devtools/*` disabled in prod), `/metrics` access control | `YES` |
-| `@bunest/config` | `.env` parsing, merge safety, prototype pollution defense | `YES` |
+| `@bunest/core/config` | `.env` parsing, merge safety, prototype pollution defense | `YES` |
 | Packaging & Supply Chain | 19-package publish pipeline (`scripts/publish-packages.ts`), zero external runtime dependencies (ADR-017), reproducible lockfile/CI release workflow | `YES` |
 | Out-of-Scope / Preview Modules | `<list non-1.0 preview modules per docs/support-policy.md>` | `NO (explicitly excluded)` |
 

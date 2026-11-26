@@ -1,10 +1,11 @@
 # Bunest `0.1.x` Baseline & Readiness Report
 
 **Date:** 2026-11-26  
-**Plan Reference:** `docs/ke-hoach-phat-trien-bunest.md` (Phase 1 Tickets 1–5 & Phase 2 Weeks 3–6)  
+**Plan Reference:** [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) (Phase 1 Tickets 1–5, Phase 2 Weeks 3–6, and Phase 3 / Waves 1–4)  
 **Baseline Commit:** `790eb8786cd51ce1a382805031284406eb52989f`  
 **Phase 1 Merged Commit:** `8297204616efbce83b67f6242bebfb6113b9dec2`  
-**Phase 2 Merged Commits:** `2656677` (`docs/public-api-matrix.md`), `fbf4d54` (`.d.ts` emit & Dockerfile), `3ec57a3` (`verify:upgrade-pilots`)
+**Phase 2 Merged Commits:** `2656677` (`docs/public-api-matrix.md`), `fbf4d54` (`.d.ts` emit & Dockerfile), `3ec57a3` (`verify:upgrade-pilots`)  
+**Phase 3 / Waves 1–4 Merged Commits:** `5251812` (Waves 1–2: `8f84a1f`, `5b56b3f`, `63ff92e`, `45b0867`, `c24d802`), `8449d04` (Waves 3–4: `7e91ab6`, `cb612a1`, `5f111dc`)
 
 ---
 
@@ -116,10 +117,36 @@ All 19 `@bunest/*` tarballs (`0.1.0`, zero `workspace:*` leaks) were packed via 
 
 ---
 
-## 7. Remaining External-Infra & Human Sign-Off Items
+## 7. Phase 3 / Waves 1–4 Completions
 
-Only external infrastructure and human sign-off items remain outside this local Windows workstation:
+1. **[Wave 1A — Release & Publish Gate Hardening (`8f84a1f`)]**
+   - Updated [`.github/workflows/release.yml`](../.github/workflows/release.yml) so `release-extension` depends on `[verify, publish-npm]` and added a post-publish verification step running `scripts/publish-packages.ts --status` against `https://registry.npmjs.org`.
+   - Hardened [`scripts/publish-packages.ts`](../scripts/publish-packages.ts) with read-only `--status` (`--registry`, `--version`, `--json`), auth-aware strict HTTP status handling in `isAlreadyPublished()`, mid-loop partial-publish checkpointing with `--skip-existing` resume commands, and post-publish verification across all 19 packages; covered by [`tests/packaging/publish-packages.spec.ts`](../tests/packaging/publish-packages.spec.ts) (8/8 pass, 40 expects).
+2. **[Wave 1B — Cross-Release Tarball Upgrade Flags & Staging Verifier Fix (`c24d802`)]**
+   - Extended [`scripts/verify-upgrade-and-pilots.ts`](../scripts/verify-upgrade-and-pilots.ts) with `--from-tarballs`, `--to-tarballs`, `--from-version`, `--to-version`, and `--output` JSON evidence reporting, validating all 19 `@bunest/*` tarballs (presence, manifest name/version, integrity), backed by [`tests/packaging/verify-upgrade-cli.spec.ts`](../tests/packaging/verify-upgrade-cli.spec.ts) (9/9 pass, 141 expects).
+   - Hardened [`scripts/verify-staging-registry.ts`](../scripts/verify-staging-registry.ts) to fail fast on `--publish --version` mismatch, delegate publishing to `scripts/publish-packages.ts`, isolate install caches (`--no-cache` + `[install.cache] disable = true`), and assert zero monorepo symlinks in `node_modules/@bunest`.
+3. **[Wave 1C — CI Streak Gate, Load RSS Gate, Rollback Probes & Redis Skip Guard (`45b0867`)]**
+   - Updated [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (`cancel-in-progress` disabled on `main`, `verify:staging-plan` + `publish:dry-run` in `linux-bun-pinned`, and `if: always()` evidence summary + artifact upload in `production-postgres-smoke`).
+   - Added [`scripts/check-ci-streak.ts`](../scripts/check-ci-streak.ts) (3x consecutive Linux CI green evaluator), `evaluateRssStability` (`--max-rss-growth-mb`) + image/commit metadata in [`examples/production-rest-postgres/scripts/load-test.ts`](../examples/production-rest-postgres/scripts/load-test.ts), post-rollback `GET` (and optional `ROLLBACK_SMOKE_WRITE=1` `POST`) schema probes in [`examples/production-rest-postgres/deploy/rollback.sh`](../examples/production-rest-postgres/deploy/rollback.sh), and explicit skip warnings + `REQUIRE_REDIS=1` fail-fast enforcement in [`tests/integration/redis-fault-injection.spec.ts`](../tests/integration/redis-fault-injection.spec.ts).
+4. **[Wave 2A — Security Policy & `1.0` Independent Audit Scope (`63ff92e`)]**
+   - Updated [`SECURITY.md`](../SECURITY.md) (`Bun >= 1.4.5`, canonical 19-package names, PGP encrypted fallback, CVSS v3.1 per-severity SLA table, CVE & 90-day embargo coordination, `0.x` vs `1.0.0+` backport policy, and `1.0` RC private-finding triage/re-verification workflow).
+   - Updated [`docs/security.md`](./security.md) to document `@bunest/security/auth` and `@bunest/security/authz`, correct storage paths to `@bunest/storage` / `@bunest/storage/local`, and define the **Independent Security Review Scope (`1.0` RC)** with verified export subpaths, trust boundaries, and RC go/no-go criteria.
+5. **[Wave 2B — Release & Operations Templates (`5b56b3f`, polished in Final Polish)]**
+   - Created [`docs/release-ops-templates.md`](./release-ops-templates.md) with 4 ready-to-use templates (Weekly Status & Evidence Ledger, Pilot A/B Intake & Sign-Off Report, Release-Day / Week-1 / Month-1 Ops Checklist, and 80-person-day Capacity / Staging Cost / `1.0` Security Audit Scoping Worksheet) and linked it from [`docs/production-preview.md`](./production-preview.md).
+6. **[Waves 3A & 3B — `@bunest/jobs` & `@bunest/cache` Redis Hardening & EN/VI Docs (`5f111dc`, `7e91ab6`)]**
+   - Hardened `@bunest/jobs` with configurable idle `pollIntervalMs`, bounded exponential backoff on `pumpLoop()` failures, guarded `ack`/`nack`/`moveToDeadLetter`, `lockRenewalFailed` + `AbortSignal` propagation, Lua `cjson.empty_array_mt` stacktrace guards, `idempotencyTtlMs` + terminal pruning, `RedisQueueDriver.ping()`, real-Redis E2E + reconnect fault-injection coverage, and EN/VI `queues.md` + [`packages/jobs/README.md`](../packages/jobs/README.md) parity (45 pass, 4 Redis-env skip, 0 fail).
+   - Hardened `@bunest/cache` with fail-open `CacheService.wrap()` parity on `store.get()`/`store.set()` errors, non-throwing `RedisCacheStore.ping()` health probe, unit tests (13/13 pass), and EN/VI `caching.md` + [`packages/cache/README.md`](../packages/cache/README.md) parity.
+7. **[Wave 4 — Public API Stability Matrix & `1.0` Support/Upgrade Policy (`cb612a1`)]**
+   - Upgraded [`docs/public-api-matrix.md`](./public-api-matrix.md) across all 19 packages and 95 exports with an Ownership Key, `Guaranteed Behavior`, verified `Corresponding Docs` links, a Week 14 Contract-Diff & Deprecation Review Template, and a `1.0` API Freeze & RC Go/No-Go Checklist.
+   - Updated [`docs/support-policy.md`](./support-policy.md) with `0.2.x` and `1.0.x` runtime support rows, LTS eligibility criteria, 1:1 `SECURITY.md` SLA alignment, and Section 5 formalizing the 2-Consecutive-Version Upgrade Verification Policy with the real-published-artifact provenance rule.
 
-1. **Linux + Bun `1.4.5` CI Run:** Execute the full verification loop (`build`, `typecheck`, `ai:docs --check`, `verify:release`, `conformance:gate`, `bun test`) on Linux + Bun `1.4.5` (native POSIX `touch`/`openssl` and out-of-process `SIGTERM` drain).
-2. **Live PostgreSQL 17 & Docker Daemon Staging Drill:** Start Docker / PG 17 (or run in Linux staging) to execute `docker build` on `examples/production-rest-postgres/Dockerfile`, `examples/production-rest-postgres/scripts/smoke-postgres.ts`, backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, stable RSS), and `<5m` rolling-upgrade/rollback drill.
-3. **Human Pilot Sign-Off:** Collect external pilot team sign-off from real staging/production workloads before cutting `1.0`.
+---
+
+## 8. Remaining External-Infra & Human Sign-Off Items
+
+Only external infrastructure, live service runs, and human sign-off items remain outside this local Windows workstation:
+
+1. **Linux + Bun `1.4.5` CI Streak (3x Consecutive Green):** Execute the full verification loop (`build`, `typecheck`, `ai:docs --check`, `verify:release`, `verify:staging-plan`, `publish:dry-run`, `conformance:gate`, `bun test`) on Linux + Bun `1.4.5` (native POSIX `touch`/`openssl` and out-of-process `SIGTERM` drain) and verify 3 consecutive green runs via [`scripts/check-ci-streak.ts`](../scripts/check-ci-streak.ts).
+2. **Live PostgreSQL 17, Docker & Optional Redis Staging Drill:** Start Docker / PG 17 (and live Redis with `REQUIRE_REDIS=1` if Redis is in release scope) on Linux staging to execute `docker build` on `examples/production-rest-postgres/Dockerfile`, `examples/production-rest-postgres/scripts/smoke-postgres.ts`, backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, `rssStable` gate), and `<5m` rolling-upgrade/rollback drill with post-rollback schema probes.
+3. **Human Pilot Sign-Off & Published-Artifact Upgrades:** Collect external Pilot A / Pilot B sign-off using [`docs/release-ops-templates.md`](./release-ops-templates.md) and execute 2-consecutive-version upgrade verification against real published registry artifacts (`scripts/verify-upgrade-and-pilots.ts --from-tarballs=... --to-tarballs=...`).
+4. **Independent `1.0` Security Audit Sign-Off:** Complete the external security review scoped in [`docs/security.md`](./security.md) and [`docs/release-ops-templates.md`](./release-ops-templates.md) with zero open Critical/High findings prior to `1.0.0` GA promotion.
