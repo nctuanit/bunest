@@ -393,4 +393,138 @@ describe("publish-packages", () => {
       ).rejects.toThrow(/Post-publish verification failed.*@bunest\/b/);
     });
   });
+
+  describe("dry-run packaging validation without npm credentials", () => {
+    it("uses `bun pm pack --dry-run` inside wrapManifest when dryRun is true and keeps `bun publish` for real runs", async () => {
+      const fakePkgs: PkgMeta[] = [
+        {
+          name: "@bunest/a",
+          version: "0.1.0",
+          dir: "/tmp/a",
+          publishConfig: { access: "public" },
+        },
+        {
+          name: "@bunest/b",
+          version: "0.1.0",
+          dir: "/tmp/b",
+          publishConfig: { access: "public" },
+        },
+      ];
+
+      const dryRunCalls: Array<{ cmd: string[]; cwd: string; wrapped: boolean }> = [];
+      let inWrapper = false;
+
+      const dryResult = await runPublish({
+        packages: fakePkgs,
+        registry: "https://registry.npmjs.org",
+        version: "0.1.0",
+        distTag: "latest",
+        dryRun: true,
+        provenance: true,
+        wrapManifest: async (_dir, fn) => {
+          inWrapper = true;
+          try {
+            return await fn();
+          } finally {
+            inWrapper = false;
+          }
+        },
+        execCommand: async (cmd, cwd) => {
+          dryRunCalls.push({ cmd, cwd, wrapped: inWrapper });
+        },
+        log: () => {},
+        logError: () => {},
+      });
+
+      expect(dryResult.published).toEqual(["@bunest/a", "@bunest/b"]);
+      expect(dryRunCalls).toEqual([
+        { cmd: ["bun", "pm", "pack", "--dry-run"], cwd: "/tmp/a", wrapped: true },
+        { cmd: ["bun", "pm", "pack", "--dry-run"], cwd: "/tmp/b", wrapped: true },
+      ]);
+
+      const publishCalls: Array<{ cmd: string[]; cwd: string }> = [];
+      const server = createServer(() =>
+        Response.json({ ok: true }, { status: 200 }),
+      );
+
+      await runPublish({
+        packages: fakePkgs,
+        registry: server.url,
+        version: "0.1.0",
+        distTag: "latest",
+        dryRun: false,
+        provenance: true,
+        wrapManifest: async (_dir, fn) => fn(),
+        execCommand: async (cmd, cwd) => {
+          publishCalls.push({ cmd, cwd });
+        },
+        log: () => {},
+        logError: () => {},
+      });
+
+      expect(publishCalls).toEqual([
+        {
+          cmd: [
+            "bun",
+            "publish",
+            "--access",
+            "public",
+            "--tag",
+            "latest",
+            "--registry",
+            server.url,
+            "--provenance",
+          ],
+          cwd: "/tmp/a",
+        },
+        {
+          cmd: [
+            "bun",
+            "publish",
+            "--access",
+            "public",
+            "--tag",
+            "latest",
+            "--registry",
+            server.url,
+            "--provenance",
+          ],
+          cwd: "/tmp/b",
+        },
+      ]);
+    });
+
+    it("validates all publishable packages via `publish-packages.ts --dry-run` with zero npm auth env vars", async () => {
+      const cleanEnv: Record<string, string | undefined> = { ...Bun.env };
+      for (const key of Object.keys(cleanEnv)) {
+        if (
+          key === "NPM_TOKEN" ||
+          key === "NODE_AUTH_TOKEN" ||
+          key === "BUN_AUTH_TOKEN" ||
+          key.toUpperCase().startsWith("NPM_CONFIG_")
+        ) {
+          delete cleanEnv[key];
+        }
+      }
+
+      const proc = Bun.spawn(
+        ["bun", "run", "scripts/publish-packages.ts", "--dry-run"],
+        {
+          cwd: REPO_ROOT,
+          stdout: "pipe",
+          stderr: "pipe",
+          env: cleanEnv,
+        },
+      );
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+
+      expect(exitCode, `stderr:\n${stderr}\nstdout:\n${stdout}`).toBe(0);
+      expect(stdout).toContain("bun pm pack --dry-run");
+      expect(stdout).toContain("19 dry-run checked");
+    }, 60_000);
+  });
 });

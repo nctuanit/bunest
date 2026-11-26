@@ -405,18 +405,23 @@ export async function runPublish(
         }
       }
 
-      const cmd = [
-        "bun",
-        "publish",
-        "--access",
-        "public",
-        "--tag",
-        distTag,
-        "--registry",
-        registry,
-      ];
-      if (dryRun) cmd.push("--dry-run");
-      if (provenance && !dryRun) cmd.push("--provenance");
+      // Bun's `bun publish --dry-run` still requires npm authentication, which
+      // fails in unauthenticated CI PRs. Validate packaging via `bun pm pack --dry-run`
+      // inside `wrapManifest` so the exact publishable manifest, exports, `.d.ts`
+      // targets, `files` whitelist, and workspace:* rewrites are checked offline.
+      const cmd = dryRun
+        ? ["bun", "pm", "pack", "--dry-run"]
+        : [
+            "bun",
+            "publish",
+            "--access",
+            "public",
+            "--tag",
+            distTag,
+            "--registry",
+            registry,
+            ...(provenance ? ["--provenance"] : []),
+          ];
 
       log(`${prefix} — running: ${cmd.join(" ")}`);
       await wrapManifest(pkg.dir, () => execCommand(cmd, pkg.dir));
