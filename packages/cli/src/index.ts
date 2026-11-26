@@ -14,12 +14,38 @@ export {
   type CheckCommandResult,
 } from "./commands/check";
 export {
+  formatErrorExplainReport,
   formatRouteExplainReport,
+  runExplainErrorCommand,
   runExplainRouteCommand,
+  type ErrorExplainCategory,
+  type ErrorExplainFoundReport,
+  type ErrorExplainNotFoundReport,
+  type ErrorExplainReport,
+  type ExplainErrorCommandResult,
+  type ExplainErrorFormat,
+  type ExplainErrorOptions,
   type ExplainRouteCommandOptions,
   type ExplainRouteCommandResult,
   type ExplainRouteFormat,
 } from "./commands/explain";
+export {
+  diffRouteManifests,
+  formatRoutesDiffReport,
+  parseRouteManifestJson,
+  runRoutesDiffCommand,
+  scanProjectRoutes,
+  type RouteDiffReport,
+  type RouteDiffUnknown,
+  type RouteManifestEntry,
+  type RouteParamRenameDetail,
+  type RouteParamRenameEntry,
+  type RouteVersionChangeEntry,
+  type RoutesDiffCommandOptions,
+  type RoutesDiffCommandResult,
+  type RoutesDiffFormat,
+  type ScanProjectRoutesResult,
+} from "./commands/routes-diff";
 export {
   parseHttpFileToScenarios,
   planTestFromRequest,
@@ -80,7 +106,16 @@ export {
   type JsonRpcResponse,
   type McpServerOptions,
 } from "./commands/mcp";
-export { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
+export {
+  formatEnvironmentInfo,
+  getEnvironmentInfo,
+  resolveDeclaredBunestPackages,
+  type EnvironmentInfoFormat,
+  type ExtendedEnvironmentInfo,
+  type FormatEnvironmentInfoOptions,
+  type ResolvedPackageInfo,
+  type ResolvedPackageStatus,
+} from "./commands/info";
 export {
   AVAILABLE_BUILDERS,
   DEFAULT_CONFIGURATION,

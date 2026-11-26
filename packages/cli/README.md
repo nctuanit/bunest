@@ -40,8 +40,23 @@ bunx bunest new orders-api --preset rest-sqlite
 # Generate a CRUD resource with .http request scenarios and regression spec
 bunx bunest generate resource orders --with-scenario
 
+# Run dev server — prints the actual bound Listening URL once app.listen() succeeds (with port fallback)
+bunx bunest dev
+
+# Verify typecheck, static diagnostics, and tests; fail if a test filter matches 0 tests
+bunx bunest verify orders --require-tests --reporter=agent
+
+# Inspect Bunest environment and offline-resolved package versions (pretty or JSON)
+bunx bunest info --format json
+
 # Explain a route's owning module, pipeline, DI graph, and quick fixes
 bunx bunest explain route "POST /orders" --format json
+
+# Explain a BUNEST_E* error code directly from the terminal (same catalog as MCP)
+bunx bunest explain error BUNEST_E001 --format json
+
+# Diff current static-scanned HTTP routes against a saved base manifest
+bunx bunest routes diff --base routes-base.json --format pretty
 
 # Generate sanitized regression tests from a .http or RequestScenarioV1 JSON file
 bunx bunest test-from-request src/orders/orders.http --dry-run --format diff

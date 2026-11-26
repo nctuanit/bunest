@@ -1,3 +1,4 @@
+import { levenshteinDistance } from "./analyzer";
 import { addLibrary } from "./commands/add";
 import { buildProject } from "./commands/build";
 import { runCheckCommand } from "./commands/check";
@@ -5,15 +6,26 @@ import { runCodemodCommand, runDelombokCommand } from "./commands/codemod";
 import { deployProject } from "./commands/deploy";
 import { runDevServer } from "./commands/dev";
 import {
+  runExplainErrorCommand,
   runExplainRouteCommand,
+  type ExplainErrorFormat,
   type ExplainRouteFormat,
 } from "./commands/explain";
 import { generateSchematic } from "./commands/generate";
 import { generateRepositoryCommand } from "./commands/generate-repository";
-import { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
+import {
+  formatEnvironmentInfo,
+  getEnvironmentInfo,
+  type EnvironmentInfoFormat,
+} from "./commands/info";
 import { createProject } from "./commands/new";
 import { runMcpServer } from "./commands/mcp";
 import { runReplCommand } from "./commands/repl";
+import {
+  runRoutesDiffCommand,
+  scanProjectRoutes,
+  type RoutesDiffFormat,
+} from "./commands/routes-diff";
 import { runStartCommand } from "./commands/start";
 import {
   runTestFromRequestCommand,
@@ -114,6 +126,7 @@ Commands:
     --skip-typecheck                Skip "bun check"
     --skip-check                    Skip Bunest static diagnostics
     --skip-tests                    Skip "bun test"
+    --require-tests                 Fail when no matching tests are executed
     --strict                        Treat diagnostic warnings as failures
     --max-issues <n>                Max issues printed per step (default: 20)
     --sourceRoot <path>             Source root directory (default: src)
@@ -122,6 +135,16 @@ Commands:
     --format <pretty|json|agent>    Output format (default: pretty)
     --server-url <url>              Optional running dev server URL for runtime confirmation
     --version <ver>                 Optional route version filter (e.g. 1)
+    --sourceRoot <path>             Source root directory (default: src)
+    --tsconfig <path>               Explicit path to tsconfig.json
+    -c, --config <path>             Path to bunest.json / nest-cli.json
+
+  explain error <CODE>              Explain a BUNEST_E* error code with ordered fixes and docs link
+    --format <pretty|json|agent>    Output format (default: pretty)
+
+  routes [diff --base <manifest>]   List static-scanned HTTP routes or diff against a base JSON manifest
+    --base <manifest>               Base route manifest JSON file (required for "routes diff")
+    --format <pretty|json>          Output format (default: pretty)
     --sourceRoot <path>             Source root directory (default: src)
     --tsconfig <path>               Explicit path to tsconfig.json
     -c, --config <path>             Path to bunest.json / nest-cli.json
@@ -184,12 +207,69 @@ Commands:
     --trace-file <path>             Path to runtime error JSONL file (default: .bunest/errors.jsonl)
     --server-url <url>              Running dev server URL (e.g. http://127.0.0.1:3000)
 
-  info                              Display Bunest, Bun, OS, CPU, and RAM info
+  info                              Display Bunest, Bun, OS, CPU, RAM, and resolved package info
+    --format <pretty|json>          Output format (default: pretty)
 
 Global Options:
   -h, --help                        Show this help message
   -v, --version                     Show CLI version
 `;
+
+const KNOWN_TOP_LEVEL_COMMANDS = [
+  "new",
+  "generate",
+  "g",
+  "start",
+  "dev",
+  "typegen",
+  "tg",
+  "check",
+  "doctor",
+  "verify",
+  "explain",
+  "routes",
+  "test-from-request",
+  "delombok",
+  "expand",
+  "codemod",
+  "build",
+  "add",
+  "upgrade",
+  "update",
+  "deploy",
+  "repl",
+  "mcp",
+  "info",
+  "help",
+] as const;
+
+function suggestClosestCommand(unknown: string): string | undefined {
+  const normalized = unknown.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestMatches: string[] = [];
+
+  for (const candidate of KNOWN_TOP_LEVEL_COMMANDS) {
+    const dist = levenshteinDistance(normalized, candidate);
+    if (dist < bestDistance) {
+      bestDistance = dist;
+      bestMatches = [candidate];
+    } else if (dist === bestDistance) {
+      bestMatches.push(candidate);
+    }
+  }
+
+  if (
+    bestDistance > 0 &&
+    bestDistance <= 2 &&
+    bestDistance < normalized.length &&
+    bestMatches.length === 1
+  ) {
+    return bestMatches[0];
+  }
+  return undefined;
+}
 
 const defaultIO: CliIO = {
   stdout: (msg: string) => console.log(msg),
@@ -546,6 +626,7 @@ export async function runCli(
             skipTypecheck: getBoolFlag(flags, "skip-typecheck") ?? false,
             skipCheck: getBoolFlag(flags, "skip-check") ?? false,
             skipTests: getBoolFlag(flags, "skip-tests") ?? false,
+            requireTests: getBoolFlag(flags, "require-tests") ?? false,
             strict: getBoolFlag(flags, "strict") ?? false,
             affected: getBoolFlag(flags, "affected") ?? false,
             base: getStringFlag(flags, "base"),
@@ -562,9 +643,34 @@ export async function runCli(
 
       case "explain": {
         const subcommand = positionals[0];
+        if (subcommand === "error") {
+          const code = positionals[1] ?? "";
+          const fmtRaw = getStringFlag(flags, "format");
+          if (
+            fmtRaw !== undefined &&
+            fmtRaw !== "pretty" &&
+            fmtRaw !== "json" &&
+            fmtRaw !== "agent"
+          ) {
+            io.stderr(
+              `Invalid --format "${fmtRaw}". Expected one of: pretty, json, agent.`,
+            );
+            return { exitCode: 1 };
+          }
+          const format: ExplainErrorFormat | undefined = fmtRaw;
+          const result = await runExplainErrorCommand(
+            {
+              code,
+              format,
+              silent: getBoolFlag(flags, "silent") ?? false,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
         if (subcommand !== "route") {
           io.stderr(
-            'Missing or unknown explain subcommand.\nUsage: bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]',
+            'Missing or unknown explain subcommand.\nUsage:\n  bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]\n  bunest explain error <CODE> [--format pretty|json|agent]',
           );
           return { exitCode: 1 };
         }
@@ -603,6 +709,70 @@ export async function runCli(
           io,
         );
         return { exitCode: result.exitCode, output: result };
+      }
+
+      case "routes": {
+        const subcommand = positionals[0];
+        const fmtRaw = getStringFlag(flags, "format");
+        if (fmtRaw !== undefined && fmtRaw !== "pretty" && fmtRaw !== "json") {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const format: RoutesDiffFormat = fmtRaw ?? "pretty";
+
+        if (subcommand === "diff") {
+          const base = getStringFlag(flags, "base");
+          if (!base) {
+            io.stderr(
+              "Missing required flag: --base <manifest>.\nUsage: bunest routes diff --base <manifest> [--format pretty|json] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>]",
+            );
+            return { exitCode: 1 };
+          }
+          const result = await runRoutesDiffCommand(
+            {
+              base,
+              cwd: io.cwd,
+              sourceRoot: getStringFlag(flags, "sourceRoot"),
+              tsconfig: getStringFlag(flags, "tsconfig"),
+              config: getStringFlag(flags, "config"),
+              format,
+              silent: getBoolFlag(flags, "silent") ?? false,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
+        if (subcommand !== undefined) {
+          io.stderr(
+            `Unknown routes subcommand "${subcommand}".\nUsage:\n  bunest routes [--format pretty|json] [--sourceRoot <dir>]\n  bunest routes diff --base <manifest> [--format pretty|json] [--sourceRoot <dir>]`,
+          );
+          return { exitCode: 1 };
+        }
+
+        const scanned = await scanProjectRoutes({
+          cwd: io.cwd,
+          sourceRoot: getStringFlag(flags, "sourceRoot"),
+          tsconfig: getStringFlag(flags, "tsconfig"),
+          config: getStringFlag(flags, "config"),
+        });
+        const formatted =
+          format === "json"
+            ? JSON.stringify(scanned, null, 2)
+            : scanned.routes.length === 0
+              ? "No HTTP routes found."
+              : scanned.routes
+                  .map(
+                    (r) =>
+                      `${r.method.padEnd(7)} ${r.path}${r.version ? ` (v${r.version})` : ""}`,
+                  )
+                  .join("\n");
+        if (!getBoolFlag(flags, "silent")) {
+          io.stdout(formatted);
+        }
+        return { exitCode: 0, output: scanned };
       }
 
       case "test-from-request": {
@@ -827,15 +997,30 @@ export async function runCli(
       }
 
       case "info": {
+        const fmtRaw = getStringFlag(flags, "format");
+        if (fmtRaw !== undefined && fmtRaw !== "pretty" && fmtRaw !== "json") {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const format: EnvironmentInfoFormat | undefined = fmtRaw;
         const info = getEnvironmentInfo(io.cwd ?? process.cwd());
-        io.stdout(formatEnvironmentInfo(info));
+        io.stdout(formatEnvironmentInfo(info, format ? { format } : undefined));
         return { exitCode: 0, output: info };
       }
 
       default: {
-        io.stderr(
-          `Unknown command "${command}". Run "bunest --help" to see available commands.`,
-        );
+        const suggestion = suggestClosestCommand(command);
+        if (suggestion) {
+          io.stderr(
+            `Unknown command "${command}". Did you mean "bunest ${suggestion}"?`,
+          );
+        } else {
+          io.stderr(
+            `Unknown command "${command}". Run "bunest --help" to see available commands.`,
+          );
+        }
         return { exitCode: 1 };
       }
     }

@@ -6,6 +6,7 @@ const BOOLEAN_FLAGS = new Set([
   "skip-typecheck",
   "skip-check",
   "skip-tests",
+  "require-tests",
   "version",
   "skip-install",
   "skip-git",
