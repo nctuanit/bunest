@@ -31,7 +31,7 @@ Bunest follows a phased, gate-driven roadmap prioritizing **correctness, strict 
 
 ## 3. Production Support Scope (Per-Module Stability Tiers)
 
-All 19 packages ship in lockstep under `0.1.x` with full unit and conformance test coverage, but **production readiness is declared per module** based on real-infrastructure integration and fault-injection tests (see `docs/support-policy.md`, `docs/public-api-matrix.md`, and `docs/production-preview.md` in the repository):
+All 19 packages ship in lockstep under `0.1.x` with full unit and conformance test coverage, but **production readiness is declared per module** based on real-infrastructure integration and fault-injection tests (see `docs/support-policy.md`, `docs/public-api-matrix.md`, `docs/production-preview.md` in the repository, and [Deployment & Production](/recipes/deployment)):
 
 | Stability Tier | Packages / Scope | Qualification Criteria |
 | --- | --- | --- |
@@ -82,13 +82,13 @@ All phases below are **implemented in the `0.1.0` monorepo** across the 19 `@bun
 
 ## 5. Historical Pre-Consolidation Milestones
 
-Earlier repository documents and `CHANGELOG.md` entries reference internal pre-release milestones (`v0.1`, `v0.2`, `v0.5`, `v0.8`) and larger workspace package counts (**22 → 53 → 35/37 packages**). Those were **internal pre-release implementation stages**, not separately published npm versions:
+Earlier repository documents and `CHANGELOG.md` entries reference internal pre-release milestones (`v0.1`, `v0.2`, `v0.5`, `v0.8`) and larger pre-consolidation workspace layouts (**22 → 53 → 35/37** packages before `ADR-016`). Those were **historical internal implementation stages**, never separately published npm tags or release lines:
 
-| Historical Label | What It Represented | Current Equivalent in `0.1.0` |
-| --- | --- | --- |
-| **Internal `v0.1` / `v0.2`** | Initial 22-package foundation + NestJS v12 parity (`DiscoveryService`, API Versioning, `RouterModule`, Durable DI, `StandardSchemaV1`, etc.) | Consolidated into `@bunest/core`, `@bunest/validation`, and core ecosystem packages |
-| **Internal `v0.5` (53 → 35/37 pkgs)** | Full NestJS v12 ecosystem expansion (53 packages including thin `@nestjs/*` facades, later trimmed to 35/37 packages) | Consolidated via `ADR-016` into **19 domain packages** with tree-shakeable ESM subpaths (`@bunest/core/*`, `@bunest/security/*`, `@bunest/messaging/*`, `@bunest/jobs/*`, `@bunest/resilience/*`, `@bunest/orm/*`, `@bunest/ai/*`) |
-| **Internal `v0.8`** | Service-layer AOP (`ADR-014`), `@bunest/orm` declarative repositories, zero-dep validation (`ADR-015`), and 19/19 zero external runtime deps (`ADR-017`) | Shipped as the baseline of **`0.1.0 Production Preview`** |
+| Historical Label | Released npm Tag? | What It Represented | Current Equivalent in `0.1.0` |
+| --- | --- | --- | --- |
+| **Internal `v0.1` / `v0.2`** | No (internal stage) | Initial 22-package foundation + NestJS v12 parity (`DiscoveryService`, API Versioning, `RouterModule`, Durable DI, `StandardSchemaV1`, etc.) | Consolidated into `@bunest/core`, `@bunest/validation`, and core ecosystem packages |
+| **Internal `v0.5` (53 → 35/37 pkgs)** | No (internal stage) | Full NestJS v12 ecosystem expansion (53 packages including thin `@nestjs/*` facades, later trimmed to 35/37 before `ADR-016`) | Consolidated via `ADR-016` into **19 domain packages** with tree-shakeable ESM subpaths (`@bunest/core/*`, `@bunest/security/*`, `@bunest/messaging/*`, `@bunest/jobs/*`, `@bunest/resilience/*`, `@bunest/orm/*`, `@bunest/ai/*`) |
+| **Internal `v0.8`** | No (internal stage) | Service-layer AOP (`ADR-014`), `@bunest/orm` declarative repositories, zero-dep validation (`ADR-015`), and 19/19 zero external runtime deps (`ADR-017`) | Shipped as the baseline of **`0.1.0 Production Preview`** |
 
 ---
 

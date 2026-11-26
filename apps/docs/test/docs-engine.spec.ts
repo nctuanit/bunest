@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { join, removePath } from "@bunest/core";
+import { dirname, join, removePath } from "@bunest/core";
 import { buildStaticSite } from "../src/build";
-import { loadAllDocs } from "../src/content-loader";
+import { DOCS_ROOT, loadAllDocs } from "../src/content-loader";
 import { renderMarkdown } from "../src/markdown";
 import { ALL_PAGES, findPageBySlug } from "../src/navigation";
 import { createDocsServer } from "../src/server";
@@ -295,6 +295,230 @@ describe("@bunest/docs engine", () => {
       expect(viSearch.status).toBe(200);
     } finally {
       server.stop(true);
+    }
+  });
+
+  test("EN and VI ecosystem/roadmap.md match canonical version, package count, Bun minimum, and have no stale claims", async () => {
+    const repoRoot = dirname(dirname(DOCS_ROOT));
+    const corePkg = (await Bun.file(
+      join(repoRoot, "packages", "core", "package.json"),
+    ).json()) as { version: string; engines?: { bun?: string } };
+
+    const canonicalVersion = corePkg.version;
+    const canonicalBunMin = (corePkg.engines?.bun ?? "").replace(/^>=\s*/, "");
+    expect(canonicalVersion).toBe("0.1.0");
+    expect(canonicalBunMin).toBe("1.4.5");
+
+    const pkgGlob = new Bun.Glob("packages/*/package.json");
+    const workspaceVersions: string[] = [];
+    for await (const relPath of pkgGlob.scan(repoRoot)) {
+      const pkg = (await Bun.file(join(repoRoot, relPath)).json()) as {
+        version: string;
+      };
+      workspaceVersions.push(pkg.version);
+    }
+    const canonicalPkgCount = workspaceVersions.length;
+    expect(canonicalPkgCount).toBe(19);
+    expect(workspaceVersions.every((v) => v === canonicalVersion)).toBe(true);
+
+    const enRoadmap = await Bun.file(
+      join(DOCS_ROOT, "content", "ecosystem", "roadmap.md"),
+    ).text();
+    const viRoadmap = await Bun.file(
+      join(DOCS_ROOT, "content-vi", "ecosystem", "roadmap.md"),
+    ).text();
+
+    const extractInternalLinks = (md: string): string[] =>
+      [...md.matchAll(/\[[^\]]+\]\((\/[^)#?\s]+)/g)]
+        .map((m) => m[1]!)
+        .sort();
+
+    for (const [label, md] of [
+      ["EN", enRoadmap],
+      ["VI", viRoadmap],
+    ] as const) {
+      expect(md, `${label} roadmap missing canonical version`).toContain(
+        canonicalVersion,
+      );
+      expect(md, `${label} roadmap missing canonical package count`).toContain(
+        String(canonicalPkgCount),
+      );
+      expect(md, `${label} roadmap missing canonical Bun minimum`).toContain(
+        canonicalBunMin,
+      );
+      expect(md, `${label} roadmap missing Production Preview scope`).toContain(
+        "@bunest/core",
+      );
+      expect(md).toContain("@bunest/validation");
+      expect(md).toContain("@bunest/orm");
+      expect(md).toContain("PostgreSQL");
+      expect(md).toContain("@bunest/observability");
+
+      // Current release/status sections (before Section 5 Historical Milestones) must never cite stale 35 packages or v0.8
+      const beforeHistory = md.split(/^## 5\./m)[0] ?? md;
+      expect(beforeHistory).not.toMatch(/\b35\s+packages?\b/i);
+      expect(beforeHistory).not.toMatch(/\bv0\.8\b/i);
+
+      // Nowhere in roadmap may v0.8 be claimed as released or completed
+      expect(md).not.toMatch(
+        /v0\.8[^\n]*(released|completed|done|hoàn thành|đã phát hành)/i,
+      );
+      expect(md).not.toMatch(
+        /(released|completed|done|hoàn thành|đã phát hành)[^\n]*v0\.8/i,
+      );
+    }
+
+    expect(extractInternalLinks(viRoadmap)).toEqual(
+      extractInternalLinks(enRoadmap),
+    );
+  });
+
+  test("EN and VI introduction.md each have a single H1, quickstart CTA, and @Get('/health') snippet", async () => {
+    const extractH1s = (md: string): string[] => {
+      const h1s: string[] = [];
+      let inFence = false;
+      for (const line of md.split(/\r?\n/)) {
+        if (line.trim().startsWith("```")) {
+          inFence = !inFence;
+          continue;
+        }
+        if (!inFence && /^#\s+/.test(line)) {
+          h1s.push(line.trim());
+        }
+      }
+      return h1s;
+    };
+
+    const enIntro = await Bun.file(
+      join(DOCS_ROOT, "content", "introduction.md"),
+    ).text();
+    const viIntro = await Bun.file(
+      join(DOCS_ROOT, "content-vi", "introduction.md"),
+    ).text();
+
+    expect(extractH1s(enIntro)).toEqual([
+      "# Build a TypeScript REST API on Bun",
+    ]);
+    expect(extractH1s(viIntro)).toEqual([
+      "# Viết REST API bằng TypeScript trên Bun",
+    ]);
+
+    expect(enIntro).toContain("Run your first API");
+    expect(enIntro).toContain("(/overview/first-steps)");
+    expect(viIntro).toContain("Chạy API đầu tiên");
+    expect(viIntro).toContain("(/overview/first-steps)");
+
+    for (const md of [enIntro, viIntro]) {
+      expect(md).toContain('@Get("/health")');
+      expect(md).toContain('{ status: "ok" }');
+      expect(md).toContain("curl http://localhost:3000/health");
+      expect(md).toContain('{"status":"ok"}');
+      expect(md).toContain("(/architecture/migration-from-nestjs)");
+      expect(md).toContain("(/architecture/execution-pipeline)");
+      expect(md).toContain("(/architecture/adrs)");
+      expect(md).toContain("(/ecosystem/roadmap)");
+    }
+  });
+
+  test("all 6 key EN/VI pages render cleanly under DOCS_BASE_PATH=/bunest with prefixed assets/links and roadmap lang toggle", async () => {
+    const tmpDir = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+    const outDir = join(
+      tmpDir,
+      `bunest-docs-key-pages-${Date.now()}-${crypto.randomUUID()}`,
+    );
+    try {
+      await buildStaticSite({
+        basePath: "/bunest",
+        outDir,
+      });
+
+      const keyPages = [
+        {
+          file: join(outDir, "index.html"),
+          lang: "en",
+          expectedPrefix: "/bunest/",
+        },
+        {
+          file: join(outDir, "overview", "first-steps", "index.html"),
+          lang: "en",
+          expectedPrefix: "/bunest/",
+        },
+        {
+          file: join(outDir, "ecosystem", "roadmap", "index.html"),
+          lang: "en",
+          expectedPrefix: "/bunest/",
+        },
+        {
+          file: join(outDir, "vi", "index.html"),
+          lang: "vi",
+          expectedPrefix: "/bunest/vi/",
+        },
+        {
+          file: join(outDir, "vi", "overview", "first-steps", "index.html"),
+          lang: "vi",
+          expectedPrefix: "/bunest/vi/",
+        },
+        {
+          file: join(outDir, "vi", "ecosystem", "roadmap", "index.html"),
+          lang: "vi",
+          expectedPrefix: "/bunest/vi/",
+        },
+      ] as const;
+
+      for (const entry of keyPages) {
+        expect(await Bun.file(entry.file).exists(), entry.file).toBe(true);
+        const html = await Bun.file(entry.file).text();
+        expect(html).toContain('data-base-path="/bunest"');
+        expect(html).toContain(`data-lang="${entry.lang}"`);
+        expect(html).toContain('href="/bunest/assets/styles.css"');
+        expect(html).toContain('src="/bunest/assets/client.js"');
+
+        // Every internal SPA link on the page must carry the /bunest (or /bunest/vi) prefix
+        const spaLinks = [
+          ...html.matchAll(/href="([^"]+)"[^>]*data-spa-link/g),
+        ].map((m) => m[1]!);
+        expect(spaLinks.length).toBeGreaterThan(5);
+        for (const href of spaLinks) {
+          expect(
+            href.startsWith(entry.expectedPrefix),
+            `Unprefixed SPA link ${href} in ${entry.file}`,
+          ).toBe(true);
+        }
+      }
+
+      // Homepage CTAs point to the localized first-steps page under /bunest
+      const enHome = await Bun.file(join(outDir, "index.html")).text();
+      expect(enHome).toContain("Build a TypeScript REST API on Bun");
+      expect(enHome).toContain('href="/bunest/overview/first-steps"');
+      expect(enHome).toContain("Run your first API");
+
+      const viHome = await Bun.file(join(outDir, "vi", "index.html")).text();
+      expect(viHome).toContain("Viết REST API bằng TypeScript trên Bun");
+      expect(viHome).toContain('href="/bunest/vi/overview/first-steps"');
+      expect(viHome).toContain("Chạy API đầu tiên");
+
+      // Language toggle on both EN & VI roadmap pages preserves /ecosystem/roadmap
+      const enRoadmapHtml = await Bun.file(
+        join(outDir, "ecosystem", "roadmap", "index.html"),
+      ).text();
+      expect(enRoadmapHtml).toMatch(
+        /<a\b[^>]*\bid="bn-lang-en"[^>]*\bhref="\/bunest\/ecosystem\/roadmap"/,
+      );
+      expect(enRoadmapHtml).toMatch(
+        /<a\b[^>]*\bid="bn-lang-vi"[^>]*\bhref="\/bunest\/vi\/ecosystem\/roadmap"/,
+      );
+
+      const viRoadmapHtml = await Bun.file(
+        join(outDir, "vi", "ecosystem", "roadmap", "index.html"),
+      ).text();
+      expect(viRoadmapHtml).toMatch(
+        /<a\b[^>]*\bid="bn-lang-en"[^>]*\bhref="\/bunest\/ecosystem\/roadmap"/,
+      );
+      expect(viRoadmapHtml).toMatch(
+        /<a\b[^>]*\bid="bn-lang-vi"[^>]*\bhref="\/bunest\/vi\/ecosystem\/roadmap"/,
+      );
+    } finally {
+      await removePath(outDir, { recursive: true, force: true });
     }
   });
 });

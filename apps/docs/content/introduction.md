@@ -1,91 +1,66 @@
-# Introduction
+# Build a TypeScript REST API on Bun
 
-**Bunest** is a progressive TypeScript framework for building fast, modular, maintainable server-side applications directly on **Bun**.
+**Bunest** gives TypeScript backend teams NestJS-style `@Controller()` routing, strict constructor dependency injection, and secure-by-default DTO validation directly on **Bun** (`>= 1.4.5`)—with zero Express, Fastify, or RxJS overhead.
+
+**[Run your first API ->](/overview/first-steps)**
+
+The snippet below is a **controller excerpt** from `examples/hello-world/src/app.module.ts`, using the exact `/health` endpoint you will boot and verify in [First steps](/overview/first-steps):
+
+@@filename(examples/hello-world/src/app.module.ts)
+
+```ts
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(@Query("name") name?: string) {
+    return this.appService.getGreeting(name);
+  }
+
+  @Get("/health")
+  getHealth() {
+    return { status: "ok" };
+  }
+}
+```
+
+```bash
+curl http://localhost:3000/health
+```
+
+```json
+{"status":"ok"}
+```
+
+## Choose your next reading path
+
+- **[Coming from NestJS](/architecture/migration-from-nestjs)** — See what maps 1:1 (`@Module()`, `@Controller()`, `@Injectable()`, guards, pipes, filters) and what changes on Bun (native `Bun.serve()`, Promise interceptors instead of RxJS, and consolidated `@bunest/*` packages).
+- **[How a request flows through the framework](/architecture/execution-pipeline)** — Inspect the 11-stage HTTP execution pipeline compiled once at bootstrap into native `Bun.serve({ routes })` closures with zero per-request reflection.
+
+## At a glance
 
 @@component(hero-cards)
 
-## Philosophy
+## Pipeline & Architecture
 
-In the Bun ecosystem, developers often face a trade-off: raw `Bun.serve()` and lightweight routers deliver tremendous speed, while enterprise applications need an out-of-the-box architecture for dependency injection, module encapsulation, DTO validation, guards, interceptors, centralized error handling, persistence, security, messaging, AI, and observability.
+- **[11-Stage Execution Pipeline](/architecture/execution-pipeline)** — Normative request lifecycle from route matching through middleware, guards, Promise onion interceptors, parameter extraction, validation pipes, handler execution, response serialization, and exception filters.
+- **[Hybrid Bun.serve Router](/architecture/hybrid-router)** — How controllers compile into native `Bun.serve({ routes })` Zig closures plus a controlled fallback radix router with fail-fast duplicate route detection.
+- **[Response Serialization](/architecture/response-serialization)** — Native Web `Response` passthrough, zero-copy `Bun.file()`, SSE streams, and RFC 9110 empty-body enforcement.
+- **[Secure-by-Default Validation](/techniques/validation)** — `ValidationPipe` defaults to `whitelist: true`, `forbidNonWhitelisted: true`, prototype-pollution rejection, and Standard Schema support.
 
-**Bunest bridges both worlds.** It brings the proven **NestJS v12 architectural model**—`@Module()`, `@Controller()`, `@Injectable()`, parameter decorators, guards, pipes, interceptors, exception filters, and a consolidated **19-package, 6-domain ecosystem**—directly onto Bun's native runtime without Express, Fastify, Node HTTP shims, or mandatory RxJS overhead.
+## Architecture Decision Records (ADRs)
 
-> info **Architectural Contract** Bunest is **Bun-only** (`Bun >= 1.4.5`, [ADR-001 & ADR-016](/architecture/adrs)). Core packages operate directly on Web Standards (`Request`, `Response`, `Headers`, `ReadableStream`, `Blob`, WebCrypto) and native Bun primitives (`Bun.serve`, `Bun.file`, `Bun.S3Client`, `Bun.RedisClient`, `Bun.password`, `Bun.Cookie`, `Bun.CSRF`, `Bun.CryptoHasher`, `bun:sqlite`, `Bun.SQL`, `bun:test`, `Bun.build`).
+> info **Architectural Contract** Bunest is **Bun-only** (`Bun >= 1.4.5`, [ADR-001 through ADR-018](/architecture/adrs)). Core packages run directly on Web Standards (`Request`, `Response`, `Headers`, `ReadableStream`, WebCrypto) and native Bun primitives (`Bun.serve`, `Bun.SQL`, `bun:sqlite`, `Bun.file`, `Bun.password`, `bun:test`) with **zero external runtime dependencies** across all 19 packages (`ADR-017`).
 
-## A Quick Taste
+Browse the full [ADR & RFC Index](/architecture/adrs) to review binding design contracts for legacy decorators (`ADR-002`), compile-at-bootstrap routing (`ADR-011`), strict scope-leak prevention (`ADR-012`), Service-Layer AOP (`ADR-014`), and the 6-domain package consolidation (`ADR-016`).
 
-If you have used NestJS before, Bunest feels immediately familiar—yet every route compiles once at bootstrap into native `Bun.serve({ routes })` closures with **zero per-request reflection**:
+## Benchmarks
 
-@@filename(users.controller.ts)
+Bunest never publishes unverified _"X times faster"_ claims. Every published result follows the reproducible 8-target head-to-head methodology (disclosing exact Bun version, OS, hardware, concurrency, latency `p50`/`p95`/`p99`, RSS, and error rates) documented in the [Benchmark Integrity Policy](/ecosystem/roadmap).
 
-```ts
-import { Body, Controller, Get, Param, Post, Query } from "@bunest/core";
-import { CreateUserDto } from "./create-user.dto";
-import { UsersService } from "./users.service";
+## Support Policy & Ecosystem
 
-@Controller("/users")
-export class UsersController {
-  constructor(private readonly users: UsersService) {}
-
-  @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.users.findOne(id);
-  }
-
-  @Post()
-  create(@Body() dto: CreateUserDto, @Query("notify") notify?: string) {
-    return this.users.create(dto, notify === "true");
-  }
-}
-```
-
-And with **Service-Layer AOP & Declarative Repositories**, cross-cutting concerns on `@Injectable()` services require zero boilerplate:
-
-@@filename(billing.service.ts)
-
-```ts
-import { Injectable } from "@bunest/core";
-import { Cacheable, CacheEvict } from "@bunest/cache";
-import { EmitEvent } from "@bunest/messaging/events";
-import { Retry } from "@bunest/resilience";
-import { WithLock } from "@bunest/resilience/locks";
-import { Span, Timed } from "@bunest/observability";
-import { Transactional } from "@bunest/orm";
-
-@Injectable()
-export class BillingService {
-  constructor(private readonly users: UserRepository) {}
-
-  @Span("users.lookup")
-  @Cacheable({ key: (email: string) => `user:${email}`, ttl: 60_000 })
-  findByEmail(email: string) {
-    return this.users.findByEmail(email);
-  }
-
-  @Timed("users.provision")
-  @WithLock((email: string) => `provision:${email}`, { ttl: 5_000 })
-  @Transactional()
-  @CacheEvict({ key: (email: string) => `user:${email}` })
-  @EmitEvent("user.provisioned", { async: true })
-  @Retry({ maxAttempts: 3 })
-  async provision(email: string, role: string) {
-    return this.users.save({ email, role, active: true });
-  }
-}
-```
-
-## Core Design Principles
-
-1. **Bun-native runtime** — No `express`, `fastify`, or `node:http` adapters in core. Zero-copy `Bun.file()`, native `Response` passthrough, and `Bun.serve({ routes })` Zig routing out of the box.
-2. **Legacy TypeScript decorators** — Uses `experimentalDecorators: true` and `emitDecoratorMetadata: true` so constructor DI, parameter decorators, and `@bunest/validation` (plus upstream `class-validator` + `class-transformer`) DTOs work seamlessly without custom AST plugins.
-3. **Compile-at-bootstrap execution** — Module scanning, DI graph validation, route collision detection, scope-leak detection, declarative repository SQL compilation, and execution plan compilation run **once at startup**. Hot paths perform zero `Reflect.getMetadata()` calls.
-4. **Strict fail-fast guarantees** — Duplicate routes (even renamed params like `/users/:id` vs `/users/:userId`), missing providers, ambiguous exports, dependency cycles, and singleton-to-request scope leaks all fail fast before `Bun.serve()` binds a port.
-5. **Secure defaults** — `ValidationPipe` defaults to `whitelist: true`, `forbidNonWhitelisted: true`, `forbidUnknownValues: true`, prototype-pollution rejection, Fetch-Metadata CSRF, Helmet-8 headers, WebCrypto JWT/JWKS, and a normalized JSON error envelope that never leaks stack traces in production.
-6. **Consolidated 19-package, 6-domain, 100% zero-dep ecosystem** — From core HTTP/DI/Config/WS/I18n (with built-in Reflect metadata shim) and zero-dep native validation to unified Bun-native `@bunest/orm` (12 dialects + SQL Store Kit), zero-dep GraphQL Oct 2021 / Apollo engine, zero-dep native TS AST CLI, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP, and Observability—with **19/19 packages (100%) having zero external npm runtime dependencies** and **0 `node:*` imports repo-wide** outside the 2 quarantined kernel adapters in `@bunest/core`.
-
-## Prerequisites
-
-- **Bun** `>= 1.4.5` installed on your machine
-- **TypeScript** with legacy decorator emission enabled (`experimentalDecorators` + `emitDecoratorMetadata`)
-
-Ready to build your first Bunest application? Head straight to [First steps](/overview/first-steps) or explore all 19 packages in [Packages & Monorepo](/ecosystem/packages).
+- **Current Release:** **`0.1.0` Production Preview** across all **19 lockstep `@bunest/*` packages** targeting **Bun `>= 1.4.5`**.
+- **Production Preview Scope:** Linux + Bun `1.4.5` REST APIs with `@bunest/core`, `@bunest/validation`, `@bunest/orm` (PostgreSQL via `Bun.SQL`, explicit migrations), and `@bunest/observability`.
+- **Explore further:** Read the [Implementation Roadmap & Support Scope](/ecosystem/roadmap), browse all 19 packages in [Packages & Monorepo](/ecosystem/packages), or review production operations in [Deployment & Production](/recipes/deployment).
