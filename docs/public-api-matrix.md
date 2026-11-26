@@ -248,7 +248,7 @@ Every stability tier below is aligned 1:1 with [`docs/support-policy.md`](./supp
 3. **Grace Period**:
    - In **`0.1.x` → `0.2.x`**: Production Preview exports receive at least one patch/minor notice and a written migration path before removal or signature change; any core contract change requires an ADR in `docs/adr/`.
    - In **`1.0.0+`**: Deprecated Stable exports remain functional for **at least one minor release** (or **6 months** on LTS lines) before removal in the next major release (`2.0.0+`).
-4. **Upgrade Verification**: Every release candidate in `0.1.x`, `0.2.x`, and `1.0.0-rc` is verified by upgrading an out-of-monorepo pilot application across consecutive versions (see Week 5 & Section 6 of [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md)).
+4. **Upgrade Verification**: Every release candidate in `0.1.x`, `0.2.x`, and `1.0.0-rc` is verified by upgrading an out-of-monorepo pilot application across consecutive versions (see [`docs/production-preview.md`](./production-preview.md) and [`docs/support-policy.md`](./support-policy.md)).
 
 ### 4.3 Module Promotion Gate (`Preview` → `Beta` → `Production Preview` / `1.0 Stable`)
 
