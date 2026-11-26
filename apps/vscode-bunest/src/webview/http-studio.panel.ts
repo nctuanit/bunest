@@ -1,3 +1,4 @@
+import { existsSyncPath, resolve } from "@bunest/core";
 import * as vscode from "vscode";
 import type { ExtractedRouteEntry } from "@bunest/cli";
 import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
@@ -7,6 +8,16 @@ import {
   parseDtoFields,
   type ExtractedRouteSchema,
 } from "./route-schema-extractor";
+import {
+  BUNEST_PREVIEW_SCHEME,
+  buildPlannedFilesWorkspaceEdit,
+  bunestPreviewProvider,
+  extractCandidateResponseFields,
+  isBinaryOrStreamContentType,
+  planHttpExchangeAsTest,
+  readExistingFileMap,
+  type HttpStudioExchange,
+} from "./save-as-test";
 
 export interface HttpHistoryEntry {
   readonly id: string;
@@ -563,6 +574,7 @@ function buildStudioHtml(payload: {
           <span id="resTime" class="stat"></span>
           <span id="resSize" class="stat"></span>
           <span id="resExpected" class="stat" style="margin-left:auto;"></span>
+          <button id="saveAsTestBtn" class="secondary" style="display:none;" onclick="saveAsTest()">🧪 Save as Test</button>
           <button class="secondary" onclick="copyResBody()">Copy Body</button>
           <button class="secondary" onclick="copyCurl()">Copy cURL</button>
         </div>
@@ -969,11 +981,13 @@ function buildStudioHtml(payload: {
         body: document.getElementById("rawBody").value,
         bearerToken: authType === "bearer" ? authVal : "",
         headers: hdrs,
+        selectedKey: currentSchema ? currentSchema.key : undefined,
       });
     }
 
     function copyResBody() { vscode.postMessage({ type: "copy", text: lastRawBody, label: "response body" }); }
     function copyCurl() { vscode.postMessage({ type: "copy", text: lastCurl, label: "cURL command" }); }
+    function saveAsTest() { vscode.postMessage({ type: "saveAsTest" }); }
     function useDetectedToken() {
       document.getElementById("authType").value = "bearer";
       renderAuthFields();
@@ -1004,7 +1018,13 @@ function buildStudioHtml(payload: {
 
       lastRawBody = msg.body || "";
       lastCurl = msg.curl || "";
-      document.getElementById("resPretty").innerHTML = highlightJson(lastRawBody);
+      const saveBtn = document.getElementById("saveAsTestBtn");
+      if (saveBtn) {
+        saveBtn.style.display = msg.error ? "none" : "inline-flex";
+      }
+      document.getElementById("resPretty").innerHTML = msg.isBinaryOrStream
+        ? esc(lastRawBody)
+        : highlightJson(lastRawBody);
       document.getElementById("resCurl").textContent = lastCurl;
       const hdrs = msg.headers || [];
       document.getElementById("cntResHeaders").textContent = String(hdrs.length);
@@ -1042,9 +1062,54 @@ function buildStudioHtml(payload: {
 </html>`;
 }
 
+async function readStreamBounded(
+  res: Response,
+  maxBytes = 65536,
+): Promise<{ readonly bytes: Uint8Array; readonly truncated: boolean }> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    return { bytes: buf, truncated: false };
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        const remaining = maxBytes - total;
+        if (value.byteLength > remaining) {
+          chunks.push(value.subarray(0, remaining));
+          total += remaining;
+          truncated = true;
+          break;
+        }
+        chunks.push(value);
+        total += value.byteLength;
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore stream cancel errors
+    }
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
+  }
+  return { bytes: merged, truncated };
+}
+
 export class BunestHttpStudioPanel {
   private static current: vscode.WebviewPanel | undefined;
   private static listener: vscode.Disposable | undefined;
+  private static lastExchange: HttpStudioExchange | undefined;
 
   static open(
     index: BunestWorkspaceIndex,
@@ -1067,6 +1132,10 @@ export class BunestHttpStudioPanel {
     const allRoutes = index
       .getAllSnapshots()
       .flatMap((s) => s.scan.routes);
+    const routeByKey = new Map<string, ExtractedRouteEntry>();
+    for (const r of allRoutes) {
+      routeByKey.set(r.key, r);
+    }
     const schemas = allRoutes.map((r) => extractRouteSchema(index, r));
 
     if (this.current) {
@@ -1081,6 +1150,7 @@ export class BunestHttpStudioPanel {
       this.current.onDidDispose(() => {
         this.listener?.dispose();
         this.listener = undefined;
+        this.lastExchange = undefined;
         this.current = undefined;
       });
     }
@@ -1111,6 +1181,10 @@ export class BunestHttpStudioPanel {
         );
         return;
       }
+      if (msg.type === "saveAsTest") {
+        await this.handleSaveAsTest(index);
+        return;
+      }
       if (msg.type === "send") {
         const reqMethod = String(msg.method || "GET").toUpperCase();
         const reqUrl = String(msg.url || "").trim();
@@ -1138,6 +1212,11 @@ export class BunestHttpStudioPanel {
         curlParts.push(JSON.stringify(reqUrl));
         const curl = curlParts.join(" ");
 
+        const activeRoute =
+          typeof msg.selectedKey === "string"
+            ? routeByKey.get(msg.selectedKey)
+            : route;
+
         const start = performance.now();
         try {
           const res = await fetch(reqUrl, {
@@ -1146,20 +1225,64 @@ export class BunestHttpStudioPanel {
             body: reqBody,
           });
           const elapsedMs = performance.now() - start;
-          const rawBody = await res.text();
-          let pretty = rawBody;
-          let detectedToken = "";
-          try {
-            const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-            pretty = JSON.stringify(parsed, null, 2);
-            const candidate =
-              parsed?.accessToken ?? parsed?.access_token ?? parsed?.token;
-            if (typeof candidate === "string" && candidate.length >= 10) {
-              detectedToken = candidate;
-            }
-          } catch {
-            // non-JSON response
+          const resHeadersEntries = [...res.headers.entries()];
+          const resHeadersObj: Record<string, string> = {};
+          for (const [k, v] of resHeadersEntries) {
+            resHeadersObj[k] = v;
           }
+          const contentType = res.headers.get("content-type") ?? undefined;
+          const isBinary = isBinaryOrStreamContentType(contentType);
+
+          let displayBody = "";
+          let sizeBytes = 0;
+          let detectedToken = "";
+          let parsedJsonBody: unknown = undefined;
+          let rawBodyForScenario: string | Uint8Array | undefined = undefined;
+
+          if (isBinary) {
+            const isEventStream = /^text\/event-stream\b/i.test(
+              contentType ?? "",
+            );
+            const { bytes, truncated } = isEventStream
+              ? await readStreamBounded(res)
+              : { bytes: new Uint8Array(await res.arrayBuffer()), truncated: false };
+            sizeBytes = bytes.byteLength;
+            rawBodyForScenario = bytes;
+            const mime = contentType?.split(";")[0]?.trim() ?? "application/octet-stream";
+            displayBody = `[Binary/Stream response detected: ${mime} · ${sizeBytes} byte(s)${truncated ? " (truncated preview)" : ""}]\nRaw bytes are intentionally not rendered as text.\nClick "🧪 Save as Test" to assert status & Content-Type (with optional binary fixture).`;
+          } else {
+            const rawText = await res.text();
+            sizeBytes = new TextEncoder().encode(rawText).length;
+            rawBodyForScenario = rawText;
+            displayBody = rawText;
+            try {
+              const parsed = JSON.parse(rawText) as Record<string, unknown>;
+              parsedJsonBody = parsed;
+              displayBody = JSON.stringify(parsed, null, 2);
+              const candidate =
+                parsed?.accessToken ?? parsed?.access_token ?? parsed?.token;
+              if (typeof candidate === "string" && candidate.length >= 10) {
+                detectedToken = candidate;
+              }
+            } catch {
+              // non-JSON text response
+            }
+          }
+
+          this.lastExchange = {
+            method: reqMethod,
+            url: reqUrl,
+            requestHeaders: headers,
+            requestBody: reqBody,
+            status: res.status,
+            responseContentType: contentType,
+            responseHeaders: resHeadersObj,
+            responseJsonBody: parsedJsonBody,
+            responseRawBody: rawBodyForScenario,
+            isBinaryOrStream: isBinary,
+            sizeBytes,
+            route: activeRoute,
+          };
 
           requestHistory.unshift({
             id: `${Date.now()}`,
@@ -1177,9 +1300,11 @@ export class BunestHttpStudioPanel {
             status: res.status,
             statusText: res.statusText,
             elapsedMs,
-            sizeBytes: new TextEncoder().encode(rawBody).length,
-            headers: [...res.headers.entries()],
-            body: pretty,
+            sizeBytes,
+            contentType,
+            isBinaryOrStream: isBinary,
+            headers: resHeadersEntries,
+            body: displayBody,
             curl,
             detectedToken,
             history: requestHistory,
@@ -1199,5 +1324,158 @@ export class BunestHttpStudioPanel {
         }
       }
     });
+  }
+
+  private static async handleSaveAsTest(
+    index: BunestWorkspaceIndex,
+  ): Promise<void> {
+    const exchange = this.lastExchange;
+    if (!exchange) {
+      vscode.window.showInformationMessage(
+        "Send an HTTP request first before saving it as a regression test.",
+      );
+      return;
+    }
+
+    const ctx =
+      (exchange.route?.location?.filePath
+        ? index.getContextForFile(exchange.route.location.filePath)
+        : undefined) ?? index.getAllContexts()[0];
+    const cwd =
+      ctx?.cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!cwd) {
+      vscode.window.showWarningMessage(
+        "Open a workspace folder before saving a generated regression test.",
+      );
+      return;
+    }
+
+    let assertFields: string[] | undefined;
+    let saveBinaryFixture = false;
+
+    if (exchange.isBinaryOrStream) {
+      const binaryChoice = await vscode.window.showQuickPick(
+        [
+          {
+            label: "Assert status & Content-Type only (Recommended)",
+            description: "Do not write binary bytes into test fixtures",
+            saveFixture: false,
+          },
+          {
+            label: "Also save binary fixture file (opt-in)",
+            description: `${exchange.responseContentType ?? "application/octet-stream"} (${exchange.sizeBytes} bytes)`,
+            saveFixture: true,
+          },
+        ],
+        {
+          title: "Save Binary/Stream Response as Test",
+          placeHolder: "Choose how to handle the binary/stream response...",
+        },
+      );
+      if (!binaryChoice) return;
+      saveBinaryFixture = binaryChoice.saveFixture;
+    } else if (
+      exchange.responseJsonBody &&
+      typeof exchange.responseJsonBody === "object" &&
+      !Array.isArray(exchange.responseJsonBody)
+    ) {
+      const candidates = extractCandidateResponseFields(
+        exchange.responseJsonBody,
+      );
+      if (candidates.length > 0) {
+        const picked = await vscode.window.showQuickPick(
+          candidates.map((c) => ({
+            label: c.path,
+            description: c.isVolatile
+              ? `${c.valuePreview} (volatile — shape assertion)`
+              : c.valuePreview,
+            picked: !c.isVolatile,
+            fieldPath: c.path,
+          })),
+          {
+            title: "Save as Test — Pick Response Fields to Assert",
+            placeHolder:
+              "Select stable fields to assert (volatile IDs/timestamps are unchecked by default)",
+            canPickMany: true,
+          },
+        );
+        if (!picked) return;
+        assertFields = picked.map((p) => p.fieldPath);
+      }
+    }
+
+    // First dry-plan to discover target relative paths, then read any existing files for accurate diffs
+    const initial = planHttpExchangeAsTest(exchange, {
+      index,
+      cwd,
+      assertFields,
+      saveBinaryFixture,
+    });
+    const existingContents = readExistingFileMap(
+      cwd,
+      initial.plan.files.map((f) => f.relativePath),
+    );
+    const { plan } = planHttpExchangeAsTest(exchange, {
+      index,
+      cwd,
+      assertFields,
+      saveBinaryFixture,
+      existingContents,
+    });
+
+    const primaryFile = plan.files[0];
+    if (!primaryFile) return;
+
+    // Preview sanitized generated test via vscode.diff
+    const targetAbs = resolve(cwd, primaryFile.relativePath);
+    const targetExists = existsSyncPath(targetAbs);
+    const leftUri = targetExists
+      ? vscode.Uri.file(targetAbs)
+      : vscode.Uri.parse(
+          `${BUNEST_PREVIEW_SCHEME}:/empty/${primaryFile.relativePath}`,
+        );
+    if (!targetExists) {
+      bunestPreviewProvider.setContent(leftUri, "");
+    }
+    const rightUri = vscode.Uri.parse(
+      `${BUNEST_PREVIEW_SCHEME}:/generated/${primaryFile.relativePath}`,
+    );
+    bunestPreviewProvider.setContent(rightUri, primaryFile.content);
+
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      leftUri,
+      rightUri,
+      `Bunest Save as Test Preview: ${primaryFile.relativePath}`,
+    );
+
+    const summaryNotes: string[] = [];
+    if (plan.sanitized.length > 0) {
+      summaryNotes.push(`${plan.sanitized.length} secret(s) sanitized`);
+    }
+    if (plan.warnings.length > 0) {
+      summaryNotes.push(`${plan.warnings.length} warning(s)`);
+    }
+    const noteText =
+      summaryNotes.length > 0 ? ` (${summaryNotes.join(", ")})` : "";
+
+    const action = await vscode.window.showInformationMessage(
+      `Apply generated test to ${primaryFile.relativePath}${noteText}?`,
+      "Apply Test",
+      "Cancel",
+    );
+    if (action !== "Apply Test") return;
+
+    const wsEdit = buildPlannedFilesWorkspaceEdit(cwd, plan);
+    const applied = await vscode.workspace.applyEdit(wsEdit);
+    if (applied) {
+      const doc = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(targetAbs),
+      );
+      await vscode.window.showTextDocument(doc);
+      vscode.window.showInformationMessage(
+        `Saved regression test: ${primaryFile.relativePath} (use Undo to revert).`,
+      );
+    }
   }
 }
