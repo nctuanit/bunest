@@ -4,6 +4,8 @@ Bunest được tổ chức thành một **monorepo Bun workspace gồm 19 packa
 
 > info **Kiến trúc Subpath Hợp nhất** Các năng lực liên quan nằm cùng nhau trong các package lĩnh vực gắn kết và cung cấp các ESM subpath có thể tree-shake (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, v.v.).
 
+> tip **Phiên bản & Phạm vi Hỗ trợ (`0.1.0 Production Preview`)** Cả 19 package đều phát hành đồng nhất phiên bản (`0.1.x`). Mức sẵn sàng production được công bố riêng theo từng module — hiện tại **Production Preview** bao gồm `@bunest/core`, `@bunest/validation`, `@bunest/orm` (PostgreSQL qua `Bun.SQL`) và `@bunest/observability` trên Linux + Bun `1.4.5`; các module còn lại thuộc mức **Beta** hoặc **Preview / Thử nghiệm**. Xem [Lộ trình & Phạm vi Hỗ trợ](/ecosystem/roadmap) để biết bảng phân tầng đầy đủ.
+
 ## 1. Lõi & Xác thực dữ liệu (2 Package)
 
 | Package | Subpaths | Nhiệm vụ | Tài liệu |

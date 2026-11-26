@@ -2,7 +2,7 @@
 
 Bunest combines NestJS-style modular architecture with a **compile-at-bootstrap, zero-hot-path-reflection** execution engine built directly on Bun's native HTTP, WebSocket, SQL, and `AsyncLocalStorage` primitives.
 
-For the full normative contract behind every design choice, see [RFC-001](./rfcs/RFC-001-controller-routing.md) and [ADR-001 through ADR-016](./adr/README.md).
+For the full normative contract behind every design choice, see [RFC-001](./rfcs/RFC-001-controller-routing.md) and [ADR-001 through ADR-018](./adr/README.md).
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TD
 
 - **`@bunest/core`** is the single zero-internal-dependency foundation package combining common decorators/metadata, DI container & AOP weaver, hybrid `Bun.serve()` HTTP adapter (`./http`), configuration (`./config`), `fetch()` HTTP client (`./client`), WebSocket gateways (`./ws`), and ALS internationalization (`./i18n`).
 - **`@bunest/validation`** depends strictly one-way on `@bunest/core` (zero cycle), exposing `./validator`, `./transformer`, and `./standard-schema` subpaths.
-- **15 of 19 packages have zero external npm runtime dependencies** and **17 of 19 packages depend solely on `@bunest/core`**.
+- **All 19 of 19 packages (100%) have zero external npm runtime dependencies** ([ADR-017](./adr/ADR-017.md)) and **16 of 19 packages depend solely on `@bunest/core`** (`@bunest/core` has zero internal dependencies; only `@bunest/workflows` and `@bunest/ai` depend on additional `@bunest/*` packages).
 
 ---
 

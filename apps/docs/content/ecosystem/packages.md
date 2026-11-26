@@ -4,6 +4,8 @@ Bunest is organized as a **19-package, 6-domain Bun workspace monorepo** (`Bun >
 
 > info **Consolidated Subpath Architecture** Related capabilities live together inside cohesive domain packages and expose tree-shakeable ESM subpaths (`@bunest/core/config`, `@bunest/security/auth`, `@bunest/messaging/events`, `@bunest/jobs/queues`, etc.).
 
+> tip **Version & Support Scope (`0.1.0 Production Preview`)** All 19 packages are lockstep-versioned (`0.1.x`). Production readiness is declared per module — currently **Production Preview** covers `@bunest/core`, `@bunest/validation`, `@bunest/orm` (PostgreSQL via `Bun.SQL`), and `@bunest/observability` on Linux + Bun `1.4.5`; other modules are **Beta** or **Preview / Experimental**. See [Roadmap & Support Scope](/ecosystem/roadmap) for the full tier breakdown.
+
 ## 1. Core & Validation (2 Packages)
 
 | Package | Subpaths | Responsibility | Documentation |
