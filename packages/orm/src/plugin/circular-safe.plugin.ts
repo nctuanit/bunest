@@ -49,8 +49,14 @@ export function transformCircularMetadataJs(jsCode: string): string {
 
   return jsCode.replace(
     TDZ_METADATA_PATTERN,
-    (_match, ident: string) =>
-      `(() => { try { return typeof ${ident} === "undefined" ? Object : ${ident}; } catch { return Object; } })()`,
+    (match, ident: string, offset: number, full: string) => {
+      // Idempotency: do not double-wrap expressions already guarded inside our TDZ IIFE.
+      const before = full.slice(Math.max(0, offset - 32), offset);
+      if (/try\s*\{\s*return\s+$/.test(before)) {
+        return match;
+      }
+      return `(() => { try { return typeof ${ident} === "undefined" ? Object : ${ident}; } catch { return Object; } })()`;
+    },
   );
 }
 
