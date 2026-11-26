@@ -33,6 +33,7 @@
  * ARGV[4]: processAfter (epoch ms)
  * ARGV[5]: now (epoch ms)
  * ARGV[6]: idempotencyKey (empty string if none)
+ * ARGV[7]: idempotencyTtlMs (optional positive ms for PEXPIRE on idempotency hash)
  *
  * Returns: { createdFlag (1 | 0), jobJson }
  */
@@ -49,6 +50,7 @@ local priority = tonumber(ARGV[3]) or 0
 local processAfter = tonumber(ARGV[4]) or 0
 local now = tonumber(ARGV[5]) or 0
 local idempotency = ARGV[6] or ""
+local idempotencyTtlMs = tonumber(ARGV[7]) or 0
 
 if idempotency ~= "" then
   local existingId = redis.call("HGET", idempKey, idempotency)
@@ -57,6 +59,7 @@ if idempotency ~= "" then
     if existingRaw then
       return { 0, existingRaw }
     end
+    redis.call("HDEL", idempKey, idempotency)
   end
 end
 
@@ -68,6 +71,9 @@ end
 redis.call("HSET", jobsKey, jobId, jobJson)
 if idempotency ~= "" then
   redis.call("HSET", idempKey, idempotency, jobId)
+  if idempotencyTtlMs > 0 then
+    redis.call("PEXPIRE", idempKey, idempotencyTtlMs)
+  end
 end
 
 if processAfter > now then
@@ -111,6 +117,17 @@ local now = tonumber(ARGV[1]) or 0
 local lockDurationMs = tonumber(ARGV[2]) or 30000
 local leaseToken = ARGV[3]
 
+local function preserveStacktrace(job)
+  local stack = job["stacktrace"]
+  if type(stack) ~= "table" then
+    stack = {}
+    job["stacktrace"] = stack
+  end
+  if next(stack) == nil and cjson.empty_array_mt then
+    setmetatable(stack, cjson.empty_array_mt)
+  end
+end
+
 local dueIds = redis.call("ZRANGEBYSCORE", delayedKey, "-inf", now)
 for i = 1, #dueIds do
   local dueId = dueIds[i]
@@ -120,6 +137,7 @@ for i = 1, #dueIds do
     if raw then
       local job = cjson.decode(raw)
       job["status"] = "waiting"
+      preserveStacktrace(job)
       redis.call("HSET", jobsKey, dueId, cjson.encode(job))
       local seq = redis.call("INCR", seqKey)
       local prio = tonumber(job["priority"]) or 0
@@ -144,6 +162,7 @@ while true do
     job["startedAt"] = now
     job["leaseToken"] = leaseToken
     job["leaseExpiresAt"] = leaseExpiresAt
+    preserveStacktrace(job)
     local updated = cjson.encode(job)
     redis.call("HSET", jobsKey, jobId, updated)
     redis.call("ZADD", activeKey, leaseExpiresAt, jobId)
@@ -156,19 +175,21 @@ end
 /**
  * Atomically acknowledges a completed active job, verifies lease token when
  * supplied, clears active/lease/stalled state, increments completed counter,
- * and removes or persists the completed job payload.
+ * optionally prunes idempotency entry, and removes or persists the completed job payload.
  *
  * KEYS[1]: jobs hash
  * KEYS[2]: active zset
  * KEYS[3]: leases hash
  * KEYS[4]: stalled hash
  * KEYS[5]: completed counter
+ * KEYS[6]: idempotency hash (optional)
  *
  * ARGV[1]: jobId
  * ARGV[2]: resultJson (encoded JSON when ARGV[3] == "1")
  * ARGV[3]: hasResult ("1" | "0")
  * ARGV[4]: finishedAt (epoch ms)
  * ARGV[5]: expectedToken (empty string to skip token check)
+ * ARGV[6]: pruneIdempotency ("1" | "0", optional)
  *
  * Returns: updated jobJson string, or nil if missing / lease mismatch.
  */
@@ -178,12 +199,14 @@ local activeKey = KEYS[2]
 local leasesKey = KEYS[3]
 local stalledKey = KEYS[4]
 local completedKey = KEYS[5]
+local idempKey = KEYS[6]
 
 local jobId = ARGV[1]
 local resultJson = ARGV[2]
 local hasResult = ARGV[3]
 local finishedAt = tonumber(ARGV[4]) or 0
 local expectedToken = ARGV[5] or ""
+local pruneIdempotency = ARGV[6] or "0"
 
 if expectedToken ~= "" then
   local currentToken = redis.call("HGET", leasesKey, jobId)
@@ -209,6 +232,14 @@ job["leaseExpiresAt"] = nil
 if hasResult == "1" then
   job["returnValue"] = cjson.decode(resultJson)
 end
+local stack = job["stacktrace"]
+if type(stack) ~= "table" then
+  stack = {}
+  job["stacktrace"] = stack
+end
+if next(stack) == nil and cjson.empty_array_mt then
+  setmetatable(stack, cjson.empty_array_mt)
+end
 
 redis.call("INCR", completedKey)
 local updated = cjson.encode(job)
@@ -217,6 +248,13 @@ if job["removeOnComplete"] == true then
   redis.call("HDEL", jobsKey, jobId)
 else
   redis.call("HSET", jobsKey, jobId, updated)
+end
+
+local idempotency = job["idempotencyKey"]
+if idempKey and idempKey ~= "" and type(idempotency) == "string" and idempotency ~= "" then
+  if job["removeOnComplete"] == true or pruneIdempotency == "1" then
+    redis.call("HDEL", idempKey, idempotency)
+  end
 end
 
 return updated
@@ -236,6 +274,7 @@ return updated
  * KEYS[7]: dlq list
  * KEYS[8]: failed counter
  * KEYS[9]: seq string counter
+ * KEYS[10]: idempotency hash (optional)
  *
  * ARGV[1]: jobId
  * ARGV[2]: errorMessage
@@ -244,6 +283,7 @@ return updated
  * ARGV[5]: retryAt (epoch ms string, or empty string if no retry)
  * ARGV[6]: forceDlq ("1" | "0")
  * ARGV[7]: expectedToken (empty string to skip token check)
+ * ARGV[8]: pruneIdempotency ("1" | "0", optional)
  *
  * Returns: { nextStatus, updatedJobJson } or nil if missing / lease mismatch.
  */
@@ -257,6 +297,7 @@ local delayedKey = KEYS[6]
 local dlqKey = KEYS[7]
 local failedKey = KEYS[8]
 local seqKey = KEYS[9]
+local idempKey = KEYS[10]
 
 local jobId = ARGV[1]
 local errorMessage = ARGV[2] or "Job failed"
@@ -265,6 +306,7 @@ local now = tonumber(ARGV[4]) or 0
 local retryAtRaw = ARGV[5] or ""
 local forceDlq = ARGV[6] or "0"
 local expectedToken = ARGV[7] or ""
+local pruneIdempotency = ARGV[8] or "0"
 
 if expectedToken ~= "" then
   local currentToken = redis.call("HGET", leasesKey, jobId)
@@ -300,6 +342,13 @@ job["stacktrace"] = stack
 
 local moveToDlq = (forceDlq == "1") or (retryAtRaw == "" and attemptsMade >= maxAttempts)
 
+local function maybePruneIdempotency()
+  local idempotency = job["idempotencyKey"]
+  if pruneIdempotency == "1" and idempKey and idempKey ~= "" and type(idempotency) == "string" and idempotency ~= "" then
+    redis.call("HDEL", idempKey, idempotency)
+  end
+end
+
 if moveToDlq then
   redis.call("HDEL", stalledKey, jobId)
   job["status"] = "dead-letter"
@@ -308,6 +357,7 @@ if moveToDlq then
   local updated = cjson.encode(job)
   redis.call("HSET", jobsKey, jobId, updated)
   redis.call("RPUSH", dlqKey, jobId)
+  maybePruneIdempotency()
   return { "dead-letter", updated }
 end
 
@@ -338,6 +388,7 @@ job["finishedAt"] = now
 redis.call("INCR", failedKey)
 local updated = cjson.encode(job)
 redis.call("HSET", jobsKey, jobId, updated)
+maybePruneIdempotency()
 return { "failed", updated }
 `.trim();
 
@@ -378,6 +429,14 @@ local raw = redis.call("HGET", jobsKey, jobId)
 if raw then
   local job = cjson.decode(raw)
   job["leaseExpiresAt"] = newExpiry
+  local stack = job["stacktrace"]
+  if type(stack) ~= "table" then
+    stack = {}
+    job["stacktrace"] = stack
+  end
+  if next(stack) == nil and cjson.empty_array_mt then
+    setmetatable(stack, cjson.empty_array_mt)
+  end
   redis.call("HSET", jobsKey, jobId, cjson.encode(job))
 end
 
@@ -397,9 +456,11 @@ return 1
  * KEYS[6]: dlq list
  * KEYS[7]: failed counter
  * KEYS[8]: seq string counter
+ * KEYS[9]: idempotency hash (optional)
  *
  * ARGV[1]: now (epoch ms)
  * ARGV[2]: maxStalledCount
+ * ARGV[3]: pruneIdempotency ("1" | "0", optional)
  *
  * Returns: { reclaimedJobJsons[], deadLetteredJobJsons[] }
  */
@@ -412,9 +473,11 @@ local waitingKey = KEYS[5]
 local dlqKey = KEYS[6]
 local failedKey = KEYS[7]
 local seqKey = KEYS[8]
+local idempKey = KEYS[9]
 
 local now = tonumber(ARGV[1]) or 0
 local maxStalledCount = tonumber(ARGV[2]) or 1
+local pruneIdempotency = ARGV[3] or "0"
 
 local expiredIds = redis.call("ZRANGEBYSCORE", activeKey, "-inf", now)
 local reclaimed = {}
@@ -448,11 +511,23 @@ for i = 1, #expiredIds do
       local updated = cjson.encode(job)
       redis.call("HSET", jobsKey, jobId, updated)
       redis.call("RPUSH", dlqKey, jobId)
+      local idempotency = job["idempotencyKey"]
+      if pruneIdempotency == "1" and idempKey and idempKey ~= "" and type(idempotency) == "string" and idempotency ~= "" then
+        redis.call("HDEL", idempKey, idempotency)
+      end
       table.insert(deadLettered, updated)
     else
       job["status"] = "waiting"
       job["startedAt"] = nil
       job["processAfter"] = now
+      local stack = job["stacktrace"]
+      if type(stack) ~= "table" then
+        stack = {}
+        job["stacktrace"] = stack
+      end
+      if next(stack) == nil and cjson.empty_array_mt then
+        setmetatable(stack, cjson.empty_array_mt)
+      end
       local updated = cjson.encode(job)
       redis.call("HSET", jobsKey, jobId, updated)
       local seq = redis.call("INCR", seqKey)

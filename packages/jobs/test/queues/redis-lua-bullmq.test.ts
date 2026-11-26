@@ -317,8 +317,16 @@ class MockLuaRedisClient implements RedisQueueClientLike {
 
     if (script === LUA_ACK_JOB) {
       this.executedScripts.push("LUA_ACK_JOB");
-      const [jobsKey, activeKey, leasesKey, stalledKey, completedKey] = keys;
-      const [jobId, resultJson, hasResult, finishedAtRaw, expectedToken] = argv;
+      const [jobsKey, activeKey, leasesKey, stalledKey, completedKey, idempKey] =
+        keys;
+      const [
+        jobId,
+        resultJson,
+        hasResult,
+        finishedAtRaw,
+        expectedToken,
+        pruneIdempotency,
+      ] = argv;
 
       if (expectedToken) {
         const currentToken = await this.hget(leasesKey!, jobId!);
@@ -349,6 +357,13 @@ class MockLuaRedisClient implements RedisQueueClientLike {
       } else {
         await this.hset(jobsKey!, jobId!, updated);
       }
+      if (
+        idempKey &&
+        job.idempotencyKey &&
+        (job.removeOnComplete || pruneIdempotency === "1")
+      ) {
+        await this.hdel(idempKey, job.idempotencyKey);
+      }
       return updated;
     }
 
@@ -364,6 +379,7 @@ class MockLuaRedisClient implements RedisQueueClientLike {
         dlqKey,
         failedKey,
         seqKey,
+        idempKey,
       ] = keys;
       const [
         jobId,
@@ -373,6 +389,7 @@ class MockLuaRedisClient implements RedisQueueClientLike {
         retryAtRaw,
         forceDlq,
         expectedToken,
+        pruneIdempotency,
       ] = argv;
       const now = Number(nowRaw) || 0;
 
@@ -410,6 +427,9 @@ class MockLuaRedisClient implements RedisQueueClientLike {
         const updated = JSON.stringify(job);
         await this.hset(jobsKey!, jobId!, updated);
         await this.rpush(dlqKey!, jobId!);
+        if (pruneIdempotency === "1" && idempKey && job.idempotencyKey) {
+          await this.hdel(idempKey, job.idempotencyKey);
+        }
         return ["dead-letter", updated];
       }
 
@@ -441,6 +461,9 @@ class MockLuaRedisClient implements RedisQueueClientLike {
       await this.incr(failedKey!);
       const updated = JSON.stringify(job);
       await this.hset(jobsKey!, jobId!, updated);
+      if (pruneIdempotency === "1" && idempKey && job.idempotencyKey) {
+        await this.hdel(idempKey, job.idempotencyKey);
+      }
       return ["failed", updated];
     }
 

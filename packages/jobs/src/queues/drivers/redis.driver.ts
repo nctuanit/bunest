@@ -40,6 +40,20 @@ export interface RedisQueueDriverOptions {
    */
   readonly maxStalledCount?: number;
   /**
+   * Optional TTL in milliseconds applied to the queue's `idempotency` hash via
+   * `PEXPIRE` so idle idempotency entries do not live forever. Set to `0` to
+   * disable hash-level expiration.
+   * @default 86400000 (24 hours)
+   */
+  readonly idempotencyTtlMs?: number;
+  /**
+   * Remove a job's `idempotencyKey` entry from the `idempotency` hash once the
+   * job reaches a terminal state (completed, failed, or dead-lettered) so the
+   * hash stays bounded under continuous traffic.
+   * @default true
+   */
+  readonly pruneIdempotencyOnTerminal?: boolean;
+  /**
    * Optional callback notified whenever stalled jobs are reclaimed or moved to DLQ.
    */
   readonly onStalledReclaimed?: (
@@ -82,6 +96,8 @@ export class RedisQueueDriver implements QueueDriver {
   public readonly lockDurationMs: number;
   public readonly stalledIntervalMs: number;
   public readonly maxStalledCount: number;
+  public readonly idempotencyTtlMs: number;
+  public readonly pruneIdempotencyOnTerminal: boolean;
 
   private readonly prefix: string;
   private readonly useLua: boolean;
@@ -103,16 +119,23 @@ export class RedisQueueDriver implements QueueDriver {
   private sweeping = false;
   private closed = false;
 
+  private readonly nativeRedis?: Bun.RedisClient;
   private readonly redis: RedisQueueClientLike;
 
   constructor(
     redis: RedisQueueClientLike | Bun.RedisClient | string,
     options: RedisQueueDriverOptions = {},
   ) {
-    this.redis =
-      typeof redis === "string" || redis instanceof Bun.RedisClient
-        ? createBunRedisQueueClient(redis)
-        : redis;
+    if (typeof redis === "string") {
+      const client = new Bun.RedisClient(redis);
+      this.nativeRedis = client;
+      this.redis = createBunRedisQueueClient(client);
+    } else if (redis instanceof Bun.RedisClient) {
+      this.nativeRedis = redis;
+      this.redis = createBunRedisQueueClient(redis);
+    } else {
+      this.redis = redis;
+    }
     this.prefix = options.prefix ?? "bunest:queue";
     this.lockDurationMs = Math.max(
       10,
@@ -126,11 +149,53 @@ export class RedisQueueDriver implements QueueDriver {
       0,
       Math.floor(options.maxStalledCount ?? 1),
     );
+    this.idempotencyTtlMs = Math.max(
+      0,
+      Math.floor(options.idempotencyTtlMs ?? 86_400_000),
+    );
+    this.pruneIdempotencyOnTerminal =
+      options.pruneIdempotencyOnTerminal ?? true;
     this.onStalledReclaimed = options.onStalledReclaimed;
     this.useLua =
       typeof this.redis.eval === "function" ||
       (typeof this.redis.evalsha === "function" &&
         typeof this.redis.scriptLoad === "function");
+  }
+
+  /**
+   * Health probe verifying that the underlying Redis connection is reachable.
+   */
+  async ping(): Promise<boolean> {
+    if (this.closed) {
+      return false;
+    }
+    try {
+      if (this.nativeRedis) {
+        const res = await this.nativeRedis.send("PING", []);
+        return res === "PONG" || res === true;
+      }
+      const maybePing = (
+        this.redis as { ping?: () => Promise<unknown> }
+      ).ping;
+      if (typeof maybePing === "function") {
+        const res = await maybePing.call(this.redis);
+        return res === "PONG" || res === true || res === undefined;
+      }
+      await this.redis.get(`${this.prefix}:__ping__`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private parseJob<TData = unknown, TResult = unknown>(
+    raw: string,
+  ): Job<TData, TResult> {
+    const job = JSON.parse(raw) as Job<TData, TResult>;
+    if (!Array.isArray(job.stacktrace)) {
+      (job as { stacktrace: string[] }).stacktrace = [];
+    }
+    return job;
   }
 
   /**
@@ -283,10 +348,11 @@ export class RedisQueueDriver implements QueueDriver {
           job.processAfter,
           now,
           job.idempotencyKey ?? "",
+          this.idempotencyTtlMs,
         ],
       );
       if (Array.isArray(rawResult) && typeof rawResult[1] === "string") {
-        const stored = JSON.parse(rawResult[1]) as Job<TData, TResult>;
+        const stored = this.parseJob<TData, TResult>(rawResult[1]);
         this.jobQueueIndex.set(stored.id, queueName);
         return stored;
       }
@@ -307,12 +373,13 @@ export class RedisQueueDriver implements QueueDriver {
         if (existing) {
           return existing;
         }
+        await this.redis.hdel(k.idempotency, job.idempotencyKey);
       }
     }
 
     const existingRaw = await this.redis.hget(k.jobs, job.id);
     if (existingRaw) {
-      return JSON.parse(existingRaw) as Job<TData, TResult>;
+      return this.parseJob<TData, TResult>(existingRaw);
     }
 
     const now = Date.now();
@@ -351,7 +418,7 @@ export class RedisQueueDriver implements QueueDriver {
       if (typeof raw !== "string" || raw.length === 0) {
         return null;
       }
-      const job = JSON.parse(raw) as Job<TData, TResult>;
+      const job = this.parseJob<TData, TResult>(raw);
       this.jobQueueIndex.set(job.id, queueName);
       if (job.leaseToken) {
         this.activeTokens.set(this.tokenKey(queueName, job.id), job.leaseToken);
@@ -377,7 +444,7 @@ export class RedisQueueDriver implements QueueDriver {
       return null;
     }
 
-    const job = JSON.parse(raw) as Job<TData, TResult>;
+    const job = this.parseJob<TData, TResult>(raw);
     job.status = "active";
     job.startedAt = now;
     await this.redis.hset(k.jobs, job.id, JSON.stringify(job));
@@ -402,15 +469,22 @@ export class RedisQueueDriver implements QueueDriver {
       const resultJson = result !== undefined ? JSON.stringify(result) : "";
       const raw = await this.runLua(
         LUA_ACK_JOB,
-        [k.jobs, k.active, k.leases, k.stalled, k.completedCount],
-        [jobId, resultJson, hasResult, Date.now(), token],
+        [k.jobs, k.active, k.leases, k.stalled, k.completedCount, k.idempotency],
+        [
+          jobId,
+          resultJson,
+          hasResult,
+          Date.now(),
+          token,
+          this.pruneIdempotencyOnTerminal ? "1" : "0",
+        ],
       );
       if (typeof raw !== "string" || raw.length === 0) {
         return null;
       }
       this.activeTokens.delete(tKey);
       this.jobQueueIndex.delete(jobId);
-      return JSON.parse(raw) as Job<TData, TResult>;
+      return this.parseJob<TData, TResult>(raw);
     }
 
     await this.redis.srem(k.active, jobId);
@@ -429,6 +503,13 @@ export class RedisQueueDriver implements QueueDriver {
       await this.redis.hdel(k.jobs, jobId);
     } else {
       await this.redis.hset(k.jobs, jobId, JSON.stringify(job));
+    }
+
+    if (
+      job.idempotencyKey !== undefined &&
+      (job.removeOnComplete || this.pruneIdempotencyOnTerminal)
+    ) {
+      await this.redis.hdel(k.idempotency, job.idempotencyKey);
     }
 
     this.jobQueueIndex.delete(jobId);
@@ -461,6 +542,7 @@ export class RedisQueueDriver implements QueueDriver {
           k.dlq,
           k.failedCount,
           k.seq,
+          k.idempotency,
         ],
         [
           jobId,
@@ -470,13 +552,14 @@ export class RedisQueueDriver implements QueueDriver {
           retryAt !== undefined ? String(retryAt) : "",
           "0",
           token,
+          this.pruneIdempotencyOnTerminal ? "1" : "0",
         ],
       );
       if (!Array.isArray(res) || typeof res[1] !== "string") {
         return null;
       }
       this.activeTokens.delete(tKey);
-      return JSON.parse(res[1]) as Job<TData, TResult>;
+      return this.parseJob<TData, TResult>(res[1]);
     }
 
     await this.redis.srem(k.active, jobId);
@@ -506,6 +589,9 @@ export class RedisQueueDriver implements QueueDriver {
       job.finishedAt = Date.now();
       await this.redis.incr(k.failedCount);
       await this.redis.hset(k.jobs, jobId, JSON.stringify(job));
+      if (job.idempotencyKey !== undefined && this.pruneIdempotencyOnTerminal) {
+        await this.redis.hdel(k.idempotency, job.idempotencyKey);
+      }
     }
 
     return job;
@@ -536,6 +622,7 @@ export class RedisQueueDriver implements QueueDriver {
           k.dlq,
           k.failedCount,
           k.seq,
+          k.idempotency,
         ],
         [
           jobId,
@@ -545,6 +632,7 @@ export class RedisQueueDriver implements QueueDriver {
           "",
           "1",
           token,
+          this.pruneIdempotencyOnTerminal ? "1" : "0",
         ],
       );
       if (!Array.isArray(res) || typeof res[1] !== "string") {
@@ -552,7 +640,7 @@ export class RedisQueueDriver implements QueueDriver {
       }
       this.activeTokens.delete(tKey);
       this.jobQueueIndex.delete(jobId);
-      return JSON.parse(res[1]) as Job<TData, TResult>;
+      return this.parseJob<TData, TResult>(res[1]);
     }
 
     await this.redis.srem(k.active, jobId);
@@ -573,6 +661,9 @@ export class RedisQueueDriver implements QueueDriver {
     await this.redis.incr(k.failedCount);
     await this.redis.hset(k.jobs, jobId, JSON.stringify(job));
     await this.redis.rpush(k.dlq, jobId);
+    if (job.idempotencyKey !== undefined && this.pruneIdempotencyOnTerminal) {
+      await this.redis.hdel(k.idempotency, job.idempotencyKey);
+    }
 
     this.jobQueueIndex.delete(jobId);
     return job;
@@ -667,8 +758,9 @@ export class RedisQueueDriver implements QueueDriver {
           k.dlq,
           k.failedCount,
           k.seq,
+          k.idempotency,
         ],
-        [now, this.maxStalledCount],
+        [now, this.maxStalledCount, this.pruneIdempotencyOnTerminal ? "1" : "0"],
       );
 
       if (!Array.isArray(res)) {
@@ -679,12 +771,12 @@ export class RedisQueueDriver implements QueueDriver {
       const rawDeadLettered = Array.isArray(res[1]) ? (res[1] as string[]) : [];
 
       const reclaimed = rawReclaimed.map((raw) => {
-        const job = JSON.parse(raw) as Job<any, any>;
+        const job = this.parseJob<any, any>(raw);
         this.activeTokens.delete(this.tokenKey(qName, job.id));
         return job;
       });
       const deadLettered = rawDeadLettered.map((raw) => {
-        const job = JSON.parse(raw) as Job<any, any>;
+        const job = this.parseJob<any, any>(raw);
         this.activeTokens.delete(this.tokenKey(qName, job.id));
         this.jobQueueIndex.delete(job.id);
         return job;
@@ -724,7 +816,7 @@ export class RedisQueueDriver implements QueueDriver {
     if (!raw) {
       return null;
     }
-    return JSON.parse(raw) as Job<TData, TResult>;
+    return this.parseJob<TData, TResult>(raw);
   }
 
   async getCounts(queueName: string): Promise<QueueCounts> {

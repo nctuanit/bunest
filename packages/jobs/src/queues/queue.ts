@@ -41,6 +41,7 @@ export class Queue<TData = unknown, TResult = unknown> {
   private readonly defaultJobOptions: DefaultJobOptions;
   private readonly shutdownTimeoutMs: number;
   private readonly pollIntervalMs: number;
+  private readonly idlePollIntervalMs: number;
 
   private concurrency: number;
   private readonly handlers = new Map<string, JobHandler<TData, TResult>>();
@@ -55,9 +56,12 @@ export class Queue<TData = unknown, TResult = unknown> {
   private inFlightCount = 0;
   private pumping = false;
   private pumpAgain = false;
+  private pumpErrorCount = 0;
   private jobCounter = 0;
 
   private delayedTimer: ReturnType<typeof setTimeout> | undefined;
+  private pollTimer: ReturnType<typeof setTimeout> | undefined;
+  private pumpRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly activeJobTimers = new Set<ReturnType<typeof setTimeout>>();
   private readonly activeLeaseTimers = new Set<
     ReturnType<typeof setInterval>
@@ -74,7 +78,22 @@ export class Queue<TData = unknown, TResult = unknown> {
       0,
       Math.floor(config.shutdownTimeoutMs ?? 5000),
     );
-    this.pollIntervalMs = Math.max(5, Math.floor(config.pollIntervalMs ?? 50));
+    if (config.pollIntervalMs !== undefined) {
+      if (config.pollIntervalMs <= 0) {
+        this.idlePollIntervalMs = 0;
+        this.pollIntervalMs = 50;
+      } else {
+        const clamped = Math.max(5, Math.floor(config.pollIntervalMs));
+        this.idlePollIntervalMs = clamped;
+        this.pollIntervalMs = clamped;
+      }
+    } else if (this.driver instanceof MemoryQueueDriver) {
+      this.idlePollIntervalMs = 0;
+      this.pollIntervalMs = 50;
+    } else {
+      this.idlePollIntervalMs = 250;
+      this.pollIntervalMs = 250;
+    }
 
     if (typeof this.driver.onStalled === "function") {
       this.unbindDriverStalled = this.driver.onStalled(this.name, (result) => {
@@ -268,6 +287,8 @@ export class Queue<TData = unknown, TResult = unknown> {
   pause(): void {
     this.paused = true;
     this.clearDelayedTimer();
+    this.clearPollTimer();
+    this.clearPumpRetryTimer();
     void this.emitLifecycleEvent("paused");
   }
 
@@ -319,6 +340,8 @@ export class Queue<TData = unknown, TResult = unknown> {
     }
     this.workersClosing = true;
     this.clearDelayedTimer();
+    this.clearPollTimer();
+    this.clearPumpRetryTimer();
     await this.drain(timeoutMs);
   }
 
@@ -333,6 +356,8 @@ export class Queue<TData = unknown, TResult = unknown> {
     this.closed = true;
     this.workersClosing = true;
     this.clearDelayedTimer();
+    this.clearPollTimer();
+    this.clearPumpRetryTimer();
     this.unbindDriverStalled?.();
     this.unbindDriverStalled = undefined;
 
@@ -365,6 +390,7 @@ export class Queue<TData = unknown, TResult = unknown> {
     if (this.closed || this.workersClosing || this.paused || !this.hasHandlers()) {
       return;
     }
+    this.clearPollTimer();
     if (this.pumping) {
       this.pumpAgain = true;
       return;
@@ -380,6 +406,7 @@ export class Queue<TData = unknown, TResult = unknown> {
 
         while (
           !this.closed &&
+          !this.workersClosing &&
           !this.paused &&
           this.hasHandlers() &&
           this.inFlightCount < this.concurrency
@@ -388,16 +415,33 @@ export class Queue<TData = unknown, TResult = unknown> {
           let job: Job<TData, TResult> | null = null;
           try {
             job = await this.driver.dequeue<TData, TResult>(this.name);
-          } catch {
+            this.pumpErrorCount = 0;
+            this.clearPumpRetryTimer();
+          } catch (rawErr) {
             this.inFlightCount--;
             this.notifyDrainIfIdle();
+            const err =
+              rawErr instanceof Error ? rawErr : new Error(String(rawErr));
+            this.pumpErrorCount++;
+            void this.emitEvent("error", this.createLifecycleJob(), err);
+            this.schedulePumpRetry();
             break;
           }
 
           if (!job) {
             this.inFlightCount--;
             this.notifyDrainIfIdle();
-            await this.scheduleNextDelayedWakeup();
+            try {
+              await this.scheduleNextDelayedWakeup();
+            } catch (rawErr) {
+              const err =
+                rawErr instanceof Error ? rawErr : new Error(String(rawErr));
+              this.pumpErrorCount++;
+              void this.emitEvent("error", this.createLifecycleJob(), err);
+              this.schedulePumpRetry();
+              break;
+            }
+            this.scheduleIdlePoll();
             break;
           }
 
@@ -406,6 +450,7 @@ export class Queue<TData = unknown, TResult = unknown> {
       } while (
         this.pumpAgain &&
         !this.closed &&
+        !this.workersClosing &&
         !this.paused &&
         this.inFlightCount < this.concurrency
       );
@@ -416,6 +461,13 @@ export class Queue<TData = unknown, TResult = unknown> {
 
   private async executeJob(job: Job<TData, TResult>): Promise<void> {
     let leaseTimer: ReturnType<typeof setInterval> | undefined;
+    const leaseAbortController = new AbortController();
+    Object.defineProperty(job, "signal", {
+      value: leaseAbortController.signal,
+      enumerable: false,
+      configurable: true,
+    });
+
     if (
       job.leaseToken !== undefined &&
       typeof this.driver.renewLease === "function"
@@ -432,8 +484,26 @@ export class Queue<TData = unknown, TResult = unknown> {
         }
         void this.driver
           .renewLease?.(this.name, job.id, token, leaseWindowMs)
-          .catch(() => {
-            // Lease renewal failure will be handled by stalled recovery
+          .then((renewed) => {
+            if (renewed === false) {
+              if (leaseTimer !== undefined) {
+                clearInterval(leaseTimer);
+                this.activeLeaseTimers.delete(leaseTimer);
+                leaseTimer = undefined;
+              }
+              const lockErr = new Error(
+                `Lease renewal failed for job "${job.id}" on queue "${this.name}".`,
+              );
+              if (!leaseAbortController.signal.aborted) {
+                leaseAbortController.abort(lockErr);
+              }
+              void this.emitEvent("lockRenewalFailed", job, lockErr);
+            }
+          })
+          .catch((rawErr) => {
+            const err =
+              rawErr instanceof Error ? rawErr : new Error(String(rawErr));
+            void this.emitEvent("error", job, err);
           });
       }, renewEveryMs);
       if (typeof (leaseTimer as { unref?: () => void }).unref === "function") {
@@ -448,14 +518,22 @@ export class Queue<TData = unknown, TResult = unknown> {
         const missingErr = new Error(
           `No processor registered for job "${job.name}" on queue "${this.name}".`,
         );
-        const dlqJob =
-          (await this.driver.moveToDeadLetter<TData, TResult>(
-            this.name,
-            job.id,
-            missingErr,
-            job.leaseToken,
-          )) ?? job;
-        await this.emitEvent("dead-letter", dlqJob, missingErr);
+        try {
+          const dlqJob =
+            (await this.driver.moveToDeadLetter<TData, TResult>(
+              this.name,
+              job.id,
+              missingErr,
+              job.leaseToken,
+            )) ?? job;
+          await this.emitEvent("dead-letter", dlqJob, missingErr);
+        } catch (dlqRawErr) {
+          const dlqErr =
+            dlqRawErr instanceof Error
+              ? dlqRawErr
+              : new Error(String(dlqRawErr));
+          await this.emitEvent("error", job, dlqErr);
+        }
         return;
       }
 
@@ -469,46 +547,96 @@ export class Queue<TData = unknown, TResult = unknown> {
       }
 
       await this.emitEvent("active", job);
-      const result = await this.runWithTimeout(job, handler);
-      const completedJob = await this.driver.ack<TData, TResult>(
-        this.name,
-        job.id,
-        result,
-        job.leaseToken,
-      );
-      if (completedJob !== null) {
-        await this.emitEvent("completed", completedJob, result);
+
+      let result: TResult | undefined;
+      let handlerErr: Error | undefined;
+      let failed = false;
+      try {
+        result = await this.runWithTimeout(
+          job,
+          handler,
+          leaseAbortController,
+        );
+      } catch (rawErr) {
+        failed = true;
+        handlerErr =
+          rawErr instanceof Error ? rawErr : new Error(String(rawErr));
       }
-    } catch (rawErr) {
-      const err = rawErr instanceof Error ? rawErr : new Error(String(rawErr));
+
+      if (!failed) {
+        try {
+          const completedJob = await this.driver.ack<TData, TResult>(
+            this.name,
+            job.id,
+            result as TResult,
+            job.leaseToken,
+          );
+          if (completedJob !== null) {
+            await this.emitEvent("completed", completedJob, result);
+          }
+        } catch (ackRawErr) {
+          const ackErr =
+            ackRawErr instanceof Error
+              ? ackRawErr
+              : new Error(String(ackRawErr));
+          await this.emitEvent("error", job, ackErr);
+        }
+        return;
+      }
+
+      const err = handlerErr!;
       const nextAttempts = job.attemptsMade + 1;
 
       if (nextAttempts < job.maxAttempts) {
         const delayMs = calculateBackoffDelay(job.backoff, nextAttempts);
         const retryAt = Date.now() + delayMs;
-        const nacked = await this.driver.nack<TData, TResult>(
-          this.name,
-          job.id,
-          err,
-          retryAt,
-          job.leaseToken,
-        );
-        if (nacked !== null) {
-          await this.emitEvent("failed", nacked, err);
-          if (!this.closed && !this.paused) {
-            await this.scheduleNextDelayedWakeup();
+        try {
+          const nacked = await this.driver.nack<TData, TResult>(
+            this.name,
+            job.id,
+            err,
+            retryAt,
+            job.leaseToken,
+          );
+          if (nacked !== null) {
+            await this.emitEvent("failed", nacked, err);
+            if (!this.closed && !this.workersClosing && !this.paused) {
+              try {
+                await this.scheduleNextDelayedWakeup();
+              } catch (wakeupRawErr) {
+                const wakeupErr =
+                  wakeupRawErr instanceof Error
+                    ? wakeupRawErr
+                    : new Error(String(wakeupRawErr));
+                await this.emitEvent("error", job, wakeupErr);
+              }
+            }
           }
+        } catch (nackRawErr) {
+          const nackErr =
+            nackRawErr instanceof Error
+              ? nackRawErr
+              : new Error(String(nackRawErr));
+          await this.emitEvent("error", job, nackErr);
         }
       } else {
-        const dlqJob = await this.driver.moveToDeadLetter<TData, TResult>(
-          this.name,
-          job.id,
-          err,
-          job.leaseToken,
-        );
-        if (dlqJob !== null) {
-          await this.emitEvent("failed", dlqJob, err);
-          await this.emitEvent("dead-letter", dlqJob, err);
+        try {
+          const dlqJob = await this.driver.moveToDeadLetter<TData, TResult>(
+            this.name,
+            job.id,
+            err,
+            job.leaseToken,
+          );
+          if (dlqJob !== null) {
+            await this.emitEvent("failed", dlqJob, err);
+            await this.emitEvent("dead-letter", dlqJob, err);
+          }
+        } catch (dlqRawErr) {
+          const dlqErr =
+            dlqRawErr instanceof Error
+              ? dlqRawErr
+              : new Error(String(dlqRawErr));
+          await this.emitEvent("error", job, dlqErr);
         }
       }
     } finally {
@@ -518,7 +646,7 @@ export class Queue<TData = unknown, TResult = unknown> {
       }
       this.inFlightCount--;
       this.notifyDrainIfIdle();
-      if (!this.closed && !this.paused) {
+      if (!this.closed && !this.workersClosing && !this.paused) {
         this.triggerPump();
       }
     }
@@ -527,9 +655,16 @@ export class Queue<TData = unknown, TResult = unknown> {
   private async runWithTimeout(
     job: Job<TData, TResult>,
     handler: JobHandler<TData, TResult>,
+    abortController: AbortController,
   ): Promise<TResult> {
+    const invoke = handler as (
+      job: Job<TData, TResult>,
+      token?: string,
+      signal?: AbortSignal,
+    ) => Promise<TResult> | TResult;
+
     if (!job.timeoutMs || job.timeoutMs <= 0) {
-      return await handler(job, job.leaseToken);
+      return await invoke(job, job.leaseToken, abortController.signal);
     }
 
     return await new Promise<TResult>((resolve, reject) => {
@@ -538,14 +673,18 @@ export class Queue<TData = unknown, TResult = unknown> {
         this.activeJobTimers.delete(timer);
         if (!settled) {
           settled = true;
-          reject(new JobTimeoutError(job.id, job.timeoutMs!));
+          const timeoutErr = new JobTimeoutError(job.id, job.timeoutMs!);
+          if (!abortController.signal.aborted) {
+            abortController.abort(timeoutErr);
+          }
+          reject(timeoutErr);
         }
       }, job.timeoutMs);
       unrefTimer(timer);
       this.activeJobTimers.add(timer);
 
       Promise.resolve()
-        .then(() => handler(job, job.leaseToken))
+        .then(() => invoke(job, job.leaseToken, abortController.signal))
         .then(
           (value) => {
             clearTimeout(timer);
@@ -568,7 +707,7 @@ export class Queue<TData = unknown, TResult = unknown> {
   }
 
   private async scheduleNextDelayedWakeup(): Promise<void> {
-    if (this.closed || this.paused) {
+    if (this.closed || this.workersClosing || this.paused) {
       return;
     }
 
@@ -585,7 +724,7 @@ export class Queue<TData = unknown, TResult = unknown> {
       }
     }
 
-    if (delayMs === null || this.closed || this.paused) {
+    if (delayMs === null || this.closed || this.workersClosing || this.paused) {
       return;
     }
 
@@ -604,6 +743,76 @@ export class Queue<TData = unknown, TResult = unknown> {
     }
   }
 
+  private scheduleIdlePoll(): void {
+    if (
+      this.idlePollIntervalMs <= 0 ||
+      this.closed ||
+      this.workersClosing ||
+      this.paused ||
+      !this.hasHandlers() ||
+      this.pollTimer !== undefined
+    ) {
+      return;
+    }
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = undefined;
+      this.triggerPump();
+    }, this.idlePollIntervalMs);
+    unrefTimer(this.pollTimer);
+  }
+
+  private clearPollTimer(): void {
+    if (this.pollTimer !== undefined) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+  }
+
+  private schedulePumpRetry(): void {
+    if (
+      this.closed ||
+      this.workersClosing ||
+      this.paused ||
+      !this.hasHandlers()
+    ) {
+      return;
+    }
+    this.clearPumpRetryTimer();
+    const baseDelayMs = Math.min(50, this.pollIntervalMs);
+    const exponent = Math.min(this.pumpErrorCount - 1, 10);
+    const delayMs = Math.min(5_000, baseDelayMs * 2 ** exponent);
+    this.pumpRetryTimer = setTimeout(() => {
+      this.pumpRetryTimer = undefined;
+      this.triggerPump();
+    }, delayMs);
+    unrefTimer(this.pumpRetryTimer);
+  }
+
+  private clearPumpRetryTimer(): void {
+    if (this.pumpRetryTimer !== undefined) {
+      clearTimeout(this.pumpRetryTimer);
+      this.pumpRetryTimer = undefined;
+    }
+  }
+
+  private createLifecycleJob(): Job<TData, TResult> {
+    const now = Date.now();
+    return {
+      id: "",
+      queueName: this.name,
+      name: "",
+      data: undefined as TData,
+      priority: 0,
+      maxAttempts: 1,
+      attemptsMade: 0,
+      status: "waiting",
+      removeOnComplete: false,
+      createdAt: now,
+      processAfter: now,
+      stacktrace: [],
+    };
+  }
+
   private notifyDrainIfIdle(): void {
     if (this.inFlightCount === 0) {
       void this.emitLifecycleEvent("drained");
@@ -620,20 +829,7 @@ export class Queue<TData = unknown, TResult = unknown> {
     if (!set || set.size === 0) {
       return;
     }
-    const stubJob = {
-      id: "",
-      queueName: this.name,
-      name: "",
-      data: undefined as TData,
-      priority: 0,
-      maxAttempts: 1,
-      attemptsMade: 0,
-      status: "waiting" as const,
-      removeOnComplete: false,
-      createdAt: Date.now(),
-      processAfter: Date.now(),
-      stacktrace: [],
-    };
+    const stubJob = this.createLifecycleJob();
     for (const listener of [...set]) {
       try {
         await listener(stubJob);
