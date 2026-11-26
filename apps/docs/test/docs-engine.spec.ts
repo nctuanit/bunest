@@ -479,6 +479,7 @@ describe("@bunest/docs engine", () => {
         ].map((m) => m[1]!);
         expect(spaLinks.length).toBeGreaterThan(5);
         for (const href of spaLinks) {
+          if (href.startsWith("#")) continue;
           expect(
             href.startsWith(entry.expectedPrefix),
             `Unprefixed SPA link ${href} in ${entry.file}`,
