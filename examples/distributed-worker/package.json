@@ -11,7 +11,8 @@
     "start": "bun run src/main.ts",
     "dev": "bun --watch src/main.ts",
     "test": "bun test",
-    "typecheck": "bun check"
+    "typegen": "bun run ../../packages/cli/src/cli.ts typegen",
+    "typecheck": "bun run typegen && bun check"
   },
   "dependencies": {
     "@bunest/core": "workspace:*",

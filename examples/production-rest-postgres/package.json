@@ -16,7 +16,8 @@
     "smoke:postgres": "bun run scripts/smoke-postgres.ts",
     "load": "bun run scripts/load-test.ts",
     "test": "bun test",
-    "typecheck": "bun check"
+    "typegen": "bun run ../../packages/cli/src/cli.ts typegen",
+    "typecheck": "bun run typegen && bun check"
   },
   "dependencies": {
     "@bunest/core": "workspace:*",

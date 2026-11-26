@@ -6,13 +6,13 @@
   "engines": {
     "bun": ">=1.4.5"
   },
-  "description": "Clean Bunest starter example with REST CRUD, SQLite Declarative Repository, Validation DTOs, and Class Macros",
+  "description": "Clean Bunest starter example with REST CRUD, SQLite Declarative Repository, and Validation DTOs",
   "scripts": {
     "dev": "bun run ../../packages/cli/src/cli.ts dev",
     "start": "bun run src/main.ts",
     "typegen": "bun run ../../packages/cli/src/cli.ts typegen",
     "check": "bun run ../../packages/cli/src/cli.ts check",
-    "typecheck": "bun check",
+    "typecheck": "bun run typegen && bunx tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {

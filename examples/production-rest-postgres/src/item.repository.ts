@@ -1,5 +1,5 @@
 import { Repository } from "@bunest/orm";
-import type { ItemEntity } from "./item.entity";
+import { ItemEntity } from "./item.entity";
 
-@Repository<ItemEntity, number>()
+@Repository(ItemEntity)
 export abstract class ItemRepository {}

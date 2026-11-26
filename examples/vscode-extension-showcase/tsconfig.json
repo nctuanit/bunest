@@ -5,8 +5,5 @@
     "src/**/*.ts",
     "test/**/*.ts",
     ".bunest/types/**/*.d.ts"
-  ],
-  "exclude": [
-    "src/bunest-macros.d.ts"
   ]
 }
