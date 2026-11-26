@@ -135,6 +135,8 @@ Fault-injection measurements (PostgreSQL outage/recovery, rolling deploy drain) 
 | **Public Production Preview** | Rollback rehearsal has not passed, unresolved data-loss or critical bugs remain, 2h soak gate is unmet, or clean install from staging registry fails without local workarounds. |
 | **Expanding Support Scope** | A module or platform lacks dedicated integration & fault-injection tests. Support is declared per module, never inferred from NestJS conformance test counts. |
 
+For weekly evidence ledgers, Pilot A/B intake & sign-off reports, release-day/week-1/month-1 ops checklists, and capacity/staging/`1.0` audit worksheets, see [`docs/release-ops-templates.md`](./release-ops-templates.md).
+
 ---
 
 ## 7. Security Vulnerability Reporting
