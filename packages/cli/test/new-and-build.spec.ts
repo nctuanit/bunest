@@ -111,7 +111,9 @@ describe("bunest new, bunest build, and bunest dev", () => {
 
     const mainSrc = await Bun.file(join(projectDir, "src/main.ts")).text();
     expect(mainSrc).not.toContain("reflect-metadata");
-    expect(mainSrc).toContain('import { ValidationPipe } from "@bunest/validation"');
+    expect(mainSrc).toContain(
+      'import { BunestFactory, ValidationPipe } from "@bunest/core"',
+    );
     expect(mainSrc).toContain("BunestFactory.create(AppModule)");
     expect(mainSrc).toContain("new ValidationPipe()");
     expect(mainSrc).toContain("Bun.env.PORT ?? 3000");

@@ -74,8 +74,7 @@ export function buildProjectTemplateFiles(
     exclude: ["node_modules", "dist"],
   };
 
-  const mainTs = `import { BunestFactory } from "@bunest/core";
-import { ValidationPipe } from "@bunest/validation";
+  const mainTs = `import { BunestFactory, ValidationPipe } from "@bunest/core";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
