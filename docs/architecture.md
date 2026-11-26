@@ -65,7 +65,7 @@ flowchart TD
 
 - **`@bunest/core`** is the single zero-internal-dependency foundation package combining common decorators/metadata, DI container & AOP weaver, hybrid `Bun.serve()` HTTP adapter (`./http`), configuration (`./config`), `fetch()` HTTP client (`./client`), WebSocket gateways (`./ws`), and ALS internationalization (`./i18n`).
 - **`@bunest/validation`** depends strictly one-way on `@bunest/core` (zero cycle), exposing `./validator`, `./transformer`, and `./standard-schema` subpaths.
-- **All 19 of 19 packages (100%) have zero external npm runtime dependencies** ([ADR-017](./adr/ADR-017.md)) and **17 of 19 packages depend solely on `@bunest/core`**.
+- **All 19 of 19 packages (100%) have zero external npm runtime dependencies** ([ADR-017](./adr/ADR-017.md)) and **16 of 19 packages depend solely on `@bunest/core`** (`@bunest/core` has zero internal dependencies; only `@bunest/workflows` and `@bunest/ai` depend on additional `@bunest/*` packages).
 
 ---
 
