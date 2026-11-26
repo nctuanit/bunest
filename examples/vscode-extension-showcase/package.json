@@ -6,13 +6,13 @@
   "engines": {
     "bun": ">=1.4.5"
   },
-  "description": "Interactive showcase project demonstrating vscode-bunest and Bunest's Customizable Magic Architecture (bunest.config.ts, Custom Macros/Presets, Declarative ORM Scopes/Operators, AOP AspectPhase Pipelines, Conditional Beans, TextEditor AST Quick Fixes, HTTP Runner & DI Graph)",
+  "description": "Interactive showcase project demonstrating vscode-bunest and Bunest's Customizable Magic Architecture (bunest.config.ts, Declarative ORM Scopes/Operators, AOP AspectPhase Pipelines, Events & Config, HTTP Runner & DI Graph)",
   "scripts": {
     "dev": "bun run ../../packages/cli/src/cli.ts dev",
     "start": "bun run src/main.ts",
     "typegen": "bun run ../../packages/cli/src/cli.ts typegen",
     "check": "bun run ../../packages/cli/src/cli.ts check",
-    "typecheck": "bun check",
+    "typecheck": "bun run typegen && bunx tsc --noEmit",
     "delombok": "bun run ../../packages/cli/src/cli.ts delombok",
     "test": "bun test"
   },

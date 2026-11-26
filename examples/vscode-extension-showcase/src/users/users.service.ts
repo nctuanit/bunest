@@ -20,7 +20,7 @@ export class UsersService {
   constructor(
     private readonly usersRepo: UserRepository,
     private readonly events: EventEmitterService,
-    private readonly config: ConfigService,
+    private readonly config: ConfigService<Record<string, string | undefined>>,
   ) {}
 
   getRuntimeBanner(): { app: string; port: string; hasJwtSecret: boolean } {

@@ -13,6 +13,7 @@ import { ShoeRepository } from "./shoe.repository";
 
 @Injectable()
 export class ShoesService {
+  declare readonly logger: Logger;
 
   constructor(
     private readonly shoeRepo: ShoeRepository,
