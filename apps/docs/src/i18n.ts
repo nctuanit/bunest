@@ -59,6 +59,8 @@ export interface UiStrings {
   readonly runtimeLabel: string;
   readonly decoratorsLabel: string;
   readonly footerTagline: string;
+  readonly footerVersionLabel: string;
+  readonly footerCommitLabel: string;
   readonly footerAdrs: string;
   readonly footerMigration: string;
   readonly footerRoadmap: string;
@@ -69,7 +71,10 @@ export interface UiStrings {
   readonly githubLabel: string;
   readonly homeLabel: string;
   readonly toggleMenu: string;
+  readonly closeMenu: string;
   readonly toggleTheme: string;
+  readonly languageLabel: string;
+  readonly drawerUtilitiesLabel: string;
   readonly packagesLabel: string;
   readonly notFoundTitle: string;
   readonly notFoundBodyPrefix: string;
@@ -100,6 +105,8 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     runtimeLabel: "Runtime",
     decoratorsLabel: "Decorators",
     footerTagline: "NestJS-style backend architecture built natively on Bun.",
+    footerVersionLabel: "Docs",
+    footerCommitLabel: "Commit",
     footerAdrs: "ADRs",
     footerMigration: "Migration",
     footerRoadmap: "Roadmap",
@@ -110,7 +117,10 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     githubLabel: "Bunest on GitHub",
     homeLabel: "Docs",
     toggleMenu: "Toggle navigation menu",
+    closeMenu: "Close navigation menu",
     toggleTheme: "Toggle light/dark mode",
+    languageLabel: "Language",
+    drawerUtilitiesLabel: "Quick links & appearance",
     packagesLabel: "Packages & Monorepo",
     notFoundTitle: "404 — Page Not Found | Bunest Documentation",
     notFoundBodyPrefix: "No documentation page matches",
@@ -139,6 +149,8 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     runtimeLabel: "Runtime",
     decoratorsLabel: "Decorators",
     footerTagline: "Kiến trúc backend kiểu NestJS xây dựng thuần trên Bun.",
+    footerVersionLabel: "Phiên bản tài liệu",
+    footerCommitLabel: "Commit",
     footerAdrs: "ADRs",
     footerMigration: "Chuyển từ NestJS",
     footerRoadmap: "Lộ trình",
@@ -149,7 +161,10 @@ export const UI_STRINGS: Record<DocsLang, UiStrings> = {
     githubLabel: "Bunest trên GitHub",
     homeLabel: "Tài liệu",
     toggleMenu: "Bật/tắt menu điều hướng",
+    closeMenu: "Đóng menu điều hướng",
     toggleTheme: "Chuyển chế độ sáng/tối",
+    languageLabel: "Ngôn ngữ",
+    drawerUtilitiesLabel: "Liên kết nhanh & giao diện",
     packagesLabel: "Gói & Monorepo",
     notFoundTitle: "404 — Không tìm thấy trang | Tài liệu Bunest",
     notFoundBodyPrefix: "Không tìm thấy trang tài liệu nào khớp với",

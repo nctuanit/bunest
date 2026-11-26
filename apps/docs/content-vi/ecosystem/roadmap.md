@@ -31,7 +31,7 @@ Bunest đi theo lộ trình theo từng giai đoạn, kiểm soát qua các cổ
 
 ## 3. Phạm vi Hỗ trợ Production (Phân tầng Ổn định theo Module)
 
-Cả 19 package đều được phát hành đồng bộ phiên bản dưới nhánh `0.1.x` với đầy đủ unit test và conformance test, nhưng **mức sẵn sàng production được công bố riêng cho từng module** dựa trên kiểm thử tích hợp và tạo lỗi trên hạ tầng thật (xem `docs/support-policy.md`, `docs/public-api-matrix.md` và `docs/production-preview.md` trong kho mã nguồn):
+Cả 19 package đều được phát hành đồng bộ phiên bản dưới nhánh `0.1.x` với đầy đủ unit test và conformance test, nhưng **mức sẵn sàng production được công bố riêng cho từng module** dựa trên kiểm thử tích hợp và tạo lỗi trên hạ tầng thật (xem `docs/support-policy.md`, `docs/public-api-matrix.md`, `docs/production-preview.md` trong kho mã nguồn và [Triển khai & Production](/recipes/deployment)):
 
 | Mức ổn định | Package / Phạm vi | Tiêu chí đạt chuẩn |
 | --- | --- | --- |
@@ -82,13 +82,13 @@ Toàn bộ các giai đoạn dưới đây đều **đã được triển khai t
 
 ## 5. Các Mốc Lịch sử Trước khi Hợp nhất
 
-Một số tài liệu cũ trong kho mã nguồn và mục lịch sử của `CHANGELOG.md` có nhắc tới các mốc tiền phát hành nội bộ (`v0.1`, `v0.2`, `v0.5`, `v0.8`) cũng như số lượng package lớn hơn (**22 → 53 → 35/37 package**). Đây là **các giai đoạn phát triển nội bộ trước khi phát hành**, không phải các phiên bản npm phát hành riêng lẻ:
+Một số tài liệu cũ trong kho mã nguồn và mục lịch sử của `CHANGELOG.md` có nhắc tới các mốc tiền phát hành nội bộ (`v0.1`, `v0.2`, `v0.5`, `v0.8`) cũng như cấu trúc workspace lớn hơn trước khi hợp nhất (**22 → 53 → 35/37** package trước `ADR-016`). Đây là **các giai đoạn phát triển nội bộ trong lịch sử**, không phải các tag npm hay dòng phiên bản phát hành riêng lẻ:
 
-| Nhãn lịch sử | Ý nghĩa trước đây | Tương đương hiện tại ở `0.1.0` |
-| --- | --- | --- |
-| **Nội bộ `v0.1` / `v0.2`** | Nền tảng 22 package ban đầu + tương đồng NestJS v12 (`DiscoveryService`, API Versioning, `RouterModule`, Durable DI, `StandardSchemaV1`, v.v.) | Đã hợp nhất vào `@bunest/core`, `@bunest/validation` và các package lõi |
-| **Nội bộ `v0.5` (53 → 35/37 pkg)** | Mở rộng toàn bộ hệ sinh thái NestJS v12 (53 package gồm cả các facade `@nestjs/*` mỏng, sau đó tinh gọn còn 35/37 package) | Đã hợp nhất theo `ADR-016` thành **19 package theo lĩnh vực** với ESM subpath có thể tree-shake (`@bunest/core/*`, `@bunest/security/*`, `@bunest/messaging/*`, `@bunest/jobs/*`, `@bunest/resilience/*`, `@bunest/orm/*`, `@bunest/ai/*`) |
-| **Nội bộ `v0.8`** | AOP tầng service (`ADR-014`), declarative repository `@bunest/orm`, validation không dependency ngoài (`ADR-015`) và 19/19 package 0 external runtime dep (`ADR-017`) | Phát hành làm nền tảng của **`0.1.0 Production Preview`** |
+| Nhãn lịch sử | Tag npm đã phát hành? | Ý nghĩa trước đây | Tương đương hiện tại ở `0.1.0` |
+| --- | --- | --- | --- |
+| **Nội bộ `v0.1` / `v0.2`** | Không (mốc nội bộ) | Nền tảng 22 package ban đầu + tương đồng NestJS v12 (`DiscoveryService`, API Versioning, `RouterModule`, Durable DI, `StandardSchemaV1`, v.v.) | Đã hợp nhất vào `@bunest/core`, `@bunest/validation` và các package lõi |
+| **Nội bộ `v0.5` (53 → 35/37 pkg)** | Không (mốc nội bộ) | Mở rộng toàn bộ hệ sinh thái NestJS v12 (53 package gồm cả các facade `@nestjs/*` mỏng, sau đó tinh gọn còn 35/37 trước `ADR-016`) | Đã hợp nhất theo `ADR-016` thành **19 package theo lĩnh vực** với ESM subpath có thể tree-shake (`@bunest/core/*`, `@bunest/security/*`, `@bunest/messaging/*`, `@bunest/jobs/*`, `@bunest/resilience/*`, `@bunest/orm/*`, `@bunest/ai/*`) |
+| **Nội bộ `v0.8`** | Không (mốc nội bộ) | AOP tầng service (`ADR-014`), declarative repository `@bunest/orm`, validation không dependency ngoài (`ADR-015`) và 19/19 package 0 external runtime dep (`ADR-017`) | Phát hành làm nền tảng của **`0.1.0 Production Preview`** |
 
 ---
 

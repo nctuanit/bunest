@@ -162,105 +162,105 @@ function renderHeroCards(basePath = "", lang: DocsLang = "en"): string {
   if (lang === "vi") {
     return `<div class="bn-hero-banner">
   <div class="bn-hero-badge">
-    <span class="bn-pulse-dot"></span>
-    <span>Thuần Bun 1.4.5+ &bull; Không Express/Fastify &bull; Không Reflection mỗi Request</span>
+    <span class="bn-pulse-dot" aria-hidden="true"></span>
+    <span>Bun 1.4.5+ &bull; 19 gói không phụ thuộc ngoài &bull; Zero Reflection mỗi Request</span>
   </div>
   <p class="bn-hero-lead">
-    Xây dựng ứng dụng backend TypeScript mô-đun, dễ mở rộng với <strong>trải nghiệm kiến trúc quen thuộc của NestJS</strong> — biên dịch một lần lúc khởi động thành route closure gốc của <code>Bun.serve()</code>.
+    Xây dựng REST API TypeScript mô-đun với <strong>controller, DI và validation kiểu NestJS</strong> — biên dịch một lần lúc khởi động thành route closure gốc của <code>Bun.serve()</code>.
   </p>
   <div class="bn-hero-actions">
     <a class="bn-btn bn-btn-primary" href="${href("/overview/first-steps")}" data-spa-link>
-      <span>Bắt đầu ngay</span>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      <span>Chạy API đầu tiên</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
-    <a class="bn-btn bn-btn-secondary" href="${href("/architecture/execution-pipeline")}" data-spa-link>
+    <a class="bn-btn bn-btn-secondary" href="${href("/architecture/migration-from-nestjs")}" data-spa-link>
+      <span>Đến từ NestJS</span>
+    </a>
+    <a class="bn-btn bn-btn-ghost" href="${href("/architecture/execution-pipeline")}" data-spa-link>
       <span>Pipeline 11 bước</span>
-    </a>
-    <a class="bn-btn bn-btn-ghost" href="${href("/architecture/adrs")}" data-spa-link>
-      <span>Xem 18 ADRs</span>
     </a>
   </div>
 </div>
 <div class="bn-feature-grid">
   <a class="bn-feature-card" href="${href("/overview/controllers")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
     </div>
     <h3>Định tuyến biên dịch lúc khởi động</h3>
-    <p><code>@Controller</code> &amp; các HTTP decorator được biên dịch một lần thành closure gốc của <code>Bun.serve({ routes })</code> mà không dùng reflection trên hot-path.</p>
+    <p><code>@Controller</code> &amp; HTTP decorators biên dịch một lần thành closure gốc của <code>Bun.serve({ routes })</code>.</p>
   </a>
   <a class="bn-feature-card" href="${href("/overview/modules")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
     <h3>DI mô-đun chặt chẽ</h3>
-    <p>Đóng gói module mặc định private, khởi tạo theo thứ tự phụ thuộc, chẩn đoán vòng phụ thuộc và chặn sớm <code>ScopeLeakException</code>.</p>
+    <p>Đóng gói module private mặc định, chẩn đoán vòng phụ thuộc và chặn sớm <code>ScopeLeakException</code>.</p>
   </a>
   <a class="bn-feature-card" href="${href("/techniques/validation")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
     </div>
     <h3>Validation an toàn mặc định</h3>
-    <p><code>ValidationPipe</code> bật sẵn <code>whitelist</code>, <code>forbidNonWhitelisted</code>, chống prototype pollution và hỗ trợ Standard Schema (Zod/Valibot).</p>
+    <p><code>ValidationPipe</code> bật sẵn <code>whitelist</code>, chống prototype pollution và hỗ trợ Standard Schema.</p>
   </a>
   <a class="bn-feature-card" href="${href("/overview/interceptors")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     </div>
     <h3>Onion Pipeline không RxJS</h3>
-    <p>Interceptor thuần <code>Promise</code> async/await, Web <code>Request</code>/<code>Response</code> gốc, <code>Bun.file()</code> zero-copy và SSE stream.</p>
+    <p>Interceptor thuần <code>Promise</code> async/await, Web <code>Request</code>/<code>Response</code> gốc và SSE stream.</p>
   </a>
 </div>`;
   }
   return `<div class="bn-hero-banner">
   <div class="bn-hero-badge">
-    <span class="bn-pulse-dot"></span>
-    <span>Native Bun 1.4.5+ &bull; Zero Express/Fastify &bull; Zero Per-Request Reflection</span>
+    <span class="bn-pulse-dot" aria-hidden="true"></span>
+    <span>Bun 1.4.5+ &bull; 19 Zero-Dep Packages &bull; Zero Per-Request Reflection</span>
   </div>
   <p class="bn-hero-lead">
-    Build scalable, modular TypeScript server-side applications with the <strong>exact architectural ergonomics of NestJS</strong> — compiled once at bootstrap into native <code>Bun.serve()</code> route closures.
+    Build modular TypeScript REST APIs with <strong>NestJS-style controllers, DI, and validation</strong> — compiled once at bootstrap into native <code>Bun.serve()</code> route closures.
   </p>
   <div class="bn-hero-actions">
     <a class="bn-btn bn-btn-primary" href="${href("/overview/first-steps")}" data-spa-link>
-      <span>Get Started</span>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      <span>Run your first API</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
-    <a class="bn-btn bn-btn-secondary" href="${href("/architecture/execution-pipeline")}" data-spa-link>
+    <a class="bn-btn bn-btn-secondary" href="${href("/architecture/migration-from-nestjs")}" data-spa-link>
+      <span>Coming from NestJS</span>
+    </a>
+    <a class="bn-btn bn-btn-ghost" href="${href("/architecture/execution-pipeline")}" data-spa-link>
       <span>11-Stage Pipeline</span>
-    </a>
-    <a class="bn-btn bn-btn-ghost" href="${href("/architecture/adrs")}" data-spa-link>
-      <span>Read 18 ADRs</span>
     </a>
   </div>
 </div>
 <div class="bn-feature-grid">
   <a class="bn-feature-card" href="${href("/overview/controllers")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
     </div>
     <h3>Compile-at-Bootstrap Routing</h3>
-    <p><code>@Controller</code> &amp; HTTP method decorators compile once into native <code>Bun.serve({ routes })</code> closures with zero hot-path reflection.</p>
+    <p><code>@Controller</code> &amp; HTTP decorators compile once into native <code>Bun.serve({ routes })</code> closures.</p>
   </a>
   <a class="bn-feature-card" href="${href("/overview/modules")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
     <h3>Strict Modular DI</h3>
-    <p>Private-by-default module encapsulation, topological bootstrap, cycle diagnostics, and fail-fast <code>ScopeLeakException</code> checks.</p>
+    <p>Private-by-default encapsulation, cycle diagnostics, and fail-fast <code>ScopeLeakException</code> checks.</p>
   </a>
   <a class="bn-feature-card" href="${href("/techniques/validation")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
     </div>
     <h3>Secure-by-Default Validation</h3>
-    <p><code>ValidationPipe</code> ships with <code>whitelist</code>, <code>forbidNonWhitelisted</code>, prototype-pollution guards, and Zod/Valibot adapter support.</p>
+    <p><code>ValidationPipe</code> ships with <code>whitelist</code>, prototype-pollution guards, and Standard Schema support.</p>
   </a>
   <a class="bn-feature-card" href="${href("/overview/interceptors")}" data-spa-link>
-    <div class="bn-feature-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    <div class="bn-feature-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     </div>
     <h3>Zero-RxJS Onion Pipeline</h3>
-    <p>Async/await native <code>Promise</code> interceptors, native Web <code>Request</code>/<code>Response</code> passthrough, zero-copy <code>Bun.file()</code>, and SSE streams.</p>
+    <p>Async/await native <code>Promise</code> interceptors, Web <code>Request</code>/<code>Response</code> passthrough, and SSE streams.</p>
   </a>
 </div>`;
 }

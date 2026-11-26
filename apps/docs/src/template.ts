@@ -19,10 +19,33 @@ import type { CompiledPage } from "./content-loader";
 
 export const BUNEST_VERSION: string = corePackageJson.version ?? "0.1.0";
 export const DOCS_REPO_URL =
-  process.env.DOCS_REPO_URL ?? "https://github.com/nctuanit/bunest";
+  Bun.env.DOCS_REPO_URL ?? "https://github.com/nctuanit/bunest";
 export const DOCS_SITE_ORIGIN = (
-  process.env.DOCS_SITE_URL ?? "https://nctuanit.github.io"
+  Bun.env.DOCS_SITE_URL ?? "https://nctuanit.github.io"
 ).replace(/\/+$/, "");
+
+let cachedGitSha: string | null = null;
+
+export function resolveDocsGitSha(): { full: string; short: string } | null {
+  const envSha = (Bun.env.DOCS_GIT_SHA ?? Bun.env.GITHUB_SHA ?? "").trim();
+  if (/^[0-9a-f]{7,40}$/i.test(envSha)) {
+    return { full: envSha, short: envSha.slice(0, 7) };
+  }
+  if (cachedGitSha === null) {
+    try {
+      const proc = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const out = proc.exitCode === 0 ? proc.stdout.toString().trim() : "";
+      cachedGitSha = /^[0-9a-f]{7,40}$/i.test(out) ? out : "";
+    } catch {
+      cachedGitSha = "";
+    }
+  }
+  if (!cachedGitSha) return null;
+  return { full: cachedGitSha, short: cachedGitSha.slice(0, 7) };
+}
 
 function escapeHtml(str: string): string {
   return Bun.escapeHTML(str);
@@ -161,6 +184,11 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
   const enAbsoluteUrl = `${DOCS_SITE_ORIGIN}${enHref}`;
   const viAbsoluteUrl = `${DOCS_SITE_ORIGIN}${viHref}`;
   const editUrl = buildEditUrl(page.sourceFile);
+  const gitSha = resolveDocsGitSha();
+  const repoBase = DOCS_REPO_URL.replace(/\/+$/, "");
+  const commitFooterHtml = gitSha
+    ? `<span class="bn-footer-sep" aria-hidden="true">&bull;</span><span>${escapeHtml(ui.footerCommitLabel)} <a class="bn-footer-commit" href="${escapeHtml(`${repoBase}/commit/${gitSha.full}`)}" target="_blank" rel="noopener noreferrer"><code>${escapeHtml(gitSha.short)}</code></a></span>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -200,8 +228,8 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
   <!-- Top Header -->
   <header class="bn-header">
     <div class="bn-header-left">
-      <button type="button" class="bn-icon-btn bn-menu-toggle" id="bn-menu-toggle" aria-label="${escapeHtml(ui.toggleMenu)}" aria-expanded="false">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      <button type="button" class="bn-icon-btn bn-menu-toggle" id="bn-menu-toggle" aria-label="${escapeHtml(ui.toggleMenu)}" aria-expanded="false" aria-controls="bn-sidebar">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <a class="bn-brand" href="${url("/")}" data-spa-link>
         ${renderBrandLogoSvg()}
@@ -213,31 +241,31 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
     </div>
 
     <div class="bn-header-center">
-      <button type="button" class="bn-search-trigger" id="bn-search-trigger" aria-label="${escapeHtml(ui.searchTriggerLabel)}">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <button type="button" class="bn-search-trigger" id="bn-search-trigger" aria-label="${escapeHtml(ui.searchTriggerLabel)}" aria-haspopup="dialog" aria-controls="bn-search-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <span class="bn-search-placeholder">${escapeHtml(ui.searchPlaceholder)}</span>
         <kbd class="bn-kbd" id="bn-search-kbd">Ctrl K</kbd>
       </button>
     </div>
 
     <div class="bn-header-right">
-      <div class="bn-lang-switch" role="group" aria-label="Language">
-        <a id="bn-lang-en" class="bn-lang-btn${lang === "en" ? " is-active" : ""}" href="${escapeHtml(enHref)}" hreflang="en" title="English">EN</a>
-        <a id="bn-lang-vi" class="bn-lang-btn${lang === "vi" ? " is-active" : ""}" href="${escapeHtml(viHref)}" hreflang="vi" title="Tiếng Việt">VI</a>
+      <div class="bn-lang-switch" role="group" aria-label="${escapeHtml(ui.languageLabel)}">
+        <a id="bn-lang-en" data-lang-switch="en" class="bn-lang-btn${lang === "en" ? " is-active" : ""}" href="${escapeHtml(enHref)}" hreflang="en" aria-label="English"${lang === "en" ? ' aria-current="page"' : ""} title="English">EN</a>
+        <a id="bn-lang-vi" data-lang-switch="vi" class="bn-lang-btn${lang === "vi" ? " is-active" : ""}" href="${escapeHtml(viHref)}" hreflang="vi" aria-label="Tiếng Việt"${lang === "vi" ? ' aria-current="page"' : ""} title="Tiếng Việt">VI</a>
       </div>
       <a class="bn-header-pill" href="${url("/architecture/adrs")}" data-spa-link title="Architecture Decision Records">
         <span class="bn-pill-dot"></span>
         <span>v${escapeHtml(BUNEST_VERSION)} &bull; Bun 1.4.5+</span>
       </a>
-      <a class="bn-icon-btn" href="${escapeHtml(DOCS_REPO_URL)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ui.githubLabel)}" title="${escapeHtml(ui.githubLabel)}">
+      <a class="bn-icon-btn bn-header-utility" href="${escapeHtml(DOCS_REPO_URL)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ui.githubLabel)}" title="${escapeHtml(ui.githubLabel)}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
       </a>
-      <button type="button" class="bn-icon-btn bn-theme-toggle" id="bn-theme-toggle" aria-label="${escapeHtml(ui.toggleTheme)}" title="${escapeHtml(ui.toggleTheme)}">
-        <svg class="bn-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        <svg class="bn-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <button type="button" class="bn-icon-btn bn-theme-toggle bn-header-utility" id="bn-theme-toggle" data-theme-toggle aria-label="${escapeHtml(ui.toggleTheme)}" title="${escapeHtml(ui.toggleTheme)}">
+        <svg class="bn-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="bn-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
-      <a class="bn-icon-btn" href="${url("/ecosystem/packages")}" data-spa-link aria-label="${escapeHtml(ui.packagesLabel)}" title="${escapeHtml(ui.packagesLabel)}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <a class="bn-icon-btn bn-header-utility" href="${url("/ecosystem/packages")}" data-spa-link aria-label="${escapeHtml(ui.packagesLabel)}" title="${escapeHtml(ui.packagesLabel)}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
       </a>
     </div>
   </header>
@@ -250,6 +278,38 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
     <!-- Left Navigation Sidebar -->
     <aside class="bn-sidebar" id="bn-sidebar" aria-label="${escapeHtml(ui.navAriaLabel)}">
       <div class="bn-sidebar-inner">
+        <div class="bn-drawer-header">
+          <span class="bn-drawer-title">${escapeHtml(ui.navAriaLabel)}</span>
+          <button type="button" class="bn-icon-btn bn-drawer-close" id="bn-drawer-close" aria-label="${escapeHtml(ui.closeMenu)}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="bn-drawer-controls" aria-label="${escapeHtml(ui.drawerUtilitiesLabel)}">
+          <div class="bn-drawer-lang-row">
+            <span class="bn-drawer-control-label">${escapeHtml(ui.languageLabel)}</span>
+            <div class="bn-lang-switch bn-drawer-lang-switch" role="group" aria-label="${escapeHtml(ui.languageLabel)}">
+              <a data-lang-switch="en" class="bn-lang-btn${lang === "en" ? " is-active" : ""}" href="${escapeHtml(enHref)}" hreflang="en" aria-label="English"${lang === "en" ? ' aria-current="page"' : ""}>EN</a>
+              <a data-lang-switch="vi" class="bn-lang-btn${lang === "vi" ? " is-active" : ""}" href="${escapeHtml(viHref)}" hreflang="vi" aria-label="Tiếng Việt"${lang === "vi" ? ' aria-current="page"' : ""}>VI</a>
+            </div>
+          </div>
+          <div class="bn-drawer-utility-row">
+            <button type="button" class="bn-drawer-util-btn bn-theme-toggle" data-theme-toggle aria-label="${escapeHtml(ui.toggleTheme)}">
+              <svg class="bn-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              <svg class="bn-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <span>${escapeHtml(ui.toggleTheme)}</span>
+            </button>
+            <div class="bn-drawer-links-row">
+              <a class="bn-drawer-util-btn" href="${escapeHtml(DOCS_REPO_URL)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ui.githubLabel)}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
+                <span>GitHub</span>
+              </a>
+              <a class="bn-drawer-util-btn" href="${url("/ecosystem/packages")}" data-spa-link aria-label="${escapeHtml(ui.packagesLabel)}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                <span>${escapeHtml(ui.packagesLabel)}</span>
+              </a>
+            </div>
+          </div>
+        </div>
         <nav class="bn-nav" id="bn-nav">
           ${renderSidebarNav(page.slug, base, lang)}
         </nav>
@@ -301,7 +361,10 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
 
         <footer class="bn-footer">
           <div class="bn-footer-left">
-            <strong>Bunest</strong> &mdash; ${escapeHtml(ui.footerTagline)}
+            <div class="bn-footer-brand"><strong>Bunest</strong> &mdash; ${escapeHtml(ui.footerTagline)}</div>
+            <div class="bn-footer-meta">
+              <span>${escapeHtml(ui.footerVersionLabel)} <code>v${escapeHtml(BUNEST_VERSION)}</code></span>${commitFooterHtml}
+            </div>
           </div>
           <div class="bn-footer-links">
             <a href="${url("/architecture/adrs")}" data-spa-link>${escapeHtml(ui.footerAdrs)}</a>
@@ -335,7 +398,7 @@ export function renderPageHtml(page: CompiledPage, basePath = ""): string {
       <div class="bn-search-input-row">
         <svg class="bn-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="bn-search-input" class="bn-search-input" placeholder="${escapeHtml(ui.searchModalPlaceholder)}" autocomplete="off" spellcheck="false" />
-        <button type="button" class="bn-search-esc" data-close-search>ESC</button>
+        <button type="button" class="bn-search-esc" data-close-search aria-label="${escapeHtml(ui.searchClose)}">ESC</button>
       </div>
       <div class="bn-search-results" id="bn-search-results" role="listbox"></div>
       <div class="bn-search-footer">

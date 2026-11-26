@@ -1,91 +1,66 @@
-# Giới thiệu
+# Viết REST API bằng TypeScript trên Bun
 
-**Bunest** là một framework TypeScript theo hướng tiến bộ (progressive) giúp xây dựng các ứng dụng server-side nhanh, có tính module hóa cao và dễ bảo trì trực tiếp trên **Bun**.
+**Bunest** mang đến cho các nhóm phát triển backend TypeScript bộ định tuyến `@Controller()`, dependency injection qua constructor chặt chẽ và validation DTO an toàn mặc định theo phong cách NestJS ngay trên **Bun** (`>= 1.4.5`)—không cần Express, Fastify hay RxJS.
+
+**[Chạy API đầu tiên ->](/overview/first-steps)**
+
+Đoạn mã dưới đây là **trích đoạn controller** từ `examples/hello-world/src/app.module.ts`, sử dụng đúng endpoint `/health` mà bạn sẽ khởi chạy và kiểm chứng trong [Các bước đầu tiên](/overview/first-steps):
+
+@@filename(examples/hello-world/src/app.module.ts)
+
+```ts
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(@Query("name") name?: string) {
+    return this.appService.getGreeting(name);
+  }
+
+  @Get("/health")
+  getHealth() {
+    return { status: "ok" };
+  }
+}
+```
+
+```bash
+curl http://localhost:3000/health
+```
+
+```json
+{"status":"ok"}
+```
+
+## Chọn lộ trình đọc tiếp theo
+
+- **[Đến từ NestJS](/architecture/migration-from-nestjs)** — Xem những phần tương đồng 1:1 (`@Module()`, `@Controller()`, `@Injectable()`, guard, pipe, filter) và những điểm thay đổi trên Bun (`Bun.serve()` gốc, interceptor thuần Promise thay cho RxJS và hệ sinh thái `@bunest/*` tinh gọn).
+- **[Cách request đi qua framework](/architecture/execution-pipeline)** — Tìm hiểu pipeline thực thi HTTP 11 bước được biên dịch một lần lúc khởi động thành các closure gốc của `Bun.serve({ routes })` với zero reflection trên mỗi request.
+
+## Tổng quan nhanh
 
 @@component(hero-cards)
 
-## Triết lý thiết kế
+## Pipeline & Kiến trúc
 
-Trong hệ sinh thái Bun, lập trình viên thường phải đánh đổi: `Bun.serve()` thuần và các router gọn nhẹ mang lại tốc độ vượt trội, trong khi các ứng dụng doanh nghiệp lại cần một kiến trúc có sẵn cho dependency injection, đóng gói module, validate DTO, guard, interceptor, xử lý lỗi tập trung, lưu trữ dữ liệu, bảo mật, messaging, AI và observability.
+- **[Pipeline thực thi 11 bước](/architecture/execution-pipeline)** — Vòng đời request chuẩn từ khớp route qua middleware, guard, interceptor onion thuần Promise, trích xuất tham số, validation pipe, thực thi handler, chuẩn hóa response và exception filter.
+- **[Hybrid Bun.serve Router](/architecture/hybrid-router)** — Cách controller biên dịch thành Zig closure gốc của `Bun.serve({ routes })` kết hợp radix router dự phòng có kiểm soát cùng cơ chế phát hiện trùng route fail-fast.
+- **[Chuẩn hóa Response](/architecture/response-serialization)** — Trả thẳng Web `Response` gốc, `Bun.file()` zero-copy, SSE stream và tuân thủ RFC 9110 cho body rỗng.
+- **[Validation an toàn mặc định](/techniques/validation)** — `ValidationPipe` mặc định bật `whitelist: true`, `forbidNonWhitelisted: true`, chặn prototype pollution và hỗ trợ Standard Schema.
 
-**Bunest kết nối cả hai thế giới đó.** Framework mang **mô hình kiến trúc NestJS v12** đã được kiểm chứng—`@Module()`, `@Controller()`, `@Injectable()`, parameter decorator, guard, pipe, interceptor, exception filter cùng hệ sinh thái tinh gọn gồm **19 package thuộc 6 lĩnh vực**—lên trực tiếp runtime gốc của Bun mà không cần Express, Fastify, các lớp tương thích Node HTTP hay phụ thuộc bắt buộc vào RxJS.
+## Bản ghi Quyết định Kiến trúc (ADRs)
 
-> info **Cam kết kiến trúc** Bunest **chỉ hỗ trợ Bun** (`Bun >= 1.4.5`, [ADR-001 & ADR-016](/architecture/adrs)). Các package lõi hoạt động trực tiếp trên Web Standards (`Request`, `Response`, `Headers`, `ReadableStream`, `Blob`, WebCrypto) và các API gốc của Bun (`Bun.serve`, `Bun.file`, `Bun.S3Client`, `Bun.RedisClient`, `Bun.password`, `Bun.CryptoHasher`, `Bun.Cookie`, `Bun.CSRF`, `bun:sqlite`, `Bun.SQL`, `bun:test`, `Bun.build`).
+> info **Cam kết kiến trúc** Bunest **chỉ hỗ trợ Bun** (`Bun >= 1.4.5`, [ADR-001 đến ADR-018](/architecture/adrs)). Các package lõi vận hành trực tiếp trên Web Standards (`Request`, `Response`, `Headers`, `ReadableStream`, WebCrypto) và API gốc của Bun (`Bun.serve`, `Bun.SQL`, `bun:sqlite`, `Bun.file`, `Bun.password`, `bun:test`) với **0 runtime dependency bên ngoài** trên toàn bộ 19 package (`ADR-017`).
 
-## Trải nghiệm nhanh
+Xem toàn bộ [Chỉ mục ADR & RFC](/architecture/adrs) để tra cứu các hợp đồng thiết kế bắt buộc cho legacy decorator (`ADR-002`), định tuyến biên dịch lúc bootstrap (`ADR-011`), chặn rò rỉ scope nghiêm ngặt (`ADR-012`), AOP tầng Service (`ADR-014`) và hợp nhất 6 lĩnh vực package (`ADR-016`).
 
-Nếu bạn từng làm việc với NestJS, Bunest sẽ mang lại cảm giác quen thuộc ngay lập tức—nhưng mọi route chỉ được biên dịch một lần khi khởi động (bootstrap) thành các closure `Bun.serve({ routes })` gốc với **zero reflection trên mỗi request**:
+## Benchmark
 
-@@filename(users.controller.ts)
+Bunest không công bố các tuyên bố tiếp thị kiểu _"nhanh hơn X lần"_ thiếu kiểm chứng. Mọi kết quả đều tuân thủ bộ benchmark đối đầu 8 mục tiêu có thể tái lập (công khai rõ phiên bản Bun, OS, phần cứng, mức đồng thời, độ trễ `p50`/`p95`/`p99`, RSS và tỷ lệ lỗi) được ghi rõ trong [Chính sách Trung thực Benchmark](/ecosystem/roadmap).
 
-```ts
-import { Body, Controller, Get, Param, Post, Query } from "@bunest/core";
-import { CreateUserDto } from "./create-user.dto";
-import { UsersService } from "./users.service";
+## Chính sách Hỗ trợ & Hệ sinh thái
 
-@Controller("/users")
-export class UsersController {
-  constructor(private readonly users: UsersService) {}
-
-  @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.users.findOne(id);
-  }
-
-  @Post()
-  create(@Body() dto: CreateUserDto, @Query("notify") notify?: string) {
-    return this.users.create(dto, notify === "true");
-  }
-}
-```
-
-Và với **Service-Layer AOP & Declarative Repositories**, các tác vụ cross-cutting trên các service `@Injectable()` hoàn toàn không cần boilerplate:
-
-@@filename(billing.service.ts)
-
-```ts
-import { Injectable } from "@bunest/core";
-import { Cacheable, CacheEvict } from "@bunest/cache";
-import { EmitEvent } from "@bunest/messaging/events";
-import { Retry } from "@bunest/resilience";
-import { WithLock } from "@bunest/resilience/locks";
-import { Span, Timed } from "@bunest/observability";
-import { Transactional } from "@bunest/orm";
-
-@Injectable()
-export class BillingService {
-  constructor(private readonly users: UserRepository) {}
-
-  @Span("users.lookup")
-  @Cacheable({ key: (email: string) => `user:${email}`, ttl: 60_000 })
-  findByEmail(email: string) {
-    return this.users.findByEmail(email);
-  }
-
-  @Timed("users.provision")
-  @WithLock((email: string) => `provision:${email}`, { ttl: 5_000 })
-  @Transactional()
-  @CacheEvict({ key: (email: string) => `user:${email}` })
-  @EmitEvent("user.provisioned", { async: true })
-  @Retry({ maxAttempts: 3 })
-  async provision(email: string, role: string) {
-    return this.users.save({ email, role, active: true });
-  }
-}
-```
-
-## Các nguyên tắc thiết kế cốt lõi
-
-1. **Runtime gốc của Bun** — Không dùng adapter `express`, `fastify` hay `node:http` trong lõi. Hỗ trợ sẵn zero-copy `Bun.file()`, trả thẳng Web `Response` và Zig routing qua `Bun.serve({ routes })`.
-2. **Legacy TypeScript decorators** — Sử dụng `experimentalDecorators: true` và `emitDecoratorMetadata: true` để constructor DI, parameter decorator và DTO của `@bunest/validation` (cùng `class-validator` + `class-transformer`) hoạt động mượt mà mà không cần AST plugin tùy chỉnh.
-3. **Biên dịch một lần lúc bootstrap** — Quét module, kiểm tra đồ thị DI, phát hiện trùng route, phát hiện rò rỉ scope, biên dịch SQL cho declarative repository và biên dịch execution plan đều chạy **một lần duy nhất lúc khởi động**. Hot path không gọi bất kỳ `Reflect.getMetadata()` nào.
-4. **Đảm bảo fail-fast chặt chẽ** — Route trùng lặp (kể cả khi chỉ đổi tên param như `/users/:id` và `/users/:userId`), thiếu provider, export mơ hồ, dependency vòng tròn và rò rỉ scope từ singleton sang request đều báo lỗi ngay lập tức trước khi `Bun.serve()` mở port.
-5. **Mặc định an toàn (Secure defaults)** — `ValidationPipe` mặc định bật `whitelist: true`, `forbidNonWhitelisted: true`, `forbidUnknownValues: true`, chặn prototype pollution, bảo vệ CSRF theo Fetch-Metadata, header Helmet-8, WebCrypto JWT/JWKS và cấu trúc JSON lỗi chuẩn hóa không bao giờ làm lộ stack trace ở môi trường production.
-6. **Hệ sinh thái tinh gọn 19 package, 6 lĩnh vực, 100% không phụ thuộc ngoài** — Từ lõi HTTP/DI/Config/WS/I18n (tích hợp sẵn Reflect metadata shim) và validation gốc không dependency đến `@bunest/orm` thống nhất trên Bun (12 dialect + SQL Store Kit), engine GraphQL Oct 2021 / Apollo không dependency, CLI phân tích TS AST gốc, Microservices, Messaging (Events/CQRS/Outbox/Webhooks), Jobs (Queues/Scheduler), Workflows, Resilience/Locks/Idempotency, Security/Auth/Authz, AI/MCP và Observability—với **19/19 package (100%) có 0 runtime dependency ngoài từ npm** và **0 import `node:*` trên toàn repo** ngoài 2 kernel adapter được cô lập trong `@bunest/core`.
-
-## Yêu cầu trước khi bắt đầu
-
-- Đã cài đặt **Bun** `>= 1.4.5` trên máy
-- **TypeScript** bật chế độ legacy decorator (`experimentalDecorators` + `emitDecoratorMetadata`)
-
-Sẵn sàng xây dựng ứng dụng Bunest đầu tiên? Hãy chuyển thẳng tới [Các bước đầu tiên](/overview/first-steps) hoặc khám phá toàn bộ 19 package tại [Packages & Monorepo](/ecosystem/packages).
+- **Phiên bản hiện tại:** **`0.1.0` Production Preview** đồng bộ phiên bản trên toàn bộ **19 package `@bunest/*`** cho **Bun `>= 1.4.5`**.
+- **Phạm vi Production Preview:** REST API trên Linux + Bun `1.4.5` với `@bunest/core`, `@bunest/validation`, `@bunest/orm` (PostgreSQL qua `Bun.SQL`, migration tường minh) và `@bunest/observability`.
+- **Khám phá thêm:** Đọc [Lộ trình Triển khai & Phạm vi Hỗ trợ](/ecosystem/roadmap), duyệt đủ 19 package tại [Packages & Monorepo](/ecosystem/packages), hoặc xem hướng dẫn vận hành tại [Triển khai & Production](/recipes/deployment).

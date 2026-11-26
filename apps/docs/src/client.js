@@ -82,7 +82,9 @@
     } catch {}
   }
 
-  $("#bn-theme-toggle")?.addEventListener("click", toggleTheme);
+  $$("[data-theme-toggle]").forEach((btn) =>
+    btn.addEventListener("click", toggleTheme),
+  );
 
   // Copy current page Markdown (for AI / sharing)
   $("#bn-copy-md")?.addEventListener("click", async () => {
@@ -103,29 +105,68 @@
   });
 
   // -------------------------------------------------------------------------
-  // Mobile Sidebar Drawer
+  // Mobile Sidebar Drawer & Body Scroll Lock
   // -------------------------------------------------------------------------
   const sidebar = $("#bn-sidebar");
   const backdrop = $("#bn-backdrop");
   const menuToggle = $("#bn-menu-toggle");
+  const drawerClose = $("#bn-drawer-close");
+  let sidebarLastFocused = null;
+  let searchLastFocused = null;
 
-  function closeSidebar() {
+  function syncScrollLock() {
+    const sidebarOpen = Boolean(sidebar?.classList.contains("is-open"));
+    const searchOpen = Boolean(searchModal && !searchModal.hidden);
+    const locked = sidebarOpen || searchOpen;
+    document.body.classList.toggle("bn-scroll-locked", locked);
+    document.documentElement.classList.toggle("bn-scroll-locked", locked);
+  }
+
+  function closeSidebar(restoreFocus = false) {
+    const wasOpen = Boolean(sidebar?.classList.contains("is-open"));
     sidebar?.classList.remove("is-open");
     if (backdrop) backdrop.hidden = true;
     menuToggle?.setAttribute("aria-expanded", "false");
+    syncScrollLock();
+    if (restoreFocus && wasOpen) {
+      const target =
+        sidebarLastFocused instanceof HTMLElement
+          ? sidebarLastFocused
+          : menuToggle;
+      sidebarLastFocused = null;
+      target?.focus();
+    } else if (!wasOpen) {
+      sidebarLastFocused = null;
+    }
   }
 
   function openSidebar() {
+    sidebarLastFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : menuToggle;
     sidebar?.classList.add("is-open");
     if (backdrop) backdrop.hidden = false;
     menuToggle?.setAttribute("aria-expanded", "true");
+    syncScrollLock();
+    if (drawerClose instanceof HTMLElement) {
+      drawerClose.focus({ preventScroll: true });
+    }
   }
 
   menuToggle?.addEventListener("click", () => {
-    if (sidebar?.classList.contains("is-open")) closeSidebar();
+    if (sidebar?.classList.contains("is-open")) closeSidebar(true);
     else openSidebar();
   });
-  backdrop?.addEventListener("click", closeSidebar);
+  drawerClose?.addEventListener("click", () => closeSidebar(true));
+  backdrop?.addEventListener("click", () => closeSidebar(true));
+
+  const desktopMedia = window.matchMedia?.("(min-width: 961px)");
+  desktopMedia?.addEventListener?.("change", (ev) => {
+    if (ev.matches && sidebar?.classList.contains("is-open")) {
+      closeSidebar(false);
+    }
+  });
 
   // -------------------------------------------------------------------------
   // Sidebar Category Accordions
@@ -376,10 +417,14 @@
   }
 
   function syncLangSwitcher(slug) {
-    const enLink = $("#bn-lang-en");
-    const viLink = $("#bn-lang-vi");
-    if (enLink) enLink.setAttribute("href", hrefForLang(slug, "en"));
-    if (viLink) viLink.setAttribute("href", hrefForLang(slug, "vi"));
+    const enHref = hrefForLang(slug, "en");
+    const viHref = hrefForLang(slug, "vi");
+    $$('[data-lang-switch="en"]').forEach((el) =>
+      el.setAttribute("href", enHref),
+    );
+    $$('[data-lang-switch="vi"]').forEach((el) =>
+      el.setAttribute("href", viHref),
+    );
   }
 
   async function navigateTo(href, pushHistory = true) {
@@ -523,7 +568,7 @@
         {
           title: "First steps",
           categoryTitle: "OVERVIEW",
-          href: withBase("/overview/first-steps"),
+          href: withBase(`${LANG_PREFIX}/overview/first-steps`),
           headingText: "Setup tsconfig.json & BunestFactory",
           snippet:
             "Install Bunest, configure legacy decorators, and boot your first app.",
@@ -531,7 +576,7 @@
         {
           title: "Controllers",
           categoryTitle: "OVERVIEW",
-          href: withBase("/overview/controllers"),
+          href: withBase(`${LANG_PREFIX}/overview/controllers`),
           headingText: "@Controller, @Get, @Post & parameter decorators",
           snippet:
             "Compile-at-bootstrap routing with @Body, @Param, @Query, @Res.",
@@ -539,7 +584,7 @@
         {
           title: "Validation",
           categoryTitle: "TECHNIQUES",
-          href: withBase("/techniques/validation"),
+          href: withBase(`${LANG_PREFIX}/techniques/validation`),
           headingText: "ValidationPipe & SchemaValidationPipe",
           snippet:
             "Secure defaults (whitelist, forbidNonWhitelisted), Zod adapter, HTTP 400 format.",
@@ -547,7 +592,7 @@
         {
           title: "11-Stage Execution Pipeline",
           categoryTitle: "ARCHITECTURE & ADRs",
-          href: withBase("/architecture/execution-pipeline"),
+          href: withBase(`${LANG_PREFIX}/architecture/execution-pipeline`),
           headingText: "Interactive ADR-008 Pipeline Explorer",
           snippet:
             "Exact order: CORS -> Middleware -> Guards -> Interceptors -> Pipes -> Handler.",
@@ -555,7 +600,7 @@
         {
           title: "Injection scopes",
           categoryTitle: "FUNDAMENTALS",
-          href: withBase("/fundamentals/injection-scopes"),
+          href: withBase(`${LANG_PREFIX}/fundamentals/injection-scopes`),
           headingText: "Scope.REQUEST & ScopeLeakException",
           snippet:
             "AsyncLocalStorage propagation with fail-fast bootstrap scope-leak detection.",
@@ -563,7 +608,7 @@
         {
           title: "Hybrid Bun.serve Router",
           categoryTitle: "ARCHITECTURE & ADRs",
-          href: withBase("/architecture/hybrid-router"),
+          href: withBase(`${LANG_PREFIX}/architecture/hybrid-router`),
           headingText: "Native Zig routes + Fallback Radix Router",
           snippet:
             "Verified Bun 1.4.5+ routes matrix, O(1) 405 + Allow, and CORS preflight.",
@@ -652,9 +697,19 @@
     });
   }
 
+  const searchTrigger = $("#bn-search-trigger");
+
   async function openSearch() {
     if (!searchModal) return;
+    if (sidebar?.classList.contains("is-open")) {
+      closeSidebar(false);
+    }
+    searchLastFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : searchTrigger;
     searchModal.hidden = false;
+    syncScrollLock();
     await ensureSearchIndex();
     if (searchInput) {
       searchInput.value = "";
@@ -663,14 +718,26 @@
     runSearch("");
   }
 
-  function closeSearch() {
+  function closeSearch(restoreFocus = false) {
     if (!searchModal) return;
+    const wasOpen = !searchModal.hidden;
     searchModal.hidden = true;
+    syncScrollLock();
+    if (restoreFocus && wasOpen) {
+      const target =
+        searchLastFocused instanceof HTMLElement
+          ? searchLastFocused
+          : searchTrigger;
+      searchLastFocused = null;
+      target?.focus();
+    } else if (!wasOpen) {
+      searchLastFocused = null;
+    }
   }
 
-  $("#bn-search-trigger")?.addEventListener("click", openSearch);
+  searchTrigger?.addEventListener("click", openSearch);
   $$("[data-close-search]").forEach((el) =>
-    el.addEventListener("click", closeSearch),
+    el.addEventListener("click", () => closeSearch(true)),
   );
 
   searchInput?.addEventListener("input", (e) => {
@@ -711,8 +778,13 @@
     }
 
     if (e.key === "Escape") {
-      if (searchModal && !searchModal.hidden) closeSearch();
-      closeSidebar();
+      if (searchModal && !searchModal.hidden) {
+        e.preventDefault();
+        closeSearch(true);
+      } else if (sidebar?.classList.contains("is-open")) {
+        e.preventDefault();
+        closeSidebar(true);
+      }
       return;
     }
 
