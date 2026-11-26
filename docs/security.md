@@ -15,7 +15,7 @@ Enabling `app.useGlobalPipes(new ValidationPipe())` automatically enforces:
 - **`forbidUnknownValues: true`**: Prevents non-object or malformed payloads from passing validation as empty valid DTOs.
 - **`transformOptions.enableImplicitConversion: false`**: Blocks silent JavaScript type-coercion bugs (e.g., `"false"` turning into `true`).
 - **`validationError: { target: false, value: false }`**: Never echoes raw rejected values (passwords, tokens, PII) in HTTP 400 responses.
-- **Prototype-pollution defense**: Both `@bunest/http` (`sanitizeObject` / `sanitizeRecord`) and `@bunest/validation` (`stripDangerousKeys` / `findDangerousKeys`) strip or reject dangerous keys (`__proto__`, `constructor`, `prototype`) before DTO instantiation.
+- **Prototype-pollution defense**: Both `@bunest/core/http` (`sanitizeObject` / `sanitizeRecord`) and `@bunest/validation` (`stripDangerousKeys` / `findDangerousKeys`) strip or reject dangerous keys (`__proto__`, `constructor`, `prototype`) before DTO instantiation.
 
 ### Body Size Limits & Malformed Input Handling
 
@@ -32,7 +32,7 @@ Malformed JSON and malformed `multipart/form-data` bodies fail with `400 Bad Req
 ### Safe Production Error Handling & Secret Redaction
 
 - **`DefaultExceptionFilter` ([ADR-008](./adr/ADR-008.md)):** Unhandled non-`HttpException` errors return `{ statusCode: 500, error: "Internal Server Error", message: "Internal server error" }` and **never leak stack traces or internal messages** when `NODE_ENV === "production"`.
-- **Log secret redaction:** Both `@bunest/common`'s `Logger` and `@bunest/config`'s `createSecretRedactor()` automatically redact sensitive keys (`password`, `secret`, `token`, `authorization`, `apiKey`, `cookie`, `privateKey`, etc.) while safely handling circular objects and `BigInt` values.
+- **Log secret redaction:** Both `@bunest/core`'s `Logger` and `@bunest/core/config`'s `createSecretRedactor()` automatically redact sensitive keys (`password`, `secret`, `token`, `authorization`, `apiKey`, `cookie`, `privateKey`, etc.) while safely handling circular objects and `BigInt` values.
 
 ---
 
