@@ -31,7 +31,7 @@ Bunest đi theo lộ trình theo từng giai đoạn, kiểm soát qua các cổ
 
 ## 3. Phạm vi Hỗ trợ Production (Phân tầng Ổn định theo Module)
 
-Cả 19 package đều được phát hành đồng bộ phiên bản dưới nhánh `0.1.x` với đầy đủ unit test và conformance test, nhưng **mức sẵn sàng production được công bố riêng cho từng module** dựa trên kiểm thử tích hợp và tạo lỗi trên hạ tầng thật (xem `docs/support-policy.md` và `docs/production-preview.md` trong kho mã nguồn):
+Cả 19 package đều được phát hành đồng bộ phiên bản dưới nhánh `0.1.x` với đầy đủ unit test và conformance test, nhưng **mức sẵn sàng production được công bố riêng cho từng module** dựa trên kiểm thử tích hợp và tạo lỗi trên hạ tầng thật (xem `docs/support-policy.md`, `docs/public-api-matrix.md` và `docs/production-preview.md` trong kho mã nguồn):
 
 | Mức ổn định | Package / Phạm vi | Tiêu chí đạt chuẩn |
 | --- | --- | --- |

@@ -36,7 +36,7 @@ Bunest is a **Bun-native** framework (`ADR-017`) and intentionally does not targ
 
 ## 3. Per-Module Stability Tiers
 
-Production readiness is declared **per module** based on real-infrastructure integration and fault-injection tests, never inferred solely from unit or conformance test counts.
+Production readiness is declared **per module** based on real-infrastructure integration and fault-injection tests, never inferred solely from unit or conformance test counts. For the complete 19-package, 95-export subpath inventory and `0.1.x → 0.2.x → 1.0` deprecation rules, see [`docs/public-api-matrix.md`](./public-api-matrix.md).
 
 | Stability Tier | Scope | Qualification Criteria |
 | --- | --- | --- |

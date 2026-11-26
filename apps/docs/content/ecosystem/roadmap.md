@@ -31,7 +31,7 @@ Bunest follows a phased, gate-driven roadmap prioritizing **correctness, strict 
 
 ## 3. Production Support Scope (Per-Module Stability Tiers)
 
-All 19 packages ship in lockstep under `0.1.x` with full unit and conformance test coverage, but **production readiness is declared per module** based on real-infrastructure integration and fault-injection tests (see `docs/support-policy.md` and `docs/production-preview.md` in the repository):
+All 19 packages ship in lockstep under `0.1.x` with full unit and conformance test coverage, but **production readiness is declared per module** based on real-infrastructure integration and fault-injection tests (see `docs/support-policy.md`, `docs/public-api-matrix.md`, and `docs/production-preview.md` in the repository):
 
 | Stability Tier | Packages / Scope | Qualification Criteria |
 | --- | --- | --- |
