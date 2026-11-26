@@ -1,4 +1,4 @@
-import { Injectable, WithLogger } from "@bunest/core";
+import { Injectable, Logger } from "@bunest/core";
 import { ConfigService } from "@bunest/core/config";
 import { EventEmitterService } from "@bunest/messaging/events";
 import { Transactional } from "@bunest/orm";
@@ -13,24 +13,17 @@ export interface CreateUserInput {
   readonly age?: number;
 }
 
-/**
- * 👉 Test Secret Redaction Hover:
- *    - Hover vào `"JWT_SECRET"` -> hiển thị `[REDACTED]` (bảo vệ secret!)
- *    - Hover vào `"PORT"`       -> hiển thị `3100`
- * 👉 Test Cross-Jump:
- *    - Cmd+Click vào `"user.created"` -> nhảy thẳng tới `@OnEvent("user.created")` trong `users.events.ts`!
- *    - Cmd+Click vào `"PORT"`         -> nhảy thẳng tới dòng `PORT=3100` trong `.env`!
- */
 @Injectable()
-@WithLogger()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly usersRepo: UserRepository,
     private readonly events: EventEmitterService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
-  getRuntimeBanner(): { app: string; port: string; hasJwtSecret: boolean; emailField: string } {
+  getRuntimeBanner(): { app: string; port: string; hasJwtSecret: boolean } {
     const port = this.config.get("PORT") ?? "3100";
     const appName = this.config.get("APP_NAME") ?? "Bunest Showcase";
     const secret = this.config.get("JWT_SECRET");
@@ -38,7 +31,6 @@ export class UsersService {
       app: appName,
       port: String(port),
       hasJwtSecret: Boolean(secret),
-      emailField: UserEntity.Fields.email,
     };
   }
 
@@ -57,26 +49,18 @@ export class UsersService {
   async findByIdOrThrow(id: number): Promise<UserEntity> {
     const user = await this.usersRepo.findById(id);
     if (!user) {
-      throw UserNotFoundError.from(`User #${id} not found`);
+      throw new UserNotFoundError(`User #${id} not found`);
     }
     return user;
   }
 
   @Transactional()
   async create(input: CreateUserInput): Promise<UserEntity> {
-    const draft = UserEntity.builder()
-      .email(input.email)
-      .name(input.name)
-      .age(input.age ?? 22)
-      .active(true)
-      .tag("member")
-      .build();
-
     const saved = await this.usersRepo.save({
-      email: draft.email,
-      name: draft.name,
-      age: draft.age,
-      active: draft.active,
+      email: input.email,
+      name: input.name,
+      age: input.age ?? 22,
+      active: true,
     });
 
     await this.events.emitAsync("user.created", {
@@ -85,10 +69,7 @@ export class UsersService {
       name: saved.name,
     });
 
-    // Demo immutable @Value + @WithBy
-    const bonus = Money.of({ amount: 100, currency: "USD" }).withAmountBy(
-      (n) => n + 25,
-    );
+    const bonus = new Money(100, "USD").withAmount(125);
     this.logger.log(`Created user ${saved.email} (welcome bonus: ${bonus.toString()})`);
     return saved;
   }

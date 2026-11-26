@@ -1,6 +1,6 @@
 # SQLite (`bun:sqlite` qua `@bunest/orm`)
 
-**`@bunest/orm`** tích hợp trực tiếp driver `bun:sqlite` siêu nhanh thuần Bun (`SqliteOrmDriver`) vào Bunest với quản lý vòng đời DI (`OrmModule`), giao dịch `SAVEPOINT` lồng nhau lan truyền qua `AsyncLocalStorage` (`@Transactional`), migration SQL theo phiên bản (`OrmMigrationRunner`), `Repository<Entity>` kiểu TypeORM, và **các repository khai báo biên dịch một lần kiểu Spring Data** (`@OrmRepository` + `CrudRepository`, [ADR-014](/architecture/adrs)).
+**`@bunest/orm`** tích hợp trực tiếp driver `bun:sqlite` siêu nhanh thuần Bun (`SqliteOrmDriver`) vào Bunest với quản lý vòng đời DI (`OrmModule`), giao dịch `SAVEPOINT` lồng nhau lan truyền qua `AsyncLocalStorage` (`@Transactional`), migration SQL theo phiên bản (`OrmMigrationRunner`), `Repository<Entity>` kiểu TypeORM, và **các repository khai báo biên dịch một lần kiểu Spring Data** (`@Repository` + `CrudRepository`, [ADR-014](/architecture/adrs)).
 
 ## Cài đặt
 
@@ -36,7 +36,7 @@ export class AppModule {}
 
 ## Repository khai báo kiểu Spring Data
 
-Kế thừa `CrudRepository<TEntity, TKey>` và gắn decorator `@OrmRepository()` lên abstract class. Tên các hàm tìm kiếm suy diễn và mẫu `@Query()` được **biên dịch một lần khi khởi động** thành các truy vấn SQL có tham số hóa — không phân tích cú pháp SQL lúc chạy và bảo vệ chặt chẽ khỏi SQL injection:
+Kế thừa `CrudRepository<TEntity, TKey>` và gắn decorator `@Repository()` lên abstract class. Tên các hàm tìm kiếm suy diễn và mẫu `@Query()` được **biên dịch một lần khi khởi động** thành các truy vấn SQL có tham số hóa — không phân tích cú pháp SQL lúc chạy và bảo vệ chặt chẽ khỏi SQL injection:
 
 @@filename(user.repository.ts)
 
@@ -46,7 +46,7 @@ import {
   CrudRepository,
   Entity,
   Modifying,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Query,
   SqlParam,
@@ -67,7 +67,7 @@ export class User {
   active: boolean;
 }
 
-@OrmRepository(User)
+@Repository(User)
 export abstract class UserRepository extends CrudRepository<User, number> {
   // Derived finders compiled once at startup:
   abstract findByEmail(email: string): Promise<User | null>;

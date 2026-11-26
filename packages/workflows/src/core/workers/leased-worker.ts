@@ -330,7 +330,7 @@ class Run<T> implements LeasedRun {
     resolve: (held: boolean) => void;
   };
   heartbeat?: NodeJS.Timeout;
-  done!: Promise<void>;
+  done: Promise<void>;
 
   constructor(item: T, heartbeatMs: number, renewer: () => Promise<boolean>) {
     this.item = item;

@@ -27,6 +27,7 @@ import {
 import {
   BUILTIN_DI_CLASS_DECORATORS,
   BUILTIN_FIELD_CONTRIBUTING_MACRO_NAMES,
+  BUILTIN_REPOSITORY_DECORATOR_NAMES,
 } from "../decorators";
 import {
   transformControllerMetadataSource,
@@ -1034,6 +1035,178 @@ function resolveMergedPluginOptions(
 // Public Programmatic Transform Functions
 // ============================================================================
 
+const NON_ENTITY_TYPE_NAMES = new Set([
+  "any",
+  "unknown",
+  "never",
+  "void",
+  "object",
+  "Object",
+  "Record",
+  "Partial",
+  "Required",
+  "Readonly",
+  "Pick",
+  "Omit",
+  "Array",
+  "Map",
+  "Set",
+]);
+
+function getObjectPropName(prop: RawNode): string | undefined {
+  if (prop.kind === SyntaxKind.PropertyAssignment) {
+    const p = prop as RawPropertyAssignment;
+    if (p.name.kind === SyntaxKind.Identifier) {
+      return (p.name as RawIdentifier).text;
+    }
+    if (p.name.kind === SyntaxKind.StringLiteral) {
+      return (p.name as RawStringLiteral).text;
+    }
+  } else if (prop.kind === SyntaxKind.ShorthandPropertyAssignment) {
+    const p = prop as unknown as { readonly name: RawIdentifier };
+    return p.name?.text;
+  }
+  return undefined;
+}
+
+/**
+ * Rewrites generic-only declarative repository decorators:
+ *   `@Repository<TaskEntity, number>()` -> `@Repository<TaskEntity, number>(TaskEntity)`
+ *   `@Repository<TaskEntity, number>({ table: "tasks" })` -> `@Repository<TaskEntity, number>({ entity: TaskEntity, table: "tasks" })`
+ *
+ * Also promotes `import type { TaskEntity }` (or `import { type TaskEntity }`) to a
+ * value import so `verbatimModuleSyntax: true` remains 100% happy while runtime receives
+ * the entity constructor automatically.
+ */
+function runRepositoryEntityInjectionStage(source: string): {
+  readonly code: string;
+  readonly modified: boolean;
+} {
+  if (!source.includes("@") || !source.includes("Repository")) {
+    return { code: source, modified: false };
+  }
+
+  const parsed = parseTypeScript(source);
+  const editor = new TextEditor(source);
+  const promotedEntities = new Set<string>();
+  let modified = false;
+
+  const visitClasses = (nodes: readonly RawNode[]): void => {
+    for (const node of nodes) {
+      if (node.kind === SyntaxKind.ClassDeclaration) {
+        const cls = node as RawClassDeclaration;
+        for (const dec of cls.decorators ?? []) {
+          if (dec.expression.kind !== SyntaxKind.CallExpression) continue;
+          const call = dec.expression as RawCallExpression;
+          let decName: string | undefined;
+          if (call.expression.kind === SyntaxKind.Identifier) {
+            decName = (call.expression as RawIdentifier).text;
+          } else if (call.expression.kind === SyntaxKind.PropertyAccessExpression) {
+            decName = (call.expression as RawPropertyAccessExpression).name.text;
+          }
+          if (!decName || !BUILTIN_REPOSITORY_DECORATOR_NAMES.has(decName)) {
+            continue;
+          }
+          const typeArg0 = call.typeArguments?.[0];
+          if (!typeArg0 || typeArg0.kind !== SyntaxKind.TypeReference) {
+            continue;
+          }
+          const typeRef = typeArg0 as unknown as { readonly typeName: RawNode };
+          if (typeRef.typeName.kind !== SyntaxKind.Identifier) {
+            continue;
+          }
+          const entityName = (typeRef.typeName as RawIdentifier).text;
+          if (!entityName || NON_ENTITY_TYPE_NAMES.has(entityName)) {
+            continue;
+          }
+
+          if (call.arguments.length === 0) {
+            const closeParen = source.lastIndexOf(")", call.end);
+            if (closeParen >= call.start) {
+              editor.appendLeft(closeParen, entityName);
+              promotedEntities.add(entityName);
+              modified = true;
+            }
+          } else if (
+            call.arguments.length === 1 &&
+            call.arguments[0]!.kind === SyntaxKind.ObjectLiteralExpression
+          ) {
+            const obj = call.arguments[0] as RawObjectLiteralExpression;
+            const hasEntityProp = obj.properties.some(
+              (p) => getObjectPropName(p) === "entity",
+            );
+            if (!hasEntityProp) {
+              const openBrace = source.indexOf("{", obj.start);
+              if (openBrace >= 0 && openBrace < obj.end) {
+                const suffix = obj.properties.length > 0 ? "," : " ";
+                editor.appendRight(openBrace + 1, ` entity: ${entityName}${suffix}`);
+                promotedEntities.add(entityName);
+                modified = true;
+              }
+            }
+          }
+        }
+      }
+      const body = (
+        node as unknown as { readonly body?: { readonly statements?: RawNode[] } }
+      ).body;
+      if (body?.statements) {
+        visitClasses(body.statements);
+      }
+    }
+  };
+
+  visitClasses(parsed.statements);
+
+  if (!modified || promotedEntities.size === 0) {
+    return { code: source, modified: false };
+  }
+
+  for (const stmt of parsed.statements) {
+    if (stmt.kind !== SyntaxKind.ImportDeclaration) continue;
+    const imp = stmt as RawImportDeclaration;
+    if (imp.namedImports.length === 0) continue;
+
+    const matching = imp.namedImports.filter((spec) => {
+      const localName = spec.alias?.text ?? spec.name.text;
+      return promotedEntities.has(localName);
+    });
+    if (matching.length === 0) continue;
+
+    if (imp.isTypeOnly) {
+      const remaining = imp.namedImports.filter((spec) => !matching.includes(spec));
+      const formatSpec = (spec: {
+        readonly name: RawIdentifier;
+        readonly alias?: RawIdentifier;
+      }) => (spec.alias ? `${spec.name.text} as ${spec.alias.text}` : spec.name.text);
+      const rawModSpec = imp.moduleSpecifier.text;
+      const modSpec =
+        (rawModSpec.startsWith('"') && rawModSpec.endsWith('"')) ||
+        (rawModSpec.startsWith("'") && rawModSpec.endsWith("'"))
+          ? rawModSpec
+          : JSON.stringify(rawModSpec);
+      const valueLine = `import { ${matching.map(formatSpec).join(", ")} } from ${modSpec};`;
+      const replacement =
+        remaining.length > 0
+          ? `${valueLine}\nimport type { ${remaining.map(formatSpec).join(", ")} } from ${modSpec};`
+          : valueLine;
+      editor.overwrite(imp.start, imp.end, replacement);
+    } else {
+      for (const spec of matching) {
+        if (spec.isTypeOnly) {
+          const specText = source.slice(spec.start, spec.end);
+          const nextText = specText.replace(/^type\s+/, "");
+          if (nextText !== specText) {
+            editor.overwrite(spec.start, spec.end, nextText);
+          }
+        }
+      }
+    }
+  }
+
+  return { code: editor.toString(), modified: true };
+}
+
 /**
  * Synchronously executes the unified Bunest source transform pipeline:
  * 1. `classMacros` — auto-registers AST-discovered fields via `registerMacroFields` (+ optional `aotMacros` `registerCompiledMacroPlan`)
@@ -1068,6 +1241,12 @@ export function transformBunestSource(
     readonly className: string;
     readonly files: readonly string[];
   }[] = [];
+
+  const repoInjectRes = runRepositoryEntityInjectionStage(code);
+  if (repoInjectRes.modified) {
+    code = repoInjectRes.code;
+    modified = true;
+  }
 
   if (merged.classMacros || merged.aotMacros) {
     const res = runClassMacrosStage(
@@ -1200,6 +1379,12 @@ export async function transformBunestSourceAsync(
     readonly className: string;
     readonly files: readonly string[];
   }[] = [];
+
+  const repoInjectRes = runRepositoryEntityInjectionStage(code);
+  if (repoInjectRes.modified) {
+    code = repoInjectRes.code;
+    modified = true;
+  }
 
   if (merged.classMacros || merged.aotMacros) {
     const res = runClassMacrosStage(
@@ -1353,8 +1538,15 @@ export function createBunestPlugin(
       const hasUserTransforms = merged.transforms.length > 0;
 
       build.onLoad({ filter }, async (args) => {
+        const defaultLoader: "ts" | "tsx" = args.path.endsWith(".tsx")
+          ? "tsx"
+          : "ts";
         if (exclude.test(args.path)) {
-          return undefined;
+          if (detectedBuildMode) return undefined;
+          return {
+            contents: await Bun.file(args.path).text(),
+            loader: defaultLoader,
+          };
         }
         const source = await Bun.file(args.path).text();
 
@@ -1381,7 +1573,8 @@ export function createBunestPlugin(
             ));
 
         if (!source.includes("@") && !mayNeedSwagger && !hasUserTransforms) {
-          return undefined;
+          if (detectedBuildMode) return undefined;
+          return { contents: source, loader: defaultLoader };
         }
 
         const result = await transformBunestSourceAsync(
@@ -1391,7 +1584,8 @@ export function createBunestPlugin(
           cachedTranspilers,
         );
         if (!result.modified && result.loader !== "js") {
-          return undefined;
+          if (detectedBuildMode) return undefined;
+          return { contents: source, loader: defaultLoader };
         }
         return {
           contents: result.code,

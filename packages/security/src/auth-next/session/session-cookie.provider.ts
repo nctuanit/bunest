@@ -20,7 +20,7 @@ export abstract class SessionCookieProvider<
   TUser = AuthenticatedUser,
 > extends AuthenticationProvider<TUser, SessionRecord> {
   @Inject(SessionService)
-  protected sessions!: SessionService;
+  protected sessions: SessionService;
 
   override async authenticate(
     context: ExecutionContext,

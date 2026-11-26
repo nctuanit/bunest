@@ -11,6 +11,7 @@ import type {
 } from "../interfaces/http.interface";
 import { DecoratorRegistry } from "../metadata/decorator-registry";
 import { MetadataRegistry } from "../metadata/metadata-registry";
+import { attachAutoLogger } from "./core.decorators";
 
 /**
  * Declares a controller class and its optional route path prefix / host / scope,
@@ -68,6 +69,7 @@ export function Controller(
     );
     DecoratorRegistry.registerController(target, metadata);
     MetadataRegistry.precompileController(target);
+    attachAutoLogger(target, "Controller");
   };
 }
 

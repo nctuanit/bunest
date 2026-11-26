@@ -31,7 +31,7 @@ export abstract class AbstractHttpAdapter<
   TResponse = any,
 > implements HttpServer<TRequest, TResponse, TServer> {
   protected instance?: unknown;
-  protected httpServer!: TServer;
+  protected httpServer: TServer;
   protected onRouteTriggered?: (
     requestMethod: RequestMethod,
     path: string,

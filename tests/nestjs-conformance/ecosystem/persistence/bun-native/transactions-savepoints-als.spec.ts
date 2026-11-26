@@ -8,7 +8,7 @@ import {
   OrmModule,
   PrimaryGeneratedColumn,
   Transactional,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -162,12 +162,12 @@ describeConformance(
         expect(await ds.query("SELECT * FROM ledger")).toHaveLength(0);
       });
 
-      it("propagates ALS transaction context via @Transactional() across injected services & Repository<Account>", async () => {
+      it("propagates ALS transaction context via @Transactional() across injected services & OrmRepository<Account>", async () => {
         @Injectable()
         class LedgerWriter {
           constructor(
             @InjectRepository(Account)
-            private readonly accounts: Repository<Account>,
+            private readonly accounts: OrmRepository<Account>,
           ) {}
 
           async credit(owner: string, amount: number): Promise<void> {
@@ -186,7 +186,7 @@ describeConformance(
           constructor(
             private readonly writer: LedgerWriter,
             @InjectRepository(Account)
-            readonly accounts: Repository<Account>,
+            readonly accounts: OrmRepository<Account>,
           ) {}
 
           @Transactional()

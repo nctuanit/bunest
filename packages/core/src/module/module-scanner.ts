@@ -27,13 +27,6 @@ import {
   type ValueProvider,
 } from "../common/index";
 import {
-  evaluateDeferredProviderConditions,
-  evaluateEagerProviderConditions,
-  getProviderConditionTarget,
-  hasDeferredConditions,
-  resolveActiveProfiles,
-} from "../common/decorators/conditional.decorators";
-import {
   DEFAULT_AUTO_MODULE_EXCLUDES,
   getAutoModuleMetadata,
   type StoredAutoModuleMetadata,
@@ -504,19 +497,10 @@ export interface ModuleScanOptions {
    */
   moduleIdGeneratorAlgorithm?: "deep-hash" | "reference";
   /**
-   * Active runtime profiles for evaluating `@Profile(...)` conditional beans.
-   */
-  profiles?: readonly string[];
-  /**
    * Pre-expanded `@AutoModule({ scan, manifest })` class map produced by
    * `expandAutoModules(...)`.
    */
   expandedAutoModules?: ReadonlyMap<Type<unknown>, readonly Type<unknown>[]>;
-  /**
-   * Optional environment map override for `@RegisterIfEnv` / `@Profile` evaluation
-   * (defaults to `Bun.env`).
-   */
-  env?: Record<string, string | undefined>;
 }
 
 export interface ScannedModuleGraph {
@@ -552,26 +536,9 @@ export class ModuleScanner {
   private idPrefix = "";
   private dynamicCounter = 0;
   private idAlgorithm: "deep-hash" | "reference" = "reference";
-  private env: Record<string, string | undefined> = {};
-  private explicitProfiles?: readonly string[];
-  private explicitProfilesSet?: ReadonlySet<string>;
-  private rootAutoProfilesSet?: ReadonlySet<string>;
-  private defaultEnvProfilesSet: ReadonlySet<string> = new Set();
   private readonly expandedAutoModules = new Map<
     Type<unknown>,
     readonly Type<unknown>[]
-  >();
-  private readonly deferredProviders: Array<{
-    readonly node: ModuleNode;
-    readonly provider: Provider;
-  }> = [];
-  private readonly deferredControllers: Array<{
-    readonly node: ModuleNode;
-    readonly controller: Type<unknown>;
-  }> = [];
-  private readonly conditionallySkippedTokens = new Map<
-    ModuleNode,
-    Set<InjectionToken>
   >();
 
   async scan(
@@ -581,21 +548,7 @@ export class ModuleScanner {
     this.moduleOverrides = options?.moduleOverrides;
     this.idPrefix = options?.idPrefix ?? "";
     this.idAlgorithm = options?.moduleIdGeneratorAlgorithm ?? "reference";
-    this.env = options?.env ?? (Bun.env as Record<string, string | undefined>);
-    this.explicitProfiles = options?.profiles;
-    this.explicitProfilesSet =
-      options?.profiles !== undefined
-        ? resolveActiveProfiles({
-            explicitProfiles: options.profiles,
-            env: this.env,
-          })
-        : undefined;
-    this.defaultEnvProfilesSet = resolveActiveProfiles({ env: this.env });
-    this.rootAutoProfilesSet = undefined;
     this.expandedAutoModules.clear();
-    this.deferredProviders.length = 0;
-    this.deferredControllers.length = 0;
-    this.conditionallySkippedTokens.clear();
 
     if (options?.expandedAutoModules) {
       for (const [cls, list] of options.expandedAutoModules.entries()) {
@@ -626,22 +579,6 @@ export class ModuleScanner {
       resolvedRoot = InlineRootModule;
     }
 
-    // Resolve root @AutoModule({ profiles }) fallback if no explicit createOptions.profiles
-    const rootClass = isDynamicModule(resolvedRoot)
-      ? resolvedRoot.module
-      : typeof resolvedRoot === "function"
-        ? (resolvedRoot as Type<unknown>)
-        : undefined;
-    if (rootClass) {
-      const rootAutoMeta = getAutoModuleMetadata(rootClass);
-      if (rootAutoMeta?.profiles !== undefined) {
-        this.rootAutoProfilesSet = resolveActiveProfiles({
-          moduleProfiles: rootAutoMeta.profiles,
-          env: this.env,
-        });
-      }
-    }
-
     const rootNode = await this.scanModule(
       resolvedRoot as ModuleImport,
       [],
@@ -653,9 +590,6 @@ export class ModuleScanner {
 
     // Pass 2.5: expand @AutoModule / autoDiscover modules (including glob scan / manifest)
     await this.applyAutoDiscovery();
-
-    // Pass 2.75: evaluate deferred @RegisterIfMissing conditional beans after unconditional/eager beans
-    this.applyDeferredConditionalRegistrations();
 
     // Third pass: register & validate exports across all scanned modules
     await this.processAndValidateExports();
@@ -671,138 +605,6 @@ export class ModuleScanner {
       staticModuleMap: this.staticNodes,
       dynamicModuleMap: this.dynamicNodes,
     };
-  }
-
-  private getProfilesForNode(node: ModuleNode): ReadonlySet<string> {
-    if (this.explicitProfilesSet !== undefined) {
-      return this.explicitProfilesSet;
-    }
-    const autoMeta = getAutoModuleMetadata(node.metatype);
-    if (autoMeta?.profiles !== undefined) {
-      return resolveActiveProfiles({
-        moduleProfiles: autoMeta.profiles,
-        env: this.env,
-      });
-    }
-    if (this.rootAutoProfilesSet !== undefined) {
-      return this.rootAutoProfilesSet;
-    }
-    return this.defaultEnvProfilesSet;
-  }
-
-  private markConditionallySkipped(
-    node: ModuleNode,
-    token: InjectionToken,
-  ): void {
-    let skipped = this.conditionallySkippedTokens.get(node);
-    if (!skipped) {
-      skipped = new Set<InjectionToken>();
-      this.conditionallySkippedTokens.set(node, skipped);
-    }
-    skipped.add(token);
-  }
-
-  private collectVisibleRegisteredTokens(
-    node: ModuleNode,
-    includeControllers = false,
-  ): Set<InjectionToken> {
-    const tokens = new Set<InjectionToken>();
-
-    for (const token of node.providers.keys()) {
-      tokens.add(token);
-    }
-    for (const token of node.multiProviders.keys()) {
-      tokens.add(token);
-    }
-    if (includeControllers) {
-      for (const ctrl of node.controllers) {
-        tokens.add(ctrl);
-      }
-    }
-
-    const collectExportedFromModule = (
-      mod: ModuleNode,
-      visited: Set<ModuleNode>,
-    ): void => {
-      if (visited.has(mod)) {
-        return;
-      }
-      visited.add(mod);
-
-      const work = this.pendingWork.get(mod);
-      if (work) {
-        for (let i = 0; i < work.rawExports.length; i++) {
-          let exp: unknown = work.rawExports[i];
-          if (isForwardReference(exp)) {
-            exp = exp.forwardRef();
-          }
-          if (exp instanceof Promise) {
-            continue;
-          }
-          if (isDynamicModule(exp)) {
-            const imported = this.findImportedModule(mod, exp);
-            if (imported) {
-              collectExportedFromModule(imported, visited);
-            }
-            continue;
-          }
-          if (isProviderObject(exp)) {
-            if (mod.providers.has(exp.provide)) {
-              tokens.add(exp.provide);
-            }
-            continue;
-          }
-          if (
-            typeof exp === "function" &&
-            MetadataRegistry.has(METADATA_KEYS.MODULE, exp)
-          ) {
-            const imported = this.findImportedModule(
-              mod,
-              exp as Type<unknown>,
-            );
-            if (imported) {
-              collectExportedFromModule(imported, visited);
-            }
-            continue;
-          }
-          if (
-            typeof exp === "function" ||
-            typeof exp === "string" ||
-            typeof exp === "symbol"
-          ) {
-            const tok = exp as InjectionToken;
-            if (mod.providers.has(tok) || mod.multiProviders.has(tok)) {
-              tokens.add(tok);
-            } else {
-              for (const subImp of mod.imports) {
-                const subBefore = tokens.size;
-                collectExportedFromModule(subImp, visited);
-                if (tokens.size !== subBefore && tokens.has(tok)) {
-                  break;
-                }
-              }
-            }
-          }
-        }
-      } else {
-        for (const tok of mod.getEffectiveExports().keys()) {
-          tokens.add(tok);
-        }
-      }
-    };
-
-    const visitedImports = new Set<ModuleNode>([node]);
-    for (const imp of node.imports) {
-      collectExportedFromModule(imp, visitedImports);
-    }
-
-    for (const candidate of this.allNodes.values()) {
-      if (candidate.isGlobal && candidate !== node) {
-        collectExportedFromModule(candidate, visitedImports);
-      }
-    }
-
-    return tokens;
   }
 
   private resolveModuleOverride(target: unknown): unknown {
@@ -1000,50 +802,18 @@ export class ModuleScanner {
       ...(dynamicMeta?.exports ?? []),
     ];
 
-    // Register controllers (deduplicated per module, evaluating eager conditions in pass 1)
-    const nodeProfiles = this.getProfilesForNode(node);
+    // Register controllers (deduplicated per module)
     const seenControllers = new Set<Type<unknown>>();
     for (const ctrl of mergedControllers) {
       if (seenControllers.has(ctrl)) {
         continue;
       }
       seenControllers.add(ctrl);
-      const eagerOk = evaluateEagerProviderConditions(ctrl, {
-        env: this.env,
-        profiles: nodeProfiles,
-        registeredTokens: new Set<InjectionToken>([
-          ...node.providers.keys(),
-          ...node.controllers,
-        ]),
-      });
-      if (!eagerOk) {
-        continue;
-      }
-      if (hasDeferredConditions(ctrl)) {
-        this.deferredControllers.push({ node, controller: ctrl });
-        continue;
-      }
       node.controllers.push(ctrl);
     }
 
-    // Register local providers (evaluating eager conditions in pass 1, deferring @RegisterIfMissing to pass 2)
+    // Register local providers
     for (const rawProvider of mergedProviders) {
-      const eagerOk = evaluateEagerProviderConditions(rawProvider, {
-        env: this.env,
-        profiles: nodeProfiles,
-        registeredTokens: new Set<InjectionToken>(node.providers.keys()),
-      });
-      if (!eagerOk) {
-        this.markConditionallySkipped(
-          node,
-          getProviderConditionTarget(rawProvider).provideToken,
-        );
-        continue;
-      }
-      if (hasDeferredConditions(rawProvider)) {
-        this.deferredProviders.push({ node, provider: rawProvider });
-        continue;
-      }
       this.registerProviderOnNode(node, rawProvider);
     }
 
@@ -1157,20 +927,6 @@ export class ModuleScanner {
       }
     }
 
-    // Also avoid duplicating explicit deferred providers from the same module
-    const queuedDeferredTargets = new Set<Function>();
-    for (let i = 0; i < this.deferredProviders.length; i++) {
-      const targetClass = getProviderConditionTarget(
-        this.deferredProviders[i]!.provider,
-      ).targetClass;
-      if (targetClass) {
-        queuedDeferredTargets.add(targetClass);
-      }
-    }
-    for (let i = 0; i < this.deferredControllers.length; i++) {
-      queuedDeferredTargets.add(this.deferredControllers[i]!.controller);
-    }
-
     for (const work of autoModules) {
       const opts: AutoDiscoverOptions =
         work.autoDiscover === true
@@ -1178,7 +934,6 @@ export class ModuleScanner {
           : (work.autoDiscover as AutoDiscoverOptions);
       const autoMeta = getAutoModuleMetadata(work.node.metatype);
       const filterFn = autoMeta?.filter;
-      const nodeProfiles = this.getProfilesForNode(work.node);
       const discoverControllers = opts.controllers !== false;
       const discoverProviders = opts.providers !== false;
       const excludeSet = new Set<Function>(opts.exclude ?? []);
@@ -1211,24 +966,9 @@ export class ModuleScanner {
               !hasScannedScope &&
               DecoratorRegistry.isInternal(ctrl)) ||
             declaredControllers.has(ctrl) ||
-            queuedDeferredTargets.has(ctrl) ||
             MetadataRegistry.has(METADATA_KEYS.MODULE, ctrl) ||
             (filterFn !== undefined && !filterFn(ctrl))
           ) {
-            continue;
-          }
-
-          const eagerOk = evaluateEagerProviderConditions(ctrl, {
-            env: this.env,
-            profiles: nodeProfiles,
-            registeredTokens: declaredProviders,
-          });
-          if (!eagerOk) {
-            continue;
-          }
-          if (hasDeferredConditions(ctrl)) {
-            this.deferredControllers.push({ node: work.node, controller: ctrl });
-            queuedDeferredTargets.add(ctrl);
             continue;
           }
 
@@ -1259,7 +999,6 @@ export class ModuleScanner {
               DecoratorRegistry.isInternal(prov)) ||
             declaredProviders.has(prov) ||
             declaredControllers.has(prov) ||
-            queuedDeferredTargets.has(prov) ||
             MetadataRegistry.has(METADATA_KEYS.CONTROLLER, prov) ||
             MetadataRegistry.has(METADATA_KEYS.MODULE, prov) ||
             (filterFn !== undefined && !filterFn(prov))
@@ -1267,62 +1006,9 @@ export class ModuleScanner {
             continue;
           }
 
-          const eagerOk = evaluateEagerProviderConditions(prov, {
-            env: this.env,
-            profiles: nodeProfiles,
-            registeredTokens: declaredProviders,
-          });
-          if (!eagerOk) {
-            this.markConditionallySkipped(work.node, prov);
-            continue;
-          }
-          if (hasDeferredConditions(prov)) {
-            this.deferredProviders.push({ node: work.node, provider: prov });
-            queuedDeferredTargets.add(prov);
-            continue;
-          }
-
           this.registerProviderOnNode(work.node, prov);
           declaredProviders.add(prov);
         }
-      }
-    }
-  }
-
-  private applyDeferredConditionalRegistrations(): void {
-    for (let i = 0; i < this.deferredProviders.length; i++) {
-      const { node, provider } = this.deferredProviders[i]!;
-      const visibleTokens = this.collectVisibleRegisteredTokens(node, false);
-      const nodeProfiles = this.getProfilesForNode(node);
-      const shouldRegister = evaluateDeferredProviderConditions(provider, {
-        env: this.env,
-        profiles: nodeProfiles,
-        registeredTokens: visibleTokens,
-      });
-      if (!shouldRegister) {
-        this.markConditionallySkipped(
-          node,
-          getProviderConditionTarget(provider).provideToken,
-        );
-        continue;
-      }
-      this.registerProviderOnNode(node, provider);
-    }
-
-    for (let i = 0; i < this.deferredControllers.length; i++) {
-      const { node, controller } = this.deferredControllers[i]!;
-      if (node.controllers.includes(controller)) {
-        continue;
-      }
-      const visibleTokens = this.collectVisibleRegisteredTokens(node, true);
-      const nodeProfiles = this.getProfilesForNode(node);
-      const shouldRegister = evaluateDeferredProviderConditions(controller, {
-        env: this.env,
-        profiles: nodeProfiles,
-        registeredTokens: visibleTokens,
-      });
-      if (shouldRegister) {
-        node.controllers.push(controller);
       }
     }
   }
@@ -1436,10 +1122,6 @@ export class ModuleScanner {
       }
 
       if (!foundInImports) {
-        if (this.conditionallySkippedTokens.get(node)?.has(token)) {
-          node.exportedTokens.delete(token);
-          continue;
-        }
         throw new InvalidExportException(
           token,
           node.name,

@@ -26,7 +26,7 @@ interface ChatClientData extends Record<string, unknown> {
 @WebSocketGateway({ path: "/chat" })
 export class ChatGateway implements OnGatewayAuthenticate, OnGatewayDisconnect {
   @WebSocketServer()
-  public server!: BunWsServer;
+  public server: BunWsServer;
 
   public readonly disconnectedUsers: string[] = [];
 

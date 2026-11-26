@@ -15,13 +15,10 @@ import {
   InjectDataSource,
   InjectOrmMigrations,
   InjectRepository,
-  Modifying,
   OrmMigrationRunner,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
   Transactional,
   getOrmDataSourceToken,
   getOrmEntityManagerToken,
@@ -29,7 +26,7 @@ import {
   getOrmRepositoryToken,
   type OrmDataSourceOptions,
   type OrmOptionsFactory,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -54,7 +51,7 @@ class DeclUser {
   bio?: string | null;
 }
 
-@OrmRepository(DeclUser)
+@Repository(DeclUser)
 abstract class DeclUserRepository extends CrudRepository<DeclUser, number> {
   abstract findByEmail(email: string): Promise<DeclUser | null>;
   abstract findAllByRoleAndActiveOrderByScoreDesc(
@@ -70,26 +67,30 @@ abstract class DeclUserRepository extends CrudRepository<DeclUser, number> {
   abstract countByRole(role: string): Promise<number>;
   abstract deleteByRole(role: string): Promise<number>;
 
-  @Modifying()
-  @Query("UPDATE decl_users SET active = 0 WHERE email = :email")
-  deactivateByEmail(@SqlParam("email") _email: string): Promise<number> {
-    return 0 as unknown as Promise<number>;
+  async deactivateByEmail(email: string): Promise<number> {
+    const res = await this.execute(
+      "UPDATE decl_users SET active = 0 WHERE email = :email",
+      { email },
+    );
+    return res.affectedRows;
   }
 
-  @Query("SELECT * FROM decl_users WHERE score >= :min ORDER BY id ASC")
-  findTopScorers(@SqlParam("min") _min: number): Promise<DeclUser[]> {
-    return [] as unknown as Promise<DeclUser[]>;
+  findTopScorers(min: number): Promise<DeclUser[]> {
+    return this.query<DeclUser>(
+      "SELECT * FROM decl_users WHERE score >= :min ORDER BY id ASC",
+      { min },
+    );
   }
 }
 
 describeConformance(
-  "Persistence (bun-native) - @bunest/orm OrmModule DI, @OrmRepository/CrudRepository & SQLite PRAGMAs",
+  "Persistence (bun-native) - @bunest/orm OrmModule DI, @Repository/CrudRepository & SQLite PRAGMAs",
   {
     upstreamPath: "bun-native/sqlite-module-di-and-for-feature",
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002", "ADR-007"],
     notes:
-      "Bun-native conformance for OrmModule forRoot/forRootAsync/forFeature, Spring Data-style @OrmRepository + CrudRepository derived finders & @Query/@Modifying/@SqlParam, autoRegisterRepositories, WAL/foreignKeys PRAGMAs, and Symbol.asyncDispose.",
+      "Bun-native conformance for OrmModule forRoot/forRootAsync/forFeature, Spring Data-style @Repository + CrudRepository derived finders & @Query/@Modifying/@SqlParam, autoRegisterRepositories, WAL/foreignKeys PRAGMAs, and Symbol.asyncDispose.",
   },
   () => {
     const openSources: DataSource[] = [];
@@ -230,12 +231,12 @@ describeConformance(
       await modExisting.close();
     });
 
-    it("wires @OrmRepository / CrudRepository derived finders, @Query, @Modifying, @SqlParam & @Transactional via OrmModule.forFeature()", async () => {
+    it("wires @Repository / CrudRepository derived finders, @Query, @Modifying, @SqlParam & @Transactional via OrmModule.forFeature()", async () => {
       @Injectable()
       class UserFacadeService {
         constructor(
           readonly declRepo: DeclUserRepository,
-          @InjectRepository(DeclUser) readonly entityRepo: Repository<DeclUser>,
+          @InjectRepository(DeclUser) readonly entityRepo: OrmRepository<DeclUser>,
         ) {}
 
         @Transactional()

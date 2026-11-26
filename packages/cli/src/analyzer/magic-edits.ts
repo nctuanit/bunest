@@ -354,7 +354,7 @@ export function buildGenerateRepositorySource(options: {
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
     .toLowerCase();
   const pkg = "@bunest/orm";
-  const repoDec = "OrmRepository";
+  const repoDec = "Repository";
 
   const derivedMethods: string[] = [];
   for (const field of options.entity.fields) {
@@ -386,11 +386,11 @@ export function buildGenerateRepositorySource(options: {
   }
 
   const content = [
-    `import { CrudRepository, ${repoDec} } from ${JSON.stringify(pkg)};`,
-    `import { ${options.entity.className} } from ${JSON.stringify(options.entityImportPath)};`,
+    `import { ${repoDec} } from ${JSON.stringify(pkg)};`,
+    `import type { ${options.entity.className} } from ${JSON.stringify(options.entityImportPath)};`,
     "",
-    `@${repoDec}(${options.entity.className})`,
-    `export abstract class ${repoClassName} extends CrudRepository<${options.entity.className}, ${options.entity.idTsType}> {`,
+    `@${repoDec}<${options.entity.className}, ${options.entity.idTsType}>()`,
+    `export abstract class ${repoClassName} {`,
     ...derivedMethods,
     "}",
     "",

@@ -346,7 +346,7 @@ describe("bunest generate (all schematics, flags, collision safety, and typechec
       entryRecord.junctions.push(linkPath);
     };
 
-    for (const pkg of ["validation", "core", "testing"]) {
+    for (const pkg of ["validation", "core", "testing", "cli"]) {
       await linkDir(join(repoRoot, "packages", pkg), join(bunestScopeDir, pkg));
     }
     for (const dep of ["@types", ".bun"]) {

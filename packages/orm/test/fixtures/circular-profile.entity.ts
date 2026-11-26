@@ -4,7 +4,6 @@ import {
   JoinColumn,
   OneToOne,
   PrimaryGeneratedColumn,
-  type Relation,
 } from "../../src/index";
 import { CircularAuthor } from "./circular-author.entity";
 
@@ -26,5 +25,5 @@ export class CircularProfile {
     onDelete: "CASCADE",
   })
   @JoinColumn({ name: "author_id" })
-  author?: Relation<CircularAuthor>;
+  author?: CircularAuthor;
 }

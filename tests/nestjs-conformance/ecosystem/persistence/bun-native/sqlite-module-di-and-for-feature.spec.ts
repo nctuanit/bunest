@@ -9,7 +9,7 @@ import {
   OrmModule,
   PrimaryGeneratedColumn,
   type OrmOptionsFactory,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -48,7 +48,7 @@ class DbConfigModule {}
 @Injectable()
 class ItemService {
   constructor(
-    @InjectRepository(DiItem) readonly repo: Repository<DiItem>,
+    @InjectRepository(DiItem) readonly repo: OrmRepository<DiItem>,
     @InjectDataSource() readonly ds: DataSource,
   ) {}
 }

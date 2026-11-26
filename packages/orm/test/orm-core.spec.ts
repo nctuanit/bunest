@@ -42,7 +42,6 @@ import {
   UpdateDateColumn,
   VersionColumn,
   generateSchemaPlan,
-  type Relation,
 } from "../src/index";
 
 abstract class AuditableBaseEntity {
@@ -79,7 +78,7 @@ class BlogUser extends AuditableBaseEntity {
   active!: boolean;
 
   @OneToMany(() => BlogPost, (p) => p.author, { cascade: true })
-  posts!: Relation<BlogPost[]>;
+  posts!: BlogPost[];
 
   hookEvents: string[] = [];
 
@@ -129,7 +128,7 @@ class BlogTag {
   slug!: string;
 
   @ManyToMany(() => BlogPost, (p) => p.tags)
-  posts!: Relation<BlogPost[]>;
+  posts!: BlogPost[];
 }
 
 @Entity("blog_posts")
@@ -142,11 +141,11 @@ class BlogPost extends AuditableBaseEntity {
 
   @ManyToOne(() => BlogUser, (u) => u.posts, { onDelete: "CASCADE" })
   @JoinColumn({ name: "author_id" })
-  author!: Relation<BlogUser>;
+  author!: BlogUser;
 
   @ManyToMany(() => BlogTag, (t) => t.posts, { cascade: true })
   @JoinTable({ name: "blog_post_tags" })
-  tags!: Relation<BlogTag[]>;
+  tags!: BlogTag[];
 }
 
 // Unified @bunest/common @Entity interop check!

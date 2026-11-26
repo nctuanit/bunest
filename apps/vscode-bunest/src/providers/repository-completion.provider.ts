@@ -4,7 +4,7 @@ import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
 
 /**
  * Spring Data-style Chained Derived Query Autocomplete for Bunest declarative
- * repositories (`@OrmRepository` + `CrudRepository` from `@bunest/orm`).
+ * repositories (`@Repository` + `CrudRepository` from `@bunest/orm`).
  */
 export class BunestRepositoryCompletionProvider
   implements vscode.CompletionItemProvider

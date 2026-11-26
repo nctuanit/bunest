@@ -25,7 +25,7 @@ export class UnhandledExceptionBus<
   Cause = IEvent | ICommand,
 > implements Subscribable<UnhandledExceptionInfo<Cause>> {
   readonly subject$ = new SubscribableStream<UnhandledExceptionInfo<Cause>>();
-  private _publisher!: IUnhandledExceptionPublisher<Cause>;
+  private _publisher: IUnhandledExceptionPublisher<Cause>;
 
   constructor(
     @Optional()

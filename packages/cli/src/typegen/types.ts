@@ -407,6 +407,9 @@ export interface ExtractedClassMacroEntry {
   readonly isBaseEntity?: boolean;
   readonly baseEntityKeyType?: string;
   readonly baseEntityFields?: readonly ExtractedBaseEntityField[];
+  readonly isDeclarativeRepository?: boolean;
+  readonly repositoryEntityType?: string;
+  readonly repositoryKeyType?: string;
   readonly accessorsEnabled: boolean;
   readonly maskFields: readonly string[];
   readonly customMembers?: readonly ExtractedCustomMacroMember[];
@@ -431,6 +434,11 @@ export interface TypegenSummary {
   readonly plugins?: Readonly<Record<string, number>>;
 }
 
+export interface ExtractedInjectableLoggerEntry {
+  readonly className: string;
+  readonly sourceFile: string;
+}
+
 export interface TypegenScanResult {
   readonly models: readonly ExtractedModelEntry[];
   readonly connections: readonly ExtractedConnectionEntry[];
@@ -444,6 +452,7 @@ export interface TypegenScanResult {
   readonly queries: readonly ExtractedCqrsQueryEntry[];
   readonly tokens: readonly ExtractedTokenEntry[];
   readonly classMacros: readonly ExtractedClassMacroEntry[];
+  readonly injectableLoggers?: readonly ExtractedInjectableLoggerEntry[];
   readonly callSites: readonly ExtractedCallSite[];
   readonly pluginResults?: readonly ExtractedPluginScanResult[];
   readonly scannedFiles: number;

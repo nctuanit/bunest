@@ -1,6 +1,6 @@
 # SQLite (`bun:sqlite` via `@bunest/orm`)
 
-**`@bunest/orm`** integrates Bun's ultra-fast native `bun:sqlite` driver (`SqliteOrmDriver`) directly into Bunest with DI lifecycle management (`OrmModule`), `AsyncLocalStorage`-propagated nested `SAVEPOINT` transactions (`@Transactional`), versioned SQL migrations (`OrmMigrationRunner`), TypeORM-style `Repository<Entity>`, and **Spring Data-style compiled-once declarative repositories** (`@OrmRepository` + `CrudRepository`, [ADR-014](/architecture/adrs)).
+**`@bunest/orm`** integrates Bun's ultra-fast native `bun:sqlite` driver (`SqliteOrmDriver`) directly into Bunest with DI lifecycle management (`OrmModule`), `AsyncLocalStorage`-propagated nested `SAVEPOINT` transactions (`@Transactional`), versioned SQL migrations (`OrmMigrationRunner`), TypeORM-style `Repository<Entity>`, and **Spring Data-style compiled-once declarative repositories** (`@Repository` + `CrudRepository`, [ADR-014](/architecture/adrs)).
 
 ## Installation
 
@@ -36,7 +36,7 @@ export class AppModule {}
 
 ## Spring Data-Style Declarative Repositories
 
-Extend `CrudRepository<TEntity, TKey>` and decorate the abstract class with `@OrmRepository()`. Derived finder names and `@Query()` templates are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
+Extend `CrudRepository<TEntity, TKey>` and decorate the abstract class with `@Repository()`. Derived finder names and `@Query()` templates are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
 
 @@filename(user.repository.ts)
 
@@ -46,7 +46,7 @@ import {
   CrudRepository,
   Entity,
   Modifying,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Query,
   SqlParam,
@@ -67,7 +67,7 @@ export class User {
   active: boolean;
 }
 
-@OrmRepository(User)
+@Repository(User)
 export abstract class UserRepository extends CrudRepository<User, number> {
   // Derived finders compiled once at startup:
   abstract findByEmail(email: string): Promise<User | null>;

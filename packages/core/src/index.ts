@@ -204,7 +204,7 @@ export {
   type ScannedModuleGraph,
 } from "./module/module-scanner";
 
-// Smart @AutoModule Extended Metadata & Conditional Beans (@RegisterIf*, @Profile)
+// Smart @AutoModule Extended Metadata
 export {
   AUTO_MODULE_METADATA_KEY,
   DEFAULT_AUTO_MODULE_EXCLUDES,
@@ -214,26 +214,6 @@ export {
   type AutoModuleMetadata,
   type StoredAutoModuleMetadata,
 } from "./common/decorators/core.decorators";
-export {
-  CONDITION_METADATA_KEY,
-  Profile,
-  RegisterIf,
-  RegisterIfEnv,
-  RegisterIfMissing,
-  evaluateDeferredProviderConditions,
-  evaluateEagerProviderConditions,
-  evaluateProviderConditions,
-  getProviderConditionTarget,
-  getProviderConditions,
-  hasDeferredConditions,
-  parseProfilesList,
-  resolveActiveProfiles,
-  type ConditionContext,
-  type EnvConditionMatcher,
-  type PartialConditionContext,
-  type ProviderCondition,
-  type ResolveActiveProfilesOptions,
-} from "./common/decorators/conditional.decorators";
 
 // DI Container, ContextIdFactory, Request Scope & ModuleRef
 export { ContextIdFactory, createContextId } from "./di/context-id.factory";

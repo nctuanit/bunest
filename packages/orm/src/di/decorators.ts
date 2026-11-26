@@ -50,7 +50,7 @@ export function InjectOrmMigrations(
 }
 
 /**
- * Injects a `Repository<Entity>` or compiled declarative `@OrmRepository(...)` instance.
+ * Injects a `Repository<Entity>` or compiled declarative `@Repository(...)` instance.
  *
  * Accepts a direct class (`User` or `UserRepository`), string entity name (`"User"`),
  * typed `EntityRef<User>`, OR lazy thunk `() => User` (resolved via `forwardRef` to

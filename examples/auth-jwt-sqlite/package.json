@@ -20,6 +20,7 @@
     "@bunest/validation": "workspace:*"
   },
   "devDependencies": {
+    "@bunest/cli": "workspace:*",
     "@bunest/testing": "workspace:*"
   }
 }

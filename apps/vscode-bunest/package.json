@@ -1,7 +1,7 @@
 {
   "name": "vscode-bunest",
   "displayName": "Bunest — Framework IntelliSense, Declarative Repositories & Class Macros",
-  "description": "First-class VS Code DX for Bunest: Live Global Typegen, Declarative Repository Derived Query Autocomplete & SQL Preview (@SoftDelete/@TenantScoped/@Projection/Page<T>/Custom Operators), Custom Class Macros & Presets (Delombok / Hover / Diagnostics), bunest.config.ts Hot-Reload, Static & Architecture Diagnostics with TextEditor AST Quick Fixes, Inline HTTP Runner, and Interactive DI Module Graph.",
+  "description": "First-class VS Code DX for Bunest: Live Global Typegen, Declarative Repository Derived Query Autocomplete & SQL Preview (@SoftDelete/@TenantScoped/@Projection/Page<T>/Custom Operators), Custom Class Macros & Presets (Hover / Diagnostics), bunest.config.ts Hot-Reload, Static & Architecture Diagnostics with TextEditor AST Quick Fixes, Inline HTTP Runner, and Interactive DI Module Graph.",
   "version": "0.1.0",
   "publisher": "bunest",
   "icon": "media/bunest-logo.png",
@@ -42,16 +42,6 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "grammars": [
-      {
-        "scopeName": "bunest.sql.injection",
-        "path": "./syntaxes/bunest-sql.tmLanguage.json",
-        "injectTo": [
-          "source.ts",
-          "source.tsx"
-        ]
-      }
-    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -139,14 +129,6 @@
         "icon": "$(plug)"
       },
       {
-        "command": "bunest.delombokClass",
-        "title": "Bunest: Expand (Delombok) Class Macros"
-      },
-      {
-        "command": "bunest.collapseLogger",
-        "title": "Bunest: Collapse Manual Logger to @WithLogger()"
-      },
-      {
         "command": "bunest.syncDiConstructor",
         "title": "Bunest: Auto-Sync DI Constructor"
       },
@@ -202,7 +184,7 @@
       },
       {
         "view": "bunest.dataModelsView",
-        "contents": "No `@Entity()` or `@OrmRepository()` classes found yet.\n[Configure Database](command:bunest.configureDatabaseConnection)\n[Refresh Index](command:bunest.refreshWorkspace)"
+        "contents": "No `@Entity()` or `@Repository()` classes found yet.\n[Configure Database](command:bunest.configureDatabaseConnection)\n[Refresh Index](command:bunest.refreshWorkspace)"
       },
       {
         "view": "bunest.migrationsView",
@@ -303,7 +285,7 @@
         "bunest.codelens.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Bunest CodeLens actions for HTTP routes, repositories, entities, class macros, and tests."
+          "description": "Enable Bunest CodeLens actions for HTTP routes, repositories, and tests."
         },
         "bunest.inlayHints.enabled": {
           "type": "boolean",

@@ -34,12 +34,10 @@ import {
   getSupportedDialects,
   normalizeDialect,
   type CloudflareD1DatabaseLike,
-  type Nested,
   type OrmDialect,
   type OrmDriver,
   type OrmQueryExecutor,
   type OrmQueryResult,
-  type Relation,
 } from "../src/index";
 
 class MultiGeo {
@@ -69,10 +67,10 @@ class MultiUser {
   active!: boolean;
 
   @Embedded(() => MultiGeo)
-  geo?: Nested<MultiGeo>;
+  geo?: MultiGeo;
 
   @OneToMany(() => MultiPost, (p) => p.author, { cascade: true })
-  posts!: Relation<MultiPost[]>;
+  posts!: MultiPost[];
 }
 
 @Entity("multi_tags")
@@ -84,7 +82,7 @@ class MultiTag {
   slug!: string;
 
   @ManyToMany(() => MultiPost, (p) => p.tags)
-  posts!: Relation<MultiPost[]>;
+  posts!: MultiPost[];
 }
 
 @Entity("multi_posts")
@@ -97,11 +95,11 @@ class MultiPost {
 
   @ManyToOne(() => MultiUser, (u) => u.posts, { onDelete: "CASCADE" })
   @JoinColumn({ name: "author_id" })
-  author!: Relation<MultiUser>;
+  author!: MultiUser;
 
   @ManyToMany(() => MultiTag, (t) => t.posts, { cascade: true })
   @JoinTable({ name: "multi_post_tags" })
-  tags!: Relation<MultiTag[]>;
+  tags!: MultiTag[];
 }
 
 @Entity("mongo_products")
@@ -119,7 +117,7 @@ class MongoProduct {
   price!: number;
 
   @Embedded(() => MultiGeo)
-  origin?: Nested<MultiGeo>;
+  origin?: MultiGeo;
 }
 
 afterEach(() => {

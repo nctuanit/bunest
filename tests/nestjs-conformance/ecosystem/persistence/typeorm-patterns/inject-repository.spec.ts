@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   entityRef,
   getOrmRepositoryToken,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -26,7 +26,7 @@ const PhotoRef = entityRef<Photo>("Photo");
 class ByNamedConnection {
   constructor(
     @InjectRepository(Photo, "foo")
-    readonly repository: Repository<Photo>,
+    readonly repository: OrmRepository<Photo>,
   ) {}
 }
 
@@ -34,7 +34,7 @@ class ByNamedConnection {
 class ByDefaultConnection {
   constructor(
     @InjectRepository(Photo)
-    readonly repository: Repository<Photo>,
+    readonly repository: OrmRepository<Photo>,
   ) {}
 }
 
@@ -42,9 +42,9 @@ class ByDefaultConnection {
 class ByEntityRefAndLazyThunk {
   constructor(
     @InjectRepository(PhotoRef, "foo")
-    readonly byRef: Repository<Photo>,
+    readonly byRef: OrmRepository<Photo>,
     @InjectRepository(() => Photo)
-    readonly byThunk: Repository<Photo>,
+    readonly byThunk: OrmRepository<Photo>,
   ) {}
 }
 
@@ -58,12 +58,12 @@ describeConformance(
       "Adapts @InjectRepository + getRepositoryToken unit tests to @bunest/orm @InjectRepository + getOrmRepositoryToken for default, named, entityRef, and lazy thunk targets.",
   },
   () => {
-    const fooRepository = {} as Repository<Photo>;
-    const defaultRepository = {} as Repository<Photo>;
+    const fooRepository = {} as OrmRepository<Photo>;
+    const defaultRepository = {} as OrmRepository<Photo>;
 
     async function resolve<T>(
       target: new (...args: any[]) => T,
-      providers: Array<{ provide: string; useValue: Repository<Photo> }>,
+      providers: Array<{ provide: string; useValue: OrmRepository<Photo> }>,
     ): Promise<T> {
       const moduleRef = await Test.createTestingModule({
         providers: [target, ...providers],

@@ -25,7 +25,7 @@ import {
   CrudRepository,
   Entity,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Transactional,
 } from "@bunest/orm";
@@ -67,7 +67,7 @@ export class Todo implements TodoItem {
 }
 
 @Span({ kind: "CLIENT" })
-@OrmRepository(Todo)
+@Repository(Todo)
 export abstract class TodoRepository extends CrudRepository<Todo, number> {
   abstract findAllByCompleted(completed: boolean): Promise<Todo[]>;
 }

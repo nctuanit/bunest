@@ -10,7 +10,7 @@ import {
   PrimaryGeneratedColumn,
   getOrmDataSourceToken,
   getOrmRepositoryToken,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -38,9 +38,9 @@ class MultiConnectionService {
     @InjectDataSource("primary") readonly primaryDs: DataSource,
     @InjectDataSource("analytics") readonly analyticsDs: DataSource,
     @InjectRepository(PrimaryRecord, "primary")
-    readonly primaryRepo: Repository<PrimaryRecord>,
+    readonly primaryRepo: OrmRepository<PrimaryRecord>,
     @InjectRepository(AnalyticsRecord, "analytics")
-    readonly analyticsRepo: Repository<AnalyticsRecord>,
+    readonly analyticsRepo: OrmRepository<AnalyticsRecord>,
   ) {}
 }
 

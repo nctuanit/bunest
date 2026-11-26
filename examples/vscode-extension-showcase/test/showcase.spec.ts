@@ -7,17 +7,12 @@ import {
   DevShowcaseBanner,
   ShowcaseCacheStore,
 } from "../src/magic/conditional-cache";
-import { AuditNote } from "../src/magic/custom-macros";
 import { OrderRepository } from "../src/orders/order.repository";
-import { FormatUtils, InvoiceRecord, Money, UserProfile } from "../src/users/money.vo";
-import { UserEntity } from "../src/users/user.entity";
+import { Money, slugifyText } from "../src/users/money.vo";
 import { UsersService } from "../src/users/users.service";
 
-/**
- * 👉 Mở file này trong IDE sẽ thấy CodeLens `▶ Run bun test` ở ngay dòng 1!
- */
 describe("Bunest VS Code Extension Showcase", () => {
-  it("runs declarative CrudRepository + Class Macros + Events end-to-end", async () => {
+  it("runs declarative CrudRepository + Events end-to-end", async () => {
     const app = await BunestFactory.create(AppModule);
     await app.init();
     try {
@@ -31,56 +26,29 @@ describe("Bunest VS Code Extension Showcase", () => {
         age: 31,
       });
       expect(created.email).toBe("charlie@bunest.dev");
-      expect(UserEntity.Fields.email).toBe("email");
 
-      // Class Macros runtime checks
-      const m1 = Money.of({ amount: 50, currency: "USD" });
-      const m2 = m1.withAmountBy((a) => a * 2);
+      const m1 = new Money(50, "USD");
+      const m2 = m1.withAmount(100);
       expect(m2.amount).toBe(100);
       expect(Object.isFrozen(m2)).toBe(true);
-
-      const inv = InvoiceRecord.builder().id(10).total(250).status("PAID").build();
-      expect(inv.createdBy).toBe("system");
-      expect(inv.total).toBe(250);
-
-      const profile = new UserProfile();
-      expect(profile.bio("Bunest Dev").bio()).toBe("Bunest Dev");
-      expect(FormatUtils.slugify("  Hello Bunest  ")).toBe("hello-bunest");
+      expect(slugifyText("  Hello Bunest  ")).toBe("hello-bunest");
     } finally {
       await app.close();
     }
   });
 
-  it("demonstrates Wave 1 customizable magic: custom macros/presets, @SoftDelete/@Projection/Page<T>/custom ORM operators, AOP AspectPhase pipeline, conditional beans, and bunest.config.ts", async () => {
-    // 1. bunest.config.ts loader
+  it("demonstrates @SoftDelete, Page<T>, custom ORM operators, AOP AspectPhase pipeline, and bunest.config.ts", async () => {
     const showcaseRoot = resolve(import.meta.dir, "..");
     const loaded = await loadBunestConfig(showcaseRoot);
     expect(loaded.configPath).toContain("bunest.config.ts");
-    expect(loaded.config.macros?.presets?.DomainEntity).toEqual([
-      "Data",
-      "Builder",
-      "FieldNameConstants",
-    ]);
     expect(loaded.config.orm?.queryOperators?.map((o) => o.suffix)).toContain(
       "IContains",
     );
 
-    // 2. defineClassMacro (@Auditable) + defineMacroPreset (@DomainEntity) on AuditNote
-    const note = AuditNote.builder().id(7).title("Launch Magic").build();
-    expect(note.getId()).toBe(7);
-    expect(note.getTitle()).toBe("Launch Magic");
-    expect(note.auditTag).toBe("showcase");
-    expect(AuditNote.Fields.title).toBe("title");
-    expect(AuditNote.auditVersion()).toBe(1);
-    note.markUpdated("alice");
-    expect(note.updatedBy).toBe("alice");
-
-    const app = await BunestFactory.create(AppModule, {
-      profiles: ["development"],
-    });
+    const app = await BunestFactory.create(AppModule);
     await app.init();
     try {
-      // 3. AspectPhase + defineAspectPipeline (@AuditedOperation) phase ordering
+      // AspectPhase + defineAspectPipeline (@AuditedOperation) phase ordering
       const trace = app.get(ShowcaseAspectTrace);
       trace.clear();
       const users = app.get(UsersService);
@@ -92,14 +60,13 @@ describe("Bunest VS Code Extension Showcase", () => {
         "observability:after:users.findAll",
       ]);
 
-      // 4. Conditional beans: @RegisterIfMissing(ShowcaseCacheStore) + @Profile("!production")
       const cache = app.get(ShowcaseCacheStore);
       cache.set("k1", "v1");
       expect(cache.get("k1")).toBe("v1");
       const banner = app.get(DevShowcaseBanner);
-      expect(banner.getBanner()).toContain("non-production");
+      expect(banner.getBanner()).toContain("Bunest Showcase");
 
-      // 5. @SoftDelete + @Projection + Page<T> + @IgnoreScope + custom IContains ORM operator
+      // @SoftDelete + Page<T> + custom IContains ORM operator + this.queryOne
       const orders = app.get(OrderRepository);
       const o1 = await orders.save({
         orderCode: "ORD-ALPHA-001",
@@ -117,35 +84,31 @@ describe("Bunest VS Code Extension Showcase", () => {
         totalCents: 3500,
       });
 
-      // Custom operator `IContains`
       const matchedAlpha = await orders.findAllByOrderCodeIContains("alpha");
       expect(matchedAlpha).toHaveLength(1);
       expect(matchedAlpha[0]!.orderCode).toBe("ORD-ALPHA-001");
 
-      // @Projection("id", "orderCode", "status") omits `totalCents`
-      const projected = await orders.findByOrderCode("ORD-ALPHA-001");
-      expect(projected).toEqual({
+      const summary = await orders.findSummaryByOrderCode("ORD-ALPHA-001");
+      expect(summary).toEqual({
         id: o1.id,
         orderCode: "ORD-ALPHA-001",
         status: "PAID",
       });
-      expect("totalCents" in (projected as Record<string, unknown>)).toBe(false);
+      expect("totalCents" in (summary as Record<string, unknown>)).toBe(false);
 
-      // Page<T> pagination
       const page1 = await orders.findPageByStatus("PAID", { page: 1, size: 2 });
       expect(page1.items).toHaveLength(2);
       expect(page1.total).toBe(3);
       expect(page1.totalPages).toBe(2);
       expect(page1.hasNext).toBe(true);
 
-      // @SoftDelete hides soft-deleted row from standard reads while @IgnoreScope("softDelete") sees all 3!
       await orders.deleteById(o1.id);
       const visiblePaid = await orders.findAllByStatus("PAID");
       expect(visiblePaid).toHaveLength(2);
-      const totalIncludingDeleted = await orders.countByStatus("PAID");
+      const totalIncludingDeleted =
+        await orders.countAllByStatusIncludingDeleted("PAID");
       expect(totalIncludingDeleted).toBe(3);
 
-      // 6. HTTP routes for OrdersController (/orders, /orders?search=, /orders/:code, /orders/stats)
       const searchRes = await app.fetch(new Request("http://localhost/orders?search=beta"));
       expect(searchRes.status).toBe(200);
       const searchBody = (await searchRes.json()) as { count: number; items: Array<{ orderCode: string }> };

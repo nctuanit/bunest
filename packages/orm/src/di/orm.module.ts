@@ -429,7 +429,7 @@ export class OrmModule {
 
   /**
    * Registers BOTH standard entity classes/targets (`User`, `"User"`, `entityRef(...)`, `() => User`)
-   * AND compiled `@OrmRepository(...)` declarative abstract classes (`UserRepository`),
+   * AND compiled `@Repository(...)` declarative abstract classes (`UserRepository`),
    * automatically syncing any associated entity schema on the DataSource and exposing
    * declarative repositories directly by class token in DI!
    */

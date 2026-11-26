@@ -114,6 +114,15 @@ describe("bunest new, bunest build, and bunest dev", () => {
     expect(mainSrc).toContain("BunestFactory.create(AppModule)");
     expect(mainSrc).toContain("new ValidationPipe()");
     expect(mainSrc).toContain("Bun.env.PORT ?? 3000");
+
+    expect(await fileExists(join(projectDir, "bunfig.toml"))).toBe(true);
+    expect(await fileExists(join(projectDir, "preload.ts"))).toBe(true);
+    expect(await Bun.file(join(projectDir, "bunfig.toml")).text()).toContain(
+      'preload = ["./preload.ts"]',
+    );
+    expect(await Bun.file(join(projectDir, "preload.ts")).text()).toContain(
+      "registerBunestPlugin(",
+    );
   });
 
   it("supports --dry-run, --dir, collision protection, --force, path traversal rejection, and install hook", async () => {
@@ -265,5 +274,57 @@ describe("bunest new, bunest build, and bunest dev", () => {
     await expect(
       runDevServer({ entry: "src/missing.ts", cwd: workdir }),
     ).rejects.toThrow(/Dev entry file not found/);
+  });
+
+  it("bundles 3 circularly-nested decorated classes with raw value imports via bunest build (zero TDZ)", async () => {
+    const workdir = await makeTempDir("bunest-cli-circular-build-");
+    await Bun.write(
+      join(workdir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          verbatimModuleSyntax: true,
+        },
+      }),
+    );
+    await Bun.write(
+      join(workdir, "src/dec.ts"),
+      `export function Rel(_target: () => unknown): PropertyDecorator {\n  return () => {};\n}\n`,
+    );
+    await Bun.write(
+      join(workdir, "src/a.ts"),
+      `import { Rel } from "./dec";\nimport { B } from "./b";\nexport class A {\n  @Rel(() => B)\n  b!: B;\n}\n`,
+    );
+    await Bun.write(
+      join(workdir, "src/b.ts"),
+      `import { Rel } from "./dec";\nimport { C } from "./c";\nexport class B {\n  @Rel(() => C)\n  c!: C;\n}\n`,
+    );
+    await Bun.write(
+      join(workdir, "src/c.ts"),
+      `import { Rel } from "./dec";\nimport { A } from "./a";\nexport class C {\n  @Rel(() => A)\n  a!: A;\n}\n`,
+    );
+    await Bun.write(
+      join(workdir, "src/main.ts"),
+      `import { A } from "./a";\nimport { B } from "./b";\nimport { C } from "./c";\nconst a = new A();\nconst b = new B();\nconst c = new C();\na.b = b; b.c = c; c.a = a;\nconsole.log([A.name, B.name, C.name].join("->"));\n`,
+    );
+
+    const res = await buildProject({
+      entry: "src/main.ts",
+      outdir: "dist",
+      cwd: workdir,
+      silent: true,
+    });
+    expect(res.success).toBe(true);
+
+    const proc = Bun.spawn([process.execPath, join(workdir, "dist/main.js")], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    expect(await proc.exited).toBe(0);
+    expect(stderr.trim()).toBe("");
+    expect(stdout.trim()).toBe("A->B->C");
   });
 });

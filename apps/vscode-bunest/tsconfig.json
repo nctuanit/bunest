@@ -17,7 +17,7 @@
     "paths": {
       "@bunest/cli": ["./../../packages/cli/src/index.ts"],
       "@bunest/cli/analyzer": ["./../../packages/cli/src/analyzer/index.ts"],
-      "@bunest/core": ["./../../packages/core/src/common/index.ts"]
+      "@bunest/core": ["./../../packages/core/src/index.ts"]
     }
   },
   "include": ["build.ts", "src/**/*.ts", "test/**/*.ts"]

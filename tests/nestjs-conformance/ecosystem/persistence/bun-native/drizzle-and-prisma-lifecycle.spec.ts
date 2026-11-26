@@ -13,7 +13,7 @@ import {
   getOrmEntityManagerToken,
   getOrmRepositoryToken,
   type OrmOptionsFactory,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -44,7 +44,7 @@ class LifecycleOptionsFactory implements OrmOptionsFactory {
 class LifecycleConsumer {
   constructor(
     @InjectDataSource() readonly ds: DataSource,
-    @InjectRepository(LifecycleNote) readonly repo: Repository<LifecycleNote>,
+    @InjectRepository(LifecycleNote) readonly repo: OrmRepository<LifecycleNote>,
   ) {}
 }
 

@@ -8,17 +8,17 @@ import {
 @Entity("items")
 export class ItemEntity {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ type: "text" })
-  name!: string;
+  name: string;
 
   @Column({ type: "text", nullable: true })
-  description!: string | null;
+  description: string | null;
 
   @Column({ type: "integer", default: 0 })
-  quantity!: number;
+  quantity: number;
 
   @CreateDateColumn({ name: "created_at" })
-  createdAt!: Date | string;
+  createdAt: Date | string;
 }

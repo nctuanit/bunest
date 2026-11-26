@@ -4,7 +4,7 @@ import {
   CrudRepository,
   DataSource,
   Entity,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
 } from "../src/index";
 
@@ -20,7 +20,7 @@ class TaskAuditEntity {
   action!: string;
 }
 
-@OrmRepository(TaskAuditEntity)
+@Repository(TaskAuditEntity)
 abstract class TaskAuditRepository extends CrudRepository<
   TaskAuditEntity,
   number

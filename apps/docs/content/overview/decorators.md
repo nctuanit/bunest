@@ -414,7 +414,7 @@ Import from `@bunest/orm`.
 | **Embeddables** (4) | `@Embeddable`, `@Embedded`, `@Embeds`, `@Nested` | Maps value objects / nested column groups inside an entity. |
 | **Relations** (10) | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@ManyToManyOf`, `@HasOne`, `@HasMany`, `@BelongsTo`, `@JoinColumn`, `@JoinTable` | Defines foreign-key and join-table relationships (TypeORM-style & ActiveRecord-style aliases). |
 | **Lifecycle Hooks** (7) | `@BeforeInsert`, `@AfterInsert`, `@BeforeUpdate`, `@AfterUpdate`, `@BeforeRemove`, `@AfterRemove`, `@AfterLoad` | Runs entity hooks around persistence events. |
-| **Declarative Repositories** (5) | `@OrmRepository`, `@DeclarativeRepository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Declares Spring Data-style compiled-once repositories, DTO projections, default query scopes, and mixin fragments. |
+| **Declarative Repositories** (4) | `@Repository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Declares Spring Data-style compiled-once repositories, DTO projections, default query scopes, and mixin fragments. |
 | **Multi-Tenancy & Scopes** (2) | `@TenantScoped`, `@IgnoreScope` | Enforces automatic tenant isolation or bypasses a default scope on a specific query. |
 | **Transactions & DI** (5) | `@Transactional`, `@InjectRepository`, `@InjectDataSource`, `@InjectEntityManager`, `@InjectOrmMigrations` | Declarative ALS transaction/savepoint boundaries and ORM DI injection. |
 
@@ -430,7 +430,7 @@ import {
   Entity,
   InjectRepository,
   ManyToOne,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Transactional,
 } from "@bunest/orm";
@@ -452,7 +452,7 @@ export class Order {
   }
 }
 
-@OrmRepository(Order)
+@Repository(Order)
 export abstract class OrderRepository extends CrudRepository<Order, string> {
   abstract findByStatusOrderByCreatedAtDesc(status: string): Promise<Order[]>;
 }

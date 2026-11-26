@@ -1,6 +1,6 @@
 # SQL (`Bun.SQL` qua `@bunest/orm`)
 
-**`@bunest/orm`** bao bọc driver đa dialect thuần Bun **`Bun.SQL`** (`BunSqlOrmDriver` — PostgreSQL, CockroachDB, MySQL, MariaDB và SQLite) cùng các driver SQL HTTP ở edge (`LibSqlOrmDriver` cho Turso/LibSQL và `D1OrmDriver` cho Cloudflare D1) và `ReplicatedOrmDriver` (định tuyến master/read-replica) với connection pooling qua DI, giao dịch `AsyncLocalStorage` (`@Transactional`), migration theo phiên bản (`OrmMigrationRunner`), và các repository khai báo nhận biết dialect được biên dịch một lần (`@OrmRepository` + `CrudRepository`).
+**`@bunest/orm`** bao bọc driver đa dialect thuần Bun **`Bun.SQL`** (`BunSqlOrmDriver` — PostgreSQL, CockroachDB, MySQL, MariaDB và SQLite) cùng các driver SQL HTTP ở edge (`LibSqlOrmDriver` cho Turso/LibSQL và `D1OrmDriver` cho Cloudflare D1) và `ReplicatedOrmDriver` (định tuyến master/read-replica) với connection pooling qua DI, giao dịch `AsyncLocalStorage` (`@Transactional`), migration theo phiên bản (`OrmMigrationRunner`), và các repository khai báo nhận biết dialect được biên dịch một lần (`@Repository` + `CrudRepository`).
 
 ## Cài đặt
 
@@ -34,7 +34,7 @@ export class AppModule {}
 
 ## Repository khai báo nhận biết Dialect
 
-`@OrmRepository` + `CrudRepository` tự động sinh placeholder và trích dẫn định danh đúng theo dialect (`$1` / `"id"` / `RETURNING *` trên PostgreSQL; `?` / `` `id` `` trên MySQL/MariaDB; `?` / `"id"` trên SQLite/LibSQL/D1):
+`@Repository` + `CrudRepository` tự động sinh placeholder và trích dẫn định danh đúng theo dialect (`$1` / `"id"` / `RETURNING *` trên PostgreSQL; `?` / `` `id` `` trên MySQL/MariaDB; `?` / `"id"` trên SQLite/LibSQL/D1):
 
 @@filename(order.repository.ts)
 
@@ -44,7 +44,7 @@ import {
   CrudRepository,
   Entity,
   Modifying,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Query,
   SqlParam,
@@ -65,7 +65,7 @@ export class Order {
   totalCents: number;
 }
 
-@OrmRepository(Order)
+@Repository(Order)
 export abstract class OrderRepository extends CrudRepository<Order, number> {
   abstract findAllByCustomerIdOrderByIdDesc(customerId: string): Promise<Order[]>;
   abstract countByStatus(status: string): Promise<number>;

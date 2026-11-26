@@ -1,47 +1,30 @@
 import {
-  Builder,
   Column,
-  Data,
   Entity,
-  FieldNameConstants,
   Index,
   PrimaryGeneratedColumn,
-  Secret,
-  Singular,
   Unique,
 } from "@bunest/core";
 
-/**
- * 👉 Hover lên `@Data()` / `@Builder()` / `UserEntity` để xem bảng toàn bộ generated members!
- * 👉 Bấm CodeLens `✨ ... macro members` (hoặc `Cmd+.`) để thử 1-click Expand (Delombok)!
- */
 @Entity("users")
-@Data()
-@Builder({ toBuilder: true })
-@FieldNameConstants()
 export class UserEntity {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column()
   @Unique()
-  email!: string;
+  email: string;
 
   @Column()
-  name!: string;
+  name: string;
 
   @Column()
   @Index()
-  @Builder.Default(18)
-  age!: number;
+  age = 18;
 
   @Column()
-  @Builder.Default(true)
-  active!: boolean;
+  active = true;
 
-  @Secret()
   passwordHash?: string;
-
-  @Singular()
   tags?: string[];
 }

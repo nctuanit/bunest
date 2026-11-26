@@ -55,7 +55,7 @@ export function getOrmTransactionalAspectToken(
 
 /**
  * Computes a deterministic injection token for an entity repository or declarative
- * `@OrmRepository(...)` abstract class.
+ * `@Repository(...)` abstract class.
  *
  * Notice that `User`, `"User"`, and `entityRef<User>("User")` all normalize to the
  * exact same token (`bunest:orm:repo:<dsName>:User`), allowing services to inject

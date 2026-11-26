@@ -20,11 +20,11 @@ bun run --cwd apps/vscode-bunest package
 
 ### 1. Live Zero-Save Typegen cho Macros & Repositories
 
-Ngay khi bạn gõ `@Data()`, `@Builder()`, `@With()` hay khai báo derived finder trong `@OrmRepository()`, extension tự động sinh các định nghĩa `.d.ts` theo thời gian thực — giúp TypeScript gợi ý code và kiểm tra kiểu **ngay lập tức mà không cần lưu file hay chạy build**.
+Ngay khi bạn gõ `@Data()`, `@Builder()`, `@With()` hay khai báo derived finder trong `@Repository()`, extension tự động sinh các định nghĩa `.d.ts` theo thời gian thực — giúp TypeScript gợi ý code và kiểm tra kiểu **ngay lập tức mà không cần lưu file hay chạy build**.
 
 ### 2. Autocomplete & Xem trước SQL cho Declarative Repository
 
-Bên trong mọi class `@OrmRepository(Entity)` kế thừa `CrudRepository<Entity, ID>`:
+Bên trong mọi class `@Repository(Entity)` kế thừa `CrudRepository<Entity, ID>`:
 
 - **Gợi ý tên method**: Tự động gợi ý các từ khóa derived finder kiểu Spring Data (`findBy`, `findAllBy`, `countBy`, `existsBy`, `deleteBy`, `And`, `Or`, `OrderBy`, `Asc`, `Desc`, `Containing`, `Between`, `IsNull`, ...).
 - **Xem trước SQL trực tiếp**: Di chuột lên tên method để xem câu lệnh SQL đã parameterize chính xác mà `@bunest/orm` sẽ biên dịch lúc khởi động.
@@ -41,7 +41,7 @@ Phát hiện lỗi phổ biến ngay trong trình soạn thảo trước cả kh
 - Vô tình dùng `import type` cho DI class, DTO hoặc ORM entity (làm hỏng `emitDecoratorMetadata`).
 - Thiếu `@Injectable()` hoặc quên đăng ký provider trong `@Module()`.
 - Kết hợp class macro xung đột nhau (ví dụ `@Value()` đi cùng `@Setter()`).
-- Tên thuộc tính không tồn tại trong derived finder của `@OrmRepository()`.
+- Tên thuộc tính không tồn tại trong derived finder của `@Repository()`.
 
 ### 5. Đồ thị DI tương tác & Inline HTTP Runner
 

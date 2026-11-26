@@ -134,7 +134,7 @@ function parseFollowingMethodSignature(
 
 /**
  * Finds all `this.query("...")`, `this.queryOne("...")`, `this.execute("...")`,
- * and legacy `@Query("...")` / `@OrmQuery("...")` SQL string literals in a TypeScript file.
+ * and `@Query("...")` SQL string literals in a TypeScript file.
  */
 export function findQueryDecoratorsInSource(
   source: string,
@@ -182,8 +182,8 @@ export function findQueryDecoratorsInSource(
     });
   }
 
-  // 2. Legacy `@Query("...")` / `@OrmQuery("...")`
-  const re = /@(?:Query|OrmQuery)\s*\(\s*(['"`])([\s\S]*?)\1/g;
+  // 2. `@Query("...")`
+  const re = /@Query\s*\(\s*(['"`])([\s\S]*?)\1/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(source)) !== null) {
     const quote = m[1]!;
@@ -357,7 +357,7 @@ function collectEntitySchema(snapshots: readonly BunestWorkspaceSnapshot[]): {
 }
 
 /**
- * Provides IntelliSense inside `@Query("...")` / `@OrmQuery("...")` SQL strings:
+ * Provides IntelliSense inside `@Query("...")` SQL strings:
  * - `:paramName` completions from method parameters & `@SqlParam(...)`
  * - Table name completions from workspace `@Entity()` classes
  * - Column name completions from workspace `@Entity()` fields

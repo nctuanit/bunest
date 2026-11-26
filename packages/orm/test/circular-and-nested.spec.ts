@@ -1,20 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { ensureDir, join, realpathOf, removePath } from "@bunest/core";
 import {
-  BelongsTo,
   CircularEmbeddedError,
   Column,
   DataSource,
   Embeddable,
   Embedded,
-  Embeds,
   Entity,
-  HasMany,
-  HasOne,
   JoinColumn,
   ManyToOne,
   MoreThan,
-  Nested,
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
@@ -24,8 +19,6 @@ import {
   generateSchemaPlan,
   serializeEntity,
   transformCircularMetadataSource,
-  type Nested as NestedType,
-  type Relation,
 } from "../src/index";
 import {
   AuthorContact,
@@ -131,12 +124,8 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
     }
   });
 
-  it("2. Same-file forward-referenced nested & circular classes via @Embeds/@HasMany/Nested<T>/defineEntity (ZERO TDZ)", async () => {
-    // Pattern A: Class-level decorators allow plain `shipping!: ForwardShipping` and `items!: ForwardItem[]`
-    // EVEN when ForwardShipping and ForwardItem are declared BELOW ForwardOrder!
+  it("2. Same-file forward-referenced nested & circular classes via T and defineEntity (ZERO TDZ)", async () => {
     @Entity("forward_orders")
-    @Embeds("shipping", () => ForwardShipping)
-    @HasMany("items", () => ForwardItem, { inverseSide: "order", cascade: true })
     class ForwardOrder {
       @PrimaryGeneratedColumn()
       id!: number;
@@ -144,7 +133,10 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       code!: string;
 
+      @Embedded(() => ForwardShipping)
       shipping!: ForwardShipping;
+
+      @OneToMany(() => ForwardItem, (item) => item.order, { cascade: true })
       items!: ForwardItem[];
     }
 
@@ -153,7 +145,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       carrier!: string;
 
       @Embedded(() => ForwardGeo)
-      geo!: NestedType<ForwardGeo>;
+      geo!: ForwardGeo;
     }
 
     class ForwardGeo {
@@ -169,7 +161,6 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
     }
 
     @Entity("forward_items")
-    @BelongsTo("order", () => ForwardOrder, { inverseSide: "items" })
     class ForwardItem {
       @PrimaryGeneratedColumn()
       id!: number;
@@ -177,6 +168,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       sku!: string;
 
+      @ManyToOne(() => ForwardOrder, (order) => order.items)
       order!: ForwardOrder;
     }
 
@@ -280,8 +272,8 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       country!: string;
 
-      @Nested(() => GeoCoord)
-      geo!: NestedType<GeoCoord>;
+      @Embedded(() => GeoCoord)
+      geo!: GeoCoord;
     }
 
     @Embeddable()
@@ -289,8 +281,8 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       floor!: number;
 
-      @Nested(() => StreetAddress)
-      address!: NestedType<StreetAddress>;
+      @Embedded(() => StreetAddress)
+      address!: StreetAddress;
     }
 
     @Entity("deep_companies")
@@ -301,11 +293,11 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       name!: string;
 
-      @Nested(() => OfficeInfo)
-      hq!: NestedType<OfficeInfo>;
+      @Embedded(() => OfficeInfo)
+      hq!: OfficeInfo;
 
-      @Nested(() => Money)
-      valuation?: NestedType<Money>;
+      @Embedded(() => Money)
+      valuation?: Money;
     }
 
     const ds = new DataSource({
@@ -396,7 +388,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       label!: string;
 
       @Embedded(() => MenuNode, { array: true })
-      children?: NestedType<MenuNode>[];
+      children?: MenuNode[];
 
       countNodes(): number {
         return (
@@ -412,7 +404,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       tagA!: string;
 
       @Embedded(() => MutualBoxB)
-      boxB?: NestedType<MutualBoxB>;
+      boxB?: MutualBoxB;
     }
 
     class MutualBoxB {
@@ -420,7 +412,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       tagB!: string;
 
       @Embedded(() => MutualBoxA)
-      boxA?: NestedType<MutualBoxA>;
+      boxA?: MutualBoxA;
     }
 
     @Entity("rich_documents")
@@ -429,15 +421,15 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       id!: number;
 
       @Embedded(() => LineItem, { array: true })
-      items!: NestedType<LineItem>[];
+      items!: LineItem[];
 
       // mode: "auto" automatically detects self-recursion -> switches to JSON cleanly!
       @Embedded(() => MenuNode)
-      menu!: NestedType<MenuNode>;
+      menu!: MenuNode;
 
       // mode: "auto" automatically detects MutualBoxA <-> MutualBoxB cycle -> switches to JSON!
       @Embedded(() => MutualBoxA)
-      mutual?: NestedType<MutualBoxA>;
+      mutual?: MutualBoxA;
     }
 
     const ds = new DataSource({
@@ -505,14 +497,14 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       x!: string;
       @Embedded(() => BadCycleA, { mode: "flat" })
-      self?: NestedType<BadCycleA>;
+      self?: BadCycleA;
     }
     @Entity("bad_flat_entities")
     class BadFlatEntity {
       @PrimaryGeneratedColumn()
       id!: number;
       @Embedded(() => BadCycleA, { mode: "flat" })
-      cycle!: NestedType<BadCycleA>;
+      cycle!: BadCycleA;
     }
 
     const badDs = new DataSource({
@@ -526,32 +518,35 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
 
   it("5. Mutual owning FK cycles (A <-> B) and 3-way FK ring (RingA -> RingB -> RingC -> RingA) with strict FK enforcement", async () => {
     @Entity("ring_a")
-    @HasOne("next", () => RingB, { joinColumn: { name: "next_b_id" }, cascade: true })
     class RingA {
       @PrimaryGeneratedColumn()
       id!: number;
       @Column()
       name!: string;
+      @OneToOne(() => RingB, { cascade: true })
+      @JoinColumn({ name: "next_b_id" })
       next?: RingB;
     }
 
     @Entity("ring_b")
-    @HasOne("next", () => RingC, { joinColumn: { name: "next_c_id" }, cascade: true })
     class RingB {
       @PrimaryGeneratedColumn()
       id!: number;
       @Column()
       name!: string;
+      @OneToOne(() => RingC, { cascade: true })
+      @JoinColumn({ name: "next_c_id" })
       next?: RingC;
     }
 
     @Entity("ring_c")
-    @HasOne("next", () => RingA, { joinColumn: { name: "next_a_id" }, cascade: true })
     class RingC {
       @PrimaryGeneratedColumn()
       id!: number;
       @Column()
       name!: string;
+      @OneToOne(() => RingA, { cascade: true })
+      @JoinColumn({ name: "next_a_id" })
       next?: RingA;
     }
 
@@ -612,7 +607,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       @Column()
       username!: string;
       @OneToOne(() => EagerProfile, (p) => p.user, { eager: true, cascade: true })
-      profile?: Relation<EagerProfile>;
+      profile?: EagerProfile;
     }
 
     @Entity("eager_profiles")
@@ -623,7 +618,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       avatar!: string;
       @OneToOne(() => EagerUser, (u) => u.profile, { eager: true })
       @JoinColumn({ name: "user_id" })
-      user?: Relation<EagerUser>;
+      user?: EagerUser;
     }
 
     @Entity("tree_categories")
@@ -634,9 +629,9 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
       name!: string;
       @ManyToOne(() => TreeCategory, (c) => c.children, { nullable: true })
       @JoinColumn({ name: "parent_id" })
-      parent?: Relation<TreeCategory> | null;
+      parent?: TreeCategory | null;
       @OneToMany(() => TreeCategory, (c) => c.parent, { eager: true, cascade: true })
-      children!: Relation<TreeCategory[]>;
+      children!: TreeCategory[];
     }
 
     const ds = new DataSource({
@@ -702,7 +697,7 @@ describe("@bunest/orm — Circular & Nested Classes (Zero Class Errors)", () => 
     expect(transformed).toContain("catch { return Object; }");
 
     // End-to-end runtime test: create real circular ESM files using RAW `post!: RawPost`
-    // (NO Relation<T>, NO import type, NO class-level decorator) + same-file forward class!
+    // (NO T, NO import type, NO class-level decorator) + same-file forward class!
     const rawDir = join(
       Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
       `bunest-orm-plugin-${crypto.randomUUID()}`,

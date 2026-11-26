@@ -12,6 +12,7 @@ import type {
   InjectionToken,
   Type,
 } from "../interfaces/type.interface";
+import { Logger } from "../logger/logger";
 import { DecoratorRegistry } from "../metadata/decorator-registry";
 import { MetadataRegistry } from "../metadata/metadata-registry";
 import type { CustomDecorator } from "../metadata/reflector";
@@ -71,10 +72,6 @@ export interface AutoModuleMetadata extends ModuleMetadata {
    * Optional predicate filtering discovered controller/provider classes.
    */
   readonly filter?: (target: Type<unknown>) => boolean;
-  /**
-   * Active profile names for evaluating `@Profile(...)` conditional beans.
-   */
-  readonly profiles?: readonly string[];
 }
 
 /**
@@ -87,7 +84,6 @@ export interface StoredAutoModuleMetadata {
   readonly callerDir?: string;
   readonly manifest?: readonly AutoModuleManifestLoader[];
   readonly filter?: (target: Type<unknown>) => boolean;
-  readonly profiles?: readonly string[];
 }
 
 function parseStackFramePath(line: string): string | undefined {
@@ -181,6 +177,45 @@ const VALID_MODULE_METADATA_KEYS = new Set([
 ]);
 
 /**
+ * Lazily attaches a non-enumerable `logger` property (`new Logger(target.name)`)
+ * onto `target.prototype` if the class has not already defined its own `logger`.
+ */
+export function attachAutoLogger(
+  target: Function,
+  fallbackContext: string,
+): void {
+  if (
+    !target.prototype ||
+    Object.prototype.hasOwnProperty.call(target.prototype, "logger")
+  ) {
+    return;
+  }
+  const loggerContext = target.name || fallbackContext;
+  Object.defineProperty(target.prototype, "logger", {
+    configurable: true,
+    enumerable: false,
+    get(this: object): Logger {
+      const instance = new Logger(loggerContext);
+      Object.defineProperty(this, "logger", {
+        value: instance,
+        writable: true,
+        enumerable: false,
+        configurable: true,
+      });
+      return instance;
+    },
+    set(this: object, value: unknown): void {
+      Object.defineProperty(this, "logger", {
+        value,
+        writable: true,
+        enumerable: false,
+        configurable: true,
+      });
+    },
+  });
+}
+
+/**
  * Defines a Bunest module organizing imports, controllers, providers, and exports.
  */
 export function Module(metadata: ModuleMetadata): ClassDecorator {
@@ -235,6 +270,7 @@ export function Module(metadata: ModuleMetadata): ClassDecorator {
       },
       target,
     );
+    attachAutoLogger(target, "Module");
   };
 }
 
@@ -244,16 +280,14 @@ export function Module(metadata: ModuleMetadata): ClassDecorator {
  * from `DecoratorRegistry`, or scoped to files matched by `scan` / `manifest`.
  */
 export function AutoModule(metadata: AutoModuleMetadata = {}): ClassDecorator {
-  const { scan, exclude, cwd, manifest, filter, profiles, ...moduleMeta } =
-    metadata;
+  const { scan, exclude, cwd, manifest, filter, ...moduleMeta } = metadata;
 
   const hasExtended =
     scan !== undefined ||
     exclude !== undefined ||
     cwd !== undefined ||
     manifest !== undefined ||
-    filter !== undefined ||
-    profiles !== undefined;
+    filter !== undefined;
 
   const callerDir =
     hasExtended && cwd === undefined && scan !== undefined
@@ -277,7 +311,6 @@ export function AutoModule(metadata: AutoModuleMetadata = {}): ClassDecorator {
         ...(callerDir !== undefined ? { callerDir } : {}),
         ...(manifest !== undefined ? { manifest: [...manifest] } : {}),
         ...(filter !== undefined ? { filter } : {}),
-        ...(profiles !== undefined ? { profiles: [...profiles] } : {}),
       };
       MetadataRegistry.define<StoredAutoModuleMetadata>(
         AUTO_MODULE_METADATA_KEY,
@@ -313,6 +346,7 @@ export function Injectable(options?: InjectableOptions): ClassDecorator {
       target,
     );
     DecoratorRegistry.registerInjectable(target, meta);
+    attachAutoLogger(target, "Injectable");
   };
 }
 

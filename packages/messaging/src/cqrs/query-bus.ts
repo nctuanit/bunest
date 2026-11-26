@@ -77,7 +77,7 @@ export class QueryBus<QueryBase extends IQuery = IQuery>
     string,
     StoredQueryHandler<QueryBase>
   >();
-  private _publisher!: IQueryPublisher<QueryBase>;
+  private _publisher: IQueryPublisher<QueryBase>;
 
   constructor(
     @Optional() private readonly moduleRef?: ModuleRef,

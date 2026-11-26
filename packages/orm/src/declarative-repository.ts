@@ -30,8 +30,6 @@ import {
   type StoredOrmColumnMetadata,
 } from "./metadata-storage";
 import {
-  ORM_IGNORE_SCOPE_METADATA,
-  ORM_PROJECTION_METADATA,
   createSoftDeleteMethods,
   extractCursorValue,
   getAmbientIgnoredScopes,
@@ -247,9 +245,8 @@ export interface CompiledOrmRepositoryFactory<TRepo extends object = object> {
 /**
  * Spring Data-style abstract base CRUD repository for `@bunest/orm`.
  *
- * Subclass this as an `abstract class`, decorate with `@OrmRepository(Entity)`
- * (or `@DeclarativeRepository(Entity)`), declare derived finder methods or
- * `@Query(...)` / `@Modifying()` methods, and register via
+ * Subclass this as an `abstract class`, decorate with `@Repository(Entity)`,
+ * declare derived finder methods or `@Query(...)` / `@Modifying()` methods, and register via
  * `OrmModule.forFeature([MyRepository])` or `autoRegisterRepositories: true`.
  */
 export abstract class CrudRepository<
@@ -515,13 +512,18 @@ function toCompiledLikeColumn(
  * repository compiled once by `OrmModule.forFeature([MyRepository])` or
  * `autoRegisterRepositories: true`.
  */
-export function OrmRepository<TEntity = any>(
-  entityOrOptions:
+export function Repository<TEntity = any, TKey = number>(
+  entityOrOptions?:
     | Type<TEntity>
     | Abstract<TEntity>
     | string
     | OrmRepositoryOptions<TEntity>,
 ): ClassDecorator {
+  if (entityOrOptions === undefined) {
+    throw new Error(
+      `@Repository<TEntity, TKey>() without a runtime entity argument requires registerBunestPlugin() in bunfig.toml preload (or pass the entity class explicitly: @Repository(MyEntity)).`,
+    );
+  }
   const opts: OrmRepositoryOptions<TEntity> =
     typeof entityOrOptions === "function"
       ? { entity: entityOrOptions }
@@ -540,7 +542,7 @@ export function OrmRepository<TEntity = any>(
 
   if (!table) {
     throw new Error(
-      `@OrmRepository() requires either an entity class or an explicit "table" name.`,
+      `@Repository() requires either an entity class or an explicit "table" name.`,
     );
   }
 
@@ -602,87 +604,6 @@ export function OrmRepository<TEntity = any>(
     DecoratorRegistry.register("orm-repository", target, metadata);
   };
 }
-
-/**
- * Alias for `@OrmRepository(...)`.
- */
-export const DeclarativeRepository = OrmRepository;
-
-/**
- * Binds a parameterized multi-dialect SQL query (`:name`, `?`, or `$1`) to a
- * declarative repository method. Compiled once per dialect with zero runtime SQL interpolation.
- */
-export function Query(
-  sql: string,
-  options?: OrmQueryOptions,
-): MethodDecorator {
-  if (typeof sql !== "string" || sql.trim().length === 0) {
-    throw new Error("@Query() requires a non-empty SQL string.");
-  }
-  const metadata: OrmQueryMetadata = {
-    sql,
-    ...(options !== undefined ? { options } : {}),
-  };
-  return (target, propertyKey, descriptor) => {
-    MetadataRegistry.define(ORM_QUERY_METADATA, metadata, target, propertyKey);
-    return descriptor;
-  };
-}
-
-/**
- * Disambiguated alias for `@Query(...)`.
- */
-export const OrmQuery = Query;
-
-/**
- * Marks a `@Query(...)` repository method as a write statement (`INSERT`, `UPDATE`, `DELETE`).
- * Returns affected row count by default, or `void` / `OrmQueryResult` via options.
- */
-export function Modifying(options?: OrmModifyingOptions): MethodDecorator {
-  const normalized: OrmModifyingOptions = options ?? {};
-  return (target, propertyKey, descriptor) => {
-    MetadataRegistry.define(
-      ORM_MODIFYING_METADATA,
-      normalized,
-      target,
-      propertyKey,
-    );
-    return descriptor;
-  };
-}
-
-/**
- * Binds a repository method parameter index to a named `:name` placeholder in `@Query(sql)`.
- */
-export function SqlParam(name: string): ParameterDecorator {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error(
-      `Invalid @SqlParam("${name}"): parameter name must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
-    );
-  }
-  return (target, propertyKey, parameterIndex) => {
-    if (propertyKey === undefined) {
-      return;
-    }
-    const existing =
-      MetadataRegistry.getOwn<OrmParamMetadataMap>(
-        ORM_PARAM_METADATA,
-        target,
-        propertyKey,
-      ) ?? {};
-    MetadataRegistry.define(
-      ORM_PARAM_METADATA,
-      { ...existing, [parameterIndex]: name },
-      target,
-      propertyKey,
-    );
-  };
-}
-
-/**
- * Spring Data-style alias for `@SqlParam(name)`.
- */
-export const Param = SqlParam;
 
 // ============================================================================
 // Inspection Helpers
@@ -2297,7 +2218,7 @@ const RESERVED_NON_DERIVED_KEYS = new Set<PropertyKey>([
 ]);
 
 /**
- * Compiles an `@OrmRepository(...)` abstract class ONCE into a multi-dialect
+ * Compiles an `@Repository(...)` abstract class ONCE into a multi-dialect
  * repository factory with precompiled CRUD (`findById`, `findByIdOrFail`, `findAll`,
  * `save`, `saveMany`, `deleteById`, `count`, `existsById`), `@Query` / `@Modifying` /
  * `@SqlParam`, and cached derived query executors across ALL ORM dialects.
@@ -2308,7 +2229,7 @@ export function compileOrmRepository<TRepo extends object>(
   const meta = getOrmRepositoryMetadata(RepoClass);
   if (!meta) {
     throw new Error(
-      `Declarative ORM repository "${RepoClass.name}" is missing @OrmRepository(Entity) decorator metadata.`,
+      `Declarative ORM repository "${RepoClass.name}" is missing @Repository(Entity) decorator metadata.`,
     );
   }
 
@@ -2332,62 +2253,9 @@ export function compileOrmRepository<TRepo extends object>(
   const methodProjections = new Map<string, readonly string[]>();
   const methodIgnoreScopes = new Map<string, IgnoreScopeSpec>();
 
-  for (const proto of protoChain) {
-    const names = Object.getOwnPropertyNames(proto);
-    for (let i = 0; i < names.length; i++) {
-      const name = names[i]!;
-      if (name === "constructor") continue;
-      const queryMeta = MetadataRegistry.getOwn<OrmQueryMetadata>(
-        ORM_QUERY_METADATA,
-        proto,
-        name,
-      );
-      if (queryMeta) {
-        const modifyingMeta = MetadataRegistry.getOwn<OrmModifyingOptions>(
-          ORM_MODIFYING_METADATA,
-          proto,
-          name,
-        );
-        const paramMap = MetadataRegistry.getOwn<OrmParamMetadataMap>(
-          ORM_PARAM_METADATA,
-          proto,
-          name,
-        );
-        rawQueryDeclarations.set(name, {
-          methodName: name,
-          queryMeta,
-          modifyingMeta,
-          paramMap,
-        });
-      }
-      const projMeta = MetadataRegistry.getOwn<readonly string[]>(
-        ORM_PROJECTION_METADATA,
-        proto,
-        name,
-      );
-      if (projMeta && projMeta.length > 0) {
-        methodProjections.set(name, projMeta);
-      }
-      const ignoreMeta = MetadataRegistry.getOwn<IgnoreScopeSpec>(
-        ORM_IGNORE_SCOPE_METADATA,
-        proto,
-        name,
-      );
-      if (ignoreMeta) {
-        methodIgnoreScopes.set(name, ignoreMeta);
-      }
-    }
-  }
-
   const repoScopes = getRepositoryScopes(RepoClass);
   const softDeleteConfig = getSoftDeleteConfig(RepoClass);
   const repoFragments = getRepositoryFragments(RepoClass);
-
-  // Eagerly validate named @SqlParam bindings at compile time
-  const validationDialect: OrmDialect = meta.dialect ?? "sqlite";
-  for (const decl of rawQueryDeclarations.values()) {
-    compileCustomQueryMethod(decl, validationDialect, hydrateRow, RepoClass.name);
-  }
 
   const dialectBundles = new Map<OrmDialect, CompiledDialectBundle>();
 

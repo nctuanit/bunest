@@ -147,7 +147,7 @@ describe("Bunest Native TypeScript Lexer, Parser & Resolver (packages/cli/src/as
 
   it("recovers gracefully on incomplete/malformed live-edited IDE buffers without hanging", () => {
     const raw = parseTypeScript(`
-      @OrmRepository(User)
+      @Repository(User)
       export abstract class UserRepo extends CrudRepository<User, number> {
         abstract findAllByAge
         abstract findByEmail(email: string): Promise<User | null>;

@@ -243,12 +243,7 @@ const RAW_BUILTIN_SPECS: readonly BuiltinDecoratorSpec[] = [
   { name: "Nested", category: "orm-relation", targets: ["property"], isRelation: true },
 
   // ---- ORM Repository Decorators ----
-  { name: "OrmRepository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
-  { name: "DeclarativeRepository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
   { name: "Repository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
-  { name: "SqliteRepository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
-  { name: "PostgresRepository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
-  { name: "MysqlRepository", category: "orm-repository", targets: ["class"], isRepository: true, isDiManaged: true },
 
   // ---- DI Managed Classes ----
   { name: "Injectable", category: "di", targets: ["class"], isDiManaged: true },

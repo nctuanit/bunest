@@ -92,6 +92,22 @@ export async function createProject(
         `${JSON.stringify(defaultBunestConfig, null, 2)}\n`,
       );
     }
+
+    const preloadPath = join(targetDir, "preload.ts");
+    if (!existsSyncPath(preloadPath) || force) {
+      writeTextSync(
+        preloadPath,
+        `import { registerBunestPlugin } from "@bunest/cli";\n\nregisterBunestPlugin({ classMacros: false });\n`,
+      );
+    }
+
+    const bunfigPath = join(targetDir, "bunfig.toml");
+    if (!existsSyncPath(bunfigPath) || force) {
+      writeTextSync(
+        bunfigPath,
+        `preload = ["./preload.ts"]\n\n[test]\npreload = ["./preload.ts"]\n`,
+      );
+    }
   }
 
   if (io) {

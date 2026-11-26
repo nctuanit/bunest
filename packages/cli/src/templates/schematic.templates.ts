@@ -254,7 +254,7 @@ export class ${pascal}Module {}
 export class ${pascal}Dto {
   @IsString()
   @MinLength(1)
-  name!: string;
+  name: string;
 
   @IsOptional()
   @IsString()
@@ -873,7 +873,7 @@ import { IsString, MinLength } from "@bunest/validation/validator";
 export class ${pascal}RequestDto {
   @IsString()
   @MinLength(1)
-  name!: string;
+  name: string;
 }
 
 @Controller("/${kebab}")
@@ -936,7 +936,7 @@ describe("${pascal}Endpoint", () => {
           });
           files.push({
             relativePath: joinRel(dtoDir, `update-${singularKebab}.dto.ts`),
-            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id!: number;\n}\n`,
+            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id: number;\n}\n`,
           });
           files.push({
             relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
@@ -1072,7 +1072,7 @@ describe("${pascal}Controller", () => {
           });
           files.push({
             relativePath: joinRel(dtoDir, `update-${singularKebab}.dto.ts`),
-            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id!: number;\n}\n`,
+            content: `import { Create${singularPascal}Dto } from "./create-${singularKebab}.dto";\n\nexport class Update${singularPascal}Dto extends Create${singularPascal}Dto {\n  id: number;\n}\n`,
           });
           files.push({
             relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
@@ -1208,7 +1208,7 @@ describe("${pascal}Gateway", () => {
 @InputType()
 export class Create${singularPascal}Input {
   @Field(() => Int)
-  exampleField!: number;
+  exampleField: number;
 }
 `
               : `export class Create${singularPascal}Input {}\n`,
@@ -1222,10 +1222,10 @@ import { Create${singularPascal}Input } from "./create-${singularKebab}.input";
 @InputType()
 export class Update${singularPascal}Input extends Create${singularPascal}Input {
   @Field(() => Int)
-  id!: number;
+  id: number;
 }
 `
-              : `import { Create${singularPascal}Input } from "./create-${singularKebab}.input";\n\nexport class Update${singularPascal}Input extends Create${singularPascal}Input {\n  id!: number;\n}\n`,
+              : `import { Create${singularPascal}Input } from "./create-${singularKebab}.input";\n\nexport class Update${singularPascal}Input extends Create${singularPascal}Input {\n  id: number;\n}\n`,
           });
           files.push({
             relativePath: joinRel(entityDir, `${singularKebab}.entity.ts`),
@@ -1235,7 +1235,7 @@ export class Update${singularPascal}Input extends Create${singularPascal}Input {
 @ObjectType()
 export class ${singularPascal} {
   @Field(() => Int)
-  exampleField!: number;
+  exampleField: number;
 }
 `
               : `export class ${singularPascal} {}\n`,
@@ -1452,7 +1452,7 @@ describe("${pascal}Module", () => {
 export class Create${pascal}Dto {
   @IsString()
   @MinLength(1)
-  name!: string;
+  name: string;
 
   @IsOptional()
   @IsString()

@@ -8,11 +8,11 @@ import {
 
 export class RegisterDto {
   @IsEmail()
-  email!: string;
+  email: string;
 
   @IsString()
   @MinLength(6)
-  password!: string;
+  password: string;
 
   @IsOptional()
   @IsArray()
@@ -22,17 +22,17 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail()
-  email!: string;
+  email: string;
 
   @IsString()
   @MinLength(1)
-  password!: string;
+  password: string;
 }
 
 export class CreateTaskDto {
   @IsString()
   @MinLength(1)
-  title!: string;
+  title: string;
 
   @IsOptional()
   @IsString()

@@ -666,4 +666,88 @@ export class AuditLogEntity {
     expect(auditSection).toContain("    updatedAt: Date;");
     expect(auditSection).not.toContain("deletedAt");
   });
+
+  it("synthesizes CrudRepository<TEntity, TKey> methods for decorator-only @Repository<TEntity, TKey>(Entity) classes", async () => {
+    const dir = await makeTempDir("bunest-typegen-repo-dec-");
+    await ensureDir(join(dir, "src/tasks"));
+
+    await Bun.write(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          target: "ESNext",
+          module: "Preserve",
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          verbatimModuleSyntax: true,
+          strict: true,
+          noEmit: true,
+        },
+        include: ["src/**/*.ts", ".bunest/types/**/*.d.ts"],
+      }),
+    );
+
+    await Bun.write(
+      join(dir, "src/tasks/task.entity.ts"),
+      `export class TaskEntity {
+  id!: number;
+  title!: string;
+  completed!: boolean;
+}
+`,
+    );
+
+    await Bun.write(
+      join(dir, "src/tasks/task.repository.ts"),
+      `import { TaskEntity } from "./task.entity";
+
+function Repository<TEntity = any, TKey = number>(_entity: unknown): ClassDecorator {
+  return () => {};
+}
+
+@Repository<TaskEntity, number>(TaskEntity)
+export abstract class TaskRepository {
+  abstract findByTitle(title: string): Promise<TaskEntity | null>;
+}
+
+@Repository(TaskEntity)
+export abstract class DefaultKeyTaskRepository {
+  abstract findAllByCompleted(completed: boolean): Promise<TaskEntity[]>;
+}
+`,
+    );
+
+    const res = await generateBunestTypes({
+      cwd: dir,
+      sourceRoot: "src",
+      loadBunestConfig: false,
+      silent: true,
+    });
+
+    expect(res.content).toContain(
+      'import type { OrmQueryResult, OrmSqlParams } from "@bunest/orm";',
+    );
+    expect(res.content).toContain("TaskEntity");
+    expect(res.content).toContain("interface TaskRepository {");
+    expect(res.content).toContain("findById(id: number): Promise<TaskEntity | null>;");
+    expect(res.content).toContain("findByIdOrFail(id: number): Promise<TaskEntity>;");
+    expect(res.content).toContain("findAll(): Promise<TaskEntity[]>;");
+    expect(res.content).toContain("save(entity: Partial<TaskEntity>): Promise<TaskEntity>;");
+    expect(res.content).toContain(
+      "saveMany(entities: readonly Partial<TaskEntity>[]): Promise<TaskEntity[]>;",
+    );
+    expect(res.content).toContain("deleteById(id: number): Promise<void>;");
+    expect(res.content).toContain("count(): Promise<number>;");
+    expect(res.content).toContain("existsById(id: number): Promise<boolean>;");
+    expect(res.content).toContain(
+      "query<TRow = Record<string, unknown>>(sql: string, params?: OrmSqlParams): Promise<TRow[]>;",
+    );
+    expect(res.content).toContain(
+      "queryOne<TRow = Record<string, unknown>>(sql: string, params?: OrmSqlParams): Promise<TRow | null>;",
+    );
+    expect(res.content).toContain(
+      "execute(sql: string, params?: OrmSqlParams): Promise<OrmQueryResult>;",
+    );
+    expect(res.content).toContain("interface DefaultKeyTaskRepository {");
+  });
 });

@@ -2017,6 +2017,24 @@ export function scanEntitiesAndRepositories(
         }
       }
 
+      let decTypeArgEntityName: string | undefined;
+      if (!entityClass && repoDecEntry) {
+        const typeArg0 = repoDecEntry.resolvedTypeArgNodes[0];
+        const rawName = (
+          typeArg0?.getText() ??
+          repoDecEntry.resolvedTypeArgTexts[0] ??
+          ""
+        )
+          .replace(/<.*$/, "")
+          .trim();
+        if (rawName && /^[A-Za-z_$][\w$]*$/.test(rawName)) {
+          decTypeArgEntityName = rawName;
+          entityClass = typeArg0
+            ? resolveEntityClassFromExpr(typeArg0)
+            : undefined;
+        }
+      }
+
       const extInfo = resolveEntityFromExtendsTypeArg(cls);
       entityClass = entityClass ?? extInfo.entityClass;
 
@@ -2030,9 +2048,12 @@ export function scanEntitiesAndRepositories(
         }
       } else if (extInfo.entityName) {
         entity = entitiesByName.get(extInfo.entityName);
+      } else if (decTypeArgEntityName) {
+        entity = entitiesByName.get(decTypeArgEntityName);
       }
 
-      const entityName = entity?.className ?? extInfo.entityName;
+      const entityName =
+        entity?.className ?? extInfo.entityName ?? decTypeArgEntityName;
       const tableName =
         explicitTable ??
         entity?.tableName ??
@@ -2040,12 +2061,12 @@ export function scanEntitiesAndRepositories(
       const idColumn = explicitIdColumn ?? entity?.idColumn ?? "id";
       const idTsType = extInfo.idTsType ?? entity?.idTsType ?? "number";
 
-      // BUNEST_REPO007: extends CrudRepository without @OrmRepository decorator
+      // BUNEST_REPO007: extends CrudRepository without @Repository decorator
       if (extendsCrudRepo && !repoDec) {
         diagnostics.push({
           code: "BUNEST_REPO007",
           severity: "error",
-          message: `Repository "${className}" extends ${baseClassName} but is missing @OrmRepository(${entityName ?? "Entity"}) or @Repository(...) decorator.`,
+          message: `Repository "${className}" extends ${baseClassName} but is missing @Repository(${entityName ?? "Entity"}) or @Repository(...) decorator.`,
           location: nodeToLocation(cls.getNameNode() ?? cls),
           fixData: {
             kind: "addRepositoryDecorator",
@@ -2140,7 +2161,7 @@ export function scanEntitiesAndRepositories(
 
         const queryDec = method.getDecorators().find((d) => {
           const s = getDecoratorShortName(d);
-          return s === "Query" || s === "OrmQuery";
+          return s === "Query";
         });
 
         if (queryDec) {

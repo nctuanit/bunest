@@ -1,8 +1,5 @@
-import { CrudRepository, OrmRepository } from "@bunest/orm";
-import { ItemEntity } from "./item.entity";
+import { Repository } from "@bunest/orm";
+import type { ItemEntity } from "./item.entity";
 
-@OrmRepository(ItemEntity)
-export abstract class ItemRepository extends CrudRepository<
-  ItemEntity,
-  number
-> {}
+@Repository<ItemEntity, number>()
+export abstract class ItemRepository {}

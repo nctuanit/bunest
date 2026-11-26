@@ -690,14 +690,14 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         file: "data/orm-adapters.md",
         badge: "Native",
         description:
-          "Circular-safe, zero-dep Bun-native ORM covering 12 database dialects over bun:sqlite, Bun.SQL, fetch(), and Bun.connect(), with @OrmRepository, CrudRepository, @Transactional, OrmMigrationRunner, and SQL Store Kit subpaths.",
+          "Circular-safe, zero-dep Bun-native ORM covering 12 database dialects over bun:sqlite, Bun.SQL, fetch(), and Bun.connect(), with @Repository, CrudRepository, @Transactional, OrmMigrationRunner, and SQL Store Kit subpaths.",
         keywords: [
           "@bunest/orm",
           "OrmModule",
           "DataSource",
           "Repository",
           "CrudRepository",
-          "@OrmRepository",
+          "@Repository",
           "registerQueryOperator",
           "@RepositoryScope",
           "@SoftDelete",
@@ -725,13 +725,13 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         file: "data/sqlite.md",
         badge: "Native",
         description:
-          "Bun-native bun:sqlite via @bunest/orm (SqliteOrmDriver) with @Transactional, Spring Data-style @OrmRepository/CrudRepository derived finders, @Query, and OrmMigrationRunner.",
+          "Bun-native bun:sqlite via @bunest/orm (SqliteOrmDriver) with @Transactional, Spring Data-style @Repository/CrudRepository derived finders, @Query, and OrmMigrationRunner.",
         keywords: [
           "@bunest/orm",
           "OrmModule",
           "DataSource",
           "SqliteOrmDriver",
-          "@OrmRepository",
+          "@Repository",
           "CrudRepository",
           "@Transactional",
           "@Query",
@@ -746,7 +746,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         file: "data/sql.md",
         badge: "Native",
         description:
-          "Multi-dialect Bun.SQL (Postgres/MySQL/MariaDB/SQLite) and edge HTTP drivers via @bunest/orm with BunSqlOrmDriver, @Transactional, and dialect-aware @OrmRepository/CrudRepository.",
+          "Multi-dialect Bun.SQL (Postgres/MySQL/MariaDB/SQLite) and edge HTTP drivers via @bunest/orm with BunSqlOrmDriver, @Transactional, and dialect-aware @Repository/CrudRepository.",
         keywords: [
           "@bunest/orm",
           "OrmModule",
@@ -755,7 +755,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "LibSqlOrmDriver",
           "D1OrmDriver",
           "ReplicatedOrmDriver",
-          "@OrmRepository",
+          "@Repository",
           "CrudRepository",
           "@Query",
           "@Transactional",

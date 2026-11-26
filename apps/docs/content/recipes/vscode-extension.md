@@ -20,11 +20,11 @@ bun run --cwd apps/vscode-bunest package
 
 ### 1. Live Zero-Save Typegen for Macros & Repositories
 
-As you type `@Data()`, `@Builder()`, `@With()`, or declarative `@OrmRepository()` finder methods, the extension synthesizes ambient `.d.ts` definitions in real time—giving you full TypeScript autocomplete and type checking **without saving or running a build step**.
+As you type `@Data()`, `@Builder()`, `@With()`, or declarative `@Repository()` finder methods, the extension synthesizes ambient `.d.ts` definitions in real time—giving you full TypeScript autocomplete and type checking **without saving or running a build step**.
 
 ### 2. Declarative Repository Autocomplete & SQL Preview
 
-Inside any `@OrmRepository(Entity)` class extending `CrudRepository<Entity, ID>`:
+Inside any `@Repository(Entity)` class extending `CrudRepository<Entity, ID>`:
 
 - **Method name completion**: Suggests valid Spring Data-style derived finder segments (`findBy`, `findAllBy`, `countBy`, `existsBy`, `deleteBy`, `And`, `Or`, `OrderBy`, `Asc`, `Desc`, `Containing`, `Between`, `IsNull`, ...).
 - **Inline SQL preview**: Hover over any derived finder method to inspect the exact parameterized SQL statement that `@bunest/orm` will compile at bootstrap.
@@ -41,7 +41,7 @@ Catches common mistakes right inside the editor before you even run `bun test`:
 - `import type` accidentally used on a DI class, DTO, or ORM entity (which breaks `emitDecoratorMetadata`).
 - Missing `@Injectable()` or unregistered providers in `@Module()`.
 - Conflicting class macro combinations (e.g., `@Value()` combined with `@Setter()`).
-- Invalid derived finder property names in `@OrmRepository()`.
+- Invalid derived finder property names in `@Repository()`.
 
 ### 5. Interactive DI Graph & Inline HTTP Runner
 

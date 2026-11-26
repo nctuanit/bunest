@@ -684,7 +684,7 @@ export class ArticleEntity {
 }
 `,
       "src/article.repository.ts": `import { ArticleEntity } from "./article.entity";
-function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+function Repository(_e?: any): ClassDecorator { return () => {}; }
 function SoftDelete(_o?: any): ClassDecorator { return () => {}; }
 function TenantScoped(_o?: any): ClassDecorator { return () => {}; }
 function IgnoreScope(..._names: string[]): MethodDecorator { return () => {}; }
@@ -695,7 +695,7 @@ interface Page<T> { items: T[]; total: number; }
 interface CursorPageable { cursor?: number; limit: number; }
 interface CursorPage<T> { items: T[]; nextCursor: number | null; hasMore: boolean; }
 
-@OrmRepository(ArticleEntity)
+@Repository(ArticleEntity)
 @SoftDelete()
 @TenantScoped()
 export abstract class ArticleRepository extends CrudRepository<ArticleEntity, number> {

@@ -15,7 +15,7 @@ import {
   OrmModule,
   PrimaryGeneratedColumn,
   type OrmOptionsFactory,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance, request } from "../../../_helpers/index";
 
@@ -37,7 +37,7 @@ class Photo {
 @Injectable()
 class PhotoService {
   constructor(
-    @InjectRepository(Photo) private readonly repo: Repository<Photo>,
+    @InjectRepository(Photo) private readonly repo: OrmRepository<Photo>,
   ) {}
 
   create(name: string) {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, WithLogger } from "@bunest/core";
+import { Injectable, Logger, NotFoundException } from "@bunest/core";
 import type { Page } from "@bunest/orm";
 import { AuditedOperation } from "../magic/aop-pipeline";
 import { OrderEntity } from "./order.entity";
@@ -11,8 +11,9 @@ export interface CreateOrderInput {
 }
 
 @Injectable()
-@WithLogger()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(private readonly ordersRepo: OrderRepository) {}
 
   @AuditedOperation("orders.list")
@@ -32,7 +33,7 @@ export class OrdersService {
   async findSummaryByCode(
     orderCode: string,
   ): Promise<Pick<OrderEntity, "id" | "orderCode" | "status">> {
-    const summary = await this.ordersRepo.findByOrderCode(orderCode);
+    const summary = await this.ordersRepo.findSummaryByOrderCode(orderCode);
     if (!summary) {
       throw new NotFoundException(`Order "${orderCode}" not found`);
     }
@@ -59,7 +60,7 @@ export class OrdersService {
   }> {
     const [active, totalIncludingDeleted] = await Promise.all([
       this.ordersRepo.findAllByStatus(status),
-      this.ordersRepo.countByStatus(status),
+      this.ordersRepo.countAllByStatusIncludingDeleted(status),
     ]);
     return {
       status,

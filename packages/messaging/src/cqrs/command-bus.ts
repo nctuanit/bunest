@@ -76,7 +76,7 @@ export class CommandBus<CommandBase extends ICommand = ICommand>
     string,
     StoredCommandHandler<CommandBase>
   >();
-  private _publisher!: ICommandPublisher<CommandBase>;
+  private _publisher: ICommandPublisher<CommandBase>;
 
   constructor(
     @Optional() private readonly moduleRef?: ModuleRef,

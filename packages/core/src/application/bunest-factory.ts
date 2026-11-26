@@ -28,11 +28,6 @@ import { BunestApplicationContext } from "./bunest-application-context";
 export interface BunestCreateOptions extends BunestApplicationContextOptions {
   overrides?: ContainerOverrides;
   httpAdapter?: BunHttpAdapter;
-  /**
-   * Active runtime profiles for evaluating `@Profile(...)` conditional beans.
-   * Overrides `AutoModuleMetadata.profiles`, `BUNEST_PROFILES`, `BUNEST_PROFILE`, and `NODE_ENV`.
-   */
-  profiles?: readonly string[];
 }
 
 export interface BunestCreateAutoOptions extends BunestCreateOptions {
@@ -197,7 +192,6 @@ export class BunestFactory {
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
-        profiles: options.profiles,
         expandedAutoModules,
       });
       const container = new DIContainer(graph, {
@@ -285,7 +279,6 @@ export class BunestFactory {
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
-        profiles: options.profiles,
         expandedAutoModules,
       });
       const container = new DIContainer(graph, {
@@ -334,7 +327,6 @@ export class BunestFactory {
       const graph = await scanner.scan(rootModule, {
         moduleOverrides: options.overrides?.modules,
         moduleIdGeneratorAlgorithm: options.moduleIdGeneratorAlgorithm,
-        profiles: options.profiles,
         expandedAutoModules,
       });
       const container = new DIContainer(graph, {

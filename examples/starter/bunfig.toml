@@ -1,0 +1,4 @@
+preload = ["./bunest.preload.ts"]
+
+[test]
+preload = ["./bunest.preload.ts"]

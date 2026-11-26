@@ -3,9 +3,7 @@ import {
   dirname,
   join,
   mkdirSyncPath,
-  readTextSync,
   removePath,
-  resolve,
   writeTextSync,
 } from "@bunest/core";
 import {
@@ -40,62 +38,6 @@ afterEach(async () => {
     const dir = tempDirs.pop()!;
     await removePath(dir, { recursive: true, force: true });
   }
-});
-
-describe("vscode-bunest SQL highlighting grammar", () => {
-  it("contributes a valid TextMate injection grammar for @Query and @OrmQuery", () => {
-    const extRoot = resolve(import.meta.dir, "..");
-    const pkg = JSON.parse(readTextSync(join(extRoot, "package.json"))) as {
-      contributes: {
-        grammars?: Array<{
-          scopeName: string;
-          path: string;
-          injectTo: string[];
-        }>;
-      };
-    };
-
-    const grammarEntry = pkg.contributes.grammars?.find(
-      (g) => g.scopeName === "bunest.sql.injection",
-    );
-    expect(grammarEntry).toBeDefined();
-    expect(grammarEntry!.injectTo).toContain("source.ts");
-    expect(grammarEntry!.injectTo).toContain("source.tsx");
-
-    const grammarPath = resolve(extRoot, grammarEntry!.path);
-    const grammar = JSON.parse(readTextSync(grammarPath)) as {
-      scopeName: string;
-      injectionSelector: string;
-      repository: Record<string, { begin?: string; contentName?: string }>;
-    };
-
-    expect(grammar.scopeName).toBe("bunest.sql.injection");
-    expect(grammar.injectionSelector).toContain("source.ts");
-    expect(grammar.repository["query-double"]?.contentName).toBe("source.sql");
-    expect(grammar.repository["query-single"]?.contentName).toBe("source.sql");
-    expect(grammar.repository["query-template"]?.contentName).toBe("source.sql");
-    expect(grammar.repository["orm-query-double"]?.contentName).toBe("source.sql");
-
-    // Verify JS-compatible prefix check (strip Oniguruma (?i:...) flag for JS RegExp test)
-    const doubleRe = new RegExp(
-      grammar.repository["query-double"]!.begin!.replace("(?i:", "(?:"),
-      "i",
-    );
-    expect(doubleRe.test('@Query("SELECT COUNT(*) AS count FROM users")')).toBe(
-      true,
-    );
-    expect(doubleRe.test('@Query("select * from users")')).toBe(true);
-    // Controller @Query("page") must NOT be misclassified as SQL
-    expect(doubleRe.test('@Query("page")')).toBe(false);
-
-    const templateRe = new RegExp(
-      grammar.repository["query-template"]!.begin!.replace("(?i:", "(?:"),
-      "i",
-    );
-    expect(templateRe.test("@Query(`")).toBe(true);
-    expect(templateRe.test("@Query(`SELECT * FROM users`)")).toBe(true);
-    expect(templateRe.test("@Query(`page`)")).toBe(false);
-  });
 });
 
 describe("vscode-bunest raw SQL runner utilities", () => {

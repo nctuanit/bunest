@@ -382,6 +382,39 @@ function emitClassMacroLines(entry: ExtractedClassMacroEntry): string[] {
     instanceLines.push(`    ${decl}`);
   };
 
+  // @Repository<TEntity, TKey>(Entity) / @Repository<TEntity, TKey>(Entity)
+  // Synthesizes CrudRepository<TEntity, TKey> methods onto decorator-only repositories
+  if (entry.isDeclarativeRepository) {
+    const entityType = sanitizeTypeText(
+      entry.repositoryEntityType ?? "Record<string, unknown>",
+      "Record<string, unknown>",
+    );
+    const keyType = sanitizeTypeText(entry.repositoryKeyType ?? "number", "number");
+    pushInstance("findById", `findById(id: ${keyType}): Promise<${entityType} | null>;`);
+    pushInstance("findByIdOrFail", `findByIdOrFail(id: ${keyType}): Promise<${entityType}>;`);
+    pushInstance("findAll", `findAll(): Promise<${entityType}[]>;`);
+    pushInstance("save", `save(entity: Partial<${entityType}>): Promise<${entityType}>;`);
+    pushInstance(
+      "saveMany",
+      `saveMany(entities: readonly Partial<${entityType}>[]): Promise<${entityType}[]>;`,
+    );
+    pushInstance("deleteById", `deleteById(id: ${keyType}): Promise<void>;`);
+    pushInstance("count", "count(): Promise<number>;");
+    pushInstance("existsById", `existsById(id: ${keyType}): Promise<boolean>;`);
+    pushInstance(
+      "query",
+      "query<TRow = Record<string, unknown>>(sql: string, params?: OrmSqlParams): Promise<TRow[]>;",
+    );
+    pushInstance(
+      "queryOne",
+      "queryOne<TRow = Record<string, unknown>>(sql: string, params?: OrmSqlParams): Promise<TRow | null>;",
+    );
+    pushInstance(
+      "execute",
+      "execute(sql: string, params?: OrmSqlParams): Promise<OrmQueryResult>;",
+    );
+  }
+
   // @BaseEntity<Key> synthesized entity columns (`id`, `createdAt`, `updatedAt`, `deletedAt`)
   if (
     entry.isBaseEntity &&
@@ -718,6 +751,24 @@ export function emitBunestDeclaration(
     });
   }
 
+  const needsOrmRepoImports = exportedMacros.some(
+    (m) => m.isDeclarativeRepository,
+  );
+  if (needsOrmRepoImports) {
+    allImports.push(
+      {
+        filePath: "@bunest/orm",
+        exportName: "OrmQueryResult",
+        isTypeOnly: true,
+      },
+      {
+        filePath: "@bunest/orm",
+        exportName: "OrmSqlParams",
+        isTypeOnly: true,
+      },
+    );
+  }
+
   // Group imports by resolved specifier
   const importsBySpecifier = new Map<string, Map<string, string | undefined>>();
   for (const imp of allImports) {
@@ -928,6 +979,32 @@ export function emitBunestDeclaration(
         lines.push("}");
         lines.push("");
       }
+    }
+  }
+
+  // 7a. Auto-injected `logger` on `@Injectable()` classes
+  if (scan.injectableLoggers && scan.injectableLoggers.length > 0) {
+    const byFile = new Map<string, string[]>();
+    for (const entry of scan.injectableLoggers) {
+      const list = byFile.get(entry.sourceFile) ?? [];
+      if (!list.includes(entry.className)) {
+        list.push(entry.className);
+      }
+      byFile.set(entry.sourceFile, list);
+    }
+    for (const [filePath, classNames] of [...byFile.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      hasAnyAugmentation = true;
+      const spec = formatImportSpecifier(outputDir, filePath);
+      lines.push(`declare module ${JSON.stringify(spec)} {`);
+      for (const className of classNames) {
+        lines.push(`  interface ${className} {`);
+        lines.push(`    readonly logger: import("@bunest/core").Logger;`);
+        lines.push(`  }`);
+      }
+      lines.push("}");
+      lines.push("");
     }
   }
 

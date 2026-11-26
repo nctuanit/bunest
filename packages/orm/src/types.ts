@@ -1,28 +1,4 @@
 /**
- * Zero-overhead identity type wrapper for relation properties.
- *
- * When `emitDecoratorMetadata: true` is enabled in ESM/Bun, annotating a decorated
- * property directly with a circularly-imported class (`post!: Post`) causes Bun/TS
- * to emit `typeof Post === "undefined" ? Object : Post`, which throws a TDZ
- * `ReferenceError: Cannot access 'Post' before initialization`.
- *
- * Wrapping the type as `post!: Relation<Post>` erases `design:type` to `Object`
- * while preserving 100% of static TypeScript ergonomics (`user.post.title`).
- */
-export type Relation<T> = T;
-
-/**
- * Zero-overhead identity type wrapper for nested / embedded class properties.
- * Prevents TDZ crashes on same-file forward-referenced or mutually-nested classes.
- */
-export type Nested<T> = T;
-
-/**
- * Alias for `Relation<T>` / `Nested<T>` when referencing another class lazily.
- */
-export type Ref<T> = T;
-
-/**
  * Constructor type matching concrete or abstract entity/embedded classes.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -663,7 +639,7 @@ export interface OrmDataSourceOptions extends OrmConnectionCredentials {
    */
   readonly migrationsTable?: string;
   /**
-   * Automatically discover and register all `@OrmRepository(...)` classes from `DecoratorRegistry`
+   * Automatically discover and register all `@Repository(...)` classes from `DecoratorRegistry`
    * matching this DataSource name, and auto-include their entity classes in the DataSource.
    * @default false
    */

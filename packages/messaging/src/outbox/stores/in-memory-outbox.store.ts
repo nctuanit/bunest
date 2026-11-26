@@ -22,7 +22,7 @@ class InMemoryTransaction {
   readonly messages: OutboxMessage[] = [];
   readonly inbox = new Map<string, number>();
   readonly ended: Promise<boolean>;
-  finish!: (committed: boolean) => void;
+  finish: (committed: boolean) => void;
 
   constructor() {
     this.ended = new Promise<boolean>((resolve) => {

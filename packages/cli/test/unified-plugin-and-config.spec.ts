@@ -1,18 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
-  Data,
-  Builder,
-  clearCustomMacros,
   defineBunestConfig,
-  defineClassMacro,
-  defineMacroPreset,
   dirname,
   ensureDir,
-  getGlobalMacroDefaults,
   join,
-  registerMacroFields,
   removePath,
-  resetGlobalMacroDefaults,
   resolve,
 } from "@bunest/core";
 import {
@@ -50,8 +42,6 @@ async function writeFiles(
 }
 
 function resetGlobalRegistries(): void {
-  resetGlobalMacroDefaults();
-  clearCustomMacros();
   const g = globalThis as unknown as Record<symbol, unknown>;
   delete g[GLOBAL_MACRO_DEFAULTS_SYMBOL];
   const macroMap = g[CUSTOM_MACROS_REGISTRY_SYMBOL];
@@ -458,70 +448,88 @@ describe("bunest.config.ts Loader (loadBunestConfig)", () => {
     ).toBe(true);
   });
 
-  it("interoperates end-to-end with real @bunest/core defineBunestConfig, defineClassMacro, defineMacroPreset, and registerMacroFields", () => {
-    const DomainEntity = defineMacroPreset(
-      "DomainEntity",
-      [Data(), Builder()],
-      ["Data", "Builder"],
-    );
-    const Audited = defineClassMacro({
-      name: "Audited",
-      fields: [{ name: "auditedAt", type: "string", defaultValue: "now" }],
-      methods: {
-        getAuditTag: {
-          signature: "(): string",
-          impl(self: { auditedAt?: string }) {
-            return `audit:${self.auditedAt}`;
-          },
-        },
-      },
-    });
-
+  it("interoperates with defineBunestConfig for ORM query operators", () => {
     const cfg = defineBunestConfig({
-      macros: {
-        defaults: {
-          builder: { toBuilder: true },
-        },
-        presets: {
-          DomainEntity: ["Data", "Builder"],
-        },
-        plugins: [Audited.macroDefinition],
+      orm: {
+        queryOperators: [
+          {
+            suffix: "Matches",
+            arity: 1,
+            description: "Regex match",
+          },
+        ],
       },
     });
-
     applyBunestConfigRuntime(cfg);
-    expect(getGlobalMacroDefaults().builder?.toBuilder).toBe(true);
+    const g = globalThis as unknown as Record<symbol, Map<string, unknown>>;
+    expect(g[CUSTOM_ORM_OPERATORS_SYMBOL]?.has("Matches")).toBe(true);
+  });
 
-    // Real runtime verification: Stage 1 emitted `registerMacroFields` enables zero-initializer `@Data()` classes!
-    @DomainEntity()
-    @Audited()
-    class CustomerEntity {
-      id!: number;
-      email!: string;
-    }
-    registerMacroFields(CustomerEntity, ["id", "email"]);
-
-    const inst = (
-      CustomerEntity as unknown as {
-        of: (props: { id: number; email: string }) => {
-          getId(): number;
-          getEmail(): string;
-          getAuditTag(): string;
-        };
-      }
-    ).of({ id: 42, email: "ada@bunest.dev" });
-    expect(inst.getId()).toBe(42);
-    expect(inst.getEmail()).toBe("ada@bunest.dev");
-    expect(inst.getAuditTag()).toBe("audit:now");
-
-    // Stage 1 automatically recognizes `DomainEntity` & `Audited` from real `@bunest/core` registry + config!
+  it("injects entity argument from @Repository<TaskEntity, number>() and promotes import type in transformBunestSource + Bun.build", async () => {
     const transformed = transformBunestSource(
-      `@DomainEntity()\n@Audited()\nexport class CustomerEntity {\n  id!: number;\n  email!: string;\n}\n`,
-      "/app/src/customer.ts",
-      { config: cfg, ormCircularSafe: false, swaggerMetadata: false },
+      `import type { TaskEntity, ExtraMeta } from "./task.entity";
+import { Repository } from "@bunest/orm";
+
+@Repository<TaskEntity, number>()
+export abstract class TaskRepository {
+  abstract findByTitle(title: string): Promise<TaskEntity | null>;
+}
+
+@Repository<TaskEntity, number>({ table: "custom_tasks" })
+export abstract class CustomTaskRepository {}
+`,
+      "/app/src/task.repository.ts",
+      { ormCircularSafe: false, swaggerMetadata: false, classMacros: false },
     );
+
+    expect(transformed.modified).toBe(true);
+    expect(transformed.code).toContain('import { TaskEntity } from "./task.entity";');
+    expect(transformed.code).toContain('import type { ExtraMeta } from "./task.entity";');
+    expect(transformed.code).toContain("@Repository<TaskEntity, number>(TaskEntity)");
     expect(transformed.code).toContain(
-      'registerMacroFields(CustomerEntity, ["id","email"]);',
+      '@Repository<TaskEntity, number>({ entity: TaskEntity, table: "custom_tasks" })',
     );
+
+    // End-to-end Bun.build execution with createBunestPlugin()
+    const dir = await makeTempDir("bunest-repo-generic-build-");
+    await writeFiles(dir, {
+      "src/task.entity.ts": `export class TaskEntity { id!: number; title!: string; }\n`,
+      "src/repo-dec.ts": `export const seen: unknown[] = [];
+export function Repository<TEntity = any, TKey = number>(entity?: unknown): ClassDecorator {
+  seen.push(entity);
+  return () => {};
+}
+`,
+      "src/task.repository.ts": `import type { TaskEntity } from "./task.entity";
+import { Repository } from "./repo-dec";
+
+@Repository<TaskEntity, number>()
+export abstract class TaskRepository {
+  abstract findByTitle(title: string): Promise<TaskEntity | null>;
+}
+`,
+      "src/main.ts": `import { seen } from "./repo-dec";
+import { TaskEntity } from "./task.entity";
+import "./task.repository";
+console.log(seen.length === 1 && seen[0] === TaskEntity ? "OK" : "FAIL");
+`,
+    });
+
+    const buildRes = await Bun.build({
+      entrypoints: [join(dir, "src/main.ts")],
+      outdir: join(dir, "dist"),
+      target: "bun",
+      format: "esm",
+      plugins: [createBunestPlugin()],
+    });
+    expect(buildRes.success).toBe(true);
+
+    const proc = Bun.spawn([process.execPath, join(dir, "dist/main.js")], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(0);
+    expect(stdout.trim()).toBe("OK");
   });
 });

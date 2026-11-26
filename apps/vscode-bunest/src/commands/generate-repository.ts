@@ -6,7 +6,7 @@ import { runBunestCliCommand } from "./run-cli";
 /**
  * Delegates `Generate Declarative Repository` directly to `@bunest/cli`
  * (`bunest generate repository <EntityName>`), generating a dialect-agnostic
- * `@bunest/orm` `CrudRepository` decorated with `@OrmRepository(...)`.
+ * `@bunest/orm` `CrudRepository` decorated with `@Repository(...)`.
  */
 export async function runGenerateRepositoryCommand(
   index: BunestWorkspaceIndex,

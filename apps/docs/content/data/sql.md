@@ -1,6 +1,6 @@
 # SQL (`Bun.SQL` via `@bunest/orm`)
 
-**`@bunest/orm`** wraps Bun's native multi-dialect **`Bun.SQL`** driver (`BunSqlOrmDriver` — PostgreSQL, CockroachDB, MySQL, MariaDB, and SQLite) plus edge HTTP SQL drivers (`LibSqlOrmDriver` for Turso/LibSQL and `D1OrmDriver` for Cloudflare D1) and `ReplicatedOrmDriver` (master/read-replica routing) with DI connection pooling, `AsyncLocalStorage` transactions (`@Transactional`), versioned migrations (`OrmMigrationRunner`), and dialect-aware compiled-once declarative repositories (`@OrmRepository` + `CrudRepository`).
+**`@bunest/orm`** wraps Bun's native multi-dialect **`Bun.SQL`** driver (`BunSqlOrmDriver` — PostgreSQL, CockroachDB, MySQL, MariaDB, and SQLite) plus edge HTTP SQL drivers (`LibSqlOrmDriver` for Turso/LibSQL and `D1OrmDriver` for Cloudflare D1) and `ReplicatedOrmDriver` (master/read-replica routing) with DI connection pooling, `AsyncLocalStorage` transactions (`@Transactional`), versioned migrations (`OrmMigrationRunner`), and dialect-aware compiled-once declarative repositories (`@Repository` + `CrudRepository`).
 
 ## Installation
 
@@ -34,7 +34,7 @@ export class AppModule {}
 
 ## Dialect-Aware Declarative Repositories
 
-`@OrmRepository` + `CrudRepository` automatically emits dialect-correct placeholders and identifier quoting (`$1` / `"id"` / `RETURNING *` on PostgreSQL; `?` / `` `id` `` on MySQL/MariaDB; `?` / `"id"` on SQLite/LibSQL/D1):
+`@Repository` + `CrudRepository` automatically emits dialect-correct placeholders and identifier quoting (`$1` / `"id"` / `RETURNING *` on PostgreSQL; `?` / `` `id` `` on MySQL/MariaDB; `?` / `"id"` on SQLite/LibSQL/D1):
 
 @@filename(order.repository.ts)
 
@@ -44,7 +44,7 @@ import {
   CrudRepository,
   Entity,
   Modifying,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Query,
   SqlParam,
@@ -65,7 +65,7 @@ export class Order {
   totalCents: number;
 }
 
-@OrmRepository(Order)
+@Repository(Order)
 export abstract class OrderRepository extends CrudRepository<Order, number> {
   abstract findAllByCustomerIdOrderByIdDesc(customerId: string): Promise<Order[]>;
   abstract countByStatus(status: string): Promise<number>;

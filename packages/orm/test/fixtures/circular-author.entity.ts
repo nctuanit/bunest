@@ -1,14 +1,11 @@
 import {
   Column,
   Embedded,
-  Embeds,
   Entity,
-  HasOne,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   entityRef,
-  type Nested,
-  type Relation,
 } from "../../src/index";
 import type { CircularBook } from "./circular-book.entity";
 import { CircularProfile } from "./circular-profile.entity";
@@ -30,18 +27,7 @@ export class AuthorContact {
   }
 }
 
-/**
- * Notice THREE circular-safe patterns working together in real separate ESM files:
- * 1. `books`: `import type { CircularBook }` + `CircularBookRef` (ZERO runtime circular import!)
- * 2. `profile`: class-level `@HasOne` with value-imported `CircularProfile` & plain property type `profile?: CircularProfile` (ZERO `design:type` TDZ!)
- * 3. `contact` + `backupContact`: `@Embedded` with `Nested<T>` AND `@Embeds` class-level!
- */
 @Entity("circular_authors")
-@HasOne("profile", () => CircularProfile, {
-  inverseSide: "author",
-  cascade: true,
-})
-@Embeds("backupContact", () => AuthorContact, { prefix: "backup_" })
 export class CircularAuthor {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -50,12 +36,16 @@ export class CircularAuthor {
   name!: string;
 
   @Embedded(() => AuthorContact)
-  contact?: Nested<AuthorContact>;
+  contact?: AuthorContact;
 
+  @Embedded(() => AuthorContact, { prefix: "backup_" })
   backupContact?: AuthorContact;
 
   @OneToMany(CircularBookRef, (book) => book.author, { cascade: true })
-  books!: Relation<CircularBook[]>;
+  books!: CircularBook[];
 
+  @OneToOne(() => CircularProfile, (profile) => profile.author, {
+    cascade: true,
+  })
   profile?: CircularProfile;
 }

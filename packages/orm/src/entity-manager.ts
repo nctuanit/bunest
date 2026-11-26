@@ -1,7 +1,7 @@
 import type { CompiledMetadataGraph } from "./metadata-graph";
 import { MongoRepository } from "./mongo-repository";
 import type { SelectQueryBuilder } from "./query-builder";
-import { Repository, type OrmRepositoryRuntime } from "./repository";
+import { OrmRepository, type OrmRepositoryRuntime } from "./repository";
 import type {
   DeepPartial,
   EntityTarget,
@@ -17,7 +17,7 @@ import type {
  * cross-entity operations, raw SQL queries, and `AsyncLocalStorage`-propagated transactions.
  */
 export class EntityManager {
-  private readonly repositories = new Map<Function, Repository<object>>();
+  private readonly repositories = new Map<Function, OrmRepository<object>>();
   private readonly mongoRepositories = new Map<Function, MongoRepository<object>>();
 
   constructor(private readonly runtime: OrmRepositoryRuntime) {}
@@ -28,14 +28,14 @@ export class EntityManager {
 
   getRepository<Entity extends object = Record<string, unknown>>(
     target: EntityTarget<Entity>,
-  ): Repository<Entity> {
+  ): OrmRepository<Entity> {
     const meta = this.runtime.graph.get(target);
     let repo = this.repositories.get(meta.target);
     if (!repo) {
-      repo = new Repository(meta, this.runtime);
+      repo = new OrmRepository(meta, this.runtime);
       this.repositories.set(meta.target, repo);
     }
-    return repo as unknown as Repository<Entity>;
+    return repo as unknown as OrmRepository<Entity>;
   }
 
   getMongoRepository<Entity extends object = Record<string, unknown>>(

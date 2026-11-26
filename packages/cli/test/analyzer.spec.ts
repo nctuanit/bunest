@@ -83,12 +83,12 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
       `,
       "src/user.repository.ts": `
         import { UserEntity } from "./user.entity";
-        function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+        function Repository(_e?: any): ClassDecorator { return () => {}; }
         function Query(_sql: string): MethodDecorator { return () => {}; }
         function SqlParam(_n: string): ParameterDecorator { return () => {}; }
         abstract class CrudRepository<T, K = number> {}
 
-        @OrmRepository(UserEntity)
+        @Repository(UserEntity)
         export abstract class UserRepository extends CrudRepository<UserEntity, number> {
           abstract findAllByAgeGreaterThanEqualAndActiveIsTrueOrderByCreatedAtDesc(age: number): Promise<UserEntity[]>;
           abstract findByEmial(email: string): Promise<UserEntity | null>;
@@ -146,7 +146,7 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
     expect(codes.has("BUNEST_REPO004")).toBe(true); // existsBy returns string
     expect(codes.has("BUNEST_REPO005")).toBe(true); // Containing on number
     expect(codes.has("BUNEST_REPO006")).toBe(true); // UPDATE without @Modifying + :email mismatch
-    expect(codes.has("BUNEST_REPO007")).toBe(true); // MissingDecRepo without @OrmRepository
+    expect(codes.has("BUNEST_REPO007")).toBe(true); // MissingDecRepo without @Repository
 
     const repo001 = snap.diagnostics.find((d) => d.code === "BUNEST_REPO001")!;
     expect(repo001.message).toContain('Did you mean "Email"?');
@@ -170,15 +170,16 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
     expect(converted.updated).toContain('@Query("SELECT * FROM \\"users\\" WHERE \\"age\\" >= :age');
     expect(converted.updated).toContain('@SqlParam("age") age: number');
 
-    // Entity -> CrudRepository generator targets @bunest/orm (ZERO Jpa prefix!)
+    // Entity -> declarative @Repository<Entity, Key>() generator targets @bunest/orm (ZERO Jpa prefix!)
     const generatedRepo = buildGenerateRepositorySource({
       entity: snap.entities[0]!,
       entityImportPath: "./user.entity",
     });
     expect(generatedRepo.fileName).toBe("user.repository.ts");
-    expect(generatedRepo.content).toContain('import { CrudRepository, OrmRepository } from "@bunest/orm";');
-    expect(generatedRepo.content).toContain("@OrmRepository(UserEntity)");
-    expect(generatedRepo.content).toContain("extends CrudRepository<UserEntity, number>");
+    expect(generatedRepo.content).toContain('import { Repository } from "@bunest/orm";');
+    expect(generatedRepo.content).toContain('import type { UserEntity } from "./user.entity";');
+    expect(generatedRepo.content).toContain("@Repository<UserEntity, number>()");
+    expect(generatedRepo.content).toContain("export abstract class UserRepository {");
     expect(generatedRepo.content).toContain("abstract findByEmail(email: string): Promise<UserEntity | null>;");
     expect(generatedRepo.content).toContain("abstract findAllByAge(age: number): Promise<UserEntity[]>;");
     expect(generatedRepo.content).not.toContain("Jpa");
@@ -429,10 +430,10 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
       `,
       "src/order.repo.ts": `
         import { OrderEntity } from "./order.entity";
-        function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+        function Repository(_e?: any): ClassDecorator { return () => {}; }
         abstract class CrudRepository<T, K = number> {}
 
-        @OrmRepository(OrderEntity)
+        @Repository(OrderEntity)
         export abstract class BrokenOrderRepo extends CrudRepository<OrderEntity, number> {
           abstract findByCdoe(code: string): Promise<OrderEntity | null>;
         }
@@ -467,8 +468,8 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
     expect(genRepo.exitCode).toBe(0);
     const repoSource = readTextSync(join(cwd, "src/order.repository.ts"));
     expect(repoSource).toContain('from "@bunest/orm"');
-    expect(repoSource).toContain("@OrmRepository(OrderEntity)");
-    expect(repoSource).toContain("extends CrudRepository<OrderEntity, number>");
+    expect(repoSource).toContain("@Repository<OrderEntity, number>()");
+    expect(repoSource).toContain("export abstract class OrderRepository {");
     expect(repoSource).toContain("abstract findByCode(code: string)");
 
     // 4. bunest codemod derived-to-query converts findByCode -> @Query
@@ -489,7 +490,7 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
     expect(entityAfter).toContain("static readonly Fields = {");
   });
 
-  it("recognizes OrmModule.forFeature([UserRepository]), @DeclarativeRepository, and @bunest/orm DI providers cleanly", () => {
+  it("recognizes OrmModule.forFeature([UserRepository]), @Repository<Entity, Key>(), and @bunest/orm DI providers cleanly", () => {
     const cwd = createTempProject({
       "src/user.entity.ts": `
         function Entity(_o?: any): ClassDecorator { return () => {}; }
@@ -506,12 +507,11 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
         }
       `,
       "src/user.repository.ts": `
-        import { UserEntity } from "./user.entity";
-        function DeclarativeRepository(_e?: any): ClassDecorator { return () => {}; }
-        abstract class CrudRepository<T, K = string> {}
+        import type { UserEntity } from "./user.entity";
+        function Repository<T = any, K = string>(_e?: any): ClassDecorator { return () => {}; }
 
-        @DeclarativeRepository(UserEntity)
-        export abstract class UserRepository extends CrudRepository<UserEntity, string> {
+        @Repository<UserEntity, string>()
+        export abstract class UserRepository {
           abstract findByEmail(email: string): Promise<UserEntity | null>;
         }
       `,

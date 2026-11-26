@@ -1,5 +1,5 @@
 
-// Core types & zero-TDZ identity wrappers (Relation<T>, Ref<T>; Nested is merged in decorators)
+// Core types
 export type {
   BaseEntityColumnOption,
   BaseEntityOptions,
@@ -51,9 +51,7 @@ export type {
   OrmTlsOptions,
   OrmUniqueOptions,
   PrimaryGeneratedStrategy,
-  Ref,
   ReferentialAction,
-  Relation,
   RelationKind,
   RemoveOptions,
   SaveOptions,
@@ -148,29 +146,22 @@ export {
   BeforeInsert,
   BeforeRemove,
   BeforeUpdate,
-  BelongsTo,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
   Embeddable,
   Embedded,
-  Embeds,
   Entity,
-  HasMany,
-  HasOne,
   Index,
   JoinColumn,
   JoinTable,
   ManyToMany,
-  ManyToManyOf,
   ManyToOne,
-  Nested,
   ObjectIdColumn,
   OneToMany,
   OneToOne,
   PrimaryColumn,
   PrimaryGeneratedColumn,
-  PrimaryKey,
   Unique,
   UpdateDateColumn,
   VersionColumn,
@@ -257,7 +248,6 @@ export {
   ORM_ENTITY_META,
   attachSafeToJson,
   serializeEntity,
-  toPlainObject,
   type SerializeEntityOptions,
 } from "./serializer";
 export {
@@ -273,7 +263,7 @@ export {
   SelectQueryBuilder,
   UpdateQueryBuilder,
 } from "./query-builder";
-export { Repository } from "./repository";
+export { OrmRepository } from "./repository";
 export {
   MongoRepository,
   type MongoFindOptions,
@@ -284,48 +274,29 @@ export { DataSource } from "./data-source";
 // Declarative Compiled-Once Repository Engine
 export {
   CrudRepository,
-  DeclarativeRepository,
-  Modifying,
-  ORM_MODIFYING_METADATA,
-  ORM_PARAM_METADATA,
-  ORM_QUERY_METADATA,
   ORM_REPOSITORY_METADATA,
-  OrmQuery,
-  OrmRepository,
-  Param,
-  Query,
-  SqlParam,
+  Repository,
   compileOrmRepository,
   getOrmRepositoryMetadata,
   isDeclarativeOrmRepository,
   type CompiledOrmRepositoryFactory,
   type OrmDeclarativeHost,
-  type OrmModifyingOptions,
-  type OrmParamMetadataMap,
-  type OrmQueryMetadata,
-  type OrmQueryOptions,
-  type OrmQueryReturnMode,
   type OrmRepositoryMetadata,
   type OrmRepositoryOptions,
   type OrmSqlParams,
 } from "./declarative-repository";
 
-// Declarative Repository Extensions (Custom Operators, Scopes, Projection, Pagination, Composable Fragments)
+// Declarative Repository Extensions (Custom Operators, Scopes, Pagination, Composable Fragments)
 export {
   CURSOR_PAGEABLE_BRAND,
-  IgnoreScope,
   ORM_CUSTOM_QUERY_OPERATORS_SYMBOL,
-  ORM_IGNORE_SCOPE_METADATA,
-  ORM_PROJECTION_METADATA,
   ORM_REPOSITORY_FRAGMENTS_METADATA,
   ORM_REPOSITORY_SCOPES_METADATA,
   ORM_SOFT_DELETE_CONFIG_METADATA,
   PAGEABLE_BRAND,
-  Projection,
   RepositoryScope,
   SoftDelete,
   TenantScoped,
-  UseRepositoryFragments,
   clearRegisteredQueryOperators,
   composeRepository,
   createCursorPageable,
@@ -334,8 +305,6 @@ export {
   createSoftDeleteScope,
   defineRepositoryFragment,
   getAmbientIgnoredScopes,
-  getMethodIgnoreScope,
-  getMethodProjection,
   getRegisteredQueryOperator,
   getRepositoryFragments,
   getRepositoryScopes,

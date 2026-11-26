@@ -10,12 +10,14 @@ import {
   resolve,
   statPath,
 } from "@bunest/core";
+import { loadBunestConfig } from "../config/bunest-config.loader";
 import {
   loadCliConfiguration,
   resolveEntryFile,
   resolveProjectConfiguration,
   type Asset,
 } from "../config/configuration.loader";
+import { createBunestPlugin } from "../plugins/bunest.plugin";
 import type {
   BuildArtifactSummary,
   BuildProjectOptions,
@@ -324,6 +326,7 @@ export async function buildProject(
   const resolvedTsconfigPath = options.path
     ? resolve(cwd, options.path)
     : undefined;
+  const { config: bunestConfig } = await loadBunestConfig(cwd);
 
   try {
     buildResult = await Bun.build({
@@ -335,6 +338,12 @@ export async function buildProject(
       sourcemap,
       tsconfig: resolvedTsconfigPath,
       external: options.external ? [...options.external] : undefined,
+      plugins: [
+        createBunestPlugin({
+          config: bunestConfig,
+          classMacros: bunestConfig?.plugin?.classMacros ?? false,
+        }),
+      ],
     });
   } catch (err) {
     caughtErrors =

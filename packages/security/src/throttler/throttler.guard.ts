@@ -90,8 +90,8 @@ export class ThrottlerGuard implements CanActivate, OnModuleInit {
   protected headerPrefix = "X-RateLimit";
   protected logger = new Logger(ThrottlerGuard.name);
   protected errorMessage: string = throttlerMessage;
-  protected throttlers!: ThrottlerOptions[];
-  protected commonOptions!: Pick<
+  protected throttlers: ThrottlerOptions[];
+  protected commonOptions: Pick<
     ThrottlerOptions,
     "skipIf" | "ignoreUserAgents" | "getTracker" | "generateKey" | "setHeaders"
   >;

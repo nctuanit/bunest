@@ -9,15 +9,13 @@ import {
   EntityManager,
   OrmMigrationRunner,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
   getOrmDataSourceToken,
   getOrmEntityManagerToken,
   getOrmMigrationRunnerToken,
   getOrmRepositoryToken,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance } from "../../../_helpers/index";
 
@@ -36,11 +34,13 @@ class Photo {
   views!: number;
 }
 
-@OrmRepository(Photo)
+@Repository(Photo)
 abstract class CustomPhotoRepository extends CrudRepository<Photo, number> {
-  @Query("SELECT * FROM photos WHERE views >= :minViews ORDER BY views DESC")
-  findPopular(@SqlParam("minViews") _minViews: number): Promise<Photo[]> {
-    return [] as unknown as Promise<Photo[]>;
+  findPopular(minViews: number): Promise<Photo[]> {
+    return this.query<Photo>(
+      "SELECT * FROM photos WHERE views >= :minViews ORDER BY views DESC",
+      { minViews },
+    );
   }
 }
 
@@ -92,7 +92,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-002", "ADR-007"],
     notes:
-      "Adapts TypeORM DataSource/EntityManager/named connection/custom repository DI checks to @bunest/orm DataSource, EntityManager, OrmMigrationRunner, getOrmDataSourceToken, and @OrmRepository CrudRepository subclasses.",
+      "Adapts TypeORM DataSource/EntityManager/named connection/custom repository DI checks to @bunest/orm DataSource, EntityManager, OrmMigrationRunner, getOrmDataSourceToken, and @Repository CrudRepository subclasses.",
   },
   () => {
     let app: BunestApplication;
@@ -144,7 +144,7 @@ describeConformance(
       expect(namedRunner).not.toBe(app.get(OrmMigrationRunner));
     });
 
-    it("injects a declarative custom repository (@OrmRepository extending CrudRepository)", async () => {
+    it("injects a declarative custom repository (@Repository extending CrudRepository)", async () => {
       const repository = app.get<CustomPhotoRepository>(
         getOrmRepositoryToken(CustomPhotoRepository),
       );
@@ -168,10 +168,10 @@ describeConformance(
 
     describe("default connection class alias scoping", () => {
       it("isolates repositories bound to default vs named DataSource", async () => {
-        const defaultRepo = app.get<Repository<Photo>>(
+        const defaultRepo = app.get<OrmRepository<Photo>>(
           getOrmRepositoryToken(Photo),
         );
-        const namedRepo = app.get<Repository<Photo>>(
+        const namedRepo = app.get<OrmRepository<Photo>>(
           getOrmRepositoryToken(Photo, "connection_2"),
         );
 
@@ -186,7 +186,7 @@ describeConformance(
       });
     });
 
-    it("allows registering declarative @OrmRepository on both default and named connections", async () => {
+    it("allows registering declarative @Repository on both default and named connections", async () => {
       @Module({
         imports: [
           OrmModule.forRoot({

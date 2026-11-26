@@ -98,7 +98,7 @@ function instantiateEmbeddedInput(
  * nested/embedded classes, cycle-safe cascade persistence, and batched `IdentityMap`
  * relation loading.
  */
-export class Repository<Entity extends object = Record<string, unknown>> {
+export class OrmRepository<Entity extends object = Record<string, unknown>> {
   readonly metadata: CompiledEntityMetadata;
 
   constructor(

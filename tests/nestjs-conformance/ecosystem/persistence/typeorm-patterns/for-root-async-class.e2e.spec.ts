@@ -15,7 +15,7 @@ import {
   PrimaryGeneratedColumn,
   type OrmDataSourceOptions,
   type OrmOptionsFactory,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance, request } from "../../../_helpers/index";
 
@@ -38,9 +38,9 @@ class Photo {
 class PhotoService {
   constructor(
     @InjectRepository(Photo)
-    private readonly photoRepository: Repository<Photo>,
+    private readonly photoRepository: OrmRepository<Photo>,
     @InjectRepository(Photo, "connection_2")
-    private readonly photoRepository2: Repository<Photo>,
+    private readonly photoRepository2: OrmRepository<Photo>,
   ) {}
 
   findAll(): Promise<Photo[]> {

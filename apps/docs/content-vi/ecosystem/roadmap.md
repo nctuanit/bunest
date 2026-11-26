@@ -9,7 +9,7 @@ Bunest đi theo lộ trình theo từng giai đoạn, kiểm soát qua các cổ
 | **`v0.1`** | Nền tảng: Legacy decorators, metadata registry, DI chặt chẽ & đồ thị `@Module()`, vòng đời, HTTP adapter `Bun.serve` gốc, các package lõi | **Hoàn thành** |
 | **`v0.2`** | Tương đồng NestJS v12: `DiscoveryService`/`MetadataScanner`, API Versioning, `RouterModule`, `ConfigurableModuleBuilder`, Durable DI, `LazyModuleLoader`, `ClsModule`, `rawBody`, `StreamableFile`, `ParseFilePipe`, `CompressionMiddleware`, `useStaticAssets`, Standard Schema v1, các kiểu mapped DTO | **Hoàn thành** |
 | **`v0.5`** | Hệ sinh thái NestJS v12 hợp nhất gốc trên Bun: 35 package hợp nhất (`@bunest/orm`, `@bunest/ai`, `@bunest/ai/mcp`, `@bunest/core/client`, `@bunest/core/i18n`, `@bunest/mail`, `@bunest/storage`, `@bunest/security/auth`, `@bunest/security/authz`, `@bunest/resilience`, `@bunest/resilience/locks`, `@bunest/resilience/idempotency`, `@bunest/messaging/outbox`, `@bunest/messaging/webhooks`, `@bunest/workflows`, `@bunest/elasticsearch`, `@bunest/graphql/apollo`, cùng các bản hợp nhất `@bunest/jobs/queues`, `@bunest/security`, `@bunest/observability`, `@bunest/core/http`, `@bunest/validation`) | **Hoàn thành** |
-| **`v0.8`** | AOP tầng Service & Declarative Repository `@bunest/orm` thống nhất gốc trên Bun: `MethodAspectWeaver` không chi phí dư thừa, `@Transactional`, `@OrmRepository` + `CrudRepository` biên dịch một lần, `OrmMigrationRunner`, các subpath SQL Store Kit (`./store`, `./postgres`, `./mysql`, `./testing`), `@UseMiddleware`, `@Cacheable`, `@Span`, `@EmitEvent`, `@Auth`/`@Protected`, `@InjectConfig`, `@WithLock`, `@WithCls`, `@Retry`/`@CircuitBreaker` tầng service | **Hoàn thành** |
+| **`v0.8`** | AOP tầng Service & Declarative Repository `@bunest/orm` thống nhất gốc trên Bun: `MethodAspectWeaver` không chi phí dư thừa, `@Transactional`, `@Repository` + `CrudRepository` biên dịch một lần, `OrmMigrationRunner`, các subpath SQL Store Kit (`./store`, `./postgres`, `./mysql`, `./testing`), `@UseMiddleware`, `@Cacheable`, `@Span`, `@EmitEvent`, `@Auth`/`@Protected`, `@InjectConfig`, `@WithLock`, `@WithCls`, `@Retry`/`@CircuitBreaker` tầng service | **Hoàn thành** |
 | **`v1.0`** | Đóng băng các hợp đồng lõi, chính sách semver, đánh giá bảo mật độc lập bên ngoài, kiểm chứng vận hành thực tế trên production | **Đang thực hiện** |
 
 ## Chi tiết theo từng Giai đoạn
@@ -43,7 +43,7 @@ Bunest đi theo lộ trình theo từng giai đoạn, kiểm soát qua các cổ
 ### Giai đoạn 5 — AOP tầng Service & Declarative Repository _(Hoàn thành)_
 
 - [x] `MethodAspectWeaver` trong `DIContainer` không chi phí dư thừa (`WeakMap` bỏ qua trong `O(1)` cho các class không gắn decorator)
-- [x] Declarative repository biên dịch một lần trong `@bunest/orm` (`@OrmRepository`/`CrudRepository`) với derived finder, `@Query`/`@Modifying`/`@SqlParam`, `@Transactional` và `OrmMigrationRunner`
+- [x] Declarative repository biên dịch một lần trong `@bunest/orm` (`@Repository`/`CrudRepository`) với derived finder, `@Query`/`@Modifying`/`@SqlParam`, `@Transactional` và `OrmMigrationRunner`
 - [x] Bộ benchmark đối đầu trực tiếp 8 mục tiêu công khai có thể tái lập so sánh Bunest với `Bun.serve()` thuần và NestJS v12 trên Bun & Node.js
 
 ## Chính sách Trung thực Benchmark

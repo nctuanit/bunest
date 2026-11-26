@@ -2,7 +2,6 @@ import {
   MetadataRegistry,
   getCachedInheritanceChain,
   registerEntitySchemaResolver,
-  registerMacroFields,
   type Abstract,
   type ColumnDataType,
   type ColumnGenerationStrategy,
@@ -657,11 +656,6 @@ export function BaseEntity<Key = number>(
       );
       registeredFields.push(deletedCfg.property);
     }
-
-    // Keep `@Data()`, `@Builder()`, `@FieldNameConstants()`, etc. in sync at runtime
-    if (registeredFields.length > 0) {
-      registerMacroFields(target, registeredFields);
-    }
   };
 }
 
@@ -715,11 +709,6 @@ export function PrimaryColumn(
     );
   };
 }
-
-/**
- * Alias for `@PrimaryColumn()` matching `@bunest/core`'s `@PrimaryKey()`.
- */
-export const PrimaryKey = PrimaryColumn;
 
 /**
  * Declares an auto-generated primary key column (`"increment"` or `"uuid"`).
@@ -978,36 +967,6 @@ export function Embedded<T = unknown>(
   };
 }
 
-/**
- * Ergonomic alias for `@Embedded()` decorator AND zero-TDZ identity type wrapper
- * `Nested<T>` for nested value-object / sub-document classes.
- *
- * Declaration-merged as both a value (decorator) and type (`Nested<Address>`) so
- * a single `import { Nested } from "@bunest/orm"` works in both positions!
- */
-export type Nested<T> = T;
-export const Nested = Embedded;
-
-/**
- * Zero-TDZ class-level decorator to embed a nested class on `propertyName`.
- * Because no property decorator is attached to the field, `emitDecoratorMetadata`
- * emits ZERO `design:type` reference for that field — eliminating ESM/same-file TDZ errors
- * even with plain `address!: Address` type annotations!
- */
-export function Embeds<T = unknown>(
-  propertyName: string,
-  target: EntityTarget<T>,
-  options: OrmEmbeddedOptions = {},
-): ClassDecorator {
-  return (ctor: Function) => {
-    OrmMetadataStorage.addEmbedded(ctor as ObjectType, {
-      propertyName,
-      target,
-      options,
-    });
-  };
-}
-
 // ============================================================================
 // Relation Decorators (TypeORM-Style Property-Level)
 // ============================================================================
@@ -1082,55 +1041,6 @@ export function JoinTable(
     if (!ctor) return;
     OrmMetadataStorage.setJoinTable(ctor, String(propertyKey), options);
   };
-}
-
-// ============================================================================
-// Zero-TDZ Class-Level Relation Decorators (ZERO `design:type` TDZ!)
-// ============================================================================
-
-/**
- * Class-level `@OneToOne` declaration — keeps the class property undecorated so
- * `emitDecoratorMetadata` NEVER emits a circular `design:type` TDZ reference.
- */
-export function HasOne<T = unknown>(
-  propertyName: string,
-  target: EntityTarget<T>,
-  options?: OrmRelationOptions,
-): ClassDecorator {
-  return createClassRelationDecorator("one-to-one", propertyName, target, options);
-}
-
-/**
- * Class-level `@OneToMany` declaration — zero `design:type` TDZ on circular classes.
- */
-export function HasMany<T = unknown>(
-  propertyName: string,
-  target: EntityTarget<T>,
-  options?: OrmRelationOptions,
-): ClassDecorator {
-  return createClassRelationDecorator("one-to-many", propertyName, target, options);
-}
-
-/**
- * Class-level `@ManyToOne` declaration — zero `design:type` TDZ on circular classes.
- */
-export function BelongsTo<T = unknown>(
-  propertyName: string,
-  target: EntityTarget<T>,
-  options?: OrmRelationOptions,
-): ClassDecorator {
-  return createClassRelationDecorator("many-to-one", propertyName, target, options);
-}
-
-/**
- * Class-level `@ManyToMany` declaration — zero `design:type` TDZ on circular classes.
- */
-export function ManyToManyOf<T = unknown>(
-  propertyName: string,
-  target: EntityTarget<T>,
-  options?: OrmRelationOptions,
-): ClassDecorator {
-  return createClassRelationDecorator("many-to-many", propertyName, target, options);
 }
 
 // ============================================================================

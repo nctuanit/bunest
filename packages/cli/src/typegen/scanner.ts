@@ -34,6 +34,7 @@ import {
 import {
   BUILTIN_CLASS_MACRO_NAMES,
   BUILTIN_FIELD_MACRO_NAMES,
+  BUILTIN_REPOSITORY_DECORATOR_NAMES,
   parseBaseEntityDecoratorAst,
   resolveComposedDecorators,
   type ResolvedDecoratorEntry,
@@ -61,6 +62,7 @@ import {
   type ExtractedEventEntry,
   type ExtractedEventPatternEntry,
   type ExtractedImportRef,
+  type ExtractedInjectableLoggerEntry,
   type ExtractedMacroAccessors,
   type ExtractedMacroField,
   type ExtractedMacroFieldRef,
@@ -77,6 +79,7 @@ import {
 
 const CLASS_MACRO_DECORATORS = BUILTIN_CLASS_MACRO_NAMES;
 const FIELD_MACRO_DECORATORS = BUILTIN_FIELD_MACRO_NAMES;
+const REPOSITORY_CLASS_DECORATORS = BUILTIN_REPOSITORY_DECORATOR_NAMES;
 
 /**
  * Converts a Bunest native TypeScript AST node to a 1-based line/column + 0-based byte/char offset location.
@@ -1100,6 +1103,7 @@ export class BunestTypegenScanner {
     const queriesMap = new Map<string, ExtractedCqrsQueryEntry>();
     const tokensMap = new Map<string, ExtractedTokenEntry>();
     const classMacros: ExtractedClassMacroEntry[] = [];
+    const injectableLoggers: ExtractedInjectableLoggerEntry[] = [];
     const callSites: ExtractedCallSite[] = [];
 
     // Pre-pass: map SchemaFactory.createForClass(TargetClass) variable names -> TargetClass info
@@ -1149,6 +1153,7 @@ export class BunestTypegenScanner {
       if (this.enabledTargets.has("macros")) {
         this.scanClassMacrosInFile(sf, printer, classMacros);
       }
+      this.scanInjectableLoggersInFile(sf, injectableLoggers);
       this.scanCallSitesInFile(sf, callSites);
     }
 
@@ -1233,6 +1238,11 @@ export class BunestTypegenScanner {
         a.token.localeCompare(b.token),
       ),
       classMacros: classMacros.sort(
+        (a, b) =>
+          a.sourceFile.localeCompare(b.sourceFile) ||
+          a.className.localeCompare(b.className),
+      ),
+      injectableLoggers: injectableLoggers.sort(
         (a, b) =>
           a.sourceFile.localeCompare(b.sourceFile) ||
           a.className.localeCompare(b.className),
@@ -2161,6 +2171,104 @@ export class BunestTypegenScanner {
     };
   }
 
+  private parseDeclarativeRepositoryDecorator(
+    entry: ResolvedDecoratorEntry | undefined,
+    sf: SourceFile,
+    printer: TypePrinter,
+  ): {
+    readonly entityTypeText: string;
+    readonly keyTypeText: string;
+    readonly imports: ExtractedImportRef[];
+  } {
+    const imports: ExtractedImportRef[] = [];
+    let entityTypeText = "Record<string, unknown>";
+    let keyTypeText = "number";
+
+    const typeArg0 = entry?.resolvedTypeArgNodes[0];
+    const typeArg1 = entry?.resolvedTypeArgNodes[1];
+
+    if (typeArg0) {
+      const safeRaw = sanitizeTypeText(
+        typeArg0.getText().trim(),
+        "Record<string, unknown>",
+      );
+      const printed = printer.printType(
+        typeArg0.getType(),
+        this.project,
+        safeRaw,
+      );
+      entityTypeText = sanitizeTypeText(printed.text, safeRaw);
+      imports.push(...printed.imports);
+    } else if (entry?.resolvedArgs[0]) {
+      const arg0 = entry.resolvedArgs[0];
+      const entityExpr = Node.isIdentifier(arg0)
+        ? arg0
+        : Node.isObjectLiteralExpression(arg0)
+          ? getPropertyInitializer(arg0, "entity")
+          : undefined;
+      if (entityExpr && Node.isIdentifier(entityExpr)) {
+        const identName = entityExpr.getText().trim();
+        const ctorSigs = entityExpr.getType().getConstructSignatures();
+        if (ctorSigs.length > 0 && ctorSigs[0]) {
+          const printed = printer.printType(
+            ctorSigs[0].getReturnType(),
+            this.project,
+            identName,
+          );
+          entityTypeText = sanitizeTypeText(printed.text, identName);
+          imports.push(...printed.imports);
+        } else {
+          entityTypeText = sanitizeTypeText(identName, "Record<string, unknown>");
+          // Fallback: resolve import from source file declarations
+          const localClass = sf.getClass(identName);
+          if (localClass && localClass.isExported()) {
+            imports.push({
+              filePath: sf.getFilePath(),
+              exportName: identName,
+              isTypeOnly: true,
+            });
+          } else {
+            for (const impDecl of sf.getImportDeclarations()) {
+              const named = impDecl
+                .getNamedImports()
+                .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === identName);
+              if (named) {
+                const rawSpec = impDecl.getModuleSpecifierValue();
+                const resolvedFilePath = rawSpec.startsWith(".")
+                  ? resolve(dirname(sf.getFilePath()), rawSpec)
+                  : rawSpec;
+                imports.push({
+                  filePath: resolvedFilePath,
+                  exportName: named.getName(),
+                  ...(named.getAliasNode() ? { alias: identName } : {}),
+                  isTypeOnly: true,
+                });
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (typeArg1) {
+      const safeRaw = sanitizeTypeText(typeArg1.getText().trim(), "number");
+      const printed = printer.printType(
+        typeArg1.getType(),
+        this.project,
+        safeRaw,
+      );
+      keyTypeText = sanitizeTypeText(printed.text, safeRaw);
+      imports.push(...printed.imports);
+    }
+
+    return {
+      entityTypeText,
+      keyTypeText,
+      imports,
+    };
+  }
+
   private getFullDecoratorName(dec: Decorator): string {
     const expr = dec.getExpression();
     if (Node.isCallExpression(expr)) {
@@ -2314,6 +2422,54 @@ export class BunestTypegenScanner {
     return { expandedBuiltins, expandedPresets, matchedCustomDefs };
   }
 
+  private scanInjectableLoggersInFile(
+    sf: SourceFile,
+    out: ExtractedInjectableLoggerEntry[],
+  ): void {
+    const filePath = sf.getFilePath();
+    for (const cls of sf.getClasses()) {
+      if (!cls.isExported()) continue;
+      const className = cls.getName();
+      if (!className) continue;
+
+      const hasAutoLoggerDecorator = cls
+        .getDecorators()
+        .some((d) => {
+          const name = getDecoratorShortName(d);
+          return (
+            name === "Injectable" ||
+            name === "Controller" ||
+            name === "Module" ||
+            name === "AutoModule"
+          );
+        });
+      if (!hasAutoLoggerDecorator) continue;
+
+      const hasOwnLoggerProp = cls
+        .getProperties()
+        .some((p) => p.getName() === "logger");
+      if (hasOwnLoggerProp) continue;
+
+      const hasOwnLoggerMethodOrGetter = cls
+        .getMethods()
+        .some((m) => m.getName() === "logger");
+      if (hasOwnLoggerMethodOrGetter) continue;
+
+      const hasOwnLoggerParam = cls.getConstructors().some((ctor) =>
+        ctor
+          .getParameters()
+          .some(
+            (param) =>
+              param.getName() === "logger" &&
+              /\b(public|private|protected|readonly)\b/.test(param.getText()),
+          ),
+      );
+      if (hasOwnLoggerParam) continue;
+
+      out.push({ className, sourceFile: filePath });
+    }
+  }
+
   private scanClassMacrosInFile(
     sf: SourceFile,
     printer: TypePrinter,
@@ -2327,11 +2483,18 @@ export class BunestTypegenScanner {
       const className = cls.getName();
       if (!className) continue;
 
+      const baseClassName = cls.getExtends()?.getExpression().getText() ?? "";
+      const extendsCrudRepository = baseClassName === "CrudRepository";
+
       const resolvedClassDecs = resolveComposedDecorators(cls);
       const classDecNames: string[] = [];
       const classDecMap = new Map<string, ResolvedDecoratorEntry>();
+      let repoDecEntry: ResolvedDecoratorEntry | undefined;
       for (const entry of resolvedClassDecs) {
         const short = entry.name;
+        if (REPOSITORY_CLASS_DECORATORS.has(short) && !repoDecEntry) {
+          repoDecEntry = entry;
+        }
         if (
           CLASS_MACRO_DECORATORS.has(short) ||
           Object.prototype.hasOwnProperty.call(presets, short) ||
@@ -2346,6 +2509,9 @@ export class BunestTypegenScanner {
         }
       }
 
+      const isDeclarativeRepository =
+        !extendsCrudRepository && repoDecEntry !== undefined;
+
       const hasFieldMacro = cls.getProperties().some((p) =>
         p.getDecorators().some((d) => {
           const full = this.getFullDecoratorName(d);
@@ -2357,7 +2523,13 @@ export class BunestTypegenScanner {
         }),
       );
 
-      if (classDecNames.length === 0 && !hasFieldMacro) continue;
+      if (
+        classDecNames.length === 0 &&
+        !hasFieldMacro &&
+        !isDeclarativeRepository
+      ) {
+        continue;
+      }
 
       const { expandedBuiltins, expandedPresets, matchedCustomDefs } =
         this.expandMacroNames(classDecNames, presets, customMacros);
@@ -2735,6 +2907,19 @@ export class BunestTypegenScanner {
       let baseEntityKeyType: string | undefined;
       let baseEntityFields: ExtractedBaseEntityField[] | undefined;
 
+      let repositoryEntityType: string | undefined;
+      let repositoryKeyType: string | undefined;
+      if (isDeclarativeRepository) {
+        const parsedRepo = this.parseDeclarativeRepositoryDecorator(
+          repoDecEntry,
+          sf,
+          printer,
+        );
+        repositoryEntityType = parsedRepo.entityTypeText;
+        repositoryKeyType = parsedRepo.keyTypeText;
+        imports.push(...parsedRepo.imports);
+      }
+
       if (isBaseEntity) {
         const baseEntry = classDecMap.get("BaseEntity");
         const parsedBase = this.parseBaseEntityDecorator(baseEntry, printer);
@@ -2905,6 +3090,13 @@ export class BunestTypegenScanner {
               isBaseEntity: true,
               baseEntityKeyType,
               baseEntityFields,
+            }
+          : {}),
+        ...(isDeclarativeRepository
+          ? {
+              isDeclarativeRepository: true,
+              repositoryEntityType,
+              repositoryKeyType,
             }
           : {}),
         accessorsEnabled,

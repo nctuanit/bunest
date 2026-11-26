@@ -34,10 +34,9 @@ import {
 } from "@bunest/jobs/queues";
 import {
   Column,
-  CrudRepository,
   Entity,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   type OrmMigration,
 } from "@bunest/orm";
@@ -81,23 +80,20 @@ export const ORDER_MIGRATIONS: readonly OrmMigration[] = [
 @Entity("orders")
 export class OrderEntity implements OrderRecord {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ type: "text" })
-  item!: string;
+  item: string;
 
   @Column({ type: "integer" })
-  amount!: number;
+  amount: number;
 
   @Column({ type: "text" })
-  status!: string;
+  status: string;
 }
 
-@OrmRepository(OrderEntity)
-export abstract class OrderRepository extends CrudRepository<
-  OrderEntity,
-  number
-> {
+@Repository<OrderEntity, number>()
+export abstract class OrderRepository {
   async updateStatus(id: number, status: string): Promise<number> {
     const res = await this.execute(
       "UPDATE orders SET status = :status WHERE id = :id",

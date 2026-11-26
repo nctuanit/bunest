@@ -1,176 +1,6 @@
-import {
-  GLOBAL_MACRO_DEFAULTS_SYM,
-  extractGlobalToStringDefaults,
-  invalidateMacroPlanCache,
-  readGlobalMacroDefaults,
-  type AccessorsOptions,
-  type BuilderOptions,
-  type DataOptions,
-  type EqualsAndHashCodeOptions,
-  type FieldNameConstantsOptions,
-  type GlobalMacroDefaults,
-  type JsonSerializableOptions,
-  type ToStringOptions,
-  type ValueOptions,
-  type WithLoggerOptions,
-} from "../decorators/class-macros.decorators";
-import type { CustomMacroDefinition } from "../decorators/custom-macro";
-
-export type { GlobalMacroDefaults };
-
-// ============================================================================
-// Global Class Macro Defaults
-// ============================================================================
-
-/**
- * Single-realm global symbol storing project-wide Class Macro defaults on `globalThis`
- * so `@bunest/core`, `@bunest/cli`, and workspace bundle chunks share one source of truth.
- */
-export const GLOBAL_MACRO_DEFAULTS_SYMBOL: symbol = GLOBAL_MACRO_DEFAULTS_SYM;
-
-/**
- * Safely extracts `ToStringOptions` from a `GlobalMacroDefaults` object without
- * mistaking the inherited `Object.prototype.toString` function for macro options.
- */
-export function resolveGlobalToStringDefaults(
-  defaults: GlobalMacroDefaults = getGlobalMacroDefaults(),
-): ToStringOptions | undefined {
-  return extractGlobalToStringDefaults(defaults);
-}
-
-function cloneSection<T extends object>(section: T | undefined): T | undefined {
-  if (!section || typeof section !== "object") {
-    return undefined;
-  }
-  return { ...section };
-}
-
-function normalizeGlobalMacroDefaults(
-  defaults: GlobalMacroDefaults,
-): GlobalMacroDefaults {
-  const normalized: {
-    accessors?: AccessorsOptions;
-    toString?: ToStringOptions | (() => string);
-    toStringOptions?: ToStringOptions;
-    equalsAndHashCode?: EqualsAndHashCodeOptions;
-    builder?: BuilderOptions;
-    data?: DataOptions;
-    value?: ValueOptions;
-    jsonSerializable?: JsonSerializableOptions;
-    withLogger?: WithLoggerOptions;
-    fieldNameConstants?: FieldNameConstantsOptions;
-  } = {};
-
-  if (defaults.accessors) {
-    normalized.accessors = cloneSection(defaults.accessors);
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(defaults, "toString") &&
-    typeof defaults.toString === "object" &&
-    defaults.toString !== null
-  ) {
-    normalized.toString = cloneSection(defaults.toString);
-  }
-  if (defaults.toStringOptions) {
-    normalized.toStringOptions = cloneSection(defaults.toStringOptions);
-  }
-  if (defaults.equalsAndHashCode) {
-    normalized.equalsAndHashCode = cloneSection(defaults.equalsAndHashCode);
-  }
-  if (defaults.builder) {
-    normalized.builder = cloneSection(defaults.builder);
-  }
-  if (defaults.data) {
-    normalized.data = {
-      ...defaults.data,
-      ...(defaults.data.accessors
-        ? { accessors: cloneSection(defaults.data.accessors) }
-        : {}),
-      ...(defaults.data.toStringOptions
-        ? { toStringOptions: cloneSection(defaults.data.toStringOptions) }
-        : {}),
-      ...(defaults.data.equalsAndHashCode
-        ? { equalsAndHashCode: cloneSection(defaults.data.equalsAndHashCode) }
-        : {}),
-    };
-  }
-  if (defaults.value) {
-    normalized.value = {
-      ...defaults.value,
-      ...(defaults.value.accessors
-        ? { accessors: cloneSection(defaults.value.accessors) }
-        : {}),
-      ...(defaults.value.toStringOptions
-        ? { toStringOptions: cloneSection(defaults.value.toStringOptions) }
-        : {}),
-      ...(defaults.value.equalsAndHashCode
-        ? { equalsAndHashCode: cloneSection(defaults.value.equalsAndHashCode) }
-        : {}),
-    };
-  }
-  if (defaults.jsonSerializable) {
-    normalized.jsonSerializable = cloneSection(defaults.jsonSerializable);
-  }
-  if (defaults.withLogger) {
-    normalized.withLogger = cloneSection(defaults.withLogger);
-  }
-  if (defaults.fieldNameConstants) {
-    normalized.fieldNameConstants = cloneSection(defaults.fieldNameConstants);
-  }
-
-  return Object.freeze(normalized);
-}
-
-/**
- * Sets project-wide default options for Bunest Class Macros in the global single-realm store.
- */
-export function setGlobalMacroDefaults(
-  defaults: GlobalMacroDefaults,
-): GlobalMacroDefaults {
-  const normalized = normalizeGlobalMacroDefaults(defaults ?? {});
-  (
-    globalThis as Record<symbol, GlobalMacroDefaults | undefined>
-  )[GLOBAL_MACRO_DEFAULTS_SYMBOL] = normalized;
-  invalidateMacroPlanCache();
-  return normalized;
-}
-
-/**
- * Returns the active project-wide default options for Bunest Class Macros (or `{}` when unset).
- */
-export function getGlobalMacroDefaults(): GlobalMacroDefaults {
-  return readGlobalMacroDefaults();
-}
-
-/**
- * Clears all project-wide default options for Bunest Class Macros.
- */
-export function resetGlobalMacroDefaults(): void {
-  delete (globalThis as Record<symbol, GlobalMacroDefaults | undefined>)[
-    GLOBAL_MACRO_DEFAULTS_SYMBOL
-  ];
-  invalidateMacroPlanCache();
-}
-
 // ============================================================================
 // Unified `bunest.config.ts` Schema (Structural & Zero Upward Dependencies)
 // ============================================================================
-
-/**
- * Configuration for Bunest Class Macros: project-wide defaults, static preset expansions,
- * and custom macro definitions.
- */
-export interface BunestMacrosConfig {
-  /** Project-wide default options inherited by built-in Class Macros. */
-  readonly defaults?: GlobalMacroDefaults;
-  /**
-   * Static macro preset expansions mapping custom decorator names to built-in macro names,
-   * e.g. `{ DomainEntity: ["Data", "Builder", "FieldNameConstants"] }`.
-   */
-  readonly presets?: Readonly<Record<string, readonly string[]>>;
-  /** Custom class macro definitions registered for runtime, typegen, and Delombok. */
-  readonly plugins?: readonly CustomMacroDefinition<any>[];
-}
 
 /**
  * Structural SQL context shape for custom `@bunest/orm` derived query operators.
@@ -311,13 +141,10 @@ export interface BunestSourceTransformConfig {
  * Configuration for Bunest's unified `Bun.plugin` transpile-time transform pipeline.
  */
 export interface BunestPluginConfig {
-  readonly classMacros?: boolean;
   readonly swaggerMetadata?: boolean;
   readonly ormCircularSafe?: boolean;
   readonly autoModuleManifest?: boolean;
   readonly expandAutoModuleGlobs?: boolean;
-  /** Pre-register `CompiledMacroPlan` at transpile time to skip runtime `new ctor()` field probing. */
-  readonly aotMacros?: boolean;
   /** Emit TDZ-safe `design:paramtypes` metadata at transpile time for DI classes. */
   readonly aotDiMetadata?: boolean;
   readonly transforms?: readonly BunestSourceTransformConfig[];
@@ -327,7 +154,6 @@ export interface BunestPluginConfig {
  * Root configuration schema for `bunest.config.ts`.
  */
 export interface BunestConfig {
-  readonly macros?: BunestMacrosConfig;
   readonly orm?: BunestOrmConfig;
   readonly aop?: BunestAopConfig;
   readonly typegen?: BunestTypegenConfig;

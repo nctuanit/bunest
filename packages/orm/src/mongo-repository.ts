@@ -1,5 +1,5 @@
 import { invokeLifecycleHooks } from "./hydrator";
-import { Repository } from "./repository";
+import { OrmRepository } from "./repository";
 import type { DeepPartial, OrmDocumentDriverLike } from "./types";
 
 export interface MongoFindOptions {
@@ -17,7 +17,7 @@ export interface MongoFindOptions {
  */
 export class MongoRepository<
   Entity extends object = Record<string, unknown>,
-> extends Repository<Entity> {
+> extends OrmRepository<Entity> {
   private requireDocDriver(): OrmDocumentDriverLike {
     const driver = this.documentDriver;
     if (!driver) {

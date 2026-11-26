@@ -1,6 +1,6 @@
 # Bunest ORM (`@bunest/orm`)
 
-Bunest tích hợp sẵn một bộ công cụ ORM và lưu trữ SQL hợp nhất, không phụ thuộc thư viện ngoài, thuần Bun — **`@bunest/orm`** — kết hợp sự tiện lợi của entity/relation kiểu TypeORM, các repository khai báo biên dịch một lần kiểu Spring Data (`@OrmRepository` + `CrudRepository`), giao dịch `SAVEPOINT` lồng nhau dựa trên `AsyncLocalStorage` (`@Transactional`), migration theo phiên bản (`OrmMigrationRunner`), các subpath của SQL Store Kit (`./store`, `./postgres`, `./mysql`, `./testing`), và hỗ trợ đa cơ sở dữ liệu trên các API gốc của Bun (`bun:sqlite`, `Bun.SQL`, `fetch()` và `Bun.connect()`).
+Bunest tích hợp sẵn một bộ công cụ ORM và lưu trữ SQL hợp nhất, không phụ thuộc thư viện ngoài, thuần Bun — **`@bunest/orm`** — kết hợp sự tiện lợi của entity/relation kiểu TypeORM, các repository khai báo biên dịch một lần kiểu Spring Data (`@Repository` + `CrudRepository`), giao dịch `SAVEPOINT` lồng nhau dựa trên `AsyncLocalStorage` (`@Transactional`), migration theo phiên bản (`OrmMigrationRunner`), các subpath của SQL Store Kit (`./store`, `./postgres`, `./mysql`, `./testing`), và hỗ trợ đa cơ sở dữ liệu trên các API gốc của Bun (`bun:sqlite`, `Bun.SQL`, `fetch()` và `Bun.connect()`).
 
 ```bash
 bun add @bunest/orm
@@ -18,7 +18,7 @@ bun add @bunest/orm
 | `mongodb`, `mongo` | **Bun `Bun.connect()`** (`MongoOrmDriver`, TCP/TLS `OP_MSG` + BSON + SCRAM-SHA-256) hoặc kho lưu trữ nhúng cục bộ | `MongoRepository<Entity>`, `@ObjectIdColumn()`, aggregation pipeline |
 | `mssql`, `oracle`, `sap`, `spanner` | Trình biên dịch SQL dialect đầy đủ + `OrmDriverRegistry` | DDL thuần chính xác, trích dẫn định danh, placeholder, phân trang và câu lệnh upsert |
 
-## Bắt đầu nhanh (Entity, Quan hệ & `Repository<T>`)
+## Bắt đầu nhanh (Entity, Quan hệ & `OrmRepository<T>`)
 
 @@filename(users.module.ts)
 
@@ -36,7 +36,7 @@ import {
   Transactional,
   type Nested,
   type Relation,
-  type Repository,
+  type OrmRepository,
 } from "@bunest/orm";
 
 export class Address {
@@ -75,7 +75,7 @@ export class Post {
 export class UsersService {
   constructor(
     @InjectRepository(User)
-    private readonly users: Repository<User>,
+    private readonly users: OrmRepository<User>,
   ) {}
 
   @Transactional()
@@ -101,9 +101,9 @@ export class UsersService {
 export class UsersModule {}
 ```
 
-## Repository khai báo kiểu Spring Data (`@OrmRepository` + `CrudRepository`)
+## Repository khai báo kiểu Spring Data (`@Repository` + `CrudRepository`)
 
-Bên cạnh `Repository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` bao gồm một engine repository khai báo biên dịch một lần hoạt động trên tất cả các SQL dialect (`sqlite`, `postgres`, `mysql`, `mariadb`, `libsql`, `d1`):
+Bên cạnh `OrmRepository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` bao gồm một engine repository khai báo biên dịch một lần hoạt động trên tất cả các SQL dialect (`sqlite`, `postgres`, `mysql`, `mariadb`, `libsql`, `d1`):
 
 @@filename(user.repository.ts)
 
@@ -111,13 +111,13 @@ Bên cạnh `Repository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` ba
 import {
   CrudRepository,
   Modifying,
-  OrmRepository,
+  Repository,
   Query,
   SqlParam,
 } from "@bunest/orm";
 import { User } from "./user.entity";
 
-@OrmRepository(User)
+@Repository(User)
 export abstract class UserRepository extends CrudRepository<User, number> {
   abstract findByEmail(email: string): Promise<User | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
@@ -152,7 +152,7 @@ registerQueryOperator({
   }),
 });
 
-// Now usable in any @OrmRepository with longest-suffix matching:
+// Now usable in any @Repository with longest-suffix matching:
 // abstract findAllByBioMatchesAndActiveIsTrue(term: string): Promise<User[]>;
 ```
 
@@ -160,7 +160,7 @@ Các hàm trợ giúp registry bổ sung: `unregisterQueryOperator(suffix)`, `ge
 
 ## Phạm vi Repository ngầm định (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`, `@IgnoreScope`)
 
-Gắn các bộ lọc truy vấn cắt ngang có thể tái sử dụng và bộ chặn ghi dữ liệu trực tiếp lên các class `@OrmRepository`:
+Gắn các bộ lọc truy vấn cắt ngang có thể tái sử dụng và bộ chặn ghi dữ liệu trực tiếp lên các class `@Repository`:
 
 | Decorator | Mục đích |
 | --- | --- |
@@ -181,7 +181,7 @@ Tránh tải toàn bộ hàng (`SELECT *`) trên các endpoint đọc có tần 
 import {
   CrudRepository,
   IgnoreScope,
-  OrmRepository,
+  Repository,
   Projection,
   SoftDelete,
   TenantScoped,
@@ -194,7 +194,7 @@ import { DocumentEntity } from "./document.entity";
 
 @SoftDelete()
 @TenantScoped({ resolveTenant: () => getCurrentTenantId() })
-@OrmRepository(DocumentEntity)
+@Repository(DocumentEntity)
 export abstract class DocumentRepository extends CrudRepository<
   DocumentEntity,
   number
@@ -231,14 +231,14 @@ export abstract class DocumentRepository extends CrudRepository<
 
 ## Các mảnh Repository có thể kết hợp (`composeRepository`)
 
-Trộn các phương thức và scope repository tái sử dụng vào bất kỳ `@OrmRepository` nào mà không bị giới hạn đơn kế thừa bằng **`defineRepositoryFragment()`**, **`composeRepository()`** hoặc **`@UseRepositoryFragments(...)`** — cùng với các trait tích hợp sẵn **`withSoftDelete()`** và **`withCursorPagination()`**:
+Trộn các phương thức và scope repository tái sử dụng vào bất kỳ `@Repository` nào mà không bị giới hạn đơn kế thừa bằng **`defineRepositoryFragment()`**, **`composeRepository()`** hoặc **`@UseRepositoryFragments(...)`** — cùng với các trait tích hợp sẵn **`withSoftDelete()`** và **`withCursorPagination()`**:
 
 @@filename(invoice.repository.ts)
 
 ```ts
 import {
   CrudRepository,
-  OrmRepository,
+  Repository,
   composeRepository,
   defineRepositoryFragment,
   withCursorPagination,
@@ -258,7 +258,7 @@ const withTableStats = defineRepositoryFragment<{ countRaw(): Promise<number> }>
   }),
 });
 
-@OrmRepository(Invoice)
+@Repository(Invoice)
 export abstract class InvoiceRepository extends composeRepository(
   CrudRepository<Invoice, number>,
   withSoftDelete<Invoice, number>(),
@@ -275,7 +275,7 @@ export abstract class InvoiceRepository extends composeRepository(
 
 | Subpath | Mục đích |
 | --- | --- |
-| `@bunest/orm` | ORM cốt lõi (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@OrmRepository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, các driver, query builder) |
+| `@bunest/orm` | ORM cốt lõi (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, các driver, query builder) |
 | `@bunest/orm/plugin` | Plugin Bun nạp trước cho entity tham chiếu vòng an toàn với TDZ |
 | `@bunest/orm/store` | Bộ công cụ SQL store nền tảng (`runStoreCli`, `SqlExecutor`, `SqlTransaction`, các bộ ép kiểu giá trị) |
 | `@bunest/orm/postgres` | Trình chạy migration & helper dialect PostgreSQL trên `Bun.SQL` gốc |

@@ -54,6 +54,7 @@
         "@bunest/validation": "workspace:*",
       },
       "devDependencies": {
+        "@bunest/cli": "workspace:*",
         "@bunest/testing": "workspace:*",
       },
     },
@@ -68,6 +69,7 @@
         "@bunest/orm": "workspace:*",
       },
       "devDependencies": {
+        "@bunest/cli": "workspace:*",
         "@bunest/testing": "workspace:*",
       },
     },
@@ -90,6 +92,7 @@
         "@bunest/validation": "workspace:*",
       },
       "devDependencies": {
+        "@bunest/cli": "workspace:*",
         "@bunest/testing": "workspace:*",
       },
     },
@@ -102,6 +105,19 @@
         "@bunest/validation": "workspace:*",
       },
       "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/starter": {
+      "name": "@bunest/example-starter",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/orm": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/cli": "workspace:*",
         "@bunest/testing": "workspace:*",
       },
     },
@@ -340,6 +356,8 @@
     "@bunest/example-production-rest-postgres": ["@bunest/example-production-rest-postgres@workspace:examples/production-rest-postgres"],
 
     "@bunest/example-rest-crud": ["@bunest/example-rest-crud@workspace:examples/rest-crud"],
+
+    "@bunest/example-starter": ["@bunest/example-starter@workspace:examples/starter"],
 
     "@bunest/example-vscode-extension-showcase": ["@bunest/example-vscode-extension-showcase@workspace:examples/vscode-extension-showcase"],
 

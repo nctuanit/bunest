@@ -21,6 +21,7 @@
     "@bunest/jobs": "workspace:*"
   },
   "devDependencies": {
+    "@bunest/cli": "workspace:*",
     "@bunest/testing": "workspace:*"
   }
 }

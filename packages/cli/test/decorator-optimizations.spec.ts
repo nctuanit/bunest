@@ -83,10 +83,10 @@ export class OrderEntity {
 }
 `,
       "src/orders/order.repository.ts": `
-import { CrudRepository, OrmRepository } from "@bunest/orm";
+import { CrudRepository, Repository } from "@bunest/orm";
 import { OrderEntity } from "./order.entity";
 
-@OrmRepository(OrderEntity)
+@Repository(OrderEntity)
 export abstract class OrderRepository extends CrudRepository<OrderEntity, string> {
   abstract findAllByStatusAndTotalGreaterThan(status: string, min: number): Promise<OrderEntity[]>;
   abstract findAllByCreatedAtGreaterThan(since: Date): Promise<OrderEntity[]>;

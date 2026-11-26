@@ -1,0 +1,27 @@
+{
+  "name": "@bunest/example-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "Clean Bunest starter example with REST CRUD, SQLite Declarative Repository, Validation DTOs, and Class Macros",
+  "scripts": {
+    "dev": "bun run ../../packages/cli/src/cli.ts dev",
+    "start": "bun run src/main.ts",
+    "typegen": "bun run ../../packages/cli/src/cli.ts typegen",
+    "check": "bun run ../../packages/cli/src/cli.ts check",
+    "typecheck": "bun check",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/orm": "workspace:*",
+    "@bunest/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/cli": "workspace:*",
+    "@bunest/testing": "workspace:*"
+  }
+}

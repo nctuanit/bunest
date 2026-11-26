@@ -533,7 +533,7 @@ function registerRepositoryScopeOnTarget<TEntity>(
 
 /**
  * Repeatable class decorator attaching an implicit repository scope (`where`,
- * `beforeSave`, and/or `onDeleteById`) to an `@OrmRepository` class.
+ * `beforeSave`, and/or `onDeleteById`) to an `@Repository` class.
  */
 export function RepositoryScope<TEntity = any>(
   scope: RepositoryScopeDefinition<TEntity>,
@@ -768,37 +768,6 @@ export function TenantScoped(options?: TenantScopedOptions): ClassDecorator {
 }
 
 /**
- * Method decorator disabling named repository scopes (or ALL scopes when called
- * with no arguments `@IgnoreScope()`) for that repository method and any nested
- * repository calls it makes.
- */
-export function IgnoreScope(...scopeNames: string[]): MethodDecorator {
-  const cleaned = scopeNames
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0);
-  const spec: IgnoreScopeSpec =
-    cleaned.length === 0
-      ? { all: true, names: [] }
-      : { all: false, names: [...new Set(cleaned)] };
-
-  return (target, propertyKey, descriptor) => {
-    const existing = MetadataRegistry.getOwn<IgnoreScopeSpec>(
-      ORM_IGNORE_SCOPE_METADATA,
-      target,
-      propertyKey,
-    );
-    const merged = mergeIgnoreScopeSpecs(existing, spec)!;
-    MetadataRegistry.define(
-      ORM_IGNORE_SCOPE_METADATA,
-      merged,
-      target,
-      propertyKey,
-    );
-    return descriptor;
-  };
-}
-
-/**
  * Collects all `@RepositoryScope` definitions attached across a repository class's
  * inheritance chain (base -> derived, deduplicated by `name` with derived winning).
  */
@@ -836,82 +805,6 @@ export function getSoftDeleteConfig(
   return MetadataRegistry.get<ResolvedSoftDeleteConfig>(
     ORM_SOFT_DELETE_CONFIG_METADATA,
     target,
-  );
-}
-
-/**
- * Returns the `@IgnoreScope(...)` specification attached to a method on `target`.
- */
-export function getMethodIgnoreScope(
-  target: object,
-  propertyKey: PropertyKey,
-): IgnoreScopeSpec | undefined {
-  return MetadataRegistry.get<IgnoreScopeSpec>(
-    ORM_IGNORE_SCOPE_METADATA,
-    target,
-    propertyKey as string | symbol,
-  );
-}
-
-// ============================================================================
-// 3. Selective Column Projection (@Projection)
-// ============================================================================
-
-/**
- * Method decorator instructing a declarative finder (`findBy*`, `findAllBy*`,
- * `findOneBy*`, `findPageBy*`, `findCursorBy*`, `findAll`, `findById`) to select
- * ONLY the specified entity fields and return plain projected objects.
- */
-export function Projection(
-  fieldsOrFirst: string | readonly string[],
-  ...rest: string[]
-): MethodDecorator {
-  const rawList: string[] = Array.isArray(fieldsOrFirst)
-    ? [...fieldsOrFirst, ...rest]
-    : [fieldsOrFirst as string, ...rest];
-
-  const deduped: string[] = [];
-  const seen = new Set<string>();
-  for (let i = 0; i < rawList.length; i++) {
-    const field = rawList[i];
-    if (typeof field !== "string" || field.trim().length === 0) {
-      throw new Error(
-        `@Projection() requires non-empty field name strings, received ${String(field)}.`,
-      );
-    }
-    const trimmed = field.trim();
-    if (!seen.has(trimmed)) {
-      seen.add(trimmed);
-      deduped.push(trimmed);
-    }
-  }
-
-  if (deduped.length === 0) {
-    throw new Error("@Projection() requires at least one field name.");
-  }
-
-  return (target, propertyKey, descriptor) => {
-    MetadataRegistry.define(
-      ORM_PROJECTION_METADATA,
-      deduped,
-      target,
-      propertyKey,
-    );
-    return descriptor;
-  };
-}
-
-/**
- * Returns the `@Projection(...)` field list attached to a method on `target`.
- */
-export function getMethodProjection(
-  target: object,
-  propertyKey: PropertyKey,
-): readonly string[] | undefined {
-  return MetadataRegistry.get<readonly string[]>(
-    ORM_PROJECTION_METADATA,
-    target,
-    propertyKey as string | symbol,
   );
 }
 
@@ -1457,18 +1350,6 @@ export function composeRepository<
     TBase,
     TFragments
   >;
-}
-
-/**
- * Class decorator attaching one or more reusable `RepositoryFragment`s onto
- * an `@OrmRepository` class.
- */
-export function UseRepositoryFragments(
-  ...fragments: readonly RepositoryFragment<any, any>[]
-): ClassDecorator {
-  return (target) => {
-    attachFragmentsToTarget(target, fragments, true);
-  };
 }
 
 /**

@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
 import {
-  buildCollapseLoggerBoilerplateEdit,
-  buildDelombokEdit,
   buildSyncDiConstructorEdit,
   formatTypegenSummary,
   type AnalyzedQueryMethod,
@@ -331,72 +329,6 @@ export async function activate(
         index.outputChannel.appendLine(`MySQL:    ${method.derived.sqlByDialect.mysql}`);
       },
     ),
-
-    vscode.commands.registerCommand(
-      "bunest.delombokClass",
-      async (filePath?: string, className?: string) => {
-        const editor = vscode.window.activeTextEditor;
-        const targetPath = filePath ?? editor?.document.uri.fsPath;
-        if (!targetPath) return;
-        const ctx = index.getContextForFile(targetPath);
-        const snap = ctx?.snapshot;
-        if (!ctx || !snap) return;
-
-        const macro = className
-          ? snap.scan.classMacros.find(
-              (m) => m.sourceFile === targetPath && m.className === className,
-            )
-          : snap.scan.classMacros.find((m) => m.sourceFile === targetPath);
-        if (!macro) return;
-
-        const sf = ctx.analyzer.getSourceFile(targetPath);
-        const cls = sf?.getClass(macro.className);
-        if (!sf || !cls) return;
-
-        const res = buildDelombokEdit({
-          sourceFile: sf,
-          classDecl: cls,
-          macro,
-          bunestConfig: ctx.bunestConfig,
-        });
-        if (!res.changed) return;
-        const doc = await vscode.workspace.openTextDocument(targetPath);
-        const wsEdit = new vscode.WorkspaceEdit();
-        wsEdit.replace(
-          doc.uri,
-          new vscode.Range(
-            doc.positionAt(0),
-            doc.positionAt(res.original.length),
-          ),
-          res.updated,
-        );
-        await vscode.workspace.applyEdit(wsEdit);
-      },
-    ),
-
-    vscode.commands.registerCommand("bunest.collapseLogger", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
-      const ctx = index.getContextForFile(editor.document.uri.fsPath);
-      const sf = ctx?.analyzer.getSourceFile(editor.document.uri.fsPath);
-      const cls = sf?.getClasses()[0];
-      if (!sf || !cls) return;
-      const res = buildCollapseLoggerBoilerplateEdit({
-        sourceFile: sf,
-        classDecl: cls,
-      });
-      if (!res.changed) return;
-      const wsEdit = new vscode.WorkspaceEdit();
-      wsEdit.replace(
-        editor.document.uri,
-        new vscode.Range(
-          editor.document.positionAt(0),
-          editor.document.positionAt(res.original.length),
-        ),
-        res.updated,
-      );
-      await vscode.workspace.applyEdit(wsEdit);
-    }),
 
     vscode.commands.registerCommand("bunest.syncDiConstructor", async () => {
       const editor = vscode.window.activeTextEditor;

@@ -13,7 +13,7 @@ import {
   InjectRepository,
   OrmModule,
   PrimaryGeneratedColumn,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { Test, describeConformance, request } from "../../../_helpers/index";
 
@@ -36,7 +36,7 @@ class Photo {
 class PhotoService {
   constructor(
     @InjectRepository(Photo)
-    private readonly photoRepository: Repository<Photo>,
+    private readonly photoRepository: OrmRepository<Photo>,
   ) {}
 
   findAll(): Promise<Photo[]> {
@@ -99,7 +99,7 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Adapts synchronous TypeOrmModule.forRoot() + forFeature() HTTP CRUD test to @bunest/orm OrmModule + Repository<Photo>.",
+      "Adapts synchronous TypeOrmModule.forRoot() + forFeature() HTTP CRUD test to @bunest/orm OrmModule + OrmRepository<Photo>.",
   },
   () => {
     let app: BunestApplication;

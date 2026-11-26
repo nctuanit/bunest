@@ -12,7 +12,7 @@ import {
   MoreThan,
   Not,
   PrimaryGeneratedColumn,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { describeConformance } from "../../../_helpers/index";
 
@@ -50,14 +50,14 @@ describeConformance(
     category: "ADAPTED_PORT",
     adrs: ["ADR-001", "ADR-002"],
     notes:
-      "Exhaustive conformance suite for @bunest/orm Repository<Entity> CRUD, batch save, upsert conflict handling, find operators, projection, sorting, pagination, IS NULL matching, QueryBuilder, and soft-delete/restore.",
+      "Exhaustive conformance suite for @bunest/orm OrmRepository<Entity> CRUD, batch save, upsert conflict handling, find operators, projection, sorting, pagination, IS NULL matching, QueryBuilder, and soft-delete/restore.",
   },
   () => {
     const openSources: DataSource[] = [];
 
     const setup = async (): Promise<{
       ds: DataSource;
-      repo: Repository<Product>;
+      repo: OrmRepository<Product>;
     }> => {
       const ds = new DataSource({
         type: "sqlite",

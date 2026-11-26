@@ -126,14 +126,30 @@ export function createOrmCircularSafePlugin(
   return {
     name: "bunest-orm-circular-safe",
     setup(build) {
+      const buildConfig = (
+        build as unknown as {
+          readonly config?: { readonly entrypoints?: readonly unknown[] };
+        }
+      ).config;
+      const isBuildMode = Boolean(
+        buildConfig?.entrypoints && buildConfig.entrypoints.length > 0,
+      );
       build.onLoad({ filter }, async (args) => {
+        const defaultLoader: "ts" | "tsx" = args.path.endsWith(".tsx")
+          ? "tsx"
+          : "ts";
         if (exclude.test(args.path)) {
-          return undefined;
+          if (isBuildMode) return undefined;
+          return {
+            contents: await Bun.file(args.path).text(),
+            loader: defaultLoader,
+          };
         }
         const source = await Bun.file(args.path).text();
         // Fast skip: files without decorators have zero metadata TDZ risk
         if (!source.includes("@")) {
-          return undefined;
+          if (isBuildMode) return undefined;
+          return { contents: source, loader: defaultLoader };
         }
         const transpiler = args.path.endsWith(".tsx")
           ? tsxTranspiler

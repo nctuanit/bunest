@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { resolveClassMacroMembers } from "@bunest/cli";
 import {
   sourceLocationToVscodeRange,
   type BunestWorkspaceIndex,
@@ -9,8 +8,6 @@ import {
  * Provides inline CodeLens actions across Bunest TypeScript files:
  * - HTTP Routes: `▶ Send Request` | `📋 Copy URL`
  * - Derived Repository methods: `🗄 SQL Preview` | `⚡ Convert to @Query`
- * - `@Entity()` classes: `✨ Generate CrudRepository`
- * - Class Macros (`@Data`/`@Value`/`@Builder`/`@WithLogger`...): `✨ N generated members` | `🔧 Expand (Delombok)`
  * - Events / RPC handlers: `🔗 N references`
  * - `*.spec.ts` / `*.test.ts`: `▶ Run bun test`
  */
@@ -122,43 +119,7 @@ export class BunestCodeLensProvider implements vscode.CodeLensProvider {
       }
     }
 
-    // 4. @Entity() classes -> Generate CrudRepository
-    for (const entity of snap.entities) {
-      if (entity.sourceFile !== filePath) continue;
-      const alreadyHasRepo = snap.repositories.some(
-        (r) => r.entityName === entity.className,
-      );
-      const range = sourceLocationToVscodeRange(entity.location);
-      lenses.push(
-        new vscode.CodeLens(range, {
-          title: alreadyHasRepo
-            ? `Table "${entity.tableName}" (${entity.fields.length} cols)`
-            : `✨ Generate CrudRepository for ${entity.className}`,
-          command: "bunest.generateRepository",
-          arguments: [entity],
-        }),
-      );
-    }
-
-    // 5. Class Macros -> Generated Members count + Expand (Delombok)
-    for (const macro of snap.scan.classMacros) {
-      if (macro.sourceFile !== filePath) continue;
-      const members = resolveClassMacroMembers(macro, {
-        bunestConfig: ctx.bunestConfig,
-      });
-      if (members.length === 0) continue;
-      const range = sourceLocationToVscodeRange(macro.location);
-      lenses.push(
-        new vscode.CodeLens(range, {
-          title: `✨ ${members.length} macro member${members.length === 1 ? "" : "s"} (${macro.decorators.map((d) => `@${d}`).join(", ")})`,
-          command: "bunest.delombokClass",
-          arguments: [filePath, macro.className],
-          tooltip: "Click to expand (Delombok) class macros into explicit TypeScript",
-        }),
-      );
-    }
-
-    // 6. Events & RPC reference counts
+    // 4. Events & RPC reference counts
     for (const ev of snap.scan.events) {
       if (ev.location?.filePath !== filePath) continue;
       const count = snap.scan.callSites.filter(

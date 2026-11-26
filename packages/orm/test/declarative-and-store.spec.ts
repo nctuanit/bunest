@@ -16,7 +16,6 @@ import {
   CreateDateColumn,
   CrudRepository,
   DataSource,
-  DeclarativeRepository,
   Entity,
   EntityNotFoundError,
   InjectOrmMigrations,
@@ -24,8 +23,8 @@ import {
   OrmMigrationRunner,
   OrmModule,
   OrmRepository,
-  PrimaryGeneratedColumn,
   Repository,
+  PrimaryGeneratedColumn,
   Transactional,
   UpdateDateColumn,
   compileOrmRepository,
@@ -180,7 +179,7 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
     expect(emailCol?.minLength).toBe(3);
     expect(emailCol?.description).toBe("User email");
 
-    @OrmRepository(DeclUser)
+    @Repository(DeclUser)
     abstract class DeclUserRepository extends CrudRepository<DeclUser, number> {
       abstract findByEmail(email: string): Promise<DeclUser | null>;
       abstract findOneByEmailIgnoreCase(email: string): Promise<DeclUser | null>;
@@ -416,12 +415,12 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
     }
 
     // Strict SQL identifier validation
-    expect(() => OrmRepository("users; DROP TABLE x")).toThrow(/Invalid table name/);
+    expect(() => Repository("users; DROP TABLE x")).toThrow(/Invalid table name/);
     expect(() =>
-      OrmRepository({ table: "ok", idColumn: "id; --" }),
+      Repository({ table: "ok", idColumn: "id; --" }),
     ).toThrow(/Invalid id column name/);
     expect(() =>
-      OrmRepository({ table: "ok", columns: { x: "bad col" } }),
+      Repository({ table: "ok", columns: { x: "bad col" } }),
     ).toThrow(/Invalid column mapping/);
   });
 
@@ -432,7 +431,7 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
       fullName: string;
     }
 
-    @DeclarativeRepository({ table: "accounts" })
+    @Repository({ table: "accounts" })
     abstract class MultiDialectAccountRepo extends CrudRepository<AccountRow, number> {
       abstract findByEmailIgnoreCase(email: string): Promise<AccountRow | null>;
 
@@ -533,7 +532,7 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
     }
 
     @Span("project-repo-class")
-    @OrmRepository(ProjectEntity)
+    @Repository(ProjectEntity)
     abstract class ProjectRepository extends CrudRepository<ProjectEntity, number> {
       abstract findBySlug(slug: string): Promise<ProjectEntity | null>;
 
@@ -564,7 +563,7 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
         @InjectRepository(ProjectRepository)
         public readonly projectsByToken: ProjectRepository,
         @InjectRepository(NoteEntity)
-        public readonly notes: Repository<NoteEntity>,
+        public readonly notes: OrmRepository<NoteEntity>,
       ) {}
     }
 
@@ -592,7 +591,7 @@ describe("@bunest/orm — Declarative Compiled-Once Repository Engine", () => {
         const svc = mod.get(WorkspaceService);
         expect(svc.projects).toBe(svc.projectsByToken);
         expect(svc.projects).toBeInstanceOf(ProjectRepository);
-        expect(svc.notes).toBeInstanceOf(Repository);
+        expect(svc.notes).toBeInstanceOf(OrmRepository);
 
         // Method metadata preserved through compiled wrapper + AOP weaver
         expect(
@@ -905,5 +904,98 @@ describe("@bunest/orm — Bun-native Store Kit Subpaths (/store, /postgres, /mys
     await expect(cases[0]!.run()).rejects.toThrow(
       /sqlExecutorContract\(\) covers postgres and mysql executors/,
     );
+  });
+
+  it("supports @Repository<TEntity, TKey>(Entity) without extends CrudRepository alongside OrmRepository<Entity> class", async () => {
+    @Entity("decorator_only_tasks")
+    class DecoratorTaskEntity {
+      @PrimaryGeneratedColumn()
+      id!: number;
+
+      @Column("text")
+      title!: string;
+
+      @Column("integer", { default: 0 })
+      completed!: number;
+    }
+
+    @Repository<DecoratorTaskEntity, number>(DecoratorTaskEntity)
+    abstract class DecoratorTaskRepository {
+      abstract findByTitle(title: string): Promise<DecoratorTaskEntity | null>;
+      abstract findAllByCompleted(completed: number): Promise<DecoratorTaskEntity[]>;
+      abstract countByCompleted(completed: number): Promise<number>;
+
+      // TypeScript interface merging via typegen provides query/execute/CRUD methods in apps;
+      // here we assert runtime binding directly without extending CrudRepository.
+      searchByTitle(pattern: string): Promise<DecoratorTaskEntity[]> {
+        return (
+          this as unknown as {
+            query<TRow>(sql: string, params?: Record<string, unknown>): Promise<TRow[]>;
+          }
+        ).query<DecoratorTaskEntity>(
+          "SELECT * FROM decorator_only_tasks WHERE title LIKE :pattern ORDER BY id DESC",
+          { pattern },
+        );
+      }
+
+      async markAllCompleted(): Promise<number> {
+        const result = await (
+          this as unknown as {
+            execute(
+              sql: string,
+              params?: Record<string, unknown>,
+            ): Promise<{ affectedRows: number }>;
+          }
+        ).execute(
+          "UPDATE decorator_only_tasks SET completed = :completed WHERE completed = :prev",
+          { completed: 1, prev: 0 },
+        );
+        return result.affectedRows;
+      }
+    }
+
+    @Module({
+      imports: [
+        OrmModule.forRoot({
+          type: "sqlite",
+          database: ":memory:",
+          entities: [DecoratorTaskEntity],
+          synchronize: true,
+        }),
+        OrmModule.forFeature([DecoratorTaskEntity, DecoratorTaskRepository]),
+      ],
+    })
+    class DecoratorRepoModule {}
+
+    const mod = await Test.createTestingModule({
+      imports: [DecoratorRepoModule],
+    }).compile();
+    await mod.init();
+    try {
+      const repo = mod.get(DecoratorTaskRepository) as DecoratorTaskRepository & {
+        save(e: Partial<DecoratorTaskEntity>): Promise<DecoratorTaskEntity>;
+        findById(id: number): Promise<DecoratorTaskEntity | null>;
+        findAll(): Promise<DecoratorTaskEntity[]>;
+      };
+      expect(repo).toBeInstanceOf(DecoratorTaskRepository);
+
+      const t1 = await repo.save({ title: "Alpha task", completed: 0 });
+      const t2 = await repo.save({ title: "Beta task", completed: 0 });
+      expect(t1.id).toBe(1);
+      expect((await repo.findById(t2.id))?.title).toBe("Beta task");
+      expect((await repo.findByTitle("Alpha task"))?.id).toBe(t1.id);
+      expect(await repo.countByCompleted(0)).toBe(2);
+
+      const searched = await repo.searchByTitle("%task%");
+      expect(searched.map((t) => t.title)).toEqual(["Beta task", "Alpha task"]);
+
+      expect(await repo.markAllCompleted()).toBe(2);
+      expect(await repo.findAllByCompleted(1)).toHaveLength(2);
+    } finally {
+      await mod.close();
+    }
+
+    // Calling @Repository() without entity arg AND without registerBunestPlugin() throws actionable error
+    expect(() => Repository()).toThrow(/registerBunestPlugin/);
   });
 });

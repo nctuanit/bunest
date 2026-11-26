@@ -5,7 +5,7 @@ import { Transport } from "./tokens";
  * Base RPC context host (matches `@nestjs/microservices` `BaseRpcContext`).
  */
 export class BaseRpcContext<T = unknown[]> {
-  protected readonly args!: T;
+  protected readonly args: T;
 
   constructor(args: T) {
     Object.defineProperty(this, "args", {

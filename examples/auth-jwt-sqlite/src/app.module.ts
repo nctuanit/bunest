@@ -6,7 +6,6 @@ import {
   Injectable,
   Module,
   Post,
-  Secret,
   UnauthorizedException,
 } from "@bunest/core";
 import type { BunestApplication } from "@bunest/core";
@@ -21,11 +20,10 @@ import {
 import {
   Column,
   CreateDateColumn,
-  CrudRepository,
   Entity,
   OrmMigrationRunner,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Transactional,
   type OrmMigration,
@@ -77,36 +75,35 @@ export const AUTH_SQLITE_MIGRATIONS: readonly OrmMigration[] = [
 @Entity("users")
 export class UserEntity {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ type: "text", unique: true })
-  email!: string;
+  email: string;
 
   @Column({ name: "password_hash", type: "text" })
-  @Secret()
-  passwordHash!: string;
+  passwordHash: string;
 
   @Column({ type: "json" })
-  roles!: string[];
+  roles: string[];
 }
 
 @Entity("tasks")
 export class TaskEntity {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ name: "user_id", type: "integer" })
-  userId!: number;
+  userId: number;
 
   @Column({ type: "text" })
-  title!: string;
+  title: string;
 
   @CreateDateColumn({ name: "created_at" })
-  createdAt!: Date;
+  createdAt: Date;
 }
 
-@OrmRepository(UserEntity)
-export abstract class UserRepository extends CrudRepository<UserEntity, number> {
+@Repository<UserEntity, number>()
+export abstract class UserRepository {
   abstract findByEmail(email: string): Promise<UserEntity | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
 
@@ -118,8 +115,8 @@ export abstract class UserRepository extends CrudRepository<UserEntity, number> 
   }
 }
 
-@OrmRepository(TaskEntity)
-export abstract class TaskRepository extends CrudRepository<TaskEntity, number> {
+@Repository<TaskEntity, number>()
+export abstract class TaskRepository {
   async findAllForUser(userId: number): Promise<TaskEntity[]> {
     return this.query<TaskEntity>(
       "SELECT id, user_id AS userId, title, created_at AS createdAt FROM tasks WHERE user_id = :userId ORDER BY id ASC",

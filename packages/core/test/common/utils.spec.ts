@@ -10,6 +10,8 @@ import {
   deepEqual,
   deepMerge,
   definedOnly,
+  mergeDefined,
+  pickDefined,
   deleteNestedValue,
   describeError,
   describeValue,
@@ -328,8 +330,17 @@ describe("Object & Nested Path Utils", () => {
   it("supports pick, omit, definedOnly, mapValues, filterObject, and isEmptyObject", () => {
     const obj = { a: 1, b: 2, c: undefined as number | undefined };
     expect(pick(obj, ["a", "b"])).toEqual({ a: 1, b: 2 });
+    expect(pickDefined(obj, ["a", "c"])).toEqual({ a: 1 });
     expect(omit(obj, ["c"])).toEqual({ a: 1, b: 2 });
     expect(definedOnly(obj)).toEqual({ a: 1, b: 2 });
+    expect(
+      mergeDefined(
+        { id: 1, title: "Old", completed: false },
+        { title: undefined, completed: true },
+        null,
+        undefined,
+      ),
+    ).toEqual({ id: 1, title: "Old", completed: true });
     expect(mapValues({ a: 2, b: 3 }, (v) => v * 10)).toEqual({ a: 20, b: 30 });
     expect(filterObject({ a: 1, b: 5, c: 2 }, (v) => v >= 2)).toEqual({
       b: 5,

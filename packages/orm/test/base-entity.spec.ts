@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  Builder,
-  Data,
-  FieldNameConstants,
   METADATA_KEYS,
   MetadataRegistry,
   getEntityColumns,
@@ -17,7 +14,7 @@ import {
   DataSource,
   Entity,
   Index,
-  OrmRepository,
+  Repository,
   PrimaryColumn,
   SoftDelete,
   compileOrmRepository,
@@ -89,12 +86,9 @@ describe("@BaseEntity<Key> decorator", () => {
     }
   });
 
-  it("supports UUID string keys, stacked @Entity() in either order, @Data/@Builder/@FieldNameConstants, and CrudRepository", async () => {
+  it("supports UUID string keys, stacked @Entity() in either order, and CrudRepository", async () => {
     @Entity("accounts")
     @BaseEntity<string>({ idStrategy: "uuid" })
-    @Data()
-    @Builder()
-    @FieldNameConstants()
     class Account {
       @Column()
       email!: string;
@@ -105,7 +99,7 @@ describe("@BaseEntity<Key> decorator", () => {
       deletedAt?: Date | null;
     }
 
-    @OrmRepository(Account)
+    @Repository(Account)
     @SoftDelete()
     abstract class AccountRepository extends CrudRepository<Account, string> {
       abstract findByEmail(email: string): Promise<Account | null>;
@@ -123,16 +117,6 @@ describe("@BaseEntity<Key> decorator", () => {
       const meta = ds.getMetadata(Account);
       expect(meta.tableName).toBe("accounts");
       expect(meta.primaryColumns[0]?.generationStrategy).toBe("uuid");
-
-      // Class macros automatically include id, createdAt, updatedAt, deletedAt!
-      const fieldsConst = (Account as any).Fields as Record<string, string>;
-      expect(fieldsConst.id).toBe("id");
-      expect(fieldsConst.createdAt).toBe("createdAt");
-      expect(fieldsConst.updatedAt).toBe("updatedAt");
-      expect(fieldsConst.deletedAt).toBe("deletedAt");
-
-      const built = (Account as any).builder().email("ada@bunest.dev").build() as any;
-      expect(built.getEmail()).toBe("ada@bunest.dev");
 
       const repo = compileOrmRepository(AccountRepository).createInstance(ds);
 

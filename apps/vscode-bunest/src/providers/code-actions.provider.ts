@@ -2,9 +2,7 @@ import { dirname, relative } from "@bunest/core";
 import * as vscode from "vscode";
 import {
   buildAddProviderToModuleEdit,
-  buildCollapseLoggerBoilerplateEdit,
   buildConvertTypeImportEdit,
-  buildDelombokEdit,
   buildSyncDiConstructorEdit,
   buildWrapMongooseRefEdit,
   type MagicEditResult,
@@ -33,7 +31,7 @@ function toWorkspaceEdit(
 
 /**
  * Provides 1-click `magic-string` Quick Fixes for Bunest diagnostics plus
- * Refactor actions (Convert Derived -> `@Query`, Expand/Delombok, Collapse Logger, Auto-Sync DI Constructor).
+ * Refactor actions (Collapse Logger, Auto-Sync DI Constructor).
  */
 export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
   static readonly providedCodeActionKinds = [
@@ -210,7 +208,7 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
         act.isPreferred = true;
         actions.push(act);
       } else if (fixKind === "addRepositoryDecorator") {
-        const decName = "OrmRepository";
+        const decName = "Repository";
         const line = document.lineAt(matched.location.line - 1);
         const indent = /^\s*/.exec(line.text)?.[0] ?? "";
         const wsEdit = new vscode.WorkspaceEdit();
@@ -265,51 +263,12 @@ export class BunestCodeActionsProvider implements vscode.CodeActionProvider {
 
     const cursorLine1 = range.start.line + 1;
 
-    // 2. Refactor: Class Macros -> Expand (Delombok)
+    // 2. Refactor: Auto-Sync DI Constructor
     if (sf) {
-      for (const macro of snap.scan.classMacros) {
-        if (macro.sourceFile !== filePath) continue;
-        const lineDiff = macro.location.line - cursorLine1;
-        if (lineDiff < 0 || lineDiff > macro.decorators.length + 2) continue;
-        const cls = sf.getClass(macro.className);
-        if (!cls) continue;
-
-        const res = buildDelombokEdit({
-          sourceFile: sf,
-          classDecl: cls,
-          macro,
-          bunestConfig: ctx.bunestConfig,
-        });
-        const wsEdit = toWorkspaceEdit(res, document);
-        if (wsEdit) {
-          const act = new vscode.CodeAction(
-            `Bunest: Expand (Delombok) macros on ${macro.className}`,
-            vscode.CodeActionKind.RefactorRewrite,
-          );
-          act.edit = wsEdit;
-          actions.push(act);
-        }
-      }
-
-      // 4. Refactor: Collapse manual Logger -> @WithLogger() & Auto-Sync DI Constructor
       for (const cls of sf.getClasses()) {
         const startLine = sf.getLineAndColumnAtPos(cls.getStart()).line;
         const endLine = sf.getLineAndColumnAtPos(cls.getEnd()).line;
         if (cursorLine1 < startLine || cursorLine1 > endLine) continue;
-
-        const collapseRes = buildCollapseLoggerBoilerplateEdit({
-          sourceFile: sf,
-          classDecl: cls,
-        });
-        const collapseEdit = toWorkspaceEdit(collapseRes, document);
-        if (collapseEdit) {
-          const act = new vscode.CodeAction(
-            `Bunest: Collapse manual Logger to @WithLogger()`,
-            vscode.CodeActionKind.RefactorRewrite,
-          );
-          act.edit = collapseEdit;
-          actions.push(act);
-        }
 
         const isDiClass = cls
           .getDecorators()

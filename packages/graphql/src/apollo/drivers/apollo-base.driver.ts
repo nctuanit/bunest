@@ -66,7 +66,7 @@ function omitKey<T extends Record<string, unknown>, K extends keyof T>(
 export abstract class ApolloBaseDriver<
   T extends Record<string, any> = ApolloDriverConfig,
 > extends AbstractGraphQLDriver<T> {
-  protected apolloServer!: BunestApolloServer<BaseContext>;
+  protected apolloServer: BunestApolloServer<BaseContext>;
 
   constructor(
     @Optional() httpAdapterHost?: HttpAdapterHost,

@@ -1,6 +1,6 @@
 # Bunest ORM (`@bunest/orm`)
 
-Bunest ships a single, unified, zero-dependency, Bun-native ORM and SQL persistence toolkit — **`@bunest/orm`** — combining TypeORM-style entity/relation ergonomics, Spring Data-style compiled-once declarative repositories (`@OrmRepository` + `CrudRepository`), `AsyncLocalStorage` nested `SAVEPOINT` transactions (`@Transactional`), versioned migrations (`OrmMigrationRunner`), SQL Store Kit subpaths (`./store`, `./postgres`, `./mysql`, `./testing`), and multi-database support over Bun native APIs (`bun:sqlite`, `Bun.SQL`, `fetch()`, and `Bun.connect()`).
+Bunest ships a single, unified, zero-dependency, Bun-native ORM and SQL persistence toolkit — **`@bunest/orm`** — combining TypeORM-style entity/relation ergonomics, Spring Data-style compiled-once declarative repositories (`@Repository` + `CrudRepository`), `AsyncLocalStorage` nested `SAVEPOINT` transactions (`@Transactional`), versioned migrations (`OrmMigrationRunner`), SQL Store Kit subpaths (`./store`, `./postgres`, `./mysql`, `./testing`), and multi-database support over Bun native APIs (`bun:sqlite`, `Bun.SQL`, `fetch()`, and `Bun.connect()`).
 
 ```bash
 bun add @bunest/orm
@@ -18,7 +18,7 @@ bun add @bunest/orm
 | `mongodb`, `mongo` | **Bun `Bun.connect()`** (`MongoOrmDriver`, TCP/TLS `OP_MSG` + BSON + SCRAM-SHA-256) or embedded local store | `MongoRepository<Entity>`, `@ObjectIdColumn()`, aggregation pipelines |
 | `mssql`, `oracle`, `sap`, `spanner` | Full SQL dialect compiler + `OrmDriverRegistry` | Exact native DDL, quoting, placeholders, pagination, and upsert SQL |
 
-## Quick Start (Entities, Relations & `Repository<T>`)
+## Quick Start (Entities, Relations & `OrmRepository<T>`)
 
 @@filename(users.module.ts)
 
@@ -36,7 +36,7 @@ import {
   Transactional,
   type Nested,
   type Relation,
-  type Repository,
+  type OrmRepository,
 } from "@bunest/orm";
 
 export class Address {
@@ -75,7 +75,7 @@ export class Post {
 export class UsersService {
   constructor(
     @InjectRepository(User)
-    private readonly users: Repository<User>,
+    private readonly users: OrmRepository<User>,
   ) {}
 
   @Transactional()
@@ -101,9 +101,9 @@ export class UsersService {
 export class UsersModule {}
 ```
 
-## Spring Data-Style Declarative Repositories (`@OrmRepository` + `CrudRepository`)
+## Spring Data-Style Declarative Repositories (`@Repository` + `CrudRepository`)
 
-In addition to `Repository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` includes a compiled-once declarative repository engine working across all SQL dialects (`sqlite`, `postgres`, `mysql`, `mariadb`, `libsql`, `d1`):
+In addition to `OrmRepository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm` includes a compiled-once declarative repository engine working across all SQL dialects (`sqlite`, `postgres`, `mysql`, `mariadb`, `libsql`, `d1`):
 
 @@filename(user.repository.ts)
 
@@ -111,13 +111,13 @@ In addition to `Repository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm`
 import {
   CrudRepository,
   Modifying,
-  OrmRepository,
+  Repository,
   Query,
   SqlParam,
 } from "@bunest/orm";
 import { User } from "./user.entity";
 
-@OrmRepository(User)
+@Repository(User)
 export abstract class UserRepository extends CrudRepository<User, number> {
   abstract findByEmail(email: string): Promise<User | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
@@ -152,7 +152,7 @@ registerQueryOperator({
   }),
 });
 
-// Now usable in any @OrmRepository with longest-suffix matching:
+// Now usable in any @Repository with longest-suffix matching:
 // abstract findAllByBioMatchesAndActiveIsTrue(term: string): Promise<User[]>;
 ```
 
@@ -160,7 +160,7 @@ Additional registry helpers: `unregisterQueryOperator(suffix)`, `getRegisteredQu
 
 ## Implicit Repository Scopes (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`, `@IgnoreScope`)
 
-Attach reusable, cross-cutting query filters and write interceptors directly onto `@OrmRepository` classes:
+Attach reusable, cross-cutting query filters and write interceptors directly onto `@Repository` classes:
 
 | Decorator | Purpose |
 | --- | --- |
@@ -181,7 +181,7 @@ Avoid fetching full rows (`SELECT *`) on hot read endpoints by annotating derive
 import {
   CrudRepository,
   IgnoreScope,
-  OrmRepository,
+  Repository,
   Projection,
   SoftDelete,
   TenantScoped,
@@ -194,7 +194,7 @@ import { DocumentEntity } from "./document.entity";
 
 @SoftDelete()
 @TenantScoped({ resolveTenant: () => getCurrentTenantId() })
-@OrmRepository(DocumentEntity)
+@Repository(DocumentEntity)
 export abstract class DocumentRepository extends CrudRepository<
   DocumentEntity,
   number
@@ -231,14 +231,14 @@ export abstract class DocumentRepository extends CrudRepository<
 
 ## Composable Repository Fragments (`composeRepository`)
 
-Mix reusable repository methods and scopes across any `@OrmRepository` without single-inheritance limits using **`defineRepositoryFragment()`**, **`composeRepository()`**, or **`@UseRepositoryFragments(...)`** — alongside built-in **`withSoftDelete()`** and **`withCursorPagination()`** traits:
+Mix reusable repository methods and scopes across any `@Repository` without single-inheritance limits using **`defineRepositoryFragment()`**, **`composeRepository()`**, or **`@UseRepositoryFragments(...)`** — alongside built-in **`withSoftDelete()`** and **`withCursorPagination()`** traits:
 
 @@filename(invoice.repository.ts)
 
 ```ts
 import {
   CrudRepository,
-  OrmRepository,
+  Repository,
   composeRepository,
   defineRepositoryFragment,
   withCursorPagination,
@@ -258,7 +258,7 @@ const withTableStats = defineRepositoryFragment<{ countRaw(): Promise<number> }>
   }),
 });
 
-@OrmRepository(Invoice)
+@Repository(Invoice)
 export abstract class InvoiceRepository extends composeRepository(
   CrudRepository<Invoice, number>,
   withSoftDelete<Invoice, number>(),
@@ -275,7 +275,7 @@ export abstract class InvoiceRepository extends composeRepository(
 
 | Subpath | Purpose |
 | --- | --- |
-| `@bunest/orm` | Core ORM (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@OrmRepository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, drivers, query builders) |
+| `@bunest/orm` | Core ORM (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, drivers, query builders) |
 | `@bunest/orm/plugin` | Bun TDZ-safe circular-entity preload plugin |
 | `@bunest/orm/store` | Foundational SQL store kit (`runStoreCli`, `SqlExecutor`, `SqlTransaction`, value coercers) |
 | `@bunest/orm/postgres` | PostgreSQL store migration & dialect helpers over native `Bun.SQL` |

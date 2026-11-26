@@ -414,7 +414,7 @@ Import từ `@bunest/orm`.
 | **Embeddables** (4) | `@Embeddable`, `@Embedded`, `@Embeds`, `@Nested` | Ánh xạ value object / nhóm cột lồng nhau trong entity. |
 | **Quan hệ (Relations)** (10) | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@ManyToManyOf`, `@HasOne`, `@HasMany`, `@BelongsTo`, `@JoinColumn`, `@JoinTable` | Khai báo khóa ngoại và bảng trung gian (hỗ trợ cả cú pháp TypeORM lẫn ActiveRecord). |
 | **Lifecycle Hooks** (7) | `@BeforeInsert`, `@AfterInsert`, `@BeforeUpdate`, `@AfterUpdate`, `@BeforeRemove`, `@AfterRemove`, `@AfterLoad` | Chạy logic tự động trước/sau các thao tác ghi hoặc tải bản ghi. |
-| **Declarative Repositories** (5) | `@OrmRepository`, `@DeclarativeRepository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Repository kiểu Spring Data biên dịch 1 lần, DTO projection, default scope và repository fragments. |
+| **Declarative Repositories** (4) | `@Repository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Repository kiểu Spring Data biên dịch 1 lần, DTO projection, default scope và repository fragments. |
 | **Multi-Tenancy & Scopes** (2) | `@TenantScoped`, `@IgnoreScope` | Tự động cô lập dữ liệu theo tenant hoặc bỏ qua scope mặc định ở truy vấn cụ thể. |
 | **Transactions & DI** (5) | `@Transactional`, `@InjectRepository`, `@InjectDataSource`, `@InjectEntityManager`, `@InjectOrmMigrations` | Quản lý giao dịch/savepoint bằng ALS và inject các thành phần ORM. |
 
@@ -429,7 +429,7 @@ import {
   CrudRepository,
   Entity,
   InjectRepository,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
   Transactional,
 } from "@bunest/orm";
@@ -451,7 +451,7 @@ export class Order {
   }
 }
 
-@OrmRepository(Order)
+@Repository(Order)
 export abstract class OrderRepository extends CrudRepository<Order, string> {
   abstract findByStatusOrderByCreatedAtDesc(status: string): Promise<Order[]>;
 }

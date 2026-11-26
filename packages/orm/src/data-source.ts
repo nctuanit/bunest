@@ -16,7 +16,7 @@ import {
 import { OrmMigrationRunner } from "./migration-runner";
 import type { MongoRepository } from "./mongo-repository";
 import type { SelectQueryBuilder } from "./query-builder";
-import type { OrmRepositoryRuntime, Repository } from "./repository";
+import type { OrmRepository, OrmRepositoryRuntime } from "./repository";
 import { SchemaBuilder, type GeneratedSchemaPlan } from "./schema-builder";
 import type {
   EntityTarget,
@@ -281,7 +281,7 @@ export class DataSource {
 
   getRepository<Entity extends object = Record<string, unknown>>(
     target: EntityTarget<Entity>,
-  ): Repository<Entity> {
+  ): OrmRepository<Entity> {
     return this.manager.getRepository<Entity>(target);
   }
 
@@ -292,7 +292,7 @@ export class DataSource {
   }
 
   /**
-   * Instantiates (and caches) a compiled `@OrmRepository(...)` declarative repository
+   * Instantiates (and caches) a compiled `@Repository(...)` declarative repository
    * bound to this `DataSource`.
    */
   getDeclarativeRepository<TRepo extends object>(

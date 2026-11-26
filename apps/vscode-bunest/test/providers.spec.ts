@@ -8,14 +8,12 @@ import {
   resolveClassMacroMembers,
 } from "@bunest/cli";
 import {
-  clearCustomMacros,
   dirname,
   existsSyncPath,
   join,
   mkdirSyncPath,
   readTextSync,
   removePath,
-  resetGlobalMacroDefaults,
   writeTextSync,
 } from "@bunest/core";
 
@@ -319,8 +317,6 @@ afterEach(async () => {
   mockConfigValues = {};
   mockOpenDocuments = [];
   mockPublishedDiagnostics.clear();
-  resetGlobalMacroDefaults();
-  clearCustomMacros();
   const g = globalThis as unknown as Record<symbol, unknown>;
   delete g[GLOBAL_MACRO_DEFAULTS_SYMBOL];
   const macroMap = g[CUSTOM_MACROS_REGISTRY_SYMBOL];
@@ -358,10 +354,10 @@ describe("vscode-bunest providers integration (headless analyzer + customizable 
       `,
       "src/user.repository.ts": `
         import { UserEntity } from "./user.entity";
-        function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+        function Repository(_e?: any): ClassDecorator { return () => {}; }
         abstract class CrudRepository<T, K = number> {}
 
-        @OrmRepository(UserEntity)
+        @Repository(UserEntity)
         export abstract class UserRepository extends CrudRepository<UserEntity, number> {
           abstract findByEmail(email: string): Promise<UserEntity | null>;
         }
@@ -386,7 +382,7 @@ describe("vscode-bunest providers integration (headless analyzer + customizable 
     expect(macroMembers.some((m) => m.name === "equals")).toBe(true);
   });
 
-  it("loads bunest.config.ts and surfaces custom macros/presets in Hover, CodeLens, and Delombok code actions", async () => {
+  it("loads bunest.config.ts and surfaces custom macros/presets in Hover without offering Delombok code actions", async () => {
     const modelSource = `function DomainEntity(): ClassDecorator { return () => {}; }
 function Auditable(): ClassDecorator { return () => {}; }
 
@@ -446,17 +442,14 @@ export class AccountModel {
     expect(hover!.contents.value).toContain("readonly createdAt: Date");
     expect(hover!.contents.value).toContain("toBuilder()");
 
-    // 2. CodeLens counts preset + custom macro members
+    // 2. Class macro CodeLens and Delombok CodeAction are omitted
     const codeLensProvider = new BunestCodeLensProvider(index);
     const lenses = codeLensProvider.provideCodeLenses(
       doc as unknown as import("vscode").TextDocument,
     ) as unknown as MockCodeLens[];
     const macroLens = lenses.find((l) => l.command?.command === "bunest.delombokClass");
-    expect(macroLens).toBeDefined();
-    expect(macroLens!.command!.title).toContain("@DomainEntity");
-    expect(macroLens!.command!.title).toContain("@Auditable");
+    expect(macroLens).toBeUndefined();
 
-    // 3. Delombok CodeAction expands both preset and custom macro
     const codeActionsProvider = new BunestCodeActionsProvider(index);
     const actions = codeActionsProvider.provideCodeActions(
       doc as unknown as import("vscode").TextDocument,
@@ -464,20 +457,14 @@ export class AccountModel {
       { diagnostics: [] } as unknown as import("vscode").CodeActionContext,
     ) as unknown as MockCodeAction[];
     const delombokAct = actions.find((a) => a.title.includes("Delombok"));
-    expect(delombokAct).toBeDefined();
-    const editText = delombokAct!.edit!.edits[0]!.text;
-    expect(editText).not.toContain("@DomainEntity()");
-    expect(editText).not.toContain("@Auditable()");
-    expect(editText).toContain("static readonly KEYS =");
-    expect(editText).toContain("touchAudit(actor: string): this {");
-    expect(editText).toContain("readonly createdAt: Date;");
+    expect(delombokAct).toBeUndefined();
 
     index.dispose();
   });
 
   it("surfaces custom ORM query operators, @SoftDelete, @TenantScoped, @Projection, findPageBy*, and findCursorBy* in completions and SQL Hover", async () => {
     const repoSource = `import { ArticleEntity } from "./article.entity";
-function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+function Repository(_e?: any): ClassDecorator { return () => {}; }
 function SoftDelete(): ClassDecorator { return () => {}; }
 function TenantScoped(): ClassDecorator { return () => {}; }
 function IgnoreScope(..._names: string[]): MethodDecorator { return () => {}; }
@@ -488,7 +475,7 @@ interface Page<T> { items: T[]; total: number; }
 interface CursorPageable { cursor?: number; limit: number; }
 interface CursorPage<T> { items: T[]; nextCursor: number | null; hasMore: boolean; }
 
-@OrmRepository(ArticleEntity)
+@Repository(ArticleEntity)
 @SoftDelete()
 @TenantScoped()
 export abstract class ArticleRepository extends CrudRepository<ArticleEntity, number> {
@@ -853,7 +840,7 @@ export class ItemEntity {
     index.dispose();
   });
 
-  it("supports @BaseEntity<Key>() in live zero-save typegen, Hover, Delombok, repository autocomplete, and SQL preview", async () => {
+  it("supports @BaseEntity<Key>() in live zero-save typegen, Hover, repository autocomplete, and SQL preview", async () => {
     mockConfigValues = { "typegen.debounceMs": 15, "typegen.live": true };
 
     const entitySrc = `function BaseEntity<Key = number>(_opts?: any): ClassDecorator { return () => {}; }
@@ -866,10 +853,10 @@ export class InvoiceEntity {
 }
 `;
     const repoSrc = `import { InvoiceEntity } from "./invoice.entity";
-function OrmRepository(_e?: any): ClassDecorator { return () => {}; }
+function Repository(_e?: any): ClassDecorator { return () => {}; }
 abstract class CrudRepository<T, K = number> {}
 
-@OrmRepository(InvoiceEntity)
+@Repository(InvoiceEntity)
 export abstract class InvoiceRepository extends CrudRepository<InvoiceEntity, string> {
   abstract findById(id: string): Promise<InvoiceEntity | null>;
   abstract findAllByCreatedAtGreaterThan(since: Date): Promise<InvoiceEntity[]>;
@@ -941,7 +928,7 @@ export abstract class InvoiceRepository extends CrudRepository<InvoiceEntity, st
       'SELECT * FROM "invoices" WHERE "created_at" > ?',
     );
 
-    // 5b. Delombok expands @BaseEntity<string> into explicit ORM columns
+    // 5b. Delombok CodeAction is not offered on @BaseEntity<string>
     const codeActionsProvider = new BunestCodeActionsProvider(index);
     const delombokActions = codeActionsProvider.provideCodeActions(
       createMockTextDocument(entityPath, entitySrc) as unknown as import("vscode").TextDocument,
@@ -949,15 +936,7 @@ export abstract class InvoiceRepository extends CrudRepository<InvoiceEntity, st
       { diagnostics: [] } as unknown as import("vscode").CodeActionContext,
     ) as unknown as MockCodeAction[];
     const delombokAct = delombokActions.find((a) => a.title.includes("Delombok"));
-    expect(delombokAct).toBeDefined();
-    const expanded = delombokAct!.edit!.edits[0]!.text;
-    expect(expanded).not.toContain("@BaseEntity");
-    expect(expanded).toContain("@Entity()");
-    expect(expanded).toContain('@PrimaryGeneratedColumn("uuid")');
-    expect(expanded).toContain("id!: string;");
-    expect(expanded).toContain("@CreateDateColumn()");
-    expect(expanded).toContain("@UpdateDateColumn()");
-    expect(expanded).toContain("@DeleteDateColumn()");
+    expect(delombokAct).toBeUndefined();
 
     // 6. Changing `<string>` -> `<number>` without saving live-updates `.bunest/types/bunest.d.ts`!
     const liveEdited = entitySrc.replace(
@@ -1060,11 +1039,11 @@ export abstract class InvoiceRepository extends CrudRepository<InvoiceEntity, st
   it("surfaces ▶ Run Query CodeLens and clickable Hover action on @Query() repository methods", async () => {
     const repoSource = [
       'import { UserEntity } from "./user.entity";',
-      "function OrmRepository(_e?: any): ClassDecorator { return () => {}; }",
+      "function Repository(_e?: any): ClassDecorator { return () => {}; }",
       "function Query(_sql: string): MethodDecorator { return () => {}; }",
       "abstract class CrudRepository<T, K = number> {}",
       "",
-      "@OrmRepository(UserEntity)",
+      "@Repository(UserEntity)",
       "export abstract class UserRepository extends CrudRepository<UserEntity, number> {",
       '  @Query("SELECT COUNT(*) AS count FROM users")',
       "  abstract countUsers(): Promise<{ count: number }[]>;",

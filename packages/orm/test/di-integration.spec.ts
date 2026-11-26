@@ -11,6 +11,7 @@ import {
   InjectRepository,
   OrmModule,
   PrimaryGeneratedColumn,
+  OrmRepository,
   Repository,
   Transactional,
   entityRef,
@@ -36,13 +37,13 @@ describe("@bunest/orm — Bunest DI Module & @Transactional AOP", () => {
     class AccountsService {
       constructor(
         @InjectRepository(DiAccount)
-        public readonly byClass: Repository<DiAccount>,
+        public readonly byClass: OrmRepository<DiAccount>,
         @InjectRepository("DiAccount")
-        public readonly byName: Repository<DiAccount>,
+        public readonly byName: OrmRepository<DiAccount>,
         @InjectRepository(DiAccountRef)
-        public readonly byRef: Repository<DiAccount>,
+        public readonly byRef: OrmRepository<DiAccount>,
         @InjectRepository(() => DiAccount)
-        public readonly byThunk: Repository<DiAccount>,
+        public readonly byThunk: OrmRepository<DiAccount>,
         @InjectDataSource()
         public readonly dataSource: DataSource,
         @InjectEntityManager()
@@ -76,7 +77,7 @@ describe("@bunest/orm — Bunest DI Module & @Transactional AOP", () => {
       const svc = mod.get(AccountsService);
 
       // All 4 injection styles resolve the EXACT SAME Repository instance!
-      expect(svc.byClass).toBeInstanceOf(Repository);
+      expect(svc.byClass).toBeInstanceOf(OrmRepository);
       expect(svc.byName).toBe(svc.byClass);
       expect(svc.byRef).toBe(svc.byClass);
       expect(svc.byThunk).toBe(svc.byClass);
@@ -118,9 +119,9 @@ describe("@bunest/orm — Bunest DI Module & @Transactional AOP", () => {
     class DualDbService {
       constructor(
         @InjectRepository(DiAccount, "primary")
-        public readonly primaryRepo: Repository<DiAccount>,
+        public readonly primaryRepo: OrmRepository<DiAccount>,
         @InjectRepository(DiAccount, "analytics")
-        public readonly analyticsRepo: Repository<DiAccount>,
+        public readonly analyticsRepo: OrmRepository<DiAccount>,
         @InjectDataSource("primary")
         public readonly primaryDs: DataSource,
         @InjectDataSource("analytics")

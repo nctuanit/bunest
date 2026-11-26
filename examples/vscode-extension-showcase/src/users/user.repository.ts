@@ -1,8 +1,8 @@
-import { CrudRepository, OrmRepository } from "@bunest/orm";
-import { UserEntity } from "./user.entity";
+import { Repository } from "@bunest/orm";
+import type { UserEntity } from "./user.entity";
 
-@OrmRepository(UserEntity)
-export abstract class UserRepository extends CrudRepository<UserEntity, number> {
+@Repository<UserEntity, number>()
+export abstract class UserRepository {
   abstract findByEmail(email: string): Promise<UserEntity | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
   abstract findAllByAge(age: number): Promise<UserEntity[]>;

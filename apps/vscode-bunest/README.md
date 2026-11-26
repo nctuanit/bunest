@@ -13,6 +13,6 @@ First-class IDE experience for the **Bunest** framework on VS Code, Cursor, and 
 - **`vscode-bunest`** reuses the exact `@bunest/cli` AST & emitter engine in-memory for **zero-save live DX**:
   - **Live Zero-Save Typegen (`bunest.typegen.live`)**: Continuously updates `.bunest/types/bunest.d.ts` from unsaved `.ts`/`.tsx`/`.env*` editor buffers (~120ms debounce) with syntax validation so autocomplete & types update as you type — no `Cmd+S` required (and reverts cleanly if you close without saving).
   - **Declarative Repository IntelliSense**: Chained derived query autocomplete, multi-dialect SQL Hover/CodeLens, `Cmd+Click` method segment → Entity `@Column`.
-  - **Class Macros IDE UX**: Hover & CodeLens generated members tables, undoable `WorkspaceEdit` Delombok/Collapse/Sync refactors.
+  - **Class Macros IDE UX**: Hover generated members tables, undoable `WorkspaceEdit` Collapse/Sync refactors.
   - **Cross-Jump Navigation**: Events, RPC, Mongoose Models, Config/`.env` (with automatic `[REDACTED]` secret masking), CQRS, DI Tokens, `@Delegate`.
   - **19 Live Diagnostics + Quick Fixes**, **Inline HTTP Request Runner**, **4 Sidebar Explorers**, and **Interactive DI Module Graph Webview**.

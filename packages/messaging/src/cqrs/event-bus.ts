@@ -147,7 +147,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
   private readonly inFlightSagas = new Set<Promise<void>>();
   private readonly logger = new Logger("EventBus");
   private readonly defaultPublisher: DefaultPubSub<EventBase>;
-  private _publisher!: IEventPublisher<EventBase>;
+  private _publisher: IEventPublisher<EventBase>;
   private readonly bridgeListener: (event: EventBase) => Promise<void>;
   private readonly bridgeUnsubscribe: SubscriptionHandle;
 

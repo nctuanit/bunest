@@ -134,11 +134,6 @@ export function serializeEntity<T = Record<string, unknown>>(
 }
 
 /**
- * Alias for `serializeEntity()`.
- */
-export const toPlainObject = serializeEntity;
-
-/**
  * Attaches non-enumerable entity metadata and a cycle-safe `toJSON()` method to
  * a hydrated entity instance so native `JSON.stringify(entity)` and HTTP `Response.json(entity)`
  * work out-of-the-box on bidirectional / cyclic entity graphs without mutating own enumerable keys.

@@ -89,16 +89,16 @@ export async function generateRepositoryCommand(
     baseDir = resolve(cwd, options.dir ?? sourceRoot, parsed.subDir);
     fileName = `${parsed.kebab}.repository.ts`;
     content = [
-      'import { CrudRepository, Entity, OrmRepository, PrimaryGeneratedColumn } from "@bunest/orm";',
+      'import { Entity, PrimaryGeneratedColumn, Repository } from "@bunest/orm";',
       "",
       "@Entity()",
       `export class ${entityName} {`,
       "  @PrimaryGeneratedColumn()",
-      "  id!: number;",
+      "  id: number;",
       "}",
       "",
-      `@OrmRepository(${entityName})`,
-      `export abstract class ${repoClass} extends CrudRepository<${entityName}, number> {`,
+      `@Repository<${entityName}, number>()`,
+      `export abstract class ${repoClass} {`,
       `  // Add derived finders here, e.g.: abstract findById(id: number): Promise<${entityName} | null>;`,
       "}",
       "",

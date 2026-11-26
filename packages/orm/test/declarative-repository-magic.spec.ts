@@ -16,16 +16,13 @@ import {
   DeleteDateColumn,
   Entity,
   EntityNotFoundError,
-  IgnoreScope,
   ORM_CUSTOM_QUERY_OPERATORS_SYMBOL,
   OrmModule,
-  OrmRepository,
+  Repository,
   PrimaryGeneratedColumn,
-  Projection,
   RepositoryScope,
   SoftDelete,
   TenantScoped,
-  UseRepositoryFragments,
   clearRegisteredQueryOperators,
   compileOrmRepository,
   composeRepository,
@@ -233,7 +230,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       active!: boolean;
     }
 
-    @OrmRepository(Profile)
+    @Repository(Profile)
     abstract class ProfileRepository extends CrudRepository<Profile, number> {
       abstract findByBioMatches(q: string): Promise<Profile | null>;
       abstract findAllByTagsJsonContainsAndActiveIsTrue(
@@ -367,7 +364,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
 
     const fixedNow = "2026-06-01T12:00:00.000Z";
 
-    @OrmRepository(Note)
+    @Repository(Note)
     @SoftDelete({ now: () => fixedNow })
     abstract class NoteRepository extends CrudRepository<Note, number> {
       abstract findByTitle(title: string): Promise<Note | null>;
@@ -385,22 +382,16 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       abstract restoreById(id: number): Promise<void>;
       abstract hardDeleteById(id: number): Promise<void>;
 
-      // Concrete method delegating to CrudRepository with @IgnoreScope("softDelete")
-      @IgnoreScope("softDelete")
+      // Concrete methods delegating to CrudRepository with runWithIgnoredScopes(...)
       findWithDeletedById(id: number): Promise<Note | null> {
-        return this.findById(id);
+        return runWithIgnoredScopes(["softDelete"], () => this.findById(id));
       }
 
-      @IgnoreScope()
       adminFindAll(): Promise<Note[]> {
-        return this.findAll();
+        return runWithIgnoredScopes(undefined, () => this.findAll());
       }
 
-      // Decorated derived stub ignoring softDelete
-      @IgnoreScope("softDelete")
-      findAllByPinned(_pinned: boolean): Promise<Note[]> {
-        return [] as unknown as Promise<Note[]>;
-      }
+      abstract findAllByPinned(pinned: boolean): Promise<Note[]>;
     }
 
     // Verify exact UPDATE SQL for deleteById via recording driver
@@ -465,8 +456,10 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       // @IgnoreScope() sees all rows
       expect(await repo.adminFindAll()).toHaveLength(3);
 
-      // Decorated derived stub with @IgnoreScope("softDelete") sees both pinned notes
-      const allPinned = await repo.findAllByPinned(true);
+      // Derived query with runWithIgnoredScopes(["softDelete"]) sees both pinned notes
+      const allPinned = await runWithIgnoredScopes(["softDelete"], () =>
+        repo.findAllByPinned(true),
+      );
       expect(allPinned.map((n) => n.title).sort()).toEqual([
         "Roadmap",
         "Secret",
@@ -532,7 +525,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
     let currentTenant: string | undefined = "acme";
     let onlyOpenEnabled = false;
 
-    @OrmRepository(Invoice)
+    @Repository(Invoice)
     @SoftDelete()
     @TenantScoped({ resolveTenant: () => currentTenant })
     @RepositoryScope<Invoice>({
@@ -554,19 +547,16 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       abstract restoreById(id: number): Promise<void>;
       abstract hardDeleteById(id: number): Promise<void>;
 
-      @IgnoreScope("softDelete")
       findTenantWithDeleted(): Promise<Invoice[]> {
-        return this.findAll();
+        return runWithIgnoredScopes(["softDelete"], () => this.findAll());
       }
 
-      @IgnoreScope("tenant")
       findActiveAcrossAllTenants(): Promise<Invoice[]> {
-        return this.findAll();
+        return runWithIgnoredScopes(["tenant"], () => this.findAll());
       }
 
-      @IgnoreScope()
       adminDumpAll(): Promise<Invoice[]> {
-        return this.findAll();
+        return runWithIgnoredScopes(undefined, () => this.findAll());
       }
     }
 
@@ -666,11 +656,11 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       label!: string;
     }
 
-    @OrmRepository(AmbientItem)
+    @Repository(AmbientItem)
     @TenantScoped()
     abstract class AmbientTenantRepo extends CrudRepository<AmbientItem, number> {}
 
-    @OrmRepository(AmbientItem)
+    @Repository(AmbientItem)
     @TenantScoped({ required: false })
     abstract class OptionalTenantRepo extends CrudRepository<AmbientItem, number> {}
 
@@ -717,194 +707,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
   });
 
   // ==========================================================================
-  // 4. Selective Column Projection (@Projection)
-  // ==========================================================================
-
-  it("compiles @Projection(...fields) and @Projection([...fields]) into selective SELECT SQL and returns plain projected objects", async () => {
-    @Entity("magic_accounts")
-    class Account {
-      @PrimaryGeneratedColumn()
-      id!: number;
-
-      @Column({ name: "email_addr" })
-      email!: string;
-
-      @Column()
-      displayName!: string;
-
-      @Column()
-      passwordHash!: string;
-
-      @Column({ type: "boolean", default: true })
-      active!: boolean;
-    }
-
-    interface AccountSummary {
-      id: number;
-      email: string;
-      displayName: string;
-    }
-
-    @OrmRepository(Account)
-    abstract class AccountRepository extends CrudRepository<Account, number> {
-      @Projection("id", "email", "displayName")
-      findByEmail(_email: string): Promise<AccountSummary | null> {
-        return null as unknown as Promise<AccountSummary | null>;
-      }
-
-      @Projection(["id", "email"])
-      findAllByActiveOrderByIdAsc(
-        _active: boolean,
-      ): Promise<Array<{ id: number; email: string }>> {
-        return [] as unknown as Promise<Array<{ id: number; email: string }>>;
-      }
-
-      @Projection("id", "email", "active")
-      findOneByDisplayName(
-        _name: string,
-      ): Promise<{ id: number; email: string; active: boolean } | null> {
-        return null as unknown as Promise<{
-          id: number;
-          email: string;
-          active: boolean;
-        } | null>;
-      }
-
-      @Projection("id", "email")
-      findPageByActive(
-        _active: boolean,
-        _pageable: Pageable,
-      ): Promise<Page<{ id: number; email: string }>> {
-        return {} as unknown as Promise<Page<{ id: number; email: string }>>;
-      }
-
-      // Projection omits cursorField ("id") intentionally to verify cursor still works!
-      @Projection("email", "displayName")
-      findCursorByActive(
-        _active: boolean,
-        _pageable: CursorPageable,
-      ): Promise<CursorPage<{ email: string; displayName: string }>> {
-        return {} as unknown as Promise<
-          CursorPage<{ email: string; displayName: string }>
-        >;
-      }
-    }
-
-    // Verify exact SELECT column SQL via recording driver
-    const rec = createRecordingDriver("sqlite");
-    const recRepo = compileOrmRepository(AccountRepository).createInstance({
-      driver: rec.driver,
-      dialect: "sqlite",
-    });
-    await recRepo.findByEmail("ada@bunest.dev");
-    await recRepo.findAllByActiveOrderByIdAsc(true);
-    expect(rec.calls[0]!.sql).toBe(
-      'SELECT "id", "email_addr", "display_name" FROM "magic_accounts" WHERE "email_addr" = ? LIMIT 1',
-    );
-    expect(rec.calls[1]!.sql).toBe(
-      'SELECT "id", "email_addr" FROM "magic_accounts" WHERE "active" = ? ORDER BY "id" ASC',
-    );
-
-    const ds = new DataSource({
-      type: "sqlite",
-      database: ":memory:",
-      entities: [Account],
-      synchronize: true,
-    });
-    await ds.initialize();
-
-    try {
-      const repo = ds.getDeclarativeRepository(AccountRepository);
-      await repo.saveMany([
-        {
-          email: "ada@bunest.dev",
-          displayName: "Ada Lovelace",
-          passwordHash: "secret-1",
-          active: true,
-        },
-        {
-          email: "grace@bunest.dev",
-          displayName: "Grace Hopper",
-          passwordHash: "secret-2",
-          active: true,
-        },
-        {
-          email: "linus@bunest.dev",
-          displayName: "Linus Torvalds",
-          passwordHash: "secret-3",
-          active: false,
-        },
-      ]);
-
-      const summary = await repo.findByEmail("ada@bunest.dev");
-      expect(summary).toEqual({
-        id: 1,
-        email: "ada@bunest.dev",
-        displayName: "Ada Lovelace",
-      });
-      // Must be plain projected object (NOT Account class instance, NO passwordHash)
-      expect(Object.getPrototypeOf(summary)).toBe(Object.prototype);
-      expect(summary instanceof Account).toBe(false);
-      expect("passwordHash" in (summary as object)).toBe(false);
-
-      const activeList = await repo.findAllByActiveOrderByIdAsc(true);
-      expect(activeList).toEqual([
-        { id: 1, email: "ada@bunest.dev" },
-        { id: 2, email: "grace@bunest.dev" },
-      ]);
-      expect(Object.keys(activeList[0]!)).toEqual(["id", "email"]);
-
-      const oneDecoded = await repo.findOneByDisplayName("Grace Hopper");
-      expect(oneDecoded).toEqual({
-        id: 2,
-        email: "grace@bunest.dev",
-        active: true,
-      });
-
-      // Projected Page<T>
-      const page = await repo.findPageByActive(true, {
-        page: 1,
-        size: 1,
-        sort: [{ property: "id", direction: "ASC" }],
-      });
-      expect(page).toEqual({
-        items: [{ id: 1, email: "ada@bunest.dev" }],
-        total: 2,
-        page: 1,
-        size: 1,
-        totalPages: 2,
-        hasNext: true,
-        hasPrevious: false,
-      });
-      expect(Object.getPrototypeOf(page.items[0])).toBe(Object.prototype);
-
-      // Projected CursorPage<T> even when cursorField ("id") is omitted from @Projection
-      const c1 = await repo.findCursorByActive(true, { limit: 1 });
-      expect(c1).toEqual({
-        items: [{ email: "ada@bunest.dev", displayName: "Ada Lovelace" }],
-        nextCursor: 1,
-        hasMore: true,
-        limit: 1,
-      });
-      expect("id" in c1.items[0]!).toBe(false);
-
-      const c2 = await repo.findCursorByActive(true, {
-        limit: 1,
-        cursor: c1.nextCursor!,
-      });
-      expect(c2).toEqual({
-        items: [{ email: "grace@bunest.dev", displayName: "Grace Hopper" }],
-        nextCursor: null,
-        hasMore: false,
-        limit: 1,
-      });
-    } finally {
-      await ds.destroy();
-    }
-  });
-
-  // ==========================================================================
-  // 5. First-Class Offset Pagination (Page<T>) & Keyset Cursor Pagination (CursorPage<T>)
+  // 4. First-Class Offset Pagination (Page<T>) & Keyset Cursor Pagination (CursorPage<T>)
   // ==========================================================================
 
   it("supports Page<T> and CursorPage<T> pagination via findPageBy*, findCursorBy*, trailing Pageable/CursorPageable args, and type guards", async () => {
@@ -953,7 +756,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       deletedAt!: Date | null;
     }
 
-    @OrmRepository(Article)
+    @Repository(Article)
     @SoftDelete()
     abstract class ArticleRepository extends CrudRepository<Article, number> {
       abstract findPageByTopicOrderByViewsDesc(
@@ -1166,7 +969,7 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       },
     });
 
-    @OrmRepository(Task)
+    @Repository(Task)
     abstract class BaseTaskRepository extends CrudRepository<Task, number> {
       abstract findAllByDone(done: boolean): Promise<Task[]>;
     }
@@ -1262,49 +1065,6 @@ describe("@bunest/orm — Declarative Repository Magic Extensions", () => {
       expect(await repo.count()).toBe(2);
     } finally {
       await moduleRef.close();
-    }
-
-    // Also verify @UseRepositoryFragments(...) class decorator syntax
-    @OrmRepository(Task)
-    @UseRepositoryFragments(
-      withSoftDelete<Task, number>(),
-      withCursorPagination<Task>({ defaultLimit: 1 }),
-    )
-    abstract class DecoratedTaskRepo extends CrudRepository<Task, number> {
-      abstract softDeleteById(id: number): Promise<void>;
-      abstract restoreById(id: number): Promise<void>;
-      abstract hardDeleteById(id: number): Promise<void>;
-      abstract findCursorPage(
-        pageable?: Partial<CursorPageable>,
-      ): Promise<CursorPage<Task>>;
-    }
-
-    const ds = new DataSource({
-      type: "sqlite",
-      database: ":memory:",
-      entities: [Task],
-      synchronize: true,
-    });
-    await ds.initialize();
-    try {
-      const repo = ds.getDeclarativeRepository(DecoratedTaskRepo);
-      const [a, b] = await repo.saveMany([
-        { slug: "d-1", title: "D1", done: false },
-        { slug: "d-2", title: "D2", done: false },
-      ]);
-      const p1 = await repo.findCursorPage();
-      expect(p1.items.map((t) => t.slug)).toEqual(["d-1"]);
-      expect(p1.hasMore).toBe(true);
-      await repo.softDeleteById(a!.id);
-      expect((await repo.findCursorPage()).items.map((t) => t.slug)).toEqual([
-        "d-2",
-      ]);
-      await repo.restoreById(a!.id);
-      expect(await repo.count()).toBe(2);
-      await repo.hardDeleteById(b!.id);
-      expect(await repo.count()).toBe(1);
-    } finally {
-      await ds.destroy();
     }
   });
 });

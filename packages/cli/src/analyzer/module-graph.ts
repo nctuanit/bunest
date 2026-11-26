@@ -323,10 +323,7 @@ export function buildStaticModuleGraph(
       }
 
       const isController = decNames.has("Controller");
-      const isRepository =
-        decNames.has("OrmRepository") ||
-        decNames.has("DeclarativeRepository") ||
-        decNames.has("Repository");
+      const isRepository = decNames.has("Repository");
       const isInjectable =
         decNames.has("Injectable") ||
         decNames.has("CommandHandler") ||

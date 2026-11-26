@@ -158,7 +158,7 @@ export async function runCheckCommand(
               current.slice(lineStart);
             fixedCount++;
           } else if (kind === "addRepositoryDecorator") {
-            const decName = "OrmRepository";
+            const decName = "Repository";
             const lineStart =
               current.lastIndexOf("\n", Math.max(0, d.location.start - 1)) + 1;
             const indent = /^[ \t]*/.exec(current.slice(lineStart))?.[0] ?? "";

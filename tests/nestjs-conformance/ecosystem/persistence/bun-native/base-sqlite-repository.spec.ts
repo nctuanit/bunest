@@ -6,7 +6,7 @@ import {
   EntityNotFoundError,
   IsNull,
   PrimaryGeneratedColumn,
-  type Repository,
+  type OrmRepository,
 } from "../../../../../packages/orm/src";
 import { describeConformance } from "../../../_helpers/index";
 
@@ -48,7 +48,7 @@ describeConformance(
 
     const setup = async (): Promise<{
       ds: DataSource;
-      repo: Repository<Product>;
+      repo: OrmRepository<Product>;
     }> => {
       const ds = new DataSource({
         type: "sqlite",

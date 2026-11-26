@@ -575,6 +575,57 @@ export function definedOnly<T extends object>(obj: T): Partial<T> {
 }
 
 /**
+ * Picks only the specified own `keys` from `obj` whose value is not `undefined`.
+ * Prototype-pollution keys (`__proto__`, `constructor`, `prototype`) are ignored.
+ */
+export function pickDefined<T extends object, K extends keyof T>(
+  obj: T,
+  keys: readonly K[],
+): Partial<Pick<T, K>> {
+  const out: Record<PropertyKey, unknown> = {};
+  for (const key of keys) {
+    if (isTypeof(key, "string") && include(FORBIDDEN_PATH_KEYS, key)) {
+      continue;
+    }
+    if (hasOwn(obj, key)) {
+      const value = (obj as Record<PropertyKey, unknown>)[key];
+      if (not(isUndefined(value))) {
+        out[key] = value;
+      }
+    }
+  }
+  return out as Partial<Pick<T, K>>;
+}
+
+/**
+ * Shallow-merges `base` with one or more partial patch objects, skipping any
+ * keys whose value is `undefined` (and prototype-pollution keys).
+ *
+ * Ideal for applying partial update DTOs onto an existing entity:
+ * `mergeDefined(existing, dto)` instead of repetitive `...(dto.x !== undefined ? { x: dto.x } : {})`.
+ */
+export function mergeDefined<T extends object>(
+  base: T,
+  ...patches: readonly (Partial<T> | undefined | null)[]
+): T {
+  const out: Record<string, unknown> = {
+    ...(base as Record<string, unknown>),
+  };
+  for (const patch of patches) {
+    if (isNullish(patch)) {
+      continue;
+    }
+    for (const [key, value] of Object.entries(patch)) {
+      if (include(FORBIDDEN_PATH_KEYS, key) || isUndefined(value)) {
+        continue;
+      }
+      out[key] = value;
+    }
+  }
+  return out as T;
+}
+
+/**
  * Creates a new object with the same own enumerable keys and values transformed by `fn`.
  */
 export function mapValues<T extends Record<string, unknown>, R>(

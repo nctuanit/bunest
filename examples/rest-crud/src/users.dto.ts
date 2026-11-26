@@ -14,11 +14,11 @@ export class CreateUserDto {
   @ApiProperty({ example: "Ada Lovelace", minLength: 2 })
   @IsString()
   @MinLength(2)
-  name!: string;
+  name: string;
 
   @ApiProperty({ example: "ada@bunest.dev", format: "email" })
   @IsEmail()
-  email!: string;
+  email: string;
 
   @ApiPropertyOptional({ example: 36, minimum: 13, maximum: 150 })
   @IsOptional()

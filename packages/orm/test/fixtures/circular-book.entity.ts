@@ -3,12 +3,11 @@ import {
   Entity,
   ManyToOne,
   PrimaryGeneratedColumn,
-  type Relation,
 } from "../../src/index";
 import { CircularAuthor } from "./circular-author.entity";
 
 /**
- * Value-imports `CircularAuthor` directly AND annotates `author!: Relation<CircularAuthor>`.
+ * Value-imports `CircularAuthor` directly AND annotates `author!: CircularAuthor`.
  * Zero TDZ ReferenceError in ESM/Bun!
  */
 @Entity("circular_books")
@@ -26,5 +25,5 @@ export class CircularBook {
     cascade: true,
     onDelete: "CASCADE",
   })
-  author?: Relation<CircularAuthor>;
+  author?: CircularAuthor;
 }
