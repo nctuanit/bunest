@@ -1314,7 +1314,40 @@ export class BunestApplication extends BunestApplicationContext {
     );
     this.hasListened = true;
     this.container.getHttpAdapterHost().listening = true;
+    await this.emitDevReadySignal(info);
     return info;
+  }
+
+  private async emitDevReadySignal(info: ListeningServerInfo): Promise<void> {
+    if (typeof Bun === "undefined") {
+      return;
+    }
+    const readyFile = Bun.env.BUNEST_DEV_READY_FILE;
+    const sessionId = Bun.env.BUNEST_DEV_SESSION_ID;
+    if (!readyFile || !sessionId) {
+      return;
+    }
+    try {
+      const normalizedUrl = info.url.endsWith("/")
+        ? info.url.slice(0, -1)
+        : info.url;
+      const payload = `${JSON.stringify({
+        sessionId,
+        pid: process.pid,
+        url: normalizedUrl,
+        port: info.port,
+        timestamp: Date.now(),
+      })}\n`;
+      const file = Bun.file(readyFile);
+      const existing = (await file.exists()) ? await file.text() : "";
+      const prefix =
+        existing.length > 0 && !existing.endsWith("\n")
+          ? `${existing}\n`
+          : existing;
+      await Bun.write(readyFile, `${prefix}${payload}`);
+    } catch {
+      // Best-effort dev ready signal: never disrupt listen() if the signal file is unavailable.
+    }
   }
 
   protected override prepareClose(): void {

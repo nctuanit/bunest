@@ -1,4 +1,11 @@
-import { existsSyncPath, relative, resolve, statPath } from "@bunest/core";
+import {
+  existsSyncPath,
+  join,
+  relative,
+  removePath,
+  resolve,
+  statPath,
+} from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveEntryFile,
@@ -8,9 +15,16 @@ import type {
   CliIO,
   DevServerOptions,
   DevServerResult,
-  SpawnFn,
 } from "../types";
 import { resolveTypegenConfig } from "./typegen";
+
+export interface DevReadyEvent {
+  readonly sessionId: string;
+  readonly pid: number;
+  readonly url: string;
+  readonly port: number;
+  readonly timestamp: number;
+}
 
 export interface ResolvedDevPort {
   readonly port: number;
@@ -104,12 +118,12 @@ export function formatDevStartupInfo(params: {
         `[dev] Port ${params.fellBackFromPort} is in use; using http://localhost:${params.port}`,
       );
     } else {
-      lines.push(`[dev] Listening URL: http://localhost:${params.port}`);
+      lines.push(`[dev] Target URL (pending bind): http://localhost:${params.port}`);
     }
   }
 
   if (params.routes && params.routes.length > 0) {
-    lines.push(`[dev] Discovered routes (${params.routes.length}):`);
+    lines.push(`[dev] Discovered routes [static] (${params.routes.length}):`);
     for (const route of params.routes) {
       const relFile = relative(params.cwd, route.sourceFile).replace(/\\/g, "/");
       const loc =
@@ -130,17 +144,33 @@ export function formatDevStartupInfo(params: {
   return lines;
 }
 
-const defaultSpawn: SpawnFn = async (cmd, options) => {
-  const proc = Bun.spawn(cmd, {
-    cwd: options.cwd,
-    env: options.env,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exitCode = await proc.exited;
-  return { exitCode };
-};
+function parseDevReadyLine(
+  line: string,
+  expectedSessionId: string,
+): DevReadyEvent | null {
+  try {
+    const parsed = JSON.parse(line) as Partial<DevReadyEvent>;
+    if (
+      parsed.sessionId !== expectedSessionId ||
+      typeof parsed.url !== "string" ||
+      parsed.url.length === 0 ||
+      typeof parsed.port !== "number" ||
+      !Number.isFinite(parsed.port)
+    ) {
+      return null;
+    }
+    return {
+      sessionId: parsed.sessionId,
+      pid: typeof parsed.pid === "number" ? parsed.pid : 0,
+      url: parsed.url,
+      port: parsed.port,
+      timestamp:
+        typeof parsed.timestamp === "number" ? parsed.timestamp : Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Starts the Bunest development server in Bun's native watch mode
@@ -222,25 +252,36 @@ export async function runDevServer(
       if (probed.fellBack) {
         fellBackFromPort = probed.preferredPort;
       }
+    } else if (candidatePort === 0) {
+      resolvedPort = 0;
     }
   }
 
   const command = ["bun", "--watch", entry];
-  const env: Record<string, string | undefined> = {
+  const spawnCmd = [process.execPath, "--watch", entry];
+  const baseEnv: Record<string, string | undefined> = {
     ...Bun.env,
     ...(resolvedPort !== undefined ? { PORT: String(resolvedPort) } : {}),
   };
 
   if (io && !options.silent) {
-    const portMsg = resolvedPort !== undefined ? ` (PORT=${resolvedPort})` : "";
-    io.stdout(`Starting Bunest dev server: bun --watch ${entry}${portMsg}`);
+    const targetPortMsg =
+      resolvedPort !== undefined
+        ? resolvedPort === 0
+          ? " (target port: ephemeral)"
+          : fellBackFromPort !== undefined
+            ? ` (target port: ${resolvedPort}; port ${fellBackFromPort} in use)`
+            : ` (target port: ${resolvedPort})`
+        : "";
+    io.stdout(`Starting Bunest dev server: bun --watch ${entry}${targetPortMsg}`);
     const sampleHttpFiles = await discoverSampleHttpFiles(
       cwd,
       resolvedSourceRoot,
     );
     const startupLines = formatDevStartupInfo({
-      port: resolvedPort,
-      fellBackFromPort,
+      // Only include target URL in custom/mocked spawn mode; real dev servers
+      // announce the actual bound URL after the child confirms listen().
+      ...(options.spawn ? { port: resolvedPort, fellBackFromPort } : {}),
       routes: watcher?.initialScan?.routes,
       sampleHttpFiles,
       cwd,
@@ -250,18 +291,113 @@ export async function runDevServer(
     }
   }
 
-  const spawn = options.spawn ?? defaultSpawn;
-  const spawnCmd = [process.execPath, "--watch", entry];
+  if (options.spawn) {
+    try {
+      const { exitCode } = await options.spawn(spawnCmd, { cwd, env: baseEnv });
+      return {
+        exitCode,
+        command,
+        entry,
+        port: resolvedPort,
+        ...(watcher ? { typegen: watcher.initialResult } : {}),
+      };
+    } finally {
+      await watcher?.close();
+    }
+  }
+
+  const sessionId = crypto.randomUUID();
+  const tmpDir = Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+  const readyFilePath = join(tmpDir, `bunest-dev-ready-${sessionId}.jsonl`);
+  const env: Record<string, string | undefined> = {
+    ...baseEnv,
+    BUNEST_DEV_SESSION_ID: sessionId,
+    BUNEST_DEV_READY_FILE: readyFilePath,
+  };
+
+  let consumedLines = 0;
+  let bootCount = 0;
+  let lastBoundPort = resolvedPort;
+  let polling = false;
+
+  const pollReadyFile = async (): Promise<void> => {
+    if (polling) return;
+    polling = true;
+    try {
+      const file = Bun.file(readyFilePath);
+      if (!(await file.exists())) {
+        return;
+      }
+      const text = await file.text();
+      if (!text) return;
+      const lines = text.split("\n");
+      const completeCount = lines.length - 1;
+      for (let i = consumedLines; i < completeCount; i++) {
+        consumedLines = i + 1;
+        const raw = lines[i]?.trim();
+        if (!raw) continue;
+        const event = parseDevReadyLine(raw, sessionId);
+        if (!event) continue;
+        bootCount += 1;
+        lastBoundPort = event.port;
+        if (io && !options.silent) {
+          io.stdout(`[dev] Ready [boot #${bootCount}]: ${event.url}`);
+        }
+      }
+    } catch {
+      // Ignore transient read errors while child is writing or exiting
+    } finally {
+      polling = false;
+    }
+  };
+
+  const proc = Bun.spawn(spawnCmd, {
+    cwd,
+    env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+
+  const terminateChild = (signal?: NodeJS.Signals) => {
+    try {
+      if (signal) {
+        proc.kill(signal);
+      } else {
+        proc.kill();
+      }
+    } catch {
+      // Child already exited
+    }
+  };
+
+  const onSigInt = () => terminateChild("SIGINT");
+  const onSigTerm = () => terminateChild("SIGTERM");
+  const onExit = () => terminateChild();
+  process.on("SIGINT", onSigInt);
+  process.on("SIGTERM", onSigTerm);
+  process.on("exit", onExit);
+
+  const pollTimer = setInterval(() => {
+    void pollReadyFile();
+  }, 25);
+
   try {
-    const { exitCode } = await spawn(spawnCmd, { cwd, env });
+    const exitCode = await proc.exited;
+    await pollReadyFile();
     return {
       exitCode,
       command,
       entry,
-      port: resolvedPort,
+      port: lastBoundPort,
       ...(watcher ? { typegen: watcher.initialResult } : {}),
     };
   } finally {
+    clearInterval(pollTimer);
+    process.off("SIGINT", onSigInt);
+    process.off("SIGTERM", onSigTerm);
+    process.off("exit", onExit);
+    await removePath(readyFilePath, { force: true }).catch(() => {});
     await watcher?.close();
   }
 }
