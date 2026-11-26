@@ -14,9 +14,14 @@ import { formatTypegenSummary, writeTypegenOutput } from "./emitter";
 import { BunestTypegenScanner } from "./scanner";
 import type {
   TypegenResult,
+  TypegenScanResult,
   TypegenWatcherHandle,
   TypegenWatcherOptions,
 } from "./types";
+
+export interface TypegenWatcherHandleWithScan extends TypegenWatcherHandle {
+  readonly initialScan?: TypegenScanResult;
+}
 
 const IGNORED_WATCH_SEGMENTS = new Set([
   "node_modules",
@@ -81,7 +86,7 @@ function shouldTriggerTypegen(
 export async function startTypegenWatcher(
   options: TypegenWatcherOptions = {},
   io?: CliIO,
-): Promise<TypegenWatcherHandle> {
+): Promise<TypegenWatcherHandleWithScan> {
   const cwd = resolve(options.cwd ?? io?.cwd ?? process.cwd());
   const bunestConfig =
     options.bunestConfig ??
@@ -122,6 +127,8 @@ export async function startTypegenWatcher(
     bunestConfig,
   });
 
+  let latestScan: TypegenScanResult | undefined;
+
   const runRegenerate = async (
     changedPaths?: readonly string[],
   ): Promise<TypegenResult> => {
@@ -144,6 +151,7 @@ export async function startTypegenWatcher(
       outputPath,
       includeGlobalNamespace,
     });
+    latestScan = scan;
     return await writeTypegenOutput(scan, {
       cwd,
       outputPath,
@@ -155,6 +163,7 @@ export async function startTypegenWatcher(
 
   // Initial pass before returning so IDE types are ready immediately on dev start
   const initialResult = await runRegenerate();
+  const initialScan = latestScan;
   if (io && !options.silent) {
     const verb = initialResult.changed ? "Generated" : "Up-to-date";
     io.stdout(
@@ -272,6 +281,7 @@ export async function startTypegenWatcher(
 
   return {
     initialResult,
+    initialScan,
     outputPath,
     regenerate: runRegenerate,
     close: async () => {

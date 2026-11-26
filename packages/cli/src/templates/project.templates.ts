@@ -1,3 +1,4 @@
+import type { ProjectPreset } from "../types";
 import type { PlannedFile } from "../utils/fs-writer";
 
 export interface ProjectTemplateOptions {
@@ -5,6 +6,7 @@ export interface ProjectTemplateOptions {
   readonly spec?: boolean;
   readonly specFileSuffix?: string;
   readonly minimal?: boolean;
+  readonly preset?: ProjectPreset;
 }
 
 /**
@@ -20,6 +22,7 @@ export function buildProjectTemplateFiles(
   const specSuffix =
     (options.specFileSuffix ?? "spec").replace(/^\.+/, "") || "spec";
   const minimal = options.minimal ?? false;
+  const preset: ProjectPreset = options.preset ?? "default";
 
   const packageJson = {
     name: projectName,
@@ -74,7 +77,68 @@ export function buildProjectTemplateFiles(
     exclude: ["node_modules", "dist"],
   };
 
-  const mainTs = `import { BunestFactory, ValidationPipe } from "@bunest/core";
+  const mainTs =
+    preset === "rest-sqlite"
+      ? `import { BunestFactory, ValidationPipe } from "@bunest/core";
+import { AppModule } from "./app.module";
+
+function isPortInUseError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === "EADDRINUSE") return true;
+  const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+  return (
+    message.includes("EADDRINUSE") ||
+    lower.includes("address already in use") ||
+    (lower.includes("port") && lower.includes("in use"))
+  );
+}
+
+async function bootstrap(): Promise<void> {
+  const app = await BunestFactory.create(AppModule);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+  app.enableShutdownHooks();
+
+  const pinnedPort = Bun.env.PORT !== undefined && Bun.env.PORT.trim() !== "";
+  const preferredPort = pinnedPort ? Number(Bun.env.PORT) : 3000;
+  const maxAttempts = pinnedPort ? 1 : 20;
+
+  let info: Awaited<ReturnType<typeof app.listen>> | undefined;
+  let lastErr: unknown;
+  for (let offset = 0; offset < maxAttempts; offset++) {
+    const candidate = preferredPort + offset;
+    try {
+      info = await app.listen(candidate);
+      if (offset > 0) {
+        console.log(
+          \`Port \${preferredPort} is in use; fell back to port \${candidate}.\`,
+        );
+      }
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (!isPortInUseError(err) || offset === maxAttempts - 1) {
+        throw err;
+      }
+    }
+  }
+
+  if (!info) {
+    throw lastErr ?? new Error("Failed to bind Bunest HTTP server port.");
+  }
+
+  console.log(\`Bunest server listening at \${info.url}\`);
+}
+
+await bootstrap();
+`
+      : `import { BunestFactory, ValidationPipe } from "@bunest/core";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
@@ -123,7 +187,21 @@ export class AppController {
 }
 `;
 
-  const appModuleTs = `import { Module } from "@bunest/core";
+  const appModuleTs =
+    preset === "rest-sqlite"
+      ? `import { Module } from "@bunest/core";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
+import { DatabaseModule } from "./database/database.module";
+
+@Module({
+  imports: [DatabaseModule],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+`
+      : `import { Module } from "@bunest/core";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 
@@ -132,6 +210,109 @@ import { AppService } from "./app.service";
   providers: [AppService],
 })
 export class AppModule {}
+`;
+
+  const sqliteSeedTs = `import type { Database } from "bun:sqlite";
+
+export interface SampleItemRow {
+  readonly id: number;
+  readonly name: string;
+  readonly description: string | null;
+  readonly created_at: string;
+}
+
+export function seedSqliteDatabase(db: Database): void {
+  db.exec(\`
+    CREATE TABLE IF NOT EXISTS sample_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  \`);
+
+  const insert = db.query(
+    "INSERT OR IGNORE INTO sample_items (name, description) VALUES (?1, ?2)",
+  );
+  insert.run("Starter Item", "Seeded by Bunest rest-sqlite preset");
+  insert.run("Second Item", "Stored in project-local SQLite database");
+}
+`;
+
+  const sqliteServiceTs = `import { Database } from "bun:sqlite";
+import {
+  Injectable,
+  dirname,
+  ensureDir,
+  join,
+  resolve,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@bunest/core";
+import { seedSqliteDatabase } from "./seed";
+
+export function resolveSqliteDatabasePath(): string {
+  const configured = Bun.env.DATABASE_PATH?.trim();
+  if (configured) {
+    return configured === ":memory:" ? ":memory:" : resolve(configured);
+  }
+  if (Bun.env.NODE_ENV === "test") {
+    return ":memory:";
+  }
+  return join(process.cwd(), ".bunest", "data", "dev.sqlite");
+}
+
+@Injectable()
+export class SqliteService implements OnModuleInit, OnModuleDestroy {
+  private db: Database | undefined;
+  private readonly databasePath = resolveSqliteDatabasePath();
+
+  async onModuleInit(): Promise<void> {
+    if (this.db) return;
+    if (this.databasePath !== ":memory:") {
+      await ensureDir(dirname(this.databasePath));
+    }
+    this.db = new Database(this.databasePath, { create: true });
+    this.db.exec("PRAGMA journal_mode = WAL;");
+    seedSqliteDatabase(this.db);
+  }
+
+  getDatabase(): Database {
+    if (!this.db) {
+      if (this.databasePath === ":memory:") {
+        this.db = new Database(":memory:", { create: true });
+        seedSqliteDatabase(this.db);
+      } else {
+        throw new Error(
+          "SqliteService has not been initialized yet. Ensure DatabaseModule is imported and initialized.",
+        );
+      }
+    }
+    return this.db;
+  }
+
+  getDatabasePath(): string {
+    return this.databasePath;
+  }
+
+  onModuleDestroy(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = undefined;
+    }
+  }
+}
+`;
+
+  const databaseModuleTs = `import { Global, Module } from "@bunest/core";
+import { SqliteService } from "./sqlite.service";
+
+@Global()
+@Module({
+  providers: [SqliteService],
+  exports: [SqliteService],
+})
+export class DatabaseModule {}
 `;
 
   const appSpecTs = `import { describe, expect, it } from "bun:test";
@@ -306,6 +487,23 @@ await bootstrap();
       content: appModuleTs,
     },
   ];
+
+  if (preset === "rest-sqlite") {
+    files.push(
+      {
+        relativePath: "src/database/seed.ts",
+        content: sqliteSeedTs,
+      },
+      {
+        relativePath: "src/database/sqlite.service.ts",
+        content: sqliteServiceTs,
+      },
+      {
+        relativePath: "src/database/database.module.ts",
+        content: databaseModuleTs,
+      },
+    );
+  }
 
   if (spec) {
     files.push({

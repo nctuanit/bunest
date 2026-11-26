@@ -296,17 +296,17 @@ function insertIntoModuleMetadata(
   );
 }
 
-/**
- * Finds the nearest parent `*.module.ts` and declares the generated symbol
- * in its `@Module({ imports / controllers / providers })` metadata.
- */
-export async function declareInNearestModule(params: {
+export interface DeclareInNearestModuleParams {
   readonly schematic: SchematicType;
   readonly parsedName: ParsedSchematicName;
   readonly generatedFilePath: string;
   readonly rootBoundary: string;
   readonly explicitModule?: string;
-}): Promise<string | undefined> {
+}
+
+async function computeModuleDeclaration(
+  params: DeclareInNearestModuleParams,
+): Promise<{ readonly modulePath: string; readonly updated: string } | undefined> {
   const target = getModuleDeclarationTarget(params.schematic, params.parsedName);
   if (!target) return undefined;
 
@@ -328,8 +328,32 @@ export async function declareInNearestModule(params: {
   );
 
   if (updated !== original) {
-    writeTextSync(modulePath, updated);
-    return modulePath;
+    return { modulePath, updated };
   }
   return undefined;
+}
+
+/**
+ * Read-only preview of `declareInNearestModule`: returns the `*.module.ts` path
+ * that would be updated without modifying any file on disk.
+ */
+export async function planModuleDeclaration(
+  params: DeclareInNearestModuleParams,
+): Promise<string | undefined> {
+  const planned = await computeModuleDeclaration(params);
+  return planned?.modulePath;
+}
+
+/**
+ * Finds the nearest parent `*.module.ts` and declares the generated symbol
+ * in its `@Module({ imports / controllers / providers })` metadata.
+ */
+export async function declareInNearestModule(
+  params: DeclareInNearestModuleParams,
+): Promise<string | undefined> {
+  const planned = await computeModuleDeclaration(params);
+  if (!planned) return undefined;
+
+  writeTextSync(planned.modulePath, planned.updated);
+  return planned.modulePath;
 }

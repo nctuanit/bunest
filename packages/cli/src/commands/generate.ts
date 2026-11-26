@@ -17,6 +17,7 @@ import { writePlannedFiles } from "../utils/fs-writer";
 import {
   declareInNearestModule,
   getModuleDeclarationTarget,
+  planModuleDeclaration,
 } from "../utils/module-declarator";
 import {
   updateMonorepoConfig,
@@ -219,6 +220,7 @@ export async function generateSchematic(
     packageName: appMeta?.packageName,
     type: options.type,
     crud: options.crud,
+    withScenario: options.withScenario,
     rootDir: options.rootDir,
     prefix: options.prefix,
   });
@@ -276,22 +278,43 @@ export async function generateSchematic(
     });
   }
 
-  if (!dryRun && !options.skipImport) {
+  const plannedUpdates: string[] = [];
+
+  if (!options.skipImport) {
     const declTarget = getModuleDeclarationTarget(schematic, parsedName);
     if (declTarget) {
       const primaryFile = files.find((f) =>
         f.relativePath.endsWith(declTarget.fileSuffix),
       );
       if (primaryFile) {
-        const updatedModule = await declareInNearestModule({
-          schematic,
-          parsedName,
-          generatedFilePath: primaryFile.path,
-          rootBoundary: cwd,
-          explicitModule: options.module,
-        });
-        if (updatedModule && io) {
-          io.stdout(`  UPDATE ${updatedModule}`);
+        if (dryRun) {
+          const plannedModule = await planModuleDeclaration({
+            schematic,
+            parsedName,
+            generatedFilePath: primaryFile.path,
+            rootBoundary: cwd,
+            explicitModule: options.module,
+          });
+          if (plannedModule) {
+            plannedUpdates.push(plannedModule);
+            if (io) {
+              io.stdout(`  DRY-RUN UPDATE ${plannedModule}`);
+            }
+          }
+        } else {
+          const updatedModule = await declareInNearestModule({
+            schematic,
+            parsedName,
+            generatedFilePath: primaryFile.path,
+            rootBoundary: cwd,
+            explicitModule: options.module,
+          });
+          if (updatedModule) {
+            plannedUpdates.push(updatedModule);
+            if (io) {
+              io.stdout(`  UPDATE ${updatedModule}`);
+            }
+          }
         }
       }
     }
@@ -308,8 +331,12 @@ export async function generateSchematic(
       io.stdout(`  ${tag} ${file.relativePath}`);
     }
     if (dryRun) {
+      const updateSummary =
+        plannedUpdates.length > 0
+          ? ` and ${plannedUpdates.length} module update(s)`
+          : "";
       io.stdout(
-        `[dry-run] Planned ${files.length} file(s) for ${schematic} "${parsedName.kebab}".`,
+        `[dry-run] Planned ${files.length} file(s)${updateSummary} for ${schematic} "${parsedName.kebab}".`,
       );
     }
   }
@@ -319,6 +346,7 @@ export async function generateSchematic(
     name: parsedName.kebab,
     targetDir,
     files,
+    ...(plannedUpdates.length > 0 ? { plannedUpdates } : {}),
     dryRun,
   };
 }

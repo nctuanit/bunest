@@ -10,12 +10,19 @@ import type {
   CliIO,
   CreateProjectOptions,
   CreateProjectResult,
+  ProjectPreset,
   SpawnFn,
 } from "../types";
 import { writePlannedFiles } from "../utils/fs-writer";
 import { validateProjectName } from "../utils/naming";
 
 const VALID_PACKAGE_MANAGERS = new Set(["bun", "npm", "yarn", "pnpm"]);
+const VALID_PRESETS = new Set<ProjectPreset>(["default", "rest-sqlite"]);
+const EXTRA_BOOTSTRAP_FILES = ["bunest.json", "preload.ts", "bunfig.toml"] as const;
+
+function formatShellPath(value: string): string {
+  return /\s/.test(value) ? `"${value}"` : value;
+}
 
 const defaultSpawn: SpawnFn = async (cmd, options) => {
   const proc = Bun.spawn(cmd, {
@@ -53,6 +60,7 @@ export async function createProject(
   const skipGit = options.skipGit ?? true;
   const strict = options.strict ?? true;
   const packageManager = options.packageManager ?? "bun";
+  const preset: ProjectPreset = options.preset ?? "default";
   const force = options.force ?? false;
 
   if (!VALID_PACKAGE_MANAGERS.has(packageManager)) {
@@ -61,7 +69,16 @@ export async function createProject(
     );
   }
 
-  const plannedFiles = buildProjectTemplateFiles(projectName, { strict });
+  if (!VALID_PRESETS.has(preset)) {
+    throw new Error(
+      `Invalid preset "${String(preset)}". Expected one of: default, rest-sqlite.`,
+    );
+  }
+
+  const plannedFiles = buildProjectTemplateFiles(projectName, {
+    strict,
+    preset,
+  });
   const files = await writePlannedFiles({
     baseDir: targetDir,
     files: plannedFiles,
@@ -120,6 +137,11 @@ export async function createProject(
             : "CREATE";
       io.stdout(`  ${tag} ${file.relativePath}`);
     }
+    if (dryRun) {
+      for (const extraFile of EXTRA_BOOTSTRAP_FILES) {
+        io.stdout(`  DRY-RUN ${extraFile}`);
+      }
+    }
   }
 
   const spawn = options.spawn ?? defaultSpawn;
@@ -154,19 +176,25 @@ export async function createProject(
   if (io) {
     if (dryRun) {
       io.stdout(
-        `\n[dry-run] Planned ${files.length} file(s) for "${projectName}" in ${targetDir}.`,
+        `\n[dry-run] Planned ${files.length + EXTRA_BOOTSTRAP_FILES.length} file(s) for "${projectName}" in ${targetDir}.`,
       );
     } else {
+      const cdTarget = options.dir
+        ? options.dir
+        : isCurrentDir
+          ? targetDir
+          : projectName;
+      const quotedCdTarget = formatShellPath(cdTarget);
       io.stdout(
         `\nCreated Bunest project "${projectName}" in ${targetDir} (${files.length} files).`,
       );
       if (skipInstall) {
         io.stdout(
-          `Next steps:\n  cd ${projectName}\n  ${packageManager} install\n  ${packageManager} run dev`,
+          `Next steps:\n  cd ${quotedCdTarget}\n  ${packageManager} install\n  ${packageManager} run dev`,
         );
       } else {
         io.stdout(
-          `Next steps:\n  cd ${projectName}\n  ${packageManager} run dev`,
+          `Next steps:\n  cd ${quotedCdTarget}\n  ${packageManager} run dev`,
         );
       }
     }
@@ -175,6 +203,7 @@ export async function createProject(
   return {
     projectName,
     targetDir,
+    preset,
     files,
     installed,
     gitInitialized,

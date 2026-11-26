@@ -1,9 +1,9 @@
-import { resolve, statPath } from "@bunest/core";
+import { existsSyncPath, relative, resolve, statPath } from "@bunest/core";
 import {
   loadCliConfiguration,
   resolveEntryFile,
 } from "../config/configuration.loader";
-import { startTypegenWatcher, type TypegenWatcherHandle } from "../typegen";
+import { startTypegenWatcher, type ExtractedRouteEntry } from "../typegen";
 import type {
   CliIO,
   DevServerOptions,
@@ -11,6 +11,124 @@ import type {
   SpawnFn,
 } from "../types";
 import { resolveTypegenConfig } from "./typegen";
+
+export interface ResolvedDevPort {
+  readonly port: number;
+  readonly preferredPort: number;
+  readonly fellBack: boolean;
+}
+
+/**
+ * Probes `preferredPort` on loopback and falls back to the next available port
+ * (or an OS-assigned ephemeral port) when the candidate port is already in use.
+ */
+export async function resolveAvailableDevPort(
+  preferredPort: number,
+  maxAttempts = 20,
+): Promise<ResolvedDevPort> {
+  const attempts = Math.max(1, maxAttempts);
+  for (let offset = 0; offset < attempts; offset++) {
+    const candidate = preferredPort + offset;
+    if (candidate > 65535) break;
+    try {
+      const server = Bun.serve({
+        port: candidate,
+        hostname: "127.0.0.1",
+        fetch: () => new Response(),
+      });
+      const boundPort = server.port ?? candidate;
+      await server.stop(true);
+      return {
+        port: boundPort,
+        preferredPort,
+        fellBack: offset > 0 || boundPort !== preferredPort,
+      };
+    } catch {
+      // Port is occupied; try next candidate
+    }
+  }
+
+  const ephemeral = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response(),
+  });
+  const boundPort = ephemeral.port ?? preferredPort;
+  await ephemeral.stop(true);
+  return {
+    port: boundPort,
+    preferredPort,
+    fellBack: boundPort !== preferredPort,
+  };
+}
+
+/**
+ * Discovers `*.http` sample request files under `sourceRoot` and `requests/`.
+ */
+export async function discoverSampleHttpFiles(
+  cwd: string,
+  sourceRoot = "src",
+): Promise<string[]> {
+  const found = new Set<string>();
+  const dirsToScan = [resolve(cwd, sourceRoot), resolve(cwd, "requests")];
+  const glob = new Bun.Glob("**/*.http");
+
+  for (const dir of dirsToScan) {
+    if (!existsSyncPath(dir)) continue;
+    try {
+      for await (const match of glob.scan({ cwd: dir, onlyFiles: true })) {
+        const abs = resolve(dir, match);
+        const rel = relative(cwd, abs).replace(/\\/g, "/");
+        found.add(rel);
+      }
+    } catch {
+      // Ignore unreadable directories
+    }
+  }
+
+  return [...found].sort();
+}
+
+export function formatDevStartupInfo(params: {
+  readonly port?: number;
+  readonly fellBackFromPort?: number;
+  readonly routes?: readonly ExtractedRouteEntry[];
+  readonly sampleHttpFiles?: readonly string[];
+  readonly cwd: string;
+}): string[] {
+  const lines: string[] = [];
+
+  if (params.port !== undefined) {
+    if (params.fellBackFromPort !== undefined) {
+      lines.push(
+        `[dev] Port ${params.fellBackFromPort} is in use; using http://localhost:${params.port}`,
+      );
+    } else {
+      lines.push(`[dev] Listening URL: http://localhost:${params.port}`);
+    }
+  }
+
+  if (params.routes && params.routes.length > 0) {
+    lines.push(`[dev] Discovered routes (${params.routes.length}):`);
+    for (const route of params.routes) {
+      const relFile = relative(params.cwd, route.sourceFile).replace(/\\/g, "/");
+      const loc =
+        route.location?.line !== undefined ? `:${route.location.line}` : "";
+      lines.push(
+        `  ${route.method.toUpperCase()} ${route.path} -> ${relFile}${loc}`,
+      );
+    }
+  }
+
+  if (params.sampleHttpFiles && params.sampleHttpFiles.length > 0) {
+    lines.push(`[dev] Sample requests (${params.sampleHttpFiles.length}):`);
+    for (const httpFile of params.sampleHttpFiles) {
+      lines.push(`  ${httpFile}`);
+    }
+  }
+
+  return lines;
+}
 
 const defaultSpawn: SpawnFn = async (cmd, options) => {
   const proc = Bun.spawn(cmd, {
@@ -34,18 +152,19 @@ export async function runDevServer(
   io?: CliIO,
 ): Promise<DevServerResult> {
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
-  const port = options.port;
+  const explicitPort = options.port;
 
   if (
-    port !== undefined &&
-    (!Number.isInteger(port) || port < 0 || port > 65535)
+    explicitPort !== undefined &&
+    (!Number.isInteger(explicitPort) || explicitPort < 0 || explicitPort > 65535)
   ) {
     throw new Error(
-      `Invalid port "${String(port)}": expected an integer between 0 and 65535.`,
+      `Invalid port "${String(explicitPort)}": expected an integer between 0 and 65535.`,
     );
   }
 
   const { config } = await loadCliConfiguration(cwd, options.config);
+  const resolvedSourceRoot = options.sourceRoot ?? config.sourceRoot ?? "src";
   const entry = options.entry
     ? resolve(cwd, options.entry)
     : await resolveEntryFile(cwd, config, {
@@ -69,12 +188,12 @@ export async function runDevServer(
   const typegenEnabled =
     options.typegen !== undefined ? options.typegen : configTypegenEnabled;
 
-  let watcher: TypegenWatcherHandle | undefined;
+  let watcher: Awaited<ReturnType<typeof startTypegenWatcher>> | undefined;
   if (typegenEnabled) {
     watcher = await startTypegenWatcher(
       {
         cwd,
-        sourceRoot: options.sourceRoot ?? config.sourceRoot ?? "src",
+        sourceRoot: resolvedSourceRoot,
         outDir: options.typegenOutDir ?? typegenCfg.outDir ?? ".bunest/types",
         fileName: typegenCfg.fileName ?? "bunest.d.ts",
         tsconfigPath:
@@ -89,15 +208,46 @@ export async function runDevServer(
     );
   }
 
+  let resolvedPort = explicitPort;
+  let fellBackFromPort: number | undefined;
+  if (resolvedPort === undefined && !options.spawn) {
+    const candidatePort = Number(Bun.env.PORT ?? 3000);
+    if (
+      Number.isInteger(candidatePort) &&
+      candidatePort > 0 &&
+      candidatePort <= 65535
+    ) {
+      const probed = await resolveAvailableDevPort(candidatePort);
+      resolvedPort = probed.port;
+      if (probed.fellBack) {
+        fellBackFromPort = probed.preferredPort;
+      }
+    }
+  }
+
   const command = ["bun", "--watch", entry];
   const env: Record<string, string | undefined> = {
     ...Bun.env,
-    ...(port !== undefined ? { PORT: String(port) } : {}),
+    ...(resolvedPort !== undefined ? { PORT: String(resolvedPort) } : {}),
   };
 
   if (io && !options.silent) {
-    const portMsg = port !== undefined ? ` (PORT=${port})` : "";
+    const portMsg = resolvedPort !== undefined ? ` (PORT=${resolvedPort})` : "";
     io.stdout(`Starting Bunest dev server: bun --watch ${entry}${portMsg}`);
+    const sampleHttpFiles = await discoverSampleHttpFiles(
+      cwd,
+      resolvedSourceRoot,
+    );
+    const startupLines = formatDevStartupInfo({
+      port: resolvedPort,
+      fellBackFromPort,
+      routes: watcher?.initialScan?.routes,
+      sampleHttpFiles,
+      cwd,
+    });
+    for (const line of startupLines) {
+      io.stdout(line);
+    }
   }
 
   const spawn = options.spawn ?? defaultSpawn;
@@ -108,7 +258,7 @@ export async function runDevServer(
       exitCode,
       command,
       entry,
-      port,
+      port: resolvedPort,
       ...(watcher ? { typegen: watcher.initialResult } : {}),
     };
   } finally {

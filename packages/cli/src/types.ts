@@ -58,10 +58,13 @@ export type SpawnFn = (
   options: { cwd: string; env?: Record<string, string | undefined> },
 ) => Promise<SpawnResult>;
 
+export type ProjectPreset = "default" | "rest-sqlite";
+
 export interface CreateProjectOptions {
   readonly projectName: string;
   readonly dir?: string;
   readonly cwd?: string;
+  readonly preset?: ProjectPreset;
   readonly skipInstall?: boolean;
   readonly skipGit?: boolean;
   readonly strict?: boolean;
@@ -74,6 +77,7 @@ export interface CreateProjectOptions {
 export interface CreateProjectResult {
   readonly projectName: string;
   readonly targetDir: string;
+  readonly preset?: ProjectPreset;
   readonly files: readonly GeneratedFile[];
   readonly installed: boolean;
   readonly gitInitialized?: boolean;
@@ -111,6 +115,7 @@ export interface GenerateSchematicOptions {
   readonly cwd?: string;
   readonly flat?: boolean;
   readonly spec?: boolean;
+  readonly withScenario?: boolean;
   readonly dryRun?: boolean;
   readonly force?: boolean;
 }
@@ -120,6 +125,7 @@ export interface GenerateSchematicResult {
   readonly name: string;
   readonly targetDir: string;
   readonly files: readonly GeneratedFile[];
+  readonly plannedUpdates?: readonly string[];
   readonly dryRun: boolean;
 }
 

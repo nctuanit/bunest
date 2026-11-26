@@ -101,6 +101,7 @@ export interface BuildSchematicOptions {
   readonly packageName?: string;
   readonly type?: ResourceTransportType;
   readonly crud?: boolean;
+  readonly withScenario?: boolean;
   readonly rootDir?: string;
   readonly prefix?: string;
 }
@@ -1604,10 +1605,87 @@ export class ${pascal}Module {}
 `,
       });
 
-      if (spec) {
+      if (options.withScenario) {
         files.push({
-          relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
-          content: `import { describe, expect, it } from "bun:test";
+          relativePath: joinRel(folder, `${kebab}.http`),
+          content: `@baseUrl = http://localhost:3000
+
+### Create ${pascal} (Valid - expects 201)
+POST {{baseUrl}}/${kebab}
+Content-Type: application/json
+
+{
+  "name": "Sample ${pascal}",
+  "description": "Created from ${kebab}.http sample request"
+}
+
+### Create ${pascal} (Invalid - missing required field "name", expects 400)
+POST {{baseUrl}}/${kebab}
+Content-Type: application/json
+
+{
+  "description": "Missing required name field"
+}
+
+### List ${pascal} (expects 200)
+GET {{baseUrl}}/${kebab}
+`,
+        });
+      }
+
+      if (spec) {
+        if (options.withScenario) {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
+import { ValidationPipe } from "@bunest/core";
+import { Test } from "@bunest/testing";
+import { ${pascal}Module } from "./${kebab}.module";
+import type { ${pascal}Record } from "./${kebab}.service";
+
+describe("${pascal}Module Scenario (201 / 400)", () => {
+  it("returns 201 for valid POST /${kebab} and 400 when required fields are missing", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [${pascal}Module],
+    }).compile();
+
+    const app = moduleRef.createBunestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    const client = moduleRef.createTestClient(app);
+
+    try {
+      const createdRes = await client.post("/${kebab}", {
+        json: { name: "Sample ${pascal}", description: "Valid scenario payload" },
+      });
+      createdRes.expectStatus(201);
+      const created = await createdRes.json<${pascal}Record>();
+      expect(created.name).toBe("Sample ${pascal}");
+
+      const invalidRes = await client.post("/${kebab}", {
+        json: { description: "Missing required name field" },
+      });
+      invalidRes.expectStatus(400);
+
+      const listRes = await client.get("/${kebab}");
+      listRes.expectStatus(200);
+      expect(await listRes.json<${pascal}Record[]>()).toHaveLength(1);
+    } finally {
+      await moduleRef.close();
+    }
+  });
+});
+`,
+          });
+        } else {
+          files.push({
+            relativePath: joinRel(folder, `${kebab}.${specSuffix}.ts`),
+            content: `import { describe, expect, it } from "bun:test";
 import { ValidationPipe } from "@bunest/core";
 import { Test } from "@bunest/testing";
 import { ${pascal}Module } from "./${kebab}.module";
@@ -1656,7 +1734,8 @@ describe("${pascal}Module CRUD", () => {
   });
 });
 `,
-        });
+          });
+        }
       }
       break;
     }
