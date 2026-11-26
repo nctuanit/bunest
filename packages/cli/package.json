@@ -32,7 +32,8 @@
       "bun": "./src/analyzer/index.ts",
       "import": "./dist/analyzer.js",
       "default": "./dist/analyzer.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",

@@ -81,7 +81,7 @@ import { renderGraphiqlHtml } from "./graphiql-ui";
 const textEncoder = new TextEncoder();
 
 function isProductionEnv(): boolean {
-  return process.env.NODE_ENV === "production";
+  return Reflect.get(process.env, "NODE_ENV") === "production";
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

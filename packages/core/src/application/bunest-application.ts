@@ -701,7 +701,7 @@ export class BunestApplication extends BunestApplicationContext {
    */
   enableDevDiagnostics(options: DevDiagnosticsOptions = {}): this {
     if (
-      process.env.NODE_ENV === "production" &&
+      Reflect.get(process.env, "NODE_ENV") === "production" &&
       options.allowInProduction !== true
     ) {
       return this;

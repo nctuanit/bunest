@@ -256,7 +256,9 @@ export class AuthenticationStorage {
 
   private refusesInMemory(): boolean {
     return (
-      process.env.NODE_ENV?.trim().toLowerCase() === "production" &&
+      (Reflect.get(process.env, "NODE_ENV") as string | undefined)
+        ?.trim()
+        .toLowerCase() === "production" &&
       !this.requirements?.allowInMemoryStorage
     );
   }

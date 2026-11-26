@@ -53,6 +53,7 @@ export function resolveStoreOptions<D extends SqlDialect>(
   return {
     executor: executor as SqlExecutor<D>,
     schema,
-    migrate: options.migrate ?? process.env.NODE_ENV !== "production",
+    migrate:
+      options.migrate ?? Reflect.get(process.env, "NODE_ENV") !== "production",
   };
 }

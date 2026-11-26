@@ -283,7 +283,7 @@ export class DevtoolsService {
     if (this.options.allowInProduction === true) {
       return true;
     }
-    return process.env.NODE_ENV !== "production";
+    return Reflect.get(process.env, "NODE_ENV") !== "production";
   }
 
   assertEndpointsEnabled(): void {

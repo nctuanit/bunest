@@ -66,7 +66,7 @@ export class MailModule
 
   onApplicationBootstrap(): void {
     if (
-      process.env.NODE_ENV === "production" &&
+      Reflect.get(process.env, "NODE_ENV") === "production" &&
       (this.transport as MailTransport & { [LOCAL_TRANSPORT]?: boolean })[
         LOCAL_TRANSPORT
       ]

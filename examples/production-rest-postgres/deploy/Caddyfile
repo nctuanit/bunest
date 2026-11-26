@@ -8,7 +8,7 @@
 	encode zstd gzip
 
 	# Block public access to internal Prometheus metrics
-	@internal_metrics path /metrics
+	@internal_metrics path /metrics /metrics/*
 	respond @internal_metrics 403
 
 	# Enforce 1 MiB request body limit at edge (matches app BODY_LIMIT_BYTES)

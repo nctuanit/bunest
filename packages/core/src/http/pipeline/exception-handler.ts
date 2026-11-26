@@ -52,7 +52,7 @@ export function extractFilterCatchTypes(
 }
 
 function isProductionRuntime(developmentOption: boolean | undefined): boolean {
-  if (process.env.NODE_ENV === "production") {
+  if (Reflect.get(process.env, "NODE_ENV") === "production") {
     return true;
   }
   if (developmentOption === false) {

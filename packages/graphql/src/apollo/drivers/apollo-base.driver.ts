@@ -106,7 +106,7 @@ export abstract class ApolloBaseDriver<
     const useGraphiQL =
       options.graphiql ??
       options.playground ??
-      process.env.NODE_ENV !== "production";
+      Reflect.get(process.env, "NODE_ENV") !== "production";
 
     if (useGraphiQL) {
       const graphiQlPlaygroundOpts =

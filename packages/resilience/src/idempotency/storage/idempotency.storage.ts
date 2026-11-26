@@ -87,7 +87,7 @@ export class IdempotencyStorage {
     }
     if (
       !this.registered &&
-      process.env.NODE_ENV === "production" &&
+      Reflect.get(process.env, "NODE_ENV") === "production" &&
       !this.options?.allowInMemoryStorage
     ) {
       throw new Error(

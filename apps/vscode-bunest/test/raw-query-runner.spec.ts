@@ -4,6 +4,7 @@ import {
   join,
   mkdirSyncPath,
   removePath,
+  resolve,
   writeTextSync,
 } from "@bunest/core";
 import {
@@ -54,8 +55,12 @@ describe("vscode-bunest raw SQL runner utilities", () => {
     expect(detectSqlDialect(":memory:")).toBe("sqlite");
 
     expect(normalizeDatabaseUrl(":memory:", "/repo")).toBe(":memory:");
-    expect(normalizeDatabaseUrl("sqlite://./dev.db", "/repo")).toBe("/repo/dev.db");
-    expect(normalizeDatabaseUrl("./dev.db", "/repo")).toBe("/repo/dev.db");
+    expect(normalizeDatabaseUrl("sqlite://./dev.db", "/repo")).toBe(
+      resolve("/repo", "dev.db"),
+    );
+    expect(normalizeDatabaseUrl("./dev.db", "/repo")).toBe(
+      resolve("/repo", "dev.db"),
+    );
     expect(normalizeDatabaseUrl("mariadb://root:pw@localhost/db", "/repo")).toBe(
       "mariadb://root:pw@localhost/db",
     );

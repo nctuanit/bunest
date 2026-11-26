@@ -264,7 +264,9 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
   }
 
   private isProd(): boolean {
-    const env = this.options.nodeEnv ?? process.env.NODE_ENV;
+    const env =
+      this.options.nodeEnv ??
+      (Reflect.get(process.env, "NODE_ENV") as string | undefined);
     return env === "production";
   }
 
