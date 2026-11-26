@@ -89,6 +89,14 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_CONFIG_TOKEN}" > ~/.npmrc
           bun run scripts/publish-packages.ts --expect-version="$TAG" --skip-existing --provenance
 
+      - name: Verify all published packages are live on npm
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: bun run scripts/publish-packages.ts --status --registry=https://registry.npmjs.org --version="$TAG"
+
       - name: Write npm publish summary
         env:
           HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
@@ -98,7 +106,7 @@ jobs:
             echo "### npm Package Release (\`$TAG\`)"
             echo ""
             if [ "$HAS_NPM_TOKEN" = "true" ]; then
-              echo "- Published all 19 \`@bunest/*\` packages in topological order with provenance."
+              echo "- Published and verified all 19 \`@bunest/*\` packages in topological order with provenance."
             else
               echo "- **Dry-run only**: \`NPM_TOKEN\` secret is not configured. Add \`NPM_TOKEN\` in repository secrets to enable automatic npm publishing."
             fi
@@ -107,7 +115,7 @@ jobs:
   release-extension:
     name: Build Extension & Attach to Release
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify, publish-npm]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
