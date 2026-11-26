@@ -13,7 +13,13 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildDiGraphHtml(graph: StaticModuleGraph): string {
+function generateNonce(): string {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
+function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string {
+  const nonce = generateNonce();
+  const styleSrc = cspSource ? `${cspSource} 'unsafe-inline'` : "'unsafe-inline'";
   const nodes = [
     ...graph.modules.map((m, i) => ({
       id: `mod:${m.name}`,
@@ -122,7 +128,7 @@ function buildDiGraphHtml(graph: StaticModuleGraph): string {
               : n.kind === "repository"
                 ? "#059669"
                 : "#475569";
-      return `<g class="node" data-id="${escapeHtml(n.id)}" data-group="${escapeHtml(n.group)}" data-cycle="${isCycle ? "1" : "0"}" data-label="${escapeHtml(n.label.toLowerCase())}" onmouseenter="highlightPath('${escapeHtml(n.id)}')" onmouseleave="clearHighlight()" ondblclick="openNode(${JSON.stringify(n.filePath)}, ${n.line})" onclick="selectNode('${escapeHtml(n.id)}')" style="cursor:pointer">
+      return `<g class="node" data-id="${escapeHtml(n.id)}" data-group="${escapeHtml(n.group)}" data-cycle="${isCycle ? "1" : "0"}" data-label="${escapeHtml(n.label.toLowerCase())}" data-file="${escapeHtml(n.filePath)}" data-line="${n.line}" style="cursor:pointer">
         <rect x="${n.x}" y="${n.y}" width="180" height="50" rx="8" fill="${fill}" opacity="0.93" stroke="${isCycle ? "#fca5a5" : "transparent"}" stroke-width="2" />
         <text x="${n.x + 12}" y="${n.y + 22}" fill="#fff" font-size="12" font-weight="700">${escapeHtml(n.label)}</text>
         <text x="${n.x + 12}" y="${n.y + 39}" fill="#e2e8f0" font-size="10">${escapeHtml(n.badge)}</text>
@@ -134,6 +140,7 @@ function buildDiGraphHtml(graph: StaticModuleGraph): string {
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${styleSrc}; script-src 'nonce-${nonce}';" />
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); display: flex; flex-direction: column; height: 100vh; }
@@ -151,15 +158,15 @@ function buildDiGraphHtml(graph: StaticModuleGraph): string {
 </head>
 <body>
   <div class="toolbar">
-    <input id="search" type="search" placeholder="Search module / provider..." oninput="applyFilters()" />
-    <button class="chip active" onclick="setFilter('all', this)">All (${nodes.length})</button>
-    <button class="chip" onclick="setFilter('module', this)">Modules (${graph.modules.length})</button>
-    <button class="chip" onclick="setFilter('controller', this)">Controllers</button>
-    <button class="chip" onclick="setFilter('repository', this)">Repositories</button>
-    <button class="chip" onclick="setFilter('cycle', this)">Cycles (${graph.cycles.length})</button>
-    <button class="chip" onclick="zoomBy(1.15)">Zoom +</button>
-    <button class="chip" onclick="zoomBy(0.87)">Zoom -</button>
-    <button class="chip" onclick="resetZoom()">Reset</button>
+    <input id="search" type="search" placeholder="Search module / provider..." />
+    <button class="chip active" data-filter="all">All (${nodes.length})</button>
+    <button class="chip" data-filter="module">Modules (${graph.modules.length})</button>
+    <button class="chip" data-filter="controller">Controllers</button>
+    <button class="chip" data-filter="repository">Repositories</button>
+    <button class="chip" data-filter="cycle">Cycles (${graph.cycles.length})</button>
+    <button class="chip" data-zoom="1.15">Zoom +</button>
+    <button class="chip" data-zoom="0.87">Zoom -</button>
+    <button class="chip" data-zoom="reset">Reset</button>
     <span class="muted">Hover: trace dependencies · Double-click: open source</span>
   </div>
   ${
@@ -183,7 +190,7 @@ function buildDiGraphHtml(graph: StaticModuleGraph): string {
       </g>
     </svg>
   </div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let activeFilter = "all";
     let scale = 1;
@@ -251,6 +258,27 @@ function buildDiGraphHtml(graph: StaticModuleGraph): string {
       scale = 1;
       document.getElementById("viewport").removeAttribute("transform");
     }
+
+    document.getElementById("search").addEventListener("input", applyFilters);
+    document.querySelectorAll(".toolbar .chip[data-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => setFilter(btn.getAttribute("data-filter"), btn));
+    });
+    document.querySelectorAll(".toolbar .chip[data-zoom]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const z = btn.getAttribute("data-zoom");
+        if (z === "reset") resetZoom();
+        else zoomBy(Number(z));
+      });
+    });
+    document.querySelectorAll(".node").forEach((node) => {
+      const id = node.getAttribute("data-id");
+      const filePath = node.getAttribute("data-file");
+      const line = Number(node.getAttribute("data-line") || "1");
+      node.addEventListener("mouseenter", () => highlightPath(id));
+      node.addEventListener("mouseleave", clearHighlight);
+      node.addEventListener("click", () => selectNode(id));
+      node.addEventListener("dblclick", () => openNode(filePath, line));
+    });
   </script>
 </body>
 </html>`;
@@ -263,16 +291,29 @@ export class BunestDiGraphPanel {
     const snapshots = index.getAllSnapshots();
     const modules = snapshots.flatMap((s) => s.moduleGraph.modules);
     const providers = snapshots.flatMap((s) => s.moduleGraph.providers);
+    const providersByName = new Map<string, (typeof providers)[number][]>();
+    for (const provider of providers) {
+      const list = providersByName.get(provider.name) ?? [];
+      list.push(provider);
+      providersByName.set(provider.name, list);
+    }
     const merged: StaticModuleGraph = {
       modules,
       providers,
       moduleByName: new Map(modules.map((m) => [m.name, m])),
       providerByName: new Map(providers.map((p) => [p.name, p])),
+      providersByName,
       cycles: snapshots.flatMap((s) => s.moduleGraph.cycles),
+      unknownRegistrations: snapshots.flatMap(
+        (s) => s.moduleGraph.unknownRegistrations,
+      ),
     };
 
     if (this.current) {
-      this.current.webview.html = buildDiGraphHtml(merged);
+      this.current.webview.html = buildDiGraphHtml(
+        merged,
+        this.current.webview.cspSource,
+      );
       this.current.reveal(vscode.ViewColumn.Beside);
       return;
     }
@@ -284,7 +325,7 @@ export class BunestDiGraphPanel {
       { enableScripts: true, retainContextWhenHidden: true },
     );
     this.current = panel;
-    panel.webview.html = buildDiGraphHtml(merged);
+    panel.webview.html = buildDiGraphHtml(merged, panel.webview.cspSource);
 
     panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === "open" && typeof msg.filePath === "string") {

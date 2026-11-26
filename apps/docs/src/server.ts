@@ -1,4 +1,4 @@
-import { join } from "@bunest/core";
+import { join, resolve } from "@bunest/core";
 import { DOCS_ROOT, loadAllDocs, loadSinglePage } from "./content-loader";
 import { detectLangFromPathname } from "./i18n";
 import {
@@ -60,13 +60,22 @@ export function createDocsServer(
 
       // Serve pre-built static output if requested
       if (serveStatic) {
+        const resolvedDistDir = resolve(DIST_DIR);
         const cleanPath = pathname === "/" ? "/index.html" : pathname;
         const candidatePaths = [
           join(DIST_DIR, cleanPath),
           join(DIST_DIR, cleanPath, "index.html"),
         ];
         for (const filePath of candidatePaths) {
-          const f = Bun.file(filePath);
+          const resolvedFilePath = resolve(filePath);
+          if (
+            resolvedFilePath !== resolvedDistDir &&
+            !resolvedFilePath.startsWith(`${resolvedDistDir}/`) &&
+            !resolvedFilePath.startsWith(`${resolvedDistDir}\\`)
+          ) {
+            return htmlResponse(renderNotFoundHtml(pathname, basePath), 404);
+          }
+          const f = Bun.file(resolvedFilePath);
           if (await f.exists()) {
             return new Response(f);
           }
@@ -129,6 +138,12 @@ export function createDocsServer(
 
 if (import.meta.main) {
   const server = createDocsServer();
+  const shutdown = () => {
+    server.stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
   console.log(
     `\n  [Bunest Docs] ${isStaticMode ? "Static preview" : "Dev server"} running at ${server.url}\n`,
   );

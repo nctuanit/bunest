@@ -328,7 +328,7 @@ export const VI_PAGE_META: Record<
   "techniques/queues": {
     title: "Hàng đợi (Queues)",
     description:
-      "Xử lý tác vụ nền, retry, delay và worker concurrency với @bunest/queues (SQLite & Redis).",
+      "Xử lý tác vụ nền, retry, delay và worker concurrency với @bunest/jobs (SQLite & Redis).",
   },
   "techniques/http-client": {
     title: "HTTP client",
@@ -423,7 +423,7 @@ export const VI_PAGE_META: Record<
   "distributed/cqrs": {
     title: "CQRS",
     description:
-      "Tách biệt lệnh và truy vấn với CommandBus, QueryBus, EventBus và Sagas trong @bunest/cqrs.",
+      "Tách biệt lệnh và truy vấn với CommandBus, QueryBus, EventBus và Sagas trong @bunest/messaging.",
   },
   "distributed/resilience": {
     title: "Chống lỗi (Resilience)",

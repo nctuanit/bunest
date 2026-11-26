@@ -108,11 +108,18 @@ export async function probeLocalBunestApp(
   }
 }
 
-function buildInspectorHtml(baseUrl: string): string {
+function generateNonce(): string {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
+function buildInspectorHtml(baseUrl: string, cspSource?: string): string {
+  const nonce = generateNonce();
+  const styleSrc = cspSource ? `${cspSource} 'unsafe-inline'` : "'unsafe-inline'";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${styleSrc}; script-src 'nonce-${nonce}';" />
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 16px; }
@@ -135,8 +142,8 @@ function buildInspectorHtml(baseUrl: string): string {
     <strong>Bunest Live App Inspector</strong>
     <input id="baseUrl" value="${baseUrl.replace(/"/g, "&quot;")}" style="width:240px" />
     <input id="token" type="password" placeholder="Optional METRICS_TOKEN" style="width:180px" />
-    <button onclick="pollNow()">Refresh</button>
-    <button class="secondary" id="toggleBtn" onclick="toggleAuto()">Pause (2s)</button>
+    <button id="refreshBtn">Refresh</button>
+    <button class="secondary" id="toggleBtn">Pause (2s)</button>
     <span id="ts" class="muted"></span>
   </div>
 
@@ -157,7 +164,7 @@ function buildInspectorHtml(baseUrl: string): string {
     <div class="card"><div class="label">DB Pool Max</div><div class="val" id="mPool">--</div></div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let auto = true;
     let timer = setInterval(() => { if (auto) pollNow(); }, 2000);
@@ -199,6 +206,8 @@ function buildInspectorHtml(baseUrl: string): string {
       document.getElementById("mPool").textContent = String(s.dbPoolMax);
     });
 
+    document.getElementById("refreshBtn").addEventListener("click", pollNow);
+    document.getElementById("toggleBtn").addEventListener("click", toggleAuto);
     pollNow();
   </script>
 </body>
@@ -226,7 +235,7 @@ export class BunestLiveInspectorPanel {
       { enableScripts: true, retainContextWhenHidden: true },
     );
     this.current = panel;
-    panel.webview.html = buildInspectorHtml(baseUrl);
+    panel.webview.html = buildInspectorHtml(baseUrl, panel.webview.cspSource);
 
     panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === "poll") {

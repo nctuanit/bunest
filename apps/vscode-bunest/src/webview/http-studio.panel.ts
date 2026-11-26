@@ -50,6 +50,10 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function generateNonce(): string {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
 function buildStudioHtml(payload: {
   readonly baseUrl: string;
   readonly environments: readonly { name: string; baseUrl: string }[];
@@ -57,13 +61,19 @@ function buildStudioHtml(payload: {
   readonly selectedKey?: string;
   readonly bearerToken: string;
   readonly history: readonly HttpHistoryEntry[];
+  readonly cspSource?: string;
 }): string {
+  const nonce = generateNonce();
+  const styleSrc = payload.cspSource
+    ? `${payload.cspSource} 'unsafe-inline'`
+    : "'unsafe-inline'";
   const safeDataJson = JSON.stringify(payload).replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${styleSrc}; script-src 'nonce-${nonce}';" />
 <style>
   * { box-sizing: border-box; }
   :root {
@@ -454,7 +464,7 @@ function buildStudioHtml(payload: {
       <div class="sidebar-title">
         <span>Endpoints (<span id="epTotal">0</span>)</span>
       </div>
-      <input id="epSearch" type="search" placeholder="Filter routes..." oninput="renderSidebar()" />
+      <input id="epSearch" type="search" placeholder="Filter routes..." />
     </div>
     <div id="epList" class="sidebar-list"></div>
   </aside>
@@ -470,24 +480,24 @@ function buildStudioHtml(payload: {
     </div>
 
     <div class="url-bar">
-      <select id="envSelect" title="Environment" onchange="onEnvChange()"></select>
-      <select id="methodSelect" onchange="onMethodChange()">
+      <select id="envSelect" title="Environment"></select>
+      <select id="methodSelect">
         <option>GET</option><option>POST</option><option>PUT</option>
         <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
       </select>
       <input id="urlInput" type="text" placeholder="http://localhost:3000/items" />
-      <button id="sendBtn" onclick="sendRequest()">▶ Send</button>
+      <button id="sendBtn">▶ Send</button>
     </div>
 
     <div class="split">
       <!-- Request Builder Pane -->
       <section class="pane req-pane">
         <div class="tabs">
-          <button class="tab active" data-rtab="params" onclick="switchReqTab('params', this)">Params<span id="cntParams" class="cnt">0</span></button>
-          <button class="tab" data-rtab="headers" onclick="switchReqTab('headers', this)">Headers<span id="cntHeaders" class="cnt">0</span></button>
-          <button class="tab" data-rtab="auth" onclick="switchReqTab('auth', this)">Auth</button>
-          <button class="tab" data-rtab="body" onclick="switchReqTab('body', this)">Body<span id="cntBody" class="cnt">0</span></button>
-          <button class="tab" data-rtab="history" onclick="switchReqTab('history', this)">History<span id="cntHist" class="cnt">0</span></button>
+          <button class="tab active" data-rtab="params">Params<span id="cntParams" class="cnt">0</span></button>
+          <button class="tab" data-rtab="headers">Headers<span id="cntHeaders" class="cnt">0</span></button>
+          <button class="tab" data-rtab="auth">Auth</button>
+          <button class="tab" data-rtab="body">Body<span id="cntBody" class="cnt">0</span></button>
+          <button class="tab" data-rtab="history">History<span id="cntHist" class="cnt">0</span></button>
         </div>
 
         <div class="pane-body">
@@ -503,7 +513,7 @@ function buildStudioHtml(payload: {
 
             <div class="section-hdr">
               <span>Query Parameters</span>
-              <button class="ghost" onclick="addQueryRow()">+ Add Query Param</button>
+              <button id="addQueryBtn" class="ghost">+ Add Query Param</button>
             </div>
             <table class="kv-table">
               <thead><tr><th style="width:28px"></th><th style="width:150px">Key</th><th style="width:95px">Type</th><th>Value</th><th style="width:28px"></th></tr></thead>
@@ -515,7 +525,7 @@ function buildStudioHtml(payload: {
           <div id="rtab-headers" style="display:none;">
             <div class="section-hdr">
               <span>Request Headers</span>
-              <button class="ghost" onclick="addHeaderRow()">+ Add Header</button>
+              <button id="addHeaderBtn" class="ghost">+ Add Header</button>
             </div>
             <table class="kv-table">
               <thead><tr><th style="width:28px"></th><th style="width:190px">Header</th><th>Value</th><th style="width:28px"></th></tr></thead>
@@ -528,7 +538,7 @@ function buildStudioHtml(payload: {
             <div class="section-hdr"><span>Authorization</span></div>
             <div style="display:grid; grid-template-columns:160px 1fr; gap:10px; max-width:620px; align-items:center;">
               <label class="stat">Auth Type</label>
-              <select id="authType" onchange="renderAuthFields()">
+              <select id="authType">
                 <option value="bearer">Bearer Token (JWT)</option>
                 <option value="apikey">API Key Header</option>
                 <option value="none">No Auth</option>
@@ -544,20 +554,20 @@ function buildStudioHtml(payload: {
           <div id="rtab-body" style="display:none;">
             <div class="sub-bar">
               <div class="seg">
-                <button id="bmode-form" class="active" onclick="setBodyMode('form')">Form Fields</button>
-                <button id="bmode-json" onclick="setBodyMode('json')">Raw JSON</button>
-                <button id="bmode-schema" onclick="setBodyMode('schema')">DTO Schema</button>
+                <button id="bmode-form" class="active" data-bmode="form">Form Fields</button>
+                <button id="bmode-json" data-bmode="json">Raw JSON</button>
+                <button id="bmode-schema" data-bmode="schema">DTO Schema</button>
               </div>
               <div style="display:flex; gap:6px; align-items:center;">
                 <span id="bodyDtoLabel" class="type-chip" style="display:none;"></span>
-                <button class="secondary" onclick="resetBodySample()">Reset Sample</button>
-                <button class="secondary" onclick="formatRawJson()">Format JSON</button>
+                <button id="resetSampleBtn" class="secondary">Reset Sample</button>
+                <button id="formatJsonBtn" class="secondary">Format JSON</button>
               </div>
             </div>
 
             <div id="body-form-view"></div>
             <div id="body-json-view" style="display:none;">
-              <textarea id="rawBody" oninput="onRawJsonEdit()" spellcheck="false"></textarea>
+              <textarea id="rawBody" spellcheck="false"></textarea>
             </div>
             <div id="body-schema-view" style="display:none;"></div>
           </div>
@@ -574,20 +584,20 @@ function buildStudioHtml(payload: {
           <span id="resTime" class="stat"></span>
           <span id="resSize" class="stat"></span>
           <span id="resExpected" class="stat" style="margin-left:auto;"></span>
-          <button id="saveAsTestBtn" class="secondary" style="display:none;" onclick="saveAsTest()">🧪 Save as Test</button>
-          <button class="secondary" onclick="copyResBody()">Copy Body</button>
-          <button class="secondary" onclick="copyCurl()">Copy cURL</button>
+          <button id="saveAsTestBtn" class="secondary" style="display:none;">🧪 Save as Test</button>
+          <button id="copyResBodyBtn" class="secondary">Copy Body</button>
+          <button id="copyCurlBtn" class="secondary">Copy cURL</button>
         </div>
 
         <div id="tokenBanner" class="token-banner">
           <span>Detected access token in JSON response.</span>
-          <button onclick="useDetectedToken()">Use as Bearer Token</button>
+          <button id="useTokenBtn">Use as Bearer Token</button>
         </div>
 
         <div class="tabs">
-          <button class="tab active" onclick="switchResTab('pretty', this)">Response Body</button>
-          <button class="tab" onclick="switchResTab('headers', this)">Headers<span id="cntResHeaders" class="cnt">0</span></button>
-          <button class="tab" onclick="switchResTab('curl', this)">cURL</button>
+          <button class="tab active" data-restab="pretty">Response Body</button>
+          <button class="tab" data-restab="headers">Headers<span id="cntResHeaders" class="cnt">0</span></button>
+          <button class="tab" data-restab="curl">cURL</button>
         </div>
 
         <div class="pane-body">
@@ -599,7 +609,7 @@ function buildStudioHtml(payload: {
     </div>
   </main>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const INIT = ${safeDataJson};
 
@@ -662,7 +672,7 @@ function buildStudioHtml(payload: {
         html += '<div class="ctrl-group"><div class="ctrl-name">' + esc(ctrl) + '</div>';
         for (const r of list) {
           const active = currentSchema && currentSchema.key === r.key ? " active" : "";
-          html += '<div class="ep-item' + active + '" onclick="selectRoute(' + JSON.stringify(r.key) + ')">' +
+          html += '<div class="ep-item' + active + '" data-route-key="' + esc(r.key) + '">' +
             '<span class="m-pill m-' + esc(r.method) + '">' + esc(r.method) + '</span>' +
             '<span class="ep-path" title="' + esc(r.path) + '">' + esc(r.path) + '</span>' +
             (r.isGuarded ? '<span title="Auth Guard">🔒</span>' : '') +
@@ -778,20 +788,20 @@ function buildStudioHtml(payload: {
         '<tr>' +
         '<td><code>:' + esc(p.name) + '</code><span class="req-star">*</span></td>' +
         '<td><span class="type-chip">' + esc(p.type) + '</span></td>' +
-        '<td><input type="text" value="' + esc(pathValues[p.name] ?? "") + '" oninput="setPathParam(' + JSON.stringify(p.name) + ', this.value)" /></td>' +
+        '<td><input type="text" value="' + esc(pathValues[p.name] ?? "") + '" data-path-param="' + esc(p.name) + '" /></td>' +
         '</tr>'
       ).join("");
 
       const qHtml = queryRows.map((r, i) => {
         const valInput = r.enumValues && r.enumValues.length
-          ? '<select onchange="setQueryVal(' + i + ', this.value)">' + r.enumValues.map((ev) => '<option value="' + esc(ev) + '"' + (ev === r.value ? ' selected' : '') + '>' + esc(ev) + '</option>').join("") + '</select>'
-          : '<input type="text" value="' + esc(r.value) + '" placeholder="' + esc(r.description || "value") + '" oninput="setQueryVal(' + i + ', this.value)" />';
+          ? '<select data-q-val="' + i + '">' + r.enumValues.map((ev) => '<option value="' + esc(ev) + '"' + (ev === r.value ? ' selected' : '') + '>' + esc(ev) + '</option>').join("") + '</select>'
+          : '<input type="text" value="' + esc(r.value) + '" placeholder="' + esc(r.description || "value") + '" data-q-val="' + i + '" />';
         return '<tr>' +
-          '<td><input type="checkbox"' + (r.enabled ? ' checked' : '') + ' onchange="toggleQuery(' + i + ', this.checked)" /></td>' +
-          '<td><input type="text" value="' + esc(r.key) + '" oninput="setQueryKey(' + i + ', this.value)" />' + (r.required ? '<span class="req-star">*</span>' : '') + '</td>' +
+          '<td><input type="checkbox"' + (r.enabled ? ' checked' : '') + ' data-q-toggle="' + i + '" /></td>' +
+          '<td><input type="text" value="' + esc(r.key) + '" data-q-key="' + i + '" />' + (r.required ? '<span class="req-star">*</span>' : '') + '</td>' +
           '<td><span class="type-chip">' + esc(r.type || "string") + '</span></td>' +
           '<td>' + valInput + '</td>' +
-          '<td><button class="ghost" onclick="removeQueryRow(' + i + ')">✕</button></td>' +
+          '<td><button class="ghost" data-q-remove="' + i + '">✕</button></td>' +
           '</tr>';
       }).join("");
       document.getElementById("queryParamsBody").innerHTML = qHtml || '<tr><td colspan="5" class="empty">No query parameters defined. Click "+ Add Query Param" to add one.</td></tr>';
@@ -812,10 +822,10 @@ function buildStudioHtml(payload: {
     function renderHeadersTab() {
       const html = headerRows.map((h, i) =>
         '<tr>' +
-        '<td><input type="checkbox"' + (h.enabled ? ' checked' : '') + ' onchange="headerRows[' + i + '].enabled=this.checked;updateHeaderCount()" /></td>' +
-        '<td><input type="text" value="' + esc(h.key) + '" oninput="headerRows[' + i + '].key=this.value" /></td>' +
-        '<td><input type="text" value="' + esc(h.value) + '" oninput="headerRows[' + i + '].value=this.value" /></td>' +
-        '<td><button class="ghost" onclick="headerRows.splice(' + i + ',1);renderHeadersTab()">✕</button></td>' +
+        '<td><input type="checkbox"' + (h.enabled ? ' checked' : '') + ' data-h-toggle="' + i + '" /></td>' +
+        '<td><input type="text" value="' + esc(h.key) + '" data-h-key="' + i + '" /></td>' +
+        '<td><input type="text" value="' + esc(h.value) + '" data-h-val="' + i + '" /></td>' +
+        '<td><button class="ghost" data-h-remove="' + i + '">✕</button></td>' +
         '</tr>'
       ).join("");
       document.getElementById("headersBody").innerHTML = html || '<tr><td colspan="4" class="empty">No custom headers.</td></tr>';
@@ -856,16 +866,16 @@ function buildStudioHtml(payload: {
         const val = bodyObj[f.name];
         let ctrl = "";
         if (f.type === "boolean") {
-          ctrl = '<input type="checkbox"' + (val ? " checked" : "") + ' onchange="setBodyField(' + JSON.stringify(f.name) + ', this.checked)" />';
+          ctrl = '<input type="checkbox"' + (val ? " checked" : "") + ' data-body-field="' + esc(f.name) + '" data-body-kind="bool" />';
         } else if (f.type === "enum" && f.enumValues && f.enumValues.length) {
-          ctrl = '<select onchange="setBodyField(' + JSON.stringify(f.name) + ', this.value)">' +
+          ctrl = '<select data-body-field="' + esc(f.name) + '" data-body-kind="str">' +
             f.enumValues.map((ev) => '<option value="' + esc(ev) + '"' + (ev === val ? " selected" : "") + '>' + esc(ev) + '</option>').join("") + '</select>';
         } else if (f.type === "number") {
-          ctrl = '<input type="number" value="' + esc(val ?? "") + '" oninput="setBodyField(' + JSON.stringify(f.name) + ', this.value === \\'\\' ? undefined : Number(this.value))" />';
+          ctrl = '<input type="number" value="' + esc(val ?? "") + '" data-body-field="' + esc(f.name) + '" data-body-kind="num" />';
         } else if (f.type === "array" || f.type === "object") {
-          ctrl = '<input type="text" value="' + esc(typeof val === "string" ? val : JSON.stringify(val ?? (f.type === "array" ? [] : {}))) + '" oninput="setBodyJsonField(' + JSON.stringify(f.name) + ', this.value)" />';
+          ctrl = '<input type="text" value="' + esc(typeof val === "string" ? val : JSON.stringify(val ?? (f.type === "array" ? [] : {}))) + '" data-body-field="' + esc(f.name) + '" data-body-kind="json" />';
         } else {
-          ctrl = '<input type="text" value="' + esc(val ?? "") + '" oninput="setBodyField(' + JSON.stringify(f.name) + ', this.value)" />';
+          ctrl = '<input type="text" value="' + esc(val ?? "") + '" data-body-field="' + esc(f.name) + '" data-body-kind="str" />';
         }
         const chips = (f.constraints || []).map((c) => '<span class="constraint-chip">' + esc(c) + '</span>').join("");
         return '<tr>' +
@@ -940,7 +950,7 @@ function buildStudioHtml(payload: {
         return;
       }
       el.innerHTML = '<table class="kv-table"><tbody>' + historyList.map((h, i) =>
-        '<tr style="cursor:pointer" onclick="replayHistory(' + i + ')">' +
+        '<tr style="cursor:pointer" data-hist-idx="' + i + '">' +
         '<td style="width:58px"><span class="m-pill m-' + esc(h.method) + '">' + esc(h.method) + '</span></td>' +
         '<td><code>' + esc(h.url) + '</code></td>' +
         '<td style="width:90px" class="stat">' + h.status + ' · ' + h.elapsedMs.toFixed(0) + 'ms</td>' +
@@ -1043,6 +1053,85 @@ function buildStudioHtml(payload: {
         historyList = msg.history;
         document.getElementById("cntHist").textContent = String(historyList.length);
       }
+    });
+
+    document.getElementById("epSearch").addEventListener("input", renderSidebar);
+    document.getElementById("envSelect").addEventListener("change", onEnvChange);
+    document.getElementById("methodSelect").addEventListener("change", onMethodChange);
+    document.getElementById("sendBtn").addEventListener("click", sendRequest);
+    document.getElementById("addQueryBtn").addEventListener("click", addQueryRow);
+    document.getElementById("addHeaderBtn").addEventListener("click", addHeaderRow);
+    document.getElementById("authType").addEventListener("change", renderAuthFields);
+    document.getElementById("resetSampleBtn").addEventListener("click", resetBodySample);
+    document.getElementById("formatJsonBtn").addEventListener("click", formatRawJson);
+    document.getElementById("rawBody").addEventListener("input", onRawJsonEdit);
+    document.getElementById("saveAsTestBtn").addEventListener("click", saveAsTest);
+    document.getElementById("copyResBodyBtn").addEventListener("click", copyResBody);
+    document.getElementById("copyCurlBtn").addEventListener("click", copyCurl);
+    document.getElementById("useTokenBtn").addEventListener("click", useDetectedToken);
+
+    document.querySelectorAll(".tab[data-rtab]").forEach((btn) => {
+      btn.addEventListener("click", () => switchReqTab(btn.getAttribute("data-rtab"), btn));
+    });
+    document.querySelectorAll(".tab[data-restab]").forEach((btn) => {
+      btn.addEventListener("click", () => switchResTab(btn.getAttribute("data-restab"), btn));
+    });
+    document.querySelectorAll("[data-bmode]").forEach((btn) => {
+      btn.addEventListener("click", () => setBodyMode(btn.getAttribute("data-bmode")));
+    });
+
+    document.getElementById("epList").addEventListener("click", (e) => {
+      const item = e.target.closest("[data-route-key]");
+      if (item) selectRoute(item.getAttribute("data-route-key"));
+    });
+    document.getElementById("pathParamsBody").addEventListener("input", (e) => {
+      const name = e.target.getAttribute("data-path-param");
+      if (name !== null) setPathParam(name, e.target.value);
+    });
+    document.getElementById("queryParamsBody").addEventListener("change", (e) => {
+      const tIdx = e.target.getAttribute("data-q-toggle");
+      if (tIdx !== null) { toggleQuery(Number(tIdx), e.target.checked); return; }
+      const vIdx = e.target.getAttribute("data-q-val");
+      if (vIdx !== null && e.target.tagName === "SELECT") setQueryVal(Number(vIdx), e.target.value);
+    });
+    document.getElementById("queryParamsBody").addEventListener("input", (e) => {
+      const kIdx = e.target.getAttribute("data-q-key");
+      if (kIdx !== null) { setQueryKey(Number(kIdx), e.target.value); return; }
+      const vIdx = e.target.getAttribute("data-q-val");
+      if (vIdx !== null) setQueryVal(Number(vIdx), e.target.value);
+    });
+    document.getElementById("queryParamsBody").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-q-remove]");
+      if (btn) removeQueryRow(Number(btn.getAttribute("data-q-remove")));
+    });
+    document.getElementById("headersBody").addEventListener("change", (e) => {
+      const tIdx = e.target.getAttribute("data-h-toggle");
+      if (tIdx !== null) { headerRows[Number(tIdx)].enabled = e.target.checked; updateHeaderCount(); }
+    });
+    document.getElementById("headersBody").addEventListener("input", (e) => {
+      const kIdx = e.target.getAttribute("data-h-key");
+      if (kIdx !== null) { headerRows[Number(kIdx)].key = e.target.value; return; }
+      const vIdx = e.target.getAttribute("data-h-val");
+      if (vIdx !== null) headerRows[Number(vIdx)].value = e.target.value;
+    });
+    document.getElementById("headersBody").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-h-remove]");
+      if (btn) { headerRows.splice(Number(btn.getAttribute("data-h-remove")), 1); renderHeadersTab(); }
+    });
+    const onBodyFormEvent = (e) => {
+      const field = e.target.getAttribute("data-body-field");
+      if (field === null) return;
+      const kind = e.target.getAttribute("data-body-kind");
+      if (kind === "bool") setBodyField(field, e.target.checked);
+      else if (kind === "num") setBodyField(field, e.target.value === "" ? undefined : Number(e.target.value));
+      else if (kind === "json") setBodyJsonField(field, e.target.value);
+      else setBodyField(field, e.target.value);
+    };
+    document.getElementById("body-form-view").addEventListener("input", onBodyFormEvent);
+    document.getElementById("body-form-view").addEventListener("change", onBodyFormEvent);
+    document.getElementById("rtab-history").addEventListener("click", (e) => {
+      const row = e.target.closest("[data-hist-idx]");
+      if (row) replayHistory(Number(row.getAttribute("data-hist-idx")));
     });
 
     initEnvs();
@@ -1165,6 +1254,7 @@ export class BunestHttpStudioPanel {
       selectedKey: route?.key,
       bearerToken: savedBearerToken,
       history: requestHistory,
+      cspSource: this.current.webview.cspSource,
     });
 
     this.listener?.dispose();

@@ -4,19 +4,7 @@ import {
   IsString,
   MinLength,
 } from "@bunest/validation/validator";
-import { ApiProperty, ApiPropertyOptional } from "@bunest/swagger";
-
-export class CreateTodoDto {
-  @ApiProperty({ example: "Explore Bunest Playground", minLength: 2 })
-  @IsString()
-  @MinLength(2)
-  title!: string;
-
-  @ApiPropertyOptional({ example: false })
-  @IsOptional()
-  @IsBoolean()
-  completed?: boolean;
-}
+import { ApiPropertyOptional } from "@bunest/swagger";
 
 export class UpdateTodoDto {
   @ApiPropertyOptional({ example: "Ship Bunest v0.1", minLength: 2 })

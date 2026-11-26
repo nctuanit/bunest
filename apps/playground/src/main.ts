@@ -3,6 +3,7 @@ import { AppModule, configurePlaygroundApp } from "./app.module";
 
 const app = await BunestFactory.create(AppModule);
 configurePlaygroundApp(app);
+app.enableShutdownHooks();
 
 const port = Number(process.env.PORT ?? 3000);
 await app.listen(port);

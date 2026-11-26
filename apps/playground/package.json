@@ -7,6 +7,7 @@
   "scripts": {
     "start": "bun run src/main.ts",
     "dev": "bun --watch src/main.ts",
+    "typecheck": "bun check --project tsconfig.json",
     "test": "bun test"
   },
   "dependencies": {
