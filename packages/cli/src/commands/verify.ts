@@ -17,6 +17,13 @@ import { runCheckCommand } from "./check";
 export type VerifyReporter = "agent" | "pretty" | "json";
 export type VerifyStepName = "typecheck" | "check" | "test";
 export type VerifyStepStatus = "pass" | "fail" | "skip";
+export type VerifyTestOutcome =
+  | "passed"
+  | "failed"
+  | "no-matching-tests"
+  | "runner-error"
+  | "skipped"
+  | "config-error";
 
 export interface VerifyIssue {
   readonly file?: string;
@@ -34,6 +41,12 @@ export interface VerifyStepResult {
   readonly summary: string;
   readonly issues: readonly VerifyIssue[];
   readonly durationMs: number;
+  /** Structured outcome for the `test` step (distinguishes no-matching-tests vs passed vs runner-error). */
+  readonly outcome?: VerifyTestOutcome;
+  /** Copyable rerun command for failing tests (when tests fail). */
+  readonly rerunCommand?: string;
+  /** Reason a broader rerun command was emitted instead of a single file. */
+  readonly rerunReason?: string;
 }
 
 export interface VerifyCommandResult {
@@ -61,6 +74,8 @@ export interface VerifyCommandOptions {
   readonly skipTypecheck?: boolean;
   readonly skipCheck?: boolean;
   readonly skipTests?: boolean;
+  /** Fail when no matching tests are executed (e.g. typo in test filter or empty suite). */
+  readonly requireTests?: boolean;
   /** Passed through to `bun test` as a path/name filter. */
   readonly testFilter?: readonly string[];
   /** Select only tests affected by changed files (with explicit reasons). */
@@ -164,6 +179,43 @@ export interface ParsedTestOutput {
   readonly skip: number;
   readonly noTests: boolean;
   readonly failures: readonly VerifyIssue[];
+  readonly failedFiles: readonly string[];
+  readonly failedCases: readonly string[];
+  readonly hasUnidentifiedFailureFile: boolean;
+}
+
+const TEST_FILE_HEADER_RE =
+  /^([^\s].*(?:\.(?:test|spec)|_(?:test|spec)_)\.[cm]?[jt]sx?):\s*$/i;
+const TEST_FILE_PATH_RE =
+  /(?:\.(?:test|spec)|_(?:test|spec)_)\.[cm]?[jt]sx?$/i;
+const AT_PAREN_RE =
+  /^\s*at .*?\(((?:[A-Za-z]:[\\/]|\/|\.)?[^():]+\.(?:[cm]?[jt]sx?)):(\d+):(\d+)\)\s*$/;
+const AT_BARE_RE =
+  /^\s*at ((?:[A-Za-z]:[\\/]|\/|\.)[^():]+\.(?:[cm]?[jt]sx?)):(\d+):(\d+)\s*$/;
+
+function parseTestFileHeader(line: string, cwd: string): string | undefined {
+  if (
+    /^(?:error|Error|TypeError|ReferenceError|AssertionError|Expected|Received|at |\(pass\)|\(fail\)|\(skip\)|#|\d+\s*\|)/.test(
+      line,
+    )
+  ) {
+    return undefined;
+  }
+  const m = TEST_FILE_HEADER_RE.exec(line);
+  if (!m) return undefined;
+  return toRel(cwd, m[1]!);
+}
+
+/**
+ * Quotes a CLI argument so it can be safely copy-pasted into both POSIX shells
+ * (`sh`/`bash`/`zsh`) and PowerShell (and `cmd.exe` when free of `$`/`"`/`\``).
+ */
+export function quoteShellArg(arg: string): string {
+  if (arg.length === 0) return '""';
+  if (/^[A-Za-z0-9_./:@+-]+$/.test(arg)) return arg;
+  if (!/["$`\\]/.test(arg)) return `"${arg}"`;
+  if (!arg.includes("'")) return `'${arg}'`;
+  return `"${arg.replace(/([\\"`$])/g, "\\$1")}"`;
 }
 
 /** Parses `bun test` summary + `(fail)` lines and nearest `at file:line:col`. */
@@ -176,26 +228,49 @@ export function parseTestOutput(output: string, cwd: string): ParsedTestOutput {
   };
 
   const failures: VerifyIssue[] = [];
+  const failedFileSet = new Set<string>();
+  const failedCases: string[] = [];
+  let hasUnidentifiedFailureFile = false;
+  let currentTestFile: string | undefined;
   let pendingError: string | undefined;
   let pendingAt: { file: string; line: number; column: number } | undefined;
   for (const raw of lines) {
     const line = raw.trimEnd();
+    const headerFile = parseTestFileHeader(line, cwd);
+    if (headerFile) {
+      currentTestFile = headerFile;
+      pendingError = undefined;
+      pendingAt = undefined;
+      continue;
+    }
     const err = /^\s*(?:error|Error|TypeError|ReferenceError|AssertionError)[^:]*: (.+)$/.exec(line);
     if (err && !pendingError) pendingError = err[1]!.trim();
     const diff = /^\s*(Expected|Received)(?: [\w ]+)?: (.+)$/.exec(line);
     if (diff && pendingError && pendingError.length < 300) {
       pendingError += `; ${diff[1]!.toLowerCase()}: ${diff[2]!.trim()}`;
     }
-    const at = /^\s*at .*?\(?((?:\/|[A-Za-z]:\\|\.)[^():]+\.(?:ts|tsx|js|mjs)):(\d+):(\d+)\)?\s*$/.exec(line);
+    const at = AT_PAREN_RE.exec(line) ?? AT_BARE_RE.exec(line);
     if (at && !pendingAt && !/node_modules/.test(at[1]!)) {
       pendingAt = { file: toRel(cwd, at[1]!), line: Number(at[2]), column: Number(at[3]) };
     }
     const fail = /^\s*\(fail\) (.+?)(?: \[[\d.]+m?s\])?$/.exec(line);
     if (fail) {
+      const caseName = fail[1]!.trim();
+      failedCases.push(caseName);
+      const failureTestFile =
+        currentTestFile ??
+        (pendingAt?.file && TEST_FILE_PATH_RE.test(pendingAt.file)
+          ? pendingAt.file
+          : undefined);
+      if (failureTestFile) {
+        failedFileSet.add(failureTestFile);
+      } else {
+        hasUnidentifiedFailureFile = true;
+      }
       failures.push({
         severity: "error",
-        message: pendingError ? `${fail[1]} — ${pendingError}` : fail[1]!,
-        file: pendingAt?.file,
+        message: pendingError ? `${caseName} — ${pendingError}` : caseName,
+        file: pendingAt?.file ?? failureTestFile,
         line: pendingAt?.line,
         column: pendingAt?.column,
       });
@@ -207,13 +282,59 @@ export function parseTestOutput(output: string, cwd: string): ParsedTestOutput {
     }
   }
 
+  const pass = count("pass");
+  const fail = count("fail");
+  const skip = count("skip");
+  const hasNoTestsMessage =
+    /No tests found/i.test(text) ||
+    /The following filters did not match any test files/i.test(text);
+  const hasZeroTestsRan =
+    pass === 0 &&
+    fail === 0 &&
+    skip === 0 &&
+    /\bRan 0 tests?\b/i.test(text) &&
+    !/Unhandled error|SyntaxError|Cannot find module/i.test(text);
+
   return {
-    pass: count("pass"),
-    fail: count("fail"),
-    skip: count("skip"),
-    noTests: /No tests found/i.test(text),
+    pass,
+    fail,
+    skip,
+    noTests: hasNoTestsMessage || hasZeroTestsRan,
     failures,
+    failedFiles: [...failedFileSet],
+    failedCases,
+    hasUnidentifiedFailureFile,
   };
+}
+
+function buildTestRerunPlan(
+  parsed: ParsedTestOutput,
+  testArgs: readonly string[],
+): { rerunCommand?: string; rerunReason?: string } {
+  if (parsed.failedFiles.length > 0 && !parsed.hasUnidentifiedFailureFile) {
+    return {
+      rerunCommand: `bun test ${parsed.failedFiles.map(quoteShellArg).join(" ")}`,
+    };
+  }
+  if (parsed.failedCases.length === 1 && parsed.failedFiles.length === 0) {
+    const scopePrefix =
+      testArgs.length > 0 ? ` ${testArgs.map(quoteShellArg).join(" ")}` : "";
+    return {
+      rerunCommand: `bun test${scopePrefix} -t ${quoteShellArg(parsed.failedCases[0]!)}`,
+      rerunReason:
+        "failing test file could not be uniquely identified from runner output; re-running matching test name across a broader scope",
+    };
+  }
+  if (parsed.failedCases.length > 0 || parsed.failedFiles.length > 0) {
+    const scopePrefix =
+      testArgs.length > 0 ? ` ${testArgs.map(quoteShellArg).join(" ")}` : "";
+    return {
+      rerunCommand: `bun test${scopePrefix}`,
+      rerunReason:
+        "failing test file(s) could not be uniquely identified from runner output; re-running broader test scope",
+    };
+  }
+  return {};
 }
 
 async function timed<T>(fn: () => Promise<T>): Promise<[T, number]> {
@@ -235,6 +356,32 @@ export async function runVerifyCommand(
   const reporter = options.reporter ?? "pretty";
   const steps: VerifyStepResult[] = [];
   const startAll = performance.now();
+
+  if (options.requireTests && options.skipTests) {
+    steps.push({
+      name: "test",
+      status: "fail",
+      outcome: "config-error",
+      summary: "conflicting options: --require-tests cannot be used with --skip-tests",
+      issues: [
+        {
+          severity: "error",
+          code: "VERIFY_CONFLICTING_FLAGS",
+          message: "Cannot combine --require-tests with --skip-tests.",
+          hint: "Remove --skip-tests to require at least one test to run, or remove --require-tests to skip tests.",
+        },
+      ],
+      durationMs: 0,
+    });
+    const conflictResult: VerifyCommandResult = {
+      exitCode: 1,
+      ok: false,
+      steps,
+      durationMs: performance.now() - startAll,
+    };
+    if (io) io.stdout(formatVerifyResult(conflictResult, reporter, options.maxIssues));
+    return conflictResult;
+  }
 
   // 1. Typecheck
   if (options.skipTypecheck) {
@@ -290,7 +437,14 @@ export async function runVerifyCommand(
   // 3. Tests
   let affectedPlan: AffectedTestsPlan | undefined;
   if (options.skipTests) {
-    steps.push({ name: "test", status: "skip", summary: "skipped", issues: [], durationMs: 0 });
+    steps.push({
+      name: "test",
+      status: "skip",
+      outcome: "skipped",
+      summary: "skipped",
+      issues: [],
+      durationMs: 0,
+    });
   } else {
     let testArgs: readonly string[] = options.testFilter ?? [];
     let skipBecauseNoAffected = false;
@@ -314,33 +468,124 @@ export async function runVerifyCommand(
     }
 
     if (skipBecauseNoAffected && affectedPlan) {
-      steps.push({
-        name: "test",
-        status: "skip",
-        summary: `0 affected test(s) (${affectedPlan.skippedTestCount} skipped)`,
-        issues: [],
-        durationMs: 0,
-      });
+      if (options.requireTests) {
+        steps.push({
+          name: "test",
+          status: "fail",
+          outcome: "no-matching-tests",
+          summary: `no matching tests found (0 affected test(s), ${affectedPlan.skippedTestCount} skipped)`,
+          issues: [
+            {
+              severity: "error",
+              code: "VERIFY_NO_TESTS",
+              message: `No matching tests found (0 affected tests selected; ${affectedPlan.skippedTestCount} skipped) while --require-tests is enabled.`,
+              hint: "Check --files/--base or run without --affected to execute the full test suite.",
+            },
+          ],
+          durationMs: 0,
+        });
+      } else {
+        steps.push({
+          name: "test",
+          status: "skip",
+          outcome: "skipped",
+          summary: `0 affected test(s) (${affectedPlan.skippedTestCount} skipped)`,
+          issues: [],
+          durationMs: 0,
+        });
+      }
     } else {
       const [proc, ms] = await timed(() =>
         spawn([process.execPath, "test", ...testArgs], { cwd }),
       );
       const combined = `${proc.stdout}\n${proc.stderr}`;
       const parsed = parseTestOutput(combined, cwd);
+      const zeroExecutedTests =
+        parsed.pass === 0 && parsed.fail === 0 && parsed.skip === 0;
       if (parsed.noTests && parsed.pass === 0 && parsed.fail === 0) {
-        steps.push({ name: "test", status: "skip", summary: "no tests found", issues: [], durationMs: ms });
+        if (options.requireTests) {
+          const filterLabel =
+            testArgs.length > 0 ? ` for filter "${testArgs.join(" ")}"` : "";
+          steps.push({
+            name: "test",
+            status: "fail",
+            outcome: "no-matching-tests",
+            summary: `no matching tests found${filterLabel}`,
+            issues: [
+              {
+                severity: "error",
+                code: "VERIFY_NO_TESTS",
+                message: `No matching tests found${filterLabel} (--require-tests is enabled).`,
+                hint:
+                  testArgs.length > 0
+                    ? "Check the test filter spelling or run `bunest verify` without a filter to run all tests."
+                    : "Add at least one *.spec.ts or *.test.ts file, or run without --require-tests.",
+              },
+            ],
+            durationMs: ms,
+          });
+        } else {
+          steps.push({
+            name: "test",
+            status: "skip",
+            outcome: "no-matching-tests",
+            summary: "no tests found",
+            issues: [],
+            durationMs: ms,
+          });
+        }
+      } else if (proc.exitCode === 0 && zeroExecutedTests && options.requireTests) {
+        const filterLabel =
+          testArgs.length > 0 ? ` for filter "${testArgs.join(" ")}"` : "";
+        steps.push({
+          name: "test",
+          status: "fail",
+          outcome: "no-matching-tests",
+          summary: `no matching tests found${filterLabel}`,
+          issues: [
+            {
+              severity: "error",
+              code: "VERIFY_NO_TESTS",
+              message: `No matching tests were executed${filterLabel} (--require-tests is enabled).`,
+              hint:
+                testArgs.length > 0
+                  ? "Check the test filter spelling or run `bunest verify` without a filter."
+                  : "Ensure your test files define at least one test case.",
+            },
+          ],
+          durationMs: ms,
+        });
       } else {
         const failed = proc.exitCode !== 0 || parsed.fail > 0;
+        const isRunnerError =
+          failed &&
+          parsed.failures.length === 0 &&
+          parsed.pass === 0 &&
+          (parsed.fail === 0 || /Unhandled error between tests/i.test(combined));
         const issues = [...parsed.failures];
         if (failed && issues.length === 0) {
-          issues.push({ severity: "error", message: tailLines(combined, 15) || `bun test exited with ${proc.exitCode}` });
+          issues.push({
+            severity: "error",
+            code: isRunnerError ? "VERIFY_RUNNER_ERROR" : undefined,
+            message:
+              tailLines(combined, 15) || `bun test exited with ${proc.exitCode}`,
+            hint: isRunnerError
+              ? "Fix the test runner/bootstrap error above before re-running tests."
+              : undefined,
+          });
         }
+        const rerun = failed ? buildTestRerunPlan(parsed, testArgs) : {};
         steps.push({
           name: "test",
           status: failed ? "fail" : "pass",
-          summary: `${parsed.pass} pass, ${parsed.fail} fail${parsed.skip ? `, ${parsed.skip} skip` : ""}`,
+          outcome: failed ? (isRunnerError ? "runner-error" : "failed") : "passed",
+          summary: isRunnerError
+            ? `runner/bootstrap error (exit ${proc.exitCode})`
+            : `${parsed.pass} pass, ${parsed.fail} fail${parsed.skip ? `, ${parsed.skip} skip` : ""}`,
           issues,
           durationMs: ms,
+          ...(rerun.rerunCommand ? { rerunCommand: rerun.rerunCommand } : {}),
+          ...(rerun.rerunReason ? { rerunReason: rerun.rerunReason } : {}),
         });
       }
     }
@@ -412,6 +657,13 @@ export function formatVerifyResult(
       for (const issue of shown) out.push(formatIssue(issue));
       if (step.issues.length > shown.length) {
         out.push(`  … ${step.issues.length - shown.length} more`);
+      }
+      if (step.status === "fail" && step.rerunCommand) {
+        out.push(
+          step.rerunReason
+            ? `  rerun: ${step.rerunCommand} (${step.rerunReason})`
+            : `  rerun: ${step.rerunCommand}`,
+        );
       }
     }
     if (!result.ok) {
