@@ -1452,7 +1452,7 @@ describe("${pascal}Module", () => {
 export class Create${pascal}Dto {
   @IsString()
   @MinLength(1)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()

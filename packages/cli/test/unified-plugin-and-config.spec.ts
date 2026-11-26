@@ -232,9 +232,12 @@ class CustomerRef {
     expect(transformCircularMetadataJs(plainJs)).toBe(plainJs);
 
     const metadataJs = `__legacyMetadataTS("design:type", typeof Post === "undefined" ? Object : Post)`;
-    expect(transformCircularMetadataJs(metadataJs)).toContain(
+    const transformedOnce = transformCircularMetadataJs(metadataJs);
+    expect(transformedOnce).toContain(
       '(() => { try { return typeof Post === "undefined" ? Object : Post; } catch { return Object; } })()',
     );
+    // Idempotent: a second pass must not double-wrap the TDZ IIFE
+    expect(transformCircularMetadataJs(transformedOnce)).toBe(transformedOnce);
   });
 
   it("integrates with real Bun.build({ plugins: [createBunestPlugin()] }) with zero onLoad conflicts (circular ref + Swagger DTO + @AutoModule manifest + classMacros)", async () => {

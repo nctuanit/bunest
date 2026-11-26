@@ -25,6 +25,7 @@ import {
   resolve,
   statSyncPath,
 } from "../packages/core/src/common/index";
+import { withPublishableManifest } from "./publish-manifest";
 
 interface PkgMeta {
   name: string;
@@ -195,15 +196,17 @@ async function main(): Promise<void> {
       `[staging-verify] Publishing ${ordered.length} packages in topological order to ${registry}...`,
     );
     for (const pkg of ordered) {
-      await runCmd(
-        ["bun", "publish", "--registry", registry, "--access", "public"],
-        pkg.dir,
+      await withPublishableManifest(pkg.dir, () =>
+        runCmd(
+          ["bun", "publish", "--registry", registry, "--access", "public"],
+          pkg.dir,
+        ),
       );
     }
   }
 
   const workDir = join(
-    Bun.env.TMPDIR ?? "/tmp",
+    Bun.env.TMPDIR ?? Bun.env.TEMP ?? Bun.env.TMP ?? "/tmp",
     `bunest-staging-clean-${Date.now()}-${Math.floor(Math.random() * 10_000)}`,
   );
   await ensureDir(workDir);
@@ -233,19 +236,33 @@ async function main(): Promise<void> {
     await runCmd(["bun", "install"], cliDir);
 
     const appDir = join(workDir, "clean-app");
+    const bunestCliEntry = join(
+      cliDir,
+      "node_modules",
+      "@bunest",
+      "cli",
+      "dist",
+      "cli.js",
+    );
     await runCmd(
       [
-        join(cliDir, "node_modules/.bin/bunest"),
+        "bun",
+        bunestCliEntry,
         "new",
+        "clean-app",
+        "--dir",
         appDir,
-        "--template=api",
-        "--no-install",
+        "--skip-install",
       ],
       workDir,
     );
+    const appBunfigPath = join(appDir, "bunfig.toml");
+    const existingBunfig = (await Bun.file(appBunfigPath).exists())
+      ? await Bun.file(appBunfigPath).text()
+      : "";
     await Bun.write(
-      join(appDir, "bunfig.toml"),
-      `[install]\nregistry = "${registry}"\n`,
+      appBunfigPath,
+      `${existingBunfig}${existingBunfig.endsWith("\n") || existingBunfig === "" ? "" : "\n"}\n[install]\nregistry = "${registry}"\n`,
     );
     await runCmd(["bun", "install"], appDir);
     await runCmd(["bun", "run", "typecheck"], appDir);

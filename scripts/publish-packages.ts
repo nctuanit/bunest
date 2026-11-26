@@ -1,17 +1,20 @@
 /**
- * Deterministic topological npm publisher for all publishable @bunest/* packages.
+ * Deterministic topological npm publisher & tarball packer for all publishable @bunest/* packages.
  *
  * Usage:
  *   bun run scripts/publish-packages.ts --dry-run
+ *   bun run scripts/publish-packages.ts --pack=./dist-tarballs
  *   bun run scripts/publish-packages.ts --registry=https://registry.npmjs.org --skip-existing
  *   bun run scripts/publish-packages.ts --expect-version=0.1.0 --skip-existing --provenance
  */
 import {
+  ensureDir,
   join,
   readDirSyncNames,
   resolve,
   statSyncPath,
 } from "../packages/core/src/common/index";
+import { withPublishableManifest } from "./publish-manifest";
 
 interface PkgMeta {
   name: string;
@@ -143,6 +146,10 @@ async function main(): Promise<void> {
   const dryRun = args.has("dry-run");
   const skipExisting = args.has("skip-existing");
   const provenance = args.has("provenance");
+  const packOutDir =
+    typeof args.get("pack") === "string"
+      ? resolve(args.get("pack") as string)
+      : undefined;
   const registry = (
     typeof args.get("registry") === "string"
       ? (args.get("registry") as string)
@@ -168,6 +175,26 @@ async function main(): Promise<void> {
     throw new Error(
       `Expected package version ${expectVersion}, but workspace packages are at ${version}.`,
     );
+  }
+
+  if (packOutDir) {
+    await ensureDir(packOutDir);
+    console.log(
+      `[pack] Packing ${ordered.length} @bunest/* packages @ ${version} into ${packOutDir}`,
+    );
+    for (const [idx, pkg] of ordered.entries()) {
+      const prefix = `[${String(idx + 1).padStart(2, " ")}/${ordered.length}] ${pkg.name}@${pkg.version}`;
+      if (pkg.publishConfig?.access !== "public") {
+        throw new Error(`${pkg.name}: missing publishConfig.access = "public"`);
+      }
+      const cmd = ["bun", "pm", "pack", "--destination", packOutDir, "--quiet"];
+      console.log(`${prefix} — running: ${cmd.join(" ")}`);
+      await withPublishableManifest(pkg.dir, () => runPublish(cmd, pkg.dir));
+    }
+    console.log(
+      `[pack] Complete: packed ${ordered.length} tarballs to ${packOutDir}.`,
+    );
+    return;
   }
 
   const distTag =
@@ -213,7 +240,7 @@ async function main(): Promise<void> {
     if (provenance && !dryRun) cmd.push("--provenance");
 
     console.log(`${prefix} — running: ${cmd.join(" ")}`);
-    await runPublish(cmd, pkg.dir);
+    await withPublishableManifest(pkg.dir, () => runPublish(cmd, pkg.dir));
     published++;
   }
 
