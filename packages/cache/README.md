@@ -4,8 +4,9 @@ LRU memory and pluggable Redis caching for Bunest, featuring single-flight stamp
 
 ## Features
 
-- **Pluggable Cache Stores**: Built-in `MemoryCacheStore` (LRU with TTL) and `RedisCacheStore` (accepting any `RedisClientLike` client), plus the `CacheStore` contract for custom stores.
-- **Stampede Protection & Invalidation**: `CacheService` supports single-flight `wrap()` deduplication, batch operations (`mget`/`mset`/`mdel`), and tag or prefix-based invalidation.
+- **Pluggable Cache Stores**: Built-in `MemoryCacheStore` (LRU with TTL) and `RedisCacheStore` (accepting Bun's native `Bun.RedisClient`, a `url`, or any `RedisClientLike` client via `@bunest/cache` or `@bunest/cache/redis`), plus the `CacheStore` contract for custom stores.
+- **Fail-Open Resilience & Stampede Protection**: `CacheService` supports single-flight `wrap()` deduplication, fail-open error handling on `get()` and `wrap()` (transient backend errors emit lifecycle events and fall through cleanly to the factory), batch operations (`mget`/`mset`/`mdel`), and tag or prefix-based invalidation.
+- **Redis Health Probes**: `RedisCacheStore.ping()` probes Redis connectivity with `PING` (returning `true`/`false` without throwing) for `/ready` health checks.
 - **HTTP Caching**: `CacheInterceptor` with `@CacheKey()`, `@CacheTTL()`, and `@NoCache()` route decorators.
 - **Service-Layer AOP Caching**: `@Cacheable()`, `@CachePut()`, and `@CacheEvict()` method decorators with key and tag resolvers.
 
@@ -18,7 +19,7 @@ bun add @bunest/cache
 ## Quick Start
 
 ```ts
-import { Controller, Get, Module, UseInterceptors } from "@bunest/common";
+import { Controller, Get, Module, UseInterceptors } from "@bunest/core";
 import {
   CacheInterceptor,
   CacheKey,
@@ -26,6 +27,7 @@ import {
   CacheService,
   CacheTTL,
 } from "@bunest/cache";
+import { RedisCacheStore } from "@bunest/cache/redis";
 
 @Controller("catalog")
 export class CatalogController {
@@ -42,17 +44,31 @@ export class CatalogController {
   }
 }
 
+const redisStore = new RedisCacheStore({
+  url: process.env.REDIS_URL ?? "redis://localhost:6379",
+  keyPrefix: "catalog:",
+});
+
 @Module({
-  imports: [CacheModule.register({ isGlobal: true, ttl: 30_000 })],
+  imports: [
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 30_000,
+      store: redisStore,
+    }),
+  ],
   controllers: [CatalogController],
 })
 export class AppModule {}
+
+// Safe readiness probe (returns boolean without throwing)
+const redisReady = await redisStore.ping();
 ```
 
 ## Key Exports
 
 - **Module & Service**: `CacheModule` (`register`, `registerAsync`), `CacheService`, `Cache`, `CacheInterceptor`
-- **Stores**: `MemoryCacheStore`, `RedisCacheStore`
+- **Stores (`@bunest/cache` & `@bunest/cache/redis`)**: `MemoryCacheStore`, `RedisCacheStore` (with `ping()`), `createBunRedisClient`
 - **HTTP Decorators**: `@CacheKey()`, `@CacheTTL()`, `@NoCache()`
 - **AOP Decorators & Handlers**: `@Cacheable()`, `@CachePut()`, `@CacheEvict()`, `CacheableAspectHandler`, `CachePutAspectHandler`, `CacheEvictAspectHandler`
 - **Tokens**: `CACHE_MANAGER`, `CACHE_STORE`, `CACHE_MODULE_OPTIONS`, `CACHE_KEY_METADATA`, `CACHE_TTL_METADATA`, `NO_CACHE_METADATA`

@@ -23,15 +23,17 @@ import { CacheModule, MemoryCacheStore } from "@bunest/cache";
     CacheModule.register({
       isGlobal: true,
       ttl: 60_000, // default TTL in ms
-      max: 1_000,
-      store: new MemoryCacheStore({ maxEntries: 1_000 }),
+      maxItems: 1_000,
+      store: new MemoryCacheStore({ maxItems: 1_000 }),
     }),
   ],
 })
 export class AppModule {}
 ```
 
-Đối với triển khai đa instance, truyền `new RedisCacheStore({ client: redisClient, keyPrefix: "app:" })`.
+Đối với triển khai đa instance, import `RedisCacheStore` từ `@bunest/cache/redis` và truyền `new RedisCacheStore({ url: "redis://localhost:6379", keyPrefix: "app:" })` (hoặc `{ client: redisClient, keyPrefix: "app:" }`).
+
+> info **Fail-Open & Kiểm tra sức khỏe (Health Probes)** `CacheService.get()` và `CacheService.wrap()` hoạt động theo cơ chế fail-open khi store gặp lỗi tạm thời (phát sự kiện lỗi `"get"` / `"set"` và chuyển thẳng sang hàm factory mà không làm sập request). Sử dụng `await redisStore.ping()` trong endpoint `/ready` để kiểm tra kết nối Redis an toàn (trả về `boolean`, không bao giờ ném lỗi).
 
 ## Lưu đệm tầng Service dạng khai báo
 
