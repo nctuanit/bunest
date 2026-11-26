@@ -1,9 +1,10 @@
 # Bunest `0.1.x` Baseline & Readiness Report
 
 **Date:** 2026-11-26  
-**Plan Reference:** `docs/ke-hoach-phat-trien-bunest.md` (Tickets 1–5)  
+**Plan Reference:** `docs/ke-hoach-phat-trien-bunest.md` (Phase 1 Tickets 1–5 & Phase 2 Weeks 3–6)  
 **Baseline Commit:** `790eb8786cd51ce1a382805031284406eb52989f`  
-**Post-Merge Commit (before final report):** `8382abba07da7cc1e85d30ab92442b5b406a57fa` (+ conformance template restore commit on `main`)
+**Phase 1 Merged Commit:** `8297204616efbce83b67f6242bebfb6113b9dec2`  
+**Phase 2 Merged Commits:** `2656677` (`docs/public-api-matrix.md`), `fbf4d54` (`.d.ts` emit & Dockerfile), `3ec57a3` (`verify:upgrade-pilots`)
 
 ---
 
@@ -87,10 +88,38 @@ All 19 `@bunest/*` tarballs (`0.1.0`, zero `workspace:*` leaks) were packed via 
 
 ---
 
-## 6. Remaining Items for Linux Staging & Release Readiness
+## 6. Phase 2 Completions (`.d.ts`, Dockerfile, Local Soak/Drain, Public API Matrix, Upgrade & Pilots)
 
-1. **[P1 — Packaging / Strict TS]** **Emit `.d.ts` declarations into `dist/`** across all 19 packages (currently `"types"` points to raw `./src/*.ts`; works for Bun + `skipLibCheck: true` + `moduleResolution: "bundler"`, but should emit `.d.ts` before `1.0` / strict TS consumers).
-2. **[P1 — Docker / CI]** **Verify `examples/production-rest-postgres/Dockerfile`** on Linux CI with `bun install --frozen-lockfile` (root `package.json` declares `workspaces: ["packages/*", "apps/*", "examples/*"]` while Dockerfile copies only `packages/` and `examples/production-rest-postgres/`).
-3. **[P2 — Linux Bun `1.4.5` CI Baseline]** Run full `bun run conformance:gate` (confirming 7,005/7,005, 0 skip, 0 fail) and `bun test` on Linux + Bun `1.4.5` to clear the 2 Windows-host-only `ENOENT` failures (`touch` in `metadata-transform.spec.ts:102`, `openssl` in `smtp-and-dkim.spec.ts:498`).
-4. **[Weeks 3–4 — Staging Operations]** Execute live PostgreSQL 17 smoke (`scripts/smoke-postgres.ts`), backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, stable RSS), and `<5m` rolling-upgrade/rollback drill.
-5. **[Weeks 5–6 — Pilot & Upgrade]** Run the two external pilot apps (greenfield API + NestJS module migration) and verify `0.1.0 -> 0.1.x` upgrade on the clean-installed app.
+1. **[P1 #1 RESOLVED — `.d.ts` Declaration Emission & Strict TS Verification (`fbf4d54`)]**
+   - Added `scripts/build-dts.ts` (wired into `bun run build` and `bun run build:dts`): emits **1,491 `.d.ts` files** into `packages/*/dist/` across all 19 packages in a single `tsc --emitDeclarationOnly` pass, verifies 0 internal `/src/` or `../packages/` path leaks, and verifies non-empty `.d.ts` artifacts for all 76 code export subpaths.
+   - Updated `scripts/publish-manifest.ts` to rewrite top-level `types` and `exports[*].types` from `./src/*.ts` to `./dist/**/*.d.ts` with fallback safety, enforced by `scripts/verify-release.ts` and `tests/packaging/publish-manifest.spec.ts` (3/3 pass, 565 expects).
+   - Verified clean out-of-monorepo packed tarballs with `tsc --noEmit --skipLibCheck false` importing all 19 `@bunest/*` packages: **PASS (exit 0)**.
+2. **[P1 #2 RESOLVED — `examples/production-rest-postgres/Dockerfile` Frozen-Lockfile Workspace Fix (`fbf4d54`)]**
+   - Added explicit `COPY` instructions for all 3 `apps/*/package.json` and 7 sibling `examples/*/package.json` workspace manifests prior to `bun install --frozen-lockfile`.
+   - Verified builder-stage simulation in a clean temp directory: `bun install --frozen-lockfile` **PASS (exit 0)** and `bun run --cwd examples/production-rest-postgres build` **PASS (exit 0)**.
+3. **[Weeks 3–4 — Local Operations & Infrastructure Verification (Windows 11, Bun `1.4.3`)]**
+   - **Git for Windows `PATH` verification:** Prepending `C:\Program Files\Git\usr\bin` (`openssl.exe` 3.5.7, `touch.exe` 8.32, `bash.exe`) clears both Windows-only `ENOENT` failures (`metadata-transform.spec.ts` 8/8, `smtp-and-dkim.spec.ts` 6/6) -> **7,005/7,005 conformance PASS** (0 fail, 0 skip).
+   - **HTTP Soak & RSS Stability (`examples/starter`, `/health`, `/brands`, `/shoes` over SQLite ORM, 20 concurrent workers, `21.76s`):**
+     - `198,887` requests (`9,140.4 req/s`), `198,887` 2xx, `0` 4xx, **`0` 5xx (`0.0000%`)**, `0` network errors.
+     - Latency: min `0.08ms`, p50 `1.79ms`, **p95 `3.14ms`**, p99 `4.35ms`, max `11.05ms`.
+     - RSS (OS WorkingSet64): cold `59.61 MB`, post-warmup start `63.35 MB`, peak `91.59 MB`, end `69.82 MB` (`+6.47 MB` net delta; plateaued and GC'd down cleanly).
+   - **`SIGTERM` Graceful Drain:** In-process `process.emit("SIGTERM")` against `BunestFactory.create` + `enableShutdownHooks()` with a 300ms `/slow` handler drained the in-flight request (`HTTP 200` at `303.4ms`), fired `onApplicationShutdown("SIGTERM")`, and rejected post-shutdown connections (note: Windows out-of-process `proc.kill("SIGTERM")` hard-terminates child processes).
+   - **`examples/production-rest-postgres` checks:** Unit tests **4/4 PASS** (26 expects, `181ms`); `deploy/rollback.sh` syntax (`bash -n`) **PASS (exit 0)**.
+4. **[Week 5 — Public API Matrix (`2656677`)]**
+   - Created `docs/public-api-matrix.md` inventorying all 19 `@bunest/*` packages and all **95 declared `package.json#exports` keys** (19 root `.`, 57 named subpaths, 19 `./package.json`), aligned 1:1 with `docs/support-policy.md` stability tiers and `0.1.x -> 0.2.x -> 1.0` SemVer/deprecation policy.
+   - Linked from `docs/support-policy.md` and lockstep EN/VI `apps/docs/content{,-vi}/ecosystem/roadmap.md` (`docs-engine.spec.ts` 9/9 pass, 0 broken links).
+5. **[Weeks 5–6 — Automated Upgrade Path & Pilot A/B (`3ec57a3`)]**
+   - Added `scripts/verify-upgrade-and-pilots.ts` (`bun run verify:upgrade-pilots`): runs end-to-end in an isolated temp dir outside the monorepo against packed `@bunest/*` tarballs over a local HTTP registry (`0` symlinks, `0` repo `package.json` mutations), **100% PASS** (`52.45s`):
+     - **Pilot A (Greenfield REST API @ `0.1.0`):** `bunest new`, `UsersModule`, DTO validation (`201`/`400`), `/live` & `/ready` (`200`), 240-req burst (`240/240` 2xx, `0%` 5xx, p95 `9.71ms`, RSS `+0.87 MB`), `SIGTERM` in-flight drain (`HTTP 200`, exit `0`, `227.89ms`).
+     - **Pilot B (NestJS-Migrated Module @ `0.1.0`):** `@UseGuards` (`401`/`200`), `ValidationPipe` (`400`), `@UseInterceptors`, `@Entity` + `CrudRepository` on file-backed SQLite with CRUD persistence across restart and clean failed-transaction rollback.
+     - **Week 5 Upgrade (`0.1.0 -> 0.1.1-rc.0`):** Both Pilot A (p95 `7.64ms`, RSS `+0.90 MB`, `SIGTERM` drain `200`) and Pilot B (2 rows persisted across upgrade + restart, tx rollback clean) passed with zero regressions.
+
+---
+
+## 7. Remaining External-Infra & Human Sign-Off Items
+
+Only external infrastructure and human sign-off items remain outside this local Windows workstation:
+
+1. **Linux + Bun `1.4.5` CI Run:** Execute the full verification loop (`build`, `typecheck`, `ai:docs --check`, `verify:release`, `conformance:gate`, `bun test`) on Linux + Bun `1.4.5` (native POSIX `touch`/`openssl` and out-of-process `SIGTERM` drain).
+2. **Live PostgreSQL 17 & Docker Daemon Staging Drill:** Start Docker / PG 17 (or run in Linux staging) to execute `docker build` on `examples/production-rest-postgres/Dockerfile`, `examples/production-rest-postgres/scripts/smoke-postgres.ts`, backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, stable RSS), and `<5m` rolling-upgrade/rollback drill.
+3. **Human Pilot Sign-Off:** Collect external pilot team sign-off from real staging/production workloads before cutting `1.0`.
