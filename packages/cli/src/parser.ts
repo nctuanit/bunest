@@ -2,6 +2,7 @@ import type { CliFlagValue, ParsedCliArgs } from "./types";
 
 const BOOLEAN_FLAGS = new Set([
   "help",
+  "affected",
   "skip-typecheck",
   "skip-check",
   "skip-tests",
@@ -81,6 +82,8 @@ const VALUE_FLAGS = new Set([
   "server-url",
   "out",
   "assert-fields",
+  "base",
+  "files",
 ]);
 
 const REPEATABLE_FLAGS = new Set(["env-file"]);

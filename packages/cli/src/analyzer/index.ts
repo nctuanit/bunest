@@ -12,6 +12,13 @@ import type {
   TypegenScanResult,
 } from "../typegen/types";
 import {
+  isGlobalConfigFile,
+  selectAffectedTests,
+  type AffectedTestSelection,
+  type AffectedTestsOptions,
+  type AffectedTestsPlan,
+} from "./affected-tests";
+import {
   resolveClassMacroMembers,
   type ClassMacroDiagnostic,
   type GeneratedMacroMember,
@@ -314,6 +321,7 @@ export {
   explainRoute,
   findClosestMatch,
   getRepositoryDerivedCompletions,
+  isGlobalConfigFile,
   levenshteinDistance,
   matchDerivedPrefix,
   matchesRouteQuery,
@@ -329,8 +337,12 @@ export {
   runDecoratorDiagnostics,
   scanEntitiesAndRepositories,
   scanSqlPlaceholders,
+  selectAffectedTests,
 };
 export type {
+  AffectedTestSelection,
+  AffectedTestsOptions,
+  AffectedTestsPlan,
   AnalyzeProjectDiagnosticsOptions,
   AnalyzedEntity,
   AnalyzedQueryMethod,
