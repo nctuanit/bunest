@@ -11,6 +11,20 @@ import type { SourceLocation } from "../typegen/types";
 
 export type ProviderScope = "SINGLETON" | "REQUEST" | "TRANSIENT";
 
+export type UnknownRegistrationKind =
+  | "dynamic-module"
+  | "dynamic-provider"
+  | "computed-route"
+  | "runtime-only"
+  | "auto-discover";
+
+export interface UnknownRegistrationEntry {
+  readonly kind: UnknownRegistrationKind;
+  readonly reason: string;
+  readonly moduleName?: string;
+  readonly location?: SourceLocation;
+}
+
 export interface ConstructorDependencyInfo {
   readonly paramName: string;
   readonly typeName: string;
@@ -36,6 +50,10 @@ export interface StaticModuleNode {
   readonly sourceFile: string;
   readonly location: SourceLocation;
   readonly decoratorLocation: SourceLocation;
+  readonly exportsLocation?: SourceLocation;
+  readonly importsLocation?: SourceLocation;
+  readonly providersLocation?: SourceLocation;
+  readonly controllersLocation?: SourceLocation;
   readonly isGlobal: boolean;
   readonly autoDiscover: boolean;
   readonly imports: readonly string[];
@@ -48,8 +66,10 @@ export interface StaticModuleGraph {
   readonly modules: readonly StaticModuleNode[];
   readonly providers: readonly StaticProviderNode[];
   readonly providerByName: ReadonlyMap<string, StaticProviderNode>;
+  readonly providersByName: ReadonlyMap<string, readonly StaticProviderNode[]>;
   readonly moduleByName: ReadonlyMap<string, StaticModuleNode>;
   readonly cycles: readonly (readonly string[])[];
+  readonly unknownRegistrations: readonly UnknownRegistrationEntry[];
 }
 
 function getDecoratorShortName(dec: Decorator): string {
@@ -69,8 +89,34 @@ function getObjectProp(
   return undefined;
 }
 
-function extractModuleClassRefs(expr: Expression | undefined): string[] {
-  if (!expr || !Node.isArrayLiteralExpression(expr)) return [];
+function getObjectPropLocation(
+  expr: Expression | undefined,
+  propName: string,
+): SourceLocation | undefined {
+  if (!expr || !Node.isObjectLiteralExpression(expr)) return undefined;
+  const p = expr.getProperty(propName);
+  return p ? nodeToLocation(p) : undefined;
+}
+
+function extractModuleClassRefs(
+  expr: Expression | undefined,
+  moduleName: string,
+  arrayKind: "imports" | "controllers" | "providers" | "exports",
+  unknowns: UnknownRegistrationEntry[],
+): string[] {
+  if (!expr) return [];
+  const fallbackKind: UnknownRegistrationKind =
+    arrayKind === "imports" ? "dynamic-module" : "dynamic-provider";
+
+  if (!Node.isArrayLiteralExpression(expr)) {
+    unknowns.push({
+      kind: fallbackKind,
+      reason: `Computed "${arrayKind}" expression "${expr.getText()}" in ${moduleName} cannot be resolved statically.`,
+      moduleName,
+      location: nodeToLocation(expr),
+    });
+    return [];
+  }
   const out: string[] = [];
 
   for (const el of expr.getElements()) {
@@ -89,27 +135,112 @@ function extractModuleClassRefs(expr: Expression | undefined): string[] {
             for (const sub of arg0.getElements()) {
               if (Node.isIdentifier(sub)) {
                 out.push(sub.getText());
+              } else {
+                unknowns.push({
+                  kind: "dynamic-module",
+                  reason: `Dynamic element "${sub.getText()}" inside ${base}.${method}(...) in ${moduleName} cannot be resolved statically.`,
+                  moduleName,
+                  location: nodeToLocation(sub),
+                });
               }
             }
           }
+          if (method === "forFeatureAsync") {
+            unknowns.push({
+              kind: "dynamic-module",
+              reason: `Async dynamic module registration "${el.getText()}" in ${moduleName} cannot be fully resolved statically.`,
+              moduleName,
+              location: nodeToLocation(el),
+            });
+          }
+        } else if (
+          method === "forRoot" ||
+          method === "forRootAsync" ||
+          method.startsWith("register")
+        ) {
+          unknowns.push({
+            kind: "dynamic-module",
+            reason: `Dynamic module registration "${el.getText()}" in ${moduleName} cannot be fully resolved statically.`,
+            moduleName,
+            location: nodeToLocation(el),
+          });
+        } else {
+          unknowns.push({
+            kind: fallbackKind,
+            reason: `Dynamic registration call "${el.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+            moduleName,
+            location: nodeToLocation(el),
+          });
         }
       } else if (callee.getText() === "forwardRef") {
         const fn = el.getArguments()[0];
         if (fn && Node.isArrowFunction(fn)) {
           const body = fn.getBody();
-          if (Node.isIdentifier(body)) out.push(body.getText());
+          if (Node.isIdentifier(body)) {
+            out.push(body.getText());
+          } else {
+            unknowns.push({
+              kind: fallbackKind,
+              reason: `Non-identifier forwardRef target "${el.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+              moduleName,
+              location: nodeToLocation(el),
+            });
+          }
         }
+      } else {
+        unknowns.push({
+          kind: fallbackKind,
+          reason: `Computed registration call "${el.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+          moduleName,
+          location: nodeToLocation(el),
+        });
       }
     } else if (Node.isObjectLiteralExpression(el)) {
       const provide = getObjectProp(el, "provide");
       if (provide) {
-        if (Node.isIdentifier(provide)) out.push(provide.getText());
-        else if (Node.isStringLiteral(provide)) out.push(provide.getLiteralValue());
+        if (Node.isIdentifier(provide)) {
+          out.push(provide.getText());
+        } else if (Node.isStringLiteral(provide)) {
+          out.push(provide.getLiteralValue());
+        } else {
+          unknowns.push({
+            kind: "dynamic-provider",
+            reason: `Computed provider token "${provide.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+            moduleName,
+            location: nodeToLocation(provide),
+          });
+        }
+      } else {
+        unknowns.push({
+          kind: "dynamic-provider",
+          reason: `Provider object "${el.getText()}" in ${moduleName}.${arrayKind} has no static "provide" token.`,
+          moduleName,
+          location: nodeToLocation(el),
+        });
       }
       const useClass = getObjectProp(el, "useClass");
       if (useClass && Node.isIdentifier(useClass)) {
         out.push(useClass.getText());
       }
+    } else if (
+      el.getKind() === SyntaxKind.SpreadElement ||
+      el.getText().trim().startsWith("...")
+    ) {
+      unknowns.push({
+        kind: fallbackKind,
+        reason: `Spread registration "${el.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+        moduleName,
+        location: nodeToLocation(el),
+      });
+    } else if (Node.isStringLiteral(el)) {
+      out.push(el.getLiteralValue());
+    } else {
+      unknowns.push({
+        kind: fallbackKind,
+        reason: `Computed expression "${el.getText()}" in ${moduleName}.${arrayKind} cannot be resolved statically.`,
+        moduleName,
+        location: nodeToLocation(el),
+      });
     }
   }
   return out;
@@ -281,7 +412,9 @@ export function buildStaticModuleGraph(
   const modules: StaticModuleNode[] = [];
   const providers: StaticProviderNode[] = [];
   const providerByName = new Map<string, StaticProviderNode>();
+  const providersByNameMutable = new Map<string, StaticProviderNode[]>();
   const moduleByName = new Map<string, StaticModuleNode>();
+  const unknownRegistrations: UnknownRegistrationEntry[] = [];
 
   for (const sf of sourceFiles) {
     const typeOnlyImports = collectTypeOnlyImports(sf);
@@ -300,23 +433,64 @@ export function buildStaticModuleGraph(
       if (modDec) {
         const isAuto = getDecoratorShortName(modDec) === "AutoModule";
         const arg0 = modDec.getArguments()[0] as Expression | undefined;
+        if (arg0 && !Node.isObjectLiteralExpression(arg0)) {
+          unknownRegistrations.push({
+            kind: "dynamic-module",
+            reason: `Computed @${getDecoratorShortName(modDec)}(${arg0.getText()}) metadata on ${name} cannot be resolved statically.`,
+            moduleName: name,
+            location: nodeToLocation(arg0),
+          });
+        }
         const autoProp = getObjectProp(arg0, "autoDiscover");
         const autoDiscover =
           isAuto ||
           (autoProp !== undefined &&
             autoProp.getKind() !== SyntaxKind.FalseKeyword);
 
+        if (autoDiscover) {
+          unknownRegistrations.push({
+            kind: "auto-discover",
+            reason: `Module "${name}" uses autoDiscover; provider visibility may include auto-discovered classes.`,
+            moduleName: name,
+            location: nodeToLocation(modDec),
+          });
+        }
+
         const modNode: StaticModuleNode = {
           name,
           sourceFile: filePath,
           location: nodeToLocation(cls.getNameNode() ?? cls),
           decoratorLocation: nodeToLocation(modDec),
+          exportsLocation: getObjectPropLocation(arg0, "exports"),
+          importsLocation: getObjectPropLocation(arg0, "imports"),
+          providersLocation: getObjectPropLocation(arg0, "providers"),
+          controllersLocation: getObjectPropLocation(arg0, "controllers"),
           isGlobal: decNames.has("Global"),
           autoDiscover,
-          imports: extractModuleClassRefs(getObjectProp(arg0, "imports")),
-          controllers: extractModuleClassRefs(getObjectProp(arg0, "controllers")),
-          providers: extractModuleClassRefs(getObjectProp(arg0, "providers")),
-          exports: extractModuleClassRefs(getObjectProp(arg0, "exports")),
+          imports: extractModuleClassRefs(
+            getObjectProp(arg0, "imports"),
+            name,
+            "imports",
+            unknownRegistrations,
+          ),
+          controllers: extractModuleClassRefs(
+            getObjectProp(arg0, "controllers"),
+            name,
+            "controllers",
+            unknownRegistrations,
+          ),
+          providers: extractModuleClassRefs(
+            getObjectProp(arg0, "providers"),
+            name,
+            "providers",
+            unknownRegistrations,
+          ),
+          exports: extractModuleClassRefs(
+            getObjectProp(arg0, "exports"),
+            name,
+            "exports",
+            unknownRegistrations,
+          ),
         };
         modules.push(modNode);
         moduleByName.set(name, modNode);
@@ -344,6 +518,9 @@ export function buildStaticModuleGraph(
         };
         providers.push(provNode);
         providerByName.set(name, provNode);
+        const list = providersByNameMutable.get(name) ?? [];
+        list.push(provNode);
+        providersByNameMutable.set(name, list);
       }
     }
   }
@@ -352,7 +529,9 @@ export function buildStaticModuleGraph(
     modules,
     providers,
     providerByName,
+    providersByName: providersByNameMutable,
     moduleByName,
     cycles: detectProviderCycles(providers),
+    unknownRegistrations,
   };
 }
