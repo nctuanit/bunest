@@ -389,20 +389,28 @@ function formatPropertyAccess(rootVar: string, dotPath: string): string {
   return expr;
 }
 
+function sanitizeFileSlug(input: string): string {
+  return toKebabCase(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function deriveSlug(scenario: RequestScenarioV1): string {
   if (scenario.name && scenario.name.trim().length > 0) {
-    const slug = toKebabCase(scenario.name);
+    const slug = sanitizeFileSlug(scenario.name);
     if (slug.length > 0) return slug;
   }
   if (scenario.routeMeta?.sourceFile) {
     const base = stripExtension(basename(scenario.routeMeta.sourceFile));
-    const slug = toKebabCase(base);
+    const slug = sanitizeFileSlug(base);
     if (slug.length > 0) return slug;
   }
   const pathPart = scenario.path
     .replace(/^\/+|\/+$/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-");
-  const combined = toKebabCase(`${scenario.method}-${pathPart || "root"}`);
+  const combined = sanitizeFileSlug(`${scenario.method}-${pathPart || "root"}`);
   return combined || "request";
 }
 
@@ -1397,6 +1405,8 @@ function renderRegressionTestFile(
     new Set([...(scenario.overrides ?? []), ...(options.overrides ?? [])]),
   );
 
+  const useValidationPipe = options.useValidationPipe ?? true;
+
   const lines: string[] = [];
 
   if (sanitizedResult.warnings.length > 0) {
@@ -1408,7 +1418,7 @@ function renderRegressionTestFile(
   lines.push(
     'import { afterEach, beforeEach, describe, expect, it } from "bun:test";',
   );
-  if (options.useValidationPipe) {
+  if (useValidationPipe) {
     lines.push('import { ValidationPipe } from "@bunest/core";');
   }
   lines.push(
@@ -1456,9 +1466,9 @@ function renderRegressionTestFile(
 
   lines.push("");
   lines.push("    const app = moduleRef.createBunestApplication();");
-  if (options.useValidationPipe) {
+  if (useValidationPipe) {
     lines.push(
-      "    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));",
+      "    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));",
     );
   }
   lines.push("    await app.init();");

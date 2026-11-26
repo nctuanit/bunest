@@ -535,6 +535,161 @@ describe("P0.3 — Request to Regression Test (test-from-request)", () => {
     }
   });
 
+  it("sanitizes generated filename slugs strictly (no parentheses or special chars)", () => {
+    const httpWithParens = [
+      "### Create Orders (Valid - expects 201)",
+      "POST http://localhost:3000/orders HTTP/1.1",
+      "Content-Type: application/json",
+      "",
+      JSON.stringify({ item: "espresso", quantity: 2 }),
+    ].join("\n");
+
+    const parsed = parseHttpFileToScenarios(httpWithParens, "src/orders/orders.http");
+    const plan = planTestFromRequest(parsed);
+    expect(plan.files[0]!.relativePath).toBe(
+      "test/create-orders-valid-expects-201.regression.spec.ts",
+    );
+    expect(plan.files[0]!.relativePath).not.toContain("(");
+    expect(plan.files[0]!.relativePath).not.toContain(")");
+
+    const messyPlan = planTestFromRequest({
+      schemaVersion: 1,
+      name: "  (Create) [Orders] -- @v2!! / #draft  ",
+      method: "POST",
+      path: "/orders",
+      assertions: { status: 201 },
+    });
+    expect(messyPlan.files[0]!.relativePath).toBe(
+      "test/create-orders-v2-draft.regression.spec.ts",
+    );
+    expect(messyPlan.files[0]!.relativePath).toMatch(
+      /^test\/[a-z0-9]+(?:-[a-z0-9]+)*\.regression\.spec\.ts$/,
+    );
+  });
+
+  it("wires ValidationPipe by default in beforeEach so generated .http tests return 400 on invalid DTO payloads without module-level APP_PIPE", async () => {
+    const workdir = await makeTempDir("bunest-p03-default-valpipe-");
+    await ensureDir(join(workdir, "src"));
+    await ensureDir(join(workdir, "test"));
+
+    const toPosix = (p: string) => p.replace(/\\/g, "/");
+    await Bun.write(
+      join(workdir, "tsconfig.json"),
+      JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            experimentalDecorators: true,
+            emitDecoratorMetadata: true,
+            paths: {
+              "@bunest/core": [toPosix(join(REPO_ROOT, "packages/core/src/index.ts"))],
+              "@bunest/core/*": [toPosix(join(REPO_ROOT, "packages/core/src/*"))],
+              "@bunest/testing": [toPosix(join(REPO_ROOT, "packages/testing/src/index.ts"))],
+              "@bunest/validation": [toPosix(join(REPO_ROOT, "packages/validation/src/index.ts"))],
+              "@bunest/validation/*": [toPosix(join(REPO_ROOT, "packages/validation/src/*"))],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Module intentionally has NO APP_PIPE provider (like real apps that register ValidationPipe in src/main.ts)
+    const moduleCode = [
+      'import "@bunest/validation";',
+      'import { Body, Controller, HttpCode, Module, Post } from "@bunest/core";',
+      'import { IsInt, IsString, Min, MinLength } from "@bunest/validation/validator";',
+      "",
+      "export class CreateOrderDto {",
+      "  @IsString()",
+      "  @MinLength(2)",
+      "  item!: string;",
+      "",
+      "  @IsInt()",
+      "  @Min(1)",
+      "  quantity!: number;",
+      "}",
+      "",
+      '@Controller("orders")',
+      "export class OrdersController {",
+      "  @Post()",
+      "  @HttpCode(201)",
+      "  create(@Body() dto: CreateOrderDto) {",
+      '    return { status: "created", item: dto.item, quantity: dto.quantity };',
+      "  }",
+      "}",
+      "",
+      "@Module({",
+      "  controllers: [OrdersController],",
+      "})",
+      "export class AppModule {}",
+      "",
+    ].join("\n");
+
+    await Bun.write(join(workdir, "src/app.module.ts"), moduleCode);
+
+    const httpFile = [
+      "### Create Orders (Valid - expects 201)",
+      "POST http://localhost:3000/orders HTTP/1.1",
+      "Content-Type: application/json",
+      "",
+      JSON.stringify({ item: "espresso", quantity: 2 }),
+      "",
+      "### Create Orders (Invalid - expects 400)",
+      "POST http://localhost:3000/orders HTTP/1.1",
+      "Content-Type: application/json",
+      "",
+      JSON.stringify({ item: "", quantity: 0 }),
+      "",
+    ].join("\n");
+
+    await Bun.write(join(workdir, "orders.http"), httpFile);
+
+    // Run WITHOUT useValidationPipe option and WITHOUT out option
+    const res = await runTestFromRequestCommand({
+      cwd: workdir,
+      inputPath: "orders.http",
+    });
+
+    expect(res.exitCode).toBe(0);
+    expect(res.files[0]!.relativePath).toBe(
+      "test/create-orders-valid-expects-201.regression.spec.ts",
+    );
+
+    const generatedCode = res.plan.files[0]!.content;
+    expect(generatedCode).toContain('import { ValidationPipe } from "@bunest/core";');
+    expect(generatedCode).toContain(
+      "app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));",
+    );
+
+    const generatedFull = join(workdir, res.files[0]!.relativePath);
+    const proc = Bun.spawn([process.execPath, "test", generatedFull], {
+      cwd: workdir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    const out = await new Response(proc.stdout).text();
+    const err = await new Response(proc.stderr).text();
+    expect(exitCode, `Generated test failed:\nstdout:\n${out}\nstderr:\n${err}`).toBe(0);
+
+    // Explicit opt-out still works
+    const optOutPlan = planTestFromRequest(
+      {
+        schemaVersion: 1,
+        name: "No validation pipe",
+        method: "GET",
+        path: "/health",
+        assertions: { status: 200 },
+      },
+      { useValidationPipe: false },
+    );
+    expect(optOutPlan.files[0]!.content).not.toContain("ValidationPipe");
+  });
+
   it("production-build dev-inspector absence check: enableDevDiagnostics() registers ZERO /__bunest/* routes when NODE_ENV=production", async () => {
     @Controller("health")
     class ProdHealthController {
