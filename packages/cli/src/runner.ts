@@ -4,6 +4,10 @@ import { runCheckCommand } from "./commands/check";
 import { runCodemodCommand, runDelombokCommand } from "./commands/codemod";
 import { deployProject } from "./commands/deploy";
 import { runDevServer } from "./commands/dev";
+import {
+  runExplainRouteCommand,
+  type ExplainRouteFormat,
+} from "./commands/explain";
 import { generateSchematic } from "./commands/generate";
 import { generateRepositoryCommand } from "./commands/generate-repository";
 import { formatEnvironmentInfo, getEnvironmentInfo } from "./commands/info";
@@ -11,11 +15,20 @@ import { createProject } from "./commands/new";
 import { runMcpServer } from "./commands/mcp";
 import { runReplCommand } from "./commands/repl";
 import { runStartCommand } from "./commands/start";
+import {
+  runTestFromRequestCommand,
+  type TestFromRequestOutputFormat,
+} from "./commands/test-from-request";
 import { runTypegenCommand } from "./commands/typegen";
 import { upgradeProject } from "./commands/upgrade";
 import { runVerifyCommand } from "./commands/verify";
 import { parseCliArgs } from "./parser";
-import type { CliFlagValue, CliIO, CliResult } from "./types";
+import type {
+  CliFlagValue,
+  CliIO,
+  CliResult,
+  ProjectPreset,
+} from "./types";
 import { CLI_VERSION } from "./version";
 
 export const HELP_TEXT = `Bunest CLI v${CLI_VERSION}
@@ -26,6 +39,7 @@ Usage:
 Commands:
   new <project-name>                Scaffold a new Bunest application
     --dir <path>                    Target directory (defaults to <project-name>)
+    --preset <default|rest-sqlite>  Starter preset (default: default)
     --strict / --no-strict          Enable strict TypeScript compiler options (default: true)
     -g, --skip-git                  Skip initializing a git repository
     --package-manager <pm>          Package manager: bun|npm|yarn|pnpm (default: bun)
@@ -46,6 +60,7 @@ Commands:
     --spec-file-suffix <suffix>     Custom test file suffix (default: spec)
     --flat                          Generate files without a nested folder
     --no-spec                       Skip generating .spec.ts test files
+    --with-scenario                 Generate .http request scenarios & regression spec (for resource)
     --dry-run                       Preview generated files without writing
     --force                         Overwrite existing files
 
@@ -99,6 +114,22 @@ Commands:
     --strict                        Treat diagnostic warnings as failures
     --max-issues <n>                Max issues printed per step (default: 20)
     --sourceRoot <path>             Source root directory (default: src)
+
+  explain route "<METHOD /path>"    Trace a route's owning module, pipeline, DI graph, and quick fixes
+    --format <pretty|json|agent>    Output format (default: pretty)
+    --server-url <url>              Optional running dev server URL for runtime confirmation
+    --version <ver>                 Optional route version filter (e.g. 1)
+    --sourceRoot <path>             Source root directory (default: src)
+    --tsconfig <path>               Explicit path to tsconfig.json
+    -c, --config <path>             Path to bunest.json / nest-cli.json
+
+  test-from-request <file>          Generate sanitized regression tests from a .http or scenario JSON file
+    --out <file>                    Output test file path
+    --assert-fields <a,b>           Comma-separated response fields to assert explicitly
+    --format <pretty|diff|json>     Output format (default: pretty)
+    --save-binary-fixture           Also write binary/stream response fixture file
+    --dry-run                       Preview generated files without writing
+    --force                         Overwrite existing files
 
   delombok, expand <target>         Expand Class Macro decorators (@Data/@Builder/@WithLogger/...) to explicit TS
     --decorator <Name>              Expand only one specific decorator
@@ -225,10 +256,22 @@ export async function runCli(
         const projectName = positionals[0];
         if (!projectName) {
           io.stderr(
-            "Missing required argument: <project-name>.\nUsage: bunest new <project-name> [--dir <path>] [--strict] [--skip-git] [--package-manager <pm>] [--skip-install] [--dry-run]",
+            "Missing required argument: <project-name>.\nUsage: bunest new <project-name> [--dir <path>] [--preset <default|rest-sqlite>] [--strict] [--skip-git] [--package-manager <pm>] [--skip-install] [--dry-run]",
           );
           return { exitCode: 1 };
         }
+        const rawPreset = getStringFlag(flags, "preset");
+        if (
+          rawPreset !== undefined &&
+          rawPreset !== "default" &&
+          rawPreset !== "rest-sqlite"
+        ) {
+          io.stderr(
+            `Invalid --preset "${rawPreset}". Expected one of: default, rest-sqlite.`,
+          );
+          return { exitCode: 1 };
+        }
+        const preset: ProjectPreset | undefined = rawPreset;
         const strictFlag = getBoolFlag(flags, "strict");
         const noStrictFlag = getBoolFlag(flags, "no-strict");
         const strict = noStrictFlag === true ? false : (strictFlag ?? true);
@@ -238,6 +281,7 @@ export async function runCli(
             projectName,
             dir: getStringFlag(flags, "dir") ?? getStringFlag(flags, "directory"),
             cwd: io.cwd,
+            preset,
             strict,
             skipGit: getBoolFlag(flags, "skip-git"),
             packageManager: getStringFlag(flags, "package-manager"),
@@ -359,6 +403,7 @@ export async function runCli(
             cwd: io.cwd,
             flat,
             spec,
+            withScenario: getBoolFlag(flags, "with-scenario") ?? false,
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             force: getBoolFlag(flags, "force") ?? false,
           },
@@ -496,6 +541,96 @@ export async function runCli(
             sourceRoot: getStringFlag(flags, "sourceRoot"),
             config: getStringFlag(flags, "config"),
             maxIssues,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "explain": {
+        const subcommand = positionals[0];
+        if (subcommand !== "route") {
+          io.stderr(
+            'Missing or unknown explain subcommand.\nUsage: bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]',
+          );
+          return { exitCode: 1 };
+        }
+        const route = positionals.slice(1).join(" ").trim();
+        if (!route) {
+          io.stderr(
+            'Missing required argument: "<METHOD /path>".\nUsage: bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]',
+          );
+          return { exitCode: 1 };
+        }
+        const fmtRaw = getStringFlag(flags, "format");
+        if (
+          fmtRaw !== undefined &&
+          fmtRaw !== "pretty" &&
+          fmtRaw !== "json" &&
+          fmtRaw !== "agent"
+        ) {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, json, agent.`,
+          );
+          return { exitCode: 1 };
+        }
+        const format: ExplainRouteFormat | undefined = fmtRaw;
+        const result = await runExplainRouteCommand(
+          {
+            route,
+            cwd: io.cwd,
+            sourceRoot: getStringFlag(flags, "sourceRoot"),
+            tsconfig: getStringFlag(flags, "tsconfig"),
+            config: getStringFlag(flags, "config"),
+            serverUrl: getStringFlag(flags, "server-url"),
+            version: getStringFlag(flags, "version"),
+            format,
+            silent: getBoolFlag(flags, "silent") ?? false,
+          },
+          io,
+        );
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "test-from-request": {
+        const inputPath = positionals[0];
+        if (!inputPath) {
+          io.stderr(
+            "Missing required argument: <scenario.json|file.http>.\nUsage: bunest test-from-request <scenario.json|file.http> [--dry-run] [--format pretty|diff|json] [--out <file>] [--assert-fields a,b] [--save-binary-fixture] [--force]",
+          );
+          return { exitCode: 1 };
+        }
+        const fmtRaw = getStringFlag(flags, "format");
+        if (
+          fmtRaw !== undefined &&
+          fmtRaw !== "pretty" &&
+          fmtRaw !== "diff" &&
+          fmtRaw !== "json"
+        ) {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, diff, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const format: TestFromRequestOutputFormat | undefined = fmtRaw;
+        const assertFieldsRaw = getStringFlag(flags, "assert-fields");
+        const assertFields = assertFieldsRaw
+          ? assertFieldsRaw
+              .split(",")
+              .map((field) => field.trim())
+              .filter((field) => field.length > 0)
+          : undefined;
+        const result = await runTestFromRequestCommand(
+          {
+            inputPath,
+            cwd: io.cwd,
+            dryRun: getBoolFlag(flags, "dry-run") ?? false,
+            force: getBoolFlag(flags, "force") ?? false,
+            format,
+            out: getStringFlag(flags, "out"),
+            assertFields,
+            saveBinaryFixture:
+              getBoolFlag(flags, "save-binary-fixture") ?? false,
           },
           io,
         );

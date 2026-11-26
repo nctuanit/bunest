@@ -31,6 +31,22 @@ bunx bunest dev
 bunx bunest build
 ```
 
+## P0 DX Workflows
+
+```bash
+# Scaffold a REST + SQLite starter project
+bunx bunest new orders-api --preset rest-sqlite
+
+# Generate a CRUD resource with .http request scenarios and regression spec
+bunx bunest generate resource orders --with-scenario
+
+# Explain a route's owning module, pipeline, DI graph, and quick fixes
+bunx bunest explain route "POST /orders" --format json
+
+# Generate sanitized regression tests from a .http or RequestScenarioV1 JSON file
+bunx bunest test-from-request src/orders/orders.http --dry-run --format diff
+```
+
 Programmatic usage:
 
 ```ts

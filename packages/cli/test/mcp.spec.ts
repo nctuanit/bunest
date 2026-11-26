@@ -52,6 +52,7 @@ describe("bunest mcp stdio server", () => {
       "bunest_explain_error",
       "bunest_recent_errors",
       "bunest_inspect_diagnostics",
+      "bunest_explain_route",
       "bunest_verify",
     ]);
 

@@ -38,6 +38,8 @@ const BOOLEAN_FLAGS = new Set([
   "check",
   "no-global",
   "fix",
+  "with-scenario",
+  "save-binary-fixture",
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -75,11 +77,20 @@ const VALUE_FLAGS = new Set([
   "symbol",
   "kind",
   "from",
+  "preset",
+  "server-url",
+  "out",
+  "assert-fields",
 ]);
 
 const REPEATABLE_FLAGS = new Set(["env-file"]);
 
-const OPTIONAL_VALUE_FLAGS = new Set(["debug", "sourcemap", "format"]);
+const OPTIONAL_VALUE_FLAGS = new Set([
+  "debug",
+  "sourcemap",
+  "format",
+  "version",
+]);
 
 const DEFAULT_SHORT_FLAG_ALIASES: Readonly<Record<string, string>> = {
   h: "help",
@@ -291,12 +302,30 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
         if (
           next !== undefined &&
           !next.startsWith("-") &&
-          (next === "pretty" || next === "json")
+          (next === "pretty" ||
+            next === "json" ||
+            next === "agent" ||
+            next === "diff")
         ) {
           setFlagValue(flags, "format", next);
           i += 1;
         } else {
           setFlagValue(flags, "format", true);
+        }
+        continue;
+      }
+
+      if (body === "version") {
+        const next = argv[i + 1];
+        if (
+          command !== undefined &&
+          next !== undefined &&
+          !next.startsWith("-")
+        ) {
+          setFlagValue(flags, "version", next);
+          i += 1;
+        } else {
+          setFlagValue(flags, "version", true);
         }
         continue;
       }
