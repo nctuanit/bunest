@@ -25,6 +25,7 @@
     "type:gen": "bun run scripts/type-tools/generate-global-types.ts",
     "verify:release": "bun run scripts/verify-release.ts",
     "verify:staging-plan": "bun run scripts/verify-staging-registry.ts --plan",
+    "verify:upgrade-pilots": "bun run scripts/verify-upgrade-and-pilots.ts",
     "publish:dry-run": "bun run scripts/publish-packages.ts --dry-run",
     "publish:packages": "bun run scripts/publish-packages.ts",
     "smoke:postgres": "bun run --cwd examples/production-rest-postgres smoke:postgres",
