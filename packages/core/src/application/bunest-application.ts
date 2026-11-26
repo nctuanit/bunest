@@ -795,13 +795,121 @@ export class BunestApplication extends BunestApplicationContext {
       }
 
       if (sub === "/routes") {
-        const routes = this.getRoutes().map((r) => ({
-          method: r.method,
-          path: r.fullPath,
-          controller: r.controller?.name ?? "UnknownController",
-          handler: String(r.handlerKey),
-          version: r.version,
-        }));
+        const appCfg = this.container.getApplicationConfig();
+        const enhancerName = (item: unknown): string => {
+          if (typeof item === "function") {
+            return item.name || "AnonymousEnhancer";
+          }
+          if (
+            item &&
+            typeof item === "object" &&
+            typeof (item as { constructor?: { name?: string } }).constructor
+              ?.name === "string"
+          ) {
+            return (
+              (item as { constructor: { name: string } }).constructor.name ||
+              "AnonymousEnhancer"
+            );
+          }
+          return String(item);
+        };
+        const globalGuards = appCfg.getGlobalGuards();
+        const globalPipes = appCfg.getGlobalPipes();
+        const globalInterceptors = appCfg.getGlobalInterceptors();
+        const globalFilters = appCfg.getGlobalFilters();
+
+        const routes = this.getRoutes().map((r) => {
+          const ownerModule = r.controller
+            ? this.container.getControllerOwner(r.controller)
+            : undefined;
+          const proto = r.controller?.prototype as
+            | Record<string | symbol, unknown>
+            | undefined;
+          const handlerFn = proto?.[r.handlerKey];
+          const handlerTarget =
+            typeof handlerFn === "function" ? handlerFn : undefined;
+
+          const ctrlGuards = r.controller
+            ? (MetadataRegistry.get<readonly GuardLike[]>(
+                METADATA_KEYS.GUARDS,
+                r.controller,
+              ) ?? [])
+            : [];
+          const handlerGuards = handlerTarget
+            ? (MetadataRegistry.get<readonly GuardLike[]>(
+                METADATA_KEYS.GUARDS,
+                handlerTarget,
+              ) ?? [])
+            : [];
+
+          const ctrlPipes = r.controller
+            ? (MetadataRegistry.get<readonly PipeLike[]>(
+                METADATA_KEYS.PIPES,
+                r.controller,
+              ) ?? [])
+            : [];
+          const handlerPipes = handlerTarget
+            ? (MetadataRegistry.get<readonly PipeLike[]>(
+                METADATA_KEYS.PIPES,
+                handlerTarget,
+              ) ?? [])
+            : [];
+          const paramPipes = (r.parameters ?? []).flatMap((p) => p.pipes ?? []);
+
+          const ctrlInterceptors = r.controller
+            ? (MetadataRegistry.get<readonly InterceptorLike[]>(
+                METADATA_KEYS.INTERCEPTORS,
+                r.controller,
+              ) ?? [])
+            : [];
+          const handlerInterceptors = handlerTarget
+            ? (MetadataRegistry.get<readonly InterceptorLike[]>(
+                METADATA_KEYS.INTERCEPTORS,
+                handlerTarget,
+              ) ?? [])
+            : [];
+
+          const ctrlFilters = r.controller
+            ? (MetadataRegistry.get<readonly ExceptionFilterLike[]>(
+                METADATA_KEYS.EXCEPTION_FILTERS,
+                r.controller,
+              ) ?? [])
+            : [];
+          const handlerFilters = handlerTarget
+            ? (MetadataRegistry.get<readonly ExceptionFilterLike[]>(
+                METADATA_KEYS.EXCEPTION_FILTERS,
+                handlerTarget,
+              ) ?? [])
+            : [];
+
+          return {
+            method: r.method,
+            path: r.fullPath,
+            controller: r.controller?.name ?? "UnknownController",
+            handler: String(r.handlerKey),
+            version: r.version,
+            ...(ownerModule?.metatype?.name
+              ? { module: ownerModule.metatype.name }
+              : {}),
+            guards: [...globalGuards, ...ctrlGuards, ...handlerGuards].map(
+              enhancerName,
+            ),
+            pipes: [
+              ...globalPipes,
+              ...ctrlPipes,
+              ...handlerPipes,
+              ...paramPipes,
+            ].map(enhancerName),
+            interceptors: [
+              ...globalInterceptors,
+              ...ctrlInterceptors,
+              ...handlerInterceptors,
+            ].map(enhancerName),
+            filters: [...globalFilters, ...ctrlFilters, ...handlerFilters].map(
+              enhancerName,
+            ),
+          };
+        });
         return Response.json({ count: routes.length, routes });
       }
 

@@ -10,6 +10,7 @@ import {
 import type { CliIO } from "../types";
 import { CLI_VERSION } from "../version";
 import { runCheckCommand } from "./check";
+import { runExplainRouteCommand } from "./explain";
 import { formatVerifyResult, runVerifyCommand } from "./verify";
 
 export interface McpServerOptions {
@@ -100,6 +101,39 @@ export const BUNEST_MCP_TOOLS = [
           description: "Optional source root for static diagnostics.",
         },
       },
+    },
+  },
+  {
+    name: "bunest_explain_route",
+    description:
+      "Explain a Bunest HTTP route (e.g. 'POST /orders'): traces owning module, controller, handler, guards/pipes/interceptors/filters pipeline, recursive DI dependencies, unknowns, and deterministic quick fixes. Queries a running dev server when serverUrl is provided, falling back to static-only if unreachable or bootstrap failed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        route: {
+          type: "string",
+          description: "Route query, e.g. 'POST /orders' or '/orders/:id'.",
+        },
+        format: {
+          type: "string",
+          enum: ["json", "agent"],
+          description:
+            "Output format: JSON (RouteExplainReport schemaVersion 1.0) or compact agent text (default: json).",
+        },
+        serverUrl: {
+          type: "string",
+          description: "Optional dev server URL (e.g. http://127.0.0.1:3000).",
+        },
+        sourceRoot: {
+          type: "string",
+          description: "Optional source root for static analysis.",
+        },
+        version: {
+          type: "string",
+          description: "Optional route version filter (e.g. '1').",
+        },
+      },
+      required: ["route"],
     },
   },
   {
@@ -242,6 +276,36 @@ async function executeToolCall(
         { stdout: () => {}, stderr: () => {} },
       );
       return textResult(JSON.stringify(checkRes, null, 2));
+    }
+
+    case "bunest_explain_route": {
+      const route = typeof args.route === "string" ? args.route.trim() : "";
+      if (!route) {
+        return textResult(
+          'route argument is required (e.g. "POST /orders").',
+          true,
+        );
+      }
+      const format = args.format === "agent" ? "agent" : "json";
+      const serverUrl =
+        typeof args.serverUrl === "string"
+          ? args.serverUrl
+          : options.serverUrl;
+      const result = await runExplainRouteCommand(
+        {
+          route,
+          cwd,
+          format,
+          serverUrl,
+          sourceRoot:
+            typeof args.sourceRoot === "string" ? args.sourceRoot : undefined,
+          version:
+            typeof args.version === "string" ? args.version : undefined,
+          silent: true,
+        },
+        { stdout: () => {}, stderr: () => {} },
+      );
+      return textResult(result.formatted);
     }
 
     case "bunest_verify": {
