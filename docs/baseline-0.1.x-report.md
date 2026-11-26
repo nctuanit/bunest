@@ -5,7 +5,8 @@
 **Baseline Commit:** `790eb8786cd51ce1a382805031284406eb52989f`  
 **Phase 1 Merged Commit:** `8297204616efbce83b67f6242bebfb6113b9dec2`  
 **Phase 2 Merged Commits:** `2656677` (`docs/public-api-matrix.md`), `fbf4d54` (`.d.ts` emit & Dockerfile), `3ec57a3` (`verify:upgrade-pilots`)  
-**Phase 3 / Waves 1–4 Merged Commits:** `5251812` (Waves 1–2: `8f84a1f`, `5b56b3f`, `63ff92e`, `45b0867`, `c24d802`), `8449d04` (Waves 3–4: `7e91ab6`, `cb612a1`, `5f111dc`)
+**Phase 3 / Waves 1–4 Merged Commits:** `5251812` (Waves 1–2: `8f84a1f`, `5b56b3f`, `63ff92e`, `45b0867`, `c24d802`), `8449d04` (Waves 3–4: `7e91ab6`, `cb612a1`, `5f111dc`)  
+**Phase 4 Readiness Commits:** `a2adb23` (DX P0.1–P0.3), `9e018f3` (11/11 apps & examples audit), `c49f8a7` (EN/VI docs, quickstart smoke & UI header/footer SHA)
 
 ---
 
@@ -142,11 +143,29 @@ All 19 `@bunest/*` tarballs (`0.1.0`, zero `workspace:*` leaks) were packed via 
 
 ---
 
-## 8. Remaining External-Infra & Human Sign-Off Items
+## 8. Phase 4 / `c49f8a7` Readiness Update
+
+1. **[DX P0.1–P0.3 — Clean-Install Orders SQLite Track (`a2adb23`)]**
+   - *Explicitly separated from PostgreSQL operations results per [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §1:* the Orders SQLite workflow measures developer experience (DX) only and does not substitute for Linux PostgreSQL 17 operational proof.
+   - Delivered the REST/SQLite starter preset, scenario-backed resource generator, route/DI explain diagnostics, default `ValidationPipe` wiring, and sanitized `test-from-request` regression test export (`packages/cli/test/dx-p03-req2test.spec.ts`), plus VS Code explain and Save-as-Test integration.
+   - Clean-install Orders SQLite verification covers `201`/`400` DTO validation envelopes, missing-export DI guidance, and request-to-test generation; external-registry pilot sign-off remains tracked separately from PostgreSQL staging runs.
+2. **[All 11/11 Apps & Examples Audit & Fixes (`9e018f3`)]**
+   - Audited and fixed all 3 `apps/*` (`vscode-bunest`, `docs`, `playground` in `5f450e9`) and all 8 `examples/*` (`auth-jwt-sqlite`, `distributed-worker`, `hello-world`, `production-rest-postgres`, `rest-crud`, `starter`, `vscode-extension-showcase`, `websocket-chat` in `e7f44d5` / `fa6e8ba`), resolving `tsconfig.json` alignment, `typecheck` scripts, logger/config/repository types, and stale READMEs across all 11 workspaces.
+3. **[Docs Update — Source-First Quickstart, UI & EN/VI Parity (`c49f8a7`)]**
+   - Rewrote the EN/VI quickstart as a verified source-first flow with an automated CI smoke check (`e67d464`; source-first guide verification is tracked separately from published-package install verification).
+   - Fixed mobile header layout/a11y, polished hero rhythm, and surfaced package version + commit SHA in the docs footer (`135d149`).
+   - Updated EN/VI homepage, roadmap parity, and SPA base-path/hash-anchor tests (`0b4973b`, `c49f8a7`) and refreshed `llms-full.txt`.
+4. **[2-Consecutive-Version Upgrade Harness Readiness (`--two-step` + SHA-512 Provenance)]**
+   - Extended [`scripts/verify-upgrade-and-pilots.ts`](../scripts/verify-upgrade-and-pilots.ts) with `--two-step`, `--mid-version=<ver>` (default `0.1.1-rc.0`, with `--to-version` defaulting to `0.2.0-rc.0` in `--two-step` mode), and `--mid-tarballs=<dir>` to upgrade both Pilot A and Pilot B sequentially across two consecutive versions (`fromVersion -> midVersion -> toVersion`), re-verifying health, CRUD, DTO validation, guards, interceptors, SQLite persistence across restarts, and transaction rollback after both transitions while keeping default single-step `bun run verify:upgrade-pilots` unchanged.
+   - Recorded per-version artifact provenance and deterministic SHA-512 digests (`integrityByPackage: Record<string, string>`) in `artifactSources` (`from`, optional `mid`, `to`) to satisfy [`docs/support-policy.md`](./support-policy.md) §5 and [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §1, backed by unit tests in [`tests/packaging/verify-upgrade-cli.spec.ts`](../tests/packaging/verify-upgrade-cli.spec.ts).
+
+---
+
+## 9. Remaining External-Infra & Human Sign-Off Items
 
 Only external infrastructure, live service runs, and human sign-off items remain outside this local Windows workstation:
 
 1. **Linux + Bun `1.4.5` CI Streak (3x Consecutive Green):** Execute the full verification loop (`build`, `typecheck`, `ai:docs --check`, `verify:release`, `verify:staging-plan`, `publish:dry-run`, `conformance:gate`, `bun test`) on Linux + Bun `1.4.5` (native POSIX `touch`/`openssl` and out-of-process `SIGTERM` drain) and verify 3 consecutive green runs via [`scripts/check-ci-streak.ts`](../scripts/check-ci-streak.ts).
-2. **Live PostgreSQL 17, Docker & Optional Redis Staging Drill:** Start Docker / PG 17 (and live Redis with `REQUIRE_REDIS=1` if Redis is in release scope) on Linux staging to execute `docker build` on `examples/production-rest-postgres/Dockerfile`, `examples/production-rest-postgres/scripts/smoke-postgres.ts`, backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, `rssStable` gate), and `<5m` rolling-upgrade/rollback drill with post-rollback schema probes.
-3. **Human Pilot Sign-Off & Published-Artifact Upgrades:** Collect external Pilot A / Pilot B sign-off using [`docs/release-ops-templates.md`](./release-ops-templates.md) and execute 2-consecutive-version upgrade verification against real published registry artifacts (`scripts/verify-upgrade-and-pilots.ts --from-tarballs=... --to-tarballs=...`).
+2. **Live PostgreSQL 17, Docker & Optional Redis Staging Drill (Separate from Orders SQLite DX):** Start Docker / PG 17 (and live Redis with `REQUIRE_REDIS=1` if Redis is in release scope) on Linux staging to execute `docker build` on `examples/production-rest-postgres/Dockerfile`, `examples/production-rest-postgres/scripts/smoke-postgres.ts`, backup/restore verification, 2-hour dual-instance soak test (`p95 < 200ms`, `5xx < 0.1%`, `rssStable` gate), and `<5m` rolling-upgrade/rollback drill with post-rollback schema probes.
+3. **Human Pilot Sign-Off & Published-Artifact Upgrades:** Collect external Pilot A / Pilot B sign-off using [`docs/release-ops-templates.md`](./release-ops-templates.md) and execute 2-consecutive-version upgrade verification against real published registry artifacts (`scripts/verify-upgrade-and-pilots.ts --two-step --from-tarballs=... --mid-tarballs=... --to-tarballs=...`).
 4. **Independent `1.0` Security Audit Sign-Off:** Complete the external security review scoped in [`docs/security.md`](./security.md) and [`docs/release-ops-templates.md`](./release-ops-templates.md) with zero open Critical/High findings prior to `1.0.0` GA promotion.

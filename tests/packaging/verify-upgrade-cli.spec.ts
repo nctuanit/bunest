@@ -6,6 +6,7 @@ import {
   resolve,
 } from "../../packages/core/src/common/index";
 import {
+  buildArtifactSourceInfo,
   extractPackageJsonFromTgz,
   loadPublishablePackages,
   loadTarballsFromDir,
@@ -115,6 +116,78 @@ describe("verify-upgrade-and-pilots CLI", () => {
       expect(() => parseUpgradeCliArgs(["positional"])).toThrow(
         'Unexpected positional argument "positional"',
       );
+    });
+
+    it("enables two-step defaults when --two-step is passed", () => {
+      const parsed = parseUpgradeCliArgs(["--two-step"]);
+      expect(parsed).toEqual({
+        fromVersion: "0.1.0",
+        midVersion: "0.1.1-rc.0",
+        toVersion: "0.2.0-rc.0",
+        twoStep: true,
+      });
+    });
+
+    it("parses --two-step with custom --mid-version, --mid-tarballs, and --to-version", () => {
+      const parsed = parseUpgradeCliArgs([
+        "--two-step",
+        "--from-tarballs=./tars/0.1.0",
+        "--mid-tarballs=./tars/0.1.2",
+        "--to-tarballs=./tars/0.2.0",
+        "--from-version=0.1.0",
+        "--mid-version=0.1.2",
+        "--to-version=0.2.0",
+      ]);
+
+      expect(parsed.twoStep).toBe(true);
+      expect(parsed.fromVersion).toBe("0.1.0");
+      expect(parsed.midVersion).toBe("0.1.2");
+      expect(parsed.toVersion).toBe("0.2.0");
+      expect(parsed.fromTarballsDir).toBe(resolve("./tars/0.1.0"));
+      expect(parsed.midTarballsDir).toBe(resolve("./tars/0.1.2"));
+      expect(parsed.toTarballsDir).toBe(resolve("./tars/0.2.0"));
+    });
+
+    it("parses space-separated --mid-tarballs and --mid-version and boolean --two-step=false", () => {
+      const parsed = parseUpgradeCliArgs([
+        "--two-step",
+        "--mid-tarballs",
+        "./tars-mid",
+        "--mid-version",
+        "0.1.5",
+      ]);
+      expect(parsed.twoStep).toBe(true);
+      expect(parsed.midTarballsDir).toBe(resolve("./tars-mid"));
+      expect(parsed.midVersion).toBe("0.1.5");
+      expect(parsed.toVersion).toBe("0.2.0-rc.0");
+
+      const disabled = parseUpgradeCliArgs(["--two-step=false"]);
+      expect(disabled.twoStep).toBe(false);
+      expect(disabled.midVersion).toBeUndefined();
+      expect(disabled.toVersion).toBe("0.1.1-rc.0");
+    });
+
+    it("validates --two-step boolean value, empty mid flags, positional args, and distinct versions", () => {
+      expect(() => parseUpgradeCliArgs(["--two-step=maybe"])).toThrow(
+        'Flag --two-step expects a boolean value',
+      );
+      expect(() => parseUpgradeCliArgs(["--mid-version="])).toThrow(
+        "requires a non-empty value",
+      );
+      expect(() => parseUpgradeCliArgs(["--mid-tarballs="])).toThrow(
+        "requires a non-empty value",
+      );
+      expect(() => parseUpgradeCliArgs(["--two-step", "stray-arg"])).toThrow(
+        'Unexpected positional argument "stray-arg"',
+      );
+      expect(() =>
+        parseUpgradeCliArgs([
+          "--two-step",
+          "--from-version=0.1.0",
+          "--mid-version=0.1.0",
+          "--to-version=0.2.0",
+        ]),
+      ).toThrow("Two-step upgrade requires three distinct versions");
     });
   });
 
@@ -228,6 +301,25 @@ describe("verify-upgrade-and-pilots CLI", () => {
           expect(rec.manifest.name).toBe(rec.name);
           expect(rec.manifest.version).toBe("0.1.0");
         }
+
+        const externalProvenance = buildArtifactSourceInfo(records, "0.1.0", tmpDir);
+        expect(externalProvenance.mode).toBe("external-tarballs");
+        expect(externalProvenance.dir).toBe(tmpDir);
+        expect(externalProvenance.version).toBe("0.1.0");
+        expect(externalProvenance.packageCount).toBe(19);
+        const provenanceKeys = Object.keys(externalProvenance.integrityByPackage);
+        expect(provenanceKeys.length).toBe(19);
+        expect(provenanceKeys).toEqual([...provenanceKeys].sort((a, b) => a.localeCompare(b)));
+        for (const rec of records) {
+          expect(externalProvenance.integrityByPackage[rec.name]).toBe(rec.integrity);
+        }
+
+        const workspaceProvenance = buildArtifactSourceInfo(records, "0.2.0-rc.0");
+        expect(workspaceProvenance.mode).toBe("workspace-pack");
+        expect(workspaceProvenance.dir).toBeNull();
+        expect(workspaceProvenance.version).toBe("0.2.0-rc.0");
+        expect(workspaceProvenance.packageCount).toBe(19);
+        expect(Object.keys(workspaceProvenance.integrityByPackage).length).toBe(19);
       } finally {
         await removePath(tmpDir, { recursive: true, force: true });
       }

@@ -8,11 +8,15 @@
  *   - Week 5 Upgrade: 0.1.0 -> 0.1.1-rc.0 (packed in temp dir without touching tracked repo
  *              package.json files), upgrading both Pilot A & Pilot B via `bun install` and
  *              re-verifying typecheck, tests, build, and live runtime behavior.
+ *   - Optional `--two-step` mode: 2-consecutive-version upgrade chain
+ *              (`fromVersion -> midVersion -> toVersion`, e.g. `0.1.0 -> 0.1.1-rc.0 -> 0.2.0-rc.0`)
+ *              with per-version SHA-512 artifact provenance (`integrityByPackage`).
  *
  * Usage:
  *   bun run scripts/verify-upgrade-and-pilots.ts
  *   bun run scripts/verify-upgrade-and-pilots.ts --from-tarballs=./tarballs-0.1.0 --from-version=0.1.0 --to-version=0.1.1-rc.0 --output=./upgrade-report.json
  *   bun run scripts/verify-upgrade-and-pilots.ts --from-tarballs=./tarballs-0.1.0 --to-tarballs=./tarballs-0.2.0 --from-version=0.1.0 --to-version=0.2.0
+ *   bun run scripts/verify-upgrade-and-pilots.ts --two-step --from-tarballs=./tarballs-0.1.0 --mid-tarballs=./tarballs-0.1.1 --to-tarballs=./tarballs-0.2.0-rc.0 --from-version=0.1.0 --mid-version=0.1.1 --to-version=0.2.0-rc.0 --output=./two-step-report.json
  */
 import {
   dirname,
@@ -53,9 +57,12 @@ export interface PackedTarballRecord {
 
 export interface UpgradeCliOptions {
   fromTarballsDir?: string;
+  midTarballsDir?: string;
   toTarballsDir?: string;
   fromVersion: string;
+  midVersion?: string;
   toVersion: string;
+  twoStep?: boolean;
   outputPath?: string;
 }
 
@@ -63,6 +70,14 @@ export interface ArtifactSourceInfo {
   mode: "external-tarballs" | "workspace-pack";
   dir: string | null;
   version: string;
+  packageCount: number;
+  integrityByPackage: Record<string, string>;
+}
+
+export interface UpgradeArtifactSources {
+  from: ArtifactSourceInfo;
+  mid?: ArtifactSourceInfo;
+  to: ArtifactSourceInfo;
 }
 
 interface LoadBurstMetrics {
@@ -112,18 +127,24 @@ const ROOT = resolve(import.meta.dir, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
 const BASE_VERSION = "0.1.0";
 const UPGRADE_VERSION = "0.1.1-rc.0";
+const TWO_STEP_MID_VERSION = "0.1.1-rc.0";
+const TWO_STEP_TARGET_VERSION = "0.2.0-rc.0";
+
+const SUPPORTED_FLAGS_HELP =
+  "--from-tarballs=<dir>, --mid-tarballs=<dir>, --to-tarballs=<dir>, --from-version=<ver>, --mid-version=<ver>, --to-version=<ver>, --two-step, --output=<json-path>";
 
 export function parseUpgradeCliArgs(argv: readonly string[]): UpgradeCliOptions {
   const options: UpgradeCliOptions = {
     fromVersion: BASE_VERSION,
     toVersion: UPGRADE_VERSION,
   };
+  let hasExplicitToVersion = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (!arg.startsWith("--")) {
       throw new Error(
-        `Unexpected positional argument "${arg}". Supported flags: --from-tarballs=<dir>, --to-tarballs=<dir>, --from-version=<ver>, --to-version=<ver>, --output=<json-path>`,
+        `Unexpected positional argument "${arg}". Supported flags: ${SUPPORTED_FLAGS_HELP}`,
       );
     }
 
@@ -136,10 +157,12 @@ export function parseUpgradeCliArgs(argv: readonly string[]): UpgradeCliOptions 
       value = arg.slice(eqIdx + 1);
     } else {
       key = arg.slice(2);
-      const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        value = next;
-        i++;
+      if (key !== "two-step") {
+        const next = argv[i + 1];
+        if (next !== undefined && !next.startsWith("--")) {
+          value = next;
+          i++;
+        }
       }
     }
 
@@ -154,26 +177,82 @@ export function parseUpgradeCliArgs(argv: readonly string[]): UpgradeCliOptions 
       case "from-tarballs":
         options.fromTarballsDir = resolve(requireValue(key));
         break;
+      case "mid-tarballs":
+        options.midTarballsDir = resolve(requireValue(key));
+        break;
       case "to-tarballs":
         options.toTarballsDir = resolve(requireValue(key));
         break;
       case "from-version":
         options.fromVersion = requireValue(key);
         break;
+      case "mid-version":
+        options.midVersion = requireValue(key);
+        break;
       case "to-version":
         options.toVersion = requireValue(key);
+        hasExplicitToVersion = true;
         break;
+      case "two-step": {
+        if (value === undefined || value === "true" || value === "1") {
+          options.twoStep = true;
+        } else if (value === "false" || value === "0") {
+          options.twoStep = false;
+        } else {
+          throw new Error(
+            `Flag --two-step expects a boolean value ("true" or "false"), received "${value}".`,
+          );
+        }
+        break;
+      }
       case "output":
         options.outputPath = resolve(requireValue(key));
         break;
       default:
         throw new Error(
-          `Unknown flag "--${key}". Supported flags: --from-tarballs=<dir>, --to-tarballs=<dir>, --from-version=<ver>, --to-version=<ver>, --output=<json-path>`,
+          `Unknown flag "--${key}". Supported flags: ${SUPPORTED_FLAGS_HELP}`,
         );
     }
   }
 
+  if (options.twoStep) {
+    if (!options.midVersion) {
+      options.midVersion = TWO_STEP_MID_VERSION;
+    }
+    if (!hasExplicitToVersion) {
+      options.toVersion = TWO_STEP_TARGET_VERSION;
+    }
+    if (
+      options.fromVersion === options.midVersion ||
+      options.midVersion === options.toVersion ||
+      options.fromVersion === options.toVersion
+    ) {
+      throw new Error(
+        `Two-step upgrade requires three distinct versions, received ${options.fromVersion} -> ${options.midVersion} -> ${options.toVersion}.`,
+      );
+    }
+  }
+
   return options;
+}
+
+export function buildArtifactSourceInfo(
+  records: ReadonlyArray<Pick<PackedTarballRecord, "name" | "integrity">>,
+  version: string,
+  externalDir?: string,
+): ArtifactSourceInfo {
+  const integrityByPackage: Record<string, string> = {};
+  const sorted = [...records].sort((a, b) => a.name.localeCompare(b.name));
+  for (const rec of sorted) {
+    integrityByPackage[rec.name] = rec.integrity;
+  }
+  return {
+    mode: externalDir ? "external-tarballs" : "workspace-pack",
+    dir: externalDir ?? null,
+    version,
+    packageCount: sorted.length,
+    integrityByPackage,
+  };
 }
 
 export function extractPackageJsonFromTgz(
@@ -1797,12 +1876,17 @@ async function upgradeAppToVersion(
 async function main(): Promise<void> {
   const totalStart = nowMs();
   const cli = parseUpgradeCliArgs(Bun.argv.slice(2));
-  const { fromVersion, toVersion } = cli;
+  const { fromVersion, midVersion, toVersion } = cli;
+  const isTwoStep = Boolean(cli.twoStep);
   const pkgs = await loadPublishablePackages();
   assert(pkgs.length > 0, "No publishable @bunest/* packages found");
 
   // Ensure packages are built whenever we pack from the current workspace
-  if (!cli.fromTarballsDir || !cli.toTarballsDir) {
+  const needsWorkspacePack =
+    !cli.fromTarballsDir ||
+    !cli.toTarballsDir ||
+    (isTwoStep && !cli.midTarballsDir);
+  if (needsWorkspacePack) {
     for (const pkg of pkgs) {
       assert(
         existsSyncPath(join(pkg.dir, "dist")),
@@ -1851,8 +1935,62 @@ async function main(): Promise<void> {
       "VFROM",
     );
 
-    // 4. Upgrade: load or pack `toVersion` tarballs (0 repo edits)
-    console.log(`\n=== [Upgrade] Loading/packing & upgrading ${fromVersion} -> ${toVersion} ===`);
+    // 4. Optional intermediate upgrade step (`fromVersion -> midVersion`) when `--two-step` is set
+    let tarballsMid: PackedTarballRecord[] | undefined;
+    let pilotAMid: PilotAReport | undefined;
+    let pilotBMid: PilotBReport | undefined;
+
+    if (isTwoStep) {
+      assert(midVersion, "midVersion is required when --two-step is enabled");
+      console.log(
+        `\n=== [Upgrade Step 1/2] Loading/packing & upgrading ${fromVersion} -> ${midVersion} ===`,
+      );
+      tarballsMid = cli.midTarballsDir
+        ? await loadTarballsFromDir(cli.midTarballsDir, pkgs, midVersion)
+        : await packAllPackagesForVersion(
+            pkgs,
+            midVersion,
+            join(workDir, `stage-${midVersion}`),
+            join(workDir, `tarballs-${midVersion}`),
+          );
+      registry.registerVersion(tarballsMid, "mid");
+
+      const pilotAMidInstallMs = await upgradeAppToVersion(
+        pilotASetup.appDir,
+        midVersion,
+        join(workDir, "bun-cache"),
+      );
+      pilotAMid = await verifyPilotA(
+        pilotASetup.appDir,
+        midVersion,
+        0,
+        pilotAMidInstallMs,
+      );
+
+      const pilotBMidInstallMs = await upgradeAppToVersion(
+        pilotBSetup.appDir,
+        midVersion,
+        join(workDir, "bun-cache"),
+      );
+      pilotBMid = await verifyPilotB(
+        pilotBSetup.appDir,
+        pilotBSetup.dbPath,
+        midVersion,
+        pilotBMidInstallMs,
+        "VMID",
+      );
+      assert(
+        pilotBMid.restartPersistCount >= 2,
+        `Expected Pilot B to persist rows across ${fromVersion} -> ${midVersion}, found ${pilotBMid.restartPersistCount}`,
+      );
+    }
+
+    // 5. Final upgrade: load or pack `toVersion` tarballs (0 repo edits)
+    const upgradeSourceVersion = isTwoStep ? midVersion! : fromVersion;
+    const upgradeBanner = isTwoStep ? "Upgrade Step 2/2" : "Upgrade";
+    console.log(
+      `\n=== [${upgradeBanner}] Loading/packing & upgrading ${upgradeSourceVersion} -> ${toVersion} ===`,
+    );
     const tarballsTo = cli.toTarballsDir
       ? await loadTarballsFromDir(cli.toTarballsDir, pkgs, toVersion)
       : await packAllPackagesForVersion(
@@ -1887,24 +2025,27 @@ async function main(): Promise<void> {
       pilotBUpgradeInstallMs,
       "VTO",
     );
+    if (isTwoStep) {
+      assert(
+        pilotBTo.restartPersistCount >= 3,
+        `Expected Pilot B to persist rows across ${fromVersion} -> ${midVersion} -> ${toVersion}, found ${pilotBTo.restartPersistCount}`,
+      );
+    }
 
     const totalMs = round2(nowMs() - totalStart);
     const commitSha = await getGitCommitSha();
-    const artifactSources: { from: ArtifactSourceInfo; to: ArtifactSourceInfo } = {
-      from: {
-        mode: cli.fromTarballsDir ? "external-tarballs" : "workspace-pack",
-        dir: cli.fromTarballsDir ?? null,
-        version: fromVersion,
-      },
-      to: {
-        mode: cli.toTarballsDir ? "external-tarballs" : "workspace-pack",
-        dir: cli.toTarballsDir ?? null,
-        version: toVersion,
-      },
+    const artifactSources: UpgradeArtifactSources = {
+      from: buildArtifactSourceInfo(tarballsFrom, fromVersion, cli.fromTarballsDir),
+      ...(isTwoStep && tarballsMid && midVersion
+        ? { mid: buildArtifactSourceInfo(tarballsMid, midVersion, cli.midTarballsDir) }
+        : {}),
+      to: buildArtifactSourceInfo(tarballsTo, toVersion, cli.toTarballsDir),
     };
 
     const summary = {
       status: "PASS",
+      upgradeMode: isTwoStep ? "two-step" : "single-step",
+      upgradeChain: isTwoStep ? [fromVersion, midVersion!, toVersion] : [fromVersion, toVersion],
       timestamp: new Date().toISOString(),
       commitSha,
       bunVersion: Bun.version,
@@ -1913,6 +2054,7 @@ async function main(): Promise<void> {
       packagesPackedPerVersion: pkgs.length,
       pilotA_from: pilotAFrom,
       pilotB_from: pilotBFrom,
+      ...(isTwoStep ? { pilotA_mid: pilotAMid, pilotB_mid: pilotBMid } : {}),
       pilotA_to: pilotATo,
       pilotB_to: pilotBTo,
       pilotA_0_1_0: pilotAFrom,
