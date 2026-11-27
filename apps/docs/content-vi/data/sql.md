@@ -43,11 +43,8 @@ import {
   Column,
   CrudRepository,
   Entity,
-  Modifying,
   Repository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
 } from "@bunest/orm";
 
 @Entity("orders")
@@ -70,12 +67,10 @@ export abstract class OrderRepository extends CrudRepository<Order, number> {
   abstract findAllByCustomerIdOrderByIdDesc(customerId: string): Promise<Order[]>;
   abstract countByStatus(status: string): Promise<number>;
 
-  @Modifying()
-  @Query("UPDATE orders SET status = :status WHERE id = :id")
-  abstract updateStatus(
-    @SqlParam("id") id: number,
-    @SqlParam("status") status: string,
-  ): Promise<number>;
+  async updateStatus(id: number, status: string): Promise<number> {
+    const result = await this.execute("UPDATE orders SET status = :status WHERE id = :id", { id, status });
+    return result.affectedRows;
+  }
 }
 ```
 

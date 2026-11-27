@@ -36,7 +36,7 @@ export class AppModule {}
 
 ## Spring Data-Style Declarative Repositories
 
-Extend `CrudRepository<TEntity, TKey>` and decorate the abstract class with `@Repository()`. Derived finder names and `@Query()` templates are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
+Extend `CrudRepository<TEntity, TKey>` and decorate the abstract class with `@Repository()`. Derived finder names are **compiled once at bootstrap** into parameterized SQL queries—zero runtime SQL parsing and strict SQL injection protection:
 
 @@filename(user.repository.ts)
 
@@ -45,11 +45,8 @@ import {
   Column,
   CrudRepository,
   Entity,
-  Modifying,
   Repository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
 } from "@bunest/orm";
 
 @Entity("users")
@@ -78,10 +75,10 @@ export abstract class UserRepository extends CrudRepository<User, number> {
   abstract existsByEmail(email: string): Promise<boolean>;
   abstract countByRole(role: string): Promise<number>;
 
-  // Custom parameterized @Query with @SqlParam:
-  @Modifying()
-  @Query("UPDATE users SET active = 0 WHERE email = :email")
-  abstract deactivateByEmail(@SqlParam("email") email: string): Promise<number>;
+  async deactivateByEmail(email: string): Promise<number> {
+    const result = await this.execute("UPDATE users SET active = 0 WHERE email = :email", { email });
+    return result.affectedRows;
+  }
 }
 ```
 

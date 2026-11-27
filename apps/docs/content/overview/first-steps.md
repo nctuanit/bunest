@@ -128,7 +128,7 @@ The generated project exposes `GET /` and `GET /health` out of the box (for prod
 
 ### Preload & `bunfig.toml`
 
-`bunest new` generates `bunfig.toml` and `preload.ts` so Bun automatically registers the Bunest runtime plugin (enabling zero-boilerplate class macros, `@Repository<Entity>()` inference, and metadata transforms) for both `bun run` and `bun test`:
+`bunest new` generates `bunfig.toml` and `preload.ts` so Bun automatically registers the Bunest runtime plugin (enabling `@Repository<Entity>()` inference, and metadata transforms) for both `bun run` and `bun test`:
 
 @@filename(bunfig.toml)
 

@@ -43,7 +43,7 @@ export class TasksService {
   @Cron(CronExpression.EVERY_5_MINUTES, {
     name: "cleanup-sessions",
     timeZone: "UTC",
-    preventOverlap: true,
+    waitForCompletion: true,
   })
   async cleanupExpiredSessions() {
     this.logger.log("Cleaning expired sessions");
@@ -61,7 +61,7 @@ export class TasksService {
 }
 ```
 
-> info **Chống chạy chồng chéo (Overlap Protection)** Đặt `preventOverlap: true` để đảm bảo một lần thực thi chậm không bao giờ bị gọi lại đồng thời trên cùng một instance. Để chống trùng lặp trên cụm đa instance, hãy kết hợp với `@OnOneInstance()` hoặc `@WithoutOverlapping()` từ [`@bunest/resilience/locks`](/distributed/locks-idempotency).
+> info **Chống chạy chồng chéo (Overlap Protection)** Đặt `waitForCompletion: true` để đảm bảo một lần thực thi chậm không bao giờ bị gọi lại đồng thời trên cùng một instance. Để chống trùng lặp trên cụm đa instance, hãy kết hợp với `@OnOneInstance()` hoặc `@WithoutOverlapping()` từ [`@bunest/resilience/locks`](/distributed/locks-idempotency).
 
 ## Quản lý tác vụ động (`SchedulerRegistry`)
 

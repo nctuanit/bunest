@@ -63,9 +63,6 @@ const app = await BunestFactory.create(AppModule);
 // Ensures OnModuleDestroy, BeforeApplicationShutdown, and OnApplicationShutdown run on SIGTERM/SIGINT
 app.enableShutdownHooks();
 
-// Trust reverse proxy headers (X-Forwarded-For, X-Forwarded-Proto) when behind Nginx/Cloudflare/ALB
-app.set("trust proxy", true);
-
 // Harden defaults for production
 app.useSecurityHeaders();
 app.enableCors({

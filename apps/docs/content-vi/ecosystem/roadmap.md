@@ -74,7 +74,7 @@ Toàn bộ các giai đoạn dưới đây đều **đã được triển khai t
 ### Giai đoạn 5 — AOP tầng Service, Hợp nhất Zero-Dep & Declarative Repository _(Đã triển khai)_
 
 - [x] `MethodAspectWeaver` trong `DIContainer` không chi phí dư thừa (`WeakMap` bỏ qua trong `O(1)` cho các class không gắn decorator, `ADR-014`)
-- [x] Declarative repository biên dịch một lần trong `@bunest/orm` (`@Repository`/`CrudRepository`) với derived finder, `@Query`/`@Modifying`/`@SqlParam`, `@Transactional` và `OrmMigrationRunner`
+- [x] Declarative repository biên dịch một lần trong `@bunest/orm` (`@Repository`/`CrudRepository`) với derived finder, `@Transactional` và `OrmMigrationRunner`
 - [x] Bộ máy validate/transform DTO không phụ thuộc ngoài (`ADR-015`), hợp nhất thành 19 package theo 6 lĩnh vực (`ADR-016`), 19/19 package không runtime dependency & cách ly 2 adapter `node:*` (`ADR-017`), cùng kiến trúc magic/plugin tùy biến (`ADR-018`)
 - [x] Bộ benchmark đối đầu trực tiếp 8 mục tiêu công khai có thể tái lập so sánh Bunest với `Bun.serve()` thuần và NestJS v12 trên Bun & Node.js
 

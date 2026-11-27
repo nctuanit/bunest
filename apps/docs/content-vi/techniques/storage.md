@@ -30,8 +30,10 @@ import { LocalDisk, S3Disk, StorageModule } from "@bunest/storage";
         archive: new S3Disk({
           bucket: process.env.S3_BUCKET!,
           region: "us-east-1",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          },
         }),
       },
     }),
@@ -44,21 +46,20 @@ export class AppModule {}
 
 ```ts
 import { Injectable } from "@bunest/core";
-import { InjectDisk, Storage, type StorageDisk } from "@bunest/storage";
+import { InjectDisk, type StorageDisk } from "@bunest/storage";
 
 @Injectable()
 export class FilesService {
   constructor(
-    private readonly storage: Storage,
     @InjectDisk("archive") private readonly archive: StorageDisk,
   ) {}
 
   async saveAvatar(userId: string, bytes: Uint8Array) {
-    await this.storage.put(`avatars/${userId}.png`, bytes, {
+    await this.archive.put(`avatars/${userId}.png`, bytes, {
       contentType: "image/png",
     });
     return this.archive.signedUrl?.(`avatars/${userId}.png`, {
-      expiresInSeconds: 300,
+      expiresIn: "5m",
     });
   }
 }

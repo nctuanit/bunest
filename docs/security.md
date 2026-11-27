@@ -364,7 +364,7 @@ export class AppModule {}
 
 ## 8. Safe File Storage (`@bunest/storage` & `@bunest/storage/local`)
 
-`StorageModule.forRoot({ driver: "local", rootDir: "./uploads" })` (`LocalStorageAdapter` from `@bunest/storage` / `@bunest/storage/local`) enforces `assertSafeStorageKey()` on every put/get/delete/stat call, blocking:
+`StorageModule.forRoot({ disks: { local: new LocalDisk({ root: "./uploads" }) } })` (`LocalDisk` from `@bunest/storage` / `@bunest/storage/local`) enforces `assertValidKey()` on every put/get/delete/stat call, blocking:
 
 - Path traversal (`../`, `..\\`, absolute paths)
 - Null bytes (`\0`) and control characters

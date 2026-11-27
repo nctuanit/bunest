@@ -31,11 +31,7 @@ import { AuthenticationModule } from "@bunest/security/auth";
 
 @Module({
   imports: [
-    AuthenticationModule.forRoot({
-      providers: [
-        // Đăng ký SessionProvider, JwtProvider, ApiKeyProvider, OidcProvider, ...
-      ],
-    }),
+    AuthenticationModule.forRoot({}),
   ],
 })
 export class AppModule {}

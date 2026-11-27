@@ -63,9 +63,6 @@ const app = await BunestFactory.create(AppModule);
 // Kích hoạt OnModuleDestroy, BeforeApplicationShutdown và OnApplicationShutdown khi nhận SIGTERM/SIGINT
 app.enableShutdownHooks();
 
-// Tin cậy header reverse proxy (X-Forwarded-For, X-Forwarded-Proto) khi đứng sau Nginx/Cloudflare/ALB
-app.set("trust proxy", true);
-
 // Cấu hình bảo mật mặc định cho production
 app.useSecurityHeaders();
 app.enableCors({

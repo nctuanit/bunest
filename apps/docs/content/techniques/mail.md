@@ -21,7 +21,7 @@ import { MailModule, ResendTransport } from "@bunest/mail";
 @Module({
   imports: [
     MailModule.forRoot({
-      defaultFrom: "noreply@example.com",
+      from: "noreply@example.com",
       transport: new ResendTransport({
         apiKey: process.env.RESEND_API_KEY!,
       }),
@@ -33,23 +33,23 @@ export class AppModule {}
 
 ## Sending Emails
 
-Inject `MailService` to send plain text, HTML, or template-rendered messages:
+Inject `Mailer` to send plain text, HTML, or template-rendered messages:
 
 @@filename(notifications.service.ts)
 
 ```ts
 import { Injectable } from "@bunest/core";
-import { MailService } from "@bunest/mail";
+import { html, Mailer } from "@bunest/mail";
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly mail: MailService) {}
+  constructor(private readonly mail: Mailer) {}
 
   async sendWelcome(to: string, name: string) {
     await this.mail.send({
       to,
       subject: "Welcome to Bunest",
-      html: `<p>Hi ${name}, welcome aboard!</p>`,
+      html: html`<p>Hi ${name}, welcome aboard!</p>`,
       text: `Hi ${name}, welcome aboard!`,
     });
   }

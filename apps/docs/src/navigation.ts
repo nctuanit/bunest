@@ -119,10 +119,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "@Module",
           "@AutoModule",
           "@Global",
-          "@RegisterIf",
-          "@RegisterIfEnv",
-          "@RegisterIfMissing",
-          "@Profile",
           "DynamicModule",
           "exports",
           "imports",
@@ -235,9 +231,8 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         slug: "overview/decorators",
         title: "Decorators reference",
         file: "overview/decorators.md",
-        badge: "447",
         description:
-          "Complete reference of all 447 built-in Bunest decorators across 15 packages with usage tables and code examples.",
+          "Public Bunest decorators grouped by package with usage tables and code examples.",
         keywords: [
           "decorators",
           "reference",
@@ -616,7 +611,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         keywords: [
           "@bunest/mail",
           "MailModule",
-          "MailService",
+          "Mailer",
           "ResendTransport",
           "SmtpTransport",
           "InMemoryMailTransport",
@@ -702,8 +697,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "@RepositoryScope",
           "@SoftDelete",
           "@TenantScoped",
-          "@IgnoreScope",
-          "@Projection",
           "Page",
           "Pageable",
           "CursorPage",
@@ -716,7 +709,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "@Transactional",
           "Entity",
           "Embedded",
-          "Relation",
         ],
       },
       {
@@ -725,7 +717,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         file: "data/sqlite.md",
         badge: "Native",
         description:
-          "Bun-native bun:sqlite via @bunest/orm (SqliteOrmDriver) with @Transactional, Spring Data-style @Repository/CrudRepository derived finders, @Query, and OrmMigrationRunner.",
+          "Bun-native bun:sqlite via @bunest/orm (SqliteOrmDriver) with @Transactional, Spring Data-style @Repository/CrudRepository derived finders and OrmMigrationRunner.",
         keywords: [
           "@bunest/orm",
           "OrmModule",
@@ -734,9 +726,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "@Repository",
           "CrudRepository",
           "@Transactional",
-          "@Query",
-          "@Modifying",
-          "@SqlParam",
           "OrmMigrationRunner",
         ],
       },
@@ -757,7 +746,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "ReplicatedOrmDriver",
           "@Repository",
           "CrudRepository",
-          "@Query",
           "@Transactional",
         ],
       },
@@ -1050,7 +1038,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "CLI",
         file: "observability/cli.md",
         description:
-          "Project scaffolding, schematics, bunest.config.ts, unified createBunestPlugin(), custom Class Macros, extensible typegen plugins, and custom architecture rules via @bunest/cli.",
+          "Project scaffolding, schematics, bunest.config.ts, unified createBunestPlugin(), extensible typegen plugins, and custom architecture rules via @bunest/cli.",
         keywords: [
           "@bunest/cli",
           "bunest new",
@@ -1062,9 +1050,6 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "bunest.config.ts",
           "defineBunestConfig",
           "createBunestPlugin",
-          "defineClassMacro",
-          "defineMacroPreset",
-          "setGlobalMacroDefaults",
           "defineTypegenPlugin",
           "defineDiagnosticRule",
           "BUNEST_ARCH001",
@@ -1208,11 +1193,10 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
       },
       {
         slug: "recipes/class-macros",
-        title: "Class & Method Macros",
+        title: "Migrating from class macros",
         file: "recipes/class-macros.md",
-        badge: "27",
         description:
-          "Eliminate boilerplate with 27 Lombok-inspired zero-dependency macros: @Data, @Value, @Builder, @With, @Memoize, @Synchronized.",
+          "Migrate classes that used the removed @bunest/core macro decorators, including @Data, @Builder and @Secret.",
         keywords: [
           "@Data",
           "@Value",

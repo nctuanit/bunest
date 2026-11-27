@@ -1,6 +1,6 @@
 # Decorators Reference
 
-Bunest ships **447 built-in decorators** across **15 packages** — covering dependency injection, HTTP/WebDAV routing, parameter extraction, enhancers, Lombok-style class & method macros, service-layer AOP, validation, OpenAPI 3.1, ORM, GraphQL, WebSockets, security, messaging, queues, resilience, AI/MCP, workflows, and observability.
+Use this reference to find decorators by package and import path.
 
 > info **Legacy Decorators & `verbatimModuleSyntax`** Bunest uses TypeScript legacy decorators (`experimentalDecorators: true` + `emitDecoratorMetadata: true`). Always **value-import** DI classes, DTOs, and entities (never `import type`) so constructor metadata is emitted at runtime.
 
@@ -8,10 +8,10 @@ Bunest ships **447 built-in decorators** across **15 packages** — covering dep
 
 | Package | Decorators | Primary Domain | Guide |
 | --- | ---: | --- | --- |
-| [`@bunest/core`](#bunestcore-102-decorators) | 102 | DI, modules, HTTP/WebDAV, params, enhancers, macros, config, WS, i18n | [Controllers](/overview/controllers) · [Service AOP](/techniques/service-aop) |
+| [`@bunest/core`](#bunestcore) | — | DI, modules, HTTP/WebDAV, params, enhancers, config, WS, i18n | [Controllers](/overview/controllers) · [Service AOP](/techniques/service-aop) |
 | [`@bunest/validation`](#bunestvalidation-119-decorators) | 119 | DTO validation (`validator`) & transformation (`transformer`) | [Validation](/techniques/validation) · [Serialization](/techniques/serialization) |
-| [`@bunest/swagger`](#bunestswagger-78-decorators) | 78 | OpenAPI 3.1 operations, schemas, security & 50 status response shorthands | [OpenAPI](/apis/openapi) |
-| [`@bunest/orm`](#bunestorm-46-decorators) | 46 | Entities, columns, relations, hooks, declarative repositories, transactions | [ORM & Adapters](/data/orm-adapters) |
+| [`@bunest/swagger`](#bunestswagger-79-decorators) | 79 | OpenAPI 3.1 operations, schemas, security & 50 status response shorthands | [OpenAPI](/apis/openapi) |
+| [`@bunest/orm`](#bunestorm) | — | Entities, columns, relations, hooks, declarative repositories, transactions | [ORM & Adapters](/data/orm-adapters) |
 | [`@bunest/graphql`](#bunestgraphql-23-decorators) | 23 | Code-first schema types, resolvers, arguments, Federation v2 & Apollo plugins | [GraphQL](/apis/graphql) |
 | [`@bunest/security`](#bunestsecurity-14-decorators) | 14 | Auth, RBAC, ABAC policies, sessions & rate limiting | [Security](/security/security-module) · [Authorization](/security/authorization) |
 | [`@bunest/messaging`](#bunestmessaging-12-decorators) | 12 | Domain events, CQRS handlers/sagas, transactional outbox & webhooks | [Events](/techniques/events) · [CQRS](/distributed/cqrs) · [Outbox & Webhooks](/distributed/outbox-webhooks) |
@@ -23,13 +23,13 @@ Bunest ships **447 built-in decorators** across **15 packages** — covering dep
 | [`@bunest/observability`](#bunestobservability-5-decorators) | 5 | Tracing spans, latency timers, counters & health checks | [Observability](/observability/observability) |
 | [`@bunest/workflows`](#bunestworkflows-3-decorators) | 3 | Durable workflow entrypoints & CQRS start/signal bindings | [Workflows](/distributed/workflows) |
 | [`@bunest/storage`](#buneststorage-1-decorator) | 1 | Storage disk injection (local, memory, S3/R2/MinIO) | [Storage](/techniques/storage) |
-| **Total** | **447** | **15 packages** | [Custom Decorators](/overview/custom-decorators) |
+
 
 ---
 
-## `@bunest/core` (102 decorators)
+## `@bunest/core`
 
-### 1. DI, Modules & Conditional Registration (11)
+### 1. DI and modules
 
 Import from `@bunest/core`.
 
@@ -42,47 +42,8 @@ Import from `@bunest/core`.
 | `@Inject(token)` | Param / Prop | Injects a provider by explicit token (string, symbol, or class). |
 | `@Optional()` | Param / Prop | Marks a dependency as optional (`undefined` if unregistered). |
 | `@Dependencies(...deps)` | Class | Declares constructor dependencies explicitly (useful in plain JS). |
-| `@RegisterIf(predicate)` | Class | Conditionally registers a provider/module when predicate returns `true`. |
-| `@RegisterIfEnv(key, value?)` | Class | Registers only when `Bun.env[key]` exists or matches `value`. |
-| `@RegisterIfMissing(token)` | Class | Registers a fallback provider only if `token` is not already registered. |
-| `@Profile(...profiles)` | Class | Registers only when `BUNEST_PROFILES` / `NODE_ENV` matches one of the profiles. |
 
-@@filename(storage-adapter.provider.ts)
-
-```ts
-import {
-  Global,
-  Inject,
-  Injectable,
-  Module,
-  Optional,
-  Profile,
-  RegisterIfEnv,
-  RegisterIfMissing,
-} from "@bunest/core";
-
-@Injectable()
-@RegisterIfEnv("REDIS_URL")
-export class RedisSessionStore {}
-
-@Injectable()
-@RegisterIfMissing(RedisSessionStore)
-@Profile("development", "test")
-export class InMemorySessionStore {}
-
-@Global()
-@Module({
-  providers: [RedisSessionStore, InMemorySessionStore],
-  exports: [RedisSessionStore, InMemorySessionStore],
-})
-export class SessionModule {
-  constructor(
-    @Optional() @Inject("SESSION_PREFIX") private readonly prefix = "sess:",
-  ) {}
-}
-```
-
-### 2. HTTP & WebDAV Routing (24)
+### 2. HTTP & WebDAV Routing (25)
 
 Import from `@bunest/core`.
 
@@ -91,6 +52,7 @@ Import from `@bunest/core`.
 | `@Controller(prefix \| options)` | Class | Registers an HTTP controller with optional route prefix, `host`, and `version`. |
 | `@RequestMapping(metadata)` | Method | Low-level route decorator accepting `{ path, method }`. |
 | `@Get(path?)`, `@Post(path?)`, `@Put(path?)`, `@Patch(path?)`, `@Delete(path?)`, `@Options(path?)`, `@Head(path?)`, `@All(path?)` | Method | Standard HTTP verb route handlers (8 decorators). |
+| `@QueryMethod(path?)` | Method | HTTP `QUERY` verb route handler (safe, idempotent query with request body). |
 | `@Propfind(path?)`, `@Proppatch(path?)`, `@Mkcol(path?)`, `@Copy(path?)`, `@Move(path?)`, `@Lock(path?)`, `@Unlock(path?)`, `@Search(path?)` | Method | WebDAV HTTP verb route handlers (8 decorators). |
 | `@Sse(path?)` | Method | Declares a Server-Sent Events streaming endpoint. |
 | `@Version(version)` | Method / Class | Pins a route or controller to one or more API versions (`"1"`, `VERSION_NEUTRAL`). |
@@ -191,60 +153,14 @@ Import from `@bunest/core`.
 | `@SerializeOptions(options)` | Class / Method | Configures `ClassSerializerInterceptor` groups/exclusion per route (also in `@bunest/validation`). |
 | `@UseStandardSchema(schema)` | Method / Param | Validates input using any Standard Schema v1 library (Zod, Valibot, ArkType; also in `@bunest/validation`). |
 
-### 5. Class, Field & Method Macros (27)
+For older code using Lombok-style decorators, see [Migrating from class macros](/recipes/class-macros).
 
-Import from `@bunest/core`. Inspired by Lombok, these zero-dependency macros eliminate boilerplate while remaining fully typed with Bunest's IDE plugin.
-
-| Group | Decorators | Purpose |
-| --- | --- | --- |
-| **Composite models** (4) | `@Data()`, `@Value()`, `@Builder()`, `@SuperBuilder()` | Auto-generates getters, setters, `toString()`, `equals()`, immutable value objects, and fluent builders. |
-| **Accessors & cloning** (5) | `@Getter()`, `@Setter()`, `@Accessors()`, `@With()`, `@WithBy()` | Generates property getters/setters, fluent/chain accessors, and immutable `withX()` / `withXBy()` updaters. |
-| **Object utilities** (6) | `@ToString()`, `@EqualsAndHashCode()`, `@FieldDefaults()`, `@FieldNameConstants()`, `@UtilityClass()`, `@StandardException()` | Generates structural equality, string formatting, field defaults, constant keys, static utility guards, and standard `Error` constructors. |
-| **Field modifiers** (5) | `@Delegate()`, `@Singular()`, `@NonNull()`, `@NonFinal()`, `@Secret()` | Delegates methods to a nested field, builds collection entries one-by-one, enforces non-null checks, overrides `@Value` finality, or redacts sensitive fields from `toString()`/JSON. |
-| **Serialization & method aspects** (7) | `@JsonSerializable()`, `@Memoize()`, `@LogExecution()`, `@WithLogger()`, `@Synchronized()`, `@Locked()`, `@QueryMethod()` | Adds custom `toJSON()`, caches return values, logs call timing, injects a logger, serializes concurrent async calls with a mutex/lock, or marks declarative query methods. |
-
-@@filename(user-profile.model.ts)
-
-```ts
-import {
-  Builder,
-  Data,
-  LogExecution,
-  Memoize,
-  Secret,
-  Synchronized,
-} from "@bunest/core";
-
-@Data()
-@Builder()
-export class UserProfile {
-  id: string;
-  email: string;
-
-  @Secret()
-  passwordHash: string; // automatically masked in toString() & JSON
-}
-
-export class PricingService {
-  @Memoize({ ttlMs: 30_000 })
-  @LogExecution()
-  computeTaxRate(country: string): number {
-    return country === "VN" ? 0.08 : 0.1;
-  }
-
-  @Synchronized()
-  async refreshCatalog(): Promise<void> {
-    // Prevents concurrent overlapping executions
-  }
-}
-```
-
-### 6. Config, HTTP Client, I18n & WebSockets (10)
+### 5. Config, HTTP Client, I18n & WebSockets (10)
 
 | Subpath | Decorators | Purpose |
 | --- | --- | --- |
 | `@bunest/core/config` | `@ConfigValue(key, options?)`, `@InjectConfig(namespace?)` | Injects a typed config key or namespaced config object. |
-| `@bunest/core/client` | `@InjectHttpClient(name?)` | Injects a named `HttpClientService` instance. |
+| `@bunest/core/client` | `@InjectHttpClient(name?)` | Injects a named `HttpClient` instance. |
 | `@bunest/core/i18n` | `@CurrentLocale()` | Extracts the resolved request locale (from ALS / `Accept-Language`). |
 | `@bunest/core/ws` | `@WebSocketGateway(port \| options?)`, `@WebSocketServer()`, `@SubscribeMessage(event)`, `@MessageBody(key?)`, `@ConnectedSocket()`, `@Ack()` | Declares native `Bun.serve` WebSocket gateways, event handlers, payload/socket binding, and ack callbacks. |
 
@@ -349,11 +265,11 @@ export class CreateUserDto {
 
 ---
 
-## `@bunest/swagger` (78 decorators)
+## `@bunest/swagger` (79 decorators)
 
 Import from `@bunest/swagger`.
 
-### Core OpenAPI Decorators (28)
+### Core OpenAPI Decorators (29)
 
 | Group | Decorators |
 | --- | --- |
@@ -361,7 +277,7 @@ Import from `@bunest/swagger`.
 | **Inputs & Media Types** (7) | `@ApiBody`, `@ApiParam`, `@ApiQuery`, `@ApiHeader`, `@ApiHeaders`, `@ApiConsumes`, `@ApiProduces` |
 | **Schemas & Properties** (6) | `@ApiProperty`, `@ApiPropertyOptional`, `@ApiHideProperty`, `@ApiResponseProperty`, `@ApiSchema`, `@ApiExtraModels` |
 | **Security** (6) | `@ApiBearerAuth`, `@ApiBasicAuth`, `@ApiOAuth2`, `@ApiCookieAuth`, `@ApiApiKey`, `@ApiSecurity` |
-| **Extensions & Links** (2) | `@ApiExtension`, `@ApiLink` |
+| **Extensions & Links** (3) | `@ApiExtension`, `@ApiLink`, `@ApiDefaultGetter` |
 
 ### Response Decorators (50)
 
@@ -404,18 +320,18 @@ export class UsersOpenApiController {
 
 ---
 
-## `@bunest/orm` (46 decorators)
+## `@bunest/orm`
 
 Import from `@bunest/orm`.
 
 | Category | Decorators | Purpose |
 | --- | --- | --- |
-| **Entities & Columns** (13) | `@Entity`, `@Column`, `@PrimaryColumn`, `@PrimaryGeneratedColumn`, `@PrimaryKey`, `@ObjectIdColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`, `@Index`, `@Unique`, `@SoftDelete` | Maps TypeScript classes to SQL/MongoDB tables, primary keys, timestamps, indexes, optimistic locking, and soft deletes. |
-| **Embeddables** (4) | `@Embeddable`, `@Embedded`, `@Embeds`, `@Nested` | Maps value objects / nested column groups inside an entity. |
-| **Relations** (10) | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@ManyToManyOf`, `@HasOne`, `@HasMany`, `@BelongsTo`, `@JoinColumn`, `@JoinTable` | Defines foreign-key and join-table relationships (TypeORM-style & ActiveRecord-style aliases). |
+| **Entities & Columns** (12) | `@Entity`, `@Column`, `@PrimaryColumn`, `@PrimaryGeneratedColumn`, `@ObjectIdColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`, `@Index`, `@Unique`, `@SoftDelete` | Maps TypeScript classes to SQL/MongoDB tables, primary keys, timestamps, indexes, optimistic locking, and soft deletes. |
+| **Embeddables** | `@Embeddable`, `@Embedded` | Embed a value object. |
+| **Relations** | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@JoinColumn`, `@JoinTable` | Map entity relations. |
 | **Lifecycle Hooks** (7) | `@BeforeInsert`, `@AfterInsert`, `@BeforeUpdate`, `@AfterUpdate`, `@BeforeRemove`, `@AfterRemove`, `@AfterLoad` | Runs entity hooks around persistence events. |
-| **Declarative Repositories** (4) | `@Repository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Declares Spring Data-style compiled-once repositories, DTO projections, default query scopes, and mixin fragments. |
-| **Multi-Tenancy & Scopes** (2) | `@TenantScoped`, `@IgnoreScope` | Enforces automatic tenant isolation or bypasses a default scope on a specific query. |
+| **Declarative Repositories** | `@Repository`, `@RepositoryScope` | Declare repositories and query scopes. |
+| **Multi-Tenancy & Scopes** | `@TenantScoped` | Scope repository operations by tenant. |
 | **Transactions & DI** (5) | `@Transactional`, `@InjectRepository`, `@InjectDataSource`, `@InjectEntityManager`, `@InjectOrmMigrations` | Declarative ALS transaction/savepoint boundaries and ORM DI injection. |
 
 @@filename(order.entity.ts)
@@ -460,7 +376,7 @@ export abstract class OrderRepository extends CrudRepository<Order, string> {
 @Injectable()
 export class OrderService {
   constructor(
-    @InjectRepository(Order) private readonly repo: OrderRepository,
+    private readonly repo: OrderRepository,
   ) {}
 
   @Transactional()
@@ -514,14 +430,20 @@ export class BooksResolver {
 | --- | --- | --- |
 | `@bunest/security` (10) | `@Auth(...roles)`, `@Protected(options?)`, `@Public()`, `@Roles(...roles)`, `@CheckPolicies(...handlers)`, `@CurrentUser(prop?)`, `@Throttle(options)`, `@SkipThrottle(skip?)`, `@InjectThrottlerOptions()`, `@InjectThrottlerStorage()` | High-level route auth/RBAC/policy guards, current user extraction, and rate limiting. |
 | `@bunest/security/auth` (2) | `@Authenticate(strategy?)`, `@CurrentSession()` | Next-gen session/JWT/MFA authentication guard and session parameter decorator. |
-| `@bunest/security/authz` (2) | `@Policy(resource)`, `@Can(action, resource?)` (plus `@Can.Anyone()`) | Policy-based authorization definitions and handler checks. |
+| `@bunest/security/authz` (2) | `@Policy()`, `@Can(PolicyClass, ability)` (plus `@Can.Anyone()`) | Policy-based authorization definitions and handler checks. |
 
 @@filename(billing.controller.ts)
 
 ```ts
 import { Controller, Get } from "@bunest/core";
 import { Auth, CurrentUser, Public, Throttle } from "@bunest/security";
-import { Can } from "@bunest/security/authz";
+import { Can, Policy } from "@bunest/security/authz";
+@Policy()
+class InvoicePolicy {
+  read(user: { roles: string[] } | null): boolean {
+    return user?.roles.includes("admin") === true;
+  }
+}
 
 @Controller("billing")
 export class BillingController {
@@ -532,7 +454,7 @@ export class BillingController {
   }
 
   @Auth("admin")
-  @Can("read", "invoice")
+  @Can(InvoicePolicy, "read")
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get("invoices")
   listInvoices(@CurrentUser("id") userId: string) {
@@ -594,10 +516,10 @@ import { Idempotent } from "@bunest/resilience/idempotency";
 @Injectable()
 export class PaymentService {
   @WithLock((orderId: string) => `pay:${orderId}`, { ttl: 10_000 })
-  @Idempotent({ ttlMs: 60_000 })
-  @Retry({ maxAttempts: 3, delayMs: 200 })
+  @Idempotent({ ttl: 60_000 })
+  @Retry({ attempts: 3, backoff: { delay: 200 } })
   @Timeout(5_000)
-  @CircuitBreaker({ failureThreshold: 5 })
+  @CircuitBreaker({ failureRateThreshold: 50 })
   @Fallback(() => ({ status: "queued_for_retry" }))
   async charge(orderId: string) {
     return { orderId, status: "paid" };

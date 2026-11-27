@@ -91,13 +91,13 @@ export class UploadsController {
       throw new BadRequestException("Missing avatar file");
     }
 
-    const bytes = await file.arrayBuffer();
-    await Bun.write(`./uploads/${file.filename}`, bytes);
+    const bytes = file.buffer;
+    await Bun.write(`./uploads/${crypto.randomUUID()}`, bytes);
 
     return {
-      field: file.fieldName,
-      filename: file.filename,
-      mimeType: file.mimeType,
+      field: file.fieldname,
+      filename: file.originalname,
+      mimeType: file.mimetype,
       size: file.size,
       caption: caption ?? null,
     };
@@ -106,7 +106,7 @@ export class UploadsController {
   @Post("gallery")
   uploadMany(@UploadedFiles("photos") files: UploadedFileInfo[]) {
     return {
-      uploaded: files.map((f) => ({ name: f.filename, size: f.size })),
+      uploaded: files.map((f) => ({ name: f.originalname, size: f.size })),
     };
   }
 }

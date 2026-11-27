@@ -91,4 +91,35 @@ export class UsersController {
 
 Router fail-fast của Bunest kiểm tra trùng lặp route kèm phiên bản (`BUNEST_E101`). Hai handler cùng HTTP method và path sẽ **hợp lệ** nếu khác phiên bản (`@Version("1")` vs `@Version("2")`), và báo lỗi ngay nếu trùng phiên bản.
 
-> info **Tích hợp OpenAPI** Khi dùng [`@bunest/swagger`](/apis/openapi), các route theo phiên bản sẽ tự động được phản ánh chính xác trong tài liệu OpenAPI 3.1.
+## Tích hợp OpenAPI & Swagger
+
+[`@bunest/swagger`](/apis/openapi) hỗ trợ tạo tài liệu OpenAPI 3.1 đa phiên bản đầy đủ cho cả 4 chiến lược versioning:
+
+@@filename(main.ts)
+
+```ts
+import { DocumentBuilder, SwaggerModule } from "@bunest/swagger";
+
+const config = new DocumentBuilder()
+  .setTitle("Users API")
+  .setVersion("1.0")
+  .build();
+
+// Tự động phát hiện phiên bản (qua SwaggerModule.discoverApiVersions(app))
+const docs = SwaggerModule.createVersionedDocuments(app, config, {
+  includeVersionNeutral: true,
+});
+
+SwaggerModule.setup("docs", app, docs, {
+  defaultVersion: "2",
+});
+```
+
+- **Các endpoint được tạo**: phục vụ `/docs/v1-json`, `/docs/v1-yaml`, `/docs/v2-json`, `/docs/v2-yaml`, kèm `/docs-json` và `/docs-yaml` cho `defaultVersion` (hoặc phiên bản mới nhất). Mọi route tài liệu đều được đăng ký ở chế độ `VERSION_NEUTRAL`.
+- **Bộ chuyển phiên bản**: tự động kích hoạt trên cả 3 preset giao diện (`builtin`, `swagger-ui` và `scalar`).
+- **Lọc đơn phiên bản & cô lập schema**: gọi `SwaggerModule.createDocument(app, config, { version: "1", includeVersionNeutral: true })` để tạo đặc tả riêng với `components.schemas` chỉ gồm các DTO mà phiên bản đó sử dụng.
+- **Hỗ trợ cả 4 chiến lược**: `URI` tạo path theo phiên bản; `HEADER` và `MEDIA_TYPE` tự chèn tham số header tương ứng (`required: false` khi là `VERSION_NEUTRAL` hoặc khớp `defaultVersion`); `CUSTOM` hỗ trợ `customVersionParameter` (`query`, `header` hoặc `cookie`).
+
+> warning **Chế độ Header, Media Type & Custom** Do các phiên bản khác nhau dùng chung path và HTTP method (ví dụ `GET /users`) ở chế độ `HEADER`, `MEDIA_TYPE` và `CUSTOM`, việc tạo một tài liệu đơn không lọc sẽ khiến phiên bản sau ghi đè phiên bản trước. Hãy dùng `SwaggerModule.createVersionedDocuments()` hoặc `createDocument(..., { version })` để tránh xung đột.
+
+> info **Tài liệu OpenAPI đầy đủ** Xem hướng dẫn [`@bunest/swagger`](/apis/openapi) để biết chi tiết về `discoverApiVersions()`, `infoVersionResolver`, `customVersionParameter` và các preset UI.

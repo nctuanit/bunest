@@ -56,15 +56,13 @@ export class MathController {
 
 ```ts
 import { BunestFactory } from "@bunest/core";
-import { Transport } from "@bunest/microservices";
+import { MicroserviceHost } from "@bunest/microservices";
 import { AppModule } from "./app.module";
 
 // Hybrid app: serves HTTP on :3000 AND TCP microservice on :4001
+// AppModule imports MicroserviceModule.forRoot({ transport: Transport.TCP, options: { port: 4001 } }).
 const app = await BunestFactory.create(AppModule);
-app.connectMicroservice({
-  transport: Transport.TCP,
-  options: { host: "127.0.0.1", port: 4001 },
-});
+app.connectMicroservice(app.get(MicroserviceHost));
 
 await app.startAllMicroservices();
 await app.listen(3000);

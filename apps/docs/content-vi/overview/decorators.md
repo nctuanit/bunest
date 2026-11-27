@@ -1,6 +1,6 @@
 # Tra cứu Decorators (Reference)
 
-Bunest cung cấp sẵn **447 decorators** phân bổ trên **15 packages** — bao phủ đầy đủ từ dependency injection, định tuyến HTTP/WebDAV, trích xuất tham số, enhancers, class & method macros kiểu Lombok, Service-Layer AOP, validation, OpenAPI 3.1, ORM, GraphQL, WebSockets, bảo mật, messaging, queues, resilience, AI/MCP, workflows cho đến observability.
+Tra cứu decorator theo package và đường dẫn import.
 
 > info **Legacy Decorators & `verbatimModuleSyntax`** Bunest sử dụng TypeScript legacy decorators (`experimentalDecorators: true` + `emitDecoratorMetadata: true`). Luôn **value-import** các DI class, DTO và entity (không dùng `import type`) để metadata constructor được sinh ra lúc runtime.
 
@@ -8,10 +8,10 @@ Bunest cung cấp sẵn **447 decorators** phân bổ trên **15 packages** — 
 
 | Package | Số lượng | Phạm vi chính | Hướng dẫn chi tiết |
 | --- | ---: | --- | --- |
-| [`@bunest/core`](#bunestcore-102-decorators) | 102 | DI, modules, HTTP/WebDAV, params, enhancers, macros, config, WS, i18n | [Controllers](/overview/controllers) · [Service AOP](/techniques/service-aop) |
+| [`@bunest/core`](#bunestcore) | — | DI, modules, HTTP/WebDAV, params, enhancers, config, WS, i18n | [Controllers](/overview/controllers) · [Service AOP](/techniques/service-aop) |
 | [`@bunest/validation`](#bunestvalidation-119-decorators) | 119 | Kiểm tra DTO (`validator`) & biến đổi dữ liệu (`transformer`) | [Validation](/techniques/validation) · [Serialization](/techniques/serialization) |
-| [`@bunest/swagger`](#bunestswagger-78-decorators) | 78 | OpenAPI 3.1 operations, schemas, security & 50 shorthand status response | [OpenAPI](/apis/openapi) |
-| [`@bunest/orm`](#bunestorm-46-decorators) | 46 | Entities, columns, relations, hooks, declarative repositories, transactions | [ORM & Adapters](/data/orm-adapters) |
+| [`@bunest/swagger`](#bunestswagger-79-decorators) | 79 | OpenAPI 3.1 operations, schemas, security & 50 shorthand status response | [OpenAPI](/apis/openapi) |
+| [`@bunest/orm`](#bunestorm) | — | Entities, columns, relations, hooks, declarative repositories, transactions | [ORM & Adapters](/data/orm-adapters) |
 | [`@bunest/graphql`](#bunestgraphql-23-decorators) | 23 | Code-first schema types, resolvers, arguments, Federation v2 & Apollo plugins | [GraphQL](/apis/graphql) |
 | [`@bunest/security`](#bunestsecurity-14-decorators) | 14 | Auth, RBAC, ABAC policies, sessions & rate limiting | [Security](/security/security-module) · [Authorization](/security/authorization) |
 | [`@bunest/messaging`](#bunestmessaging-12-decorators) | 12 | Domain events, CQRS handlers/sagas, transactional outbox & webhooks | [Events](/techniques/events) · [CQRS](/distributed/cqrs) · [Outbox & Webhooks](/distributed/outbox-webhooks) |
@@ -23,13 +23,13 @@ Bunest cung cấp sẵn **447 decorators** phân bổ trên **15 packages** — 
 | [`@bunest/observability`](#bunestobservability-5-decorators) | 5 | Tracing spans, đo độ trễ, counters & health checks | [Observability](/observability/observability) |
 | [`@bunest/workflows`](#bunestworkflows-3-decorators) | 3 | Durable workflow entrypoints & gắn kết CQRS start/signal | [Workflows](/distributed/workflows) |
 | [`@bunest/storage`](#buneststorage-1-decorator) | 1 | Inject ổ đĩa lưu trữ (local, memory, S3/R2/MinIO) | [Storage](/techniques/storage) |
-| **Tổng cộng** | **447** | **15 packages** | [Custom Decorators](/overview/custom-decorators) |
+
 
 ---
 
-## `@bunest/core` (102 decorators)
+## `@bunest/core`
 
-### 1. DI, Modules & Đăng ký có điều kiện (11)
+### 1. DI và module
 
 Import từ `@bunest/core`.
 
@@ -42,47 +42,8 @@ Import từ `@bunest/core`.
 | `@Inject(token)` | Param / Prop | Inject provider theo token tường minh (string, symbol hoặc class). |
 | `@Optional()` | Param / Prop | Đánh dấu dependency là tùy chọn (nhận `undefined` nếu chưa đăng ký). |
 | `@Dependencies(...deps)` | Class | Khai báo danh sách dependency của constructor (hữu ích khi dùng JS thuần). |
-| `@RegisterIf(predicate)` | Class | Chỉ đăng ký provider/module khi hàm `predicate` trả về `true`. |
-| `@RegisterIfEnv(key, value?)` | Class | Chỉ đăng ký khi `Bun.env[key]` tồn tại hoặc khớp `value`. |
-| `@RegisterIfMissing(token)` | Class | Đăng ký provider dự phòng nếu `token` chưa được đăng ký. |
-| `@Profile(...profiles)` | Class | Chỉ đăng ký khi `BUNEST_PROFILES` / `NODE_ENV` khớp một trong các profile. |
 
-@@filename(storage-adapter.provider.ts)
-
-```ts
-import {
-  Global,
-  Inject,
-  Injectable,
-  Module,
-  Optional,
-  Profile,
-  RegisterIfEnv,
-  RegisterIfMissing,
-} from "@bunest/core";
-
-@Injectable()
-@RegisterIfEnv("REDIS_URL")
-export class RedisSessionStore {}
-
-@Injectable()
-@RegisterIfMissing(RedisSessionStore)
-@Profile("development", "test")
-export class InMemorySessionStore {}
-
-@Global()
-@Module({
-  providers: [RedisSessionStore, InMemorySessionStore],
-  exports: [RedisSessionStore, InMemorySessionStore],
-})
-export class SessionModule {
-  constructor(
-    @Optional() @Inject("SESSION_PREFIX") private readonly prefix = "sess:",
-  ) {}
-}
-```
-
-### 2. Định tuyến HTTP & WebDAV (24)
+### 2. Định tuyến HTTP & WebDAV (25)
 
 Import từ `@bunest/core`.
 
@@ -91,6 +52,7 @@ Import từ `@bunest/core`.
 | `@Controller(prefix \| options)` | Class | Đăng ký HTTP controller với prefix, `host`, và `version`. |
 | `@RequestMapping(metadata)` | Method | Decorator cấp thấp nhận `{ path, method }`. |
 | `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@All` | Method | 8 decorator cho các phương thức HTTP chuẩn. |
+| `@QueryMethod(path?)` | Method | Decorator cho phương thức HTTP `QUERY` (truy vấn an toàn, idempotent có request body). |
 | `@Propfind`, `@Proppatch`, `@Mkcol`, `@Copy`, `@Move`, `@Lock`, `@Unlock`, `@Search` | Method | 8 decorator cho các phương thức WebDAV. |
 | `@Sse(path?)` | Method | Khai báo endpoint Server-Sent Events (streaming). |
 | `@Version(version)` | Method / Class | Gắn phiên bản API cho route hoặc controller (`"1"`, `VERSION_NEUTRAL`). |
@@ -191,60 +153,14 @@ Import từ `@bunest/core`.
 | `@SerializeOptions(options)` | Class / Method | Cấu hình `ClassSerializerInterceptor` theo từng route (cũng export ở `@bunest/validation`). |
 | `@UseStandardSchema(schema)` | Method / Param | Validate dữ liệu với bất kỳ thư viện Standard Schema v1 nào (Zod, Valibot, ArkType; cũng export ở `@bunest/validation`). |
 
-### 5. Class, Field & Method Macros (27)
+Với mã cũ dùng decorator kiểu Lombok, xem [hướng dẫn chuyển đổi](/recipes/class-macros).
 
-Import từ `@bunest/core`. Lấy cảm hứng từ Lombok, bộ macro zero-dependency này giảm thiểu code lặp lại và được hỗ trợ đầy đủ type bởi VS Code extension của Bunest.
-
-| Nhóm | Decorators | Công dụng |
-| --- | --- | --- |
-| **Model tổng hợp** (4) | `@Data()`, `@Value()`, `@Builder()`, `@SuperBuilder()` | Tự sinh getters, setters, `toString()`, `equals()`, value object bất biến và fluent builder. |
-| **Accessors & cloning** (5) | `@Getter()`, `@Setter()`, `@Accessors()`, `@With()`, `@WithBy()` | Sinh getter/setter, fluent accessors và hàm cập nhật bất biến `withX()` / `withXBy()`. |
-| **Tiện ích đối tượng** (6) | `@ToString()`, `@EqualsAndHashCode()`, `@FieldDefaults()`, `@FieldNameConstants()`, `@UtilityClass()`, `@StandardException()` | Sinh so sánh cấu trúc, định dạng chuỗi, mặc định field, hằng số tên field, utility class và `Error` chuẩn. |
-| **Bổ trợ field** (5) | `@Delegate()`, `@Singular()`, `@NonNull()`, `@NonFinal()`, `@Secret()` | Ủy quyền method cho field con, thêm phần tử mảng trong builder, kiểm tra non-null, ghi đè tính bất biến hoặc ẩn dữ liệu nhạy cảm khỏi log/JSON. |
-| **Serialize & method aspects** (7) | `@JsonSerializable()`, `@Memoize()`, `@LogExecution()`, `@WithLogger()`, `@Synchronized()`, `@Locked()`, `@QueryMethod()` | Tùy biến `toJSON()`, cache kết quả hàm, log thời gian chạy, inject logger, khóa tuần tự hóa cuộc gọi async song song, hoặc đánh dấu query method. |
-
-@@filename(user-profile.model.ts)
-
-```ts
-import {
-  Builder,
-  Data,
-  LogExecution,
-  Memoize,
-  Secret,
-  Synchronized,
-} from "@bunest/core";
-
-@Data()
-@Builder()
-export class UserProfile {
-  id: string;
-  email: string;
-
-  @Secret()
-  passwordHash: string; // tự động che khi gọi toString() hoặc JSON
-}
-
-export class PricingService {
-  @Memoize({ ttlMs: 30_000 })
-  @LogExecution()
-  computeTaxRate(country: string): number {
-    return country === "VN" ? 0.08 : 0.1;
-  }
-
-  @Synchronized()
-  async refreshCatalog(): Promise<void> {
-    // Ngăn nhiều lời gọi async chạy chồng chéo cùng lúc
-  }
-}
-```
-
-### 6. Config, HTTP Client, I18n & WebSockets (10)
+### 5. Config, HTTP Client, I18n & WebSockets (10)
 
 | Subpath | Decorators | Công dụng |
 | --- | --- | --- |
 | `@bunest/core/config` | `@ConfigValue(key, options?)`, `@InjectConfig(namespace?)` | Inject giá trị cấu hình có kiểu hoặc object config theo namespace. |
-| `@bunest/core/client` | `@InjectHttpClient(name?)` | Inject instance `HttpClientService` theo tên. |
+| `@bunest/core/client` | `@InjectHttpClient(name?)` | Inject instance `HttpClient` theo tên. |
 | `@bunest/core/i18n` | `@CurrentLocale()` | Trích xuất ngôn ngữ hiện tại của request (từ ALS / `Accept-Language`). |
 | `@bunest/core/ws` | `@WebSocketGateway(port \| options?)`, `@WebSocketServer()`, `@SubscribeMessage(event)`, `@MessageBody(key?)`, `@ConnectedSocket()`, `@Ack()` | Khai báo WebSocket gateway thuần `Bun.serve`, handler sự kiện, payload/socket và callback ack. |
 
@@ -349,11 +265,11 @@ export class CreateUserDto {
 
 ---
 
-## `@bunest/swagger` (78 decorators)
+## `@bunest/swagger` (79 decorators)
 
 Import từ `@bunest/swagger`.
 
-### OpenAPI cốt lõi (28)
+### OpenAPI cốt lõi (29)
 
 | Nhóm | Decorators |
 | --- | --- |
@@ -361,7 +277,7 @@ Import từ `@bunest/swagger`.
 | **Đầu vào & Media Types** (7) | `@ApiBody`, `@ApiParam`, `@ApiQuery`, `@ApiHeader`, `@ApiHeaders`, `@ApiConsumes`, `@ApiProduces` |
 | **Schemas & Properties** (6) | `@ApiProperty`, `@ApiPropertyOptional`, `@ApiHideProperty`, `@ApiResponseProperty`, `@ApiSchema`, `@ApiExtraModels` |
 | **Bảo mật** (6) | `@ApiBearerAuth`, `@ApiBasicAuth`, `@ApiOAuth2`, `@ApiCookieAuth`, `@ApiApiKey`, `@ApiSecurity` |
-| **Extensions & Links** (2) | `@ApiExtension`, `@ApiLink` |
+| **Extensions & Links** (3) | `@ApiExtension`, `@ApiLink`, `@ApiDefaultGetter` |
 
 ### Response Decorators (50)
 
@@ -404,18 +320,18 @@ export class UsersOpenApiController {
 
 ---
 
-## `@bunest/orm` (46 decorators)
+## `@bunest/orm`
 
 Import từ `@bunest/orm`.
 
 | Nhóm | Decorators | Công dụng |
 | --- | --- | --- |
-| **Entities & Columns** (13) | `@Entity`, `@Column`, `@PrimaryColumn`, `@PrimaryGeneratedColumn`, `@PrimaryKey`, `@ObjectIdColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`, `@Index`, `@Unique`, `@SoftDelete` | Ánh xạ bảng SQL/MongoDB, khóa chính, timestamp, chỉ mục, optimistic lock và xóa mềm. |
-| **Embeddables** (4) | `@Embeddable`, `@Embedded`, `@Embeds`, `@Nested` | Ánh xạ value object / nhóm cột lồng nhau trong entity. |
-| **Quan hệ (Relations)** (10) | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@ManyToManyOf`, `@HasOne`, `@HasMany`, `@BelongsTo`, `@JoinColumn`, `@JoinTable` | Khai báo khóa ngoại và bảng trung gian (hỗ trợ cả cú pháp TypeORM lẫn ActiveRecord). |
+| **Entities & Columns** (12) | `@Entity`, `@Column`, `@PrimaryColumn`, `@PrimaryGeneratedColumn`, `@ObjectIdColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`, `@Index`, `@Unique`, `@SoftDelete` | Ánh xạ bảng SQL/MongoDB, khóa chính, timestamp, chỉ mục, optimistic lock và xóa mềm. |
+| **Embeddables** | `@Embeddable`, `@Embedded` | Ánh xạ value object. |
+| **Quan hệ (Relations)** | `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@JoinColumn`, `@JoinTable` | Ánh xạ quan hệ giữa các entity. |
 | **Lifecycle Hooks** (7) | `@BeforeInsert`, `@AfterInsert`, `@BeforeUpdate`, `@AfterUpdate`, `@BeforeRemove`, `@AfterRemove`, `@AfterLoad` | Chạy logic tự động trước/sau các thao tác ghi hoặc tải bản ghi. |
-| **Declarative Repositories** (4) | `@Repository`, `@Projection`, `@RepositoryScope`, `@UseRepositoryFragments` | Repository kiểu Spring Data biên dịch 1 lần, DTO projection, default scope và repository fragments. |
-| **Multi-Tenancy & Scopes** (2) | `@TenantScoped`, `@IgnoreScope` | Tự động cô lập dữ liệu theo tenant hoặc bỏ qua scope mặc định ở truy vấn cụ thể. |
+| **Declarative Repositories** | `@Repository`, `@RepositoryScope` | Khai báo repository và phạm vi truy vấn. |
+| **Multi-Tenancy & Scopes** | `@TenantScoped` | Giới hạn thao tác repository theo tenant. |
 | **Transactions & DI** (5) | `@Transactional`, `@InjectRepository`, `@InjectDataSource`, `@InjectEntityManager`, `@InjectOrmMigrations` | Quản lý giao dịch/savepoint bằng ALS và inject các thành phần ORM. |
 
 @@filename(order.entity.ts)
@@ -459,7 +375,7 @@ export abstract class OrderRepository extends CrudRepository<Order, string> {
 @Injectable()
 export class OrderService {
   constructor(
-    @InjectRepository(Order) private readonly repo: OrderRepository,
+    private readonly repo: OrderRepository,
   ) {}
 
   @Transactional()
@@ -513,14 +429,20 @@ export class BooksResolver {
 | --- | --- | --- |
 | `@bunest/security` (10) | `@Auth(...roles)`, `@Protected(options?)`, `@Public()`, `@Roles(...roles)`, `@CheckPolicies(...handlers)`, `@CurrentUser(prop?)`, `@Throttle(options)`, `@SkipThrottle(skip?)`, `@InjectThrottlerOptions()`, `@InjectThrottlerStorage()` | Bảo vệ route, phân quyền RBAC/policy, lấy thông tin user hiện tại và giới hạn tần suất (rate limit). |
 | `@bunest/security/auth` (2) | `@Authenticate(strategy?)`, `@CurrentSession()` | Xác thực thế hệ mới (session/JWT/MFA) và lấy session hiện tại. |
-| `@bunest/security/authz` (2) | `@Policy(resource)`, `@Can(action, resource?)` (kèm `@Can.Anyone()`) | Khai báo và kiểm tra quyền dựa trên policy (ABAC). |
+| `@bunest/security/authz` (2) | `@Policy()`, `@Can(PolicyClass, ability)` (kèm `@Can.Anyone()`) | Khai báo và kiểm tra quyền dựa trên policy (ABAC). |
 
 @@filename(billing.controller.ts)
 
 ```ts
 import { Controller, Get } from "@bunest/core";
 import { Auth, CurrentUser, Public, Throttle } from "@bunest/security";
-import { Can } from "@bunest/security/authz";
+import { Can, Policy } from "@bunest/security/authz";
+@Policy()
+class InvoicePolicy {
+  read(user: { roles: string[] } | null): boolean {
+    return user?.roles.includes("admin") === true;
+  }
+}
 
 @Controller("billing")
 export class BillingController {
@@ -531,7 +453,7 @@ export class BillingController {
   }
 
   @Auth("admin")
-  @Can("read", "invoice")
+  @Can(InvoicePolicy, "read")
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get("invoices")
   listInvoices(@CurrentUser("id") userId: string) {
@@ -593,10 +515,10 @@ import { Idempotent } from "@bunest/resilience/idempotency";
 @Injectable()
 export class PaymentService {
   @WithLock((orderId: string) => `pay:${orderId}`, { ttl: 10_000 })
-  @Idempotent({ ttlMs: 60_000 })
-  @Retry({ maxAttempts: 3, delayMs: 200 })
+  @Idempotent({ ttl: 60_000 })
+  @Retry({ attempts: 3, backoff: { delay: 200 } })
   @Timeout(5_000)
-  @CircuitBreaker({ failureThreshold: 5 })
+  @CircuitBreaker({ failureRateThreshold: 50 })
   @Fallback(() => ({ status: "queued_for_retry" }))
   async charge(orderId: string) {
     return { orderId, status: "paid" };

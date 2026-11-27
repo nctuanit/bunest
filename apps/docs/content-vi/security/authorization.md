@@ -27,26 +27,28 @@ export interface Article {
   authorId: string;
 }
 
-@Policy("article")
+@Policy()
 export class ArticlePolicy {
   read() {
     return true;
   }
 
-  update(user: UserPrincipal, article: Article) {
-    return user.role === "admin" || article.authorId === user.id;
+  update(user: UserPrincipal | null, article: Article) {
+    return user !== null && (user.role === "admin" || article.authorId === user.id);
   }
 }
 ```
 
 ## Đăng ký & Áp dụng Policy
 
-Đăng ký `AuthorizationModule.forRoot()` và áp dụng các quy tắc một cách khai báo với `@Can()` hoặc theo lối mệnh lệnh với `AuthorizationService`:
+Đăng ký `AuthorizationModule.forRoot({ policies: [ArticlePolicy] })` và áp dụng các quy tắc một cách khai báo với `@Can()` hoặc theo lối mệnh lệnh với `AuthorizationService`:
 
 @@filename(articles.controller.ts)
 
 ```ts
 import { Controller, Get, Param, Patch } from "@bunest/core";
+import { findArticleOrThrow } from "./articles.store";
+import { ArticlePolicy } from "./article.policy";
 import { AuthorizationService, Can } from "@bunest/security/authz";
 
 @Controller("articles")
@@ -60,7 +62,11 @@ export class ArticlesController {
   }
 
   @Patch(":id")
-  @Can("update", "article")
+  @Can(ArticlePolicy, "update", async (ctx) => {
+    const url = new URL(ctx.switchToHttp().getRequest().url);
+    const id = url.pathname.split("/").filter(Boolean).pop()!;
+    return [await findArticleOrThrow(id)] as const;
+  })
   update(@Param("id") id: string) {
     return { id, updated: true };
   }

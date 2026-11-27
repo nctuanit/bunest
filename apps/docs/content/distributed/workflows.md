@@ -25,14 +25,12 @@ bun add @bunest/workflows
 
 ```ts
 import { Module } from "@bunest/core";
-import { InMemoryWorkflowStore, WorkflowsModule } from "@bunest/workflows";
+import { WorkflowsModule } from "@bunest/workflows";
 import { OrderFulfillmentWorkflow } from "./order-fulfillment.workflow";
 
 @Module({
   imports: [
-    WorkflowsModule.forRoot({
-      store: new InMemoryWorkflowStore(), // Swap with PostgresWorkflowStore / MysqlWorkflowStore in production
-    }),
+    WorkflowsModule.forRoot({}),
   ],
   providers: [OrderFulfillmentWorkflow],
 })

@@ -150,7 +150,7 @@ When resolving token `T` inside module `M`, Bunest checks in deterministic order
 
 ## Smart `@AutoModule` (Directory Glob Scan & Static Manifest)
 
-Zero-arg `@AutoModule()` auto-discovers classes from Bunest's `DecoratorRegistry`. Extended in **[ADR-018](/architecture/adrs)**, `@AutoModule()` also accepts native **`Bun.Glob`** directory scanning (`scan`), strict module scoping (zero global leakage), filters, profiles, and compile-time static `manifest` loaders:
+Zero-arg `@AutoModule()` auto-discovers classes from Bunest's `DecoratorRegistry`. Extended in **[ADR-018](/architecture/adrs)**, `@AutoModule()` also accepts native **`Bun.Glob`** directory scanning (`scan`), strict module scoping (zero global leakage), filters and compile-time static `manifest` loaders:
 
 ```ts
 export interface AutoModuleMetadata extends ModuleMetadata {
@@ -159,7 +159,6 @@ export interface AutoModuleMetadata extends ModuleMetadata {
   readonly cwd?: string;
   readonly manifest?: readonly (() => Promise<Record<string, unknown> | object>)[];
   readonly filter?: (target: Type<unknown>) => boolean;
-  readonly profiles?: readonly string[];
 }
 ```
 
@@ -172,76 +171,28 @@ import { AutoModule } from "@bunest/core";
   scan: ["./controllers/**/*.ts", "./services/**/*.ts"],
   exclude: ["**/*.mock.ts"],
   filter: (target) => !target.name.startsWith("Internal"),
-  profiles: ["production"],
 })
 export class OrdersModule {}
 ```
 
 - **Strict per-module isolation:** Classes loaded by `scan` are registered only into the declaring `@AutoModule` — never leaked into unrelated modules.
 - **Single-file executable support (`bun build --compile`):** When bundled through `@bunest/cli`'s unified [`createBunestPlugin()`](/observability/cli), Stage 2 (`autoModuleManifest`) expands `scan` at build time into a static `manifest: [() => import("./...")]` array. When `manifest` is present, it takes precedence over runtime globbing so compiled binaries work with zero filesystem scanning.
-- **`BunestFactory.createAuto()`** also accepts `scan`, `exclude`, `cwd`, `manifest`, `filter`, and `profiles`.
+- **`BunestFactory.createAuto()`** also accepts `scan`, `exclude`, `cwd`, `manifest`, and `filter`.
 
-## Conditional Beans (`@RegisterIf*` & `@Profile`)
+### Choose a provider from configuration
 
-Register providers or controllers conditionally based on runtime profiles, environment variables, custom predicates, or missing fallback bindings:
-
-| Decorator | Evaluation Pass | Behavior |
-| --- | --- | --- |
-| `@RegisterIf(predicate)` | Pass 1 (eager) | Registers only when `predicate(ctx)` returns `true` (`ctx` exposes `env`, `profiles`, `registeredTokens`, `target`) |
-| `@RegisterIfEnv(key, matcher?)` | Pass 1 (eager) | Without `matcher`: requires `Bun.env[key]` to be non-empty; also accepts exact `string`, `RegExp`, or `(value) => boolean` |
-| `@Profile(...profiles)` | Pass 1 (eager) | Matches active profiles (e.g. `@Profile("production")`, `@Profile("dev", "staging")`, or negation `@Profile("!test")`) |
-| `@RegisterIfMissing(token?)` | Pass 2 (deferred) | Registers a default fallback implementation ONLY if no explicit or earlier provider already provides `token` |
-
-Active profiles for `@Profile(...)` resolve in deterministic precedence order:
-`BunestCreateOptions.profiles` > `AutoModuleMetadata.profiles` > `Bun.env.BUNEST_PROFILES` > `Bun.env.BUNEST_PROFILE` > `Bun.env.NODE_ENV`.
-
-@@filename(storage.providers.ts)
+Bind one token to the selected implementation when constructing the module.
 
 ```ts
-import {
-  AutoModule,
-  BunestFactory,
-  Injectable,
-  Profile,
-  RegisterIf,
-  RegisterIfEnv,
-  RegisterIfMissing,
-} from "@bunest/core";
+import { Module } from "@bunest/core";
+import { LocalMailTransport, SmtpMailTransport } from "./transports";
 
-export abstract class MailTransport {
-  abstract send(to: string, body: string): Promise<void>;
-}
-
-@Injectable()
-@Profile("production")
-@RegisterIfEnv("SMTP_HOST")
-export class SmtpMailTransport extends MailTransport {
-  async send(to: string, body: string) {
-    // Production SMTP transport
-  }
-}
-
-@Injectable()
-@Profile("!production")
-@RegisterIf((ctx) => ctx.env.DISABLE_DEV_MAIL !== "1")
-@RegisterIfMissing(MailTransport)
-export class InMemoryMailTransport extends MailTransport {
-  async send(to: string, body: string) {
-    // Fallback registered only if no explicit MailTransport was registered!
-  }
-}
-
-@AutoModule({
-  providers: [
-    { provide: MailTransport, useClass: SmtpMailTransport },
-    { provide: MailTransport, useClass: InMemoryMailTransport },
-  ],
-  exports: [MailTransport],
+@Module({
+  providers: [{
+    provide: "MAIL_TRANSPORT",
+    useClass: Bun.env.SMTP_HOST ? SmtpMailTransport : LocalMailTransport,
+  }],
+  exports: ["MAIL_TRANSPORT"],
 })
-export class MailModule {}
-
-// Activate profiles explicitly at bootstrap:
-// const app = await BunestFactory.create(AppModule, { profiles: ["production"] });
+export class MailTransportModule {}
 ```
-
-> info **Two-Pass Registration** `ModuleScanner` evaluates `@RegisterIf`, `@RegisterIfEnv`, and `@Profile` in pass 1, then evaluates `@RegisterIfMissing` in pass 2 against the settled token set — guaranteeing explicit user overrides always win cleanly without `DuplicateProviderException`.

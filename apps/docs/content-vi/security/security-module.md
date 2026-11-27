@@ -28,13 +28,12 @@ import { SecurityModule } from "@bunest/security";
     SecurityModule.forRoot({
       jwt: {
         secret: process.env.JWT_SECRET!,
-        expiresIn: "15m",
+        signOptions: { expiresIn: "15m" },
       },
       throttler: {
-        ttl: 60_000,
-        limit: 100,
+        throttlers: [{ ttl: 60_000, limit: 100 }],
       },
-      headers: true,
+      securityHeaders: true,
     }),
   ],
 })

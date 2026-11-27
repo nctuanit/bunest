@@ -43,7 +43,7 @@ export class TasksService {
   @Cron(CronExpression.EVERY_5_MINUTES, {
     name: "cleanup-sessions",
     timeZone: "UTC",
-    preventOverlap: true,
+    waitForCompletion: true,
   })
   async cleanupExpiredSessions() {
     this.logger.log("Cleaning expired sessions");
@@ -61,7 +61,7 @@ export class TasksService {
 }
 ```
 
-> info **Overlap Protection** Set `preventOverlap: true` to guarantee a slow execution is never re-entered concurrently on the same instance. For multi-instance cluster deduplication, combine with `@OnOneInstance()` or `@WithoutOverlapping()` from [`@bunest/resilience/locks`](/distributed/locks-idempotency).
+> info **Overlap Protection** Set `waitForCompletion: true` to guarantee a slow execution is never re-entered concurrently on the same instance. For multi-instance cluster deduplication, combine with `@OnOneInstance()` or `@WithoutOverlapping()` from [`@bunest/resilience/locks`](/distributed/locks-idempotency).
 
 ## Dynamic Job Management (`SchedulerRegistry`)
 

@@ -36,7 +36,7 @@ export class AppModule {}
 
 ## Repository khai báo kiểu Spring Data
 
-Kế thừa `CrudRepository<TEntity, TKey>` và gắn decorator `@Repository()` lên abstract class. Tên các hàm tìm kiếm suy diễn và mẫu `@Query()` được **biên dịch một lần khi khởi động** thành các truy vấn SQL có tham số hóa — không phân tích cú pháp SQL lúc chạy và bảo vệ chặt chẽ khỏi SQL injection:
+Kế thừa `CrudRepository<TEntity, TKey>` và gắn decorator `@Repository()` lên abstract class. Tên các hàm tìm kiếm suy diễn được **biên dịch một lần khi khởi động** thành các truy vấn SQL có tham số hóa — không phân tích cú pháp SQL lúc chạy và bảo vệ chặt chẽ khỏi SQL injection:
 
 @@filename(user.repository.ts)
 
@@ -45,11 +45,8 @@ import {
   Column,
   CrudRepository,
   Entity,
-  Modifying,
   Repository,
   PrimaryGeneratedColumn,
-  Query,
-  SqlParam,
 } from "@bunest/orm";
 
 @Entity("users")
@@ -78,10 +75,10 @@ export abstract class UserRepository extends CrudRepository<User, number> {
   abstract existsByEmail(email: string): Promise<boolean>;
   abstract countByRole(role: string): Promise<number>;
 
-  // Custom parameterized @Query with @SqlParam:
-  @Modifying()
-  @Query("UPDATE users SET active = 0 WHERE email = :email")
-  abstract deactivateByEmail(@SqlParam("email") email: string): Promise<number>;
+  async deactivateByEmail(email: string): Promise<number> {
+    const result = await this.execute("UPDATE users SET active = 0 WHERE email = :email", { email });
+    return result.affectedRows;
+  }
 }
 ```
 

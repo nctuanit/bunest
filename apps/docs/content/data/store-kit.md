@@ -34,7 +34,7 @@ import {
 export interface AuditRecord {
   id: number;
   action: string;
-  metadata: Record<string, unknown>;
+  metadata: unknown;
 }
 
 export class AuditLogStore {
@@ -48,7 +48,7 @@ export class AuditLogStore {
     return rows.map((row) => ({
       id: toInt(row.id),
       action: toText(row.action),
-      metadata: toJson<Record<string, unknown>>(row.metadata),
+      metadata: toJson(row.metadata),
     }));
   }
 }

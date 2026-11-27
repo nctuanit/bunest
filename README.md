@@ -107,7 +107,7 @@ Bunest is engineered to work seamlessly with AI coding agents (Cursor, Claude Co
 
 ## VS Code Extension
 
-First-class IDE support for VS Code, Cursor, and Antigravity IDE ([`apps/vscode-bunest`](./apps/vscode-bunest)) with live zero-save typegen, declarative repository autocomplete & SQL preview, inline raw SQL runner, HTTP Studio, Live Inspector, class macro Hover/Delombok, static diagnostics, and an interactive DI graph.
+First-class IDE support for VS Code, Cursor, and Antigravity IDE ([`apps/vscode-bunest`](./apps/vscode-bunest)) with live zero-save typegen, declarative repository autocomplete & SQL preview, Route Explain & quick fixes, HTTP Studio (with Save as Test), Live Inspector, static diagnostics, and an interactive DI graph.
 
 Download the latest `.vsix` from **[GitHub Releases](https://github.com/nctuanit/bunest/releases)**:
 

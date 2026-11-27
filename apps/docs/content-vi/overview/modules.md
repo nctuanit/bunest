@@ -150,7 +150,7 @@ Khi phân giải token `T` bên trong module `M`, Bunest kiểm tra theo một t
 
 ## `@AutoModule` thông minh (Quét thư mục bằng Glob & Manifest tĩnh)
 
-`@AutoModule()` không tham số tự động khám phá các class từ `DecoratorRegistry` của Bunest. Được mở rộng trong **[ADR-018](/architecture/adrs)**, `@AutoModule()` còn hỗ trợ quét thư mục bằng **`Bun.Glob`** gốc (`scan`), cô lập phạm vi module nghiêm ngặt (không rò rỉ ra global), bộ lọc (`filter`), profile và bộ nạp `manifest` tĩnh lúc biên dịch:
+`@AutoModule()` không tham số tự động khám phá các class từ `DecoratorRegistry` của Bunest. Được mở rộng trong **[ADR-018](/architecture/adrs)**, `@AutoModule()` còn hỗ trợ quét thư mục bằng **`Bun.Glob`** gốc (`scan`), cô lập phạm vi module nghiêm ngặt (không rò rỉ ra global), bộ lọc (`filter`) và bộ nạp `manifest` tĩnh lúc biên dịch:
 
 ```ts
 export interface AutoModuleMetadata extends ModuleMetadata {
@@ -159,7 +159,6 @@ export interface AutoModuleMetadata extends ModuleMetadata {
   readonly cwd?: string;
   readonly manifest?: readonly (() => Promise<Record<string, unknown> | object>)[];
   readonly filter?: (target: Type<unknown>) => boolean;
-  readonly profiles?: readonly string[];
 }
 ```
 
@@ -172,76 +171,28 @@ import { AutoModule } from "@bunest/core";
   scan: ["./controllers/**/*.ts", "./services/**/*.ts"],
   exclude: ["**/*.mock.ts"],
   filter: (target) => !target.name.startsWith("Internal"),
-  profiles: ["production"],
 })
 export class OrdersModule {}
 ```
 
 - **Cô lập nghiêm ngặt theo từng module:** Các class được nạp bởi `scan` chỉ được đăng ký vào chính `@AutoModule` khai báo nó — không bao giờ rò rỉ sang các module không liên quan.
 - **Hỗ trợ file thực thi đơn lẻ (`bun build --compile`):** Khi đóng gói qua [`createBunestPlugin()`](/observability/cli) hợp nhất của `@bunest/cli`, Stage 2 (`autoModuleManifest`) mở rộng `scan` lúc build thành mảng tĩnh `manifest: [() => import("./...")]`. Khi có `manifest`, nó được ưu tiên thay cho việc glob lúc chạy để binary biên dịch hoạt động mà không cần quét hệ thống tập tin.
-- **`BunestFactory.createAuto()`** cũng hỗ trợ `scan`, `exclude`, `cwd`, `manifest`, `filter` và `profiles`.
+- **`BunestFactory.createAuto()`** cũng hỗ trợ `scan`, `exclude`, `cwd`, `manifest`, và `filter`.
 
-## Đăng ký có điều kiện (`@RegisterIf*` & `@Profile`)
+### Chọn provider theo cấu hình
 
-Đăng ký provider hoặc controller có điều kiện dựa trên profile lúc chạy, biến môi trường, predicate tùy chỉnh hoặc triển khai dự phòng khi thiếu binding:
-
-| Decorator | Lượt đánh giá | Hành vi |
-| --- | --- | --- |
-| `@RegisterIf(predicate)` | Lượt 1 (eager) | Chỉ đăng ký khi `predicate(ctx)` trả về `true` (`ctx` cung cấp `env`, `profiles`, `registeredTokens`, `target`) |
-| `@RegisterIfEnv(key, matcher?)` | Lượt 1 (eager) | Không có `matcher`: yêu cầu `Bun.env[key]` khác rỗng; cũng chấp nhận `string` chính xác, `RegExp` hoặc `(value) => boolean` |
-| `@Profile(...profiles)` | Lượt 1 (eager) | Khớp các profile đang kích hoạt (ví dụ `@Profile("production")`, `@Profile("dev", "staging")`, hoặc phủ định `@Profile("!test")`) |
-| `@RegisterIfMissing(token?)` | Lượt 2 (deferred) | Chỉ đăng ký một implementation dự phòng mặc định NẾU chưa có provider tường minh hoặc trước đó nào cung cấp `token` |
-
-Các profile đang kích hoạt cho `@Profile(...)` được phân giải theo thứ tự ưu tiên xác định:
-`BunestCreateOptions.profiles` > `AutoModuleMetadata.profiles` > `Bun.env.BUNEST_PROFILES` > `Bun.env.BUNEST_PROFILE` > `Bun.env.NODE_ENV`.
-
-@@filename(storage.providers.ts)
+Gắn một token với implementation được chọn khi khai báo module.
 
 ```ts
-import {
-  AutoModule,
-  BunestFactory,
-  Injectable,
-  Profile,
-  RegisterIf,
-  RegisterIfEnv,
-  RegisterIfMissing,
-} from "@bunest/core";
+import { Module } from "@bunest/core";
+import { LocalMailTransport, SmtpMailTransport } from "./transports";
 
-export abstract class MailTransport {
-  abstract send(to: string, body: string): Promise<void>;
-}
-
-@Injectable()
-@Profile("production")
-@RegisterIfEnv("SMTP_HOST")
-export class SmtpMailTransport extends MailTransport {
-  async send(to: string, body: string) {
-    // Production SMTP transport
-  }
-}
-
-@Injectable()
-@Profile("!production")
-@RegisterIf((ctx) => ctx.env.DISABLE_DEV_MAIL !== "1")
-@RegisterIfMissing(MailTransport)
-export class InMemoryMailTransport extends MailTransport {
-  async send(to: string, body: string) {
-    // Fallback registered only if no explicit MailTransport was registered!
-  }
-}
-
-@AutoModule({
-  providers: [
-    { provide: MailTransport, useClass: SmtpMailTransport },
-    { provide: MailTransport, useClass: InMemoryMailTransport },
-  ],
-  exports: [MailTransport],
+@Module({
+  providers: [{
+    provide: "MAIL_TRANSPORT",
+    useClass: Bun.env.SMTP_HOST ? SmtpMailTransport : LocalMailTransport,
+  }],
+  exports: ["MAIL_TRANSPORT"],
 })
-export class MailModule {}
-
-// Activate profiles explicitly at bootstrap:
-// const app = await BunestFactory.create(AppModule, { profiles: ["production"] });
+export class MailTransportModule {}
 ```
-
-> info **Đăng ký hai lượt (Two-Pass Registration)** `ModuleScanner` đánh giá `@RegisterIf`, `@RegisterIfEnv` và `@Profile` ở lượt 1, sau đó đánh giá `@RegisterIfMissing` ở lượt 2 dựa trên tập token đã chốt — đảm bảo các cấu hình ghi đè tường minh của người dùng luôn thắng mà không gây `DuplicateProviderException`.

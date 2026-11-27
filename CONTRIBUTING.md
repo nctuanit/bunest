@@ -4,7 +4,7 @@ Thank you for contributing to **Bunest**! This guide covers local setup, TypeScr
 
 ## 1. Prerequisites & Local Setup
 
-- **Bun:** `>= 1.4.3` (pinned in CI alongside `latest`)
+- **Bun:** `>= 1.4.5` (pinned in CI alongside `latest`)
 - **OS:** Linux, macOS, or Windows (all three are tested in CI)
 
 ```bash
@@ -34,7 +34,7 @@ Bunest uses **Legacy TypeScript Decorators** (`experimentalDecorators: true` + `
 
 Follow these four rules in every package, example, and test:
 
-1. **Import `"reflect-metadata"` first** at application entrypoints (before loading decorated classes).
+1. **No `reflect-metadata` import required:** `@bunest/core` auto-installs a built-in zero-dependency Reflect Metadata shim (`ADR-017`), so do not add `reflect-metadata` to package dependencies or entrypoints.
 2. **Value-import DI & DTO classes** referenced in decorated constructors or route handlers so Bun emits `design:paramtypes` at runtime:
    ```ts
    import { CreateUserDto } from "./create-user.dto";
@@ -67,7 +67,7 @@ Follow these four rules in every package, example, and test:
 2. **Tests & docs required:** every public API addition or behavior change must include unit/integration tests and updated docs/examples + `CHANGELOG.md` entry.
 3. **ADR for breaking or architectural changes:** propose changes affecting core contracts in `docs/adr/ADR-NNN.md` (Context, Decision, Consequences, Migration).
 4. **All CI gates must pass:** `bun run typecheck`, `bunx tsc --noEmit`, `bun test`, `bun run build`, and `bun run verify:release`.
-5. **No unexplained benchmark regressions:** when touching hot paths (`@bunest/http`, `@bunest/core`, `@bunest/validation`), run `bun run bench` and include before/after numbers in the PR description.
+5. **No unexplained benchmark regressions:** when touching hot paths (`@bunest/core/http`, `@bunest/core`, `@bunest/validation`), run `bun run bench` and include before/after numbers in the PR description.
 
 ## 5. Commit Conventions
 

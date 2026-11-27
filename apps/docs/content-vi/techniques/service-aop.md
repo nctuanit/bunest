@@ -40,7 +40,7 @@ export class OrdersService {
   @Transactional()
   @CacheEvict({ key: (orderId: string) => `order:${orderId}` })
   @EmitEvent("order.placed", { async: true })
-  @Retry({ maxAttempts: 3 })
+  @Retry({ attempts: 3 })
   async placeOrder(orderId: string) {
     // Pure business logic — no imperative wrappers!
     return { orderId, status: "placed" };
@@ -130,7 +130,7 @@ import { Transactional } from "@bunest/orm";
 // Static pipeline reusable on classes or methods
 export const TransactionalCommand = defineAspectPipeline([
   Span("command"),
-  Retry({ maxAttempts: 3 }),
+  Retry({ attempts: 3 }),
   Transactional(),
 ]);
 

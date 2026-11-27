@@ -28,13 +28,11 @@ Write outbox records inside the same database transaction as your domain mutatio
 
 ```ts
 import { Module } from "@bunest/core";
-import { InMemoryOutboxStore, OutboxModule } from "@bunest/messaging/outbox";
+import { OutboxModule } from "@bunest/messaging/outbox";
 
 @Module({
   imports: [
-    OutboxModule.forRoot({
-      store: new InMemoryOutboxStore(),
-    }),
+    OutboxModule.forRoot({}),
   ],
 })
 export class AppModule {}

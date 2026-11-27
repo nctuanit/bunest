@@ -91,4 +91,35 @@ export class UsersController {
 
 Bunest's fail-fast router validates versioned routes at startup (`BUNEST_E101`). Two handlers with the same HTTP method and path are **allowed** when their versions differ (e.g., `@Version("1")` vs `@Version("2")`), and rejected immediately if two handlers claim the same version.
 
-> info **OpenAPI Integration** When using [`@bunest/swagger`](/apis/openapi), versioned routes are automatically reflected in the generated OpenAPI 3.1 paths and operation metadata.
+## OpenAPI & Swagger Integration
+
+[`@bunest/swagger`](/apis/openapi) supports full multi-version OpenAPI 3.1 generation across all four versioning strategies:
+
+@@filename(main.ts)
+
+```ts
+import { DocumentBuilder, SwaggerModule } from "@bunest/swagger";
+
+const config = new DocumentBuilder()
+  .setTitle("Users API")
+  .setVersion("1.0")
+  .build();
+
+// Auto-discovers versions (via SwaggerModule.discoverApiVersions(app))
+const docs = SwaggerModule.createVersionedDocuments(app, config, {
+  includeVersionNeutral: true,
+});
+
+SwaggerModule.setup("docs", app, docs, {
+  defaultVersion: "2",
+});
+```
+
+- **Generated endpoints**: serves `/docs/v1-json`, `/docs/v1-yaml`, `/docs/v2-json`, `/docs/v2-yaml`, plus `/docs-json` and `/docs-yaml` for the configured `defaultVersion` (or latest version). All docs routes are registered as `VERSION_NEUTRAL`.
+- **Version switcher**: automatically enabled in all three UI presets (`builtin`, `swagger-ui`, and `scalar`).
+- **Single-version filtering & schema scoping**: call `SwaggerModule.createDocument(app, config, { version: "1", includeVersionNeutral: true })` to build one version's spec with `components.schemas` scoped strictly to DTOs used by that version.
+- **All 4 strategies**: `URI` emits versioned paths; `HEADER` and `MEDIA_TYPE` inject scoped version header parameters (`required: false` when `VERSION_NEUTRAL` or matching `defaultVersion`); `CUSTOM` accepts `customVersionParameter` (`query`, `header`, or `cookie`).
+
+> warning **Header, Media Type & Custom Modes** Because different versions share the same OpenAPI path and method (e.g. `GET /users`) in `HEADER`, `MEDIA_TYPE`, and `CUSTOM` modes, generating a single unfiltered document causes later versions to overwrite earlier ones. Use `SwaggerModule.createVersionedDocuments()` or `createDocument(..., { version })` to avoid collisions.
+
+> info **Full OpenAPI Reference** See the [`@bunest/swagger`](/apis/openapi) guide for `discoverApiVersions()`, `infoVersionResolver`, `customVersionParameter`, and UI preset options.

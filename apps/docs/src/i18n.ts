@@ -253,7 +253,7 @@ export const VI_PAGE_META: Record<
   "overview/decorators": {
     title: "Tra cứu Decorators (Reference)",
     description:
-      "Tổng hợp đầy đủ 447 decorators trên 15 packages kèm bảng mô tả, import path và ví dụ sử dụng.",
+      "Các decorator công khai theo package kèm bảng mô tả, import path và ví dụ sử dụng.",
   },
   "fundamentals/custom-providers": {
     title: "Custom providers",
@@ -491,9 +491,9 @@ export const VI_PAGE_META: Record<
       "Kiểm tra module, resolve provider và gọi thử service trực tiếp qua terminal với repl() và bunest repl.",
   },
   "recipes/class-macros": {
-    title: "Class & Method Macros",
+    title: "Chuyển đổi class dùng macro cũ",
     description:
-      "Giảm boilerplate với 27 macro kiểu Lombok: @Data, @Value, @Builder, @With, @Memoize, @Synchronized và @Secret.",
+      "Cập nhật các class từng dùng decorator đã gỡ khỏi @bunest/core, gồm @Data, @Builder và @Secret.",
   },
   "recipes/versioning": {
     title: "Quản lý phiên bản API",

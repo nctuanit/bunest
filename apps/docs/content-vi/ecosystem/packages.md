@@ -31,7 +31,7 @@ Bunest được tổ chức thành một **monorepo Bun workspace gồm 19 packa
 
 | Package | Subpaths | Nhiệm vụ | Tài liệu |
 | --- | --- | --- | --- |
-| **`@bunest/orm`** | `.`, `./plugin`, `./store`, `./postgres`, `./mysql`, `./testing` | ORM & bộ công cụ SQL gốc trên Bun không phụ thuộc ngoài hỗ trợ 12 dialect qua `bun:sqlite`, `Bun.SQL`, `fetch()`, & `Bun.connect()`, với `@Repository`/`CrudRepository`/`@Query`/`@Modifying`, `@Transactional`, `OrmMigrationRunner`, và SQL Store Kit (`createBunSqlExecutor`) | [Bunest ORM](/data/orm-adapters), [SQLite](/data/sqlite), [SQL (Bun.SQL)](/data/sql), [Store Kit](/data/store-kit) |
+| **`@bunest/orm`** | `.`, `./plugin`, `./store`, `./postgres`, `./mysql`, `./testing` | ORM & bộ công cụ SQL gốc trên Bun không phụ thuộc ngoài hỗ trợ 12 dialect qua `bun:sqlite`, `Bun.SQL`, `fetch()`, & `Bun.connect()`, với `@Repository`/`CrudRepository`, `@Transactional`, `OrmMigrationRunner`, và SQL Store Kit (`createBunSqlExecutor`) | [Bunest ORM](/data/orm-adapters), [SQLite](/data/sqlite), [SQL (Bun.SQL)](/data/sql), [Store Kit](/data/store-kit) |
 | **`@bunest/cache`** | `.`, `./redis` | `CacheModule`, `CacheService`, `CacheInterceptor`, `@Cacheable`/`@CacheEvict`/`@CachePut`, khử trùng lặp single-flight, `MemoryCacheStore`, và `RedisCacheStore` dùng `Bun.RedisClient` gốc (`./redis`) | [Caching](/techniques/caching) |
 | **`@bunest/storage`** | `.`, `./s3`, `./local`, `./memory` | API lưu trữ thống nhất: `LocalDisk` (`Bun.file().slice().stream()`), `InMemoryDisk`, `BunS3Disk` gốc (`Bun.S3Client`/`Bun.s3`), và SigV4 `S3Disk` (`Bun.CryptoHasher` + `Bun.XML.parse`) | [Storage & Static Files](/techniques/storage) |
 | **`@bunest/mail`** | `.`, `./smtp`, `./templates` | Các class gửi thư có định kiểu, template `Bun.escapeHTML` (`./templates`), SMTP gốc (`./smtp`), cùng các transport Resend, Postmark, SendGrid & Amazon SES | [Mail](/techniques/mail) |
@@ -53,7 +53,7 @@ Bunest được tổ chức thành một **monorepo Bun workspace gồm 19 packa
 | --- | --- | --- | --- |
 | **`@bunest/observability`** | `.`, `./tracing`, `./metrics`, `./health`, `./devtools` | `ObservabilityModule.forRoot()`, `@Span`/`@Trace`/`@Timed`/`@Counted`, W3C Trace Context + OTLP (`./tracing`), chỉ số Prometheus (`./metrics`), `TerminusModule`/`HealthModule` với kiểm tra TCP qua `Bun.connect()` (`./health`), và đồ thị `DevtoolsModule` (`./devtools`) | [Observability, Health & Devtools](/observability/observability) |
 | **`@bunest/testing`** | `.` | `Test.createTestingModule`, ghi đè provider/module, `ModuleMocker`, `request(app)` & `TestClient` không mở socket, `app.inject()`, `readSseEvents`, `CapturingLogger`, `ContextIdFactory` | [Testing](/fundamentals/testing) |
-| **`@bunest/cli`** | `.`, `./analyzer` | `bunest new`, `generate`/`g`, `dev`, `start`, `build`, `check`/`doctor`, `typegen`, `delombok`, `codemod`, `add`, `upgrade`, `deploy`, `repl`, `info`, và `bunestMetadataPlugin()` cho `Bun.build()` | [CLI](/observability/cli) |
+| **`@bunest/cli`** | `.`, `./analyzer` | `bunest new`, `generate`/`g`, `dev`, `start`, `build`, `check`/`doctor`, `verify`, `explain`, `routes`, `test-from-request`, `typegen`, `codemod`, `mcp`, `add`, `upgrade`, `deploy`, `repl`, `info`, và `createBunestPlugin()` / `bunestMetadataPlugin()` cho `Bun.build()` | [CLI](/observability/cli) |
 
 ## Các lệnh Workspace
 

@@ -74,7 +74,7 @@ All phases below are **implemented in the `0.1.0` monorepo** across the 19 `@bun
 ### Phase 5 — Service-Layer AOP, Zero-Dep Consolidation & Declarative Repositories _(Implemented)_
 
 - [x] Zero-overhead `DIContainer` `MethodAspectWeaver` (`O(1)` `WeakMap` skip for undecorated classes, `ADR-014`)
-- [x] Compiled-once declarative repositories in `@bunest/orm` (`@Repository`/`CrudRepository`) with derived finders, `@Query`/`@Modifying`/`@SqlParam`, `@Transactional`, and `OrmMigrationRunner`
+- [x] Compiled-once declarative repositories in `@bunest/orm` (`@Repository`/`CrudRepository`) with derived finders, `@Transactional`, and `OrmMigrationRunner`
 - [x] Zero-external-dependency DTO validation/transformation (`ADR-015`), 6-domain 19-package consolidation (`ADR-016`), 19/19 zero-dep runtime & 2-adapter `node:*` quarantine (`ADR-017`), and customizable magic/plugin architecture (`ADR-018`)
 - [x] Public reproducible 8-target head-to-head benchmark suite comparing Bunest vs raw `Bun.serve()` vs NestJS v12 on Bun & Node.js
 

@@ -128,7 +128,7 @@ Dự án vừa tạo mở sẵn hai endpoint `GET /` và `GET /health` (đối v
 
 ### Preload & `bunfig.toml`
 
-`bunest new` tạo sẵn `bunfig.toml` và `preload.ts` để Bun tự động đăng ký plugin runtime của Bunest (hỗ trợ class macro, suy luận `@Repository<Entity>()` và chuyển đổi metadata không cần boilerplate) cho cả `bun run` lẫn `bun test`:
+`bunest new` tạo sẵn `bunfig.toml` và `preload.ts` để Bun tự động đăng ký plugin runtime của Bunest (hỗ trợ suy luận `@Repository<Entity>()` và chuyển đổi metadata không cần boilerplate) cho cả `bun run` lẫn `bun test`:
 
 @@filename(bunfig.toml)
 

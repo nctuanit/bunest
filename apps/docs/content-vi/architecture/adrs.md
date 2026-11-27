@@ -44,7 +44,7 @@ Kiến trúc lõi của Bunest được chi phối bởi các **Bản ghi Quyế
 | **ADR-015** | Bộ máy Kiểm tra & Biến đổi DTO gốc trên Bun (Không phụ thuộc ngoài, Kế hoạch biên dịch một lần) | Accepted | [Validation](/techniques/validation) |
 | **ADR-016** | Hợp nhất 37 → 19 Package (6 Lĩnh vực, ESM Subpath Exports) & Đồng bộ API gốc Bun 1.4.5 | Accepted | [Packages & Monorepo](/ecosystem/packages) |
 | **ADR-017** | Không phụ thuộc runtime bên ngoài (19/19 Package) & Cách ly 2 Adapter `node:*` toàn repo | Accepted (Completed) | [Packages & Monorepo](/ecosystem/packages) |
-| **ADR-018** | Kiến trúc Magic tùy biến: `Bun.plugin` hợp nhất, Macro mở rộng, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, `@AutoModule` có điều kiện | Accepted | [CLI & `bunest.config.ts`](/observability/cli) |
+| **ADR-018** | Kiến trúc Magic tùy biến: `Bun.plugin` hợp nhất, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, `@AutoModule` | Accepted | [CLI & `bunest.config.ts`](/observability/cli) |
 
 ## Quy tắc Quản trị
 

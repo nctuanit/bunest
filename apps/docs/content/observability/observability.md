@@ -23,10 +23,9 @@ import { ObservabilityModule } from "@bunest/observability";
 @Module({
   imports: [
     ObservabilityModule.forRoot({
-      serviceName: "orders-api",
-      tracing: { enabled: true },
-      metrics: { enabled: true, path: "/metrics" },
-      health: { enabled: true, path: "/health" },
+      tracing: true,
+      metrics: true,
+      health: true,
       devtools: { enabled: process.env.NODE_ENV !== "production" },
     }),
   ],

@@ -26,11 +26,11 @@ export class AppModule {}
 
 | Decorator | Purpose | Key Options |
 | --- | --- | --- |
-| `@Retry(options)` | Retries transient failures with fixed or exponential backoff + jitter | `maxAttempts`, `delayMs`, `backoff`, `retryIf` |
+| `@Retry(options)` | Retries transient failures with fixed or exponential backoff + jitter | `attempts`, `delayMs`, `backoff`, `retryIf` |
 | `@Timeout(options)` | Aborts slow calls after a deadline and propagates an `AbortSignal` | `timeoutMs` |
-| `@CircuitBreaker(options)` | Opens circuit after consecutive failures to stop cascading outages | `failureThreshold`, `resetTimeoutMs`, `halfOpenMaxCalls` |
+| `@CircuitBreaker(options)` | Opens circuit after consecutive failures to stop cascading outages | `failureRateThreshold`, `openDuration`, `halfOpenMaxCalls` |
 | `@Bulkhead(options)` | Bounds concurrent executions and queue depth to isolate slow dependencies | `maxConcurrent`, `maxQueue` |
-| `@Fallback(options)` | Returns a graceful degraded result when upstream policies fail | `fallback: (err, ...args) => ...` |
+| `@Fallback(handler)` | Returns a graceful degraded result when upstream policies fail | `(err, ...args) => ...` |
 | `@Signal()` | Injects the cooperative `AbortSignal` managed by `@Timeout()` into a parameter | — |
 | `@Resilience(policy)` | Applies a reusable named/composed policy bundle | policy name or config |
 
@@ -53,10 +53,10 @@ import {
 
 @Injectable()
 export class PaymentGatewayService {
-  @Fallback({ fallback: () => ({ status: "queued_offline" }) })
-  @CircuitBreaker({ failureThreshold: 5, resetTimeoutMs: 30_000 })
-  @Retry({ maxAttempts: 3, delayMs: 200, backoff: "exponential" })
-  @Timeout({ timeoutMs: 2_000 })
+  @Fallback(() => ({ status: "queued_offline" }))
+  @CircuitBreaker({ failureRateThreshold: 50, openDuration: 30_000 })
+  @Retry({ attempts: 3, backoff: { delay: 200, factor: 2 } })
+  @Timeout(2_000)
   @Bulkhead({ maxConcurrent: 20, maxQueue: 50 })
   async charge(
     orderId: string,

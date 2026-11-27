@@ -34,8 +34,6 @@ import {
   OrmModule,
   PrimaryGeneratedColumn,
   Transactional,
-  type Nested,
-  type Relation,
   type OrmRepository,
 } from "@bunest/orm";
 
@@ -53,10 +51,10 @@ export class User {
   email: string;
 
   @Embedded(() => Address)
-  address?: Nested<Address>;
+  address?: Address;
 
   @OneToMany(() => Post, (post) => post.author, { cascade: true })
-  posts: Relation<Post[]>;
+  posts: Post[];
 }
 
 @Entity("posts")
@@ -68,7 +66,7 @@ export class Post {
   title: string;
 
   @ManyToOne(() => User, (user) => user.posts, { onDelete: "CASCADE" })
-  author: Relation<User>;
+  author: User;
 }
 
 @Injectable()
@@ -110,10 +108,7 @@ In addition to `OrmRepository<Entity>` (`@InjectRepository(Entity)`), `@bunest/o
 ```ts
 import {
   CrudRepository,
-  Modifying,
   Repository,
-  Query,
-  SqlParam,
 } from "@bunest/orm";
 import { User } from "./user.entity";
 
@@ -122,12 +117,10 @@ export abstract class UserRepository extends CrudRepository<User, number> {
   abstract findByEmail(email: string): Promise<User | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
 
-  @Modifying()
-  @Query("UPDATE users SET email = :email WHERE id = :id")
-  abstract updateEmail(
-    @SqlParam("id") id: number,
-    @SqlParam("email") email: string,
-  ): Promise<number>;
+  async updateEmail(id: number, email: string): Promise<number> {
+    const result = await this.execute("UPDATE users SET email = :email WHERE id = :id", { id, email });
+    return result.affectedRows;
+  }
 }
 ```
 
@@ -158,7 +151,7 @@ registerQueryOperator({
 
 Additional registry helpers: `unregisterQueryOperator(suffix)`, `getRegisteredQueryOperator(suffix)`, `listRegisteredQueryOperators()`, and `clearRegisteredQueryOperators()`.
 
-## Implicit Repository Scopes (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`, `@IgnoreScope`)
+## Implicit Repository Scopes (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`)
 
 Attach reusable, cross-cutting query filters and write interceptors directly onto `@Repository` classes:
 
@@ -167,61 +160,8 @@ Attach reusable, cross-cutting query filters and write interceptors directly ont
 | `@RepositoryScope<TEntity>({ name, where?, beforeSave?, onDeleteById? })` | Repeatable custom scope injecting `WHERE` clauses (with `OR`-safe parenthesization), `beforeSave` mutations, or `deleteById` interceptors |
 | `@SoftDelete({ column?, property?, name?, now? })` | Defaults to `deleted_at` / `deletedAt` / `"softDelete"`: adds `<col> IS NULL` to reads/counts/exists/deletes, converts `deleteById(id)` to soft-delete `UPDATE`, and exposes `softDeleteById`, `restoreById`, and `hardDeleteById` |
 | `@TenantScoped({ column?, property?, name?, resolveTenant?, required? })` | Resolves tenant from `resolveTenant()`, `ClsService`, or `getCurrentRequestContext()`, isolates reads/deletes by `tenant_id`, and auto-populates `tenantId` on `save()`/`saveMany()` |
-| `@IgnoreScope(...scopeNames)` | Method decorator disabling named scopes — or ALL scopes when called with no arguments (`@IgnoreScope()`) |
 
 You can also disable scopes dynamically across async boundaries using `runWithIgnoredScopes(["softDelete"], () => repo.findAll())`.
-
-## Selective Column Projection (`@Projection`)
-
-Avoid fetching full rows (`SELECT *`) on hot read endpoints by annotating derived finders (`findBy*`, `findAllBy*`, `findOneBy*`, `findPageBy*`, `findCursorBy*`, `findAll`, `findById`) with **`@Projection(...fields)`**:
-
-@@filename(document.repository.ts)
-
-```ts
-import {
-  CrudRepository,
-  IgnoreScope,
-  Repository,
-  Projection,
-  SoftDelete,
-  TenantScoped,
-  type CursorPage,
-  type CursorPageable,
-  type Page,
-  type Pageable,
-} from "@bunest/orm";
-import { DocumentEntity } from "./document.entity";
-
-@SoftDelete()
-@TenantScoped({ resolveTenant: () => getCurrentTenantId() })
-@Repository(DocumentEntity)
-export abstract class DocumentRepository extends CrudRepository<
-  DocumentEntity,
-  number
-> {
-  // Compiles `SELECT "id", "title" FROM "documents" WHERE ... AND "deleted_at" IS NULL AND "tenant_id" = ?`
-  @Projection("id", "title")
-  abstract findAllByPublished(
-    published: boolean,
-  ): Promise<Array<{ id: number; title: string }>>;
-
-  // First-class offset pagination (SELECT ... LIMIT/OFFSET + scoped COUNT(*))
-  abstract findPageByPublished(
-    published: boolean,
-    pageable: Pageable,
-  ): Promise<Page<DocumentEntity>>;
-
-  // First-class keyset cursor pagination (LIMIT + 1 -> nextCursor & hasMore)
-  abstract findCursorByPublished(
-    published: boolean,
-    pageable: CursorPageable,
-  ): Promise<CursorPage<DocumentEntity>>;
-
-  // Opt out of soft-delete filtering for admin/audit queries
-  @IgnoreScope("softDelete")
-  abstract findById(id: number): Promise<DocumentEntity | null>;
-}
-```
 
 ## First-Class Pagination (`Page<T>` & `CursorPage<T>`)
 
@@ -231,7 +171,7 @@ export abstract class DocumentRepository extends CrudRepository<
 
 ## Composable Repository Fragments (`composeRepository`)
 
-Mix reusable repository methods and scopes across any `@Repository` without single-inheritance limits using **`defineRepositoryFragment()`**, **`composeRepository()`**, or **`@UseRepositoryFragments(...)`** — alongside built-in **`withSoftDelete()`** and **`withCursorPagination()`** traits:
+Mix reusable repository methods and scopes across any `@Repository` without single-inheritance limits using **`defineRepositoryFragment()`** and **`composeRepository()`** — alongside built-in **`withSoftDelete()`** and **`withCursorPagination()`** traits:
 
 @@filename(invoice.repository.ts)
 
@@ -275,7 +215,7 @@ export abstract class InvoiceRepository extends composeRepository(
 
 | Subpath | Purpose |
 | --- | --- |
-| `@bunest/orm` | Core ORM (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, drivers, query builders) |
+| `@bunest/orm` | Core ORM (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Transactional`, `OrmMigrationRunner`, drivers, query builders) |
 | `@bunest/orm/plugin` | Bun TDZ-safe circular-entity preload plugin |
 | `@bunest/orm/store` | Foundational SQL store kit (`runStoreCli`, `SqlExecutor`, `SqlTransaction`, value coercers) |
 | `@bunest/orm/postgres` | PostgreSQL store migration & dialect helpers over native `Bun.SQL` |

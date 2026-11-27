@@ -34,8 +34,6 @@ import {
   OrmModule,
   PrimaryGeneratedColumn,
   Transactional,
-  type Nested,
-  type Relation,
   type OrmRepository,
 } from "@bunest/orm";
 
@@ -53,10 +51,10 @@ export class User {
   email: string;
 
   @Embedded(() => Address)
-  address?: Nested<Address>;
+  address?: Address;
 
   @OneToMany(() => Post, (post) => post.author, { cascade: true })
-  posts: Relation<Post[]>;
+  posts: Post[];
 }
 
 @Entity("posts")
@@ -68,7 +66,7 @@ export class Post {
   title: string;
 
   @ManyToOne(() => User, (user) => user.posts, { onDelete: "CASCADE" })
-  author: Relation<User>;
+  author: User;
 }
 
 @Injectable()
@@ -110,10 +108,7 @@ Bên cạnh `OrmRepository<Entity>` (`@InjectRepository(Entity)`), `@bunest/orm`
 ```ts
 import {
   CrudRepository,
-  Modifying,
   Repository,
-  Query,
-  SqlParam,
 } from "@bunest/orm";
 import { User } from "./user.entity";
 
@@ -122,12 +117,10 @@ export abstract class UserRepository extends CrudRepository<User, number> {
   abstract findByEmail(email: string): Promise<User | null>;
   abstract existsByEmail(email: string): Promise<boolean>;
 
-  @Modifying()
-  @Query("UPDATE users SET email = :email WHERE id = :id")
-  abstract updateEmail(
-    @SqlParam("id") id: number,
-    @SqlParam("email") email: string,
-  ): Promise<number>;
+  async updateEmail(id: number, email: string): Promise<number> {
+    const result = await this.execute("UPDATE users SET email = :email WHERE id = :id", { id, email });
+    return result.affectedRows;
+  }
 }
 ```
 
@@ -158,7 +151,7 @@ registerQueryOperator({
 
 Các hàm trợ giúp registry bổ sung: `unregisterQueryOperator(suffix)`, `getRegisteredQueryOperator(suffix)`, `listRegisteredQueryOperators()` và `clearRegisteredQueryOperators()`.
 
-## Phạm vi Repository ngầm định (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`, `@IgnoreScope`)
+## Phạm vi Repository ngầm định (`@RepositoryScope`, `@SoftDelete`, `@TenantScoped`)
 
 Gắn các bộ lọc truy vấn cắt ngang có thể tái sử dụng và bộ chặn ghi dữ liệu trực tiếp lên các class `@Repository`:
 
@@ -167,61 +160,8 @@ Gắn các bộ lọc truy vấn cắt ngang có thể tái sử dụng và bộ
 | `@RepositoryScope<TEntity>({ name, where?, beforeSave?, onDeleteById? })` | Scope tùy chỉnh có thể lặp lại, chèn mệnh đề `WHERE` (đóng ngoặc an toàn với `OR`), biến đổi `beforeSave`, hoặc bộ chặn `deleteById` |
 | `@SoftDelete({ column?, property?, name?, now? })` | Mặc định dùng `deleted_at` / `deletedAt` / `"softDelete"`: thêm `<col> IS NULL` vào các thao tác đọc/đếm/kiểm tra tồn tại/xóa, chuyển `deleteById(id)` thành `UPDATE` xóa mềm, và cung cấp `softDeleteById`, `restoreById` cùng `hardDeleteById` |
 | `@TenantScoped({ column?, property?, name?, resolveTenant?, required? })` | Phân giải tenant từ `resolveTenant()`, `ClsService` hoặc `getCurrentRequestContext()`, cô lập thao tác đọc/xóa theo `tenant_id`, và tự động điền `tenantId` khi `save()`/`saveMany()` |
-| `@IgnoreScope(...scopeNames)` | Decorator phương thức vô hiệu hóa các scope được chỉ định — hoặc TẤT CẢ scope khi gọi không tham số (`@IgnoreScope()`) |
 
 Bạn cũng có thể vô hiệu hóa scope động xuyên qua các ranh giới bất đồng bộ bằng `runWithIgnoredScopes(["softDelete"], () => repo.findAll())`.
-
-## Chọn lọc cột truy vấn (`@Projection`)
-
-Tránh tải toàn bộ hàng (`SELECT *`) trên các endpoint đọc có tần suất cao bằng cách chú thích các finder suy diễn (`findBy*`, `findAllBy*`, `findOneBy*`, `findPageBy*`, `findCursorBy*`, `findAll`, `findById`) với **`@Projection(...fields)`**:
-
-@@filename(document.repository.ts)
-
-```ts
-import {
-  CrudRepository,
-  IgnoreScope,
-  Repository,
-  Projection,
-  SoftDelete,
-  TenantScoped,
-  type CursorPage,
-  type CursorPageable,
-  type Page,
-  type Pageable,
-} from "@bunest/orm";
-import { DocumentEntity } from "./document.entity";
-
-@SoftDelete()
-@TenantScoped({ resolveTenant: () => getCurrentTenantId() })
-@Repository(DocumentEntity)
-export abstract class DocumentRepository extends CrudRepository<
-  DocumentEntity,
-  number
-> {
-  // Compiles `SELECT "id", "title" FROM "documents" WHERE ... AND "deleted_at" IS NULL AND "tenant_id" = ?`
-  @Projection("id", "title")
-  abstract findAllByPublished(
-    published: boolean,
-  ): Promise<Array<{ id: number; title: string }>>;
-
-  // First-class offset pagination (SELECT ... LIMIT/OFFSET + scoped COUNT(*))
-  abstract findPageByPublished(
-    published: boolean,
-    pageable: Pageable,
-  ): Promise<Page<DocumentEntity>>;
-
-  // First-class keyset cursor pagination (LIMIT + 1 -> nextCursor & hasMore)
-  abstract findCursorByPublished(
-    published: boolean,
-    pageable: CursorPageable,
-  ): Promise<CursorPage<DocumentEntity>>;
-
-  // Opt out of soft-delete filtering for admin/audit queries
-  @IgnoreScope("softDelete")
-  abstract findById(id: number): Promise<DocumentEntity | null>;
-}
-```
 
 ## Phân trang tích hợp sẵn (`Page<T>` & `CursorPage<T>`)
 
@@ -231,7 +171,7 @@ export abstract class DocumentRepository extends CrudRepository<
 
 ## Các mảnh Repository có thể kết hợp (`composeRepository`)
 
-Trộn các phương thức và scope repository tái sử dụng vào bất kỳ `@Repository` nào mà không bị giới hạn đơn kế thừa bằng **`defineRepositoryFragment()`**, **`composeRepository()`** hoặc **`@UseRepositoryFragments(...)`** — cùng với các trait tích hợp sẵn **`withSoftDelete()`** và **`withCursorPagination()`**:
+Trộn các phương thức và scope repository tái sử dụng vào bất kỳ `@Repository` nào mà không bị giới hạn đơn kế thừa bằng **`defineRepositoryFragment()`** và **`composeRepository()`** — cùng với các trait tích hợp sẵn **`withSoftDelete()`** và **`withCursorPagination()`**:
 
 @@filename(invoice.repository.ts)
 
@@ -275,7 +215,7 @@ export abstract class InvoiceRepository extends composeRepository(
 
 | Subpath | Mục đích |
 | --- | --- |
-| `@bunest/orm` | ORM cốt lõi (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Query`, `@Modifying`, `@SqlParam`, `@Transactional`, `OrmMigrationRunner`, các driver, query builder) |
+| `@bunest/orm` | ORM cốt lõi (`OrmModule`, `DataSource`, `EntityManager`, `Repository`, `MongoRepository`, `CrudRepository`, `@Repository`, `@Transactional`, `OrmMigrationRunner`, các driver, query builder) |
 | `@bunest/orm/plugin` | Plugin Bun nạp trước cho entity tham chiếu vòng an toàn với TDZ |
 | `@bunest/orm/store` | Bộ công cụ SQL store nền tảng (`runStoreCli`, `SqlExecutor`, `SqlTransaction`, các bộ ép kiểu giá trị) |
 | `@bunest/orm/postgres` | Trình chạy migration & helper dialect PostgreSQL trên `Bun.SQL` gốc |

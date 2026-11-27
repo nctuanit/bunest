@@ -282,7 +282,7 @@ Use at **Week 0 / Week 1** to lock capacity and staging budget inputs, and befor
 | `@bunest/validation` | `ValidationPipe` defaults (`whitelist`, `forbidNonWhitelisted`, `forbidUnknownValues`), nested DTO validation, sensitive value redaction | `YES` |
 | `@bunest/orm` | PostgreSQL `Bun.SQL` query parameterization, transaction/savepoint isolation, migration safety | `YES` |
 | `@bunest/security` | WebCrypto `JwtService` (constant-time verify, `alg: "none"` & key-confusion defense), `Bun.password` (`argon2id`), `SessionCookieService`, `CsrfGuard`, `ThrottlerGuard`, `SecurityHeadersMiddleware` | `YES` |
-| `@bunest/storage` & `@bunest/storage/local` | `LocalStorageAdapter` two-layer path-traversal containment (`assertSafeStorageKey()` rejecting `..`, `.`, null/control bytes, absolute paths, drive prefixes, and NTFS ADS) | `YES` |
+| `@bunest/storage` & `@bunest/storage/local` | `LocalDisk` two-layer path-traversal containment (`assertValidKey()` rejecting `..`, `.`, null/control bytes, absolute paths, drive prefixes, and NTFS ADS) | `YES` |
 | `@bunest/observability` | Structured log secret redaction, `DevtoolsModule` production gate (`/_devtools/*` disabled in prod), `/metrics` access control | `YES` |
 | `@bunest/core/config` | `.env` parsing, merge safety, prototype pollution defense | `YES` |
 | Packaging & Supply Chain | 19-package publish pipeline (`scripts/publish-packages.ts`), zero external runtime dependencies (ADR-017), reproducible lockfile/CI release workflow | `YES` |

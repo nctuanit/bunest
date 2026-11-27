@@ -58,7 +58,7 @@ import { Idempotent } from "@bunest/resilience/idempotency";
 @Controller("charges")
 export class ChargesController {
   @Post()
-  @Idempotent({ ttlMs: 24 * 60 * 60 * 1000 })
+  @Idempotent({ ttl: 24 * 60 * 60 * 1000 })
   createCharge(@Body() body: { orderId: string; amount: number }) {
     return { chargeId: crypto.randomUUID(), ...body };
   }

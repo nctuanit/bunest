@@ -44,7 +44,7 @@ Bunest's core architecture is governed by authoritative **Architecture Decision 
 | **ADR-015** | Bun-Native DTO Validation & Transformation Engine (Zero External Deps, Compile-Once Plan)                                                                                                  | Accepted | [Validation](/techniques/validation)                         |
 | **ADR-016** | 37 → 19 Package Consolidation (6 Domains, ESM Subpath Exports) & Bun 1.4.5 Native API Alignment                                                                                            | Accepted | [Packages & Monorepo](/ecosystem/packages)                   |
 | **ADR-017** | Zero External Runtime Dependencies (19/19 Packages) & Repo-Wide 2-Adapter `node:*` Kernel Quarantine                                                                                      | Accepted (Completed) | [Packages & Monorepo](/ecosystem/packages)                   |
-| **ADR-018** | Customizable Magic Architecture: Unified `Bun.plugin`, Extensible Macros, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, Conditional `@AutoModule`      | Accepted | [CLI & `bunest.config.ts`](/observability/cli)               |
+| **ADR-018** | Customizable Magic Architecture: Unified `Bun.plugin`, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, `@AutoModule`                                     | Accepted | [CLI & `bunest.config.ts`](/observability/cli)               |
 
 ## Governance Rules
 

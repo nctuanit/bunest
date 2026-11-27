@@ -20,11 +20,11 @@ import { HttpClientModule } from "@bunest/core/client";
 
 @Module({
   imports: [
-    HttpClientModule.forRoot({
+    HttpClientModule.register({
       baseUrl: "https://api.github.com",
       timeout: 5_000,
       headers: { Accept: "application/vnd.github+json" },
-      retry: { maxAttempts: 3 },
+      retry: { attempts: 3 },
     }),
   ],
 })

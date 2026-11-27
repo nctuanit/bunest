@@ -14,17 +14,19 @@ bunx @bunest/cli --help
 
 | Command                                    | Description                                                                                                                        |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `bunest new <name>`                        | Scaffold a new Bunest TypeScript project with `tsconfig.json`, `@bunest/validation`, and `bun:test` setup                          |
-| `bunest generate <schematic> <name>` (`g`) | Generate controllers, services, modules, DTOs, guards, pipes, interceptors, filters, middleware, endpoints, or full CRUD resources |
+| `bunest new <name>`                        | Scaffold a new Bunest TypeScript project (`--preset default\|rest-sqlite`) with `tsconfig.json`, `@bunest/validation`, and `bun:test` |
+| `bunest generate <schematic> <name>` (`g`) | Generate controllers, services, modules, DTOs, guards, pipes, interceptors, filters, middleware, endpoints, or CRUD resources (`--with-scenario`) |
 | `bunest dev`                               | Run your application in Bun watch mode (`--port`, `--entry`) with live `.d.ts` typegen                                             |
 | `bunest build`                             | Bundle your application (`Bun.build()` ESM or `--compile` standalone binary; `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
-| `bunest typegen`                           | Scan routes, DI tokens, class macros, custom macros/presets, and ecosystem registries into `.bunest/types/bunest.d.ts`             |
-| `bunest check`                             | Run static DI, ORM derived-query, Class Macro, and custom architecture diagnostics (`BUNEST_ARCH*`)                                |
-| `bunest verify`                            | Run `typecheck -> static check -> test` in one compact report (`--reporter=agent\|pretty\|json`)                                   |
+| `bunest typegen`                           | Scan routes, DI tokens, and ecosystem registries into `.bunest/types/bunest.d.ts`                                                  |
+| `bunest check`                             | Run static DI, ORM derived-query, and custom architecture diagnostics (`BUNEST_ARCH*`)                                             |
+| `bunest verify`                            | Run `typecheck -> static check -> test` in one compact report (`--reporter=agent\|pretty\|json`, `--affected`, `--require-tests`)  |
+| `bunest explain <route\|error>`            | Trace a route's module, pipeline, and DI graph (`explain route`), or look up any `BUNEST_E*` code (`explain error`)                |
+| `bunest routes [snapshot\|diff]`           | List HTTP routes, emit route/DTO body contract snapshots (`--body`), and diff breaking changes (`diff --base`, `--evidence`)       |
+| `bunest test-from-request <file>`          | Generate sanitized regression tests from `.http` or scenario JSON files                                                            |
 | `bunest mcp`                               | Start a zero-dependency stdio MCP server exposing `bunest_verify`, `bunest_explain_error`, `bunest_recent_errors`, and diagnostics |
-| `bunest delombok`                          | Expand built-in & custom Class Macros/presets into explicit TypeScript methods                                                     |
 | `bunest repl`                              | Start an interactive DI REPL against your compiled `AppModule`                                                                     |
-| `bunest info`                              | Print Bunest, Bun runtime, and OS environment diagnostics                                                                          |
+| `bunest info`                              | Print Bunest, Bun runtime, resolved `@bunest/*` versions, and OS environment diagnostics                                           |
 
 ## Build Modes (`bunest build`)
 
@@ -75,7 +77,7 @@ bunx @bunest/cli build --minify
 
 ## Project Configuration (`bunest.config.ts`)
 
-Introduced in **[ADR-018](/architecture/adrs)**, `defineBunestConfig()` (exported from `@bunest/core`) configures Class Macro defaults/presets/plugins, custom ORM query operators, AOP pointcuts, typegen plugins, architecture diagnostic rules, and unified `Bun.plugin` stages from a single typed `bunest.config.ts` file (loaded automatically by `@bunest/cli` via native Bun `import()`):
+Introduced in **[ADR-018](/architecture/adrs)**, `defineBunestConfig()` (exported from `@bunest/core`) configures custom ORM query operators, AOP pointcuts, typegen plugins, architecture diagnostic rules, and unified `Bun.plugin` stages from a single typed `bunest.config.ts` file (loaded automatically by `@bunest/cli` via native Bun `import()`):
 
 @@filename(bunest.config.ts)
 
@@ -85,20 +87,8 @@ import {
   noRepositoryInControllerRule,
   requireGuardOnMutationsRule,
 } from "@bunest/cli";
-import { Auditable } from "./src/macros/auditable.macro";
 
 export default defineBunestConfig({
-  macros: {
-    defaults: {
-      accessors: { fluent: false, chain: true },
-      toString: { maskValue: "[REDACTED]" },
-      builder: { toBuilder: true },
-    },
-    presets: {
-      DomainEntity: ["Data", "Builder", "FieldNameConstants"],
-    },
-    plugins: [Auditable.macroDefinition],
-  },
   orm: {
     defaultScopes: ["softDelete", "tenant"],
     queryOperators: [
@@ -113,13 +103,12 @@ export default defineBunestConfig({
     enabled: true,
     outDir: ".bunest/types",
     fileName: "bunest.d.ts",
-    include: ["routes", "macros", "i18n", "jobs", "workflows", "authz", "ai"],
+    include: ["routes", "i18n", "jobs", "workflows", "authz", "ai"],
   },
   diagnostics: {
     rules: [noRepositoryInControllerRule, requireGuardOnMutationsRule],
   },
   plugin: {
-    classMacros: true,
     autoModuleManifest: true,
     swaggerMetadata: true,
     ormCircularSafe: true,
@@ -133,7 +122,7 @@ export default defineBunestConfig({
 
 | Stage | Option (default) | Responsibility |
 | --- | --- | --- |
-| **1. `classMacros`** | `classMacros: true` | AST-scans classes using built-in or custom macros/presets and appends `registerMacroFields(ClassName, [...])` so zero-initializer fields (`email!: string;`) work with zero manual `fields: [...]` |
+| **1. `classMacros`** | `classMacros: false` | Disable the legacy transform for applications migrating off class macros. |
 | **2. `autoModuleManifest`** | `autoModuleManifest: true` | In build mode (`expandAutoModuleGlobs`), expands `@AutoModule({ scan })` via `Bun.Glob` into static `manifest: [() => import("./...")]` arrays for `bun build --compile` |
 | **3. `swaggerMetadata`** | `swaggerMetadata: true` | Emits OpenAPI/DTO & controller reflection metadata (reusing `bunestMetadataPlugin` transforms) |
 | **4. `userTransforms`** | `transforms: [...]` | Runs custom `{ name, filter?, transform(source, filePath) }` hooks from options or `bunest.config.ts` |
@@ -150,72 +139,19 @@ registerBunestPlugin();
 
 For programmatic testing or custom build scripts, `@bunest/cli` also exports `transformBunestSource(source, filePath, options?)`, `transformBunestSourceAsync(...)`, and the legacy standalone `bunestMetadataPlugin()`.
 
-## Custom Class Macros, Presets & Global Defaults
-
-Define reusable, single-source Class Macros in `@bunest/core` with **`defineClassMacro()`** and **`defineMacroPreset()`**. Every registered macro is stored on `globalThis[Symbol.for("bunest:custom_macros:registry")]` and drives runtime execution, `.d.ts` typegen, VS Code Hover/CodeLens, and `bunest delombok` from one definition:
-
-@@filename(auditable.macro.ts)
-
-```ts
-import {
-  Builder,
-  Data,
-  FieldNameConstants,
-  defineClassMacro,
-  defineMacroPreset,
-  setGlobalMacroDefaults,
-} from "@bunest/core";
-
-// Project-wide defaults inherited by all built-in macros (per-class options always win)
-setGlobalMacroDefaults({
-  toString: { maskValue: "[REDACTED]" },
-  builder: { toBuilder: true },
-});
-
-// Single-source custom macro (fields default-initialized without breaking `new`)
-export const Auditable = defineClassMacro({
-  name: "Auditable",
-  fields: [
-    { name: "createdAt", type: "Date", readonly: true, defaultValue: () => new Date() },
-    { name: "updatedAt", type: "Date", defaultValue: () => new Date() },
-  ],
-  methods: {
-    touch: {
-      signature: "(): this",
-      impl(self) {
-        self.updatedAt = new Date();
-        return this;
-      },
-      delombokBody: "this.updatedAt = new Date();\nreturn this;",
-    },
-  },
-  statics: {
-    auditFields: {
-      signature: "(): readonly string[]",
-      impl: () => ["createdAt", "updatedAt"],
-    },
-  },
-});
-
-// Reusable preset composing built-in macros (auto-infers composedNames for static arrays)
-export const DomainEntity = defineMacroPreset(
-  "DomainEntity",
-  [Data(), Builder({ toBuilder: true }), FieldNameConstants()],
-  ["Data", "Builder", "FieldNameConstants"],
-);
-```
+For older code using Lombok-style decorators, see [Migrating from class macros](/recipes/class-macros).
 
 ## Extensible Typegen Plugins (`defineTypegenPlugin`)
 
-Extend `bunest typegen` with **`defineTypegenPlugin()`** (`{ name, target?, scan(ctx), emit(data, ctx) }`). In addition to core targets (`routes`, `tokens`, `events`, `config`, `cqrs`, `microservices`, `mongoose`, `macros`), `@bunest/cli` ships **5 built-in ecosystem plugins**:
+Extend `bunest typegen` with **`defineTypegenPlugin()`** (`{ name, target?, scan(ctx), emit(data, ctx) }`). In addition to core targets (`routes`, `tokens`, `events`, `config`, `cqrs`, `microservices`, `mongoose`), `@bunest/cli` ships **5 built-in ecosystem plugins**:
 
 | Plugin Export | Target | Scans | Emitted Ambient Registry |
 | --- | --- | --- | --- |
 | `i18nTypegenPlugin` | `i18n` | `locales/**/*` & `i18n/**/*` (`.json`, `.jsonc`, `.yaml`, `.yml`, `.toml`) via `Bun.Glob` + `Bun.JSONC`/`Bun.YAML`/`Bun.TOML` | `@bunest/core/i18n` → `BunestI18nRegistry` (dot-keys + `{{param}}` placeholders) |
 | `jobsTypegenPlugin` | `jobs` | `@Processor`, `@Queue`, `@Process` decorators | `@bunest/jobs` → `BunestQueueRegistry` |
 | `workflowsTypegenPlugin` | `workflows` | `@Workflow`, `defineWorkflow({ name })` | `@bunest/workflows` → `BunestWorkflowRegistry` |
-| `authzTypegenPlugin` | `authz` | `@RequirePermissions`, `@Permissions`, `@CheckPolicies` | `@bunest/security/authz` → `BunestPermissionRegistry` |
-| `aiToolsTypegenPlugin` | `ai` (`ai-tools`) | `@AiTool`, `@McpTool`, `defineTool({ name })` | `@bunest/ai` → `BunestAiToolRegistry` |
+| `authzTypegenPlugin` | `authz` | `@CheckPolicies` | `@bunest/security/authz` → `BunestPermissionRegistry` |
+| `aiToolsTypegenPlugin` | `ai` (`ai-tools`) | `defineTool({ name })` | `@bunest/ai` → `BunestAiToolRegistry` |
 
 @@filename(feature-flags.typegen.ts)
 
