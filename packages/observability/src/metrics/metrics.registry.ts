@@ -111,6 +111,35 @@ export interface PrometheusMetric {
   formatPrometheus(): string;
 }
 
+export interface CounterSample {
+  readonly labels: Readonly<Record<string, string>>;
+  readonly value: number;
+}
+
+export interface GaugeSample {
+  readonly labels: Readonly<Record<string, string>>;
+  readonly value: number;
+}
+
+export interface HistogramSample {
+  readonly labels: Readonly<Record<string, string>>;
+  readonly sum: number;
+  readonly count: number;
+  /** Cumulative bucket counts aligned 1:1 with `Histogram.buckets`. */
+  readonly cumulativeBucketCounts: readonly number[];
+}
+
+function pairsToLabelRecord(
+  pairs: ReadonlyArray<readonly [string, string]>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < pairs.length; i++) {
+    const [k, v] = pairs[i]!;
+    out[k] = v;
+  }
+  return out;
+}
+
 export class Counter implements PrometheusMetric {
   public readonly type: MetricType = "counter";
   public readonly name: string;
@@ -160,6 +189,20 @@ export class Counter implements PrometheusMetric {
 
   reset(): void {
     this.values.clear();
+  }
+
+  collect(): CounterSample[] {
+    if (this.values.size === 0 && this.labelNames.length === 0) {
+      return [{ labels: {}, value: 0 }];
+    }
+    const samples: CounterSample[] = [];
+    for (const entry of this.values.values()) {
+      samples.push({
+        labels: pairsToLabelRecord(entry.pairs),
+        value: entry.value,
+      });
+    }
+    return samples;
   }
 
   formatPrometheus(): string {
@@ -254,6 +297,20 @@ export class Gauge implements PrometheusMetric {
 
   reset(): void {
     this.values.clear();
+  }
+
+  collect(): GaugeSample[] {
+    if (this.values.size === 0 && this.labelNames.length === 0) {
+      return [{ labels: {}, value: 0 }];
+    }
+    const samples: GaugeSample[] = [];
+    for (const entry of this.values.values()) {
+      samples.push({
+        labels: pairsToLabelRecord(entry.pairs),
+        value: entry.value,
+      });
+    }
+    return samples;
   }
 
   formatPrometheus(): string {
@@ -373,6 +430,19 @@ export class Histogram implements PrometheusMetric {
 
   reset(): void {
     this.entries.clear();
+  }
+
+  collect(): HistogramSample[] {
+    const samples: HistogramSample[] = [];
+    for (const entry of this.entries.values()) {
+      samples.push({
+        labels: pairsToLabelRecord(entry.pairs),
+        sum: entry.sum,
+        count: entry.count,
+        cumulativeBucketCounts: [...entry.bucketCounts],
+      });
+    }
+    return samples;
   }
 
   formatPrometheus(): string {

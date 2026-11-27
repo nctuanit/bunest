@@ -34,6 +34,7 @@ export interface StartSpanOptions {
   attributes?: Readonly<Record<string, SpanAttributeValue>>;
   parentContext?: SpanContext;
   requestId?: string;
+  startTimeMs?: number;
 }
 
 /**
@@ -121,6 +122,7 @@ export class Tracer implements OnModuleDestroy {
       this.resource,
       onEnd,
       options.attributes,
+      options.startTimeMs,
     );
   }
 

@@ -46,8 +46,11 @@ export {
   type TimedDecoratorOptions,
 } from "./decorators/observability.decorators";
 export {
+  OBSERVABILITY_MODULE_OPTIONS,
   ObservabilityModule,
+  type ObservabilityModuleAsyncOptions,
   type ObservabilityModuleOptions,
+  type ObservabilityOptionsFactory,
 } from "./observability.module";
 export {
   ConsoleSpanExporter,
@@ -72,6 +75,24 @@ export {
   type TracingModuleAsyncOptions,
   type TracingModuleOptions,
 } from "./tracing/tracing.middleware";
+export {
+  createTracedFetch,
+  type TracedFetchLike,
+  type TracedFetchOptions,
+} from "./tracing/traced-fetch";
+export {
+  AUTO_INSTRUMENT_OPTIONS,
+  HTTP_CLIENT_REQUEST_DIAGNOSTICS_CHANNEL,
+  JOBS_ENQUEUE_DIAGNOSTICS_CHANNEL,
+  JOBS_PROCESS_DIAGNOSTICS_CHANNEL,
+  ORM_QUERY_DIAGNOSTICS_CHANNEL,
+  ORM_TRANSACTION_DIAGNOSTICS_CHANNEL,
+  OtelAutoInstrumentation,
+  RPC_CLIENT_DIAGNOSTICS_CHANNEL,
+  RPC_SERVER_DIAGNOSTICS_CHANNEL,
+  enableAutoInstrumentation,
+  type AutoInstrumentOptions,
+} from "./tracing/auto-instrumentation";
 
 // Metrics & Prometheus Exposition
 export {
@@ -81,7 +102,10 @@ export {
   Histogram,
   MetricsRegistry,
   PROMETHEUS_CONTENT_TYPE,
+  type CounterSample,
+  type GaugeSample,
   type HistogramOptions,
+  type HistogramSample,
   type MetricLabels,
   type MetricOptions,
   type MetricType,
@@ -93,6 +117,19 @@ export {
   MetricsModule,
   type MetricsModuleOptions,
 } from "./metrics/metrics.module";
+export {
+  OTLP_AGGREGATION_TEMPORALITY_CUMULATIVE,
+  OTLP_AGGREGATION_TEMPORALITY_DELTA,
+  OtlpHttpMetricsExporter,
+  type OtlpExportMetricsServiceRequest,
+  type OtlpGaugeMetricData,
+  type OtlpHistogramDataPoint,
+  type OtlpHistogramMetricData,
+  type OtlpHttpMetricsExporterOptions,
+  type OtlpMetric,
+  type OtlpNumberDataPoint,
+  type OtlpSumMetricData,
+} from "./metrics/otlp-metrics-exporter";
 
 // Health & Readiness (Terminus v12 Parity)
 export {
@@ -200,6 +237,10 @@ export {
 
 // Devtools Introspection & Graph Publishing
 export {
+  detectGraphCycles,
+  type DevtoolsDependencyCycle,
+} from "./devtools/cycle-detector";
+export {
   DEVTOOLS_OPTIONS,
   DevtoolsService,
   type DevtoolsApplicationGraph,
@@ -214,6 +255,10 @@ export {
   type DevtoolsTarget,
 } from "./devtools/devtools.service";
 export { DevtoolsModule } from "./devtools/devtools.module";
+export {
+  renderDevtoolsHtml,
+  type DevtoolsViewerOptions,
+} from "./devtools/devtools.viewer";
 export {
   GraphPublisher,
   type GraphPublisherResponse,

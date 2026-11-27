@@ -3,6 +3,7 @@ import {
   Get,
   Inject,
   Module,
+  type AgentErrorTrace,
   type DynamicModule,
   type Provider,
   type Type,
@@ -25,6 +26,19 @@ function createDevtoolsController(basePath: string): Type<unknown> {
       private readonly devtools: DevtoolsService,
     ) {}
 
+    @Get()
+    getViewer(): Response {
+      this.devtools.assertEndpointsEnabled();
+      return new Response(this.devtools.toHtmlViewer(undefined, { basePath }), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
+
     @Get("graph")
     getGraph(): DevtoolsApplicationGraph {
       this.devtools.assertEndpointsEnabled();
@@ -35,6 +49,13 @@ function createDevtoolsController(basePath: string): Type<unknown> {
     getRoutes(): { routes: readonly DevtoolsRouteNode[] } {
       this.devtools.assertEndpointsEnabled();
       return { routes: this.devtools.getRoutes() };
+    }
+
+    @Get("errors")
+    getErrors(): { count: number; errors: readonly AgentErrorTrace[] } {
+      this.devtools.assertEndpointsEnabled();
+      const errors = this.devtools.getErrorTraces();
+      return { count: errors.length, errors };
     }
 
     @Get("mermaid")

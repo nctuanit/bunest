@@ -18,6 +18,7 @@ import {
   type Type,
 } from "@bunest/core";
 import {
+  AgentErrorTraceStore,
   BunestApplication,
   BunestApplicationContext,
   DIContainer,
@@ -25,10 +26,19 @@ import {
   MetadataScanner,
   SerializedGraph,
   formatToken,
+  type AgentErrorTrace,
   type ModuleNode,
   type NormalizedProvider,
   type SerializedGraphJson,
 } from "@bunest/core";
+import {
+  detectGraphCycles,
+  type DevtoolsDependencyCycle,
+} from "./cycle-detector";
+import {
+  renderDevtoolsHtml,
+  type DevtoolsViewerOptions,
+} from "./devtools.viewer";
 
 export const DEVTOOLS_OPTIONS = Symbol.for("bunest:observability:devtools");
 
@@ -51,6 +61,8 @@ export interface DevtoolsModuleOptions {
   /** Optional explicit application or container reference */
   app?: BunestApplication | BunestApplicationContext;
   container?: DIContainer;
+  /** Optional explicit `AgentErrorTraceStore` surfaced in Devtools `/_devtools/errors` and HTML viewer */
+  errorTraceStore?: AgentErrorTraceStore;
   global?: boolean;
 }
 
@@ -86,6 +98,7 @@ export interface DevtoolsModuleNode {
   readonly reExports: readonly string[];
   readonly controllers: readonly string[];
   readonly providers: readonly string[];
+  readonly initTimeMs?: number;
 }
 
 export interface DevtoolsGraphEdge {
@@ -103,6 +116,7 @@ export interface DevtoolsProviderNode {
   readonly scope: Scope;
   readonly isExported: boolean;
   readonly dependencies: readonly string[];
+  readonly initTimeMs?: number;
 }
 
 export interface DevtoolsControllerNode {
@@ -112,6 +126,7 @@ export interface DevtoolsControllerNode {
   readonly path: string | readonly string[];
   readonly scope: Scope;
   readonly routeCount: number;
+  readonly initTimeMs?: number;
 }
 
 export interface DevtoolsRouteNode {
@@ -141,6 +156,8 @@ export interface DevtoolsApplicationGraph {
   readonly providers: readonly DevtoolsProviderNode[];
   readonly controllers: readonly DevtoolsControllerNode[];
   readonly routes: readonly DevtoolsRouteNode[];
+  readonly cycles?: readonly DevtoolsDependencyCycle[];
+  readonly errors?: readonly AgentErrorTrace[];
   readonly serializedGraph?: SerializedGraphJson;
 }
 
@@ -227,6 +244,22 @@ function joinPaths(prefix: string, suffix: string): string {
     : combined;
 }
 
+function extractSerializedNodeInitTimeMs(
+  snapshot: SerializedGraphJson | undefined,
+  nodeId: string,
+): number | undefined {
+  const node = snapshot?.nodes?.[nodeId];
+  if (!node?.metadata) return undefined;
+  const meta = node.metadata as { initTimeMs?: unknown; initTime?: unknown };
+  if (typeof meta.initTimeMs === "number" && Number.isFinite(meta.initTimeMs)) {
+    return meta.initTimeMs;
+  }
+  if (typeof meta.initTime === "number" && Number.isFinite(meta.initTime)) {
+    return meta.initTime;
+  }
+  return undefined;
+}
+
 /**
  * Introspects a Bunest `DIContainer` / `BunestApplication` to emit a structured
  * machine-readable application graph, route manifest, and Mermaid `flowchart LR`.
@@ -235,6 +268,7 @@ function joinPaths(prefix: string, suffix: string): string {
 export class DevtoolsService {
   private attachedApp?: BunestApplication | BunestApplicationContext;
   private attachedContainer?: DIContainer;
+  private attachedErrorTraceStore?: AgentErrorTraceStore;
 
   constructor(
     @Optional()
@@ -246,9 +280,12 @@ export class DevtoolsService {
     private readonly metadataScanner?: MetadataScanner,
     @Optional()
     private readonly serializedGraph?: SerializedGraph,
+    @Optional()
+    private readonly injectedErrorTraceStore?: AgentErrorTraceStore,
   ) {
     this.attachedApp = options.app;
     this.attachedContainer = options.container;
+    this.attachedErrorTraceStore = options.errorTraceStore;
   }
 
   getSerializedGraph(target?: DevtoolsTarget): SerializedGraphJson | undefined {
@@ -276,6 +313,45 @@ export class DevtoolsService {
     this.attachedContainer = container;
   }
 
+  attachErrorTraceStore(store: AgentErrorTraceStore): void {
+    this.attachedErrorTraceStore = store;
+  }
+
+  private resolveErrorTraceStore(
+    target?: DevtoolsTarget,
+  ): AgentErrorTraceStore | undefined {
+    if (target instanceof BunestApplication) {
+      const store = target.getDevDiagnosticsStore();
+      if (store) return store;
+    }
+    if (this.attachedErrorTraceStore) {
+      return this.attachedErrorTraceStore;
+    }
+    if (this.injectedErrorTraceStore) {
+      return this.injectedErrorTraceStore;
+    }
+    if (this.attachedApp instanceof BunestApplication) {
+      const store = this.attachedApp.getDevDiagnosticsStore();
+      if (store) return store;
+    }
+    if (this.discoveryService) {
+      for (const wrapper of this.discoveryService.getProviders()) {
+        if (wrapper.instance instanceof AgentErrorTraceStore) {
+          return wrapper.instance;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  getErrorTraces(
+    target?: DevtoolsTarget,
+    limit = 50,
+  ): readonly AgentErrorTrace[] {
+    const store = this.resolveErrorTraceStore(target);
+    return store ? store.list(limit) : [];
+  }
+
   isEndpointsEnabled(): boolean {
     if (this.options.enabled !== undefined) {
       return this.options.enabled;
@@ -296,6 +372,7 @@ export class DevtoolsService {
 
   getGraph(target?: DevtoolsTarget): DevtoolsApplicationGraph {
     const { modules: scannedModules, app } = this.resolveTarget(target);
+    const snapshot = this.getSerializedGraph(target);
 
     const modules: DevtoolsModuleNode[] = [];
     const edges: DevtoolsGraphEdge[] = [];
@@ -303,6 +380,7 @@ export class DevtoolsService {
     const controllers: DevtoolsControllerNode[] = [];
 
     for (const mod of scannedModules) {
+      const modInitTimeMs = extractSerializedNodeInitTimeMs(snapshot, mod.id);
       modules.push({
         id: mod.id,
         name: mod.name,
@@ -313,6 +391,7 @@ export class DevtoolsService {
         reExports: mod.reExportedModules.map((m) => m.id),
         controllers: mod.controllers.map((c) => c.name || "<Controller>"),
         providers: [...mod.providers.keys()].map((t) => formatToken(t)),
+        ...(modInitTimeMs !== undefined ? { initTimeMs: modInitTimeMs } : {}),
       });
 
       for (const imp of mod.imports) {
@@ -326,6 +405,10 @@ export class DevtoolsService {
         const tokenLabel = formatToken(token);
         const providerId = `${mod.id}::${tokenLabel}`;
         const deps = extractProviderDependencies(provider);
+        const provInitTimeMs = extractSerializedNodeInitTimeMs(
+          snapshot,
+          `${mod.id}:provider:${tokenLabel}`,
+        );
 
         providers.push({
           id: providerId,
@@ -336,6 +419,9 @@ export class DevtoolsService {
           scope: provider.scope,
           isExported: mod.exportedTokens.has(token),
           dependencies: deps,
+          ...(provInitTimeMs !== undefined
+            ? { initTimeMs: provInitTimeMs }
+            : {}),
         });
 
         for (const dep of deps) {
@@ -357,20 +443,29 @@ export class DevtoolsService {
           ctrl,
         );
         const routeMethods = MetadataRegistry.getControllerRoutes(ctrl);
+        const ctrlName = ctrl.name || "<Controller>";
+        const ctrlInitTimeMs = extractSerializedNodeInitTimeMs(
+          snapshot,
+          `${mod.id}:controller:${ctrlName}`,
+        );
 
         controllers.push({
           moduleId: mod.id,
           moduleName: mod.name,
-          name: ctrl.name || "<Controller>",
+          name: ctrlName,
           path: ctrlMeta?.path ?? "/",
           scope: ctrlMeta?.scope ?? injMeta?.scope ?? Scope.SINGLETON,
           routeCount: routeMethods.length,
+          ...(ctrlInitTimeMs !== undefined
+            ? { initTimeMs: ctrlInitTimeMs }
+            : {}),
         });
       }
     }
 
     const routes = this.extractRoutes(scannedModules, app);
-    const snapshot = this.getSerializedGraph(target);
+    const cycles = detectGraphCycles({ modules, providers, edges });
+    const errors = this.getErrorTraces(target);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -379,6 +474,8 @@ export class DevtoolsService {
       providers,
       controllers,
       routes,
+      cycles,
+      errors,
       ...(snapshot && Object.keys(snapshot.nodes).length > 0
         ? { serializedGraph: snapshot }
         : {}),
@@ -387,6 +484,19 @@ export class DevtoolsService {
 
   getRoutes(target?: DevtoolsTarget): readonly DevtoolsRouteNode[] {
     return this.getGraph(target).routes;
+  }
+
+  /**
+   * Renders a self-contained, zero-dependency interactive HTML/SVG Devtools viewer.
+   */
+  toHtmlViewer(
+    target?: DevtoolsTarget,
+    options?: DevtoolsViewerOptions,
+  ): string {
+    return renderDevtoolsHtml(this.getGraph(target), {
+      basePath: options?.basePath ?? this.options.path ?? "/_devtools",
+      title: options?.title,
+    });
   }
 
   /**

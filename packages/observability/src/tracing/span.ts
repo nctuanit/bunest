@@ -146,6 +146,7 @@ export class Span {
   private readonly events: SpanEvent[] = [];
   private readonly startEpochMs: number;
   private readonly startPerfMs: number;
+  private readonly hasExplicitStartTime: boolean;
   private endEpochMs?: number;
   private durationMs = 0;
   private status: SpanStatus = { code: "UNSET" };
@@ -159,9 +160,12 @@ export class Span {
     private readonly resource: Readonly<Record<string, SpanAttributeValue>>,
     private readonly onEnd?: (data: SpanData) => void,
     initialAttributes?: Readonly<Record<string, SpanAttributeValue>>,
+    startTimeMs?: number,
   ) {
     this.context = context;
-    this.startEpochMs = Date.now();
+    this.hasExplicitStartTime =
+      typeof startTimeMs === "number" && Number.isFinite(startTimeMs);
+    this.startEpochMs = this.hasExplicitStartTime ? startTimeMs! : Date.now();
     this.startPerfMs = performance.now();
     if (initialAttributes) {
       Object.assign(this.attributes, initialAttributes);
@@ -246,9 +250,19 @@ export class Span {
       return this.finalData;
     }
     this.ended = true;
-    const elapsed = Math.max(0, performance.now() - this.startPerfMs);
-    this.durationMs = elapsed;
-    this.endEpochMs = endTimeMs ?? this.startEpochMs + elapsed;
+    const hasExplicitEnd =
+      typeof endTimeMs === "number" && Number.isFinite(endTimeMs);
+    if (this.hasExplicitStartTime) {
+      const resolvedEnd = hasExplicitEnd ? endTimeMs! : Date.now();
+      this.endEpochMs = Math.max(this.startEpochMs, resolvedEnd);
+      this.durationMs = Math.max(0, this.endEpochMs - this.startEpochMs);
+    } else {
+      const elapsed = Math.max(0, performance.now() - this.startPerfMs);
+      this.durationMs = elapsed;
+      this.endEpochMs = hasExplicitEnd
+        ? endTimeMs!
+        : this.startEpochMs + elapsed;
+    }
 
     const data: SpanData = {
       name: this.name,

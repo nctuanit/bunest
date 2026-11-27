@@ -31,6 +31,10 @@ import {
   MetricsRegistry,
   PROMETHEUS_CONTENT_TYPE,
 } from "./metrics.registry";
+import {
+  OtlpHttpMetricsExporter,
+  type OtlpHttpMetricsExporterOptions,
+} from "./otlp-metrics-exporter";
 
 export const METRICS_MODULE_OPTIONS = Symbol.for(
   "bunest:observability:metrics_options",
@@ -43,6 +47,11 @@ export interface MetricsModuleOptions {
   buckets?: readonly number[];
   guard?: GuardLike;
   registry?: MetricsRegistry;
+  /**
+   * Optional OTLP/HTTP JSON metrics exporter (or options) pushed periodically
+   * and flushed gracefully on module destroy.
+   */
+  otlpExporter?: OtlpHttpMetricsExporter | OtlpHttpMetricsExporterOptions;
   global?: boolean;
 }
 
@@ -199,13 +208,36 @@ export class MetricsModule {
       ? { provide: MetricsRegistry, useValue: options.registry }
       : MetricsRegistry;
 
-    const providers: DynamicModule["providers"] = [
+    const providers: NonNullable<DynamicModule["providers"]>[number][] = [
       { provide: METRICS_MODULE_OPTIONS, useValue: options },
       registryProvider,
       HttpMetricsInterceptor,
       TimedAspectHandler,
       CountedAspectHandler,
     ];
+
+    const exportsList: NonNullable<DynamicModule["exports"]>[number][] = [
+      METRICS_MODULE_OPTIONS,
+      MetricsRegistry,
+      HttpMetricsInterceptor,
+      TimedAspectHandler,
+      CountedAspectHandler,
+    ];
+
+    if (options.otlpExporter) {
+      const configuredExporter = options.otlpExporter;
+      providers.push({
+        provide: OtlpHttpMetricsExporter,
+        useFactory: (registry: MetricsRegistry) => {
+          if (configuredExporter instanceof OtlpHttpMetricsExporter) {
+            return configuredExporter.attachRegistry(registry);
+          }
+          return new OtlpHttpMetricsExporter(registry, configuredExporter);
+        },
+        inject: [MetricsRegistry],
+      });
+      exportsList.push(OtlpHttpMetricsExporter);
+    }
 
     if (options.registerGlobalInterceptor) {
       providers.push({
@@ -219,13 +251,7 @@ export class MetricsModule {
       global: options.global,
       controllers,
       providers,
-      exports: [
-        METRICS_MODULE_OPTIONS,
-        MetricsRegistry,
-        HttpMetricsInterceptor,
-        TimedAspectHandler,
-        CountedAspectHandler,
-      ],
+      exports: exportsList,
     };
   }
 }
