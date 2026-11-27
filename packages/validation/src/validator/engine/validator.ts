@@ -1,8 +1,84 @@
+import {
+  SCHEMA_DTO_RAW_INPUT_KEY,
+  applySchemaOutputToInstance,
+  getStandardSchemaFromDto,
+  isStandardSchemaDto,
+  standardSchemaIssuesToValidationErrors,
+} from "../../schema/dto-bridge";
 import { getCompiledValidationPlan } from "../compiler/validation-plan-compiler";
 import type { ValidationError } from "../error/validation-error";
 import type { ValidatorOptions } from "../interfaces/validation-options.interface";
 import { MetadataStorage, getMetadataStorage } from "../storage/metadata-storage";
 import { ValidationExecutor } from "./validation-executor";
+
+function validateStandardSchemaDtoObject(
+  object: object,
+  options: ValidatorOptions | undefined,
+  syncOnly: boolean,
+): ValidationError[] | Promise<ValidationError[]> | undefined {
+  if (!object || typeof object !== "object") {
+    return undefined;
+  }
+  const ctor = object.constructor;
+  const schema = getStandardSchemaFromDto(ctor);
+  if (!schema) {
+    return undefined;
+  }
+
+  const record = object as Record<PropertyKey, unknown>;
+  const hasRaw = Object.prototype.hasOwnProperty.call(
+    record,
+    SCHEMA_DTO_RAW_INPUT_KEY,
+  );
+  const rawInput = hasRaw ? record[SCHEMA_DTO_RAW_INPUT_KEY] : object;
+  if (hasRaw) {
+    delete record[SCHEMA_DTO_RAW_INPUT_KEY];
+  }
+
+  const finalize = (result: {
+    readonly value?: unknown;
+    readonly issues?: readonly {
+      readonly message: string;
+      readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>;
+    }[];
+  }): ValidationError[] => {
+    if (result.issues) {
+      const errors = standardSchemaIssuesToValidationErrors(result.issues, {
+        stopAtFirstError: options?.stopAtFirstError,
+      });
+      if (options?.validationError?.target === true) {
+        for (const err of errors) {
+          err.target = object;
+        }
+      }
+      return errors;
+    }
+    applySchemaOutputToInstance(object, result.value);
+    return [];
+  };
+
+  const resultOrPromise = schema["~standard"].validate(rawInput);
+  if (
+    resultOrPromise !== null &&
+    typeof resultOrPromise === "object" &&
+    typeof (resultOrPromise as PromiseLike<unknown>).then === "function"
+  ) {
+    if (syncOnly) {
+      return [];
+    }
+    return Promise.resolve(resultOrPromise).then(finalize);
+  }
+
+  return finalize(
+    resultOrPromise as {
+      readonly value?: unknown;
+      readonly issues?: readonly {
+        readonly message: string;
+        readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>;
+      }[];
+    },
+  );
+}
 
 export class Validator {
   private readonly storage: MetadataStorage;
@@ -81,6 +157,13 @@ export class Validator {
     const schema =
       typeof objectOrSchemaName === "string" ? objectOrSchemaName : "";
 
+    if (!schema) {
+      const schemaResult = validateStandardSchemaDtoObject(object, options, true);
+      if (schemaResult !== undefined) {
+        return Array.isArray(schemaResult) ? schemaResult : [];
+      }
+    }
+
     const executor = new ValidationExecutor(options, this.storage);
     executor.ignoreAsyncValidations = true;
     const validationErrors: ValidationError[] = [];
@@ -97,6 +180,10 @@ export class Validator {
     object: object,
     options?: ValidatorOptions,
   ): ValidationError[] | Promise<ValidationError[]> {
+    const schemaResult = validateStandardSchemaDtoObject(object, options, false);
+    if (schemaResult !== undefined) {
+      return schemaResult;
+    }
     const executor = new ValidationExecutor(options, this.storage);
     const validationErrors: ValidationError[] = [];
     executor.execute(object, "", validationErrors);
@@ -123,6 +210,17 @@ export class Validator {
         : (objectOrValidationOptions as ValidatorOptions | undefined);
     const schema =
       typeof objectOrSchemaName === "string" ? objectOrSchemaName : "";
+
+    if (!schema) {
+      const schemaResult = validateStandardSchemaDtoObject(
+        object,
+        options,
+        false,
+      );
+      if (schemaResult !== undefined) {
+        return Promise.resolve(schemaResult);
+      }
+    }
 
     const executor = new ValidationExecutor(options, this.storage);
     const validationErrors: ValidationError[] = [];
@@ -218,6 +316,9 @@ export function canValidateSynchronously(
   targetConstructor: Function,
   options: ValidatorOptions = {},
 ): boolean {
+  if (isStandardSchemaDto(targetConstructor)) {
+    return false;
+  }
   const storage = getMetadataStorage();
   const plan = getCompiledValidationPlan(
     targetConstructor,

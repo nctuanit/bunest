@@ -1,3 +1,7 @@
+import {
+  SCHEMA_DTO_RAW_INPUT_KEY,
+  isStandardSchemaDto,
+} from "../../schema/dto-bridge";
 import { TransformationType } from "../enums/transformation-type.enum";
 import type {
   ClassConstructor,
@@ -11,6 +15,35 @@ import {
   TransformExecutor,
   tryFastPlainToInstance,
 } from "./transform-executor";
+
+function instantiateStandardSchemaDto<T>(
+  cls: ClassConstructor<T>,
+  plain: unknown,
+): T {
+  if (
+    plain === null ||
+    plain === undefined ||
+    typeof plain !== "object" ||
+    Array.isArray(plain)
+  ) {
+    return plain as T;
+  }
+  const instance = new cls() as Record<PropertyKey, unknown>;
+  const src = plain as Record<string, unknown>;
+  for (const key of Object.keys(src)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    instance[key] = src[key];
+  }
+  Object.defineProperty(instance, SCHEMA_DTO_RAW_INPUT_KEY, {
+    value: plain,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return instance as T;
+}
 
 export class ClassTransformer {
   private readonly storage: TransformMetadataStorage;
@@ -89,6 +122,12 @@ export class ClassTransformer {
     plain: V | V[],
     options?: ClassTransformOptions,
   ): T | T[] {
+    if (typeof cls === "function" && isStandardSchemaDto(cls)) {
+      if (Array.isArray(plain)) {
+        return plain.map((item) => instantiateStandardSchemaDto(cls, item));
+      }
+      return instantiateStandardSchemaDto(cls, plain);
+    }
     const fast = tryFastPlainToInstance(cls, plain, options, this.storage);
     if (fast.matched) {
       return fast.result as T;

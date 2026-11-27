@@ -1,3 +1,4 @@
+import { isStandardSchemaDto } from "../../schema/dto-bridge";
 import { ValidationTypes } from "../constants/validation-types";
 import type {
   ConstraintMetadata,
@@ -150,6 +151,7 @@ export class MetadataStorage {
   }
 
   hasTargetMetadata(target: Function): boolean {
+    if (isStandardSchemaDto(target)) return true;
     if (this.classMetadatas.has(target)) return true;
     const ancestors = this.getAncestors(target);
     for (let i = 0; i < ancestors.length; i++) {
