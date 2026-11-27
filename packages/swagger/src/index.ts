@@ -99,10 +99,13 @@ export type {
   StandardSchemaObject,
   SwaggerConfig,
   SwaggerCustomOptions,
+  SwaggerCustomVersionParameter,
   SwaggerDocumentOptions,
   SwaggerEnumType,
   SwaggerSetupOptions,
   SwaggerUiOptions,
+  SwaggerVersionedDocumentOptions,
+  SwaggerVersionedDocuments,
   TagObject,
   WebhooksObject,
   XmlObject,
@@ -203,6 +206,19 @@ export {
 } from "./schema-explorer";
 export { DeepPartialType } from "./type-helpers/deep-partial-type.helper";
 export {
+  ApiGenericResponse,
+  GenericType,
+  UnionType,
+  type ApiGenericResponseOptions,
+  type GenericBindingValue,
+  type GenericTypeOptions,
+  type GenericTypeResult,
+  type UnionDiscriminatorOptions,
+  type UnionTypeOptions,
+  type UnionVariantInput,
+} from "./type-helpers/generic-type.helper";
+export {
+  CompositionType,
   IntersectionType,
   OmitType,
   PartialType,
@@ -210,7 +226,8 @@ export {
 } from "./type-helpers/mapped-types.helper";
 export { renderSwaggerHtml, serializeSafeJsonForHtml } from "./swagger-ui";
 export { serializeToYaml } from "./utils/yaml-serializer";
-export { convertPathToOpenApi, SwaggerModule } from "./swagger-module";
-
-// Re-export CompositionType from core
-export { CompositionType } from "@bunest/core";
+export {
+  convertPathToOpenApi,
+  SwaggerModule,
+  type ConvertedPathInfo,
+} from "./swagger-module";

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   Body,
+  BunestFactory,
   Catch,
   Controller,
   Get,
@@ -25,9 +26,8 @@ import {
   type ExecutionContext,
   type PipeTransform,
 } from "@bunest/core";
-import { BunestFactory } from "@bunest/core";
 import { Test } from "@bunest/testing";
-import { IsEmail, IsInt, IsString, MinLength } from "../../validation/src/validator";
+import { IsEmail, IsInt, IsString, MinLength } from "@bunest/validation/validator";
 import {
   ApiBearerAuth,
   ApiHeader,

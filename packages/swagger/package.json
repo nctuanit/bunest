@@ -29,7 +29,7 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/core --external @bunest/validation --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm --external @bunest/core --external @bunest/core/common --external @bunest/core/http --external @bunest/core/config --external @bunest/core/client --external @bunest/core/ws --external @bunest/core/i18n",
     "test": "bun test",
     "typecheck": "bun check"
   },
@@ -37,7 +37,8 @@
     "@bunest/core": "workspace:*"
   },
   "devDependencies": {
-    "@bunest/testing": "workspace:*"
+    "@bunest/testing": "workspace:*",
+    "@bunest/validation": "workspace:*"
   },
   "homepage": "https://nctuanit.github.io/bunest/",
   "bugs": {

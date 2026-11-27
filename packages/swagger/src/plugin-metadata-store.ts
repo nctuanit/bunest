@@ -41,12 +41,12 @@ export interface LoadedPluginControllerAction {
   readonly [key: string]: unknown;
 }
 
-const modelMetadataByClass = new WeakMap<
+let modelMetadataByClass = new WeakMap<
   Function,
   LoadedPluginModelProperty[]
 >();
 const modelMetadataByName = new Map<string, LoadedPluginModelProperty[]>();
-const controllerMetadataByClass = new WeakMap<
+let controllerMetadataByClass = new WeakMap<
   Function,
   Map<string, LoadedPluginControllerAction>
 >();
@@ -178,6 +178,8 @@ export function getPluginControllerActionMetadata(
 }
 
 export function clearPluginMetadataStore(): void {
+  modelMetadataByClass = new WeakMap();
   modelMetadataByName.clear();
+  controllerMetadataByClass = new WeakMap();
   controllerMetadataByName.clear();
 }

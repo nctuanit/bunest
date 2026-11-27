@@ -299,6 +299,7 @@
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
+        "@bunest/validation": "workspace:*",
       },
     },
     "packages/testing": {

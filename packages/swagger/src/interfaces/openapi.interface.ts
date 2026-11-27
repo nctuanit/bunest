@@ -41,7 +41,7 @@ export interface StandardSchemaConversionResult {
 
 export type StandardSchemaConverter = (
   schema: unknown,
-  options: { schemaType: "input" | "output" },
+  options: { schemaType: "input" | "output"; openApiVersion?: string },
 ) => StandardSchemaConversionResult | undefined;
 
 // ============================================================================
@@ -179,7 +179,9 @@ export interface OpenApiSchema {
   anyOf?: Array<OpenApiSchema | ReferenceObject>;
   not?: OpenApiSchema | ReferenceObject;
   items?: OpenApiSchema | ReferenceObject;
+  prefixItems?: Array<OpenApiSchema | ReferenceObject>;
   properties?: Record<string, OpenApiSchema | ReferenceObject>;
+  propertyNames?: OpenApiSchema | ReferenceObject;
   additionalProperties?: boolean | OpenApiSchema | ReferenceObject;
   patternProperties?: Record<string, OpenApiSchema | ReferenceObject>;
   description?: string;
@@ -642,6 +644,13 @@ export type OperationIdFactory = (
   version?: string,
 ) => string;
 
+export interface SwaggerCustomVersionParameter {
+  readonly name: string;
+  readonly in: "query" | "header" | "cookie";
+  readonly required?: boolean;
+  readonly description?: string;
+}
+
 export interface SwaggerDocumentOptions {
   /**
    * Extra DTO classes to register under `components.schemas` even if not directly referenced by a route.
@@ -691,7 +700,45 @@ export interface SwaggerDocumentOptions {
    * Custom converter turning Standard Schema objects into OpenAPI/JSON schemas.
    */
   standardSchemaConverter?: StandardSchemaConverter;
+  /**
+   * Filter routes to only these API version(s).
+   * When set, `components.schemas` is also scoped to DTOs referenced by the matching routes.
+   */
+  version?: string | readonly string[];
+  /**
+   * Whether to include `VERSION_NEUTRAL` routes when `version` filter is active.
+   * Defaults to `true`.
+   */
+  includeVersionNeutral?: boolean;
+  /**
+   * Parameter metadata to inject into operations when using `VersioningType.CUSTOM`.
+   */
+  customVersionParameter?: SwaggerCustomVersionParameter;
 }
+
+export interface SwaggerVersionedDocumentOptions extends Omit<
+  SwaggerDocumentOptions,
+  "version"
+> {
+  /**
+   * Explicit list of API versions to generate documents for.
+   * When omitted, versions are discovered automatically via `SwaggerModule.discoverApiVersions(app)`.
+   */
+  versions?: readonly string[];
+  /**
+   * Resolves `info.version` for each generated versioned document.
+   * Defaults to the version string itself.
+   */
+  infoVersionResolver?: (version: string) => string;
+  /**
+   * Optional formatter for version labels.
+   */
+  versionLabel?: (version: string) => string;
+}
+
+export type SwaggerVersionedDocuments =
+  | Record<string, OpenApiDocument>
+  | ReadonlyMap<string, OpenApiDocument>;
 
 export interface SwaggerUiOptions {
   initOAuth?: {
@@ -796,9 +843,19 @@ export interface SwaggerSetupOptions {
    */
   url?: string;
   /**
-   * Multiple spec URLs selector for Swagger UI Explorer.
+   * Default API version to display and serve on `<path>-json` / `<path>-yaml` when
+   * `SwaggerModule.setup()` is given a multi-version document map/record.
    */
-  urls?: Array<Record<"url" | "name", string>>;
+  defaultVersion?: string;
+  /**
+   * Multiple spec URLs selector for Swagger UI / Scalar / Built-in Explorer.
+   */
+  urls?: Array<{
+    url: string;
+    name: string;
+    yamlUrl?: string;
+    version?: string;
+  }>;
 }
 
 export type SwaggerCustomOptions = SwaggerSetupOptions;

@@ -10,6 +10,8 @@ import {
   VERSION_NEUTRAL,
   Version,
   VersioningType,
+  resolveRouterModulePrefixes,
+  type BunestApplication,
   type ControllerMetadata,
   type HttpServer,
   type INestApplication,
@@ -20,10 +22,6 @@ import {
   type Type,
   type VersionValue,
   type VersioningOptions,
-} from "@bunest/core";
-import {
-  type BunestApplication,
-  resolveRouterModulePrefixes,
 } from "@bunest/core";
 import {
   type BunHttpAdapter,
@@ -70,6 +68,8 @@ import type {
   SwaggerCustomOptions,
   SwaggerDocumentOptions,
   SwaggerSetupOptions,
+  SwaggerVersionedDocumentOptions,
+  SwaggerVersionedDocuments,
   WebhooksObject,
 } from "./interfaces/openapi.interface";
 import {
@@ -156,7 +156,19 @@ const PARAM_SEGMENT_RE = /^:([A-Za-z_][A-Za-z0-9_]*)(?:\((.+)\))?(\?)?$/;
 const NAMED_WILDCARD_RE = /^\*([A-Za-z_][A-Za-z0-9_]*)$/;
 const OPTIONAL_BRACE_PARAM_RE = /\{\/(:[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?)\}/g;
 
-interface ConvertedPathInfo {
+// Core serializer & @bunest/security metadata symbols (zero runtime dep on @bunest/security)
+const STANDARD_SCHEMA_SERIALIZER_METADATA_KEY = Symbol.for(
+  "bunest:validation:standard_schema_serializer",
+);
+const CLASS_SERIALIZER_OPTIONS_KEY = Symbol.for(
+  "bunest:validation:class_serializer_options",
+);
+const SECURITY_IS_PUBLIC_KEY = Symbol.for("bunest:security:is_public");
+const AUTH_NEXT_PUBLIC_KEY = Symbol.for("@nestjs/authentication:public");
+const SECURITY_THROTTLE_KEY = Symbol.for("bunest:security:throttle");
+const SECURITY_SKIP_THROTTLE_KEY = Symbol.for("bunest:security:skip_throttle");
+
+export interface ConvertedPathInfo {
   readonly openApiPath: string;
   readonly pathParams: Array<{
     readonly name: string;
@@ -230,25 +242,73 @@ function defaultTagForController(controller: Type<unknown>): string {
   return stripped || rawName;
 }
 
-function defaultStatusForRoute(route: RouteDefinition): string {
+function defaultStatusForRoute(
+  route: RouteDefinition,
+  effectiveMethod?: string,
+): string {
   if (route.httpCode !== undefined) {
     return String(route.httpCode);
   }
   if (route.redirect) {
     return String(route.redirect.statusCode ?? HttpStatus.FOUND);
   }
-  return route.method === "POST"
+  if (route.isSse) {
+    return String(HttpStatus.OK);
+  }
+  const method = (effectiveMethod ?? route.method).toUpperCase();
+  return method === "POST"
     ? String(HttpStatus.CREATED)
     : String(HttpStatus.OK);
 }
 
+function defaultStatusDescriptionForCode(status: string): string {
+  switch (status) {
+    case "200":
+      return "OK";
+    case "201":
+      return "Created";
+    case "202":
+      return "Accepted";
+    case "204":
+      return "No Content";
+    case "206":
+      return "Partial Content";
+    case "301":
+      return "Moved Permanently";
+    case "302":
+      return "Found";
+    case "303":
+      return "See Other";
+    case "304":
+      return "Not Modified";
+    case "307":
+      return "Temporary Redirect";
+    case "308":
+      return "Permanent Redirect";
+    case "400":
+      return "Bad Request";
+    case "401":
+      return "Unauthorized";
+    case "403":
+      return "Forbidden";
+    case "404":
+      return "Not Found";
+    case "429":
+      return "Too Many Requests";
+    default:
+      return "OK";
+  }
+}
+
 function readAdapterGlobalPrefix(adapter: BunHttpAdapter): {
   prefix?: string;
+  rawPrefix?: string | readonly string[];
   options?: GlobalPrefixOptions;
 } {
   const rawPrefix = adapter.getGlobalPrefix();
   return {
     prefix: typeof rawPrefix === "string" ? rawPrefix : rawPrefix?.[0],
+    rawPrefix,
     options: adapter.getGlobalPrefixOptions(),
   };
 }
@@ -258,8 +318,8 @@ function resolveRoutesForDocument(
   docOptions: SwaggerDocumentOptions,
 ): readonly RouteDefinition[] {
   const adapter = app.getHttpAdapter();
-  const { prefix, options } = readAdapterGlobalPrefix(adapter);
-  const effectivePrefix = docOptions.ignoreGlobalPrefix ? undefined : prefix;
+  const { rawPrefix, options } = readAdapterGlobalPrefix(adapter);
+  const effectivePrefix = docOptions.ignoreGlobalPrefix ? undefined : rawPrefix;
   const effectivePrefixOptions = docOptions.ignoreGlobalPrefix
     ? undefined
     : options;
@@ -545,7 +605,22 @@ function normalizeVersionList(
   value: VersionValue | undefined,
 ): Array<string | typeof VERSION_NEUTRAL> {
   if (value === undefined) return [];
-  return Array.isArray(value) ? [...value] : [value];
+  const list = Array.isArray(value) ? value : [value];
+  const deduped: Array<string | typeof VERSION_NEUTRAL> = [];
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    if (item === VERSION_NEUTRAL) {
+      if (!deduped.includes(VERSION_NEUTRAL)) {
+        deduped.push(VERSION_NEUTRAL);
+      }
+    } else if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (trimmed.length > 0 && !deduped.includes(trimmed)) {
+        deduped.push(trimmed);
+      }
+    }
+  }
+  return deduped;
 }
 
 function resolveRouteVersions(
@@ -560,7 +635,8 @@ function resolveRouteVersions(
     handlerFn,
   );
   if (methodVersion !== undefined) {
-    return normalizeVersionList(methodVersion);
+    const list = normalizeVersionList(methodVersion);
+    return list.length > 0 ? list : [VERSION_NEUTRAL];
   }
 
   const classVersion = MetadataRegistry.get<VersionValue>(
@@ -568,7 +644,8 @@ function resolveRouteVersions(
     controller,
   );
   if (classVersion !== undefined) {
-    return normalizeVersionList(classVersion);
+    const list = normalizeVersionList(classVersion);
+    return list.length > 0 ? list : [VERSION_NEUTRAL];
   }
 
   const ctrlMeta = MetadataRegistry.get<ControllerMetadata>(
@@ -576,15 +653,68 @@ function resolveRouteVersions(
     controller,
   );
   if (ctrlMeta?.version !== undefined) {
-    return normalizeVersionList(ctrlMeta.version);
+    const list = normalizeVersionList(ctrlMeta.version);
+    return list.length > 0 ? list : [VERSION_NEUTRAL];
   }
 
-  return normalizeVersionList(versioning.defaultVersion);
+  if (versioning.defaultVersion !== undefined) {
+    const list = normalizeVersionList(versioning.defaultVersion);
+    return list.length > 0 ? list : [VERSION_NEUTRAL];
+  }
+
+  return [VERSION_NEUTRAL];
+}
+
+function compareVersionsNaturally(a: string, b: string): number {
+  const cmp = a.localeCompare(b, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  if (cmp !== 0) return cmp;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function formatVersionSegment(version: string): string {
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
+function isVersionedDocuments(
+  input: unknown,
+): input is SwaggerVersionedDocuments {
+  if (input instanceof Map) {
+    return true;
+  }
+  if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+    return !("openapi" in input && "paths" in input);
+  }
+  return false;
+}
+
+function extractVersionedEntries(
+  docs: SwaggerVersionedDocuments,
+): Array<[string, OpenApiDocument]> {
+  if (docs instanceof Map) {
+    return [...docs.entries()];
+  }
+  return Object.entries(docs);
+}
+
+function defaultVersionMatchesRoute(
+  versioning: VersioningOptions | undefined,
+  concreteVersions: readonly string[],
+): boolean {
+  if (!versioning?.defaultVersion || concreteVersions.length === 0) {
+    return false;
+  }
+  const defaultTokens = normalizeVersionList(versioning.defaultVersion);
+  return defaultTokens.some(
+    (d) => typeof d === "string" && concreteVersions.includes(d),
+  );
 }
 
 function applyUriVersionToPath(
   fullPath: string,
-  globalPrefix: string | undefined,
+  globalPrefix: string | readonly string[] | undefined,
   uriPrefix: string,
   version: string | typeof VERSION_NEUTRAL,
 ): string {
@@ -593,24 +723,29 @@ function applyUriVersionToPath(
   }
   const normalizedFull = normalizePath(fullPath);
   const versionSegment = `${uriPrefix}${version}`;
-  const normalizedGlobal = globalPrefix
-    ? normalizePath(globalPrefix)
-    : undefined;
+  const candidateGlobals = Array.isArray(globalPrefix)
+    ? globalPrefix
+    : globalPrefix
+      ? [globalPrefix]
+      : [];
 
-  if (
-    normalizedGlobal &&
-    normalizedGlobal !== "/" &&
-    (normalizedFull === normalizedGlobal ||
-      normalizedFull.startsWith(`${normalizedGlobal}/`))
-  ) {
-    const remainder = normalizedFull.slice(normalizedGlobal.length) || "/";
+  for (const rawGlobal of candidateGlobals) {
+    const normalizedGlobal = normalizePath(rawGlobal);
     if (
-      remainder === `/${versionSegment}` ||
-      remainder.startsWith(`/${versionSegment}/`)
+      normalizedGlobal &&
+      normalizedGlobal !== "/" &&
+      (normalizedFull === normalizedGlobal ||
+        normalizedFull.startsWith(`${normalizedGlobal}/`))
     ) {
-      return normalizedFull;
+      const remainder = normalizedFull.slice(normalizedGlobal.length) || "/";
+      if (
+        remainder === `/${versionSegment}` ||
+        remainder.startsWith(`/${versionSegment}/`)
+      ) {
+        return normalizedFull;
+      }
+      return normalizePath(normalizedGlobal, versionSegment, remainder);
     }
-    return normalizePath(normalizedGlobal, versionSegment, remainder);
   }
 
   if (
@@ -846,7 +981,7 @@ export class SwaggerModule {
 
     const routes = resolveRoutesForDocument(bunApp, options);
     const versioning = bunApp.getVersioningOptions?.();
-    const { prefix: rawGlobalPrefix } = readAdapterGlobalPrefix(
+    const { rawPrefix: rawGlobalPrefix } = readAdapterGlobalPrefix(
       bunApp.getHttpAdapter(),
     );
     const globalPrefix = options.ignoreGlobalPrefix
@@ -858,10 +993,21 @@ export class SwaggerModule {
     const supportsOas32 = isOpenApiAtLeast(openApiVersion, 3, 2);
     const swaggerLogger = new Logger("SwaggerModule");
 
+    const hasVersionFilter = options.version !== undefined;
+    const requestedVersionSet = hasVersionFilter
+      ? new Set(
+          (Array.isArray(options.version) ? options.version : [options.version])
+            .map((v) => String(v).trim())
+            .filter((v) => v.length > 0),
+        )
+      : undefined;
+    const includeVersionNeutral = options.includeVersionNeutral !== false;
+
     const paths: Record<string, OpenApiPathItem> = {};
     const webhooks: WebhooksObject = {};
     const regularPathMethods = new Set<string>();
     const webhookPathMethods = new Set<string>();
+    const slotRouteVersions = new Map<string, string>();
     const visitedControllers = new Set<Type<unknown>>();
     const visitedRouteHandlers = new Set<string>();
     const usedOperationIds = new Set<string>();
@@ -951,6 +1097,47 @@ export class SwaggerModule {
         }
       }
 
+      // Check @ApiExcludeEndpoint()
+      if (
+        MetadataRegistry.get<boolean>(
+          SWAGGER_METADATA_KEYS.API_EXCLUDE_ENDPOINT,
+          handlerFn,
+        ) === true
+      ) {
+        continue;
+      }
+
+      const scannedVersions = (
+        route as RouteDefinition & {
+          readonly versions?: readonly (string | typeof VERSION_NEUTRAL)[];
+        }
+      ).versions;
+      const declaredVersions = resolveRouteVersions(
+        controller,
+        handlerFn,
+        versioning,
+      );
+      const routeVersions =
+        scannedVersions && scannedVersions.length > 0
+          ? [...scannedVersions]
+          : declaredVersions;
+
+      // Filter routes by `options.version` BEFORE touching SchemaExplorer or tags
+      let activeVersions: Array<string | typeof VERSION_NEUTRAL> = routeVersions;
+      if (requestedVersionSet !== undefined) {
+        const effectiveTokens: Array<string | typeof VERSION_NEUTRAL> =
+          routeVersions.length > 0 ? routeVersions : [VERSION_NEUTRAL];
+        const matched = effectiveTokens.filter((v) =>
+          v === VERSION_NEUTRAL
+            ? includeVersionNeutral
+            : requestedVersionSet.has(v),
+        );
+        if (matched.length === 0) {
+          continue;
+        }
+        activeVersions = matched;
+      }
+
       // Register @ApiExtraModels() from controller and handler
       const ctrlExtraModels = MetadataRegistry.getMergedClassArray<
         Type<unknown> | Function
@@ -962,16 +1149,6 @@ export class SwaggerModule {
         ) ?? [];
       for (const extraModel of [...ctrlExtraModels, ...methodExtraModels]) {
         explorer.resolveTypeSchema(extraModel, false);
-      }
-
-      // Check @ApiExcludeEndpoint()
-      if (
-        MetadataRegistry.get<boolean>(
-          SWAGGER_METADATA_KEYS.API_EXCLUDE_ENDPOINT,
-          handlerFn,
-        ) === true
-      ) {
-        continue;
       }
 
       // Collect rich @ApiTags({ name, parent, kind }) metadata
@@ -998,22 +1175,8 @@ export class SwaggerModule {
           ? webhookMeta
           : String(route.handlerKey);
 
-      const scannedVersions = (
-        route as RouteDefinition & {
-          readonly versions?: readonly (string | typeof VERSION_NEUTRAL)[];
-        }
-      ).versions;
-      const declaredVersions = resolveRouteVersions(
-        controller,
-        handlerFn,
-        versioning,
-      );
-      const versions =
-        scannedVersions && scannedVersions.length > 0
-          ? [...scannedVersions]
-          : declaredVersions;
       const hasMultipleVersions =
-        declaredVersions.length > 1 || versions.length > 1;
+        declaredVersions.length > 1 || activeVersions.length > 1;
 
       const effectivePaths: Array<{
         readonly fullPath: string;
@@ -1024,13 +1187,13 @@ export class SwaggerModule {
         !isWebhook &&
         versioning &&
         versioning.type === VersioningType.URI &&
-        versions.length > 0
+        activeVersions.length > 0
       ) {
         const uriPrefix =
           versioning.prefix === false ? "" : (versioning.prefix ?? "v");
         const alreadyExpandedByScanner = scannedVersions !== undefined;
         if (alreadyExpandedByScanner) {
-          const singleVersion = versions[0];
+          const singleVersion = activeVersions[0];
           effectivePaths.push({
             fullPath: route.fullPath,
             versionTag:
@@ -1039,7 +1202,7 @@ export class SwaggerModule {
                 : undefined,
           });
         } else {
-          for (const v of versions) {
+          for (const v of activeVersions) {
             effectivePaths.push({
               fullPath: applyUriVersionToPath(
                 route.fullPath,
@@ -1052,7 +1215,17 @@ export class SwaggerModule {
           }
         }
       } else {
-        effectivePaths.push({ fullPath: route.fullPath });
+        const activeConcrete = activeVersions.filter(
+          (v): v is string => v !== VERSION_NEUTRAL,
+        );
+        const nonUriVersionTag =
+          !isWebhook && versioning && activeConcrete.length > 0
+            ? activeConcrete[0]
+            : undefined;
+        effectivePaths.push({
+          fullPath: route.fullPath,
+          versionTag: nonUriVersionTag,
+        });
       }
 
       const defaultGetterMeta = MetadataRegistry.get<{
@@ -1069,19 +1242,22 @@ export class SwaggerModule {
         const { openApiPath, pathParams } = convertPathToOpenApi(
           target.fullPath,
         );
-        const { operation, responseModels } = SwaggerModule.buildOperation(
-          route,
-          controller,
-          handlerFn,
-          pathParams,
-          explorer,
-          options,
-          builderExtras,
-          versioning,
-          versions,
-          target.versionTag,
-          hasMultipleVersions,
-        );
+        const buildForMethod = (effectiveMethod?: string) =>
+          SwaggerModule.buildOperation(
+            route,
+            controller,
+            handlerFn,
+            pathParams,
+            explorer,
+            options,
+            builderExtras,
+            versioning,
+            activeVersions,
+            routeVersions,
+            target.versionTag,
+            hasMultipleVersions,
+            effectiveMethod,
+          );
 
         const emitAsWebhook = isWebhook && supportsWebhooks;
         const targetContainer = emitAsWebhook ? webhooks : paths;
@@ -1094,7 +1270,10 @@ export class SwaggerModule {
           return targetContainer[containerKey]!;
         };
 
-        const registerOpForLinks = (finalOp: OpenApiOperation): void => {
+        const registerOpForLinks = (
+          finalOp: OpenApiOperation,
+          opResponseModels: Map<string, Type<unknown> | Function>,
+        ): void => {
           const ctrlKey = controller.name || "Controller";
           const methodKey = String(route.handlerKey);
           trackedOperations.push({
@@ -1102,7 +1281,7 @@ export class SwaggerModule {
             controllerKey: ctrlKey,
             methodKey,
             operation: finalOp,
-            responseModels,
+            responseModels: opResponseModels,
           });
           if (defaultGetterMeta && finalOp.operationId) {
             defaultGetters.set(defaultGetterMeta.type, {
@@ -1142,7 +1321,34 @@ export class SwaggerModule {
             return;
           }
 
+          const { operation, responseModels } = buildForMethod(methodUpper);
+
           const slotKey = `${containerKey}\0${methodUpper}`;
+
+          // Warn when single-document mode under HEADER/MEDIA_TYPE/CUSTOM versioning has
+          // multiple routes with different versions colliding on the same (openApiPath, method).
+          if (
+            !hasVersionFilter &&
+            !emitAsWebhook &&
+            !isWebhook &&
+            versioning &&
+            versioning.type !== VersioningType.URI
+          ) {
+            const routeVersionSig = activeVersions
+              .map((v) => (v === VERSION_NEUTRAL ? "VERSION_NEUTRAL" : v))
+              .sort(compareVersionsNaturally)
+              .join(",");
+            const prevVersionSig = slotRouteVersions.get(slotKey);
+            if (
+              prevVersionSig !== undefined &&
+              prevVersionSig !== routeVersionSig
+            ) {
+              swaggerLogger.warn(
+                `Route "${methodUpper} ${openApiPath}" has multiple API versions (${prevVersionSig} vs ${routeVersionSig}) mapped to the same OpenAPI path under ${versioning.type} versioning; the later version overwrites the earlier one. Use SwaggerModule.createVersionedDocuments() or pass { version } to SwaggerModule.createDocument() to generate separate per-version documents.`,
+              );
+            }
+            slotRouteVersions.set(slotKey, routeVersionSig);
+          }
 
           // For OAS < 3.1, webhooks fall back to `paths` and must yield to regular routes on collision
           if (!emitAsWebhook) {
@@ -1219,7 +1425,7 @@ export class SwaggerModule {
             }
           }
 
-          registerOpForLinks(finalOp);
+          registerOpForLinks(finalOp, responseModels);
         };
 
         visitedControllers.add(controller);
@@ -1275,20 +1481,29 @@ export class SwaggerModule {
           );
           if (!whMeta) continue;
           const rPaths = Array.isArray(rr.path) ? rr.path : [rr.path];
-          for (const cp of ctrlPaths) {
-            for (const rp of rPaths) {
-              const joined = normalizePath(
-                ...(globalPrefix ? [globalPrefix] : []),
-                cp,
-                rp,
-              );
-              const { openApiPath } = convertPathToOpenApi(joined);
-              const methodUpper = rr.method.toUpperCase();
-              const slotKey = `${openApiPath}\0${methodUpper}`;
-              if (regularPathMethods.has(slotKey)) {
-                swaggerLogger.warn(
-                  `Webhook "${methodUpper} ${openApiPath}" shares its path and method with a route, so it is left out of the OpenAPI ${openApiVersion} document. Use OpenAPI 3.1 or later to document both.`,
+          const globalPrefixList = Array.isArray(globalPrefix)
+            ? globalPrefix.length > 0
+              ? globalPrefix
+              : [""]
+            : globalPrefix
+              ? [globalPrefix]
+              : [""];
+          for (const gp of globalPrefixList) {
+            for (const cp of ctrlPaths) {
+              for (const rp of rPaths) {
+                const joined = normalizePath(
+                  ...(gp ? [gp] : []),
+                  cp,
+                  rp,
                 );
+                const { openApiPath } = convertPathToOpenApi(joined);
+                const methodUpper = rr.method.toUpperCase();
+                const slotKey = `${openApiPath}\0${methodUpper}`;
+                if (regularPathMethods.has(slotKey)) {
+                  swaggerLogger.warn(
+                    `Webhook "${methodUpper} ${openApiPath}" shares its path and method with a route, so it is left out of the OpenAPI ${openApiVersion} document. Use OpenAPI 3.1 or later to document both.`,
+                  );
+                }
               }
             }
           }
@@ -1437,6 +1652,143 @@ export class SwaggerModule {
     return document;
   }
 
+  /**
+   * Discovers all concrete API versions declared across the application's routes,
+   * controllers, and `versioning.defaultVersion` (excluding `VERSION_NEUTRAL`),
+   * returned in natural ascending order (e.g. `["1", "2", "10"]`).
+   */
+  static discoverApiVersions(
+    app: BunestApplication | INestApplication,
+  ): string[] {
+    const bunApp = app as BunestApplication;
+    const versioning = bunApp.getVersioningOptions?.();
+    const found = new Set<string>();
+
+    const addVersionTokens = (
+      tokens: readonly (string | typeof VERSION_NEUTRAL)[] | undefined,
+    ): void => {
+      if (!tokens) return;
+      for (const token of tokens) {
+        if (typeof token === "string") {
+          const trimmed = token.trim();
+          if (trimmed.length > 0) {
+            found.add(trimmed);
+          }
+        }
+      }
+    };
+
+    if (versioning?.defaultVersion !== undefined) {
+      addVersionTokens(normalizeVersionList(versioning.defaultVersion));
+    }
+
+    const routes = resolveRoutesForDocument(bunApp, {});
+    for (const route of routes) {
+      if (!route) continue;
+      const controller = route.controller as Type<unknown>;
+      if (
+        MetadataRegistry.get<boolean>(
+          SWAGGER_METADATA_KEYS.API_EXCLUDE_CONTROLLER,
+          controller,
+        ) === true
+      ) {
+        continue;
+      }
+
+      const handlerFn = (
+        controller.prototype as Record<string | symbol, unknown>
+      )[route.handlerKey];
+      if (typeof handlerFn !== "function") {
+        continue;
+      }
+      if (
+        MetadataRegistry.get<boolean>(
+          SWAGGER_METADATA_KEYS.API_EXCLUDE_ENDPOINT,
+          handlerFn,
+        ) === true
+      ) {
+        continue;
+      }
+
+      const scannedVersions = (
+        route as RouteDefinition & {
+          readonly versions?: readonly (string | typeof VERSION_NEUTRAL)[];
+        }
+      ).versions;
+      if (scannedVersions && scannedVersions.length > 0) {
+        addVersionTokens(scannedVersions);
+      }
+
+      if (versioning) {
+        addVersionTokens(
+          resolveRouteVersions(controller, handlerFn, versioning),
+        );
+      } else {
+        addVersionTokens(
+          normalizeVersionList(
+            MetadataRegistry.get<VersionValue>(
+              METADATA_KEYS.VERSION,
+              handlerFn,
+            ),
+          ),
+        );
+        addVersionTokens(
+          normalizeVersionList(
+            MetadataRegistry.get<VersionValue>(
+              METADATA_KEYS.VERSION,
+              controller,
+            ),
+          ),
+        );
+        const ctrlMeta = MetadataRegistry.get<ControllerMetadata>(
+          METADATA_KEYS.CONTROLLER,
+          controller,
+        );
+        addVersionTokens(normalizeVersionList(ctrlMeta?.version));
+      }
+    }
+
+    return [...found].sort(compareVersionsNaturally);
+  }
+
+  /**
+   * Generates a map of per-version OpenAPI documents (one per discovered or explicitly
+   * listed API version), setting each document's `info.version` via `infoVersionResolver`
+   * (defaulting to the version string itself) while preserving all other `config.info` fields.
+   */
+  static createVersionedDocuments(
+    app: BunestApplication | INestApplication,
+    config: SwaggerConfig,
+    options?: SwaggerVersionedDocumentOptions,
+  ): Record<string, OpenApiDocument> {
+    const {
+      versions: explicitVersions,
+      infoVersionResolver,
+      versionLabel: _versionLabel,
+      ...docOptions
+    } = options ?? {};
+
+    const targetVersions =
+      explicitVersions !== undefined
+        ? [...explicitVersions]
+        : SwaggerModule.discoverApiVersions(app);
+
+    const documents: Record<string, OpenApiDocument> = {};
+    for (const version of targetVersions) {
+      const doc = SwaggerModule.createDocument(app, config, {
+        ...docOptions,
+        version,
+      });
+      doc.info = {
+        ...doc.info,
+        version: infoVersionResolver ? infoVersionResolver(version) : version,
+      };
+      documents[version] = doc;
+    }
+
+    return documents;
+  }
+
   protected static serveStatic(
     _finalPath: string,
     _app: INestApplication,
@@ -1528,7 +1880,10 @@ export class SwaggerModule {
   static setup(
     path: string,
     app: BunestApplication | INestApplication,
-    documentOrFactory: OpenApiDocument | (() => OpenApiDocument),
+    documentOrFactory:
+      | OpenApiDocument
+      | (() => OpenApiDocument)
+      | SwaggerVersionedDocuments,
     options: SwaggerSetupOptions = {},
   ): void {
     const bunApp = app as BunestApplication;
@@ -1564,8 +1919,64 @@ export class SwaggerModule {
       return rawPath;
     };
 
+    const isMultiVersion =
+      typeof documentOrFactory !== "function" &&
+      isVersionedDocuments(documentOrFactory);
+
+    const versionEntries: Array<[string, OpenApiDocument]> = isMultiVersion
+      ? extractVersionedEntries(documentOrFactory)
+      : [];
+
+    const emptyFallbackDoc: OpenApiDocument = {
+      openapi: "3.1.0",
+      info: { title: "API", version: "1.0.0" },
+      paths: {},
+    };
+
+    let defaultVersionKey: string | undefined;
+    let resolvedDefaultDoc: OpenApiDocument | (() => OpenApiDocument);
+    if (isMultiVersion) {
+      const requestedDefault = options.defaultVersion;
+      const matchedDefault =
+        requestedDefault !== undefined
+          ? (versionEntries.find(([k]) => k === requestedDefault) ??
+            versionEntries.find(
+              ([k]) => formatVersionSegment(k) === requestedDefault,
+            ))
+          : undefined;
+      const selectedEntry =
+        matchedDefault ?? versionEntries[versionEntries.length - 1];
+      defaultVersionKey = selectedEntry?.[0];
+      resolvedDefaultDoc = selectedEntry?.[1] ?? emptyFallbackDoc;
+    } else {
+      resolvedDefaultDoc = documentOrFactory;
+    }
+
+    const resolveEffectiveOptions = (): SwaggerSetupOptions => {
+      if (!isMultiVersion || versionEntries.length === 0) {
+        return options;
+      }
+      const basePrefix = docsPath === "/" ? "" : docsPath;
+      const generatedUrls = versionEntries.map(([v]) => {
+        const segment = formatVersionSegment(v);
+        const vJson = normalizePath(`${basePrefix}/${segment}-json`);
+        const vYaml = normalizePath(`${basePrefix}/${segment}-yaml`);
+        return {
+          name: segment,
+          url: resolveEffectiveUrl(vJson),
+          ...(serveYaml ? { yamlUrl: resolveEffectiveUrl(vYaml) } : {}),
+          version: v,
+        };
+      });
+      return {
+        ...options,
+        urls: options.urls ?? generatedUrls,
+        defaultVersion: options.defaultVersion ?? defaultVersionKey,
+      };
+    };
+
     const isDynamic =
-      typeof documentOrFactory === "function" ||
+      typeof resolvedDefaultDoc === "function" ||
       typeof options.patchDocumentOnRequest === "function";
 
     const resolveDocument = async (
@@ -1573,9 +1984,9 @@ export class SwaggerModule {
       res: ResponseContext,
     ): Promise<OpenApiDocument> => {
       const baseDoc =
-        typeof documentOrFactory === "function"
-          ? documentOrFactory()
-          : documentOrFactory;
+        typeof resolvedDefaultDoc === "function"
+          ? resolvedDefaultDoc()
+          : resolvedDefaultDoc;
       if (options.patchDocumentOnRequest) {
         return await options.patchDocumentOnRequest(req, res, baseDoc);
       }
@@ -1583,7 +1994,7 @@ export class SwaggerModule {
     };
 
     const staticDoc =
-      typeof documentOrFactory === "function" ? undefined : documentOrFactory;
+      typeof resolvedDefaultDoc === "function" ? undefined : resolvedDefaultDoc;
     const cachedJsonBody =
       !isDynamic && staticDoc ? JSON.stringify(staticDoc, null, 2) : undefined;
     const cachedYamlBody =
@@ -1592,7 +2003,12 @@ export class SwaggerModule {
     let cachedYamlUrl = serveYaml ? resolveEffectiveUrl(yamlPath) : undefined;
     let cachedHtml =
       !isDynamic && staticDoc && serveUi
-        ? renderSwaggerHtml(staticDoc, cachedJsonUrl, options, cachedYamlUrl)
+        ? renderSwaggerHtml(
+            staticDoc,
+            cachedJsonUrl,
+            resolveEffectiveOptions(),
+            cachedYamlUrl,
+          )
         : undefined;
 
     @ApiExcludeController()
@@ -1619,7 +2035,7 @@ export class SwaggerModule {
             cachedHtml = renderSwaggerHtml(
               staticDoc,
               cachedJsonUrl,
-              options,
+              resolveEffectiveOptions(),
               cachedYamlUrl,
             );
           }
@@ -1636,7 +2052,7 @@ export class SwaggerModule {
         const html = renderSwaggerHtml(
           doc,
           currentJsonUrl,
-          options,
+          resolveEffectiveOptions(),
           currentYamlUrl,
         );
         return new Response(html, {
@@ -1712,6 +2128,96 @@ export class SwaggerModule {
       Get(yamlPath)(SwaggerUiController.prototype, "serveYaml", desc);
     }
 
+    // Register per-version `<docsPath>/<segment>-json` and `<docsPath>/<segment>-yaml` endpoints
+    const perVersionExcludedPaths: string[] = [];
+    if (isMultiVersion && (serveJson || serveYaml)) {
+      const basePrefix = docsPath === "/" ? "" : docsPath;
+      for (let idx = 0; idx < versionEntries.length; idx++) {
+        const [vKey, vDoc] = versionEntries[idx]!;
+        const segment = formatVersionSegment(vKey);
+        const vJsonPath = normalizePath(`${basePrefix}/${segment}-json`);
+        const vYamlPath = normalizePath(`${basePrefix}/${segment}-yaml`);
+        const cachedVJson = !options.patchDocumentOnRequest
+          ? JSON.stringify(vDoc, null, 2)
+          : undefined;
+        const cachedVYaml = !options.patchDocumentOnRequest
+          ? serializeToYaml(vDoc)
+          : undefined;
+
+        if (serveJson) {
+          const methodName = `serveVersionJson_${idx}`;
+          const handler = async function (
+            req: Request,
+            res: ResponseContext,
+          ): Promise<Response> {
+            const body =
+              cachedVJson !== undefined
+                ? cachedVJson
+                : JSON.stringify(
+                    await options.patchDocumentOnRequest!(req, res, vDoc),
+                    null,
+                    2,
+                  );
+            return new Response(body, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "X-Content-Type-Options": "nosniff",
+              },
+            });
+          };
+          Object.defineProperty(SwaggerUiController.prototype, methodName, {
+            value: handler,
+            writable: true,
+            configurable: true,
+          });
+          Req()(SwaggerUiController.prototype, methodName, 0);
+          Res()(SwaggerUiController.prototype, methodName, 1);
+          const desc = Object.getOwnPropertyDescriptor(
+            SwaggerUiController.prototype,
+            methodName,
+          )!;
+          Get(vJsonPath)(SwaggerUiController.prototype, methodName, desc);
+          perVersionExcludedPaths.push(vJsonPath);
+        }
+
+        if (serveYaml) {
+          const methodName = `serveVersionYaml_${idx}`;
+          const handler = async function (
+            req: Request,
+            res: ResponseContext,
+          ): Promise<Response> {
+            const body =
+              cachedVYaml !== undefined
+                ? cachedVYaml
+                : serializeToYaml(
+                    await options.patchDocumentOnRequest!(req, res, vDoc),
+                  );
+            return new Response(body, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/yaml; charset=utf-8",
+                "X-Content-Type-Options": "nosniff",
+              },
+            });
+          };
+          Object.defineProperty(SwaggerUiController.prototype, methodName, {
+            value: handler,
+            writable: true,
+            configurable: true,
+          });
+          Req()(SwaggerUiController.prototype, methodName, 0);
+          Res()(SwaggerUiController.prototype, methodName, 1);
+          const desc = Object.getOwnPropertyDescriptor(
+            SwaggerUiController.prototype,
+            methodName,
+          )!;
+          Get(vYamlPath)(SwaggerUiController.prototype, methodName, desc);
+          perVersionExcludedPaths.push(vYamlPath);
+        }
+      }
+    }
+
     // If useGlobalPrefix !== true, exclude Swagger paths from any current or future global prefix
     if (options.useGlobalPrefix !== true) {
       if (serveUi) {
@@ -1720,11 +2226,18 @@ export class SwaggerModule {
       }
       if (serveJson) registry.excludedPaths.add(jsonPath);
       if (serveYaml) registry.excludedPaths.add(yamlPath);
-      const { prefix, options: prefixOptions } =
+      for (const p of perVersionExcludedPaths) {
+        registry.excludedPaths.add(p);
+      }
+      const { rawPrefix, options: prefixOptions } =
         readAdapterGlobalPrefix(adapter);
-      if (prefix) {
+      const hasPrefix =
+        typeof rawPrefix === "string"
+          ? rawPrefix.length > 0
+          : Array.isArray(rawPrefix) && rawPrefix.length > 0;
+      if (hasPrefix && rawPrefix !== undefined) {
         registry.originalSetGlobalPrefix(
-          prefix,
+          rawPrefix,
           mergeExcludedGlobalPrefixOptions(
             prefixOptions,
             registry.excludedPaths,
@@ -1765,8 +2278,10 @@ export class SwaggerModule {
     builderExtras?: DocumentBuilderExtras,
     versioning?: VersioningOptions,
     versions: readonly (string | typeof VERSION_NEUTRAL)[] = [],
-    uriVersionTag?: string,
+    routeVersions: readonly (string | typeof VERSION_NEUTRAL)[] = versions,
+    versionTag?: string,
     hasMultipleVersions = false,
+    effectiveMethod?: string,
   ): {
     operation: OpenApiOperation;
     responseModels: Map<string, Type<unknown> | Function>;
@@ -1809,16 +2324,17 @@ export class SwaggerModule {
     const baseOperationId =
       opMeta?.operationId ??
       (options.operationIdFactory
-        ? options.operationIdFactory(controllerName, handlerName, uriVersionTag)
+        ? options.operationIdFactory(controllerName, handlerName, versionTag)
         : `${controllerName}_${handlerName}`);
     const operationId =
       !options.operationIdFactory &&
-      uriVersionTag !== undefined &&
+      versioning?.type === VersioningType.URI &&
+      versionTag !== undefined &&
       (hasMultipleVersions || versions.length > 1)
-        ? `${baseOperationId}_v${uriVersionTag}`
+        ? `${baseOperationId}_v${versionTag}`
         : baseOperationId;
 
-    // Security requirements (controller + method + opMeta.security)
+    // Security requirements (controller + method + opMeta.security; @Public() overrides global/controller security)
     const ctrlSecurity =
       MetadataRegistry.getMergedClassArray<OpenApiSecurityRequirement>(
         SWAGGER_METADATA_KEYS.API_SECURITY,
@@ -1829,11 +2345,45 @@ export class SwaggerModule {
         SWAGGER_METADATA_KEYS.API_SECURITY,
         handlerFn,
       ) ?? [];
-    const security = [
-      ...ctrlSecurity,
-      ...methodSecurity,
-      ...(opMeta?.security ?? []),
-    ];
+    const methodAuthNextPublic = MetadataRegistry.get<boolean>(
+      AUTH_NEXT_PUBLIC_KEY,
+      handlerFn,
+    );
+    const ctrlAuthNextPublic = MetadataRegistry.get<boolean>(
+      AUTH_NEXT_PUBLIC_KEY,
+      controller,
+    );
+    const isAuthNextPublic =
+      methodAuthNextPublic !== undefined
+        ? methodAuthNextPublic === true
+        : ctrlAuthNextPublic === true;
+    const isLegacyPublic =
+      MetadataRegistry.get<boolean>(SECURITY_IS_PUBLIC_KEY, handlerFn) ===
+        true ||
+      MetadataRegistry.get<boolean>(SECURITY_IS_PUBLIC_KEY, controller) ===
+        true;
+    const isPublicRoute =
+      methodAuthNextPublic === false
+        ? false
+        : isAuthNextPublic || isLegacyPublic;
+
+    let operationSecurity: OpenApiSecurityRequirement[] | undefined;
+    if (
+      isPublicRoute &&
+      methodSecurity.length === 0 &&
+      opMeta?.security === undefined
+    ) {
+      operationSecurity = [];
+    } else {
+      const combinedSecurity = [
+        ...ctrlSecurity,
+        ...methodSecurity,
+        ...(opMeta?.security ?? []),
+      ];
+      if (combinedSecurity.length > 0) {
+        operationSecurity = combinedSecurity;
+      }
+    }
 
     // Parameters (globalParameters + URL path + param decorators + @ApiParam/@ApiQuery/@ApiHeader + opMeta.parameters)
     const parameters: OpenApiParameter[] = SwaggerModule.buildParameters(
@@ -1852,6 +2402,10 @@ export class SwaggerModule {
     const concreteVersions = versions.filter(
       (v): v is string => v !== VERSION_NEUTRAL,
     );
+    const isVersionOptional =
+      routeVersions.includes(VERSION_NEUTRAL) ||
+      defaultVersionMatchesRoute(versioning, concreteVersions);
+
     if (
       versioning &&
       versioning.type === VersioningType.HEADER &&
@@ -1865,7 +2419,7 @@ export class SwaggerModule {
       parameters.push({
         name: versioning.header,
         in: "header",
-        required: !versions.includes(VERSION_NEUTRAL),
+        required: !isVersionOptional,
         description: "API version header",
         schema: {
           type: "string",
@@ -1883,17 +2437,47 @@ export class SwaggerModule {
         (p) => p.in === "header" && p.name.toLowerCase() === "accept",
       )
     ) {
+      const normalizedKey = versioning.key.endsWith("=")
+        ? versioning.key
+        : `${versioning.key}=`;
       const examples = concreteVersions.map(
-        (v) => `application/json;${versioning.key}${v}`,
+        (v) => `application/json;${normalizedKey}${v}`,
       );
       parameters.push({
         name: "Accept",
         in: "header",
-        required: !versions.includes(VERSION_NEUTRAL),
-        description: `API version media type parameter (${versioning.key}<version>)`,
+        required: !isVersionOptional,
+        description: `API version media type parameter (${normalizedKey}<version>)`,
         schema: {
           type: "string",
           enum: examples,
+          ...(examples.length === 1 ? { default: examples[0] } : {}),
+        },
+      });
+    } else if (
+      versioning &&
+      versioning.type === VersioningType.CUSTOM &&
+      options.customVersionParameter !== undefined &&
+      concreteVersions.length > 0 &&
+      !parameters.some(
+        (p) =>
+          p.in === options.customVersionParameter!.in &&
+          p.name.toLowerCase() ===
+            options.customVersionParameter!.name.toLowerCase(),
+      )
+    ) {
+      const customParam = options.customVersionParameter;
+      parameters.push({
+        name: customParam.name,
+        in: customParam.in,
+        required: customParam.required ?? !isVersionOptional,
+        description: customParam.description ?? "API version parameter",
+        schema: {
+          type: "string",
+          enum: concreteVersions,
+          ...(concreteVersions.length === 1
+            ? { default: concreteVersions[0] }
+            : {}),
         },
       });
     }
@@ -1917,6 +2501,7 @@ export class SwaggerModule {
       builderExtras?.globalResponses,
       pluginAction,
       opMeta?.responses,
+      effectiveMethod,
     );
 
     // Callbacks (@ApiCallbacks + opMeta.callbacks)
@@ -1956,7 +2541,9 @@ export class SwaggerModule {
       ...(requestBody !== undefined ? { requestBody } : {}),
       responses,
       ...(callbacks !== undefined ? { callbacks } : {}),
-      ...(security.length > 0 ? { security } : {}),
+      ...(operationSecurity !== undefined
+        ? { security: operationSecurity }
+        : {}),
     };
 
     for (const ext of [...ctrlExtensions, ...methodExtensions]) {
@@ -2104,6 +2691,44 @@ export class SwaggerModule {
                 ? { ...schema, pattern: existingSchemaObj.pattern }
                 : schema,
           });
+        } else if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              standardSchemaParamKeys.add(`path:${propName}`);
+              const existing = paramMap.get(`path:${propName}`);
+              const existingSchemaObj =
+                existing?.schema && !("$ref" in existing.schema)
+                  ? existing.schema
+                  : undefined;
+              const resolvedSchema =
+                existingSchemaObj?.pattern &&
+                !("$ref" in propSchema) &&
+                !propSchema.pattern
+                  ? { ...propSchema, pattern: existingSchemaObj.pattern }
+                  : propSchema;
+              const propDesc =
+                propSchema && !("$ref" in propSchema)
+                  ? propSchema.description
+                  : undefined;
+              put({
+                name: propName,
+                in: "path",
+                required: existing?.required ?? true,
+                ...(propDesc !== undefined
+                  ? { description: propDesc }
+                  : existing?.description !== undefined
+                    ? { description: existing.description }
+                    : {}),
+                schema: resolvedSchema,
+              });
+            }
+          }
         } else if (rp.metatype && isDtoConstructor(rp.metatype)) {
           const dtoName = explorer.registerDtoSchema(rp.metatype);
           const dtoSchema = explorer.getSchemas()[dtoName];
@@ -2184,14 +2809,8 @@ export class SwaggerModule {
               });
             }
           }
-        } else if (
-          rp.metatype &&
-          typeof rp.metatype === "function" &&
-          rp.metatype !== Object
-        ) {
-          const dtoName = explorer.registerDtoSchema(
-            rp.metatype as Type<unknown>,
-          );
+        } else if (rp.metatype && isDtoConstructor(rp.metatype)) {
+          const dtoName = explorer.registerDtoSchema(rp.metatype);
           const dtoSchema = explorer.getSchemas()[dtoName];
           if (dtoSchema?.properties) {
             const reqSet = new Set(dtoSchema.required ?? []);
@@ -2209,16 +2828,146 @@ export class SwaggerModule {
             }
           }
         }
-      } else if (rp.source === "header" && rp.key) {
-        put({
-          name: rp.key,
-          in: "header",
-          required: false,
-          schema:
-            rp.metatype !== undefined
+      } else if (rp.source === "header") {
+        if (rp.key) {
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`header:${rp.key}`);
+          }
+          const schema =
+            stdSchema ??
+            (rp.metatype !== undefined
               ? explorer.resolveTypeSchema(rp.metatype, false)
-              : { type: "string" },
-        });
+              : { type: "string" as const });
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
+              : undefined;
+          put({
+            name: rp.key,
+            in: "header",
+            required: false,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : {}),
+            schema,
+          });
+        } else if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            const reqSet = new Set(stdSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              standardSchemaParamKeys.add(`header:${propName}`);
+              const propDesc =
+                propSchema && !("$ref" in propSchema)
+                  ? propSchema.description
+                  : undefined;
+              put({
+                name: propName,
+                in: "header",
+                required: reqSet.has(propName),
+                ...(propDesc !== undefined ? { description: propDesc } : {}),
+                schema: propSchema,
+              });
+            }
+          }
+        } else if (rp.metatype && isDtoConstructor(rp.metatype)) {
+          const dtoName = explorer.registerDtoSchema(rp.metatype);
+          const dtoSchema = explorer.getSchemas()[dtoName];
+          if (dtoSchema?.properties) {
+            const reqSet = new Set(dtoSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              dtoSchema.properties,
+            )) {
+              put({
+                name: propName,
+                in: "header",
+                required: reqSet.has(propName),
+                description:
+                  "$ref" in propSchema ? undefined : propSchema.description,
+                schema: propSchema,
+              });
+            }
+          }
+        }
+      } else if (rp.source === "cookies" || rp.source === "signedCookies") {
+        if (rp.key) {
+          const stdSchema =
+            rawParamSchema !== undefined
+              ? explorer.resolveStandardSchema(rawParamSchema, "input")
+              : undefined;
+          if (stdSchema) {
+            standardSchemaParamKeys.add(`cookie:${rp.key}`);
+          }
+          const schema =
+            stdSchema ??
+            (rp.metatype !== undefined
+              ? explorer.resolveTypeSchema(rp.metatype, false)
+              : { type: "string" as const });
+          const promotedDesc =
+            stdSchema && !("$ref" in stdSchema)
+              ? stdSchema.description
+              : undefined;
+          put({
+            name: rp.key,
+            in: "cookie",
+            required: false,
+            ...(promotedDesc !== undefined
+              ? { description: promotedDesc }
+              : {}),
+            schema,
+          });
+        } else if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            const reqSet = new Set(stdSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              standardSchemaParamKeys.add(`cookie:${propName}`);
+              const propDesc =
+                propSchema && !("$ref" in propSchema)
+                  ? propSchema.description
+                  : undefined;
+              put({
+                name: propName,
+                in: "cookie",
+                required: reqSet.has(propName),
+                ...(propDesc !== undefined ? { description: propDesc } : {}),
+                schema: propSchema,
+              });
+            }
+          }
+        } else if (rp.metatype && isDtoConstructor(rp.metatype)) {
+          const dtoName = explorer.registerDtoSchema(rp.metatype);
+          const dtoSchema = explorer.getSchemas()[dtoName];
+          if (dtoSchema?.properties) {
+            const reqSet = new Set(dtoSchema.required ?? []);
+            for (const [propName, propSchema] of Object.entries(
+              dtoSchema.properties,
+            )) {
+              put({
+                name: propName,
+                in: "cookie",
+                required: reqSet.has(propName),
+                description:
+                  "$ref" in propSchema ? undefined : propSchema.description,
+                schema: propSchema,
+              });
+            }
+          }
+        }
       }
     }
 
@@ -2521,35 +3270,6 @@ export class SwaggerModule {
       };
     }
 
-    // Check multipart uploads (@UploadedFile / @UploadedFiles)
-    const uploadParams = routeParams.filter(
-      (p) => p.source === "uploadedFile" || p.source === "uploadedFiles",
-    );
-    if (uploadParams.length > 0) {
-      const properties: Record<string, OpenApiSchema> = {};
-      for (const up of uploadParams) {
-        const fieldName = up.key ?? "file";
-        properties[fieldName] =
-          up.source === "uploadedFiles"
-            ? { type: "array", items: { type: "string", format: "binary" } }
-            : { type: "string", format: "binary" };
-      }
-      return {
-        required: true,
-        content: {
-          "multipart/form-data": {
-            schema: { type: "object", properties },
-          },
-        },
-      };
-    }
-
-    // Check @Body() parameter(s)
-    const bodyParams = routeParams.filter((p) => p.source === "body");
-    if (bodyParams.length === 0) {
-      return undefined;
-    }
-
     const consumes = [
       ...MetadataRegistry.getMergedClassArray<string>(
         SWAGGER_METADATA_KEYS.API_CONSUMES,
@@ -2560,6 +3280,124 @@ export class SwaggerModule {
         handlerFn,
       ) ?? []),
     ];
+
+    const bodyParams = routeParams.filter((p) => p.source === "body");
+
+    // Check multipart uploads (@UploadedFile / @UploadedFiles), merging any @Body() fields/DTO properties
+    const uploadParams = routeParams.filter(
+      (p) => p.source === "uploadedFile" || p.source === "uploadedFiles",
+    );
+    if (uploadParams.length > 0) {
+      const properties: Record<string, OpenApiSchema> = {};
+      const requiredSet = new Set<string>();
+
+      const wholeBody = bodyParams.find((p) => p.key === undefined);
+      if (wholeBody) {
+        const rawParamSchema = (
+          wholeBody as ParameterMetadata & { schema?: unknown }
+        ).schema;
+        if (rawParamSchema !== undefined) {
+          const stdSchema = explorer.resolveStandardSchema(
+            rawParamSchema,
+            "input",
+          );
+          if (stdSchema?.properties) {
+            for (const [propName, propSchema] of Object.entries(
+              stdSchema.properties,
+            )) {
+              properties[propName] = propSchema;
+            }
+            for (const reqField of stdSchema.required ?? []) {
+              requiredSet.add(reqField);
+            }
+          }
+        } else if (wholeBody.metatype && isDtoConstructor(wholeBody.metatype)) {
+          const dtoName = explorer.registerDtoSchema(wholeBody.metatype);
+          const dtoSchema = explorer.getSchemas()[dtoName];
+          if (dtoSchema?.properties) {
+            for (const [propName, propSchema] of Object.entries(
+              dtoSchema.properties,
+            )) {
+              properties[propName] = propSchema;
+            }
+            for (const reqField of dtoSchema.required ?? []) {
+              requiredSet.add(reqField);
+            }
+          }
+        }
+      }
+
+      for (const bp of bodyParams) {
+        if (!bp.key) continue;
+        const rawFieldSchema = (bp as ParameterMetadata & { schema?: unknown })
+          .schema;
+        const stdSchema =
+          rawFieldSchema !== undefined
+            ? explorer.resolveStandardSchema(rawFieldSchema, "input")
+            : undefined;
+        properties[bp.key] =
+          stdSchema ??
+          (bp.metatype !== undefined
+            ? explorer.resolveTypeSchema(bp.metatype, false)
+            : {});
+      }
+
+      for (const up of uploadParams) {
+        const fieldName = up.key ?? "file";
+        properties[fieldName] =
+          up.source === "uploadedFiles"
+            ? { type: "array", items: { type: "string", format: "binary" } }
+            : { type: "string", format: "binary" };
+      }
+
+      const multipartSchema: OpenApiSchema = {
+        type: "object",
+        properties,
+        ...(requiredSet.size > 0 ? { required: [...requiredSet] } : {}),
+      };
+      const uploadMediaTypes =
+        consumes.length > 0 ? [...new Set(consumes)] : ["multipart/form-data"];
+      const content: Record<string, OpenApiMediaType> = {};
+      for (const mt of uploadMediaTypes) {
+        content[mt] = { schema: multipartSchema };
+      }
+      return {
+        required: true,
+        content,
+      };
+    }
+
+    // Check @RawBody() / @RawBody(schema) when no @Body() is present
+    if (bodyParams.length === 0) {
+      const rawBodyParam = routeParams.find((p) => p.source === "rawBody");
+      if (!rawBodyParam) {
+        return undefined;
+      }
+      const rawParamSchema = (
+        rawBodyParam as ParameterMetadata & { schema?: unknown }
+      ).schema;
+      const stdSchema =
+        rawParamSchema !== undefined
+          ? explorer.resolveStandardSchema(rawParamSchema, "input")
+          : undefined;
+      const schema: OpenApiSchema = stdSchema ?? {
+        type: "string",
+        format: "binary",
+      };
+      const rawMediaTypes =
+        consumes.length > 0
+          ? [...new Set(consumes)]
+          : ["application/octet-stream"];
+      const content: Record<string, OpenApiMediaType> = {};
+      for (const mt of rawMediaTypes) {
+        content[mt] = { schema };
+      }
+      return {
+        required: true,
+        content,
+      };
+    }
+
     const mediaTypes =
       consumes.length > 0 ? [...new Set(consumes)] : ["application/json"];
 
@@ -2589,10 +3427,17 @@ export class SwaggerModule {
     const properties: Record<string, OpenApiSchema> = {};
     for (const bp of bodyParams) {
       if (!bp.key) continue;
+      const rawFieldSchema = (bp as ParameterMetadata & { schema?: unknown })
+        .schema;
+      const stdSchema =
+        rawFieldSchema !== undefined
+          ? explorer.resolveStandardSchema(rawFieldSchema, "input")
+          : undefined;
       properties[bp.key] =
-        bp.metatype !== undefined
+        stdSchema ??
+        (bp.metatype !== undefined
           ? explorer.resolveTypeSchema(bp.metatype, false)
-          : {};
+          : {});
     }
     const content: Record<string, OpenApiMediaType> = {};
     for (const mt of mediaTypes) {
@@ -2619,6 +3464,7 @@ export class SwaggerModule {
       string,
       OpenApiResponse | { $ref: string } | undefined
     >,
+    effectiveMethod?: string,
   ): {
     responses: Record<string, OpenApiResponse>;
     responseModels: Map<string, Type<unknown> | Function>;
@@ -2633,7 +3479,17 @@ export class SwaggerModule {
         handlerFn,
       ) ?? []),
     ];
-    const defaultContentType = produces[0] ?? "application/json";
+    const headerContentType = route.headers?.find(
+      (h) => h.name.toLowerCase() === "content-type",
+    )?.value;
+    const defaultContentType =
+      produces[0] ??
+      headerContentType ??
+      (route.isSse
+        ? "text/event-stream"
+        : route.renderTemplate !== undefined
+          ? "text/html"
+          : "application/json");
     const ctrlResponses =
       MetadataRegistry.getMergedClassArray<ApiResponseOptions>(
         SWAGGER_METADATA_KEYS.API_RESPONSES,
@@ -2671,7 +3527,7 @@ export class SwaggerModule {
       const statusKey =
         entry.status !== undefined
           ? String(entry.status)
-          : defaultStatusForRoute(route);
+          : defaultStatusForRoute(route, effectiveMethod);
 
       const response: OpenApiResponse = {
         description: entry.description ?? "",
@@ -2701,6 +3557,7 @@ export class SwaggerModule {
         schema = explorer.resolveTypeSchema(
           metaEntry.type,
           metaEntry.isArray === true,
+          "output",
         );
         if (isDtoConstructor(metaEntry.type)) {
           responseModels.set(statusKey, metaEntry.type);
@@ -2781,54 +3638,102 @@ export class SwaggerModule {
     const fallbackStatus =
       pluginAction?.status !== undefined
         ? String(pluginAction.status)
-        : defaultStatusForRoute(route);
+        : defaultStatusForRoute(route, effectiveMethod);
+    const isRedirectStatus = /^3\d\d$/.test(fallbackStatus);
     const hasAny2xxResponse = Object.keys(responses).some((k) =>
       /^2\d\d$|^2XX$/i.test(k),
     );
     const needsInferredReturnSchema =
       fallbackStatus !== "204" &&
+      !isRedirectStatus &&
       (!hasAny2xxResponse ||
         (responses[fallbackStatus] !== undefined &&
           responses[fallbackStatus]!.content === undefined));
 
-    const reflectedReturnType = needsInferredReturnSchema
-      ? MetadataRegistry.getReturnType(
-          controller.prototype as object,
-          route.handlerKey,
-        )
-      : undefined;
-
     let inferredReturnSchema: OpenApiSchema | undefined;
-    if (
-      isDtoConstructor(reflectedReturnType) &&
-      isSchemaDecoratedClass(reflectedReturnType)
-    ) {
-      inferredReturnSchema = explorer.resolveTypeSchema(
-        reflectedReturnType,
-        false,
+
+    if (needsInferredReturnSchema) {
+      // 1. Core Serializer metadata (@UseStandardSchema / @SerializeOptions({ schema, type }))
+      const handlerUseStd = MetadataRegistry.get<{ readonly schema?: unknown }>(
+        STANDARD_SCHEMA_SERIALIZER_METADATA_KEY,
+        handlerFn,
       );
-      if (!responseModels.has(fallbackStatus)) {
-        responseModels.set(fallbackStatus, reflectedReturnType);
+      const handlerSerOpts = MetadataRegistry.get<{
+        readonly schema?: unknown;
+        readonly type?: Type<unknown>;
+      }>(CLASS_SERIALIZER_OPTIONS_KEY, handlerFn);
+      const ctrlUseStd = MetadataRegistry.get<{ readonly schema?: unknown }>(
+        STANDARD_SCHEMA_SERIALIZER_METADATA_KEY,
+        controller,
+      );
+      const ctrlSerOpts = MetadataRegistry.get<{
+        readonly schema?: unknown;
+        readonly type?: Type<unknown>;
+      }>(CLASS_SERIALIZER_OPTIONS_KEY, controller);
+
+      const serializerStdSchema =
+        handlerUseStd?.schema ??
+        handlerSerOpts?.schema ??
+        ctrlUseStd?.schema ??
+        ctrlSerOpts?.schema;
+      const serializerType = handlerSerOpts?.type ?? ctrlSerOpts?.type;
+
+      if (serializerStdSchema !== undefined) {
+        inferredReturnSchema = explorer.resolveStandardSchema(
+          serializerStdSchema,
+          "output",
+        );
+      } else if (serializerType !== undefined) {
+        inferredReturnSchema = explorer.resolveTypeSchema(
+          serializerType,
+          false,
+          "output",
+        );
+        if (
+          isDtoConstructor(serializerType) &&
+          !responseModels.has(fallbackStatus)
+        ) {
+          responseModels.set(fallbackStatus, serializerType);
+        }
       }
-    } else if (needsInferredReturnSchema && pluginAction?.type !== undefined) {
-      inferredReturnSchema = explorer.resolveTypeSchema(
-        pluginAction.type,
-        pluginAction.isArray === true,
+    }
+
+    if (needsInferredReturnSchema && inferredReturnSchema === undefined) {
+      const reflectedReturnType = MetadataRegistry.getReturnType(
+        controller.prototype as object,
+        route.handlerKey,
       );
       if (
-        isDtoConstructor(pluginAction.type) &&
-        !responseModels.has(fallbackStatus)
+        isDtoConstructor(reflectedReturnType) &&
+        isSchemaDecoratedClass(reflectedReturnType)
       ) {
-        responseModels.set(fallbackStatus, pluginAction.type);
+        inferredReturnSchema = explorer.resolveTypeSchema(
+          reflectedReturnType,
+          false,
+          "output",
+        );
+        if (!responseModels.has(fallbackStatus)) {
+          responseModels.set(fallbackStatus, reflectedReturnType);
+        }
+      } else if (pluginAction?.type !== undefined) {
+        inferredReturnSchema = explorer.resolveTypeSchema(
+          pluginAction.type,
+          pluginAction.isArray === true,
+          "output",
+        );
+        if (
+          isDtoConstructor(pluginAction.type) &&
+          !responseModels.has(fallbackStatus)
+        ) {
+          responseModels.set(fallbackStatus, pluginAction.type);
+        }
+      } else if (route.isSse || route.renderTemplate !== undefined) {
+        inferredReturnSchema = { type: "string" };
       }
     }
 
     const defaultStatusDescription =
-      fallbackStatus === "201"
-        ? "Created"
-        : fallbackStatus === "204"
-          ? "No Content"
-          : "OK";
+      defaultStatusDescriptionForCode(fallbackStatus);
 
     if (
       Object.keys(responses).length === 0 ||
@@ -2836,7 +3741,9 @@ export class SwaggerModule {
     ) {
       responses[fallbackStatus] = {
         description: defaultStatusDescription,
-        ...(inferredReturnSchema !== undefined && fallbackStatus !== "204"
+        ...(inferredReturnSchema !== undefined &&
+        fallbackStatus !== "204" &&
+        !isRedirectStatus
           ? {
               content: {
                 [defaultContentType]: { schema: inferredReturnSchema },
@@ -2847,7 +3754,8 @@ export class SwaggerModule {
     } else if (
       !hasAny2xxResponse &&
       inferredReturnSchema !== undefined &&
-      fallbackStatus !== "204"
+      fallbackStatus !== "204" &&
+      !isRedirectStatus
     ) {
       responses[fallbackStatus] = {
         description: defaultStatusDescription,
@@ -2858,6 +3766,7 @@ export class SwaggerModule {
     } else if (
       inferredReturnSchema !== undefined &&
       fallbackStatus !== "204" &&
+      !isRedirectStatus &&
       responses[fallbackStatus] !== undefined &&
       responses[fallbackStatus]!.content === undefined
     ) {
@@ -2866,6 +3775,77 @@ export class SwaggerModule {
         content: {
           [defaultContentType]: { schema: inferredReturnSchema },
         },
+      };
+    }
+
+    // Attach @Header(name, value) and @Redirect(url, statusCode) Location headers to primary response
+    const primaryResponse = responses[fallbackStatus];
+    if (primaryResponse && !primaryResponse.$ref) {
+      const extraHeaders: Record<string, { description?: string; schema: OpenApiSchema }> = {};
+      if (route.headers && route.headers.length > 0) {
+        for (const h of route.headers) {
+          const alreadyDefined =
+            primaryResponse.headers &&
+            Object.keys(primaryResponse.headers).some(
+              (k) => k.toLowerCase() === h.name.toLowerCase(),
+            );
+          if (!alreadyDefined) {
+            extraHeaders[h.name] = {
+              schema: { type: "string", default: h.value },
+            };
+          }
+        }
+      }
+      if (route.redirect) {
+        const hasLocationHeader =
+          (primaryResponse.headers &&
+            Object.keys(primaryResponse.headers).some(
+              (k) => k.toLowerCase() === "location",
+            )) ||
+          Object.keys(extraHeaders).some((k) => k.toLowerCase() === "location");
+        if (!hasLocationHeader) {
+          extraHeaders["Location"] = {
+            description: route.redirect.url
+              ? `Redirect target: ${route.redirect.url}`
+              : "Redirect target URL",
+            schema: {
+              type: "string",
+              format: "uri-reference",
+              ...(route.redirect.url ? { default: route.redirect.url } : {}),
+            },
+          };
+        }
+      }
+      if (Object.keys(extraHeaders).length > 0) {
+        responses[fallbackStatus] = {
+          ...primaryResponse,
+          headers: {
+            ...extraHeaders,
+            ...(primaryResponse.headers ?? {}),
+          },
+        };
+      }
+    }
+
+    // @bunest/security @Throttle() without @SkipThrottle() -> document 429 Too Many Requests
+    const methodSkipThrottle = MetadataRegistry.get<
+      boolean | Record<string, boolean>
+    >(SECURITY_SKIP_THROTTLE_KEY, handlerFn);
+    const ctrlSkipThrottle = MetadataRegistry.get<
+      boolean | Record<string, boolean>
+    >(SECURITY_SKIP_THROTTLE_KEY, controller);
+    const effectiveSkipThrottle =
+      methodSkipThrottle !== undefined ? methodSkipThrottle : ctrlSkipThrottle;
+    const isThrottleSkipped = effectiveSkipThrottle === true;
+    const hasThrottle =
+      !isThrottleSkipped &&
+      (MetadataRegistry.get<unknown>(SECURITY_THROTTLE_KEY, handlerFn) !==
+        undefined ||
+        MetadataRegistry.get<unknown>(SECURITY_THROTTLE_KEY, controller) !==
+          undefined);
+    if (hasThrottle && responses["429"] === undefined) {
+      responses["429"] = {
+        description: "Too Many Requests",
       };
     }
 

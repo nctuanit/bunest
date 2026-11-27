@@ -50,7 +50,7 @@ function buildDeepPartialType<T>(
     return cached as Type<DeepPartial<T>>;
   }
 
-  // Create partial base class inheriting class-validator, class-transformer, and Swagger metadata
+  // Create partial base class inheriting @bunest/validation and Swagger metadata
   const PartialBase = PartialType(classRef, options);
 
   class DeepPartialClass extends (PartialBase as Type<object>) {}

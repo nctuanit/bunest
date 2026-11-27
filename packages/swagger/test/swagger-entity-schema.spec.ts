@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   Body,
+  BunestFactory,
   Column,
   Controller,
   CreateDateColumn,
@@ -14,8 +15,7 @@ import {
   Query,
   UpdateDateColumn,
 } from "@bunest/core";
-import { BunestFactory } from "@bunest/core";
-import { IsEmail } from "../../validation/src/validator";
+import { IsEmail } from "@bunest/validation/validator";
 import {
   ApiBadRequestResponse,
   ApiHideProperty,
