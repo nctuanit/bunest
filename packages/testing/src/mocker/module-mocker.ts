@@ -30,6 +30,45 @@ export interface MockFunction<TArgs extends unknown[] = any[], TReturn = any> {
   setMockName(name: string): this;
 }
 
+/**
+ * Concise alias for Bunest's callable `MockFunction` spy type.
+ */
+export type MockFn<
+  TArgs extends unknown[] = any[],
+  TReturn = any,
+> = MockFunction<TArgs, TReturn>;
+
+/**
+ * Shallowly replaces every method on `T` with a typed `MockFn`, preserving
+ * parameter types, return types, and non-method fields.
+ */
+export type Mocked<T> = {
+  [K in keyof T]: T[K] extends (...args: infer TArgs) => infer TReturn
+    ? MockFn<TArgs, TReturn>
+    : T[K];
+};
+
+/**
+ * Recursively replaces every method on `T` and nested plain/service objects with
+ * typed `MockFn` spies while leaving arrays, built-in value objects, and promises intact.
+ */
+export type DeepMocked<T> = {
+  [K in keyof T]: T[K] extends (...args: infer TArgs) => infer TReturn
+    ? MockFn<TArgs, TReturn>
+    : T[K] extends readonly (infer _U)[]
+      ? T[K]
+      : T[K] extends Date | RegExp | Map<any, any> | Set<any> | Promise<any>
+        ? T[K]
+        : T[K] extends object
+          ? DeepMocked<T[K]>
+          : T[K];
+};
+
+/**
+ * Factory creating a callable spy function (e.g. `() => mock()` from `bun:test`).
+ */
+export type SpyFactory = () => (...args: unknown[]) => unknown;
+
 type OnceAction<TArgs extends unknown[], TReturn> =
   | { readonly kind: "impl"; readonly fn: (...args: TArgs) => TReturn }
   | { readonly kind: "return"; readonly value: TReturn };
@@ -246,12 +285,32 @@ function collectPrototypeMethodNames(cls: Function): string[] {
   return [...names];
 }
 
+function invokeSpyFactory(
+  spyFactory: SpyFactory | undefined,
+  displayName: string,
+): (...args: unknown[]) => unknown {
+  if (spyFactory) {
+    const spy = spyFactory();
+    const namedSpy = spy as unknown as {
+      setMockName?: (name: string) => void;
+    };
+    if (typeof namedSpy?.setMockName === "function") {
+      namedSpy.setMockName(displayName);
+    }
+    return spy;
+  }
+  return createMockFn(undefined, displayName);
+}
+
 /**
  * Zero-dependency Bun-native `ModuleMocker` modeled after `jest-mock`'s `ModuleMocker`
  * so NestJS auto-mocking recipes (`useMocker`) work out of the box without external npm packages.
  */
 export class ModuleMocker {
-  constructor(readonly globalObject: typeof globalThis = globalThis) {}
+  constructor(
+    readonly globalObject: typeof globalThis = globalThis,
+    private readonly spyFactory?: SpyFactory,
+  ) {}
 
   /**
    * Creates a callable `MockFunction` spy.
@@ -387,10 +446,12 @@ export class ModuleMocker {
 
   /**
    * Directly instantiates a mocked object for a class token without invoking its constructor.
-   * Preserves `instanceof cls` and replaces every prototype method with a `MockFunction` spy.
+   * Preserves `instanceof cls` and replaces every prototype method with a `MockFunction` spy
+   * (or a custom spy produced by `spyFactory`).
    */
   mockClass<T extends object>(
     cls: abstract new (...args: any[]) => T,
+    spyFactory: SpyFactory | undefined = this.spyFactory,
   ): T & Record<string, MockFunction> {
     const instance = Object.create(cls.prototype as object) as Record<
       string,
@@ -399,8 +460,8 @@ export class ModuleMocker {
     const className = cls.name || "AnonymousClass";
 
     for (const methodName of collectPrototypeMethodNames(cls)) {
-      instance[methodName] = createMockFn(
-        undefined,
+      instance[methodName] = invokeSpyFactory(
+        spyFactory,
         `${className}.${methodName}`,
       );
     }
@@ -526,10 +587,19 @@ export interface AutoMockerOptions {
    * @default false
    */
   readonly mockUnregisteredTokens?: boolean;
+  /**
+   * Custom spy factory used to create method spies on auto-mocked classes and proxies
+   * (for example `() => mock()` from `bun:test` so native `toHaveBeenCalledWith` matchers work).
+   * Defaults to Bunest's zero-dep `createMockFn()`.
+   */
+  readonly spyFactory?: SpyFactory;
 }
 
-function createProxyMock(tokenName: string): Record<string, MockFunction> {
-  const cache = new Map<string | symbol, MockFunction>();
+function createProxyMock(
+  tokenName: string,
+  spyFactory?: SpyFactory,
+): Record<string, MockFunction> {
+  const cache = new Map<string | symbol, (...args: unknown[]) => unknown>();
   return new Proxy({} as Record<string, MockFunction>, {
     get(_target, prop) {
       if (SKIPPED_PROXY_KEYS.has(prop)) {
@@ -537,7 +607,7 @@ function createProxyMock(tokenName: string): Record<string, MockFunction> {
       }
       let fn = cache.get(prop);
       if (!fn) {
-        fn = createMockFn(undefined, `${tokenName}.${String(prop)}`);
+        fn = invokeSpyFactory(spyFactory, `${tokenName}.${String(prop)}`);
         cache.set(prop, fn);
       }
       return fn;
@@ -558,7 +628,7 @@ function createProxyMock(tokenName: string): Record<string, MockFunction> {
  * ```
  */
 export function createAutoMocker(options: AutoMockerOptions = {}): MockFactory {
-  const mocker = new ModuleMocker();
+  const mocker = new ModuleMocker(globalThis, options.spyFactory);
   const overridesMap = new Map<InjectionToken, unknown>(
     options.overrides instanceof Map
       ? options.overrides.entries()
@@ -578,11 +648,14 @@ export function createAutoMocker(options: AutoMockerOptions = {}): MockFactory {
     }
 
     if (typeof token === "function") {
-      return mocker.mockClass(token as abstract new (...args: any[]) => object);
+      return mocker.mockClass(
+        token as abstract new (...args: any[]) => object,
+        options.spyFactory,
+      );
     }
 
     if (options.mockUnregisteredTokens) {
-      return createProxyMock(String(token));
+      return createProxyMock(String(token), options.spyFactory);
     }
 
     return undefined;

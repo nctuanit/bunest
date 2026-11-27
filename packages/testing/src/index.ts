@@ -7,6 +7,12 @@ export {
   type ModuleRefGetOptions,
 } from "@bunest/core";
 export { Test } from "./test";
+export {
+  UnitTestBuilder,
+  type UnitReference,
+  type UnitTestOptions,
+  type UnitTestResult,
+} from "./unit-harness";
 export { TestingModuleBuilder } from "./testing-module.builder";
 export { ScopedTestingModule, TestingModule } from "./testing-module";
 export { CookieJar, TestAgent, TestClient, TestResponse } from "./test-client";
@@ -51,10 +57,14 @@ export {
   createAutoMocker,
   createMockFn,
   type AutoMockerOptions,
+  type DeepMocked,
   type MockCallResult,
+  type MockFn,
   type MockFunction,
   type MockMetadata,
   type MockMetadataType,
+  type Mocked,
+  type SpyFactory,
 } from "./mocker/module-mocker";
 export {
   createMockCallHandler,
@@ -64,6 +74,7 @@ export {
   createMockReflector,
   createMockRequest,
   createMockResponseContext,
+  runWithMockClsContext,
   runWithMockRequestContext,
   type MockCallHandler,
   type MockExecutionContextOptions,

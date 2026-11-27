@@ -1,6 +1,10 @@
 import {
+  CLS_ID,
+  ClsService,
   Reflector,
   type CallHandler,
+  type ClsModuleOptions,
+  type ClsStore,
   type ContextType,
   type ExecutionContext,
   type InjectionToken,
@@ -136,6 +140,40 @@ export async function runWithMockRequestContext<T>(
   });
 
   return await requestContextStorage.run(ctx, () => fn(ctx));
+}
+
+/**
+ * Runs a callback inside an active `ClsService` AsyncLocalStorage context seeded
+ * with `initialStore`, so services using `ClsService` or CLS proxy providers can
+ * be unit-tested in isolation without HTTP middleware or interceptors.
+ */
+export async function runWithMockClsContext<
+  T,
+  TStore extends object = Record<PropertyKey, unknown>,
+>(
+  initialStore:
+    | Partial<TStore>
+    | ClsStore
+    | Record<PropertyKey, unknown>
+    | undefined,
+  fn: (cls: ClsService<TStore>) => T | Promise<T>,
+  options?: ClsModuleOptions,
+): Promise<T> {
+  const cls = new ClsService<TStore>(options);
+  if (initialStore instanceof Map) {
+    const storeCopy: ClsStore = new Map(initialStore);
+    if ((options?.generateId ?? true) && !storeCopy.has(CLS_ID)) {
+      storeCopy.set(
+        CLS_ID,
+        options?.idGenerator ? options.idGenerator() : crypto.randomUUID(),
+      );
+    }
+    return await cls.runWith(storeCopy, () => fn(cls));
+  }
+  return await cls.run(
+    () => fn(cls),
+    (initialStore ?? {}) as Record<PropertyKey, unknown>,
+  );
 }
 
 /**

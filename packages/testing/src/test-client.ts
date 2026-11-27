@@ -435,6 +435,23 @@ export class TestClient {
   }
 
   /**
+   * Closes the underlying application dispatcher if it exposes a `close()` method.
+   * No-op for live-URL or stateless fetch dispatchers.
+   */
+  async close(): Promise<void> {
+    const closable = this.dispatcher as FetchCapable & {
+      close?: () => Promise<void> | void;
+    };
+    if (typeof closable.close === "function") {
+      await closable.close();
+    }
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
+  }
+
+  /**
    * Creates an in-memory `TestClient` backed directly by `app.fetch(req)`.
    */
   static fromApp(

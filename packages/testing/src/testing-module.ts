@@ -266,4 +266,8 @@ export class TestingModule extends BunestApplicationContext {
 
     await super.close(signal);
   }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
+  }
 }
