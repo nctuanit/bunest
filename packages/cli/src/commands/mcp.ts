@@ -11,6 +11,7 @@ import type { CliIO } from "../types";
 import { CLI_VERSION } from "../version";
 import { runCheckCommand } from "./check";
 import { runExplainRouteCommand } from "./explain";
+import { runGraphCommand } from "./graph";
 import { formatVerifyResult, runVerifyCommand } from "./verify";
 
 export interface McpServerOptions {
@@ -151,6 +152,35 @@ export const BUNEST_MCP_TOOLS = [
         skipTypecheck: { type: "boolean" },
         skipCheck: { type: "boolean" },
         skipTests: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "bunest_graph",
+    description:
+      "Query the project's offline static module/provider/controller DI dependency graph (including provider cycles BUNEST002 and module import cycles BUNEST010) without booting the application.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        format: {
+          type: "string",
+          enum: ["json", "mermaid", "dot"],
+          description: "Output format: json, mermaid, or dot (default: json).",
+        },
+        module: {
+          type: "string",
+          description:
+            "Optional module class name to filter the subgraph and its dependencies.",
+        },
+        cyclesOnly: {
+          type: "boolean",
+          description:
+            "When true, return only modules, providers, and edges involved in circular dependencies (BUNEST002 / BUNEST010).",
+        },
+        sourceRoot: {
+          type: "string",
+          description: "Optional source root for static analysis.",
+        },
       },
     },
   },
@@ -327,6 +357,40 @@ async function executeToolCall(
         formatVerifyResult(result, "agent"),
         !result.ok,
       );
+    }
+
+    case "bunest_graph": {
+      const format =
+        args.format === "mermaid" || args.format === "dot" || args.format === "json"
+          ? args.format
+          : "json";
+      const moduleFilter =
+        typeof args.module === "string" && args.module.trim().length > 0
+          ? args.module.trim()
+          : undefined;
+      const cyclesOnly = args.cyclesOnly === true;
+      const sourceRoot =
+        typeof args.sourceRoot === "string" && args.sourceRoot.trim().length > 0
+          ? args.sourceRoot.trim()
+          : undefined;
+      const result = await runGraphCommand(
+        {
+          cwd,
+          format,
+          module: moduleFilter,
+          cyclesOnly,
+          sourceRoot,
+          silent: true,
+        },
+        { stdout: () => {}, stderr: () => {} },
+      );
+      if (result.exitCode !== 0) {
+        return textResult(
+          result.error ?? "Failed to build static DI graph.",
+          true,
+        );
+      }
+      return textResult(result.output);
     }
 
     default:

@@ -29,19 +29,26 @@ export function resolveTypegenConfig(
   };
 }
 
+export interface RunTypegenCommandOptions extends TypegenCommandOptions {
+  readonly clientTypes?: string;
+}
+
 /**
  * Runs `bunest typegen` — scans the project with the Bunest native TypeScript AST engine
- * and emits `.bunest/types/bunest.d.ts` (one-shot, `--check` for CI, or `--watch`).
+ * and emits `.bunest/types/bunest.d.ts` (one-shot, `--check` for CI, or `--watch`),
+ * plus optional standalone frontend-portable client route types via `--client-types`.
  */
 export async function runTypegenCommand(
-  options: TypegenCommandOptions = {},
+  options: RunTypegenCommandOptions = {},
   io?: CliIO,
 ): Promise<TypegenCommandResult> {
   const cwd = resolve(options.cwd ?? io?.cwd ?? process.cwd());
   const { config: cliConfig } = await loadCliConfiguration(cwd, options.config);
   const { config: bunestConfig } = await loadBunestConfig(cwd);
   const { config: typegenCfg } = resolveTypegenConfig(cliConfig.typegen);
-  const bunestTypegen = bunestConfig.typegen;
+  const bunestTypegen = bunestConfig.typegen as
+    | (typeof bunestConfig.typegen & { readonly clientTypes?: string })
+    | undefined;
 
   const sourceRoot =
     options.sourceRoot ??
@@ -55,6 +62,10 @@ export async function runTypegenCommand(
     bunestTypegen?.fileName ??
     typegenCfg.fileName ??
     "bunest.d.ts";
+  const clientTypes =
+    options.clientTypes ??
+    bunestTypegen?.clientTypes ??
+    typegenCfg.clientTypes;
   const tsconfigPath =
     options.tsconfig ??
     bunestTypegen?.tsconfigPath ??
@@ -83,6 +94,7 @@ export async function runTypegenCommand(
         sourceRoot,
         outDir,
         fileName,
+        clientTypes,
         tsconfigPath,
         envFiles,
         include,
@@ -130,6 +142,7 @@ export async function runTypegenCommand(
       sourceRoot,
       outDir,
       fileName,
+      clientTypes,
       tsconfigPath,
       envFiles,
       include,

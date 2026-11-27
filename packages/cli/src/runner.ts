@@ -14,6 +14,10 @@ import {
 import { generateSchematic } from "./commands/generate";
 import { generateRepositoryCommand } from "./commands/generate-repository";
 import {
+  runGraphCommand,
+  type GraphOutputFormat,
+} from "./commands/graph";
+import {
   formatEnvironmentInfo,
   getEnvironmentInfo,
   type EnvironmentInfoFormat,
@@ -108,10 +112,20 @@ Commands:
     -c, --config <path>             Path to bunest.json / nest-cli.json
     --env-file <path>               Env file(s) to scan for config keys (repeatable)
     -d, --dry-run                   Scan without writing files
+    --client-types <path>           Emit standalone frontend-portable route types (no @bunest/core imports)
     --no-global                     Omit \`declare global { namespace Bunest }\` aliases
     --silent                        Suppress output logs
 
-  check, doctor                     Run all 19 Bunest static diagnostics (DI, Repositories, Class Macros)
+  graph                             Render static module/provider/controller DI graph offline
+    --format <mermaid|dot|json|html> Output format (default: mermaid)
+    --module <Name>                 Filter graph to a specific module and its dependencies
+    --cycles-only                   Include only nodes and edges in circular dependencies
+    --cwd <dir>                     Project root directory (default: current working directory)
+    --sourceRoot <path>             Source root directory (default: src)
+    --tsconfig <path>               Explicit path to tsconfig.json
+    -c, --config <path>             Path to bunest.json / nest-cli.json
+
+  check, doctor                     Run all Bunest static diagnostics (DI BUNEST001-011, Repositories, Class Macros)
     --fix                           Auto-apply safe AST fixes
     --format <pretty|json>          Output format (default: pretty)
     --strict                        Fail with exit code 1 on warnings as well as errors
@@ -231,6 +245,7 @@ const KNOWN_TOP_LEVEL_COMMANDS = [
   "dev",
   "typegen",
   "tg",
+  "graph",
   "check",
   "doctor",
   "verify",
@@ -318,6 +333,31 @@ function parseOptionalPort(rawPort: string | undefined): number | undefined {
     );
   }
   return Number.parseInt(rawPort, 10);
+}
+
+function extractRawFlagValue(
+  argv: readonly string[],
+  flagName: string,
+): string | undefined {
+  const longForm = `--${flagName}`;
+  const prefix = `${longForm}=`;
+  let found: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i]!;
+    if (token === "--") break;
+    if (token.startsWith(prefix)) {
+      found = token.slice(prefix.length);
+    } else if (token === longForm) {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        found = next;
+        i += 1;
+      } else {
+        found = "";
+      }
+    }
+  }
+  return found;
 }
 
 /**
@@ -550,6 +590,7 @@ export async function runCli(
             port,
             typegen,
             typegenOutDir: getStringFlag(flags, "typegen-dir"),
+            clientTypes: getStringFlag(flags, "client-types"),
             silent: getBoolFlag(flags, "silent") ?? false,
             cwd: io.cwd,
           },
@@ -561,20 +602,66 @@ export async function runCli(
       case "typegen":
       case "tg": {
         const noGlobal = getBoolFlag(flags, "no-global");
-        const result = await runTypegenCommand(
+        const typegenOptions: Parameters<typeof runTypegenCommand>[0] & {
+          readonly clientTypes?: string;
+        } = {
+          cwd: io.cwd,
+          sourceRoot: getStringFlag(flags, "sourceRoot"),
+          outdir:
+            getStringFlag(flags, "outdir") ??
+            getStringFlag(flags, "typegen-dir"),
+          tsconfig: getStringFlag(flags, "tsconfig"),
+          config: getStringFlag(flags, "config"),
+          envFile: getStringArrayFlag(flags, "env-file"),
+          watch: getBoolFlag(flags, "watch") ?? false,
+          check: getBoolFlag(flags, "check") ?? false,
+          dryRun: getBoolFlag(flags, "dry-run") ?? false,
+          includeGlobalNamespace: noGlobal === true ? false : undefined,
+          clientTypes: getStringFlag(flags, "client-types"),
+          silent: getBoolFlag(flags, "silent") ?? false,
+        };
+        const result = await runTypegenCommand(typegenOptions, io);
+        return { exitCode: result.exitCode, output: result };
+      }
+
+      case "graph": {
+        let fmtRaw = getStringFlag(flags, "format");
+        if (fmtRaw === undefined && flags.format === true) {
+          const rawFromArgv = extractRawFlagValue(argv, "format");
+          if (rawFromArgv === "") {
+            io.stderr(
+              'Flag "--format" requires a value. Expected one of: mermaid, dot, json, html.',
+            );
+            return { exitCode: 1 };
+          }
+          fmtRaw = rawFromArgv;
+        }
+        if (
+          fmtRaw !== undefined &&
+          fmtRaw !== "mermaid" &&
+          fmtRaw !== "dot" &&
+          fmtRaw !== "json" &&
+          fmtRaw !== "html"
+        ) {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: mermaid, dot, json, html.`,
+          );
+          return { exitCode: 1 };
+        }
+        if (flags.cwd === true) {
+          io.stderr('Flag "--cwd" requires a directory path.');
+          return { exitCode: 1 };
+        }
+        const format: GraphOutputFormat = fmtRaw ?? "mermaid";
+        const result = await runGraphCommand(
           {
-            cwd: io.cwd,
+            cwd: getStringFlag(flags, "cwd") ?? io.cwd,
             sourceRoot: getStringFlag(flags, "sourceRoot"),
-            outdir:
-              getStringFlag(flags, "outdir") ??
-              getStringFlag(flags, "typegen-dir"),
             tsconfig: getStringFlag(flags, "tsconfig"),
             config: getStringFlag(flags, "config"),
-            envFile: getStringArrayFlag(flags, "env-file"),
-            watch: getBoolFlag(flags, "watch") ?? false,
-            check: getBoolFlag(flags, "check") ?? false,
-            dryRun: getBoolFlag(flags, "dry-run") ?? false,
-            includeGlobalNamespace: noGlobal === true ? false : undefined,
+            format,
+            module: getStringFlag(flags, "module"),
+            cyclesOnly: getBoolFlag(flags, "cycles-only") ?? false,
             silent: getBoolFlag(flags, "silent") ?? false,
           },
           io,

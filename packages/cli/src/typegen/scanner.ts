@@ -1812,6 +1812,732 @@ export class BunestTypegenScanner {
     return out;
   }
 
+  // ─── 5b. Standard Schema AST Inference Helpers ────────────────────────────
+
+  private formatInlinePropKey(key: string): string {
+    return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
+  }
+
+  private extractParamDecoratorKeyAndSchema(dec: Decorator): {
+    readonly key?: string;
+    readonly schemaExpr?: Expression;
+    readonly explicitSchemaOption: boolean;
+  } {
+    const args = dec.getArguments();
+    const arg0 = unwrapParensAndAs(args[0] as Expression | undefined);
+    const arg1 = unwrapParensAndAs(args[1] as Expression | undefined);
+
+    if (!arg0) {
+      return { explicitSchemaOption: false };
+    }
+
+    const strKey = extractStringLiteral(arg0);
+    if (strKey !== undefined) {
+      if (!arg1) {
+        return { key: strKey, explicitSchemaOption: false };
+      }
+      if (Node.isObjectLiteralExpression(arg1)) {
+        const schemaProp = unwrapParensAndAs(
+          getPropertyInitializer(arg1, "schema"),
+        );
+        const propOverride = extractStringLiteral(
+          getPropertyInitializer(arg1, "property"),
+        );
+        if (schemaProp) {
+          return {
+            key: propOverride ?? strKey,
+            schemaExpr: schemaProp,
+            explicitSchemaOption: true,
+          };
+        }
+        return { key: propOverride ?? strKey, explicitSchemaOption: false };
+      }
+      return {
+        key: strKey,
+        schemaExpr: arg1,
+        explicitSchemaOption: false,
+      };
+    }
+
+    if (Node.isObjectLiteralExpression(arg0)) {
+      const schemaProp = unwrapParensAndAs(
+        getPropertyInitializer(arg0, "schema"),
+      );
+      const propKey = extractStringLiteral(
+        getPropertyInitializer(arg0, "property"),
+      );
+      if (schemaProp) {
+        return {
+          key: propKey,
+          schemaExpr: schemaProp,
+          explicitSchemaOption: true,
+        };
+      }
+      // Inline Standard Schema object literal `{ "~standard": { ... } }`
+      if (getPropertyInitializer(arg0, "~standard")) {
+        return { schemaExpr: arg0, explicitSchemaOption: true };
+      }
+      return { key: propKey, explicitSchemaOption: false };
+    }
+
+    return { schemaExpr: arg0, explicitSchemaOption: false };
+  }
+
+  private extractResponseStandardSchemaExpr(
+    cls: ClassDeclaration,
+    method: MethodDeclaration,
+  ): Expression | undefined {
+    const fromDecorators = (decs: readonly Decorator[]): Expression | undefined => {
+      for (const dec of decs) {
+        const short = getDecoratorShortName(dec);
+        const arg0 = unwrapParensAndAs(
+          dec.getArguments()[0] as Expression | undefined,
+        );
+        if (short === "UseStandardSchema" && arg0) {
+          return arg0;
+        }
+        if (short === "SerializeOptions" && arg0) {
+          const schemaProp = unwrapParensAndAs(
+            getPropertyInitializer(arg0, "schema"),
+          );
+          if (schemaProp) return schemaProp;
+        }
+      }
+      return undefined;
+    };
+
+    return (
+      fromDecorators(method.getDecorators()) ??
+      fromDecorators(cls.getDecorators())
+    );
+  }
+
+  private resolveSchemaSymbolDeclaration(
+    ident: Expression,
+    sf: SourceFile,
+  ): Node | undefined {
+    if (!Node.isIdentifier(ident)) return undefined;
+    const sym = sf.getResolver().resolveIdentifierSymbol(ident.getText(), sf, ident);
+    const target = sym?.getAliasedSymbol() ?? sym;
+    return target?.getValueDeclaration() ?? target?.getDeclarations()[0];
+  }
+
+  private unwrapCreateSchemaDtoArg(clsDecl: ClassDeclaration): Expression | undefined {
+    const ext = clsDecl.getExtends();
+    if (!ext) return undefined;
+    const expr = unwrapParensAndAs(ext.getExpression());
+    if (!expr || !Node.isCallExpression(expr)) return undefined;
+    const calleeText = expr.getExpression().getText();
+    if (
+      calleeText === "createSchemaDto" ||
+      calleeText.endsWith(".createSchemaDto")
+    ) {
+      return unwrapParensAndAs(
+        expr.getArguments()[0] as Expression | undefined,
+      );
+    }
+    return undefined;
+  }
+
+  private extractDslSchemaType(
+    rawExpr: Expression,
+    mode: "input" | "output",
+    sf: SourceFile,
+    printer: TypePrinter,
+    visited: Set<string>,
+  ): {
+    readonly typeText: string;
+    readonly optional: boolean;
+    readonly nullable: boolean;
+    readonly imports: ExtractedImportRef[];
+  } | undefined {
+    const expr = unwrapParensAndAs(rawExpr);
+    if (!expr) return undefined;
+
+    // Unwrap `new StandardSchemaValidationPipe(schema)`
+    if (Node.isNewExpression(expr)) {
+      const callee = expr.getExpression().getText();
+      if (
+        callee === "StandardSchemaValidationPipe" ||
+        callee.endsWith(".StandardSchemaValidationPipe")
+      ) {
+        const arg0 = expr.getArguments()[0] as Expression | undefined;
+        if (arg0) {
+          return this.extractDslSchemaType(arg0, mode, sf, printer, visited);
+        }
+      }
+      return undefined;
+    }
+
+    // Follow identifier to its variable or createSchemaDto class declaration
+    if (Node.isIdentifier(expr)) {
+      const identName = expr.getText();
+      if (identName.endsWith("Pipe")) return undefined;
+      const visitKey = `${sf.getFilePath()}\0${identName}`;
+      if (visited.has(visitKey)) return undefined;
+
+      const decl = this.resolveSchemaSymbolDeclaration(expr, sf);
+      if (!decl) return undefined;
+
+      if (Node.isClassDeclaration(decl)) {
+        const innerArg = this.unwrapCreateSchemaDtoArg(decl);
+        if (!innerArg) return undefined;
+        const nextVisited = new Set(visited);
+        nextVisited.add(visitKey);
+        return this.extractDslSchemaType(
+          innerArg,
+          mode,
+          decl.getSourceFile(),
+          printer,
+          nextVisited,
+        );
+      }
+
+      if (Node.isVariableDeclaration(decl)) {
+        const init = unwrapParensAndAs(decl.getInitializer());
+        if (init) {
+          const nextVisited = new Set(visited);
+          nextVisited.add(visitKey);
+          const extracted = this.extractDslSchemaType(
+            init,
+            mode,
+            decl.getSourceFile(),
+            printer,
+            nextVisited,
+          );
+          if (extracted) return extracted;
+        }
+      }
+
+      return undefined;
+    }
+
+    if (!Node.isCallExpression(expr)) {
+      return undefined;
+    }
+
+    const callee = expr.getExpression();
+    const args = expr.getArguments();
+
+    // Direct function calls: `createSchemaDto(schema)`
+    if (Node.isIdentifier(callee)) {
+      if (callee.getText() === "createSchemaDto" && args[0]) {
+        return this.extractDslSchemaType(
+          args[0] as Expression,
+          mode,
+          sf,
+          printer,
+          visited,
+        );
+      }
+      return undefined;
+    }
+
+    if (!Node.isPropertyAccessExpression(callee)) {
+      return undefined;
+    }
+
+    const methodName = callee.getName();
+    const receiver = unwrapParensAndAs(callee.getExpression());
+    if (!receiver) return undefined;
+    const receiverText = receiver.getText();
+
+    // Base factory calls: `s.*(...)`, `z.*(...)`, `v.*(...)`, `s.coerce.*(...)`, `z.coerce.*(...)`
+    const isFactoryRoot =
+      receiverText === "s" ||
+      receiverText === "z" ||
+      receiverText === "v" ||
+      receiverText === "s.coerce" ||
+      receiverText === "z.coerce";
+
+    if (isFactoryRoot) {
+      switch (methodName) {
+        case "string":
+          return { typeText: "string", optional: false, nullable: false, imports: [] };
+        case "number":
+        case "int":
+          return { typeText: "number", optional: false, nullable: false, imports: [] };
+        case "boolean":
+          return { typeText: "boolean", optional: false, nullable: false, imports: [] };
+        case "date":
+          return { typeText: "Date", optional: false, nullable: false, imports: [] };
+        case "bigint":
+          return { typeText: "bigint", optional: false, nullable: false, imports: [] };
+        case "unknown":
+        case "any":
+          return { typeText: "unknown", optional: false, nullable: false, imports: [] };
+        case "null":
+          return { typeText: "null", optional: false, nullable: true, imports: [] };
+        case "undefined":
+          return { typeText: "undefined", optional: true, nullable: false, imports: [] };
+        case "literal": {
+          const parsed = extractStaticJsonValue(args[0] as Expression | undefined);
+          if (parsed.ok) {
+            const lit =
+              parsed.value === null ? "null" : JSON.stringify(parsed.value);
+            return { typeText: lit, optional: false, nullable: parsed.value === null, imports: [] };
+          }
+          return { typeText: "unknown", optional: false, nullable: false, imports: [] };
+        }
+        case "enum":
+        case "picklist": {
+          const arg0 = unwrapParensAndAs(args[0] as Expression | undefined);
+          if (arg0 && Node.isArrayLiteralExpression(arg0)) {
+            const lits: string[] = [];
+            for (const el of arg0.getElements()) {
+              const p = extractStaticJsonValue(el);
+              if (p.ok && (typeof p.value === "string" || typeof p.value === "number")) {
+                lits.push(JSON.stringify(p.value));
+              }
+            }
+            if (lits.length > 0) {
+              return { typeText: lits.join(" | "), optional: false, nullable: false, imports: [] };
+            }
+          } else if (arg0 && Node.isIdentifier(arg0)) {
+            const decl = this.resolveSchemaSymbolDeclaration(arg0, sf);
+            if (decl && Node.isEnumDeclaration(decl) && decl.isExported() && decl.getName()) {
+              const ref = printer.printNamedExport(
+                decl.getSourceFile().getFilePath(),
+                decl.getName()!,
+              );
+              return { typeText: ref.text, optional: false, nullable: false, imports: ref.imports };
+            }
+          }
+          return { typeText: "string", optional: false, nullable: false, imports: [] };
+        }
+        case "array": {
+          const inner = args[0]
+            ? this.extractDslSchemaType(args[0] as Expression, mode, sf, printer, visited)
+            : undefined;
+          const elemText = inner
+            ? this.finalizeDslType(inner)
+            : "unknown";
+          const needsParens =
+            elemText.includes(" | ") || elemText.includes(" & ");
+          return {
+            typeText: needsParens ? `(${elemText})[]` : `${elemText}[]`,
+            optional: false,
+            nullable: false,
+            imports: inner?.imports ?? [],
+          };
+        }
+        case "tuple": {
+          const arg0 = unwrapParensAndAs(args[0] as Expression | undefined);
+          if (arg0 && Node.isArrayLiteralExpression(arg0)) {
+            const imports: ExtractedImportRef[] = [];
+            const items = arg0.getElements().map((el) => {
+              const parsed = this.extractDslSchemaType(el, mode, sf, printer, visited);
+              if (parsed) {
+                imports.push(...parsed.imports);
+                return this.finalizeDslType(parsed);
+              }
+              return "unknown";
+            });
+            return {
+              typeText: `[${items.join(", ")}]`,
+              optional: false,
+              nullable: false,
+              imports,
+            };
+          }
+          return { typeText: "unknown[]", optional: false, nullable: false, imports: [] };
+        }
+        case "record": {
+          const keyExpr = args.length >= 2 ? (args[0] as Expression) : undefined;
+          const valExpr = (args.length >= 2 ? args[1] : args[0]) as Expression | undefined;
+          const kRes = keyExpr
+            ? this.extractDslSchemaType(keyExpr, mode, sf, printer, visited)
+            : undefined;
+          const vRes = valExpr
+            ? this.extractDslSchemaType(valExpr, mode, sf, printer, visited)
+            : undefined;
+          const kText = kRes ? this.finalizeDslType(kRes) : "string";
+          const vText = vRes ? this.finalizeDslType(vRes) : "unknown";
+          return {
+            typeText: `Record<${kText}, ${vText}>`,
+            optional: false,
+            nullable: false,
+            imports: [...(kRes?.imports ?? []), ...(vRes?.imports ?? [])],
+          };
+        }
+        case "object": {
+          const shapeArg = unwrapParensAndAs(args[0] as Expression | undefined);
+          if (!shapeArg || !Node.isObjectLiteralExpression(shapeArg)) {
+            return { typeText: "Record<string, unknown>", optional: false, nullable: false, imports: [] };
+          }
+          const imports: ExtractedImportRef[] = [];
+          const fields: string[] = [];
+          for (const prop of shapeArg.getProperties()) {
+            if (!Node.isPropertyAssignment(prop)) continue;
+            const rawName = prop.getName();
+            const cleanName =
+              (rawName.startsWith('"') && rawName.endsWith('"')) ||
+              (rawName.startsWith("'") && rawName.endsWith("'"))
+                ? rawName.slice(1, -1)
+                : rawName;
+            const valInit = prop.getInitializer();
+            const parsed = valInit
+              ? this.extractDslSchemaType(valInit, mode, sf, printer, visited)
+              : undefined;
+            if (parsed) {
+              imports.push(...parsed.imports);
+              const valType = parsed.nullable
+                ? `${parsed.typeText} | null`
+                : parsed.typeText;
+              const optMark = parsed.optional ? "?" : "";
+              fields.push(`${this.formatInlinePropKey(cleanName)}${optMark}: ${valType}`);
+            } else {
+              fields.push(`${this.formatInlinePropKey(cleanName)}: unknown`);
+            }
+          }
+          return {
+            typeText: fields.length > 0 ? `{ ${fields.join("; ")} }` : "Record<string, never>",
+            optional: false,
+            nullable: false,
+            imports,
+          };
+        }
+        case "union":
+        case "discriminatedUnion": {
+          const arrArg = unwrapParensAndAs(
+            (methodName === "discriminatedUnion" ? args[1] : args[0]) as
+              | Expression
+              | undefined,
+          );
+          if (arrArg && Node.isArrayLiteralExpression(arrArg)) {
+            const imports: ExtractedImportRef[] = [];
+            const members: string[] = [];
+            for (const el of arrArg.getElements()) {
+              const parsed = this.extractDslSchemaType(el, mode, sf, printer, visited);
+              if (parsed) {
+                imports.push(...parsed.imports);
+                members.push(this.finalizeDslType(parsed));
+              }
+            }
+            if (members.length > 0) {
+              return {
+                typeText: members.join(" | "),
+                optional: false,
+                nullable: false,
+                imports,
+              };
+            }
+          }
+          return undefined;
+        }
+        case "optional": {
+          const inner = args[0]
+            ? this.extractDslSchemaType(args[0] as Expression, mode, sf, printer, visited)
+            : undefined;
+          if (!inner) return undefined;
+          return { ...inner, optional: true };
+        }
+        case "nullable": {
+          const inner = args[0]
+            ? this.extractDslSchemaType(args[0] as Expression, mode, sf, printer, visited)
+            : undefined;
+          if (!inner) return undefined;
+          return { ...inner, nullable: true };
+        }
+        case "default": {
+          const inner = args[0]
+            ? this.extractDslSchemaType(args[0] as Expression, mode, sf, printer, visited)
+            : undefined;
+          if (!inner) return undefined;
+          return { ...inner, optional: mode === "input" ? true : inner.optional };
+        }
+        default:
+          return undefined;
+      }
+    }
+
+    // Chained schema methods: `schema.optional()`, `schema.nullable()`, `schema.min(1)`, `schema.partial()`, `schema.extend({...})`, etc.
+    const base = this.extractDslSchemaType(receiver, mode, sf, printer, visited);
+    if (!base) return undefined;
+
+    switch (methodName) {
+      case "optional":
+        return { ...base, optional: true };
+      case "nullable":
+        return { ...base, nullable: true };
+      case "nullish":
+        return { ...base, optional: true, nullable: true };
+      case "default":
+        return {
+          ...base,
+          optional: mode === "input" ? true : false,
+        };
+      case "array": {
+        const innerText = this.finalizeDslType(base);
+        const needsParens = innerText.includes(" | ") || innerText.includes(" & ");
+        return {
+          typeText: needsParens ? `(${innerText})[]` : `${innerText}[]`,
+          optional: false,
+          nullable: false,
+          imports: base.imports,
+        };
+      }
+      case "partial":
+        return {
+          ...base,
+          typeText: `Partial<${base.typeText}>`,
+        };
+      case "pick":
+      case "omit": {
+        const arg0 = unwrapParensAndAs(args[0] as Expression | undefined);
+        const keys: string[] = [];
+        if (arg0 && Node.isArrayLiteralExpression(arg0)) {
+          for (const el of arg0.getElements()) {
+            const k = extractStringLiteral(el);
+            if (k) keys.push(JSON.stringify(k));
+          }
+        } else if (arg0 && Node.isObjectLiteralExpression(arg0)) {
+          for (const p of arg0.getProperties()) {
+            if (Node.isPropertyAssignment(p)) {
+              const init = p.getInitializer();
+              if (init?.getKind() === SyntaxKind.TrueKeyword) {
+                keys.push(JSON.stringify(p.getName().replace(/^['"]|['"]$/g, "")));
+              }
+            }
+          }
+        }
+        if (keys.length > 0) {
+          const util = methodName === "pick" ? "Pick" : "Omit";
+          return {
+            ...base,
+            typeText: `${util}<${base.typeText}, ${keys.join(" | ")}>`,
+          };
+        }
+        return base;
+      }
+      case "extend": {
+        const extArg = unwrapParensAndAs(args[0] as Expression | undefined);
+        if (extArg && Node.isObjectLiteralExpression(extArg)) {
+          const imports = [...base.imports];
+          const extraFields: string[] = [];
+          for (const prop of extArg.getProperties()) {
+            if (!Node.isPropertyAssignment(prop)) continue;
+            const cleanName = prop.getName().replace(/^['"]|['"]$/g, "");
+            const valInit = prop.getInitializer();
+            const parsed = valInit
+              ? this.extractDslSchemaType(valInit, mode, sf, printer, visited)
+              : undefined;
+            if (parsed) {
+              imports.push(...parsed.imports);
+              const valType = parsed.nullable
+                ? `${parsed.typeText} | null`
+                : parsed.typeText;
+              extraFields.push(
+                `${this.formatInlinePropKey(cleanName)}${parsed.optional ? "?" : ""}: ${valType}`,
+              );
+            }
+          }
+          if (extraFields.length > 0) {
+            return {
+              ...base,
+              typeText: `${base.typeText} & { ${extraFields.join("; ")} }`,
+              imports,
+            };
+          }
+        }
+        return base;
+      }
+      case "transform":
+        // For `.transform()`, output type may differ from input; let Tier 2 handle exported schemas in output mode
+        if (mode === "output") {
+          return undefined;
+        }
+        return base;
+      default:
+        // Refinement/constraint/metadata chains (`.min()`, `.max()`, `.int()`, `.email()`, `.refine()`, `.describe()`, `.meta()`, `.strict()`, etc.)
+        return base;
+    }
+  }
+
+  private finalizeDslType(entry: {
+    readonly typeText: string;
+    readonly optional: boolean;
+    readonly nullable: boolean;
+  }): string {
+    let text = entry.typeText;
+    if (entry.nullable && !text.includes("null")) {
+      text = `${text} | null`;
+    }
+    if (entry.optional && !text.includes("undefined")) {
+      text = `${text} | undefined`;
+    }
+    return text;
+  }
+
+  /**
+   * Infers a TypeScript input/output type from an inline or referenced Standard Schema
+   * expression (`@Body(CreateUserSchema)`, `@Query(s.object(...))`, `@Param("id", IdSchema)`,
+   * `@UseStandardSchema(UserResponseSchema)`, or `createSchemaDto(Schema)`).
+   *
+   * Tier 1: Direct zero-dep AST shape extraction for `s.*` / `z.*` / `v.*` / `createSchemaDto(...)`.
+   * Tier 2: Explicit `StandardSchemaV1<In, Out>` type annotation or portable
+   *         `StandardSchemaInferInput<typeof Schema>` / `StandardSchemaInferOutput<typeof Schema>`
+   *         for any exported external Standard Schema (Zod, Valibot, ArkType, custom).
+   */
+  private inferTypeFromStandardSchemaExpr(
+    rawExpr: Expression,
+    mode: "input" | "output",
+    sf: SourceFile,
+    printer: TypePrinter,
+    explicitSchemaContext: boolean,
+  ): {
+    readonly text: string;
+    readonly optional: boolean;
+    readonly imports: ExtractedImportRef[];
+  } | undefined {
+    const expr = unwrapParensAndAs(rawExpr);
+    if (!expr) return undefined;
+
+    // Tier 1: AST extraction of fluent DSL / `createSchemaDto(...)`
+    const dsl = this.extractDslSchemaType(expr, mode, sf, printer, new Set());
+    if (dsl) {
+      const baseText = dsl.nullable && !dsl.typeText.includes("null")
+        ? `${dsl.typeText} | null`
+        : dsl.typeText;
+      return {
+        text: sanitizeTypeText(baseText, "unknown"),
+        optional: dsl.optional,
+        imports: dsl.imports,
+      };
+    }
+
+    // Unwrap `new StandardSchemaValidationPipe(Schema)` for Tier 2 as well
+    let candidate: Expression = expr;
+    if (Node.isNewExpression(expr)) {
+      const callee = expr.getExpression().getText();
+      if (
+        callee === "StandardSchemaValidationPipe" ||
+        callee.endsWith(".StandardSchemaValidationPipe")
+      ) {
+        const arg0 = unwrapParensAndAs(
+          expr.getArguments()[0] as Expression | undefined,
+        );
+        if (!arg0) return undefined;
+        candidate = arg0;
+        explicitSchemaContext = true;
+      } else {
+        return undefined;
+      }
+    }
+
+    // Tier 2: Exported or annotated Standard Schema variable (Zod/Valibot/ArkType/custom StandardSchemaV1)
+    if (Node.isIdentifier(candidate)) {
+      const identName = candidate.getText();
+      if (!explicitSchemaContext && identName.endsWith("Pipe")) {
+        return undefined;
+      }
+
+      const decl = this.resolveSchemaSymbolDeclaration(candidate, sf);
+      if (!decl) {
+        return undefined;
+      }
+
+      // Skip plain non-schema classes (e.g. custom PipeTransform classes)
+      if (Node.isClassDeclaration(decl)) {
+        return undefined;
+      }
+
+      if (Node.isVariableDeclaration(decl)) {
+        const typeNode = decl.getTypeNode();
+        const typeText = typeNode?.getText().trim() ?? "";
+        const initText = decl.getInitializer()?.getText() ?? "";
+        const declType = decl.getType();
+        const resolvedTypeText = declType.getText();
+        const looksLikeStandardSchema =
+          explicitSchemaContext ||
+          typeText.includes("StandardSchema") ||
+          typeText.includes("BunestSchema") ||
+          typeText.includes("ZodType") ||
+          typeText.includes("ZodSchema") ||
+          resolvedTypeText.includes("~standard") ||
+          resolvedTypeText.includes("StandardSchema") ||
+          declType.getProperties().some((p) => p.getName() === "~standard") ||
+          initText.includes("~standard") ||
+          /^(?:s|z|v)\s*\./.test(initText.trim()) ||
+          initText.includes("type(") ||
+          /(?:Schema|Validator)$/i.test(identName);
+
+        if (!looksLikeStandardSchema) {
+          return undefined;
+        }
+
+        // Check explicit `StandardSchemaV1<Input, Output>` type arguments first
+        const symName =
+          declType.getAliasSymbol()?.getName() ?? declType.getSymbol()?.getName();
+        if (
+          symName === "StandardSchemaV1" ||
+          symName === "BunestSchema" ||
+          symName === "BaseSchema"
+        ) {
+          const typeArgs = declType.getTypeArguments();
+          const chosen =
+            mode === "output" ? (typeArgs[1] ?? typeArgs[0]) : typeArgs[0];
+          if (chosen) {
+            const printed = printer.printType(chosen, this.project, "unknown");
+            if (printed.text !== "unknown") {
+              return {
+                text: printed.text,
+                optional: false,
+                imports: printed.imports,
+              };
+            }
+          }
+        }
+
+        // Exported schema variable -> emit portable `StandardSchemaInferInput<typeof Schema>` / `StandardSchemaInferOutput<typeof Schema>`
+        if (isDeclarationExported(decl)) {
+          const declFile = decl.getSourceFile().getFilePath();
+          const exportName = decl.getName();
+          const ref = printer.printNamedExport(declFile, exportName);
+          const helperName =
+            mode === "input"
+              ? "StandardSchemaInferInput"
+              : "StandardSchemaInferOutput";
+          return {
+            text: `${helperName}<typeof ${ref.text}>`,
+            optional: false,
+            imports: ref.imports,
+          };
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private inferTypeFromUnexportedSchemaDtoParam(
+    param: ParameterDeclaration,
+    sf: SourceFile,
+    printer: TypePrinter,
+  ): { readonly text: string; readonly imports: ExtractedImportRef[] } | undefined {
+    const typeNode = param.getTypeNode();
+    if (!typeNode) return undefined;
+    const rawName = typeNode.getText().trim().replace(/\s*\|\s*(?:undefined|null)/g, "").trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(rawName)) return undefined;
+    const sym = sf.getResolver().resolveIdentifierSymbol(rawName, sf, typeNode);
+    const decl =
+      sym?.getAliasedSymbol()?.getDeclarations()[0] ??
+      sym?.getDeclarations()[0];
+    if (!decl || !Node.isClassDeclaration(decl)) return undefined;
+    const innerSchema = this.unwrapCreateSchemaDtoArg(decl);
+    if (!innerSchema) return undefined;
+    const inferred = this.inferTypeFromStandardSchemaExpr(
+      innerSchema,
+      "input",
+      decl.getSourceFile(),
+      printer,
+      true,
+    );
+    return inferred
+      ? { text: inferred.text, imports: inferred.imports }
+      : undefined;
+  }
+
   private scanRoutesInFile(
     sf: SourceFile,
     printer: TypePrinter,
@@ -1831,7 +2557,7 @@ export class BunestTypegenScanner {
         const handlerName = method.getName();
         const imports: ExtractedImportRef[] = [];
 
-        // Extract @Param, @Query, @Body from parameters
+        // Extract @Param, @Query, @Body from parameters (with inline Standard Schema inference)
         const namedParams = new Map<
           string,
           { type: string; optional: boolean }
@@ -1847,9 +2573,13 @@ export class BunestTypegenScanner {
         for (const param of method.getParameters()) {
           for (const dec of param.getDecorators()) {
             const decName = getDecoratorShortName(dec);
-            const firstArg = extractStringLiteral(
-              dec.getArguments()[0] as Expression | undefined,
-            );
+            if (decName !== "Param" && decName !== "Query" && decName !== "Body") {
+              continue;
+            }
+
+            const { key: firstArg, schemaExpr, explicitSchemaOption } =
+              this.extractParamDecoratorKeyAndSchema(dec);
+
             const effectiveParamType =
               param.isOptional() || param.hasInitializer()
                 ? param.getType().getNonNullableType()
@@ -1860,29 +2590,66 @@ export class BunestTypegenScanner {
               "unknown",
             );
 
+            const hasConcreteParamType =
+              param.getTypeNode() !== undefined &&
+              printed.text !== "unknown" &&
+              printed.text !== "any";
+
+            let resolvedText = printed.text;
+            let resolvedImports: ExtractedImportRef[] = printed.imports;
+            let schemaOptional = false;
+
+            if (!hasConcreteParamType && schemaExpr) {
+              const inferred = this.inferTypeFromStandardSchemaExpr(
+                schemaExpr,
+                "input",
+                sf,
+                printer,
+                explicitSchemaOption,
+              );
+              if (inferred) {
+                resolvedText = inferred.text;
+                resolvedImports = inferred.imports;
+                schemaOptional = inferred.optional;
+              }
+            } else if (!hasConcreteParamType && !schemaExpr) {
+              const dtoInferred = this.inferTypeFromUnexportedSchemaDtoParam(
+                param,
+                sf,
+                printer,
+              );
+              if (dtoInferred) {
+                resolvedText = dtoInferred.text;
+                resolvedImports = dtoInferred.imports;
+              }
+            }
+
             if (decName === "Param") {
-              imports.push(...printed.imports);
+              imports.push(...resolvedImports);
               if (firstArg) {
                 namedParams.set(firstArg, {
-                  type: printed.text,
-                  optional: param.isOptional(),
+                  type: resolvedText,
+                  optional: param.isOptional() || schemaOptional,
                 });
               } else {
-                wholeParamsType = printed.text;
+                wholeParamsType = resolvedText;
               }
             } else if (decName === "Query") {
-              imports.push(...printed.imports);
+              imports.push(...resolvedImports);
               if (firstArg) {
                 namedQuery.set(firstArg, {
-                  type: printed.text,
-                  optional: param.isOptional() || param.hasInitializer(),
+                  type: resolvedText,
+                  optional:
+                    param.isOptional() ||
+                    param.hasInitializer() ||
+                    schemaOptional,
                 });
               } else {
-                wholeQueryType = printed.text;
+                wholeQueryType = resolvedText;
               }
             } else if (decName === "Body" && !firstArg) {
-              imports.push(...printed.imports);
-              bodyTypeText = printed.text;
+              imports.push(...resolvedImports);
+              bodyTypeText = resolvedText;
             }
           }
         }
@@ -1900,7 +2667,34 @@ export class BunestTypegenScanner {
 
         const retType = unwrapPromiseType(method.getReturnType());
         const resPrinted = printer.printType(retType, this.project, "unknown");
-        imports.push(...resPrinted.imports);
+        let responseTypeText = resPrinted.text;
+        let responseImports: ExtractedImportRef[] = resPrinted.imports;
+
+        const responseSchemaExpr = this.extractResponseStandardSchemaExpr(
+          cls,
+          method,
+        );
+        const hasExplicitConcreteReturnType =
+          method.getReturnTypeNode() !== undefined &&
+          resPrinted.text !== "unknown" &&
+          resPrinted.text !== "any";
+
+        if (responseSchemaExpr && !hasExplicitConcreteReturnType) {
+          const inferredResp = this.inferTypeFromStandardSchemaExpr(
+            responseSchemaExpr,
+            "output",
+            sf,
+            printer,
+            true,
+          );
+          if (inferredResp) {
+            responseTypeText = inferredResp.optional
+              ? `${inferredResp.text} | undefined`
+              : inferredResp.text;
+            responseImports = inferredResp.imports;
+          }
+        }
+        imports.push(...responseImports);
 
         for (const prefix of prefixes) {
           for (const route of httpRoutes) {
@@ -1936,7 +2730,7 @@ export class BunestTypegenScanner {
               paramsTypeText,
               queryTypeText,
               bodyTypeText,
-              responseTypeText: resPrinted.text,
+              responseTypeText,
               controllerName,
               handlerName,
               sourceFile: filePath,

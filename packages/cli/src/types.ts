@@ -176,6 +176,7 @@ export interface DevServerOptions {
   readonly cwd?: string;
   readonly typegen?: boolean;
   readonly typegenOutDir?: string;
+  readonly clientTypes?: string;
   readonly silent?: boolean;
   readonly spawn?: SpawnFn;
 }
@@ -205,6 +206,7 @@ export interface StartCommandOptions {
   readonly cwd?: string;
   readonly typegen?: boolean;
   readonly typegenOutDir?: string;
+  readonly clientTypes?: string;
   readonly spawn?: SpawnFn;
 }
 

@@ -10,7 +10,11 @@ import {
 } from "@bunest/core";
 import { loadBunestConfig } from "../config/bunest-config.loader";
 import type { CliIO } from "../types";
-import { formatTypegenSummary, writeTypegenOutput } from "./emitter";
+import {
+  formatTypegenSummary,
+  writeClientRouteTypes,
+  writeTypegenOutput,
+} from "./emitter";
 import { BunestTypegenScanner } from "./scanner";
 import type {
   TypegenResult,
@@ -58,9 +62,11 @@ function shouldTriggerTypegen(
   filePath: string,
   outputPath: string,
   envFileBasenames: ReadonlySet<string>,
+  clientTypesOutputPath?: string,
 ): boolean {
   const resolved = resolve(filePath);
   if (resolved === outputPath) return false;
+  if (clientTypesOutputPath && resolved === clientTypesOutputPath) return false;
   const parts = resolved.split(/[\\/]/);
   for (const seg of parts) {
     if (IGNORED_WATCH_SEGMENTS.has(seg)) return false;
@@ -97,11 +103,17 @@ export async function startTypegenWatcher(
             configPath: options.bunestConfigPath,
           })
         ).config);
-  const cfgTypegen = bunestConfig.typegen;
+  const cfgTypegen = bunestConfig.typegen as
+    | (typeof bunestConfig.typegen & { readonly clientTypes?: string })
+    | undefined;
   const sourceRoot = options.sourceRoot ?? cfgTypegen?.sourceRoot ?? "src";
   const outDir = options.outDir ?? cfgTypegen?.outDir ?? ".bunest/types";
   const fileName = options.fileName ?? cfgTypegen?.fileName ?? "bunest.d.ts";
   const outputPath = resolve(cwd, outDir, fileName);
+  const clientTypesPath = options.clientTypes ?? cfgTypegen?.clientTypes;
+  const clientTypesOutputPath = clientTypesPath
+    ? resolve(cwd, clientTypesPath)
+    : undefined;
   const includeGlobalNamespace =
     options.includeGlobalNamespace ?? cfgTypegen?.includeGlobalNamespace ?? true;
   const debounceMs = Math.max(20, options.debounceMs ?? 120);
@@ -152,13 +164,28 @@ export async function startTypegenWatcher(
       includeGlobalNamespace,
     });
     latestScan = scan;
-    return await writeTypegenOutput(scan, {
+    const baseResult = await writeTypegenOutput(scan, {
       cwd,
       outputPath,
       includeGlobalNamespace,
       dryRun: options.dryRun,
       check: options.check,
     });
+    if (!clientTypesOutputPath) {
+      return baseResult;
+    }
+    const clientTypes = await writeClientRouteTypes(scan, {
+      cwd,
+      outputPath: clientTypesOutputPath,
+      dryRun: options.dryRun,
+      check: options.check,
+    });
+    return {
+      ...baseResult,
+      changed: baseResult.changed || clientTypes.changed,
+      upToDate: baseResult.upToDate && clientTypes.upToDate,
+      clientTypes,
+    };
   };
 
   // Initial pass before returning so IDE types are ready immediately on dev start
@@ -214,7 +241,14 @@ export async function startTypegenWatcher(
 
   const schedulePath = (absPath: string): void => {
     if (closed) return;
-    if (!shouldTriggerTypegen(absPath, outputPath, envFileBasenames)) {
+    if (
+      !shouldTriggerTypegen(
+        absPath,
+        outputPath,
+        envFileBasenames,
+        clientTypesOutputPath,
+      )
+    ) {
       return;
     }
     pendingPaths.add(absPath);

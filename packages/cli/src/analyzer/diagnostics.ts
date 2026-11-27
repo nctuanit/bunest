@@ -23,7 +23,13 @@ import {
   runCustomDiagnosticRules,
   type CustomDiagnosticRule,
 } from "./custom-rules";
-import type { StaticModuleGraph, StaticModuleNode } from "./module-graph";
+import type {
+  ConstructorDependencyInfo,
+  ProviderScope,
+  StaticModuleGraph,
+  StaticModuleNode,
+  StaticProviderNode,
+} from "./module-graph";
 import type {
   AnalyzedEntity,
   AnalyzedRepository,
@@ -37,7 +43,11 @@ export type CoreDiagnosticCode =
   | "BUNEST004"
   | "BUNEST005"
   | "BUNEST006"
-  | "BUNEST007";
+  | "BUNEST007"
+  | "BUNEST008"
+  | "BUNEST009"
+  | "BUNEST010"
+  | "BUNEST011";
 
 export type DecoratorDiagnosticCode =
   | "BUNEST_DEC001"
@@ -60,6 +70,7 @@ export interface BunestDiagnostic {
   readonly severity: "error" | "warning" | "info";
   readonly message: string;
   readonly location: SourceLocation;
+  readonly suggestion?: string;
   readonly fixData?: Record<string, unknown>;
 }
 
@@ -83,10 +94,23 @@ const PRIMITIVE_OR_BUILTIN_TYPES = new Set([
   "Record",
   "Promise",
   "Function",
+  "Request",
+  "Response",
+  "Headers",
+  "URL",
+  "AbortSignal",
   "ModuleRef",
   "Reflector",
   "Logger",
+  "ConsoleLogger",
+  "ClsService",
   "ConfigService",
+  "HttpAdapterHost",
+  "DiscoveryService",
+  "MetadataScanner",
+  "ModulesContainer",
+  "ApplicationConfig",
+  "ExternalContextCreator",
   "EventEmitterService",
   "EventEmitter2",
   "CommandBus",
@@ -99,6 +123,68 @@ const PRIMITIVE_OR_BUILTIN_TYPES = new Set([
   "OrmMigrationRunner",
   "HttpService",
   "ClientProxy",
+]);
+
+const WELL_KNOWN_DI_TOKENS = new Set([
+  // Core DI & HTTP runtime tokens
+  "Reflector",
+  "REFLECTOR",
+  "REQUEST",
+  "REQUEST_CONTEXT",
+  "INQUIRER",
+  "HOST_PARAM",
+  "HTTP_ADAPTER_HOST",
+  "HttpAdapterHost",
+  "ModuleRef",
+  "MODULE_REF",
+  "ApplicationConfig",
+  "DiscoveryService",
+  "MetadataScanner",
+  "ModulesContainer",
+  "ExternalContextCreator",
+  "APP_GUARD",
+  "APP_PIPE",
+  "APP_INTERCEPTOR",
+  "APP_FILTER",
+  "Logger",
+  "ConsoleLogger",
+  // CLS & Config
+  "ClsService",
+  "CLS_ID",
+  "CLS_REQ",
+  "CLS_RES",
+  "CLS_MIDDLEWARE_OPTIONS",
+  "ConfigService",
+  "CONFIG_OPTIONS",
+  "CONFIGURATION_TOKEN",
+  "CONFIGURATION_SERVICE_TOKEN",
+  // ORM / Data / Cache / Events / CQRS / Ecosystem built-ins
+  "EventEmitterService",
+  "EventEmitter2",
+  "CommandBus",
+  "QueryBus",
+  "EventBus",
+  "DataSource",
+  "DATA_SOURCE",
+  "ORM_DATA_SOURCE",
+  "EntityManager",
+  "ENTITY_MANAGER",
+  "OrmMigrationRunner",
+  "CACHE_MANAGER",
+  "CacheManager",
+  "REDIS_CLIENT",
+  "HttpService",
+  "ClientProxy",
+  "QUEUE_REGISTRY",
+  "MAILER_OPTIONS",
+  "STORAGE_SERVICE",
+  "I18N_SERVICE",
+  "AI_SERVICE",
+  "AUTH_SERVICE",
+  "TRACER",
+  "METRICS_REGISTRY",
+  "DEVTOOLS_SERVICE",
+  "HEALTH_CHECK_SERVICE",
 ]);
 
 function collectVisibleProvidersForModule(
@@ -141,13 +227,227 @@ function collectVisibleProvidersForModule(
   return visible;
 }
 
+const BUILTIN_REQUEST_TOKENS = new Set(["REQUEST", "REQUEST_CONTEXT"]);
+
+interface ScopeChainEntry {
+  readonly name: string;
+  readonly scope: ProviderScope;
+}
+
+function isAutoModuleNode(mod: StaticModuleNode): boolean {
+  return mod.isAutoModule ?? mod.autoDiscover;
+}
+
+function resolveDependencyProvider(
+  dep: ConstructorDependencyInfo,
+  graph: StaticModuleGraph,
+): StaticProviderNode | undefined {
+  if (dep.isForwardRef && dep.token) {
+    const byToken = graph.providerByName.get(dep.token);
+    if (byToken) return byToken;
+  }
+  if (dep.token) {
+    return graph.providerByName.get(dep.token);
+  }
+  if (PRIMITIVE_OR_BUILTIN_TYPES.has(dep.typeName)) {
+    return undefined;
+  }
+  return graph.providerByName.get(dep.typeName);
+}
+
+/**
+ * Finds the shortest dependency chain from a SINGLETON root through a direct
+ * constructor dependency (`firstDep`) to any REQUEST-scoped provider or
+ * built-in request token (`REQUEST` / `REQUEST_CONTEXT`).
+ *
+ * Matches ADR-012 §3: a SINGLETON consumer MUST NEVER depend (directly or
+ * transitively, including through SINGLETON or TRANSIENT intermediates) on a
+ * REQUEST-scoped dependency.
+ */
+function findScopeLeakChain(
+  root: StaticProviderNode,
+  firstDep: ConstructorDependencyInfo,
+  graph: StaticModuleGraph,
+): ScopeChainEntry[] | undefined {
+  const rootEntry: ScopeChainEntry = { name: root.name, scope: root.scope };
+
+  if (firstDep.token && BUILTIN_REQUEST_TOKENS.has(firstDep.token)) {
+    return [rootEntry, { name: firstDep.token, scope: "REQUEST" }];
+  }
+
+  const firstTarget = resolveDependencyProvider(firstDep, graph);
+  if (!firstTarget) return undefined;
+
+  if (firstTarget.scope === "REQUEST") {
+    return [rootEntry, { name: firstTarget.name, scope: "REQUEST" }];
+  }
+
+  // BFS for shortest transitive chain from firstTarget -> ... -> REQUEST provider
+  const visited = new Set<string>([root.name, firstTarget.name]);
+  const queue: Array<{
+    readonly node: StaticProviderNode;
+    readonly chain: readonly ScopeChainEntry[];
+  }> = [
+    {
+      node: firstTarget,
+      chain: [
+        rootEntry,
+        { name: firstTarget.name, scope: firstTarget.scope },
+      ],
+    },
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const nextDep of current.node.dependencies) {
+      if (nextDep.token && BUILTIN_REQUEST_TOKENS.has(nextDep.token)) {
+        return [
+          ...current.chain,
+          { name: nextDep.token, scope: "REQUEST" },
+        ];
+      }
+
+      const nextProv = resolveDependencyProvider(nextDep, graph);
+      if (!nextProv) continue;
+
+      if (nextProv.scope === "REQUEST") {
+        return [
+          ...current.chain,
+          { name: nextProv.name, scope: "REQUEST" },
+        ];
+      }
+
+      if (visited.has(nextProv.name)) continue;
+      visited.add(nextProv.name);
+      queue.push({
+        node: nextProv,
+        chain: [
+          ...current.chain,
+          { name: nextProv.name, scope: nextProv.scope },
+        ],
+      });
+    }
+  }
+
+  return undefined;
+}
+
+function formatScopeLeakMessage(chain: readonly ScopeChainEntry[]): string {
+  const consumer = chain[0]!;
+  const dependency = chain[chain.length - 1]!;
+  const formattedChain = chain
+    .map((node) => `${node.name} [${node.scope}]`)
+    .join(" -> ");
+  const nonRequestNodes = chain
+    .filter((node) => node.scope !== "REQUEST")
+    .map((node) => `"${node.name}"`);
+  const targetList =
+    nonRequestNodes.length > 0
+      ? nonRequestNodes.join(" and ")
+      : `"${consumer.name}"`;
+
+  return (
+    `Scope leak (BUNEST_E003 / ScopeLeakException): ${consumer.scope} "${consumer.name}" cannot depend on ${dependency.scope}-scoped "${dependency.name}" — Bunest fails fast at bootstrap (ADR-012). ` +
+    `Chain: ${formattedChain}. ` +
+    `Fix: Mark ${targetList} with { scope: Scope.REQUEST }, or read ambient RequestContext/ClsService inside methods.`
+  );
+}
+
+function expandWithTokenConstants(
+  tokens: Iterable<string>,
+  constants?: ReadonlyMap<string, string>,
+): Set<string> {
+  const expanded = new Set<string>();
+  for (const t of tokens) {
+    expanded.add(t);
+    const resolved = constants?.get(t);
+    if (resolved !== undefined) {
+      expanded.add(resolved);
+    }
+  }
+  return expanded;
+}
+
+function collectVisibleTokensForModule(
+  mod: StaticModuleNode,
+  graph: StaticModuleGraph,
+): Set<string> {
+  const raw = new Set<string>([...mod.providers, ...mod.controllers]);
+
+  for (const m of graph.modules) {
+    if (m.isGlobal) {
+      for (const p of m.exports) raw.add(p);
+      for (const p of m.providers) raw.add(p);
+    }
+  }
+
+  const visited = new Set<string>([mod.name]);
+  const queue = [...mod.imports];
+  while (queue.length > 0) {
+    const impName = queue.shift()!;
+    raw.add(impName);
+    if (visited.has(impName)) continue;
+    visited.add(impName);
+    const targetMod = graph.moduleByName.get(impName);
+    if (!targetMod) continue;
+    for (const exp of targetMod.exports) raw.add(exp);
+    for (const exp of targetMod.exports) {
+      if (graph.moduleByName.has(exp) && !visited.has(exp)) {
+        queue.push(exp);
+      }
+    }
+  }
+
+  return expandWithTokenConstants(raw, graph.stringTokenConstants);
+}
+
+function collectExportableTokensForModule(
+  mod: StaticModuleNode,
+  graph: StaticModuleGraph,
+): Set<string> {
+  const raw = new Set<string>([...mod.providers, ...mod.imports]);
+
+  const visited = new Set<string>([mod.name]);
+  const queue = [...mod.imports];
+  while (queue.length > 0) {
+    const impName = queue.shift()!;
+    if (visited.has(impName)) continue;
+    visited.add(impName);
+    const targetMod = graph.moduleByName.get(impName);
+    if (!targetMod) continue;
+    for (const exp of targetMod.exports) {
+      raw.add(exp);
+      if (graph.moduleByName.has(exp) && !visited.has(exp)) {
+        queue.push(exp);
+      }
+    }
+  }
+
+  return expandWithTokenConstants(raw, graph.stringTokenConstants);
+}
+
+function toUpperSnakeTokenHint(typeName: string): string {
+  const stripped = /^I[A-Z]/.test(typeName) ? typeName.slice(1) : typeName;
+  return (
+    stripped
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+      .toUpperCase() + "_TOKEN"
+  );
+}
+
+function isWellKnownToken(token: string): boolean {
+  if (WELL_KNOWN_DI_TOKENS.has(token)) return true;
+  if (token.startsWith("bunest:") || token.startsWith("BUNEST_")) return true;
+  return false;
+}
+
 function runCoreDiagnostics(
   sourceFiles: readonly SourceFile[],
   scan: TypegenScanResult,
   graph: StaticModuleGraph,
 ): BunestDiagnostic[] {
   const diagnostics: BunestDiagnostic[] = [];
-  const hasAutoDiscoverModule = graph.modules.some((m) => m.autoDiscover);
 
   // Map each provider/controller -> declaring modules
   const modulesForClass = new Map<string, StaticModuleNode[]>();
@@ -159,18 +459,54 @@ function runCoreDiagnostics(
     }
   }
 
-  // BUNEST001, BUNEST003, BUNEST004 on every provider/controller constructor
+  // BUNEST001, BUNEST003, BUNEST004, BUNEST008, BUNEST009 on every provider/controller constructor
   for (const prov of graph.providers) {
     const declaringModules = modulesForClass.get(prov.name) ?? [];
-    const visibleSets = declaringModules.map((m) =>
+    // Scope BUNEST001 / BUNEST009 bypass strictly to modules decorated with @AutoModule
+    const explicitDeclaringModules = declaringModules.filter(
+      (m) => !isAutoModuleNode(m),
+    );
+    const explicitVisibleSets = explicitDeclaringModules.map((m) =>
       collectVisibleProvidersForModule(m, graph),
+    );
+    const explicitVisibleTokenSets = explicitDeclaringModules.map((m) =>
+      collectVisibleTokensForModule(m, graph),
     );
 
     for (const dep of prov.dependencies) {
-      // BUNEST004: `import type` breaks `emitDecoratorMetadata` constructor injection
+      // BUNEST008: Interface or type alias injected without @Inject(TOKEN) (erased at runtime!)
       if (
+        (prov.kind === "provider" || prov.kind === "controller") &&
+        !prov.isAbstract &&
+        !dep.isOptional &&
+        !dep.token &&
+        !dep.injectDecorator &&
+        dep.erasedTypeKind !== undefined &&
+        !PRIMITIVE_OR_BUILTIN_TYPES.has(dep.typeName)
+      ) {
+        const kindLabel =
+          dep.erasedTypeKind === "interface" ? "interface" : "type alias";
+        const suggestedToken = toUpperSnakeTokenHint(dep.typeName);
+        const suggestion = `Add @Inject(${suggestedToken}) (or @Inject("${suggestedToken}")) and register { provide: ${suggestedToken}, useClass | useValue | useFactory }, or replace the ${kindLabel} with an abstract class token.`;
+        diagnostics.push({
+          code: "BUNEST008",
+          severity: "error",
+          message: `Constructor parameter "${dep.paramName}: ${dep.typeName}" in "${prov.name}" is typed as a TypeScript ${kindLabel}, which is erased at runtime (\`design:paramtypes\` emits \`Object\`). Fix: ${suggestion}`,
+          location: dep.location,
+          suggestion,
+          fixData: {
+            kind: "addInjectToken",
+            paramName: dep.paramName,
+            typeName: dep.typeName,
+            erasedTypeKind: dep.erasedTypeKind,
+            suggestedToken,
+          },
+        });
+      } else if (
+        // BUNEST004: `import type` breaks `emitDecoratorMetadata` constructor injection (for runtime classes)
         dep.isTypeOnlyImport &&
         !dep.token &&
+        !dep.injectDecorator &&
         !PRIMITIVE_OR_BUILTIN_TYPES.has(dep.typeName)
       ) {
         diagnostics.push({
@@ -186,7 +522,61 @@ function runCoreDiagnostics(
         });
       }
 
-      // Skip primitive / explicit string-token deps for provider-graph checks
+      // BUNEST003: Direct or transitive scope leak (SINGLETON -> ... -> REQUEST)
+      if (prov.scope === "SINGLETON") {
+        const leakChain = findScopeLeakChain(prov, dep, graph);
+        if (leakChain) {
+          diagnostics.push({
+            code: "BUNEST003",
+            severity: "error",
+            message: formatScopeLeakMessage(leakChain),
+            location: dep.location,
+          });
+        }
+      }
+
+      // BUNEST009: Unregistered @Inject("TOKEN") or @Inject(SYMBOL_TOKEN)
+      if (
+        dep.injectDecorator === "Inject" &&
+        !dep.isOptional &&
+        !dep.isForwardRef &&
+        dep.token &&
+        dep.tokenKind !== "call" &&
+        !isWellKnownToken(dep.token) &&
+        explicitDeclaringModules.length > 0 &&
+        explicitDeclaringModules.every((m) => !m.hasDynamicProviders)
+      ) {
+        const resolvedConst = graph.stringTokenConstants?.get(dep.token);
+        const isTokenVisible = explicitVisibleTokenSets.some(
+          (set) =>
+            set.has(dep.token!) ||
+            (resolvedConst !== undefined && set.has(resolvedConst)),
+        );
+        if (!isTokenVisible) {
+          const primaryMod = explicitDeclaringModules[0]!;
+          const formattedToken =
+            dep.tokenKind === "string"
+              ? JSON.stringify(dep.token)
+              : dep.token;
+          const suggestion = `Register { provide: ${formattedToken}, useValue | useClass | useFactory } in "${primaryMod.name}" providers, or import a module that exports it.`;
+          diagnostics.push({
+            code: "BUNEST009",
+            severity: "warning",
+            message: `"${prov.name}" injects token ${formattedToken} via @Inject(${formattedToken}), which is not provided or exported to "${primaryMod.name}". Fix: ${suggestion}`,
+            location: dep.location,
+            suggestion,
+            fixData: {
+              kind: "registerInjectToken",
+              token: dep.token,
+              tokenKind: dep.tokenKind,
+              moduleName: primaryMod.name,
+              moduleFile: primaryMod.sourceFile,
+            },
+          });
+        }
+      }
+
+      // Skip primitive / explicit string-token deps for BUNEST001 module visibility checks
       if (dep.token || PRIMITIVE_OR_BUILTIN_TYPES.has(dep.typeName)) {
         continue;
       }
@@ -194,27 +584,13 @@ function runCoreDiagnostics(
       const targetProv = graph.providerByName.get(dep.typeName);
       if (!targetProv) continue;
 
-      // BUNEST003: Scope leak (SINGLETON injecting REQUEST-scoped provider)
-      if (prov.scope === "SINGLETON" && targetProv.scope === "REQUEST") {
-        diagnostics.push({
-          code: "BUNEST003",
-          severity: "warning",
-          message: `Scope leak: SINGLETON "${prov.name}" injects REQUEST-scoped "${targetProv.name}". This forces "${prov.name}" (and its dependents) to be instantiated per request.`,
-          location: dep.location,
-        });
-      }
-
-      // BUNEST001: Missing provider/export in declaring @Module
-      if (
-        !dep.isOptional &&
-        !hasAutoDiscoverModule &&
-        declaringModules.length > 0
-      ) {
-        const isVisibleSomewhere = visibleSets.some((set) =>
+      // BUNEST001: Missing provider/export in declaring explicit @Module
+      if (!dep.isOptional && explicitDeclaringModules.length > 0) {
+        const isVisibleSomewhere = explicitVisibleSets.some((set) =>
           set.has(targetProv.name),
         );
         if (!isVisibleSomewhere) {
-          const primaryMod = declaringModules[0]!;
+          const primaryMod = explicitDeclaringModules[0]!;
           diagnostics.push({
             code: "BUNEST001",
             severity: "error",
@@ -243,6 +619,82 @@ function runCoreDiagnostics(
       message: `Circular DI dependency detected: ${cycle.join(" -> ")}. Break the cycle using \`@Inject(forwardRef(() => ...))\` or extract a shared service.`,
       location: first.location,
     });
+  }
+
+  // BUNEST010: Direct or transitive circular @Module({ imports: [...] }) cycles without forwardRef
+  for (const cycle of graph.moduleCycles) {
+    const firstMod = graph.moduleByName.get(cycle[0]!);
+    if (!firstMod) continue;
+    const nextMod = cycle[1] ?? cycle[0]!;
+    const cyclePath = cycle.join(" -> ");
+    const suggestion = `Wrap one side of the cycle in \`forwardRef(() => ${nextMod})\` inside \`@Module({ imports: [...] })\`, or extract shared providers into a common module.`;
+    diagnostics.push({
+      code: "BUNEST010",
+      severity: "error",
+      message: `Circular @Module() import detected: ${cyclePath}. Fix: ${suggestion}`,
+      location: firstMod.importsLocation ?? firstMod.decoratorLocation,
+      suggestion,
+      fixData: {
+        kind: "breakModuleCycle",
+        cycle: [...cycle],
+        moduleName: firstMod.name,
+        targetModule: nextMod,
+      },
+    });
+  }
+
+  // BUNEST011: @Module({ exports: [X] }) exporting a provider or module not in providers or imports (static BUNEST_E007)
+  for (const mod of graph.modules) {
+    if (
+      isAutoModuleNode(mod) ||
+      mod.hasDynamicProviders ||
+      mod.hasUnresolvedImportSpread
+    ) {
+      continue;
+    }
+    const exportable = collectExportableTokensForModule(mod, graph);
+    const exportItems =
+      mod.exportItems ??
+      mod.exports.map((name) => ({
+        name,
+        location: mod.exportsLocation ?? mod.decoratorLocation,
+      }));
+    const reported = new Set<string>();
+
+    for (const item of exportItems) {
+      if (reported.has(item.name)) continue;
+      const resolvedConst = graph.stringTokenConstants?.get(item.name);
+      const isExportable =
+        exportable.has(item.name) ||
+        (resolvedConst !== undefined && exportable.has(resolvedConst));
+      if (isExportable) continue;
+
+      // Skip well-known external framework tokens when module imports an external dynamic module (e.g. ConfigModule.forRoot())
+      if (
+        mod.hasExternalDynamicImports &&
+        !graph.providerByName.has(item.name) &&
+        !graph.moduleByName.has(item.name) &&
+        isWellKnownToken(item.name)
+      ) {
+        continue;
+      }
+
+      reported.add(item.name);
+      const suggestion = `Add "${item.name}" to \`${mod.name}\`'s \`providers\` array before exporting it, or import the module that provides it in \`imports\`.`;
+      diagnostics.push({
+        code: "BUNEST011",
+        severity: "error",
+        message: `Invalid export (BUNEST_E007 / InvalidExportException): "${mod.name}" exports "${item.name}", which is neither declared in \`providers\` nor imported via \`imports\`. Fix: ${suggestion}`,
+        location: item.location,
+        suggestion,
+        fixData: {
+          kind: "invalidModuleExport",
+          moduleName: mod.name,
+          moduleFile: mod.sourceFile,
+          exportName: item.name,
+        },
+      });
+    }
   }
 
   // BUNEST005: Duplicate HTTP routes, RPC patterns, or CQRS handlers
@@ -744,7 +1196,7 @@ export interface AnalyzeProjectDiagnosticsOptions {
 
 /**
  * Runs all Bunest static diagnostics:
- * - Core (`BUNEST001`–`BUNEST007`)
+ * - Core (`BUNEST001`–`BUNEST011`)
  * - Declarative Repositories (`BUNEST_REPO001`–`BUNEST_REPO007`)
  * - Class Macros (`BUNEST_MACRO001`–`BUNEST_MACRO005`)
  * - Decorator Semantics & Safety (`BUNEST_DEC001`–`BUNEST_DEC005`)

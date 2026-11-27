@@ -226,6 +226,7 @@ export async function runDevServer(
         sourceRoot: resolvedSourceRoot,
         outDir: options.typegenOutDir ?? typegenCfg.outDir ?? ".bunest/types",
         fileName: typegenCfg.fileName ?? "bunest.d.ts",
+        clientTypes: options.clientTypes ?? typegenCfg.clientTypes,
         tsconfigPath:
           typegenCfg.tsconfigPath ?? config.compilerOptions?.tsConfigPath,
         envFiles: typegenCfg.envFiles,

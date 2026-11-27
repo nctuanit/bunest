@@ -358,6 +358,11 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
     expect(codes.has("BUNEST001")).toBe(true); // ReqDep missing from AppModule
     expect(codes.has("BUNEST002")).toBe(true); // CycleA <-> CycleB
     expect(codes.has("BUNEST003")).toBe(true); // SINGLETON AppService -> REQUEST ReqDep
+    const bunest003 = snap.diagnostics.find((d) => d.code === "BUNEST003")!;
+    expect(bunest003.severity).toBe("error");
+    expect(bunest003.message).toContain("BUNEST_E003");
+    expect(bunest003.message).toContain("ScopeLeakException");
+    expect(bunest003.message).toContain("AppService [SINGLETON] -> ReqDep [REQUEST]");
     expect(codes.has("BUNEST004")).toBe(true); // import type { ReqDep }
     expect(codes.has("BUNEST005")).toBe(true); // duplicate GET /items/list
     expect(codes.has("BUNEST006")).toBe(true); // bare ref & union @Prop
@@ -558,5 +563,226 @@ describe("BunestStaticAnalyzer: Declarative Repositories, Class Macros & magic-s
 
     const errors = snap.diagnostics.filter((d) => d.severity === "error");
     expect(errors).toHaveLength(0);
+  });
+
+  it("scopes BUNEST001 bypass strictly to @AutoModule and keeps checking explicit @Module classes", () => {
+    const cwd = createTempProject({
+      "src/missing.service.ts": `
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class MissingService {}
+      `,
+      "src/auto-dep.service.ts": `
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class AutoDiscoveredDep {}
+      `,
+      "src/explicit.service.ts": `
+        import { MissingService } from "./missing.service";
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class ExplicitService {
+          constructor(private readonly missing: MissingService) {}
+        }
+      `,
+      "src/auto.service.ts": `
+        import { AutoDiscoveredDep } from "./auto-dep.service";
+        function Injectable(): ClassDecorator { return () => {}; }
+        @Injectable()
+        export class AutoService {
+          constructor(private readonly dep: AutoDiscoveredDep) {}
+        }
+      `,
+      "src/explicit.module.ts": `
+        import { ExplicitService } from "./explicit.service";
+        function Module(_m: any): ClassDecorator { return () => {}; }
+        @Module({
+          providers: [ExplicitService],
+        })
+        export class ExplicitModule {}
+      `,
+      "src/app.module.ts": `
+        import { AutoService } from "./auto.service";
+        import { ExplicitModule } from "./explicit.module";
+        function AutoModule(_m?: any): ClassDecorator { return () => {}; }
+        @AutoModule({
+          imports: [ExplicitModule],
+          providers: [AutoService],
+        })
+        export class AppAutoModule {}
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+
+    const bunest001 = snap.diagnostics.filter((d) => d.code === "BUNEST001");
+    // ExplicitModule MUST still emit BUNEST001 even though AppAutoModule exists
+    expect(bunest001).toHaveLength(1);
+    expect(bunest001[0]!.severity).toBe("error");
+    expect(bunest001[0]!.message).toContain('"ExplicitService"');
+    expect(bunest001[0]!.message).toContain('"MissingService"');
+    expect(bunest001[0]!.message).toContain('"ExplicitModule"');
+    // AutoService declared in @AutoModule MUST NOT emit BUNEST001
+    expect(bunest001.some((d) => d.message.includes("AutoService"))).toBe(false);
+  });
+
+  it("reports BUNEST003 as error with transitive scope-leak chains aligned to ADR-012 / BUNEST_E003", async () => {
+    const cwd = createTempProject({
+      "src/scopes.ts": `
+        export const Scope = { SINGLETON: 0, REQUEST: 1, TRANSIENT: 2 } as const;
+        export const REQUEST = Symbol("REQUEST");
+        export function Injectable(_o?: any): ClassDecorator { return () => {}; }
+        export function Controller(_o?: any): ClassDecorator { return () => {}; }
+        export function Module(_o?: any): ClassDecorator { return () => {}; }
+        export function Inject(_t?: any): ParameterDecorator { return () => {}; }
+      `,
+      "src/tenant.context.ts": `
+        import { Injectable, Scope } from "./scopes";
+        @Injectable({ scope: Scope.REQUEST })
+        export class TenantContext {}
+      `,
+      "src/transient.helper.ts": `
+        import { Injectable, Scope } from "./scopes";
+        import { TenantContext } from "./tenant.context";
+        @Injectable({ scope: Scope.TRANSIENT })
+        export class TransientHelper {
+          constructor(private readonly tenant: TenantContext) {}
+        }
+      `,
+      "src/users.service.ts": `
+        import { Injectable } from "./scopes";
+        import { TenantContext } from "./tenant.context";
+        @Injectable()
+        export class UsersService {
+          constructor(private readonly tenant: TenantContext) {}
+        }
+      `,
+      "src/users.controller.ts": `
+        import { Controller } from "./scopes";
+        import { UsersService } from "./users.service";
+        @Controller("users")
+        export class UsersController {
+          constructor(private readonly users: UsersService) {}
+        }
+      `,
+      "src/singleton-via-transient.service.ts": `
+        import { Injectable } from "./scopes";
+        import { TransientHelper } from "./transient.helper";
+        @Injectable()
+        export class SingletonViaTransientService {
+          constructor(private readonly helper: TransientHelper) {}
+        }
+      `,
+      "src/singleton-builtin-req.service.ts": `
+        import { Inject, Injectable, REQUEST } from "./scopes";
+        @Injectable()
+        export class SingletonBuiltinReqService {
+          constructor(@Inject(REQUEST) private readonly req: unknown) {}
+        }
+      `,
+      "src/valid-request.controller.ts": `
+        import { Controller, Scope } from "./scopes";
+        import { TransientHelper } from "./transient.helper";
+        @Controller({ path: "ok", scope: Scope.REQUEST })
+        export class ValidRequestController {
+          constructor(private readonly helper: TransientHelper) {}
+        }
+      `,
+      "src/app.module.ts": `
+        import { Module } from "./scopes";
+        import { TenantContext } from "./tenant.context";
+        import { TransientHelper } from "./transient.helper";
+        import { UsersService } from "./users.service";
+        import { UsersController } from "./users.controller";
+        import { SingletonViaTransientService } from "./singleton-via-transient.service";
+        import { SingletonBuiltinReqService } from "./singleton-builtin-req.service";
+        import { ValidRequestController } from "./valid-request.controller";
+        @Module({
+          controllers: [UsersController, ValidRequestController],
+          providers: [
+            TenantContext,
+            TransientHelper,
+            UsersService,
+            SingletonViaTransientService,
+            SingletonBuiltinReqService,
+          ],
+        })
+        export class AppModule {}
+      `,
+    });
+
+    const analyzer = new BunestStaticAnalyzer({ cwd, sourceRoot: "src" });
+    const snap = analyzer.analyze();
+    const leaks = snap.diagnostics.filter((d) => d.code === "BUNEST003");
+
+    // All BUNEST003 diagnostics must be severity "error" aligned to ADR-012 / BUNEST_E003
+    expect(leaks.length).toBe(4);
+    for (const d of leaks) {
+      expect(d.severity).toBe("error");
+      expect(d.message).toContain("BUNEST_E003");
+      expect(d.message).toContain("ScopeLeakException");
+      expect(d.message).toContain("ADR-012");
+    }
+
+    // 1. Direct: UsersService [SINGLETON] -> TenantContext [REQUEST]
+    expect(
+      leaks.some((d) =>
+        d.message.includes("UsersService [SINGLETON] -> TenantContext [REQUEST]"),
+      ),
+    ).toBe(true);
+
+    // 2. Transitive via SINGLETON: UsersController [SINGLETON] -> UsersService [SINGLETON] -> TenantContext [REQUEST]
+    expect(
+      leaks.some((d) =>
+        d.message.includes(
+          "UsersController [SINGLETON] -> UsersService [SINGLETON] -> TenantContext [REQUEST]",
+        ),
+      ),
+    ).toBe(true);
+
+    // 3. Transitive via TRANSIENT: SingletonViaTransientService [SINGLETON] -> TransientHelper [TRANSIENT] -> TenantContext [REQUEST]
+    expect(
+      leaks.some((d) =>
+        d.message.includes(
+          "SingletonViaTransientService [SINGLETON] -> TransientHelper [TRANSIENT] -> TenantContext [REQUEST]",
+        ),
+      ),
+    ).toBe(true);
+
+    // 4. Built-in REQUEST token injected into SINGLETON
+    expect(
+      leaks.some((d) =>
+        d.message.includes("SingletonBuiltinReqService [SINGLETON] -> REQUEST [REQUEST]"),
+      ),
+    ).toBe(true);
+
+    // TRANSIENT TransientHelper and REQUEST-scoped ValidRequestController MUST NOT be flagged as leaks
+    expect(
+      leaks.some((d) => d.message.includes('TRANSIENT "TransientHelper"')),
+    ).toBe(false);
+    expect(
+      leaks.some((d) => d.message.includes("ValidRequestController")),
+    ).toBe(false);
+
+    // `bunest check` must fail (exitCode 1) even without --strict because BUNEST003 is now an error
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const checkRes = await runCli(["check", "--format", "json"], {
+      cwd,
+      stdout: (m) => stdout.push(m),
+      stderr: (m) => stderr.push(m),
+    });
+    expect(checkRes.exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.join("\n")) as {
+      errors: number;
+      diagnostics: Array<{ code: string; severity: string }>;
+    };
+    expect(parsed.errors).toBeGreaterThanOrEqual(4);
+    expect(
+      parsed.diagnostics.every(
+        (d) => d.code !== "BUNEST003" || d.severity === "error",
+      ),
+    ).toBe(true);
   });
 });

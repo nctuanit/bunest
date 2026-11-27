@@ -127,6 +127,12 @@ export interface ExtractedValidationConstraints {
   readonly uniqueItems?: boolean;
 }
 
+export interface ExtractedGenericTypeArg {
+  readonly rawType: string;
+  readonly typeExpr?: string;
+  readonly isArray: boolean;
+}
+
 export interface ExtractedDtoProperty {
   readonly name: string;
   readonly aliasName?: string;
@@ -136,6 +142,10 @@ export interface ExtractedDtoProperty {
   readonly isArray: boolean;
   readonly isReadonly?: boolean;
   readonly typeExpr?: string;
+  readonly unionTypeExprs?: readonly string[];
+  readonly genericWrapperExpr?: string;
+  readonly genericTypeArgs?: readonly ExtractedGenericTypeArg[];
+  readonly genericParamRef?: string;
   readonly enumExpr?: string;
   readonly enumName?: string;
   readonly enumLiterals?: readonly (string | number)[];
@@ -149,6 +159,7 @@ export interface ExtractedDtoProperty {
 
 export interface ExtractedDtoClass {
   readonly name: string;
+  readonly typeParameters?: readonly string[];
   readonly properties: readonly ExtractedDtoProperty[];
 }
 
@@ -164,6 +175,9 @@ export interface ExtractedControllerMethod {
   readonly status?: number;
   readonly summary?: string;
   readonly returnTypeExpr?: string;
+  readonly unionTypeExprs?: readonly string[];
+  readonly genericWrapperExpr?: string;
+  readonly genericTypeArgs?: readonly ExtractedGenericTypeArg[];
   readonly isArray: boolean;
 }
 
@@ -196,6 +210,10 @@ const DEFAULT_CONTROLLER_SUFFIXES: readonly string[] = [".controller.ts"];
 const SWAGGER_API_PROPERTIES_SYMBOL = "bunest:swagger:api_properties";
 const SWAGGER_API_OPERATION_SYMBOL = "bunest:swagger:api_operation";
 const SWAGGER_API_RESPONSES_SYMBOL = "bunest:swagger:api_responses";
+const SWAGGER_UNION_TYPE_META_SYMBOL = "bunest:swagger:union_type_meta";
+const SWAGGER_GENERIC_TYPE_META_SYMBOL = "bunest:swagger:generic_type_meta";
+const SWAGGER_GENERIC_TYPE_PARAMS_SYMBOL = "bunest:swagger:generic_type_params";
+const STANDARD_SCHEMA_DTO_SYMBOL = "bunest:standard-schema-dto";
 const GRAPHQL_FIELDS_SYMBOL = "bunest:graphql:fields";
 
 interface FileSymbolTable {
@@ -823,14 +841,29 @@ interface AnalyzedType {
   readonly nullable: boolean;
   readonly hasUndefined: boolean;
   readonly typeExpr?: string;
+  readonly unionTypeExprs?: readonly string[];
+  readonly genericWrapperExpr?: string;
+  readonly genericTypeArgs?: readonly ExtractedGenericTypeArg[];
+  readonly genericParamRef?: string;
   readonly enumExpr?: string;
   readonly enumLiterals?: readonly (string | number)[];
+}
+
+function toLazyRuntimeVariantExpr(analyzed: AnalyzedType): string | undefined {
+  const expr = analyzed.typeExpr;
+  if (!expr) return undefined;
+  const inner = expr.startsWith("() => ") ? expr.slice(6).trim() : expr;
+  if (analyzed.isArray) {
+    return `() => [${inner}]`;
+  }
+  return `() => ${inner}`;
 }
 
 function analyzeTypeExpression(
   rawType: string,
   symbols: FileSymbolTable,
   visitedAliases = new Set<string>(),
+  classTypeParams?: ReadonlySet<string>,
 ): AnalyzedType {
   const cleaned = stripOuterParens(rawType.trim().replace(/^readonly\s+/, ""));
   if (!cleaned) {
@@ -845,7 +878,12 @@ function analyzeTypeExpression(
   // Unwrap Promise<T> for controller return types
   const promiseMatch = cleaned.match(/^Promise<([\s\S]+)>$/);
   if (promiseMatch) {
-    return analyzeTypeExpression(promiseMatch[1]!, symbols, visitedAliases);
+    return analyzeTypeExpression(
+      promiseMatch[1]!,
+      symbols,
+      visitedAliases,
+      classTypeParams,
+    );
   }
 
   // Split union types `A | B | null | undefined`
@@ -871,6 +909,7 @@ function analyzeTypeExpression(
         remaining[0]!,
         symbols,
         visitedAliases,
+        classTypeParams,
       );
       return {
         ...inner,
@@ -901,6 +940,49 @@ function analyzeTypeExpression(
           enumLiterals: literals,
         };
       }
+
+      // Preserve non-literal unions (e.g. `DogDto | CatDto`, `string | DogDto`, `ApiResponse<A> | ApiResponse<B>`)
+      const variantExprs: string[] = [];
+      const seenVariants = new Set<string>();
+      let hasConcreteNonObject = false;
+      for (const part of remaining) {
+        const branch = analyzeTypeExpression(
+          part,
+          symbols,
+          visitedAliases,
+          classTypeParams,
+        );
+        // Flatten nested unions if any
+        if (branch.unionTypeExprs && branch.unionTypeExprs.length > 0 && !branch.isArray) {
+          for (const sub of branch.unionTypeExprs) {
+            if (!seenVariants.has(sub)) {
+              seenVariants.add(sub);
+              variantExprs.push(sub);
+            }
+          }
+          hasConcreteNonObject = true;
+          continue;
+        }
+        const variantExpr = toLazyRuntimeVariantExpr(branch);
+        if (!variantExpr) continue;
+        if (variantExpr !== "() => Object") {
+          hasConcreteNonObject = true;
+        }
+        if (!seenVariants.has(variantExpr)) {
+          seenVariants.add(variantExpr);
+          variantExprs.push(variantExpr);
+        }
+      }
+
+      if (hasConcreteNonObject && variantExprs.length > 1) {
+        return {
+          isArray: false,
+          nullable,
+          hasUndefined,
+          typeExpr: `() => __union([${variantExprs.join(", ")}])`,
+          unionTypeExprs: variantExprs,
+        };
+      }
     }
 
     return {
@@ -913,7 +995,12 @@ function analyzeTypeExpression(
 
   if (cleaned.endsWith("[]")) {
     const elemType = cleaned.slice(0, -2).trim();
-    const inner = analyzeTypeExpression(elemType, symbols, visitedAliases);
+    const inner = analyzeTypeExpression(
+      elemType,
+      symbols,
+      visitedAliases,
+      classTypeParams,
+    );
     return {
       ...inner,
       isArray: true,
@@ -926,10 +1013,22 @@ function analyzeTypeExpression(
       arrGeneric[1]!,
       symbols,
       visitedAliases,
+      classTypeParams,
     );
     return {
       ...inner,
       isArray: true,
+    };
+  }
+
+  // Generic class type parameter (e.g. `data!: T` inside `export class ApiResponse<T>`)
+  if (classTypeParams?.has(cleaned)) {
+    return {
+      isArray: false,
+      nullable: false,
+      hasUndefined: false,
+      typeExpr: "Object",
+      genericParamRef: cleaned,
     };
   }
 
@@ -1008,16 +1107,22 @@ function analyzeTypeExpression(
     };
   }
 
-  const identMatch = cleaned.match(/^([A-Za-z_$][\w$]*)(?:<[\s\S]*>)?$/);
+  const identMatch = cleaned.match(/^([A-Za-z_$][\w$]*)(?:<([\s\S]+)>)?$/);
   if (identMatch) {
     const name = identMatch[1]!;
-    if (symbols.typeAliases.has(name) && !visitedAliases.has(name)) {
+    const rawTypeArgs = identMatch[2];
+    if (
+      !rawTypeArgs &&
+      symbols.typeAliases.has(name) &&
+      !visitedAliases.has(name)
+    ) {
       const nextVisited = new Set(visitedAliases);
       nextVisited.add(name);
       return analyzeTypeExpression(
         symbols.typeAliases.get(name)!,
         symbols,
         nextVisited,
+        classTypeParams,
       );
     }
     if (symbols.runtimeEnums.has(name)) {
@@ -1029,6 +1134,37 @@ function analyzeTypeExpression(
       };
     }
     if (symbols.runtimeValues.has(name) && !symbols.typeOnlySymbols.has(name)) {
+      if (rawTypeArgs !== undefined) {
+        const argParts = splitTopLevel(rawTypeArgs, ",");
+        const parsedArgs: ExtractedGenericTypeArg[] = [];
+        const bindingExprs: string[] = [];
+        for (const argPart of argParts) {
+          const argAnalyzed = analyzeTypeExpression(
+            argPart,
+            symbols,
+            visitedAliases,
+            classTypeParams,
+          );
+          const bindingExpr =
+            toLazyRuntimeVariantExpr(argAnalyzed) ?? "() => Object";
+          parsedArgs.push({
+            rawType: argPart,
+            typeExpr: bindingExpr,
+            isArray: argAnalyzed.isArray,
+          });
+          bindingExprs.push(bindingExpr);
+        }
+        if (parsedArgs.length > 0) {
+          return {
+            isArray: false,
+            nullable: false,
+            hasUndefined: false,
+            typeExpr: `() => __generic(${name}, [${bindingExprs.join(", ")}])`,
+            genericWrapperExpr: name,
+            genericTypeArgs: parsedArgs,
+          };
+        }
+      }
       return {
         isArray: false,
         nullable: false,
@@ -1094,10 +1230,148 @@ function extractLeadingDecoratorsBeforeIndex(
   return decorators;
 }
 
+function extractClassTypeParameters(
+  source: string,
+  masked: string,
+  afterNameIdx: number,
+  braceOpen: number,
+): string[] {
+  let i = afterNameIdx;
+  while (i < braceOpen && /\s/.test(masked[i]!)) {
+    i++;
+  }
+  if (i >= braceOpen || masked[i] !== "<") {
+    return [];
+  }
+  let depth = 0;
+  let closeIdx = -1;
+  for (let j = i; j < braceOpen; j++) {
+    const ch = masked[j]!;
+    if (ch === "<") depth++;
+    else if (ch === ">" && masked[j - 1] !== "=") {
+      depth--;
+      if (depth === 0) {
+        closeIdx = j;
+        break;
+      }
+    }
+  }
+  if (closeIdx === -1) return [];
+  const raw = source.slice(i + 1, closeIdx);
+  const parts = splitTopLevel(raw, ",");
+  const out: string[] = [];
+  for (const p of parts) {
+    const m = p.trim().match(/^(?:(?:in|out|const)\s+)*([A-Za-z_$][\w$]*)/);
+    if (m?.[1]) {
+      out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+function buildSwaggerCompositeHelpersCode(
+  indent: string,
+  needsUnion: boolean,
+  needsGeneric: boolean,
+): string {
+  if (!needsUnion && !needsGeneric) return "";
+  const lines: string[] = [];
+  lines.push(
+    `${indent}const __displayName = (v: unknown): string => {`,
+    `${indent}  if (Array.isArray(v)) return \`\${__displayName(v[0])}Array\`;`,
+    `${indent}  if (typeof v === "function") {`,
+    `${indent}    if (v.prototype === undefined || (v.length === 0 && !/^[A-Z]/.test(v.name))) {`,
+    `${indent}      try { return __displayName((v as () => unknown)()); } catch { return "Item"; }`,
+    `${indent}    }`,
+    `${indent}    return v.name || "Model";`,
+    `${indent}  }`,
+    `${indent}  return "Item";`,
+    `${indent}};`,
+  );
+  if (needsUnion) {
+    lines.push(
+      `${indent}const __UNION_META = Symbol.for(${JSON.stringify(SWAGGER_UNION_TYPE_META_SYMBOL)});`,
+      `${indent}const __unionCache = new Map<string, Function>();`,
+      `${indent}const __union = (variants: ReadonlyArray<() => unknown>, name?: string) => {`,
+      `${indent}  const resolvedName = name || variants.map((v) => __displayName(v)).join("Or");`,
+      `${indent}  const cached = __unionCache.get(resolvedName);`,
+      `${indent}  if (cached) return cached;`,
+      `${indent}  class UnionModel {}`,
+      `${indent}  Object.defineProperty(UnionModel, "name", { value: resolvedName, configurable: true });`,
+      `${indent}  Object.defineProperty(UnionModel, __UNION_META, { value: { variants: [...variants], name: resolvedName }, enumerable: false, configurable: true });`,
+      `${indent}  __unionCache.set(resolvedName, UnionModel);`,
+      `${indent}  return UnionModel;`,
+      `${indent}};`,
+    );
+  }
+  if (needsGeneric) {
+    lines.push(
+      `${indent}const __GENERIC_META = Symbol.for(${JSON.stringify(SWAGGER_GENERIC_TYPE_META_SYMBOL)});`,
+      `${indent}const __GENERIC_PARAMS = Symbol.for(${JSON.stringify(SWAGGER_GENERIC_TYPE_PARAMS_SYMBOL)});`,
+      `${indent}const __API_PROPS_KEY = Symbol.for(${JSON.stringify(SWAGGER_API_PROPERTIES_SYMBOL)});`,
+      `${indent}const __STD_DTO_KEY = Symbol.for(${JSON.stringify(STANDARD_SCHEMA_DTO_SYMBOL)});`,
+      `${indent}const __genericCache = new WeakMap<Function, Map<string, Function>>();`,
+      `${indent}const __inferGenericProps = (wrapper: Function, argCount: number): ReadonlyArray<{ properties: ReadonlyArray<{ propertyKey: string; isArray: boolean }> }> => {`,
+      `${indent}  const explicit = (wrapper as unknown as Record<symbol, ReadonlyArray<{ properties: ReadonlyArray<{ propertyKey: string; isArray: boolean }> }> | undefined>)[__GENERIC_PARAMS];`,
+      `${indent}  if (Array.isArray(explicit) && explicit.length > 0) return explicit;`,
+      `${indent}  const keys = new Set<string>();`,
+      `${indent}  let cur: Function | null = wrapper;`,
+      `${indent}  while (cur && cur !== Function.prototype && cur !== Object.prototype) {`,
+      `${indent}    const own = typeof Reflect !== "undefined" && typeof Reflect.getOwnMetadata === "function" ? (Reflect.getOwnMetadata(__API_PROPS_KEY, cur) as ReadonlyArray<{ propertyKey?: string }> | undefined) : undefined;`,
+      `${indent}    if (own) for (const p of own) if (p?.propertyKey) keys.add(p.propertyKey);`,
+      `${indent}    cur = Object.getPrototypeOf(cur);`,
+      `${indent}  }`,
+      `${indent}  const rawStd = (wrapper as unknown as Record<symbol, unknown>)[__STD_DTO_KEY];`,
+      `${indent}  if (rawStd && typeof rawStd === "object") {`,
+      `${indent}    try {`,
+      `${indent}      const std = (rawStd as Record<string, any>)["~standard"]?.jsonSchema;`,
+      `${indent}      const fn = std?.output ?? std?.input;`,
+      `${indent}      const json = typeof fn === "function" ? fn({ target: "draft-2020-12" }) : undefined;`,
+      `${indent}      if (json?.properties && typeof json.properties === "object") for (const k of Object.keys(json.properties)) keys.add(k);`,
+      `${indent}    } catch {}`,
+      `${indent}  }`,
+      `${indent}  const primary = keys.has("data") ? "data" : keys.has("items") ? "items" : keys.has("results") ? "results" : "data";`,
+      `${indent}  const out: Array<{ properties: Array<{ propertyKey: string; isArray: boolean }> }> = [{ properties: [{ propertyKey: primary, isArray: false }] }];`,
+      `${indent}  if (argCount > 1) {`,
+      `${indent}    const secondary = keys.has("meta") ? "meta" : keys.has("metadata") ? "metadata" : "meta";`,
+      `${indent}    out.push({ properties: [{ propertyKey: secondary, isArray: false }] });`,
+      `${indent}  }`,
+      `${indent}  return out;`,
+      `${indent}};`,
+      `${indent}const __generic = (wrapper: new (...args: any[]) => any, typeArgs: ReadonlyArray<() => unknown>, explicitSpecs?: ReadonlyArray<{ properties: ReadonlyArray<{ propertyKey: string; isArray: boolean }> }>) => {`,
+      `${indent}  const wrapperName = __displayName(wrapper);`,
+      `${indent}  const suffix = typeArgs.map((a) => __displayName(a)).join("And");`,
+      `${indent}  const schemaName = suffix ? \`\${wrapperName}Of\${suffix}\` : wrapperName;`,
+      `${indent}  let byWrapper = __genericCache.get(wrapper);`,
+      `${indent}  if (!byWrapper) { byWrapper = new Map(); __genericCache.set(wrapper, byWrapper); }`,
+      `${indent}  const cached = byWrapper.get(schemaName);`,
+      `${indent}  if (cached) return cached;`,
+      `${indent}  const paramSpecs = explicitSpecs && explicitSpecs.length > 0 ? explicitSpecs : __inferGenericProps(wrapper, typeArgs.length);`,
+      `${indent}  const bindings: Record<string, () => unknown> = {};`,
+      `${indent}  for (let i = 0; i < typeArgs.length; i++) {`,
+      `${indent}    const argThunk = typeArgs[i]!;`,
+      `${indent}    const spec = paramSpecs[i];`,
+      `${indent}    if (!spec) continue;`,
+      `${indent}    for (const target of spec.properties) {`,
+      `${indent}      bindings[target.propertyKey] = target.isArray ? () => { const val = argThunk(); return Array.isArray(val) ? val : [val]; } : argThunk;`,
+      `${indent}    }`,
+      `${indent}  }`,
+      `${indent}  class GenericModel extends wrapper {}`,
+      `${indent}  Object.defineProperty(GenericModel, "name", { value: schemaName, configurable: true });`,
+      `${indent}  Object.defineProperty(GenericModel, __GENERIC_META, { value: { wrapper, bindings, name: schemaName }, enumerable: false, configurable: true });`,
+      `${indent}  byWrapper.set(schemaName, GenericModel);`,
+      `${indent}  return GenericModel;`,
+      `${indent}};`,
+    );
+  }
+  return lines.join("\n") + "\n";
+}
+
 function extractConstructorParameterProperties(
   rawParams: string,
   symbols: FileSymbolTable,
   options: BunestMetadataPluginOptions,
+  classTypeParams?: ReadonlySet<string>,
 ): ExtractedDtoProperty[] {
   const result: ExtractedDtoProperty[] = [];
   const params = splitTopLevel(rawParams, ",");
@@ -1128,7 +1402,12 @@ function extractConstructorParameterProperties(
         ? parseStaticInitializer(rawInit)
         : { ok: false as const };
 
-    const analyzed = analyzeTypeExpression(rawType, symbols);
+    const analyzed = analyzeTypeExpression(
+      rawType,
+      symbols,
+      new Set(),
+      classTypeParams,
+    );
     const required =
       modifier !== "?" && rawInit === undefined && !analyzed.hasUndefined;
 
@@ -1140,6 +1419,18 @@ function extractConstructorParameterProperties(
       isArray: analyzed.isArray,
       isReadonly,
       typeExpr: analyzed.typeExpr,
+      ...(analyzed.unionTypeExprs
+        ? { unionTypeExprs: analyzed.unionTypeExprs }
+        : {}),
+      ...(analyzed.genericWrapperExpr
+        ? { genericWrapperExpr: analyzed.genericWrapperExpr }
+        : {}),
+      ...(analyzed.genericTypeArgs
+        ? { genericTypeArgs: analyzed.genericTypeArgs }
+        : {}),
+      ...(analyzed.genericParamRef
+        ? { genericParamRef: analyzed.genericParamRef }
+        : {}),
       enumExpr: analyzed.enumExpr,
       enumName:
         autoFillEnumName && analyzed.enumExpr ? analyzed.enumExpr : undefined,
@@ -1162,6 +1453,7 @@ function parseClassProperties(
   symbols: FileSymbolTable,
   options: BunestMetadataPluginOptions,
   classHasExclude: boolean,
+  classTypeParams?: ReadonlySet<string>,
 ): ExtractedDtoProperty[] {
   const introspectComments = options.introspectComments !== false;
   const classValidatorShim = options.classValidatorShim !== false;
@@ -1365,6 +1657,7 @@ function parseClassProperties(
               rawParams,
               symbols,
               options,
+              classTypeParams,
             ),
           );
         }
@@ -1428,7 +1721,12 @@ function parseClassProperties(
         ? parseStaticInitializer(source.slice(equalsPos + 1, declEnd))
         : { ok: false as const };
 
-    const analyzed = analyzeTypeExpression(rawType, symbols);
+    const analyzed = analyzeTypeExpression(
+      rawType,
+      symbols,
+      new Set(),
+      classTypeParams,
+    );
     const hasIsOptionalDecorator = decorators.some(
       (d) => d.shortName === "IsOptional",
     );
@@ -1456,6 +1754,18 @@ function parseClassProperties(
       isArray: analyzed.isArray,
       isReadonly,
       typeExpr: constraints?.typeOverride ?? analyzed.typeExpr,
+      ...(analyzed.unionTypeExprs
+        ? { unionTypeExprs: analyzed.unionTypeExprs }
+        : {}),
+      ...(analyzed.genericWrapperExpr
+        ? { genericWrapperExpr: analyzed.genericWrapperExpr }
+        : {}),
+      ...(analyzed.genericTypeArgs
+        ? { genericTypeArgs: analyzed.genericTypeArgs }
+        : {}),
+      ...(analyzed.genericParamRef
+        ? { genericParamRef: analyzed.genericParamRef }
+        : {}),
       enumExpr: analyzed.enumExpr,
       enumName:
         autoFillEnumName && analyzed.enumExpr ? analyzed.enumExpr : undefined,
@@ -1535,11 +1845,15 @@ function buildGraphqlEntryCode(prop: ExtractedDtoProperty): string {
   const baseTypeExpr =
     prop.enumExpr !== undefined
       ? prop.enumExpr
-      : prop.typeExpr?.startsWith("() => ")
-        ? prop.typeExpr.slice(6)
-        : prop.typeExpr === '"integer"'
-          ? "Number"
-          : (prop.typeExpr ?? "String");
+      : prop.genericWrapperExpr !== undefined
+        ? prop.genericWrapperExpr
+        : prop.unionTypeExprs !== undefined
+          ? "Object"
+          : prop.typeExpr?.startsWith("() => ")
+            ? prop.typeExpr.slice(6)
+            : prop.typeExpr === '"integer"'
+              ? "Number"
+              : (prop.typeExpr ?? "String");
 
   const typeFnBody = prop.isArray ? `[${baseTypeExpr}]` : baseTypeExpr;
   fields.push(`typeFn: () => ${typeFnBody}`);
@@ -1615,6 +1929,15 @@ export function transformDtoMetadataSource(
     const braceClose = findMatchingDelimiter(masked, braceOpen, "{", "}");
     if (braceClose === -1) continue;
 
+    const typeParameters = extractClassTypeParameters(
+      source,
+      masked,
+      afterNameIdx,
+      braceOpen,
+    );
+    const typeParamsSet =
+      typeParameters.length > 0 ? new Set(typeParameters) : undefined;
+
     const properties = parseClassProperties(
       source,
       masked,
@@ -1624,10 +1947,15 @@ export function transformDtoMetadataSource(
       symbols,
       options,
       classHasExclude,
+      typeParamsSet,
     );
 
     if (properties.length > 0) {
-      classes.push({ name: className, properties });
+      classes.push({
+        name: className,
+        ...(typeParameters.length > 0 ? { typeParameters } : {}),
+        properties,
+      });
     }
   }
 
@@ -1636,6 +1964,8 @@ export function transformDtoMetadataSource(
   }
 
   const registrationBlocks: string[] = [];
+  let needsUnionHelper = false;
+  let needsGenericHelper = false;
 
   for (const cls of classes) {
     const swaggerProps = emitSwagger
@@ -1652,11 +1982,31 @@ export function transformDtoMetadataSource(
     const lines: string[] = [];
     if (swaggerProps.length > 0) {
       const items = swaggerProps
-        .map((p) => buildSwaggerEntryCode(p, dtoKeyOfComment))
+        .map((p) => {
+          if (p.typeExpr?.includes("__union(")) needsUnionHelper = true;
+          if (p.typeExpr?.includes("__generic(")) needsGenericHelper = true;
+          return buildSwaggerEntryCode(p, dtoKeyOfComment);
+        })
         .join(", ");
       lines.push(
         `  __register(${cls.name}, Symbol.for(${JSON.stringify(SWAGGER_API_PROPERTIES_SYMBOL)}), [${items}]);`,
       );
+      if (cls.typeParameters && cls.typeParameters.length > 0) {
+        const paramSpecs = cls.typeParameters.map((paramName) => ({
+          name: paramName,
+          properties: swaggerProps
+            .filter((p) => p.genericParamRef === paramName)
+            .map((p) => ({
+              propertyKey: p.aliasName ?? p.name,
+              isArray: p.isArray,
+            })),
+        }));
+        if (paramSpecs.some((s) => s.properties.length > 0)) {
+          lines.push(
+            `  Object.defineProperty(${cls.name}, Symbol.for(${JSON.stringify(SWAGGER_GENERIC_TYPE_PARAMS_SYMBOL)}), { value: ${JSON.stringify(paramSpecs)}, enumerable: false, configurable: true });`,
+          );
+        }
+      }
     }
     if (graphqlProps.length > 0) {
       const items = graphqlProps.map(buildGraphqlEntryCode).join(", ");
@@ -1678,12 +2028,18 @@ export function transformDtoMetadataSource(
     );
   }
 
+  const compositeHelpers = buildSwaggerCompositeHelpersCode(
+    "  ",
+    needsUnionHelper,
+    needsGenericHelper,
+  );
+
   const trailer = `
 ;(function __bunestRegisterDtoMetadata() {
   if (typeof Reflect === "undefined" || typeof Reflect.defineMetadata !== "function") {
     return;
   }
-  const __register = (target: Function, key: symbol, inferred: ReadonlyArray<{ propertyKey: string; [k: string]: unknown }>) => {
+${compositeHelpers}  const __register = (target: Function, key: symbol, inferred: ReadonlyArray<{ propertyKey: string; [k: string]: unknown }>) => {
     const existing = (Reflect.getOwnMetadata(key, target) as ReadonlyArray<{ propertyKey: string; [k: string]: unknown }> | undefined) ?? [];
     const merged = new Map<string, { propertyKey: string; [k: string]: unknown }>();
     for (const entry of inferred) {
@@ -1876,11 +2232,17 @@ function parseControllerMethods(
 
     const afterParen = source.slice(closeParen + 1, bodyBraceOpen).trim();
     let returnTypeExpr: string | undefined;
+    let unionTypeExprs: readonly string[] | undefined;
+    let genericWrapperExpr: string | undefined;
+    let genericTypeArgs: readonly ExtractedGenericTypeArg[] | undefined;
     let isArray = false;
     if (afterParen.startsWith(":")) {
       const rawRet = afterParen.slice(1).trim();
       const analyzed = analyzeTypeExpression(rawRet, symbols);
       returnTypeExpr = analyzed.typeExpr;
+      unionTypeExprs = analyzed.unionTypeExprs;
+      genericWrapperExpr = analyzed.genericWrapperExpr;
+      genericTypeArgs = analyzed.genericTypeArgs;
       isArray = analyzed.isArray;
     }
 
@@ -1890,6 +2252,9 @@ function parseControllerMethods(
       status,
       summary: jsDoc,
       returnTypeExpr,
+      ...(unionTypeExprs ? { unionTypeExprs } : {}),
+      ...(genericWrapperExpr ? { genericWrapperExpr } : {}),
+      ...(genericTypeArgs ? { genericTypeArgs } : {}),
       isArray,
     });
   }
@@ -1962,6 +2327,8 @@ export function transformControllerMetadataSource(
   }
 
   const regLines: string[] = [];
+  let needsUnionHelper = false;
+  let needsGenericHelper = false;
   for (const ctrl of controllers) {
     for (const m of ctrl.methods) {
       if (m.summary) {
@@ -1970,6 +2337,8 @@ export function transformControllerMetadataSource(
         );
       }
       if (m.returnTypeExpr || m.status !== undefined) {
+        if (m.returnTypeExpr?.includes("__union(")) needsUnionHelper = true;
+        if (m.returnTypeExpr?.includes("__generic(")) needsGenericHelper = true;
         const respFields: string[] = [];
         if (m.status !== undefined) respFields.push(`status: ${m.status}`);
         if (m.returnTypeExpr !== undefined) {
@@ -1993,12 +2362,18 @@ export function transformControllerMetadataSource(
     );
   }
 
+  const compositeHelpers = buildSwaggerCompositeHelpersCode(
+    "  ",
+    needsUnionHelper,
+    needsGenericHelper,
+  );
+
   const trailer = `
 ;(function __bunestRegisterControllerMetadata() {
   if (typeof Reflect === "undefined" || typeof Reflect.defineMetadata !== "function") {
     return;
   }
-  const __opKey = Symbol.for(${JSON.stringify(SWAGGER_API_OPERATION_SYMBOL)});
+${compositeHelpers}  const __opKey = Symbol.for(${JSON.stringify(SWAGGER_API_OPERATION_SYMBOL)});
   const __respKey = Symbol.for(${JSON.stringify(SWAGGER_API_RESPONSES_SYMBOL)});
   const __regOp = (fn: unknown, inferred: Record<string, unknown>) => {
     if (typeof fn !== "function") return;
@@ -2084,6 +2459,298 @@ async function detectTsconfigEsmCompatible(rootDir: string): Promise<boolean> {
   }
 }
 
+interface ResolvedImportBinding {
+  readonly kind: "named" | "default" | "namespace";
+  readonly exportedName: string;
+  readonly moduleSpecifier: string;
+}
+
+function normalizePathKey(filePath: string): string {
+  return resolve(filePath).replace(/\\/g, "/").toLowerCase();
+}
+
+function resolveImportSpecifierForMetadata(
+  fromFile: string,
+  rawSpec: string,
+  metadataDir: string,
+  esmCompatible: boolean,
+  knownFiles: ReadonlySet<string>,
+): string {
+  if (!rawSpec.startsWith(".")) {
+    return rawSpec;
+  }
+  const stripped = rawSpec.replace(/\.(?:[cm]?js|jsx|tsx?)$/i, "");
+  const absBase = resolve(dirname(fromFile), stripped);
+  const tsCandidate = `${absBase}.ts`;
+  if (knownFiles.has(normalizePathKey(tsCandidate))) {
+    return toImportSpecifier(metadataDir, tsCandidate, esmCompatible);
+  }
+  const tsxCandidate = `${absBase}.tsx`;
+  if (knownFiles.has(normalizePathKey(tsxCandidate))) {
+    return toImportSpecifier(metadataDir, tsxCandidate, esmCompatible);
+  }
+  const indexCandidate = join(absBase, "index.ts");
+  if (knownFiles.has(normalizePathKey(indexCandidate))) {
+    return toImportSpecifier(metadataDir, indexCandidate, esmCompatible);
+  }
+  return toImportSpecifier(metadataDir, absBase, esmCompatible);
+}
+
+function collectFileImportBindings(
+  source: string,
+  filePath: string,
+  selfImportSpec: string,
+  metadataDir: string,
+  esmCompatible: boolean,
+  knownFiles: ReadonlySet<string>,
+): Map<string, ResolvedImportBinding> {
+  const { masked } = maskCommentsAndStrings(source);
+  const bindings = new Map<string, ResolvedImportBinding>();
+
+  // 1. Value imports from other modules
+  const importRegex =
+    /(?:^|;|\n)\s*import\s+(type\s+)?([\s\S]*?)\s+from\s+(["'][^"']+["'])/g;
+  for (const m of masked.matchAll(importRegex)) {
+    const isWholeType = Boolean(m[1]);
+    if (isWholeType) continue;
+
+    const matchStart = m.index ?? 0;
+    const clauseRelIdx = m[0].indexOf(m[2]!);
+    const rawClause = source
+      .slice(matchStart + clauseRelIdx, matchStart + clauseRelIdx + m[2]!.length)
+      .trim();
+
+    const specRelIdx = m[0].lastIndexOf(m[3]!);
+    const quotedSpec = source.slice(
+      matchStart + specRelIdx,
+      matchStart + specRelIdx + m[3]!.length,
+    );
+    const rawSpec = quotedSpec.slice(1, -1);
+    const moduleSpecifier = resolveImportSpecifierForMetadata(
+      filePath,
+      rawSpec,
+      metadataDir,
+      esmCompatible,
+      knownFiles,
+    );
+
+    const braceStart = rawClause.indexOf("{");
+    const braceEnd = rawClause.lastIndexOf("}");
+    if (braceStart !== -1 && braceEnd > braceStart) {
+      const beforeBrace = rawClause
+        .slice(0, braceStart)
+        .replace(/,\s*$/, "")
+        .trim();
+      if (beforeBrace && /^[A-Za-z_$][\w$]*$/.test(beforeBrace)) {
+        bindings.set(beforeBrace, {
+          kind: "default",
+          exportedName: "default",
+          moduleSpecifier,
+        });
+      }
+      const items = rawClause
+        .slice(braceStart + 1, braceEnd)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const item of items) {
+        if (/^type\s+/.test(item)) continue;
+        const asMatch = item.match(
+          /^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/,
+        );
+        const exportedName = asMatch ? asMatch[1]! : item;
+        const localName = asMatch ? asMatch[2]! : item;
+        if (
+          /^[A-Za-z_$][\w$]*$/.test(exportedName) &&
+          /^[A-Za-z_$][\w$]*$/.test(localName)
+        ) {
+          bindings.set(localName, {
+            kind: "named",
+            exportedName,
+            moduleSpecifier,
+          });
+        }
+      }
+      continue;
+    }
+
+    const nsMatch = rawClause.match(/^\*\s+as\s+([A-Za-z_$][\w$]*)$/);
+    if (nsMatch) {
+      bindings.set(nsMatch[1]!, {
+        kind: "namespace",
+        exportedName: "*",
+        moduleSpecifier,
+      });
+      continue;
+    }
+
+    if (/^[A-Za-z_$][\w$]*$/.test(rawClause)) {
+      bindings.set(rawClause, {
+        kind: "default",
+        exportedName: "default",
+        moduleSpecifier,
+      });
+    }
+  }
+
+  // 2. Local exported classes & non-const enums defined in this file
+  for (const m of masked.matchAll(
+    /(?:^|;|\n)\s*export\s+(default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    const isDefault = Boolean(m[1]);
+    const className = m[2]!;
+    bindings.set(className, {
+      kind: isDefault ? "default" : "named",
+      exportedName: isDefault ? "default" : className,
+      moduleSpecifier: selfImportSpec,
+    });
+  }
+  for (const m of masked.matchAll(
+    /(?:^|;|\n)\s*export\s+(const\s+)?enum\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    if (m[1]) continue; // skip const enum
+    const enumName = m[2]!;
+    bindings.set(enumName, {
+      kind: "named",
+      exportedName: enumName,
+      moduleSpecifier: selfImportSpec,
+    });
+  }
+
+  return bindings;
+}
+
+class MetadataImportRegistry {
+  private readonly usedLocalNames = new Set<string>([
+    "Object",
+    "String",
+    "Number",
+    "Boolean",
+    "Date",
+    "Array",
+    "BigInt",
+    "Promise",
+    "Symbol",
+  ]);
+  private readonly bindingToAlias = new Map<string, string>();
+  private readonly byModule = new Map<
+    string,
+    {
+      defaultAlias?: string;
+      namespaceAlias?: string;
+      named: Map<string, string>;
+    }
+  >();
+
+  register(localHint: string, binding: ResolvedImportBinding): string {
+    const key = `${binding.moduleSpecifier}\0${binding.kind}\0${binding.exportedName}`;
+    const existing = this.bindingToAlias.get(key);
+    if (existing) return existing;
+
+    const baseName =
+      binding.kind === "named" ? binding.exportedName : localHint;
+    let alias = baseName;
+    let suffix = 2;
+    while (this.usedLocalNames.has(alias)) {
+      alias = `${baseName}_${suffix++}`;
+    }
+    this.usedLocalNames.add(alias);
+    this.bindingToAlias.set(key, alias);
+
+    let modEntry = this.byModule.get(binding.moduleSpecifier);
+    if (!modEntry) {
+      modEntry = { named: new Map<string, string>() };
+      this.byModule.set(binding.moduleSpecifier, modEntry);
+    }
+    if (binding.kind === "default") {
+      modEntry.defaultAlias = alias;
+    } else if (binding.kind === "namespace") {
+      modEntry.namespaceAlias = alias;
+    } else {
+      modEntry.named.set(binding.exportedName, alias);
+    }
+
+    return alias;
+  }
+
+  emitImportStatements(): string[] {
+    const lines: string[] = [];
+    const sortedSpecs = [...this.byModule.keys()].sort();
+    for (const spec of sortedSpecs) {
+      const entry = this.byModule.get(spec)!;
+      const namedParts = [...entry.named.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([exported, local]) =>
+          exported === local ? exported : `${exported} as ${local}`,
+        );
+
+      if (entry.defaultAlias && namedParts.length > 0) {
+        lines.push(
+          `import ${entry.defaultAlias}, { ${namedParts.join(", ")} } from ${JSON.stringify(spec)};`,
+        );
+      } else if (entry.defaultAlias) {
+        lines.push(
+          `import ${entry.defaultAlias} from ${JSON.stringify(spec)};`,
+        );
+      } else if (namedParts.length > 0) {
+        lines.push(
+          `import { ${namedParts.join(", ")} } from ${JSON.stringify(spec)};`,
+        );
+      }
+      if (entry.namespaceAlias) {
+        lines.push(
+          `import * as ${entry.namespaceAlias} from ${JSON.stringify(spec)};`,
+        );
+      }
+    }
+    return lines;
+  }
+}
+
+const BUILTIN_METADATA_IDENTS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "Date",
+  "Object",
+  "Array",
+  "BigInt",
+  "Symbol",
+  "__union",
+  "__generic",
+]);
+
+function rewriteCompositeTypeExprForMetadataFile(
+  rawExpr: string,
+  resolveRefIdent: (ident: string) => string | undefined,
+): {
+  readonly code: string;
+  readonly usesUnion: boolean;
+  readonly usesGeneric: boolean;
+} {
+  let usesUnion = false;
+  let usesGeneric = false;
+  const rewritten = rawExpr.replace(
+    /\b([A-Za-z_$][\w$]*)\b/g,
+    (ident) => {
+      if (ident === "__union") {
+        usesUnion = true;
+        return ident;
+      }
+      if (ident === "__generic") {
+        usesGeneric = true;
+        return ident;
+      }
+      if (BUILTIN_METADATA_IDENTS.has(ident)) {
+        return ident;
+      }
+      return resolveRefIdent(ident) ?? "Object";
+    },
+  );
+
+  return { code: rewritten, usesUnion, usesGeneric };
+}
+
 /**
  * Build-time static metadata generator emitting a `metadata.ts` file directly
  * loadable by `SwaggerModule.loadPluginMetadata(metadata)` (compatible with
@@ -2096,6 +2763,7 @@ export async function generateMetadataFile(
   const sourceDir = resolve(rootDir, options.pathToSource ?? "src");
   const outDir = resolve(rootDir, options.outDir ?? sourceDir);
   const outputPath = join(outDir, options.filename ?? "metadata.ts");
+  const metadataDir = dirname(outputPath);
   const esmCompatible =
     options.esmCompatible !== undefined
       ? options.esmCompatible === true
@@ -2114,40 +2782,113 @@ export async function generateMetadataFile(
   const controllerKeyOfComment = options.controllerKeyOfComment ?? "summary";
 
   const files = (await walkSourceFiles(sourceDir)).sort();
+  const knownFiles = new Set(files.map(normalizePathKey));
+  const importRegistry = new MetadataImportRegistry();
   const modelEntries: string[] = [];
   const controllerEntries: string[] = [];
+  const genericParamAttachLines: string[] = [];
+  let needsUnionHelper = false;
+  let needsGenericHelper = false;
   let modelsCount = 0;
   let controllersCount = 0;
 
   for (const filePath of files) {
+    const isDtoFile = dtoFilter.test(filePath);
+    const isCtrlFile = ctrlFilter.test(filePath);
+    if (!isDtoFile && !isCtrlFile) continue;
+
     const source = await Bun.file(filePath).text();
     const importSpec = toImportSpecifier(
-      dirname(outputPath),
+      metadataDir,
       filePath,
       esmCompatible,
     );
+    let fileBindings: Map<string, ResolvedImportBinding> | undefined;
+    const getFileBindings = () => {
+      if (!fileBindings) {
+        fileBindings = collectFileImportBindings(
+          source,
+          filePath,
+          importSpec,
+          metadataDir,
+          esmCompatible,
+          knownFiles,
+        );
+      }
+      return fileBindings;
+    };
+    const resolveRefIdent = (ident: string): string | undefined => {
+      const binding = getFileBindings().get(ident);
+      if (!binding) return undefined;
+      return importRegistry.register(ident, binding);
+    };
 
-    if (dtoFilter.test(filePath)) {
+    if (isDtoFile) {
       const dtoRes = transformDtoMetadataSource(source, filePath, options);
       if (dtoRes.classes.length > 0) {
         const classPropsParts: string[] = [];
         for (const cls of dtoRes.classes) {
           modelsCount++;
+          if (cls.typeParameters && cls.typeParameters.length > 0) {
+            const specs = cls.typeParameters.map((paramName) => ({
+              name: paramName,
+              properties: cls.properties
+                .filter((p) => !p.hideSwagger && p.genericParamRef === paramName)
+                .map((p) => ({
+                  propertyKey: p.aliasName ?? p.name,
+                  isArray: p.isArray,
+                })),
+            }));
+            if (specs.some((s) => s.properties.length > 0)) {
+              const clsIdent = resolveRefIdent(cls.name);
+              if (clsIdent) {
+                genericParamAttachLines.push(
+                  `Object.defineProperty(${clsIdent}, Symbol.for(${JSON.stringify(SWAGGER_GENERIC_TYPE_PARAMS_SYMBOL)}), { value: ${JSON.stringify(specs)}, enumerable: false, configurable: true });`,
+                );
+              }
+            }
+          }
+
           const propParts: string[] = [];
           for (const prop of cls.properties) {
             if (prop.hideSwagger) continue;
             const fields: string[] = [];
+            if (prop.aliasName !== undefined) {
+              fields.push(`name: ${JSON.stringify(prop.aliasName)}`);
+            }
             fields.push(`required: ${prop.required ? "true" : "false"}`);
             if (prop.nullable) fields.push(`nullable: true`);
             if (prop.isArray) fields.push(`isArray: true`);
             if (prop.isReadonly) fields.push(`readOnly: true`);
             if (prop.typeExpr && !prop.typeExpr.startsWith("() => ")) {
               fields.push(`type: () => ${prop.typeExpr}`);
+            } else if (
+              prop.typeExpr &&
+              (prop.typeExpr.includes("__union(") ||
+                prop.typeExpr.includes("__generic("))
+            ) {
+              const rw = rewriteCompositeTypeExprForMetadataFile(
+                prop.typeExpr,
+                resolveRefIdent,
+              );
+              if (rw.usesUnion) needsUnionHelper = true;
+              if (rw.usesGeneric) needsGenericHelper = true;
+              fields.push(`type: ${rw.code}`);
             } else if (prop.typeExpr?.startsWith("() => ")) {
-              // Reference imported class via string name fallback if not primitive
-              fields.push(`type: () => Object`);
+              const refName = prop.typeExpr.slice(6).trim();
+              const resolvedIdent = resolveRefIdent(refName);
+              fields.push(
+                resolvedIdent
+                  ? `type: () => ${resolvedIdent}`
+                  : `type: () => Object`,
+              );
             }
-            if (prop.enumLiterals) {
+            if (prop.enumExpr !== undefined) {
+              const resolvedEnum = resolveRefIdent(prop.enumExpr);
+              if (resolvedEnum) {
+                fields.push(`enum: ${resolvedEnum}`);
+              }
+            } else if (prop.enumLiterals) {
               fields.push(`enum: ${JSON.stringify(prop.enumLiterals)}`);
             }
             if (prop.enumName) {
@@ -2172,6 +2913,11 @@ export async function generateMetadataFile(
                 fields.push(`maxLength: ${c.maxLength}`);
               if (c.pattern)
                 fields.push(`pattern: ${JSON.stringify(c.pattern)}`);
+              if (c.minItems !== undefined)
+                fields.push(`minItems: ${c.minItems}`);
+              if (c.maxItems !== undefined)
+                fields.push(`maxItems: ${c.maxItems}`);
+              if (c.uniqueItems !== undefined) fields.push(`uniqueItems: true`);
             }
             propParts.push(
               `          ${JSON.stringify(prop.name)}: { ${fields.join(", ")} }`,
@@ -2187,7 +2933,7 @@ export async function generateMetadataFile(
       }
     }
 
-    if (ctrlFilter.test(filePath)) {
+    if (isCtrlFile) {
       const ctrlRes = transformControllerMetadataSource(
         source,
         filePath,
@@ -2209,6 +2955,24 @@ export async function generateMetadataFile(
             if (m.isArray) fields.push(`isArray: true`);
             if (m.returnTypeExpr && !m.returnTypeExpr.startsWith("() => ")) {
               fields.push(`type: ${m.returnTypeExpr}`);
+            } else if (
+              m.returnTypeExpr &&
+              (m.returnTypeExpr.includes("__union(") ||
+                m.returnTypeExpr.includes("__generic("))
+            ) {
+              const rw = rewriteCompositeTypeExprForMetadataFile(
+                m.returnTypeExpr,
+                resolveRefIdent,
+              );
+              if (rw.usesUnion) needsUnionHelper = true;
+              if (rw.usesGeneric) needsGenericHelper = true;
+              fields.push(`type: ${rw.code}`);
+            } else if (m.returnTypeExpr?.startsWith("() => ")) {
+              const refName = m.returnTypeExpr.slice(6).trim();
+              const resolvedIdent = resolveRefIdent(refName);
+              if (resolvedIdent) {
+                fields.push(`type: () => ${resolvedIdent}`);
+              }
             }
             methodParts.push(
               `          ${JSON.stringify(m.name)}: { ${fields.join(", ")} }`,
@@ -2225,9 +2989,21 @@ export async function generateMetadataFile(
     }
   }
 
+  const staticImportLines = importRegistry.emitImportStatements();
+  const importsBlock =
+    staticImportLines.length > 0 ? `${staticImportLines.join("\n")}\n\n` : "";
+  const genericAttachBlock =
+    genericParamAttachLines.length > 0
+      ? `${genericParamAttachLines.join("\n")}\n\n`
+      : "";
+  const helpersBlock =
+    needsUnionHelper || needsGenericHelper
+      ? `${buildSwaggerCompositeHelpersCode("", needsUnionHelper, needsGenericHelper)}\n`
+      : "";
+
   const code = `/* eslint-disable */
 // Auto-generated by @bunest/cli generateMetadataFile()
-export default async () => {
+${importsBlock}${genericAttachBlock}${helpersBlock}export default async () => {
   return {
     "@nestjs/swagger": {
       models: [

@@ -144,6 +144,12 @@ export interface TypegenConfiguration {
    */
   readonly includeGlobalNamespace?: boolean;
   /**
+   * Optional output file path for standalone frontend-portable route types
+   * (`export interface AppRoutes` + `export const appRouteManifest`) with zero
+   * `@bunest/core` imports.
+   */
+  readonly clientTypes?: string;
+  /**
    * Additional custom typegen plugins to run alongside built-in scanners.
    */
   readonly plugins?: readonly BunestTypegenPlugin<any>[];
@@ -154,6 +160,7 @@ export interface TypegenOptions {
   readonly sourceRoot?: string;
   readonly outDir?: string;
   readonly fileName?: string;
+  readonly clientTypes?: string;
   readonly tsconfigPath?: string;
   readonly config?: string;
   readonly envFiles?: readonly string[];
@@ -459,6 +466,14 @@ export interface TypegenScanResult {
   readonly durationMs: number;
 }
 
+export interface TypegenClientTypesResult {
+  readonly outputPath: string;
+  readonly relativePath: string;
+  readonly content: string;
+  readonly changed: boolean;
+  readonly upToDate: boolean;
+}
+
 export interface TypegenResult {
   readonly outputPath: string;
   readonly relativePath: string;
@@ -469,6 +484,7 @@ export interface TypegenResult {
   readonly summary: TypegenSummary;
   readonly scannedFiles: number;
   readonly durationMs: number;
+  readonly clientTypes?: TypegenClientTypesResult;
 }
 
 export interface TypegenWatcherHandle {

@@ -629,4 +629,118 @@ export class TasksController {
     ) as { summary?: string };
     expect(opMeta?.summary).toBe("Fetch item");
   });
+
+  it("generateMetadataFile() preserves nested DTO references, controller return DTO types, Expose aliases, enum imports, and array constraints", async () => {
+    const tmpProject = await makeTempDir("bunest-meta-nested-");
+    await ensureDir(join(tmpProject, "src/nested"));
+
+    await Bun.write(
+      join(tmpProject, "src/nested/address.dto.ts"),
+      `export class AddressDto {\n  city!: string;\n}\n`,
+    );
+    await Bun.write(
+      join(tmpProject, "src/order.dto.ts"),
+      `import { AddressDto } from "./nested/address.dto";
+function Expose(_opts?: { name?: string }): PropertyDecorator { return () => {}; }
+function ArrayMinSize(_n: number): PropertyDecorator { return () => {}; }
+function ArrayMaxSize(_n: number): PropertyDecorator { return () => {}; }
+function ArrayUnique(): PropertyDecorator { return () => {}; }
+
+export enum OrderStatus {
+  Pending = "pending",
+  Paid = "paid",
+}
+
+export class OrderDto {
+  @Expose({ name: "shipping_address" })
+  shippingAddress!: AddressDto;
+
+  status!: OrderStatus;
+
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  tags!: string[];
+}
+`,
+    );
+    await Bun.write(
+      join(tmpProject, "src/order.controller.ts"),
+      `import { OrderDto } from "./order.dto";
+function Get(): MethodDecorator { return () => {}; }
+export class OrderController {
+  /** List orders */
+  @Get()
+  listOrders(): Promise<OrderDto[]> {
+    return Promise.resolve([]);
+  }
+}
+`,
+    );
+
+    const metaFile = await generateMetadataFile({
+      rootDir: tmpProject,
+      pathToSource: "src",
+      outDir: "src",
+      esmCompatible: false,
+      esmCompatibleWasConfigured: true,
+      autoFillEnumName: true,
+      classTransformerShim: true,
+    });
+
+    expect(metaFile.modelsCount).toBe(2);
+    expect(metaFile.controllersCount).toBe(1);
+    // Value imports (NOT import type) for referenced DTOs & enums
+    expect(metaFile.code).toContain(
+      'import { AddressDto } from "./nested/address.dto";',
+    );
+    expect(metaFile.code).toContain(
+      'import { OrderDto, OrderStatus } from "./order.dto";',
+    );
+    // Nested DTO preserved (not degraded to Object)
+    expect(metaFile.code).toContain("type: () => AddressDto");
+    expect(metaFile.code).not.toContain("type: () => Object");
+    // Expose aliasName emitted as `name`
+    expect(metaFile.code).toContain('name: "shipping_address"');
+    // Enum value + enumName emitted
+    expect(metaFile.code).toContain("enum: OrderStatus");
+    expect(metaFile.code).toContain('enumName: "OrderStatus"');
+    // Array constraints emitted
+    expect(metaFile.code).toContain("minItems: 1");
+    expect(metaFile.code).toContain("maxItems: 10");
+    expect(metaFile.code).toContain("uniqueItems: true");
+    // Controller return DTO type emitted
+    expect(metaFile.code).toContain("type: () => OrderDto");
+
+    // Dynamically import and execute the generated metadata.ts to verify runtime validity
+    const loadedMod = (await import(
+      `${Bun.pathToFileURL(metaFile.outputPath).href}?t=${Date.now()}`
+    )) as { default: () => Promise<Record<string, any>> };
+    const payload = await loadedMod.default();
+    const swagger = payload["@nestjs/swagger"];
+    const orderModelEntry = swagger.models.find(([, classes]: [unknown, any]) =>
+      Boolean(classes.OrderDto),
+    );
+    expect(orderModelEntry).toBeDefined();
+    const orderProps = orderModelEntry[1].OrderDto;
+    expect(orderProps.shippingAddress.name).toBe("shipping_address");
+    expect(orderProps.shippingAddress.type().name).toBe("AddressDto");
+    expect(orderProps.status.enum).toEqual({
+      Pending: "pending",
+      Paid: "paid",
+    });
+    expect(orderProps.status.enumName).toBe("OrderStatus");
+    expect(orderProps.tags.minItems).toBe(1);
+    expect(orderProps.tags.maxItems).toBe(10);
+    expect(orderProps.tags.uniqueItems).toBe(true);
+
+    const ctrlEntry = swagger.controllers.find(([, ctrls]: [unknown, any]) =>
+      Boolean(ctrls.OrderController),
+    );
+    expect(ctrlEntry).toBeDefined();
+    expect(ctrlEntry[1].OrderController.listOrders.type().name).toBe(
+      "OrderDto",
+    );
+    expect(ctrlEntry[1].OrderController.listOrders.isArray).toBe(true);
+  });
 });

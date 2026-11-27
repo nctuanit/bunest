@@ -54,6 +54,7 @@ describe("bunest mcp stdio server", () => {
       "bunest_inspect_diagnostics",
       "bunest_explain_route",
       "bunest_verify",
+      "bunest_graph",
     ]);
 
     const unknownRes = await handleMcpRequest({
@@ -208,6 +209,186 @@ describe("bunest mcp stdio server", () => {
       expect(graphText).toContain("McpTestModule");
     } finally {
       await app.close();
+    }
+  });
+
+  test("bunest_graph returns offline DI graph in json/mermaid/dot with module and cyclesOnly filters", async () => {
+    const tmpDir = join(
+      Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp",
+      `bunest-mcp-graph-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    );
+    try {
+      await Bun.write(
+        join(tmpDir, "src/decorators.ts"),
+        `export function Module(_o?: any): ClassDecorator { return () => {}; }
+export function Injectable(): ClassDecorator { return () => {}; }
+export function Controller(_p?: string): ClassDecorator { return () => {}; }
+export function Get(_p?: string): MethodDecorator { return () => {}; }
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/a.service.ts"),
+        `import { Injectable } from "./decorators";
+import { BService } from "./b.service";
+@Injectable()
+export class AService { constructor(private b: BService) {} }
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/b.service.ts"),
+        `import { Injectable } from "./decorators";
+import { AService } from "./a.service";
+@Injectable()
+export class BService { constructor(private a: AService) {} }
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/solo.service.ts"),
+        `import { Injectable } from "./decorators";
+@Injectable()
+export class SoloService {}
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/a.module.ts"),
+        `import { Module } from "./decorators";
+import { BModule } from "./b.module";
+import { AService } from "./a.service";
+@Module({ imports: [BModule], providers: [AService], exports: [AService] })
+export class AModule {}
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/b.module.ts"),
+        `import { Module } from "./decorators";
+import { AModule } from "./a.module";
+import { BService } from "./b.service";
+@Module({ imports: [AModule], providers: [BService], exports: [BService] })
+export class BModule {}
+`,
+      );
+      await Bun.write(
+        join(tmpDir, "src/solo.module.ts"),
+        `import { Module } from "./decorators";
+import { SoloService } from "./solo.service";
+@Module({ providers: [SoloService] })
+export class SoloModule {}
+`,
+      );
+
+      // JSON default format
+      const jsonRes = await handleMcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 40,
+          method: "tools/call",
+          params: {
+            name: "bunest_graph",
+            arguments: { format: "json" },
+          },
+        },
+        { cwd: tmpDir },
+      );
+      const jsonText = (
+        jsonRes?.result as { content: Array<{ text: string }>; isError?: boolean }
+      ).content[0]!.text;
+      expect((jsonRes?.result as { isError?: boolean }).isError).toBeUndefined();
+      const parsed = JSON.parse(jsonText) as {
+        modules: Array<{ name: string }>;
+        providers: Array<{ name: string }>;
+        cycles: string[][];
+        moduleCycles: string[][];
+      };
+      expect(parsed.modules.map((m) => m.name)).toEqual([
+        "AModule",
+        "BModule",
+        "SoloModule",
+      ]);
+      expect(parsed.cycles.length).toBeGreaterThanOrEqual(1);
+      expect(parsed.moduleCycles.length).toBeGreaterThanOrEqual(1);
+
+      // cyclesOnly: true filters out SoloModule and SoloService
+      const cyclesRes = await handleMcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 41,
+          method: "tools/call",
+          params: {
+            name: "bunest_graph",
+            arguments: { format: "json", cyclesOnly: true },
+          },
+        },
+        { cwd: tmpDir },
+      );
+      const cyclesParsed = JSON.parse(
+        (cyclesRes?.result as { content: Array<{ text: string }> }).content[0]!.text,
+      ) as {
+        modules: Array<{ name: string }>;
+        providers: Array<{ name: string }>;
+        cyclesOnly: boolean;
+      };
+      expect(cyclesParsed.cyclesOnly).toBe(true);
+      expect(cyclesParsed.modules.map((m) => m.name)).toEqual(["AModule", "BModule"]);
+      expect(cyclesParsed.providers.some((p) => p.name === "SoloService")).toBe(false);
+
+      // Mermaid with module filter
+      const mermaidRes = await handleMcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 42,
+          method: "tools/call",
+          params: {
+            name: "bunest_graph",
+            arguments: { format: "mermaid", module: "SoloModule" },
+          },
+        },
+        { cwd: tmpDir },
+      );
+      const mermaidText = (
+        mermaidRes?.result as { content: Array<{ text: string }> }
+      ).content[0]!.text;
+      expect(mermaidText.startsWith("flowchart LR")).toBe(true);
+      expect(mermaidText).toContain("SoloModule");
+      expect(mermaidText).not.toContain("AModule");
+
+      // DOT format
+      const dotRes = await handleMcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 43,
+          method: "tools/call",
+          params: {
+            name: "bunest_graph",
+            arguments: { format: "dot" },
+          },
+        },
+        { cwd: tmpDir },
+      );
+      const dotText = (
+        dotRes?.result as { content: Array<{ text: string }> }
+      ).content[0]!.text;
+      expect(dotText.startsWith("digraph BunestGraph {")).toBe(true);
+      expect(dotText).toContain('"mod:AModule"');
+
+      // Unknown module returns isError: true
+      const badModRes = await handleMcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 44,
+          method: "tools/call",
+          params: {
+            name: "bunest_graph",
+            arguments: { module: "DoesNotExistModule" },
+          },
+        },
+        { cwd: tmpDir },
+      );
+      expect((badModRes?.result as { isError?: boolean }).isError).toBe(true);
+      expect(
+        (badModRes?.result as { content: Array<{ text: string }> }).content[0]!.text,
+      ).toContain('Module "DoesNotExistModule" not found');
+    } finally {
+      await removePath(tmpDir, { recursive: true, force: true });
     }
   });
 });

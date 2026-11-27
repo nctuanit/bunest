@@ -131,6 +131,7 @@ export async function runStartCommand(
         sourceRoot: options.sourceRoot ?? config.sourceRoot ?? "src",
         outDir: options.typegenOutDir ?? typegenCfg.outDir ?? ".bunest/types",
         fileName: typegenCfg.fileName ?? "bunest.d.ts",
+        clientTypes: options.clientTypes ?? typegenCfg.clientTypes,
         tsconfigPath:
           typegenCfg.tsconfigPath ?? config.compilerOptions?.tsConfigPath,
         envFiles: envFiles.length > 0 ? envFiles : typegenCfg.envFiles,

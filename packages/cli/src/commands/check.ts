@@ -222,6 +222,7 @@ export async function runCheckCommand(
               file: relative(cwd, d.location.filePath).replace(/\\/g, "/"),
               line: d.location.line,
               column: d.location.column,
+              ...(d.suggestion ? { suggestion: d.suggestion } : {}),
             })),
           },
           null,

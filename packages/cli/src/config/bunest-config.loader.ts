@@ -274,6 +274,7 @@ export interface BunestConfigLike {
     readonly enabled?: boolean;
     readonly outDir?: string;
     readonly fileName?: string;
+    readonly clientTypes?: string;
     readonly sourceRoot?: string;
     readonly tsconfigPath?: string;
     readonly envFiles?: readonly string[];
