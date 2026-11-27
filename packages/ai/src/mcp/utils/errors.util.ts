@@ -40,12 +40,34 @@ export function httpExceptionMessage(exception: HttpException): string {
     return response;
   }
   if (response && typeof response === "object" && "message" in response) {
-    const msg = (response as { message?: unknown }).message;
-    if (Array.isArray(msg)) {
-      return msg.map(String).join("; ");
+    const resObj = response as {
+      message?: unknown;
+      details?: ReadonlyArray<{
+        field?: string;
+        messages?: readonly string[];
+      }>;
+    };
+    let base: string | undefined;
+    if (Array.isArray(resObj.message)) {
+      base = resObj.message.map(String).join("; ");
+    } else if (typeof resObj.message === "string" && resObj.message.length > 0) {
+      base = resObj.message;
     }
-    if (typeof msg === "string" && msg.length > 0) {
-      return msg;
+    if (Array.isArray(resObj.details) && resObj.details.length > 0) {
+      const detailParts = resObj.details
+        .map((d) => {
+          const msgs = Array.isArray(d.messages) ? d.messages.join(", ") : "";
+          return d.field && msgs ? `${d.field}: ${msgs}` : msgs;
+        })
+        .filter(Boolean);
+      if (detailParts.length > 0) {
+        return base
+          ? `${base}: ${detailParts.join("; ")}`
+          : detailParts.join("; ");
+      }
+    }
+    if (base) {
+      return base;
     }
   }
   return exception.message || INTERNAL_ERROR_MESSAGE;

@@ -132,6 +132,56 @@ export type McpSchema<Input = any, Output = Input> = StandardSchemaV1<
   readonly "~standard": StandardSchemaWithJsonProps<Input, Output>;
 };
 
+const STANDARD_SCHEMA_DTO_SYMBOL = Symbol.for("bunest:standard-schema-dto");
+
+/**
+ * A DTO class constructor created via `createSchemaDto(schema)` carrying a
+ * Standard Schema v1 on `Symbol.for("bunest:standard-schema-dto")`.
+ */
+export type McpSchemaDtoConstructor<
+  Output = any,
+  TSchema extends StandardSchemaV1<any, any> = StandardSchemaV1<any, any>,
+> = Type<Output> & {
+  readonly [STANDARD_SCHEMA_DTO_SYMBOL]?: TSchema;
+};
+
+/**
+ * Accepted schema input for `@Tool()` and `@Prompt()`: either a Standard Schema v1
+ * object or a `createSchemaDto(schema)` DTO class constructor.
+ */
+export type McpSchemaInput<Input = any, Output = Input> =
+  | McpSchema<Input, Output>
+  | McpSchemaDtoConstructor<Output>;
+
+/**
+ * Options for the `@McpExpose()` decorator bridging HTTP `@Controller()` routes
+ * to MCP tools.
+ */
+export interface McpExposeOptions {
+  /**
+   * Custom tool name (on a route handler method) or tool name prefix (on a controller class).
+   */
+  name?: string;
+  /**
+   * Human-readable tool description shown in MCP `tools/list`.
+   */
+  description?: string;
+  /**
+   * Set to `false` to opt a specific route or controller out when exposed via
+   * class-level `@McpExpose()` or `McpModule.forRoot({ exposeControllers })`.
+   * @default true
+   */
+  include?: boolean;
+  /**
+   * Optional OAuth scopes required when invoking the exposed tool over HTTP.
+   */
+  scopes?: string[];
+  /**
+   * Optional MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, etc.).
+   */
+  annotations?: McpToolAnnotations;
+}
+
 export type McpCallKind = "tool" | "resource" | "prompt";
 export type McpProtocolEra = "legacy" | "modern";
 export type McpContextType = "mcp";
@@ -192,6 +242,14 @@ export interface McpModuleOptions {
   icons?: McpIcon[];
   instructions?: string;
   include?: Function[];
+  /**
+   * Automatically expose HTTP `@Controller()` routes as MCP tools:
+   * - `true`: expose routes from all discovered controllers (excluding internal MCP endpoints
+   *   and routes/controllers marked `@McpExpose({ include: false })`)
+   * - `Type[]`: expose routes from the specified controller classes
+   * - `false` / `undefined`: only expose routes opted-in with `@McpExpose()`
+   */
+  exposeControllers?: boolean | Type<unknown>[];
   http?: McpHttpOptions;
   auth?: McpAuthOptions;
   stdio?: McpStdioOptions;
@@ -232,8 +290,8 @@ interface PrimitiveOptions {
 
 export interface ToolOptions extends PrimitiveOptions {
   name?: string;
-  inputSchema?: McpSchema;
-  outputSchema?: McpSchema;
+  inputSchema?: McpSchemaInput;
+  outputSchema?: McpSchemaInput;
   annotations?: McpToolAnnotations;
 }
 
@@ -256,7 +314,7 @@ export interface ResourceTemplateOptions extends PrimitiveOptions {
 
 export interface PromptOptions extends PrimitiveOptions {
   name?: string;
-  argsSchema?: McpSchema;
+  argsSchema?: McpSchemaInput;
 }
 
 export type McpPrimitiveMetadata =

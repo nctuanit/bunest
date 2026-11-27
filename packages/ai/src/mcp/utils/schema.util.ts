@@ -1,5 +1,9 @@
-import { isStandardSchema } from "@bunest/core";
-import type { McpSchema } from "../interfaces/mcp-types";
+import { MetadataRegistry, isStandardSchema } from "@bunest/core";
+import type { McpSchema, McpSchemaInput } from "../interfaces/mcp-types";
+import {
+  STANDARD_SCHEMA_DTO_KEY,
+  STANDARD_SCHEMA_DTO_METADATA_KEY,
+} from "../mcp.constants";
 
 export interface PreparedMcpSchema {
   readonly schema: McpSchema;
@@ -7,61 +11,106 @@ export interface PreparedMcpSchema {
 }
 
 const preparedCache = new WeakMap<McpSchema, Record<string, unknown>>();
+const JSON_SCHEMA_TARGETS = [
+  "draft-2020-12",
+  "draft-07",
+  "openapi-3.0",
+] as const;
 
-export function getSchemaJson(
-  schema: McpSchema | undefined,
-  io: "input" | "output" = "input",
+/**
+ * Unwraps either a Standard Schema v1 object or a `createSchemaDto(schema)` DTO
+ * class constructor (via `Symbol.for("bunest:standard-schema-dto")` with Reflect
+ * metadata fallback) into the underlying `McpSchema`, without depending on
+ * `@bunest/validation`.
+ */
+export function unwrapStandardSchemaDto(input: unknown): McpSchema | undefined {
+  if (isStandardSchema(input)) {
+    return input as McpSchema;
+  }
+  if (typeof input === "function") {
+    const bySymbol = (input as unknown as Record<PropertyKey, unknown>)[
+      STANDARD_SCHEMA_DTO_KEY
+    ];
+    if (isStandardSchema(bySymbol)) {
+      return bySymbol as McpSchema;
+    }
+    const byReflect = MetadataRegistry.get<unknown>(
+      STANDARD_SCHEMA_DTO_METADATA_KEY,
+      input,
+    );
+    if (isStandardSchema(byReflect)) {
+      return byReflect as McpSchema;
+    }
+  }
+  return undefined;
+}
+
+function emitJsonSchema(
+  schema: McpSchema,
+  io: "input" | "output",
 ): Record<string, unknown> {
-  if (!schema) {
+  const std = schema["~standard"];
+  const fn =
+    io === "output"
+      ? (std.jsonSchema?.output ?? std.jsonSchema?.input)
+      : (std.jsonSchema?.input ?? std.jsonSchema?.output);
+  if (typeof fn !== "function") {
     return { type: "object", properties: {} };
   }
-  const cached = preparedCache.get(schema);
-  if (cached) {
-    return cached;
-  }
-  const std = schema["~standard"];
-  const fn = io === "output" ? std.jsonSchema?.output : std.jsonSchema?.input;
-  if (typeof fn === "function") {
-    const out = fn({ target: "draft-2020-12" });
-    if (out && typeof out === "object") {
-      return out;
+  for (const target of JSON_SCHEMA_TARGETS) {
+    try {
+      const out = fn({ target });
+      if (out && typeof out === "object") {
+        return out;
+      }
+    } catch {
+      // Try next supported JSON Schema draft target
     }
   }
   return { type: "object", properties: {} };
 }
 
+export function getSchemaJson(
+  schema: McpSchemaInput | undefined,
+  io: "input" | "output" = "input",
+): Record<string, unknown> {
+  if (!schema) {
+    return { type: "object", properties: {} };
+  }
+  const unwrapped = unwrapStandardSchemaDto(schema);
+  if (!unwrapped) {
+    return { type: "object", properties: {} };
+  }
+  const cached = preparedCache.get(unwrapped);
+  if (cached) {
+    return cached;
+  }
+  return emitJsonSchema(unwrapped, io);
+}
+
 /**
- * Validates that `schema` is a Standard Schema and caches its JSON Schema representation.
+ * Validates that `schema` is a Standard Schema v1 (or a `createSchemaDto(schema)`
+ * DTO class constructor), unwraps it, and caches its JSON Schema representation.
  */
 export function prepareSchema(
-  schema: McpSchema,
+  schema: McpSchemaInput,
   where: string,
   io: "input" | "output",
 ): McpSchema {
-  if (!isStandardSchema(schema)) {
+  const unwrapped = unwrapStandardSchemaDto(schema);
+  if (!unwrapped) {
     throw new TypeError(
-      `${where}: ${io}Schema must be a Standard Schema v1 object (with "~standard.validate").`,
+      `${where}: ${io}Schema must be a Standard Schema v1 object (with "~standard.validate") or a createSchemaDto(schema) class.`,
     );
   }
-  const std = schema["~standard"];
-  const jsonFn =
-    io === "output"
-      ? (std.jsonSchema?.output ?? std.jsonSchema?.input)
-      : std.jsonSchema?.input;
-  let json: Record<string, unknown> = { type: "object", properties: {} };
-  if (typeof jsonFn === "function") {
-    const generated = jsonFn({ target: "draft-2020-12" });
-    if (generated && typeof generated === "object") {
-      json = generated;
-    }
-  }
+  const json = emitJsonSchema(unwrapped, io);
   if (io === "input" && json.type !== undefined && json.type !== "object") {
     throw new TypeError(
       `${where}: ${io}Schema must describe an object (got JSON Schema type "${String(json.type)}").`,
     );
   }
-  preparedCache.set(schema, json);
-  return schema;
+  preparedCache.set(unwrapped, json);
+  return unwrapped;
 }
 
 export async function validateWithSchema(

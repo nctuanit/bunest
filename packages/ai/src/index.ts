@@ -68,3 +68,11 @@ export type {
   AiToolSelection,
 } from "./interfaces/index";
 export * from "./errors/index";
+export { McpExpose } from "./mcp/decorators/primitives";
+export type {
+  McpExposeOptions,
+  McpModuleOptions,
+  McpSchema,
+  McpSchemaDtoConstructor,
+  McpSchemaInput,
+} from "./mcp/interfaces/mcp-types";

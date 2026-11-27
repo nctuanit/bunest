@@ -1,10 +1,12 @@
 import {
   All,
   Controller,
+  MetadataRegistry,
   Req,
   type ControllerOptions,
   type Type,
 } from "@bunest/core";
+import { MCP_INTERNAL_CONTROLLER } from "../mcp.constants";
 import { McpHttpService } from "./mcp-http.service";
 
 /**
@@ -28,6 +30,8 @@ export function createMcpController(
       return this.httpService.fetch(req);
     }
   }
+
+  MetadataRegistry.define(MCP_INTERNAL_CONTROLLER, true, McpEndpointController);
 
   for (const decorator of decorators) {
     decorator(McpEndpointController);

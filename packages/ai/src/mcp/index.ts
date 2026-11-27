@@ -11,11 +11,14 @@ export type {
   McpCallKind,
   McpContext,
   McpContextType,
+  McpExposeOptions,
   McpHttpOptions,
   McpModuleOptions,
   McpModuleStructure,
   McpProtocolEra,
   McpSchema,
+  McpSchemaDtoConstructor,
+  McpSchemaInput,
   McpStdioListenOptions,
   McpStdioOptions,
   McpTokenVerifier,
@@ -25,6 +28,7 @@ export type {
   ToolOptions,
 } from "./interfaces/mcp-types";
 export {
+  McpExpose,
   Prompt,
   Resource,
   ResourceTemplate,

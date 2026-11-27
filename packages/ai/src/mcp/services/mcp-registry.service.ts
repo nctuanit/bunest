@@ -1,14 +1,15 @@
 import {
+  ApplicationConfig,
+  DiscoveryService,
+  ExternalContextCreator,
   Inject,
   Injectable,
   MetadataRegistry,
+  MetadataScanner,
+  ModuleRef,
+  Optional,
   type OnModuleInit,
   type Type,
-} from "@bunest/core";
-import {
-  DiscoveryService,
-  ExternalContextCreator,
-  MetadataScanner,
 } from "@bunest/core";
 import { McpParamsFactory, recordHandlerParams } from "../context/mcp-params";
 import type {
@@ -29,11 +30,12 @@ import {
   MCP_PRIMITIVE_METADATA,
 } from "../mcp.constants";
 import { assertName, assertScopes, assertToolName } from "../utils/names.util";
-import { prepareSchema } from "../utils/schema.util";
+import { prepareSchema, unwrapStandardSchemaDto } from "../utils/schema.util";
 import {
   type CompiledUriTemplate,
   compileUriTemplate,
 } from "../utils/uri-template.util";
+import { buildBridgedRestToolsForController } from "./rest-mcp-bridge";
 
 export type McpHandler = (
   input: unknown,
@@ -67,7 +69,9 @@ export interface McpPromptEntry extends Entry<PromptOptions> {
 
 /**
  * Discovers all `@Tool()`, `@Resource()`, `@ResourceTemplate()`, and `@Prompt()` methods
- * across application providers and wraps each with Nest/Bunest enhancers via `ExternalContextCreator`.
+ * across both application providers and controllers, as well as HTTP controller routes
+ * opted-in via `@McpExpose()` or `McpModule.forRoot({ exposeControllers })`, wrapping each
+ * with Bunest enhancers via `ExternalContextCreator`.
  */
 @Injectable()
 export class McpRegistry implements OnModuleInit {
@@ -86,6 +90,8 @@ export class McpRegistry implements OnModuleInit {
     @Inject(MCP_MODULE_OPTIONS) private readonly options: McpModuleOptions,
     @Inject(MCP_HTTP_ENDPOINT)
     private readonly endpoint: { path: string | null },
+    @Optional() private readonly applicationConfig?: ApplicationConfig,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   onModuleInit(): void {
@@ -107,14 +113,16 @@ export class McpRegistry implements OnModuleInit {
     }
     this.scanned = true;
 
-    const wrappers = this.discovery.getProviders(
-      this.options.include
-        ? { include: this.options.include as Type<unknown>[] }
-        : undefined,
-    );
+    const discoveryOptions = this.options.include
+      ? { include: this.options.include as Type<unknown>[] }
+      : undefined;
 
+    const providerWrappers = this.discovery.getProviders(discoveryOptions);
+    const controllerWrappers = this.discovery.getControllers(discoveryOptions);
+
+    // 1. Scan @Tool / @Resource / @ResourceTemplate / @Prompt across BOTH providers and controllers
     const seenInstances = new Set<object>();
-    for (const wrapper of wrappers) {
+    for (const wrapper of [...providerWrappers, ...controllerWrappers]) {
       const instance = wrapper.instance;
       if (!instance || typeof instance !== "object") {
         continue;
@@ -151,6 +159,48 @@ export class McpRegistry implements OnModuleInit {
       }
     }
 
+    // 2. REST-to-MCP Bridge: scan HTTP controllers for @McpExpose() / exposeControllers
+    const seenControllers = new Set<object>();
+    for (const wrapper of controllerWrappers) {
+      const instance = wrapper.instance;
+      if (!instance || typeof instance !== "object") {
+        continue;
+      }
+      if (seenControllers.has(instance)) {
+        continue;
+      }
+      seenControllers.add(instance);
+
+      const controllerCtor = (wrapper.metatype ??
+        instance.constructor) as Type<unknown>;
+      if (typeof controllerCtor !== "function") {
+        continue;
+      }
+
+      const bridgedTools = buildBridgedRestToolsForController(
+        instance,
+        controllerCtor,
+        this.options,
+        {
+          discovery: this.discovery,
+          externalContextCreator: this.externalContextCreator,
+          applicationConfig: this.applicationConfig,
+          moduleRef: this.moduleRef,
+        },
+      );
+
+      for (const tool of bridgedTools) {
+        this.assertUnique(this.tools, tool.name, "tool", tool.where);
+        this.tools.push({
+          name: tool.name,
+          options: tool.options,
+          handler: tool.handler,
+          where: tool.where,
+          inputSchema: tool.inputSchema,
+        });
+      }
+    }
+
     this.assertScopesAreEnforced();
   }
 
@@ -182,8 +232,24 @@ export class McpRegistry implements OnModuleInit {
         const name = meta.options.name ?? methodName;
         assertToolName(name, where);
         this.assertUnique(this.tools, name, "tool", where);
-        const inputSchema = meta.options.inputSchema
-          ? prepareSchema(meta.options.inputSchema, where, "input")
+
+        let rawInputSchema = meta.options.inputSchema;
+        if (!rawInputSchema) {
+          const proto = Object.getPrototypeOf(instance) as object | null;
+          const paramTypes = proto
+            ? MetadataRegistry.getParamTypes(proto, methodName)
+            : undefined;
+          const firstParamType = paramTypes?.[0];
+          if (
+            firstParamType &&
+            unwrapStandardSchemaDto(firstParamType) !== undefined
+          ) {
+            rawInputSchema = firstParamType as ToolOptions["inputSchema"];
+          }
+        }
+
+        const inputSchema = rawInputSchema
+          ? prepareSchema(rawInputSchema, where, "input")
           : undefined;
         const outputSchema = meta.options.outputSchema
           ? prepareSchema(meta.options.outputSchema, where, "output")
