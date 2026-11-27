@@ -37,6 +37,7 @@ import {
   AuthenticationStorage,
   LOCK_STORAGE,
 } from "./storage/authentication.storage";
+import { WebAuthnService } from "./webauthn/webauthn.service";
 
 /**
  * `AuthenticationModule.forRoot({ session, mfa, ... })`, or
@@ -70,6 +71,7 @@ import {
     PasswordResetService,
     MagicLinkService,
     OidcService,
+    WebAuthnService,
   ],
   exports: [
     AUTHENTICATION_MODULE_OPTIONS,
@@ -88,6 +90,7 @@ import {
     PasswordResetService,
     MagicLinkService,
     OidcService,
+    WebAuthnService,
   ],
 })
 export class AuthenticationModule

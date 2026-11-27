@@ -41,6 +41,14 @@ export {
   ThrottlerStorageService,
 } from "./memory-throttler.storage";
 export {
+  LUA_FIXED_WINDOW_INCREMENT,
+  LUA_SLIDING_WINDOW_INCREMENT,
+  RedisThrottlerStorage,
+  type RedisThrottlerAlgorithm,
+  type RedisThrottlerClientLike,
+  type RedisThrottlerStorageOptions,
+} from "./redis-throttler.storage";
+export {
   InjectThrottlerOptions,
   InjectThrottlerStorage,
   SkipThrottle,

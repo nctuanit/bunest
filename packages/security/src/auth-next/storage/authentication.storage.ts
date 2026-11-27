@@ -17,6 +17,8 @@ import { InMemoryMagicLinkStore } from "../magic-link/in-memory-magic-link.store
 import { InMemoryMfaStore } from "../mfa/in-memory-mfa.store";
 import { InMemoryOidcStateStore } from "../oidc/in-memory-oidc-state.store";
 import { InMemorySessionStore } from "../session/in-memory-session.store";
+import { InMemoryPasskeyStore } from "../webauthn/in-memory-passkey.store";
+import type { PasskeyStore } from "../webauthn/webauthn.interface";
 
 /**
  * @internal What each feature reads or writes, audited against the code
@@ -30,6 +32,7 @@ export const CONTRACTS_BY_FEATURE = {
   oidc: ["sessions", "oidcStates"],
   passwordReset: ["sessions", "emailTokens"],
   emailVerification: ["emailTokens"],
+  webauthn: ["passkeys"],
 } as const satisfies Record<string, readonly AuthenticationStorageContract[]>;
 
 /** @internal */
@@ -126,6 +129,21 @@ export const STORAGE_CONTRACTS: Record<
     methods: ["saveEmailToken", "consumeEmailToken", "deleteUserEmailTokens"],
     inMemory: () => new InMemoryEmailTokenStore(),
   },
+  passkeys: {
+    interfaceName: "PasskeyStore",
+    holds: "passkey credentials and WebAuthn challenges",
+    methods: [
+      "getPasskey",
+      "savePasskey",
+      "listUserPasskeys",
+      "updatePasskeyCounter",
+      "deletePasskey",
+      "deleteUserPasskeys",
+      "savePasskeyChallenge",
+      "consumePasskeyChallenge",
+    ],
+    inMemory: () => new InMemoryPasskeyStore(),
+  },
 };
 
 const CONTRACT_NAMES = Object.keys(
@@ -216,6 +234,10 @@ export class AuthenticationStorage {
 
   get emailTokens(): EmailTokenStore {
     return this.source("emailTokens") as EmailTokenStore;
+  }
+
+  get passkeys(): PasskeyStore {
+    return this.source("passkeys") as PasskeyStore;
   }
 
   /**

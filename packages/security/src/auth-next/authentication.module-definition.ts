@@ -98,6 +98,7 @@ export const storageRequirements: FactoryProvider<AuthenticationStorageRequireme
           oidc: options.oidc !== undefined,
           passwordReset: options.passwordReset !== undefined,
           emailVerification: options.emailVerification !== undefined,
+          webauthn: options.webauthn !== undefined,
         };
         return contractsUsedBy(
           (Object.keys(enabled) as AuthenticationFeature[]).filter(
@@ -119,6 +120,7 @@ const KNOWN_OPTIONS = new Set([
   "oidc",
   "passwordReset",
   "emailVerification",
+  "webauthn",
   "allowInMemoryStorage",
 ]);
 
@@ -192,6 +194,7 @@ const LIFETIMES: readonly [
   ["oidc.transactionTtl", (options) => options.oidc?.transactionTtl],
   ["passwordReset.ttl", (options) => options.passwordReset?.ttl],
   ["emailVerification.ttl", (options) => options.emailVerification?.ttl],
+  ["webauthn.challengeTtl", (options) => options.webauthn?.challengeTtl],
 ];
 
 function warnShortLifetimes(

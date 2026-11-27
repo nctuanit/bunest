@@ -83,6 +83,21 @@ export {
 } from "./auth/roles.guard";
 export { PoliciesGuard } from "./auth/policies.guard";
 export {
+  CurrentTenant,
+  DEFAULT_TENANT_SOURCES,
+  REQUIRE_TENANT_KEY,
+  RequireTenant,
+  TENANT_GUARD_OPTIONS,
+  TENANT_ROLES_KEY,
+  TenantGuard,
+  TenantRoles,
+  getRequestTenant,
+  setRequestTenant,
+  type RequireTenantOptions,
+  type TenantGuardOptions,
+  type TenantSource,
+} from "./auth/tenant.guard";
+export {
   PASSWORD_OPTIONS,
   PasswordService,
   type PasswordHashOptions,
@@ -249,6 +264,14 @@ export {
   ThrottlerStorageService,
 } from "./throttler/memory-throttler.storage";
 export {
+  LUA_FIXED_WINDOW_INCREMENT,
+  LUA_SLIDING_WINDOW_INCREMENT,
+  RedisThrottlerStorage,
+  type RedisThrottlerAlgorithm,
+  type RedisThrottlerClientLike,
+  type RedisThrottlerStorageOptions,
+} from "./throttler/redis-throttler.storage";
+export {
   InjectThrottlerOptions,
   InjectThrottlerStorage,
   SkipThrottle,
@@ -256,6 +279,87 @@ export {
 } from "./throttler/throttler.decorators";
 export { ThrottlerGuard } from "./throttler/throttler.guard";
 export { ThrottlerModule } from "./throttler/throttler.module";
+
+// Production Auth Storage Adapters
+export {
+  RedisAuthenticationStore,
+  type RedisAuthClientLike,
+  type RedisAuthenticationStoreOptions,
+} from "./auth-next/storage/redis-auth.store";
+export {
+  SqlAuthenticationStore,
+  createBunSqliteAuthExecutor,
+  getAuthMigrationSql,
+  getAuthMigrationStatements,
+  type AuthMigrationOptions,
+  type BunSqlClientLike,
+  type BunSqliteDatabaseLike,
+  type SqlAuthDialect,
+  type SqlAuthExecutorLike,
+  type SqlAuthQueryExecutor,
+  type SqlAuthQueryResult,
+  type SqlAuthenticationStoreOptions,
+} from "./auth-next/storage/sql-auth.store";
+
+// Passkeys / WebAuthn (FIDO2)
+export {
+  CborDecodeError,
+  decodeCbor,
+  decodeCborPrefix,
+  encodeCbor,
+  type CborDecodeOptions,
+  type CborDecodePrefixResult,
+  type CborKey,
+  type CborValue,
+} from "./auth-next/webauthn/cbor.util";
+export {
+  COSE_ALG_EDDSA,
+  COSE_ALG_ES256,
+  COSE_ALG_RS256,
+  COSE_CRV_ED25519,
+  COSE_CRV_P256,
+  COSE_KTY_EC2,
+  COSE_KTY_OKP,
+  COSE_KTY_RSA,
+  CoseKeyError,
+  DEFAULT_WEBAUTHN_ALGORITHMS,
+  derToP1363,
+  importCosePublicKey,
+  p1363ToDer,
+  parseCosePublicKey,
+  verifyCoseSignature,
+  type ParsedCosePublicKey,
+} from "./auth-next/webauthn/cose.util";
+export { InMemoryPasskeyStore } from "./auth-next/webauthn/in-memory-passkey.store";
+export {
+  WebAuthnService,
+  parseAuthenticatorData,
+  type ParsedAuthenticatorData,
+} from "./auth-next/webauthn/webauthn.service";
+export type {
+  AttestationConveyancePreference,
+  AuthenticationOptions,
+  AuthenticatorAttachment,
+  AuthenticatorSelectionCriteria,
+  AuthenticatorTransport,
+  CoseAlgorithmIdentifier,
+  GenerateAuthenticationOptionsInput,
+  GenerateRegistrationOptionsInput,
+  PasskeyChallengeRecord,
+  PasskeyChallengeType,
+  PasskeyCredential,
+  PasskeyDeviceType,
+  PasskeyStore,
+  PublicKeyCredentialDescriptorJSON,
+  RegistrationOptions,
+  ResidentKeyRequirement,
+  UserVerificationRequirement,
+  VerifiedAuthenticationResult,
+  VerifiedRegistrationResult,
+  VerifyAuthenticationInput,
+  VerifyRegistrationInput,
+  WebAuthnOptions,
+} from "./auth-next/webauthn/webauthn.interface";
 
 // Security Headers Middleware
 export {

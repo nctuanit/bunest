@@ -7,6 +7,7 @@ import type { PasswordHasherOptions } from "./password-hasher-options.interface"
 import type { PasswordResetOptions } from "./password-reset.interface";
 import type { RefreshTokenOptions } from "./refresh-token-options.interface";
 import type { SessionOptions } from "./session.interface";
+import type { WebAuthnOptions } from "../webauthn/webauthn.interface";
 
 /**
  * Configuration values: what `forRoot()` takes, and what `forRootAsync()`'s
@@ -29,6 +30,8 @@ export interface AuthenticationModuleOptions {
   passwordReset?: PasswordResetOptions;
   /** Goes with a registered `EmailVerificationHandler` (`'emailVerification'`). */
   emailVerification?: EmailVerificationOptions;
+  /** Enables WebAuthn / FIDO2 passkey registration and authentication via `WebAuthnService`. */
+  webauthn?: WebAuthnOptions;
   /** Lets the app run in production on the in-memory defaults. Default `false`. */
   allowInMemoryStorage?: boolean;
 }

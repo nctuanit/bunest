@@ -4,6 +4,7 @@ import type { MfaStore } from "./mfa-store.interface";
 import type { OidcStateStore } from "./oidc-state-store.interface";
 import type { RefreshTokenStore } from "./refresh-token-store.interface";
 import type { SessionStore } from "./session-store.interface";
+import type { PasskeyStore } from "../webauthn/webauthn.interface";
 
 /** The storage contracts, by name: what `registerSource()` takes. */
 export interface AuthenticationStorageSources {
@@ -17,6 +18,8 @@ export interface AuthenticationStorageSources {
   oidcStates?: OidcStateStore;
   /** Pending password reset and email verification links. */
   emailTokens?: EmailTokenStore;
+  /** WebAuthn / FIDO2 passkey credentials and challenges. */
+  passkeys?: PasskeyStore;
 }
 
 export type AuthenticationStorageContract = keyof AuthenticationStorageSources;

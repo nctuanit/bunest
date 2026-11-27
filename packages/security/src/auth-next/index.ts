@@ -8,6 +8,25 @@ export { AuthenticationRegistry } from "./services/authentication-registry.servi
 
 // Storage
 export { AuthenticationStorage } from "./storage/authentication.storage";
+export {
+  RedisAuthenticationStore,
+  type RedisAuthClientLike,
+  type RedisAuthenticationStoreOptions,
+} from "./storage/redis-auth.store";
+export {
+  SqlAuthenticationStore,
+  createBunSqliteAuthExecutor,
+  getAuthMigrationSql,
+  getAuthMigrationStatements,
+  type AuthMigrationOptions,
+  type BunSqlClientLike,
+  type BunSqliteDatabaseLike,
+  type SqlAuthDialect,
+  type SqlAuthExecutorLike,
+  type SqlAuthQueryExecutor,
+  type SqlAuthQueryResult,
+  type SqlAuthenticationStoreOptions,
+} from "./storage/sql-auth.store";
 
 // Routes and the current user
 export { AuthenticationGuard } from "./guards/authentication.guard";
@@ -190,6 +209,66 @@ export { OidcAccountResolver } from "./oidc/oidc-account.resolver";
 export { OidcService } from "./oidc/oidc.service";
 export { InMemoryOidcStateStore } from "./oidc/in-memory-oidc-state.store";
 export { github, google, microsoft } from "./oidc/oidc.presets";
+
+// Passkeys / WebAuthn (FIDO2)
+export {
+  CborDecodeError,
+  decodeCbor,
+  decodeCborPrefix,
+  encodeCbor,
+  type CborDecodeOptions,
+  type CborDecodePrefixResult,
+  type CborKey,
+  type CborValue,
+} from "./webauthn/cbor.util";
+export {
+  COSE_ALG_EDDSA,
+  COSE_ALG_ES256,
+  COSE_ALG_RS256,
+  COSE_CRV_ED25519,
+  COSE_CRV_P256,
+  COSE_KTY_EC2,
+  COSE_KTY_OKP,
+  COSE_KTY_RSA,
+  CoseKeyError,
+  DEFAULT_WEBAUTHN_ALGORITHMS,
+  derToP1363,
+  importCosePublicKey,
+  p1363ToDer,
+  parseCosePublicKey,
+  verifyCoseSignature,
+  type ParsedCosePublicKey,
+} from "./webauthn/cose.util";
+export { InMemoryPasskeyStore } from "./webauthn/in-memory-passkey.store";
+export {
+  WebAuthnService,
+  parseAuthenticatorData,
+  type ParsedAuthenticatorData,
+} from "./webauthn/webauthn.service";
+export type {
+  AttestationConveyancePreference,
+  AuthenticationOptions,
+  AuthenticatorAttachment,
+  AuthenticatorSelectionCriteria,
+  AuthenticatorTransport,
+  CoseAlgorithmIdentifier,
+  GenerateAuthenticationOptionsInput,
+  GenerateRegistrationOptionsInput,
+  PasskeyChallengeRecord,
+  PasskeyChallengeType,
+  PasskeyCredential,
+  PasskeyDeviceType,
+  PasskeyStore,
+  PublicKeyCredentialDescriptorJSON,
+  RegistrationOptions,
+  ResidentKeyRequirement,
+  UserVerificationRequirement,
+  VerifiedAuthenticationResult,
+  VerifiedRegistrationResult,
+  VerifyAuthenticationInput,
+  VerifyRegistrationInput,
+  WebAuthnOptions,
+} from "./webauthn/webauthn.interface";
 
 // Declaration merging hook
 export type { AuthenticationTypes } from "./interfaces/authentication-types.interface";

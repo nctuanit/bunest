@@ -21,6 +21,11 @@ import {
   type RolesGuardOptions,
 } from "./auth/roles.guard";
 import {
+  TENANT_GUARD_OPTIONS,
+  TenantGuard,
+  type TenantGuardOptions,
+} from "./auth/tenant.guard";
+import {
   SECURITY_HEADERS_OPTIONS,
   SecurityHeadersMiddleware,
   type SecurityHeadersOptions,
@@ -42,6 +47,8 @@ export interface SecurityModuleGlobalGuardsOptions {
   roles?: boolean;
   /** Register `PoliciesGuard` as a global `APP_GUARD` (defaults to `true`). */
   policies?: boolean;
+  /** Register `TenantGuard` as a global `APP_GUARD` (defaults to `Boolean(options.tenantGuard)`). */
+  tenant?: boolean;
   /** Register `ThrottlerGuard` as a global `APP_GUARD` (defaults to `Boolean(options.throttler)`). */
   throttler?: boolean;
 }
@@ -59,6 +66,10 @@ export interface SecurityModuleOptions {
    * Optional configuration passed to `RolesGuard` via `ROLES_GUARD_OPTIONS`.
    */
   rolesGuard?: RolesGuardOptions;
+  /**
+   * Optional configuration passed to `TenantGuard` via `TENANT_GUARD_OPTIONS`.
+   */
+  tenantGuard?: TenantGuardOptions;
   /**
    * Configures `ThrottlerModule.forRoot(throttler)` and provides `ThrottlerGuard`.
    */
@@ -109,11 +120,13 @@ export class SecurityModule implements BunestModule {
       { provide: SECURITY_MODULE_OPTIONS, useValue: options },
       RolesGuard,
       PoliciesGuard,
+      TenantGuard,
     ];
-    const exportsList: NonNullable<DynamicModule["exports"]> = [
+    const exportsList: NonNullable<DynamicModule["exports"]>[number][] = [
       SECURITY_MODULE_OPTIONS,
       RolesGuard,
       PoliciesGuard,
+      TenantGuard,
     ];
 
     if (options.jwt) {
@@ -143,6 +156,14 @@ export class SecurityModule implements BunestModule {
       exportsList.push(ROLES_GUARD_OPTIONS);
     }
 
+    if (options.tenantGuard) {
+      providers.push({
+        provide: TENANT_GUARD_OPTIONS,
+        useValue: options.tenantGuard,
+      });
+      exportsList.push(TENANT_GUARD_OPTIONS);
+    }
+
     if (options.throttler) {
       const throttlerMod = ThrottlerModule.forRoot(options.throttler);
       imports.push(throttlerMod);
@@ -169,6 +190,7 @@ export class SecurityModule implements BunestModule {
               jwt: Boolean(options.jwt),
               roles: true,
               policies: true,
+              tenant: Boolean(options.tenantGuard),
             }
           : {
               throttler:
@@ -176,6 +198,8 @@ export class SecurityModule implements BunestModule {
               jwt: options.globalGuards.jwt ?? Boolean(options.jwt),
               roles: options.globalGuards.roles ?? true,
               policies: options.globalGuards.policies ?? true,
+              tenant:
+                options.globalGuards.tenant ?? Boolean(options.tenantGuard),
             };
 
       if (guardFlags.throttler) {
@@ -192,6 +216,12 @@ export class SecurityModule implements BunestModule {
         providers.push({
           provide: APP_GUARD,
           useExisting: JwtAuthGuard,
+        });
+      }
+      if (guardFlags.tenant) {
+        providers.push({
+          provide: APP_GUARD,
+          useExisting: TenantGuard,
         });
       }
       if (guardFlags.roles) {
