@@ -54,9 +54,13 @@ export type {
   FlowJobNode,
   FlowNodeOpts,
   FlowOpts,
+  GroupConcurrencyConfig,
+  GroupConcurrencyOptions,
   Job,
+  JobEnqueueDiagnosticEvent,
   JobHandler,
   JobOptions,
+  JobProcessDiagnosticEvent,
   JobStatus,
   NestQueueEventOptions,
   NestQueueOptions,
@@ -69,6 +73,7 @@ export type {
   QueueConfig,
   QueueConfigFactory,
   QueueCounts,
+  QueueDequeueOptions,
   QueueDriver,
   QueueEventListener,
   QueueEventMetadata,
@@ -78,6 +83,7 @@ export type {
   QueueModuleAsyncOptions,
   QueueModuleOptions,
   QueueModuleOptionsFactory,
+  QueueRateLimiterOptions,
   ReclaimStalledResult,
   RegisterFlowProducerAsyncOptions,
   RegisterFlowProducerOptions,
@@ -96,6 +102,7 @@ export { calculateBackoffDelay } from "./backoff";
 export { MemoryQueueDriver } from "./drivers/memory.driver";
 export {
   LUA_ACK_JOB,
+  LUA_DEQUEUE_FAIR_JOB,
   LUA_DEQUEUE_JOB,
   LUA_ENQUEUE_JOB,
   LUA_NACK_OR_DLQ_JOB,
@@ -132,6 +139,23 @@ export {
   QueueEventsListener,
 } from "./decorators";
 
-export { JobTimeoutError, Queue } from "./queue";
+export {
+  JOBS_ENQUEUE_CHANNEL,
+  JOBS_PROCESS_CHANNEL,
+  JOB_CLS_METADATA_KEY,
+  JobTimeoutError,
+  Queue,
+} from "./queue";
 
 export { QueueExplorer, QueueModule, QueueRegistry } from "./queue.module";
+export {
+  QUEUE_DASHBOARD_OPTIONS,
+  QueueDashboardModule,
+  renderQueueDashboardHtml,
+  type CanActivateClass,
+  type QueueDashboardJobRecord,
+  type QueueDashboardJobsResponse,
+  type QueueDashboardModuleOptions,
+  type QueueDashboardQueueSummary,
+  type QueueDashboardQueuesResponse,
+} from "./queue-dashboard.module";

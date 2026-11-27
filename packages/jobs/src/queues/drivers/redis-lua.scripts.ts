@@ -26,6 +26,7 @@
  * KEYS[3]: waiting zset
  * KEYS[4]: delayed zset
  * KEYS[5]: seq string counter
+ * KEYS[6]: groupMap hash (optional: jobId -> groupId)
  *
  * ARGV[1]: jobId
  * ARGV[2]: jobJson
@@ -34,6 +35,7 @@
  * ARGV[5]: now (epoch ms)
  * ARGV[6]: idempotencyKey (empty string if none)
  * ARGV[7]: idempotencyTtlMs (optional positive ms for PEXPIRE on idempotency hash)
+ * ARGV[8]: groupId (optional group/tenant identifier)
  *
  * Returns: { createdFlag (1 | 0), jobJson }
  */
@@ -43,6 +45,7 @@ local idempKey = KEYS[2]
 local waitingKey = KEYS[3]
 local delayedKey = KEYS[4]
 local seqKey = KEYS[5]
+local groupMapKey = KEYS[6]
 
 local jobId = ARGV[1]
 local jobJson = ARGV[2]
@@ -51,6 +54,7 @@ local processAfter = tonumber(ARGV[4]) or 0
 local now = tonumber(ARGV[5]) or 0
 local idempotency = ARGV[6] or ""
 local idempotencyTtlMs = tonumber(ARGV[7]) or 0
+local groupId = ARGV[8] or ""
 
 if idempotency ~= "" then
   local existingId = redis.call("HGET", idempKey, idempotency)
@@ -69,6 +73,9 @@ if existingById then
 end
 
 redis.call("HSET", jobsKey, jobId, jobJson)
+if groupMapKey and groupMapKey ~= "" and groupId ~= "" then
+  redis.call("HSET", groupMapKey, jobId, groupId)
+end
 if idempotency ~= "" then
   redis.call("HSET", idempKey, idempotency, jobId)
   if idempotencyTtlMs > 0 then
@@ -173,6 +180,245 @@ end
 `.trim();
 
 /**
+ * Atomically promotes due delayed jobs, enforces an optional sliding-window rate
+ * limiter, enforces optional per-group active concurrency caps with fair round-robin
+ * selection across eligible groups, activates the selected job with a worker lease,
+ * and records rate-limit & group-active counters in one Redis round-trip.
+ *
+ * KEYS[1]:  jobs hash
+ * KEYS[2]:  waiting zset
+ * KEYS[3]:  delayed zset
+ * KEYS[4]:  active zset (score = leaseExpiresAt)
+ * KEYS[5]:  leases hash (jobId -> token)
+ * KEYS[6]:  seq string counter
+ * KEYS[7]:  groupActive hash (groupId -> active count)
+ * KEYS[8]:  groupRr zset (member = groupKey, score = lastServed rrSeq)
+ * KEYS[9]:  groupRrSeq string counter
+ * KEYS[10]: groupMap hash (jobId -> groupId)
+ * KEYS[11]: rateLimit zset (score = dequeue timestamp ms, member = unique token)
+ *
+ * ARGV[1]: now (epoch ms)
+ * ARGV[2]: lockDurationMs
+ * ARGV[3]: leaseToken
+ * ARGV[4]: maxPerGroup (0 when groupConcurrency is disabled)
+ * ARGV[5]: groupOverridesJson (JSON object string of per-group overrides, e.g. "{}")
+ * ARGV[6]: rateLimitMax (0 when limiter is disabled)
+ * ARGV[7]: rateLimitDurationMs (0 when limiter is disabled)
+ *
+ * Returns:
+ *   - { "job", updatedJobJson } when a job was dequeued
+ *   - { "rate_limited", tostring(nextAvailableEpochMs) } when rate-limit quota is full
+ *   - nil when no eligible waiting job exists
+ */
+export const LUA_DEQUEUE_FAIR_JOB = `
+local jobsKey = KEYS[1]
+local waitingKey = KEYS[2]
+local delayedKey = KEYS[3]
+local activeKey = KEYS[4]
+local leasesKey = KEYS[5]
+local seqKey = KEYS[6]
+local groupActiveKey = KEYS[7]
+local groupRrKey = KEYS[8]
+local groupRrSeqKey = KEYS[9]
+local groupMapKey = KEYS[10]
+local rateLimitKey = KEYS[11]
+
+local now = tonumber(ARGV[1]) or 0
+local lockDurationMs = tonumber(ARGV[2]) or 30000
+local leaseToken = ARGV[3]
+local maxPerGroup = tonumber(ARGV[4]) or 0
+local groupOverridesJson = ARGV[5] or "{}"
+local rateLimitMax = tonumber(ARGV[6]) or 0
+local rateLimitDurationMs = tonumber(ARGV[7]) or 0
+
+local function preserveStacktrace(job)
+  local stack = job["stacktrace"]
+  if type(stack) ~= "table" then
+    stack = {}
+    job["stacktrace"] = stack
+  end
+  if next(stack) == nil and cjson.empty_array_mt then
+    setmetatable(stack, cjson.empty_array_mt)
+  end
+end
+
+local dueIds = redis.call("ZRANGEBYSCORE", delayedKey, "-inf", now)
+for i = 1, #dueIds do
+  local dueId = dueIds[i]
+  local removed = redis.call("ZREM", delayedKey, dueId)
+  if removed > 0 then
+    local raw = redis.call("HGET", jobsKey, dueId)
+    if raw then
+      local job = cjson.decode(raw)
+      job["status"] = "waiting"
+      preserveStacktrace(job)
+      redis.call("HSET", jobsKey, dueId, cjson.encode(job))
+      local gid = job["groupId"]
+      if groupMapKey and groupMapKey ~= "" and type(gid) == "string" and gid ~= "" then
+        redis.call("HSET", groupMapKey, dueId, gid)
+      end
+      local seq = redis.call("INCR", seqKey)
+      local prio = tonumber(job["priority"]) or 0
+      local score = (-prio * 1000000000) + seq
+      redis.call("ZADD", waitingKey, score, dueId)
+    end
+  end
+end
+
+if rateLimitMax > 0 and rateLimitDurationMs > 0 then
+  local cutoff = now - rateLimitDurationMs
+  redis.call("ZREMRANGEBYSCORE", rateLimitKey, "-inf", cutoff)
+  local used = redis.call("ZCARD", rateLimitKey)
+  if used >= rateLimitMax then
+    local oldest = redis.call("ZRANGE", rateLimitKey, 0, 0, "WITHSCORES")
+    local oldestTs = now
+    if #oldest >= 2 then
+      oldestTs = tonumber(oldest[2]) or now
+    end
+    return { "rate_limited", tostring(oldestTs + rateLimitDurationMs) }
+  end
+end
+
+local selectedJobId = nil
+local selectedJob = nil
+local selectedGroup = ""
+
+if maxPerGroup <= 0 then
+  while true do
+    local candidates = redis.call("ZRANGE", waitingKey, 0, 0)
+    if #candidates == 0 then
+      return nil
+    end
+    local jobId = candidates[1]
+    redis.call("ZREM", waitingKey, jobId)
+    local raw = redis.call("HGET", jobsKey, jobId)
+    if raw then
+      selectedJobId = jobId
+      selectedJob = cjson.decode(raw)
+      local gid = selectedJob["groupId"]
+      if type(gid) == "string" and gid ~= "" then
+        selectedGroup = gid
+      else
+        selectedGroup = ""
+      end
+      break
+    end
+  end
+else
+  local overrides = {}
+  if groupOverridesJson ~= "" and groupOverridesJson ~= "{}" then
+    local ok, parsed = pcall(cjson.decode, groupOverridesJson)
+    if ok and type(parsed) == "table" then
+      overrides = parsed
+    end
+  end
+
+  local allWaiting = redis.call("ZRANGE", waitingKey, 0, -1)
+  local seenGroup = {}
+  local bestJobId = nil
+  local bestJob = nil
+  local bestGroup = ""
+  local bestLastServed = nil
+
+  for i = 1, #allWaiting do
+    local jobId = allWaiting[i]
+    local gid = redis.call("HGET", groupMapKey, jobId)
+    local raw = nil
+    local decoded = nil
+
+    if not gid then
+      raw = redis.call("HGET", jobsKey, jobId)
+      if not raw then
+        redis.call("ZREM", waitingKey, jobId)
+        gid = nil
+      else
+        decoded = cjson.decode(raw)
+        if type(decoded["groupId"]) == "string" then
+          gid = decoded["groupId"]
+        else
+          gid = ""
+        end
+      end
+    end
+
+    if gid ~= nil then
+      if not seenGroup[gid] then
+        if not raw then
+          raw = redis.call("HGET", jobsKey, jobId)
+        end
+        if not raw then
+          redis.call("ZREM", waitingKey, jobId)
+        else
+          if not decoded then
+            decoded = cjson.decode(raw)
+          end
+          if decoded["status"] ~= "waiting" then
+            redis.call("ZREM", waitingKey, jobId)
+          else
+            seenGroup[gid] = true
+            local eligible = true
+            if gid ~= "" then
+              local cap = tonumber(overrides[gid]) or maxPerGroup
+              local curActive = tonumber(redis.call("HGET", groupActiveKey, gid)) or 0
+              if curActive >= cap then
+                eligible = false
+              end
+            end
+            if eligible then
+              local score = redis.call("ZSCORE", groupRrKey, gid)
+              local lastServed = tonumber(score) or 0
+              if bestLastServed == nil or lastServed < bestLastServed then
+                bestLastServed = lastServed
+                bestJobId = jobId
+                bestJob = decoded
+                bestGroup = gid
+                if lastServed == 0 then
+                  break
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  if not bestJobId or not bestJob then
+    return nil
+  end
+  redis.call("ZREM", waitingKey, bestJobId)
+  selectedJobId = bestJobId
+  selectedJob = bestJob
+  selectedGroup = bestGroup
+end
+
+local leaseExpiresAt = now + lockDurationMs
+selectedJob["status"] = "active"
+selectedJob["startedAt"] = now
+selectedJob["leaseToken"] = leaseToken
+selectedJob["leaseExpiresAt"] = leaseExpiresAt
+preserveStacktrace(selectedJob)
+local updated = cjson.encode(selectedJob)
+redis.call("HSET", jobsKey, selectedJobId, updated)
+redis.call("ZADD", activeKey, leaseExpiresAt, selectedJobId)
+redis.call("HSET", leasesKey, selectedJobId, leaseToken)
+
+if selectedGroup ~= "" and groupActiveKey and groupActiveKey ~= "" then
+  redis.call("HINCRBY", groupActiveKey, selectedGroup, 1)
+end
+if maxPerGroup > 0 and groupRrKey and groupRrKey ~= "" and groupRrSeqKey and groupRrSeqKey ~= "" then
+  local rrSeq = redis.call("INCR", groupRrSeqKey)
+  redis.call("ZADD", groupRrKey, rrSeq, selectedGroup)
+end
+if rateLimitMax > 0 and rateLimitDurationMs > 0 then
+  redis.call("ZADD", rateLimitKey, now, tostring(now) .. ":" .. selectedJobId .. ":" .. leaseToken)
+  redis.call("PEXPIRE", rateLimitKey, math.max(1000, rateLimitDurationMs * 2))
+end
+
+return { "job", updated }
+`.trim();
+
+/**
  * Atomically acknowledges a completed active job, verifies lease token when
  * supplied, clears active/lease/stalled state, increments completed counter,
  * optionally prunes idempotency entry, and removes or persists the completed job payload.
@@ -183,6 +429,8 @@ end
  * KEYS[4]: stalled hash
  * KEYS[5]: completed counter
  * KEYS[6]: idempotency hash (optional)
+ * KEYS[7]: groupActive hash (optional)
+ * KEYS[8]: groupMap hash (optional)
  *
  * ARGV[1]: jobId
  * ARGV[2]: resultJson (encoded JSON when ARGV[3] == "1")
@@ -200,6 +448,8 @@ local leasesKey = KEYS[3]
 local stalledKey = KEYS[4]
 local completedKey = KEYS[5]
 local idempKey = KEYS[6]
+local groupActiveKey = KEYS[7]
+local groupMapKey = KEYS[8]
 
 local jobId = ARGV[1]
 local resultJson = ARGV[2]
@@ -215,7 +465,7 @@ if expectedToken ~= "" then
   end
 end
 
-redis.call("ZREM", activeKey, jobId)
+local wasActive = redis.call("ZREM", activeKey, jobId)
 redis.call("HDEL", leasesKey, jobId)
 redis.call("HDEL", stalledKey, jobId)
 
@@ -225,6 +475,16 @@ if not raw then
 end
 
 local job = cjson.decode(raw)
+local gid = job["groupId"]
+if wasActive > 0 and groupActiveKey and groupActiveKey ~= "" and type(gid) == "string" and gid ~= "" then
+  if redis.call("HEXISTS", groupActiveKey, gid) == 1 then
+    local rem = redis.call("HINCRBY", groupActiveKey, gid, -1)
+    if rem <= 0 then
+      redis.call("HDEL", groupActiveKey, gid)
+    end
+  end
+end
+
 job["status"] = "completed"
 job["finishedAt"] = finishedAt
 job["leaseToken"] = nil
@@ -246,6 +506,9 @@ local updated = cjson.encode(job)
 
 if job["removeOnComplete"] == true then
   redis.call("HDEL", jobsKey, jobId)
+  if groupMapKey and groupMapKey ~= "" then
+    redis.call("HDEL", groupMapKey, jobId)
+  end
 else
   redis.call("HSET", jobsKey, jobId, updated)
 end
@@ -298,6 +561,7 @@ local dlqKey = KEYS[7]
 local failedKey = KEYS[8]
 local seqKey = KEYS[9]
 local idempKey = KEYS[10]
+local groupActiveKey = KEYS[11]
 
 local jobId = ARGV[1]
 local errorMessage = ARGV[2] or "Job failed"
@@ -315,7 +579,7 @@ if expectedToken ~= "" then
   end
 end
 
-redis.call("ZREM", activeKey, jobId)
+local wasActive = redis.call("ZREM", activeKey, jobId)
 redis.call("ZREM", delayedKey, jobId)
 redis.call("ZREM", waitingKey, jobId)
 redis.call("HDEL", leasesKey, jobId)
@@ -326,6 +590,15 @@ if not raw then
 end
 
 local job = cjson.decode(raw)
+local gid = job["groupId"]
+if wasActive > 0 and groupActiveKey and groupActiveKey ~= "" and type(gid) == "string" and gid ~= "" then
+  if redis.call("HEXISTS", groupActiveKey, gid) == 1 then
+    local rem = redis.call("HINCRBY", groupActiveKey, gid, -1)
+    if rem <= 0 then
+      redis.call("HDEL", groupActiveKey, gid)
+    end
+  end
+end
 local attemptsMade = (tonumber(job["attemptsMade"]) or 0) + 1
 local maxAttempts = tonumber(job["maxAttempts"]) or 1
 job["attemptsMade"] = attemptsMade
@@ -474,6 +747,7 @@ local dlqKey = KEYS[6]
 local failedKey = KEYS[7]
 local seqKey = KEYS[8]
 local idempKey = KEYS[9]
+local groupActiveKey = KEYS[10]
 
 local now = tonumber(ARGV[1]) or 0
 local maxStalledCount = tonumber(ARGV[2]) or 1
@@ -485,11 +759,20 @@ local deadLettered = {}
 
 for i = 1, #expiredIds do
   local jobId = expiredIds[i]
-  redis.call("ZREM", activeKey, jobId)
+  local wasActive = redis.call("ZREM", activeKey, jobId)
   redis.call("HDEL", leasesKey, jobId)
   local raw = redis.call("HGET", jobsKey, jobId)
   if raw then
     local job = cjson.decode(raw)
+    local gid = job["groupId"]
+    if wasActive > 0 and groupActiveKey and groupActiveKey ~= "" and type(gid) == "string" and gid ~= "" then
+      if redis.call("HEXISTS", groupActiveKey, gid) == 1 then
+        local rem = redis.call("HINCRBY", groupActiveKey, gid, -1)
+        if rem <= 0 then
+          redis.call("HDEL", groupActiveKey, gid)
+        end
+      end
+    end
     local stalled = redis.call("HINCRBY", stalledKey, jobId, 1)
     job["stalledCount"] = stalled
     job["leaseToken"] = nil

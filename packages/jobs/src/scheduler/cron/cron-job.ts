@@ -5,6 +5,12 @@ import type {
   ParsedCronExpression,
 } from "../interfaces/scheduler.interface";
 import {
+  InMemorySchedulerLockDriver,
+  type CronLockMode,
+  type CronLockOptions,
+  type SchedulerLockDriver,
+} from "../scheduler-lock";
+import {
   CronExpressionError,
   getNextCronDate,
   parseCronExpression,
@@ -17,9 +23,10 @@ const DEFAULT_THRESHOLD_MS = 250;
 
 /**
  * Scheduled cron job backed by self-rescheduling timers, supporting overlap
- * protection (`waitForCompletion`), IANA timezones, fixed `utcOffset`,
- * `Date` one-shot schedules, missed-deadline `threshold`, `unrefTimeout`,
- * `initialDelay`, and clean teardown.
+ * protection (`waitForCompletion`), distributed locking (`lock` in `"skip"` or
+ * `"leader"` mode), IANA timezones, fixed `utcOffset`, `Date` one-shot
+ * schedules, missed-deadline `threshold`, `unrefTimeout`, `initialDelay`,
+ * and clean teardown.
  */
 export class CronJob {
   public readonly name: string;
@@ -32,6 +39,11 @@ export class CronJob {
   public readonly threshold: number;
   public readonly initialDelay?: number;
   public readonly disabled: boolean;
+  public readonly lock?: CronLockOptions;
+  public readonly lockKey?: string;
+  private readonly lockDriver?: SchedulerLockDriver;
+  private readonly lockMode: CronLockMode;
+  private readonly lockRenewIntervalMs: number;
   private readonly onError?: (error: unknown, jobName: string) => void;
   private readonly onComplete?: () => unknown | Promise<unknown>;
   private readonly logger = new Logger("CronJob");
@@ -42,6 +54,15 @@ export class CronJob {
   private activeTickPromise?: Promise<void>;
   private lastRunDate?: Date;
   private skippedTicksCount = 0;
+
+  private leaderToken?: string;
+  private leaderHeld = false;
+  private leaderGeneration = 0;
+  private leaderAcquirePromise?: Promise<boolean>;
+  private leaderRenewTimer?: ReturnType<typeof setInterval>;
+  private readonly activeTickRenewTimers = new Set<
+    ReturnType<typeof setInterval>
+  >();
 
   constructor(
     expressionOrDate: CronTime,
@@ -83,6 +104,30 @@ export class CronJob {
     this.disabled = options.disabled ?? false;
     this.onError = options.onError;
     this.onComplete = options.onComplete;
+
+    if (options.lock && typeof options.lock === "object") {
+      if (
+        typeof options.lock.ttlMs !== "number" ||
+        !Number.isFinite(options.lock.ttlMs) ||
+        options.lock.ttlMs <= 0
+      ) {
+        throw new Error(
+          `CronJob "${this.name}" lock.ttlMs must be a positive finite number, received ${String(options.lock.ttlMs)}.`,
+        );
+      }
+      this.lock = { ...options.lock };
+      this.lockKey = options.lock.key ?? this.name;
+      this.lockMode = options.lock.mode ?? "skip";
+      this.lockDriver =
+        options.lockDriver ?? new InMemorySchedulerLockDriver();
+      this.lockRenewIntervalMs =
+        options.lock.renewIntervalMs !== undefined
+          ? Math.max(5, Math.floor(options.lock.renewIntervalMs))
+          : Math.max(10, Math.floor(options.lock.ttlMs / 2));
+    } else {
+      this.lockMode = "skip";
+      this.lockRenewIntervalMs = 0;
+    }
   }
 
   start(): void {
@@ -90,6 +135,9 @@ export class CronJob {
       return;
     }
     this.running = true;
+    if (this.lock && this.lockMode === "leader") {
+      this.startLeadershipLoop();
+    }
     if (this.targetDate !== undefined) {
       this.scheduleOneShotDate();
       return;
@@ -104,6 +152,11 @@ export class CronJob {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
+    this.stopLeadershipAndRelease();
+    for (const renewTimer of this.activeTickRenewTimers) {
+      clearInterval(renewTimer);
+    }
+    this.activeTickRenewTimers.clear();
     if (wasRunning && this.onComplete) {
       this.onComplete();
     }
@@ -115,6 +168,14 @@ export class CronJob {
 
   isInFlight(): boolean {
     return this.inFlight;
+  }
+
+  /**
+   * Returns `true` when this cron job currently holds the distributed leadership
+   * lease (`lock.mode === "leader"`).
+   */
+  isLeader(): boolean {
+    return this.leaderHeld;
   }
 
   getActiveTick(): Promise<void> | undefined {
@@ -147,15 +208,15 @@ export class CronJob {
     let tickPromise: Promise<void> | undefined;
     tickPromise = (async () => {
       try {
-        await this.onTick();
-      } catch (error) {
-        if (this.onError) {
-          this.onError(error, this.name);
+        if (!this.lock || !this.lockDriver || !this.lockKey) {
+          await this.onTick();
+        } else if (this.lockMode === "leader") {
+          await this.executeWithLeaderLock();
         } else {
-          this.logger.error(
-            `CronJob "${this.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          await this.executeWithSkipLock();
         }
+      } catch (error) {
+        this.reportError(error);
       } finally {
         this.inFlight = false;
         if (this.activeTickPromise === tickPromise) {
@@ -167,6 +228,189 @@ export class CronJob {
       this.activeTickPromise = tickPromise;
     }
     return tickPromise;
+  }
+
+  private reportError(error: unknown): void {
+    if (this.onError) {
+      this.onError(error, this.name);
+    } else {
+      this.logger.error(
+        `CronJob "${this.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async executeWithSkipLock(): Promise<void> {
+    const driver = this.lockDriver!;
+    const key = this.lockKey!;
+    const ttlMs = this.lock!.ttlMs;
+    const token = crypto.randomUUID();
+
+    const acquired = await driver.acquire(key, ttlMs, token);
+    if (!acquired) {
+      this.skippedTicksCount += 1;
+      return;
+    }
+
+    let renewTimer: ReturnType<typeof setInterval> | undefined;
+    if (typeof driver.renew === "function") {
+      renewTimer = setInterval(() => {
+        void Promise.resolve(driver.renew!(key, ttlMs, token)).catch((err) => {
+          this.reportError(err);
+        });
+      }, this.lockRenewIntervalMs);
+      if (this.unrefTimeout) {
+        renewTimer.unref?.();
+      }
+      this.activeTickRenewTimers.add(renewTimer);
+    }
+
+    try {
+      await this.onTick();
+    } finally {
+      if (renewTimer !== undefined) {
+        clearInterval(renewTimer);
+        this.activeTickRenewTimers.delete(renewTimer);
+      }
+      try {
+        await driver.release(key, token);
+      } catch (releaseErr) {
+        this.reportError(releaseErr);
+      }
+    }
+  }
+
+  private async executeWithLeaderLock(): Promise<void> {
+    const isLeader = await this.ensureLeadership();
+    if (!isLeader) {
+      this.skippedTicksCount += 1;
+      return;
+    }
+    await this.onTick();
+  }
+
+  private startLeadershipLoop(): void {
+    const driver = this.lockDriver;
+    const key = this.lockKey;
+    const lock = this.lock;
+    if (!driver || !key || !lock) {
+      return;
+    }
+
+    const gen = ++this.leaderGeneration;
+    this.leaderHeld = false;
+    this.leaderToken = crypto.randomUUID();
+    this.leaderAcquirePromise = undefined;
+
+    void this.ensureLeadership().catch((err) => {
+      this.reportError(err);
+    });
+
+    if (this.leaderRenewTimer !== undefined) {
+      clearInterval(this.leaderRenewTimer);
+    }
+
+    this.leaderRenewTimer = setInterval(() => {
+      if (!this.running || this.leaderGeneration !== gen) {
+        return;
+      }
+
+      if (this.leaderHeld && this.leaderToken) {
+        const token = this.leaderToken;
+        if (typeof driver.renew === "function") {
+          void Promise.resolve(driver.renew(key, lock.ttlMs, token))
+            .then((renewed) => {
+              if (this.leaderGeneration !== gen) {
+                return;
+              }
+              if (!renewed) {
+                this.leaderHeld = false;
+              }
+            })
+            .catch((err) => {
+              if (this.leaderGeneration === gen) {
+                this.leaderHeld = false;
+              }
+              this.reportError(err);
+            });
+        }
+        return;
+      }
+
+      void this.ensureLeadership().catch((err) => {
+        this.reportError(err);
+      });
+    }, this.lockRenewIntervalMs);
+
+    if (this.unrefTimeout) {
+      this.leaderRenewTimer.unref?.();
+    }
+  }
+
+  private ensureLeadership(): Promise<boolean> {
+    const driver = this.lockDriver;
+    const key = this.lockKey;
+    const lock = this.lock;
+    if (!driver || !key || !lock) {
+      return Promise.resolve(false);
+    }
+    if (this.leaderHeld) {
+      return Promise.resolve(true);
+    }
+    if (this.leaderAcquirePromise) {
+      return this.leaderAcquirePromise;
+    }
+
+    if (!this.leaderToken) {
+      this.leaderToken = crypto.randomUUID();
+    }
+    const token = this.leaderToken;
+    const gen = this.leaderGeneration;
+
+    const attempt = (async (): Promise<boolean> => {
+      const acquired = await driver.acquire(key, lock.ttlMs, token);
+      if (this.leaderGeneration !== gen) {
+        if (acquired) {
+          try {
+            await driver.release(key, token);
+          } catch (releaseErr) {
+            this.reportError(releaseErr);
+          }
+        }
+        return false;
+      }
+      this.leaderHeld = acquired;
+      return acquired;
+    })();
+
+    this.leaderAcquirePromise = attempt;
+    void attempt.finally(() => {
+      if (this.leaderAcquirePromise === attempt) {
+        this.leaderAcquirePromise = undefined;
+      }
+    });
+    return attempt;
+  }
+
+  private stopLeadershipAndRelease(): void {
+    this.leaderGeneration += 1;
+    this.leaderAcquirePromise = undefined;
+    if (this.leaderRenewTimer !== undefined) {
+      clearInterval(this.leaderRenewTimer);
+      this.leaderRenewTimer = undefined;
+    }
+    const wasLeader = this.leaderHeld;
+    const token = this.leaderToken;
+    this.leaderHeld = false;
+    this.leaderToken = undefined;
+
+    if (wasLeader && token && this.lockDriver && this.lockKey) {
+      void Promise.resolve(this.lockDriver.release(this.lockKey, token)).catch(
+        (releaseErr) => {
+          this.reportError(releaseErr);
+        },
+      );
+    }
   }
 
   private scheduleOneShotDate(): void {

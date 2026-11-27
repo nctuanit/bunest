@@ -11,6 +11,7 @@ export interface RedisQueueClientLike {
   hset(key: string, field: string, value: string): Promise<number>;
   hget(key: string, field: string): Promise<string | null>;
   hdel(key: string, ...fields: string[]): Promise<number>;
+  hvals?(key: string): Promise<string[]>;
   hincrby?(key: string, field: string, increment: number): Promise<number>;
   zadd(key: string, score: number, member: string): Promise<number>;
   zrange(key: string, start: number, stop: number): Promise<string[]>;
@@ -65,6 +66,8 @@ export function createBunRedisQueueClient(
       (await native.send("HGET", [key, field])) as string | null,
     hdel: async (key, ...fields) =>
       Number(await native.send("HDEL", [key, ...fields])),
+    hvals: async (key) =>
+      ((await native.send("HVALS", [key])) as string[] | null) ?? [],
     hincrby: async (key, field, increment) =>
       Number(await native.send("HINCRBY", [key, field, String(increment)])),
     zadd: async (key, score, member) =>

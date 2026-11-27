@@ -1,16 +1,16 @@
 import {
+  ClsService,
+  DiscoveryService,
   Inject,
   Injectable,
   Logger,
+  ModuleRef,
   Optional,
+  restoreClsContext,
+  type InstanceWrapper,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
   type OnModuleInit,
-} from "@bunest/core";
-import {
-  DiscoveryService,
-  ModuleRef,
-  type InstanceWrapper,
 } from "@bunest/core";
 import { SCHEDULE_MODULE_OPTIONS } from "./constants";
 import { CronJob } from "./cron/cron-job";
@@ -20,6 +20,10 @@ import {
   getTimeoutMetadata,
 } from "./decorators/schedule.decorators";
 import type { ScheduleModuleOptions } from "./interfaces/scheduler.interface";
+import {
+  SCHEDULER_LOCK_DRIVER,
+  type SchedulerLockDriver,
+} from "./scheduler-lock";
 import { SchedulerRegistry } from "./scheduler.registry";
 
 /**
@@ -48,6 +52,11 @@ export class SchedulerExplorer
     @Optional()
     @Inject(SCHEDULE_MODULE_OPTIONS)
     private readonly moduleOptions: ScheduleModuleOptions = {},
+    @Optional()
+    @Inject(SCHEDULER_LOCK_DRIVER)
+    private readonly lockDriver?: SchedulerLockDriver,
+    @Optional()
+    private readonly clsService?: ClsService,
   ) {}
 
   onModuleInit(): void {
@@ -165,10 +174,38 @@ export class SchedulerExplorer
         const name =
           cronMeta.options.name ??
           `${className}.${String(cronMeta.methodName)}#cron_${++this.autoCounter}`;
+        const resolvedLockDriver =
+          cronMeta.options.lockDriver ??
+          this.lockDriver ??
+          this.moduleOptions.lockDriver;
+        const effectiveLockConfig =
+          cronMeta.options.lock === false
+            ? undefined
+            : cronMeta.options.lock ??
+              (this.moduleOptions.defaultLock &&
+              typeof this.moduleOptions.defaultLock === "object"
+                ? this.moduleOptions.defaultLock
+                : undefined);
+        const resolvedLock = effectiveLockConfig
+          ? {
+              ...effectiveLockConfig,
+              key:
+                effectiveLockConfig.key ??
+                cronMeta.options.name ??
+                `${className}.${String(cronMeta.methodName)}`,
+            }
+          : undefined;
         const job = new CronJob(
           cronMeta.expression,
-          () => (fn as () => unknown).call(instance),
-          { ...cronMeta.options, name },
+          this.wrapWithCleanCls("cron", name, () =>
+            (fn as () => unknown).call(instance),
+          ),
+          {
+            ...cronMeta.options,
+            name,
+            lock: resolvedLock,
+            ...(resolvedLockDriver ? { lockDriver: resolvedLockDriver } : {}),
+          },
         );
         this.registry.addCronJob(name, job);
         this.startCronJob(name, job, cronMeta.options);
@@ -186,7 +223,9 @@ export class SchedulerExplorer
         this.registry.scheduleInterval(
           name,
           intervalMeta.timeoutMs,
-          () => (fn as () => unknown).call(instance),
+          this.wrapWithCleanCls("interval", name, () =>
+            (fn as () => unknown).call(instance),
+          ),
           intervalMeta.options,
         );
       }
@@ -203,7 +242,9 @@ export class SchedulerExplorer
         this.registry.scheduleTimeout(
           name,
           timeoutMeta.timeoutMs,
-          () => (fn as () => unknown).call(instance),
+          this.wrapWithCleanCls("timeout", name, () =>
+            (fn as () => unknown).call(instance),
+          ),
           timeoutMeta.options,
         );
       }
@@ -307,6 +348,43 @@ export class SchedulerExplorer
     }
 
     job.start();
+  }
+
+  private wrapWithCleanCls(
+    kind: "cron" | "interval" | "timeout",
+    jobName: string,
+    callback: () => unknown | Promise<unknown>,
+  ): () => unknown | Promise<unknown> {
+    return () => {
+      const cls = this.resolveClsService();
+      if (!cls) {
+        return callback();
+      }
+      const requestId = `${kind}:${jobName}:${crypto.randomUUID()}`;
+      return restoreClsContext(
+        cls,
+        {
+          clsId: requestId,
+          values: {
+            requestId,
+            jobName,
+          },
+        },
+        callback,
+      );
+    };
+  }
+
+  private resolveClsService(): ClsService | undefined {
+    let cls = this.clsService;
+    if (!cls && this.moduleRef) {
+      try {
+        cls = this.moduleRef.get(ClsService, { strict: false });
+      } catch {
+        cls = undefined;
+      }
+    }
+    return cls;
   }
 
   private resolveDiscoveryService(): DiscoveryService | undefined {

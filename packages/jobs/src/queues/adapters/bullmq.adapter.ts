@@ -1,13 +1,18 @@
 import {
+  ClsService,
+  ContextIdFactory,
+  DiscoveryService,
   Global,
   Inject,
   Injectable,
   MetadataRegistry,
   Module,
+  ModuleRef,
   Optional,
   REQUEST,
   Scope,
   type DynamicModule,
+  type InstanceWrapper,
   type ModuleExport,
   type ModuleImport,
   type OnApplicationBootstrap,
@@ -15,12 +20,6 @@ import {
   type OnModuleInit,
   type Provider,
   type Type,
-} from "@bunest/core";
-import {
-  ContextIdFactory,
-  DiscoveryService,
-  ModuleRef,
-  type InstanceWrapper,
 } from "@bunest/core";
 import { MemoryQueueDriver } from "../drivers/memory.driver";
 import { FlowProducer } from "../flow-producer";
@@ -1360,6 +1359,12 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
     if (concurrency !== undefined) {
       queue.setConcurrency(concurrency);
     }
+    if (processorMeta.workerOptions?.groupConcurrency !== undefined) {
+      queue.setGroupConcurrency(processorMeta.workerOptions.groupConcurrency);
+    }
+    if (processorMeta.workerOptions?.limiter !== undefined) {
+      queue.setLimiter(processorMeta.workerOptions.limiter);
+    }
     for (const [jobName, handler] of namedHandlers.entries()) {
       queue.process(jobName, handler);
     }
@@ -1483,6 +1488,12 @@ function attachInlineProcessors(
       if (proc.concurrency !== undefined) {
         queue.setConcurrency(proc.concurrency);
       }
+      if (proc.groupConcurrency !== undefined) {
+        queue.setGroupConcurrency(proc.groupConcurrency);
+      }
+      if (proc.limiter !== undefined) {
+        queue.setLimiter(proc.limiter);
+      }
       if (proc.name) {
         queue.process(proc.name, proc.callback);
       } else {
@@ -1582,6 +1593,7 @@ function buildQueueInstance(
   registry: QueueRegistry | undefined,
   customQueueClass: Type<unknown> | undefined,
   customWorkerClass?: Type<unknown>,
+  clsService?: ClsService,
 ): unknown {
   const merged: RegisterQueueOptions = {
     ...sharedConfig,
@@ -1638,6 +1650,10 @@ function buildQueueInstance(
     name,
     driver: activeDriver,
     concurrency: merged.concurrency,
+    groupConcurrency: merged.groupConcurrency,
+    limiter: merged.limiter,
+    clsService: merged.clsService ?? sharedConfig?.clsService ?? clsService,
+    clsKeys: merged.clsKeys ?? sharedConfig?.clsKeys,
     defaultJobOptions: merged.defaultJobOptions,
     shutdownTimeoutMs:
       queueConfig.shutdownTimeoutMs ?? sharedConfig?.shutdownTimeoutMs,
@@ -1929,6 +1945,7 @@ export class BullModule {
           bullDriver?: BullMQQueueDriver,
           rootDriver?: QueueDriver,
           registry?: QueueRegistry,
+          clsService?: ClsService,
         ) =>
           buildQueueInstance(
             name,
@@ -1939,12 +1956,14 @@ export class BullModule {
             registry,
             BullModule._queueClass,
             BullModule._workerClass,
+            clsService,
           ),
         inject: [
           { token: sharedToken, optional: true },
           { token: BULLMQ_DRIVER, optional: true },
           { token: QUEUE_DRIVER, optional: true },
           { token: QUEUE_REGISTRY, optional: true },
+          { token: ClsService, optional: true },
         ],
       });
 
@@ -2020,6 +2039,7 @@ export class BullModule {
           bullDriver?: BullMQQueueDriver,
           rootDriver?: QueueDriver,
           registry?: QueueRegistry,
+          clsService?: ClsService,
         ) =>
           buildQueueInstance(
             resolvedOpts?.name ?? name,
@@ -2030,6 +2050,7 @@ export class BullModule {
             registry,
             BullModule._queueClass,
             BullModule._workerClass,
+            clsService,
           ),
         inject: [
           optionsToken,
@@ -2037,6 +2058,7 @@ export class BullModule {
           { token: BULLMQ_DRIVER, optional: true },
           { token: QUEUE_DRIVER, optional: true },
           { token: QUEUE_REGISTRY, optional: true },
+          { token: ClsService, optional: true },
         ],
       });
 

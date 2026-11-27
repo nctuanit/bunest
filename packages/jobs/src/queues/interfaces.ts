@@ -1,4 +1,5 @@
 import type {
+  ClsServiceLike,
   FactoryProvider,
   ModuleMetadata,
   Provider,
@@ -147,6 +148,95 @@ export interface JobOptions extends DefaultJobOptions {
    * Optional pre-populated child job return values for `FlowProducer` parent jobs.
    */
   readonly childrenValues?: Record<string, unknown>;
+
+  /**
+   * Optional logical group / tenant key used for per-group concurrency caps
+   * and fair round-robin scheduling (`groupConcurrency`).
+   */
+  readonly groupId?: string;
+
+  /**
+   * Multi-tenant alias for `groupId` (applied when `groupId` is omitted).
+   */
+  readonly tenantId?: string;
+
+  /**
+   * Optional JSON-serializable metadata attached to the job. Preserved alongside
+   * automatically captured CLS context and ambient W3C `traceparent`.
+   */
+  readonly metadata?: Record<string, unknown>;
+}
+
+export interface GroupConcurrencyConfig {
+  /**
+   * Default maximum number of concurrently active jobs allowed for any single group/tenant.
+   */
+  readonly maxPerGroup: number;
+  /**
+   * Optional per-group active concurrency overrides (e.g. `{ enterprise: 5, free: 1 }`).
+   */
+  readonly overrides?: Readonly<Record<string, number>>;
+}
+
+export type GroupConcurrencyOptions = number | GroupConcurrencyConfig;
+
+export type QueueRateLimiterOptions =
+  | {
+      /**
+       * Maximum number of jobs allowed to start within `durationMs`.
+       */
+      readonly max: number;
+      /**
+       * Sliding rate-limit window duration in milliseconds.
+       */
+      readonly durationMs: number;
+      /**
+       * Optional BullMQ-compatible alias for `durationMs`.
+       */
+      readonly duration?: number;
+    }
+  | {
+      /**
+       * Maximum number of jobs allowed to start within `duration`.
+       */
+      readonly max: number;
+      /**
+       * BullMQ-compatible rate-limit window duration in milliseconds.
+       */
+      readonly duration: number;
+      /**
+       * Optional Bunest alias for `duration`.
+       */
+      readonly durationMs?: number;
+    };
+
+export interface QueueDequeueOptions {
+  readonly groupConcurrency?: GroupConcurrencyOptions;
+  readonly limiter?: QueueRateLimiterOptions;
+}
+
+export interface JobEnqueueDiagnosticEvent {
+  readonly queue: string;
+  readonly jobId: string;
+  readonly jobName: string;
+  readonly groupId?: string;
+  readonly traceparent?: string;
+  readonly status: JobStatus;
+  readonly delayMs?: number;
+  readonly priority?: number;
+}
+
+export interface JobProcessDiagnosticEvent {
+  readonly phase: "start" | "end" | "error";
+  readonly queue: string;
+  readonly jobId: string;
+  readonly jobName: string;
+  readonly groupId?: string;
+  readonly traceparent?: string;
+  readonly attempt?: number;
+  readonly durationMs?: number;
+  readonly status: JobStatus;
+  readonly error?: unknown;
 }
 
 export interface Job<TData = unknown, TResult = unknown> {
@@ -156,6 +246,8 @@ export interface Job<TData = unknown, TResult = unknown> {
   readonly data: TData;
   readonly priority: number;
   readonly idempotencyKey?: string;
+  readonly groupId?: string;
+  readonly metadata?: Record<string, unknown>;
   readonly maxAttempts: number;
   attemptsMade: number;
   status: JobStatus;
@@ -208,6 +300,7 @@ export interface QueueDriver {
   dequeue<TData = unknown, TResult = unknown>(
     queueName: string,
     now?: number,
+    options?: QueueDequeueOptions,
   ): Promise<Job<TData, TResult> | null>;
 
   ack<TData = unknown, TResult = unknown>(
@@ -248,7 +341,29 @@ export interface QueueDriver {
     jobId: string,
   ): Promise<Job<TData, TResult> | null>;
 
+  getJobs?<TData = unknown, TResult = unknown>(
+    queueName: string,
+    status?: JobStatus | "all",
+    limit?: number,
+    offset?: number,
+  ): Promise<Job<TData, TResult>[]>;
+
+  retryJob?<TData = unknown, TResult = unknown>(
+    queueName: string,
+    jobId: string,
+  ): Promise<Job<TData, TResult> | null>;
+
   getNextDelayedTimestamp?(queueName: string): Promise<number | null>;
+
+  /**
+   * Optional hint returning the epoch timestamp (ms) when a rate-limited queue
+   * can next dequeue a job, enabling accurate non-spinning timer wakeups.
+   */
+  getNextRateLimitTimestamp?(
+    queueName: string,
+    now?: number,
+    options?: QueueDequeueOptions,
+  ): Promise<number | null>;
 
   readonly lockDurationMs?: number;
 
@@ -275,6 +390,25 @@ export interface QueueDriver {
 export interface QueueConfig {
   readonly name: string;
   readonly concurrency?: number;
+  /**
+   * Per-group / per-tenant concurrency cap enabling fair round-robin dequeue
+   * across eligible groups to prevent noisy-neighbor starvation.
+   */
+  readonly groupConcurrency?: GroupConcurrencyOptions;
+  /**
+   * Sliding-window rate limiter enforced atomically on job dequeue.
+   */
+  readonly limiter?: QueueRateLimiterOptions;
+  /**
+   * Optional `ClsService` instance used to capture CLS keys on `add()` / `addBulk()`
+   * and restore them around worker job execution.
+   */
+  readonly clsService?: ClsServiceLike;
+  /**
+   * Optional override for CLS keys captured during enqueue.
+   * Defaults to `DEFAULT_CLS_PROPAGATION_KEYS` (`requestId`, `tenantId`, `userId`, `correlationId`).
+   */
+  readonly clsKeys?: readonly string[];
   readonly defaultJobOptions?: DefaultJobOptions;
   readonly shutdownTimeoutMs?: number;
   readonly driver?: QueueDriver;
@@ -285,6 +419,8 @@ export interface QueueModuleOptions {
   readonly driver?: QueueDriver;
   readonly defaultJobOptions?: DefaultJobOptions;
   readonly shutdownTimeoutMs?: number;
+  readonly clsService?: ClsServiceLike;
+  readonly clsKeys?: readonly string[];
   readonly global?: boolean;
 }
 
@@ -467,10 +603,8 @@ export interface BullMQWorkerOptionsBase extends BullMQQueueBaseOptions {
   name?: string;
   autorun?: boolean;
   concurrency?: number;
-  limiter?: {
-    max: number;
-    duration: number;
-  };
+  groupConcurrency?: GroupConcurrencyOptions;
+  limiter?: QueueRateLimiterOptions;
   metrics?: {
     maxDataPoints: number;
   };
@@ -532,6 +666,8 @@ export interface BullRootModuleOptions extends BullMQQueueOptionsBase {
   /** Bunest-native optional driver / adapter hooks */
   readonly driver?: QueueDriver;
   readonly shutdownTimeoutMs?: number;
+  readonly clsService?: ClsServiceLike;
+  readonly clsKeys?: readonly string[];
   readonly createQueue?: BullMQQueueFactory;
   readonly createWorker?: BullMQWorkerFactory;
   readonly global?: boolean;
@@ -591,6 +727,10 @@ export interface RegisterQueueOptions extends NestQueueOptions {
   forceDisconnectOnShutdown?: boolean;
   /** Bunest-native optional overrides */
   readonly concurrency?: number;
+  readonly groupConcurrency?: GroupConcurrencyOptions;
+  readonly limiter?: QueueRateLimiterOptions;
+  readonly clsService?: ClsServiceLike;
+  readonly clsKeys?: readonly string[];
   readonly shutdownTimeoutMs?: number;
   readonly driver?: QueueDriver;
   readonly pollIntervalMs?: number;

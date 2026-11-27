@@ -5,6 +5,10 @@ import type {
   ScheduleModuleOptions,
   ScheduleModuleOptionsFactory,
 } from "./interfaces/scheduler.interface";
+import {
+  InMemorySchedulerLockDriver,
+  SCHEDULER_LOCK_DRIVER,
+} from "./scheduler-lock";
 import { SchedulerExplorer } from "./scheduler.explorer";
 import { SchedulerRegistry } from "./scheduler.registry";
 
@@ -23,6 +27,8 @@ function withDefaultScheduleOptions(
 export class ScheduleModule {
   static forRoot(options: ScheduleModuleOptions = {}): DynamicModule {
     const resolvedOptions = withDefaultScheduleOptions(options);
+    const lockDriver =
+      resolvedOptions.lockDriver ?? new InMemorySchedulerLockDriver();
     return {
       module: ScheduleModule,
       global: options.global ?? true,
@@ -31,10 +37,18 @@ export class ScheduleModule {
           provide: SCHEDULE_MODULE_OPTIONS,
           useValue: resolvedOptions,
         },
+        {
+          provide: SCHEDULER_LOCK_DRIVER,
+          useValue: lockDriver,
+        },
         SchedulerRegistry,
         SchedulerExplorer,
       ],
-      exports: [SCHEDULE_MODULE_OPTIONS, SchedulerRegistry],
+      exports: [
+        SCHEDULE_MODULE_OPTIONS,
+        SCHEDULER_LOCK_DRIVER,
+        SchedulerRegistry,
+      ],
     };
   }
 
@@ -44,8 +58,22 @@ export class ScheduleModule {
       module: ScheduleModule,
       global: options.global ?? true,
       imports: options.imports ?? [],
-      providers: [...asyncProviders, SchedulerRegistry, SchedulerExplorer],
-      exports: [SCHEDULE_MODULE_OPTIONS, SchedulerRegistry],
+      providers: [
+        ...asyncProviders,
+        {
+          provide: SCHEDULER_LOCK_DRIVER,
+          useFactory: (opts: ScheduleModuleOptions) =>
+            opts?.lockDriver ?? new InMemorySchedulerLockDriver(),
+          inject: [SCHEDULE_MODULE_OPTIONS],
+        },
+        SchedulerRegistry,
+        SchedulerExplorer,
+      ],
+      exports: [
+        SCHEDULE_MODULE_OPTIONS,
+        SCHEDULER_LOCK_DRIVER,
+        SchedulerRegistry,
+      ],
     };
   }
 

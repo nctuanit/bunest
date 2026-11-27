@@ -1,4 +1,15 @@
-import type { Job, QueueCounts, QueueDriver } from "../interfaces";
+import type {
+  Job,
+  JobStatus,
+  QueueCounts,
+  QueueDequeueOptions,
+  QueueDriver,
+} from "../interfaces";
+import {
+  normalizeGroupConcurrency,
+  normalizeRateLimiter,
+  resolveGroupCap,
+} from "../queue-policy";
 
 interface WaitingEntry {
   readonly id: string;
@@ -12,10 +23,14 @@ interface QueueBucket {
   readonly waiting: WaitingEntry[];
   readonly delayed: Set<string>;
   readonly active: Set<string>;
+  readonly activeByGroup: Map<string, number>;
+  readonly groupLastServed: Map<string, number>;
+  readonly rateLimitTimestamps: number[];
   readonly deadLetter: string[];
   completedCount: number;
   failedCount: number;
   seq: number;
+  rrTick: number;
 }
 
 function formatError(error: Error | string): {
@@ -47,10 +62,14 @@ export class MemoryQueueDriver implements QueueDriver {
         waiting: [],
         delayed: new Set(),
         active: new Set(),
+        activeByGroup: new Map(),
+        groupLastServed: new Map(),
+        rateLimitTimestamps: [],
         deadLetter: [],
         completedCount: 0,
         failedCount: 0,
         seq: 0,
+        rrTick: 0,
       };
       this.buckets.set(queueName, bucket);
     }
@@ -97,23 +116,120 @@ export class MemoryQueueDriver implements QueueDriver {
   async dequeue<TData = unknown, TResult = unknown>(
     queueName: string,
     now: number = Date.now(),
+    options?: QueueDequeueOptions,
   ): Promise<Job<TData, TResult> | null> {
     const bucket = this.getBucket(queueName);
     this.promoteReadyDelayedJobs(bucket, now);
 
-    while (bucket.waiting.length > 0) {
-      const entry = bucket.waiting.shift()!;
-      const job = bucket.jobs.get(entry.id);
-      if (!job || job.status !== "waiting") {
-        continue;
+    const limiter = normalizeRateLimiter(options?.limiter);
+    if (limiter) {
+      this.pruneRateLimitWindow(bucket, now, limiter.durationMs);
+      if (bucket.rateLimitTimestamps.length >= limiter.max) {
+        return null;
       }
-      job.status = "active";
-      job.startedAt = now;
-      bucket.active.add(job.id);
-      return job as Job<TData, TResult>;
     }
 
-    return null;
+    const groupPolicy = normalizeGroupConcurrency(options?.groupConcurrency);
+    let selectedJob: Job<any, any> | undefined;
+
+    if (!groupPolicy) {
+      while (bucket.waiting.length > 0) {
+        const entry = bucket.waiting.shift()!;
+        const job = bucket.jobs.get(entry.id);
+        if (!job || job.status !== "waiting") {
+          continue;
+        }
+        selectedJob = job;
+        break;
+      }
+    } else {
+      const seenGroup = new Set<string>();
+      let bestIndex = -1;
+      let bestJob: Job<any, any> | undefined;
+      let bestGroupKey = "";
+      let bestLastServed = Infinity;
+
+      for (let i = 0; i < bucket.waiting.length; i++) {
+        const entry = bucket.waiting[i]!;
+        const candidate = bucket.jobs.get(entry.id);
+        if (!candidate || candidate.status !== "waiting") {
+          bucket.waiting.splice(i, 1);
+          i--;
+          continue;
+        }
+
+        const groupKey = candidate.groupId ?? "";
+        if (seenGroup.has(groupKey)) {
+          continue;
+        }
+        seenGroup.add(groupKey);
+
+        if (groupKey !== "") {
+          const cap = resolveGroupCap(groupPolicy, groupKey);
+          const activeCount = bucket.activeByGroup.get(groupKey) ?? 0;
+          if (activeCount >= cap) {
+            continue;
+          }
+        }
+
+        const lastServed = bucket.groupLastServed.get(groupKey) ?? 0;
+        if (lastServed < bestLastServed) {
+          bestLastServed = lastServed;
+          bestIndex = i;
+          bestJob = candidate;
+          bestGroupKey = groupKey;
+          if (lastServed === 0) {
+            break;
+          }
+        }
+      }
+
+      if (bestIndex === -1 || !bestJob) {
+        return null;
+      }
+
+      bucket.waiting.splice(bestIndex, 1);
+      bucket.groupLastServed.set(bestGroupKey, ++bucket.rrTick);
+      selectedJob = bestJob;
+    }
+
+    if (!selectedJob) {
+      return null;
+    }
+
+    selectedJob.status = "active";
+    selectedJob.startedAt = now;
+    bucket.active.add(selectedJob.id);
+    if (selectedJob.groupId) {
+      bucket.activeByGroup.set(
+        selectedJob.groupId,
+        (bucket.activeByGroup.get(selectedJob.groupId) ?? 0) + 1,
+      );
+    }
+    if (limiter) {
+      bucket.rateLimitTimestamps.push(now);
+    }
+    return selectedJob as Job<TData, TResult>;
+  }
+
+  async getNextRateLimitTimestamp(
+    queueName: string,
+    now: number = Date.now(),
+    options?: QueueDequeueOptions,
+  ): Promise<number | null> {
+    const limiter = normalizeRateLimiter(options?.limiter);
+    if (!limiter) {
+      return null;
+    }
+    const bucket = this.buckets.get(queueName);
+    if (!bucket) {
+      return null;
+    }
+    this.pruneRateLimitWindow(bucket, now, limiter.durationMs);
+    if (bucket.rateLimitTimestamps.length < limiter.max) {
+      return null;
+    }
+    return bucket.rateLimitTimestamps[0]! + limiter.durationMs;
   }
 
   async ack<TData = unknown, TResult = unknown>(
@@ -122,7 +238,7 @@ export class MemoryQueueDriver implements QueueDriver {
     result?: TResult,
   ): Promise<Job<TData, TResult> | null> {
     const bucket = this.getBucket(queueName);
-    bucket.active.delete(jobId);
+    this.releaseActive(bucket, jobId);
 
     const job = bucket.jobs.get(jobId);
     if (!job) {
@@ -148,7 +264,7 @@ export class MemoryQueueDriver implements QueueDriver {
     retryAt?: number,
   ): Promise<Job<TData, TResult> | null> {
     const bucket = this.getBucket(queueName);
-    bucket.active.delete(jobId);
+    this.releaseActive(bucket, jobId);
 
     const job = bucket.jobs.get(jobId);
     if (!job) {
@@ -184,7 +300,7 @@ export class MemoryQueueDriver implements QueueDriver {
     error: Error | string,
   ): Promise<Job<TData, TResult> | null> {
     const bucket = this.getBucket(queueName);
-    bucket.active.delete(jobId);
+    this.releaseActive(bucket, jobId);
     bucket.delayed.delete(jobId);
 
     const job = bucket.jobs.get(jobId);
@@ -291,6 +407,57 @@ export class MemoryQueueDriver implements QueueDriver {
     return job as Job<TData, TResult>;
   }
 
+  async getJobs<TData = unknown, TResult = unknown>(
+    queueName: string,
+    status?: JobStatus | "all",
+    limit?: number,
+    offset: number = 0,
+  ): Promise<Job<TData, TResult>[]> {
+    const bucket = this.buckets.get(queueName);
+    if (!bucket) {
+      return [];
+    }
+    this.promoteReadyDelayedJobs(bucket, Date.now());
+    const jobs: Job<TData, TResult>[] = [];
+    for (const job of bucket.jobs.values()) {
+      if (!status || status === "all" || job.status === status) {
+        jobs.push(job as Job<TData, TResult>);
+      }
+    }
+    jobs.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    const start = Math.max(0, Math.floor(offset));
+    if (limit !== undefined && Number.isFinite(limit) && limit >= 0) {
+      return jobs.slice(start, start + Math.floor(limit));
+    }
+    return jobs.slice(start);
+  }
+
+  async retryJob<TData = unknown, TResult = unknown>(
+    queueName: string,
+    jobId: string,
+  ): Promise<Job<TData, TResult> | null> {
+    const fromDlq = await this.retryDeadLetterJob<TData, TResult>(
+      queueName,
+      jobId,
+    );
+    if (fromDlq) {
+      return fromDlq;
+    }
+    const bucket = this.buckets.get(queueName);
+    const job = bucket?.jobs.get(jobId);
+    if (!bucket || !job || job.status !== "failed") {
+      return null;
+    }
+    job.attemptsMade = 0;
+    job.failedReason = undefined;
+    job.finishedAt = undefined;
+    job.startedAt = undefined;
+    job.processAfter = Date.now();
+    job.status = "waiting";
+    this.insertWaiting(bucket, job);
+    return job as Job<TData, TResult>;
+  }
+
   async getNextDelayedTimestamp(queueName: string): Promise<number | null> {
     const bucket = this.buckets.get(queueName);
     if (!bucket || bucket.delayed.size === 0) {
@@ -309,6 +476,37 @@ export class MemoryQueueDriver implements QueueDriver {
 
   close(): void {
     this.buckets.clear();
+  }
+
+  private releaseActive(bucket: QueueBucket, jobId: string): void {
+    if (!bucket.active.delete(jobId)) {
+      return;
+    }
+    const job = bucket.jobs.get(jobId);
+    if (job?.groupId) {
+      const next = (bucket.activeByGroup.get(job.groupId) ?? 1) - 1;
+      if (next <= 0) {
+        bucket.activeByGroup.delete(job.groupId);
+      } else {
+        bucket.activeByGroup.set(job.groupId, next);
+      }
+    }
+  }
+
+  private pruneRateLimitWindow(
+    bucket: QueueBucket,
+    now: number,
+    durationMs: number,
+  ): void {
+    const cutoff = now - durationMs;
+    const timestamps = bucket.rateLimitTimestamps;
+    let firstValid = 0;
+    while (firstValid < timestamps.length && timestamps[firstValid]! <= cutoff) {
+      firstValid++;
+    }
+    if (firstValid > 0) {
+      timestamps.splice(0, firstValid);
+    }
   }
 
   private promoteReadyDelayedJobs(bucket: QueueBucket, now: number): void {

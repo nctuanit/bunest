@@ -1,4 +1,7 @@
 import {
+  ClsService,
+  ContextIdFactory,
+  DiscoveryService,
   Inject,
   Injectable,
   MetadataRegistry,
@@ -7,15 +10,11 @@ import {
   REQUEST,
   Scope,
   type DynamicModule,
+  type InstanceWrapper,
   type ModuleExport,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
   type Provider,
-} from "@bunest/core";
-import {
-  ContextIdFactory,
-  DiscoveryService,
-  type InstanceWrapper,
 } from "@bunest/core";
 import { MemoryQueueDriver } from "./drivers/memory.driver";
 import { QueueEvents, QueueEventsHost } from "./hosts/queue-events-host.class";
@@ -348,6 +347,12 @@ export class QueueExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       processorMeta.workerOptions?.concurrency ?? processorMeta.concurrency;
     if (concurrency !== undefined) {
       queue.setConcurrency(concurrency);
+    }
+    if (processorMeta.workerOptions?.groupConcurrency !== undefined) {
+      queue.setGroupConcurrency(processorMeta.workerOptions.groupConcurrency);
+    }
+    if (processorMeta.workerOptions?.limiter !== undefined) {
+      queue.setLimiter(processorMeta.workerOptions.limiter);
     }
 
     const isRequestScoped =
@@ -687,10 +692,14 @@ export class QueueModule {
           rootDriver?: QueueDriver,
           rootOptions?: QueueModuleOptions,
           registry?: QueueRegistry,
+          clsService?: ClsService,
         ) => {
           const queue = new Queue({
             ...config,
             driver: config.driver ?? rootDriver ?? new MemoryQueueDriver(),
+            clsService:
+              config.clsService ?? rootOptions?.clsService ?? clsService,
+            clsKeys: config.clsKeys ?? rootOptions?.clsKeys,
             defaultJobOptions: {
               ...rootOptions?.defaultJobOptions,
               ...config.defaultJobOptions,
@@ -705,6 +714,7 @@ export class QueueModule {
           { token: QUEUE_DRIVER, optional: true },
           { token: QUEUE_MODULE_OPTIONS, optional: true },
           { token: QUEUE_REGISTRY, optional: true },
+          { token: ClsService, optional: true },
         ],
       });
       exportsList.push(token);
@@ -772,12 +782,18 @@ export class QueueModule {
           rootDriver?: QueueDriver,
           rootOptions?: QueueModuleOptions,
           registry?: QueueRegistry,
+          clsService?: ClsService,
         ) => {
           const queue = new Queue({
             ...resolvedConfig,
             name: resolvedConfig?.name ?? config.name,
             driver:
               resolvedConfig?.driver ?? rootDriver ?? new MemoryQueueDriver(),
+            clsService:
+              resolvedConfig?.clsService ??
+              rootOptions?.clsService ??
+              clsService,
+            clsKeys: resolvedConfig?.clsKeys ?? rootOptions?.clsKeys,
             defaultJobOptions: {
               ...rootOptions?.defaultJobOptions,
               ...resolvedConfig?.defaultJobOptions,
@@ -794,6 +810,7 @@ export class QueueModule {
           { token: QUEUE_DRIVER, optional: true },
           { token: QUEUE_MODULE_OPTIONS, optional: true },
           { token: QUEUE_REGISTRY, optional: true },
+          { token: ClsService, optional: true },
         ],
       });
       exportsList.push(token);

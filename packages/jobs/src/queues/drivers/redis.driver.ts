@@ -1,15 +1,23 @@
 import type {
   Job,
+  JobStatus,
   QueueCounts,
+  QueueDequeueOptions,
   QueueDriver,
   ReclaimStalledResult,
 } from "../interfaces";
+import {
+  normalizeGroupConcurrency,
+  normalizeRateLimiter,
+  resolveGroupCap,
+} from "../queue-policy";
 import {
   createBunRedisQueueClient,
   type RedisQueueClientLike,
 } from "./bun-redis.adapter";
 import {
   LUA_ACK_JOB,
+  LUA_DEQUEUE_FAIR_JOB,
   LUA_DEQUEUE_JOB,
   LUA_ENQUEUE_JOB,
   LUA_NACK_OR_DLQ_JOB,
@@ -110,6 +118,14 @@ export class RedisQueueDriver implements QueueDriver {
   private readonly knownQueues = new Set<string>();
   private readonly jobQueueIndex = new Map<string, string>();
   private readonly activeTokens = new Map<string, string>();
+  private readonly nextRateLimitAt = new Map<string, number>();
+  private readonly fallbackActiveByGroup = new Map<string, Map<string, number>>();
+  private readonly fallbackGroupLastServed = new Map<
+    string,
+    Map<string, number>
+  >();
+  private readonly fallbackRrTick = new Map<string, number>();
+  private readonly fallbackRateLimitTimestamps = new Map<string, number[]>();
   private readonly stalledListeners = new Map<
     string,
     Set<(result: ReclaimStalledResult) => void>
@@ -219,6 +235,11 @@ export class RedisQueueDriver implements QueueDriver {
       seq: `${base}:seq`,
       completedCount: `${base}:completed`,
       failedCount: `${base}:failed`,
+      groupActive: `${base}:group:active`,
+      groupRr: `${base}:group:rr`,
+      groupRrSeq: `${base}:group:rr_seq`,
+      groupMap: `${base}:group:map`,
+      rateLimit: `${base}:ratelimit`,
     };
   }
 
@@ -340,7 +361,7 @@ export class RedisQueueDriver implements QueueDriver {
       const serialized = JSON.stringify(job);
       const rawResult = await this.runLua(
         LUA_ENQUEUE_JOB,
-        [k.jobs, k.idempotency, k.waiting, k.delayed, k.seq],
+        [k.jobs, k.idempotency, k.waiting, k.delayed, k.seq, k.groupMap],
         [
           job.id,
           serialized,
@@ -349,6 +370,7 @@ export class RedisQueueDriver implements QueueDriver {
           now,
           job.idempotencyKey ?? "",
           this.idempotencyTtlMs,
+          job.groupId ?? "",
         ],
       );
       if (Array.isArray(rawResult) && typeof rawResult[1] === "string") {
@@ -393,6 +415,10 @@ export class RedisQueueDriver implements QueueDriver {
       await this.addToWaitingSet(queueName, job);
     }
 
+    if (job.groupId) {
+      await this.redis.hset(k.groupMap, job.id, job.groupId);
+    }
+
     if (job.idempotencyKey !== undefined) {
       await this.redis.hset(k.idempotency, job.idempotencyKey, job.id);
     }
@@ -404,21 +430,81 @@ export class RedisQueueDriver implements QueueDriver {
   async dequeue<TData = unknown, TResult = unknown>(
     queueName: string,
     now: number = Date.now(),
+    options?: QueueDequeueOptions,
   ): Promise<Job<TData, TResult> | null> {
     this.trackQueue(queueName);
     const k = this.keys(queueName);
+    const groupPolicy = normalizeGroupConcurrency(options?.groupConcurrency);
+    const limiter = normalizeRateLimiter(options?.limiter);
 
     if (this.useLua) {
       const leaseToken = crypto.randomUUID();
-      const raw = await this.runLua(
-        LUA_DEQUEUE_JOB,
-        [k.jobs, k.waiting, k.delayed, k.active, k.leases, k.seq],
-        [now, this.lockDurationMs, leaseToken],
+      if (!groupPolicy && !limiter) {
+        const raw = await this.runLua(
+          LUA_DEQUEUE_JOB,
+          [k.jobs, k.waiting, k.delayed, k.active, k.leases, k.seq],
+          [now, this.lockDurationMs, leaseToken],
+        );
+        if (typeof raw !== "string" || raw.length === 0) {
+          return null;
+        }
+        const job = this.parseJob<TData, TResult>(raw);
+        this.jobQueueIndex.set(job.id, queueName);
+        if (job.leaseToken) {
+          this.activeTokens.set(
+            this.tokenKey(queueName, job.id),
+            job.leaseToken,
+          );
+        }
+        return job;
+      }
+
+      const overridesJson =
+        groupPolicy && Object.keys(groupPolicy.overrides).length > 0
+          ? JSON.stringify(groupPolicy.overrides)
+          : "{}";
+      const res = await this.runLua(
+        LUA_DEQUEUE_FAIR_JOB,
+        [
+          k.jobs,
+          k.waiting,
+          k.delayed,
+          k.active,
+          k.leases,
+          k.seq,
+          k.groupActive,
+          k.groupRr,
+          k.groupRrSeq,
+          k.groupMap,
+          k.rateLimit,
+        ],
+        [
+          now,
+          this.lockDurationMs,
+          leaseToken,
+          groupPolicy?.maxPerGroup ?? 0,
+          overridesJson,
+          limiter?.max ?? 0,
+          limiter?.durationMs ?? 0,
+        ],
       );
-      if (typeof raw !== "string" || raw.length === 0) {
+
+      if (!Array.isArray(res) || res.length < 2) {
         return null;
       }
-      const job = this.parseJob<TData, TResult>(raw);
+      if (res[0] === "rate_limited") {
+        const nextAt = Number(res[1]);
+        if (Number.isFinite(nextAt)) {
+          this.nextRateLimitAt.set(queueName, nextAt);
+        }
+        return null;
+      }
+      if (res[0] !== "job" || typeof res[1] !== "string" || res[1].length === 0) {
+        return null;
+      }
+
+      this.nextRateLimitAt.delete(queueName);
+      const job = this.parseJob<TData, TResult>(res[1]);
       this.jobQueueIndex.set(job.id, queueName);
       if (job.leaseToken) {
         this.activeTokens.set(this.tokenKey(queueName, job.id), job.leaseToken);
@@ -428,29 +514,147 @@ export class RedisQueueDriver implements QueueDriver {
 
     await this.promoteReadyDelayed(queueName, now);
 
-    const candidates = await this.redis.zrange(k.waiting, 0, 0);
-    const jobId = candidates[0];
-    if (!jobId) {
+    if (limiter) {
+      const timestamps = this.pruneFallbackRateLimit(
+        queueName,
+        now,
+        limiter.durationMs,
+      );
+      if (timestamps.length >= limiter.max) {
+        return null;
+      }
+    }
+
+    if (!groupPolicy) {
+      const candidates = await this.redis.zrange(k.waiting, 0, 0);
+      const jobId = candidates[0];
+      if (!jobId) {
+        return null;
+      }
+
+      const removed = await this.redis.zrem(k.waiting, jobId);
+      if (removed === 0) {
+        return null;
+      }
+
+      const raw = await this.redis.hget(k.jobs, jobId);
+      if (!raw) {
+        return null;
+      }
+
+      const job = this.parseJob<TData, TResult>(raw);
+      job.status = "active";
+      job.startedAt = now;
+      await this.redis.hset(k.jobs, job.id, JSON.stringify(job));
+      await this.redis.sadd(k.active, job.id);
+      this.trackFallbackGroupActive(queueName, job.groupId, 1);
+      if (limiter) {
+        this.recordFallbackRateLimit(queueName, now);
+      }
+      this.jobQueueIndex.set(job.id, queueName);
+      return job;
+    }
+
+    const allWaiting = await this.redis.zrange(k.waiting, 0, -1);
+    const seenGroup = new Set<string>();
+    const activeMap = this.getFallbackActiveMap(queueName);
+    const rrMap = this.getFallbackRrMap(queueName);
+
+    let bestJob: Job<TData, TResult> | undefined;
+    let bestGroupKey = "";
+    let bestLastServed = Infinity;
+
+    for (const candidateId of allWaiting) {
+      const raw = await this.redis.hget(k.jobs, candidateId);
+      if (!raw) {
+        await this.redis.zrem(k.waiting, candidateId);
+        continue;
+      }
+      const candidate = this.parseJob<TData, TResult>(raw);
+      if (candidate.status !== "waiting") {
+        await this.redis.zrem(k.waiting, candidateId);
+        continue;
+      }
+
+      const groupKey = candidate.groupId ?? "";
+      if (seenGroup.has(groupKey)) {
+        continue;
+      }
+      seenGroup.add(groupKey);
+
+      if (groupKey !== "") {
+        const cap = resolveGroupCap(groupPolicy, groupKey);
+        if ((activeMap.get(groupKey) ?? 0) >= cap) {
+          continue;
+        }
+      }
+
+      const lastServed = rrMap.get(groupKey) ?? 0;
+      if (lastServed < bestLastServed) {
+        bestLastServed = lastServed;
+        bestJob = candidate;
+        bestGroupKey = groupKey;
+        if (lastServed === 0) {
+          break;
+        }
+      }
+    }
+
+    if (!bestJob) {
       return null;
     }
 
-    const removed = await this.redis.zrem(k.waiting, jobId);
+    const removed = await this.redis.zrem(k.waiting, bestJob.id);
     if (removed === 0) {
       return null;
     }
 
-    const raw = await this.redis.hget(k.jobs, jobId);
-    if (!raw) {
+    bestJob.status = "active";
+    bestJob.startedAt = now;
+    await this.redis.hset(k.jobs, bestJob.id, JSON.stringify(bestJob));
+    await this.redis.sadd(k.active, bestJob.id);
+    this.trackFallbackGroupActive(queueName, bestJob.groupId, 1);
+    const nextTick = (this.fallbackRrTick.get(queueName) ?? 0) + 1;
+    this.fallbackRrTick.set(queueName, nextTick);
+    rrMap.set(bestGroupKey, nextTick);
+    if (limiter) {
+      this.recordFallbackRateLimit(queueName, now);
+    }
+    this.jobQueueIndex.set(bestJob.id, queueName);
+    return bestJob;
+  }
+
+  async getNextRateLimitTimestamp(
+    queueName: string,
+    now: number = Date.now(),
+    options?: QueueDequeueOptions,
+  ): Promise<number | null> {
+    const limiter = normalizeRateLimiter(options?.limiter);
+    if (!limiter) {
       return null;
     }
 
-    const job = this.parseJob<TData, TResult>(raw);
-    job.status = "active";
-    job.startedAt = now;
-    await this.redis.hset(k.jobs, job.id, JSON.stringify(job));
-    await this.redis.sadd(k.active, job.id);
-    this.jobQueueIndex.set(job.id, queueName);
-    return job;
+    if (this.useLua) {
+      const nextAt = this.nextRateLimitAt.get(queueName);
+      if (nextAt === undefined) {
+        return null;
+      }
+      if (nextAt <= now) {
+        this.nextRateLimitAt.delete(queueName);
+        return null;
+      }
+      return nextAt;
+    }
+
+    const timestamps = this.pruneFallbackRateLimit(
+      queueName,
+      now,
+      limiter.durationMs,
+    );
+    if (timestamps.length < limiter.max) {
+      return null;
+    }
+    return timestamps[0]! + limiter.durationMs;
   }
 
   async ack<TData = unknown, TResult = unknown>(
@@ -469,7 +673,16 @@ export class RedisQueueDriver implements QueueDriver {
       const resultJson = result !== undefined ? JSON.stringify(result) : "";
       const raw = await this.runLua(
         LUA_ACK_JOB,
-        [k.jobs, k.active, k.leases, k.stalled, k.completedCount, k.idempotency],
+        [
+          k.jobs,
+          k.active,
+          k.leases,
+          k.stalled,
+          k.completedCount,
+          k.idempotency,
+          k.groupActive,
+          k.groupMap,
+        ],
         [
           jobId,
           resultJson,
@@ -487,11 +700,14 @@ export class RedisQueueDriver implements QueueDriver {
       return this.parseJob<TData, TResult>(raw);
     }
 
-    await this.redis.srem(k.active, jobId);
+    const removedActive = await this.redis.srem(k.active, jobId);
 
     const job = await this.getJob<TData, TResult>(queueName, jobId);
     if (!job) {
       return null;
+    }
+    if (removedActive > 0) {
+      this.trackFallbackGroupActive(queueName, job.groupId, -1);
     }
 
     job.status = "completed";
@@ -501,6 +717,7 @@ export class RedisQueueDriver implements QueueDriver {
 
     if (job.removeOnComplete) {
       await this.redis.hdel(k.jobs, jobId);
+      await this.redis.hdel(k.groupMap, jobId);
     } else {
       await this.redis.hset(k.jobs, jobId, JSON.stringify(job));
     }
@@ -543,6 +760,7 @@ export class RedisQueueDriver implements QueueDriver {
           k.failedCount,
           k.seq,
           k.idempotency,
+          k.groupActive,
         ],
         [
           jobId,
@@ -562,11 +780,14 @@ export class RedisQueueDriver implements QueueDriver {
       return this.parseJob<TData, TResult>(res[1]);
     }
 
-    await this.redis.srem(k.active, jobId);
+    const removedActive = await this.redis.srem(k.active, jobId);
 
     const job = await this.getJob<TData, TResult>(queueName, jobId);
     if (!job) {
       return null;
+    }
+    if (removedActive > 0) {
+      this.trackFallbackGroupActive(queueName, job.groupId, -1);
     }
 
     job.attemptsMade += 1;
@@ -623,6 +844,7 @@ export class RedisQueueDriver implements QueueDriver {
           k.failedCount,
           k.seq,
           k.idempotency,
+          k.groupActive,
         ],
         [
           jobId,
@@ -643,13 +865,16 @@ export class RedisQueueDriver implements QueueDriver {
       return this.parseJob<TData, TResult>(res[1]);
     }
 
-    await this.redis.srem(k.active, jobId);
+    const removedActive = await this.redis.srem(k.active, jobId);
     await this.redis.zrem(k.delayed, jobId);
     await this.redis.zrem(k.waiting, jobId);
 
     const job = await this.getJob<TData, TResult>(queueName, jobId);
     if (!job) {
       return null;
+    }
+    if (removedActive > 0) {
+      this.trackFallbackGroupActive(queueName, job.groupId, -1);
     }
 
     job.attemptsMade += 1;
@@ -759,6 +984,7 @@ export class RedisQueueDriver implements QueueDriver {
           k.failedCount,
           k.seq,
           k.idempotency,
+          k.groupActive,
         ],
         [now, this.maxStalledCount, this.pruneIdempotencyOnTerminal ? "1" : "0"],
       );
@@ -888,6 +1114,97 @@ export class RedisQueueDriver implements QueueDriver {
     return job;
   }
 
+  async getJobs<TData = unknown, TResult = unknown>(
+    queueName: string,
+    status?: JobStatus | "all",
+    limit?: number,
+    offset: number = 0,
+  ): Promise<Job<TData, TResult>[]> {
+    const k = this.keys(queueName);
+    const jobs: Job<TData, TResult>[] = [];
+
+    if (typeof this.redis.hvals === "function") {
+      const rawJobs = await this.redis.hvals(k.jobs);
+      for (const raw of rawJobs) {
+        try {
+          const parsed = this.parseJob<TData, TResult>(raw);
+          if (!status || status === "all" || parsed.status === status) {
+            jobs.push(parsed);
+          }
+        } catch {
+          // Skip malformed entries
+        }
+      }
+    } else {
+      const idSet = new Set<string>();
+      const wantAll = !status || status === "all";
+      if (wantAll || status === "waiting") {
+        for (const id of await this.redis.zrange(k.waiting, 0, -1)) {
+          idSet.add(id);
+        }
+      }
+      if (wantAll || status === "delayed") {
+        for (const id of await this.redis.zrange(k.delayed, 0, -1)) {
+          idSet.add(id);
+        }
+      }
+      if ((wantAll || status === "active") && this.useLua) {
+        for (const id of await this.redis.zrange(k.active, 0, -1)) {
+          idSet.add(id);
+        }
+      }
+      if (wantAll || status === "dead-letter") {
+        for (const id of await this.redis.lrange(k.dlq, 0, -1)) {
+          idSet.add(id);
+        }
+      }
+      for (const id of idSet) {
+        const job = await this.getJob<TData, TResult>(queueName, id);
+        if (job && (wantAll || job.status === status)) {
+          jobs.push(job);
+        }
+      }
+    }
+
+    jobs.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    const start = Math.max(0, Math.floor(offset));
+    if (limit !== undefined && Number.isFinite(limit) && limit >= 0) {
+      return jobs.slice(start, start + Math.floor(limit));
+    }
+    return jobs.slice(start);
+  }
+
+  async retryJob<TData = unknown, TResult = unknown>(
+    queueName: string,
+    jobId: string,
+  ): Promise<Job<TData, TResult> | null> {
+    const fromDlq = await this.retryDeadLetterJob<TData, TResult>(
+      queueName,
+      jobId,
+    );
+    if (fromDlq) {
+      return fromDlq;
+    }
+    const job = await this.getJob<TData, TResult>(queueName, jobId);
+    if (!job || job.status !== "failed") {
+      return null;
+    }
+    const k = this.keys(queueName);
+    job.attemptsMade = 0;
+    job.failedReason = undefined;
+    job.finishedAt = undefined;
+    job.startedAt = undefined;
+    job.leaseToken = undefined;
+    job.leaseExpiresAt = undefined;
+    job.stalledCount = 0;
+    job.processAfter = Date.now();
+    job.status = "waiting";
+    await this.redis.hdel(k.stalled, jobId);
+    await this.redis.hset(k.jobs, jobId, JSON.stringify(job));
+    await this.addToWaitingSet(queueName, job);
+    return job;
+  }
+
   async getNextDelayedTimestamp(queueName: string): Promise<number | null> {
     const k = this.keys(queueName);
     const ids = await this.redis.zrange(k.delayed, 0, 0);
@@ -904,6 +1221,11 @@ export class RedisQueueDriver implements QueueDriver {
     this.stopStalledSweep();
     this.stalledListeners.clear();
     this.activeTokens.clear();
+    this.nextRateLimitAt.clear();
+    this.fallbackActiveByGroup.clear();
+    this.fallbackGroupLastServed.clear();
+    this.fallbackRrTick.clear();
+    this.fallbackRateLimitTimestamps.clear();
     this.jobQueueIndex.clear();
     this.knownQueues.clear();
     this.scriptShas.clear();
@@ -913,6 +1235,71 @@ export class RedisQueueDriver implements QueueDriver {
     } else if (typeof this.redis.close === "function") {
       await this.redis.close();
     }
+  }
+
+  private getFallbackActiveMap(queueName: string): Map<string, number> {
+    let map = this.fallbackActiveByGroup.get(queueName);
+    if (!map) {
+      map = new Map();
+      this.fallbackActiveByGroup.set(queueName, map);
+    }
+    return map;
+  }
+
+  private getFallbackRrMap(queueName: string): Map<string, number> {
+    let map = this.fallbackGroupLastServed.get(queueName);
+    if (!map) {
+      map = new Map();
+      this.fallbackGroupLastServed.set(queueName, map);
+    }
+    return map;
+  }
+
+  private trackFallbackGroupActive(
+    queueName: string,
+    groupId: string | undefined,
+    delta: number,
+  ): void {
+    if (!groupId) {
+      return;
+    }
+    const map = this.getFallbackActiveMap(queueName);
+    const next = (map.get(groupId) ?? 0) + delta;
+    if (next <= 0) {
+      map.delete(groupId);
+    } else {
+      map.set(groupId, next);
+    }
+  }
+
+  private pruneFallbackRateLimit(
+    queueName: string,
+    now: number,
+    durationMs: number,
+  ): number[] {
+    let timestamps = this.fallbackRateLimitTimestamps.get(queueName);
+    if (!timestamps) {
+      timestamps = [];
+      this.fallbackRateLimitTimestamps.set(queueName, timestamps);
+    }
+    const cutoff = now - durationMs;
+    let firstValid = 0;
+    while (firstValid < timestamps.length && timestamps[firstValid]! <= cutoff) {
+      firstValid++;
+    }
+    if (firstValid > 0) {
+      timestamps.splice(0, firstValid);
+    }
+    return timestamps;
+  }
+
+  private recordFallbackRateLimit(queueName: string, now: number): void {
+    let timestamps = this.fallbackRateLimitTimestamps.get(queueName);
+    if (!timestamps) {
+      timestamps = [];
+      this.fallbackRateLimitTimestamps.set(queueName, timestamps);
+    }
+    timestamps.push(now);
   }
 
   private async addToWaitingSet(

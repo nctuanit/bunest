@@ -1,17 +1,132 @@
+import {
+  ClsContextPropagator,
+  ClsService,
+  diagnosticsChannel,
+  getAmbientClsStore,
+  getAmbientTraceparent,
+  type ClsContextCarrier,
+  type ClsServiceLike,
+} from "@bunest/core";
 import { calculateBackoffDelay } from "./backoff";
 import { MemoryQueueDriver } from "./drivers/memory.driver";
 import type {
   BullMQQueueEventName,
   BulkJobInput,
   DefaultJobOptions,
+  GroupConcurrencyOptions,
   Job,
+  JobEnqueueDiagnosticEvent,
   JobHandler,
   JobOptions,
+  JobProcessDiagnosticEvent,
+  JobStatus,
   QueueConfig,
   QueueCounts,
+  QueueDequeueOptions,
   QueueDriver,
   QueueEventListener,
+  QueueRateLimiterOptions,
 } from "./interfaces";
+import {
+  normalizeGroupConcurrency,
+  normalizeRateLimiter,
+  type NormalizedGroupConcurrency,
+  type NormalizedRateLimiter,
+} from "./queue-policy";
+
+/** Diagnostics channel name emitted when a job is enqueued via `Queue.add()` / `addBulk()`. */
+export const JOBS_ENQUEUE_CHANNEL = "bunest:jobs:enqueue";
+
+/** Diagnostics channel name emitted around worker job execution (`start` / `end` / `error`). */
+export const JOBS_PROCESS_CHANNEL = "bunest:jobs:process";
+
+/** Metadata key storing the captured JSON-serializable `ClsContextCarrier` on a `Job`. */
+export const JOB_CLS_METADATA_KEY = "__bunestCls";
+
+const jobsEnqueueChannel = diagnosticsChannel(JOBS_ENQUEUE_CHANNEL);
+const jobsProcessChannel = diagnosticsChannel(JOBS_PROCESS_CHANNEL);
+
+let sharedDefaultClsService: ClsService | undefined;
+
+function getDefaultClsService(): ClsService {
+  if (!sharedDefaultClsService) {
+    sharedDefaultClsService = new ClsService({ generateId: false });
+  }
+  return sharedDefaultClsService;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function extractJobClsCarrier(
+  job: Job<any, any>,
+): ClsContextCarrier | undefined {
+  const metadata = job.metadata;
+  if (!isPlainObject(metadata)) {
+    return undefined;
+  }
+
+  const rawCarrier = metadata[JOB_CLS_METADATA_KEY];
+  const topTraceparent =
+    typeof metadata.traceparent === "string" && metadata.traceparent.length > 0
+      ? metadata.traceparent
+      : undefined;
+
+  if (isPlainObject(rawCarrier) && isPlainObject(rawCarrier.values)) {
+    const clsId =
+      typeof rawCarrier.clsId === "string" && rawCarrier.clsId.length > 0
+        ? rawCarrier.clsId
+        : undefined;
+    const carrierTraceparent =
+      typeof rawCarrier.traceparent === "string" &&
+      rawCarrier.traceparent.length > 0
+        ? rawCarrier.traceparent
+        : topTraceparent;
+    return {
+      ...(clsId !== undefined ? { clsId } : {}),
+      ...(carrierTraceparent !== undefined
+        ? { traceparent: carrierTraceparent }
+        : {}),
+      values: rawCarrier.values,
+    };
+  }
+
+  if (topTraceparent !== undefined) {
+    return {
+      traceparent: topTraceparent,
+      values: {},
+    };
+  }
+
+  return undefined;
+}
+
+function extractJobTraceparent(job: Job<any, any>): string | undefined {
+  const metadata = job.metadata;
+  if (!isPlainObject(metadata)) {
+    return undefined;
+  }
+  if (
+    typeof metadata.traceparent === "string" &&
+    metadata.traceparent.length > 0
+  ) {
+    return metadata.traceparent;
+  }
+  const rawCarrier = metadata[JOB_CLS_METADATA_KEY];
+  if (
+    isPlainObject(rawCarrier) &&
+    typeof rawCarrier.traceparent === "string" &&
+    rawCarrier.traceparent.length > 0
+  ) {
+    return rawCarrier.traceparent;
+  }
+  return undefined;
+}
 
 export class JobTimeoutError extends Error {
   constructor(
@@ -44,6 +159,10 @@ export class Queue<TData = unknown, TResult = unknown> {
   private readonly idlePollIntervalMs: number;
 
   private concurrency: number;
+  private groupConcurrency?: NormalizedGroupConcurrency;
+  private limiter?: NormalizedRateLimiter;
+  private readonly clsService?: ClsServiceLike;
+  private readonly clsPropagator: ClsContextPropagator;
   private readonly handlers = new Map<string, JobHandler<TData, TResult>>();
   private defaultHandler?: JobHandler<TData, TResult>;
   private readonly listeners = new Map<
@@ -73,6 +192,12 @@ export class Queue<TData = unknown, TResult = unknown> {
     this.name = config.name;
     this.driver = config.driver ?? new MemoryQueueDriver();
     this.concurrency = Math.max(1, Math.floor(config.concurrency ?? 1));
+    this.groupConcurrency = normalizeGroupConcurrency(config.groupConcurrency);
+    this.limiter = normalizeRateLimiter(config.limiter);
+    this.clsService = config.clsService;
+    this.clsPropagator = new ClsContextPropagator(
+      config.clsKeys ? { keys: config.clsKeys } : {},
+    );
     this.defaultJobOptions = config.defaultJobOptions ?? {};
     this.shutdownTimeoutMs = Math.max(
       0,
@@ -129,6 +254,16 @@ export class Queue<TData = unknown, TResult = unknown> {
 
   setConcurrency(concurrency: number): void {
     this.concurrency = Math.max(1, Math.floor(concurrency));
+    this.triggerPump();
+  }
+
+  setGroupConcurrency(groupConcurrency?: GroupConcurrencyOptions): void {
+    this.groupConcurrency = normalizeGroupConcurrency(groupConcurrency);
+    this.triggerPump();
+  }
+
+  setLimiter(limiter?: QueueRateLimiterOptions): void {
+    this.limiter = normalizeRateLimiter(limiter);
     this.triggerPump();
   }
 
@@ -211,6 +346,56 @@ export class Queue<TData = unknown, TResult = unknown> {
         ? { ...options.childrenValues }
         : undefined;
 
+    const rawGroupId = options?.groupId ?? options?.tenantId;
+    const groupId =
+      typeof rawGroupId === "string" && rawGroupId.length > 0
+        ? rawGroupId
+        : undefined;
+
+    const captureCls: ClsServiceLike | undefined =
+      this.clsService ??
+      (getAmbientClsStore() !== undefined ? getDefaultClsService() : undefined);
+    const capturedCarrier = this.clsPropagator.capture(captureCls);
+    const userMetadata = options?.metadata ? { ...options.metadata } : undefined;
+    const explicitTraceparent =
+      typeof userMetadata?.traceparent === "string" &&
+      userMetadata.traceparent.length > 0
+        ? userMetadata.traceparent
+        : undefined;
+    const effectiveTraceparent =
+      explicitTraceparent ??
+      capturedCarrier.traceparent ??
+      getAmbientTraceparent();
+    const hasClsState =
+      capturedCarrier.clsId !== undefined ||
+      Object.keys(capturedCarrier.values).length > 0;
+    const effectiveCarrier: ClsContextCarrier | undefined =
+      hasClsState || effectiveTraceparent !== undefined
+        ? {
+            ...(capturedCarrier.clsId !== undefined
+              ? { clsId: capturedCarrier.clsId }
+              : {}),
+            ...(effectiveTraceparent !== undefined
+              ? { traceparent: effectiveTraceparent }
+              : {}),
+            values: capturedCarrier.values,
+          }
+        : undefined;
+
+    let metadata: Record<string, unknown> | undefined;
+    if (userMetadata !== undefined || effectiveCarrier !== undefined) {
+      metadata = {
+        ...(userMetadata ?? {}),
+        ...(effectiveTraceparent !== undefined &&
+        explicitTraceparent === undefined
+          ? { traceparent: effectiveTraceparent }
+          : {}),
+        ...(effectiveCarrier !== undefined
+          ? { [JOB_CLS_METADATA_KEY]: effectiveCarrier }
+          : {}),
+      };
+    }
+
     const job: Job<TData, TResult> = {
       id:
         options?.jobId ??
@@ -220,6 +405,8 @@ export class Queue<TData = unknown, TResult = unknown> {
       data,
       priority: options?.priority ?? this.defaultJobOptions.priority ?? 0,
       idempotencyKey: options?.idempotencyKey,
+      ...(groupId !== undefined ? { groupId } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
       maxAttempts,
       attemptsMade: 0,
       status: delayMs > 0 ? "delayed" : "waiting",
@@ -243,6 +430,25 @@ export class Queue<TData = unknown, TResult = unknown> {
     };
 
     const stored = await this.driver.enqueue<TData, TResult>(this.name, job);
+    if (jobsEnqueueChannel.hasSubscribers) {
+      try {
+        const storedTraceparent = extractJobTraceparent(stored);
+        jobsEnqueueChannel.publish({
+          queue: this.name,
+          jobId: stored.id,
+          jobName: stored.name,
+          ...(stored.groupId !== undefined ? { groupId: stored.groupId } : {}),
+          ...(storedTraceparent !== undefined
+            ? { traceparent: storedTraceparent }
+            : {}),
+          status: stored.status,
+          ...(delayMs > 0 ? { delayMs } : {}),
+          priority: stored.priority,
+        } satisfies JobEnqueueDiagnosticEvent);
+      } catch {
+        // Isolate diagnostic subscriber errors
+      }
+    }
     await this.emitEvent("added", stored);
     if (delayMs > 0) {
       await this.emitEvent("delayed", stored, stored.processAfter);
@@ -282,6 +488,42 @@ export class Queue<TData = unknown, TResult = unknown> {
       this.triggerPump();
     }
     return job;
+  }
+
+  async getJobs(
+    status?: JobStatus | "all",
+    limit?: number,
+    offset?: number,
+  ): Promise<Job<TData, TResult>[]> {
+    if (typeof this.driver.getJobs === "function") {
+      return this.driver.getJobs<TData, TResult>(
+        this.name,
+        status,
+        limit,
+        offset,
+      );
+    }
+    if (!status || status === "all" || status === "dead-letter") {
+      const dlq = await this.driver.getDeadLetterJobs<TData, TResult>(
+        this.name,
+      );
+      const start = Math.max(0, Math.floor(offset ?? 0));
+      return limit !== undefined && Number.isFinite(limit) && limit >= 0
+        ? dlq.slice(start, start + Math.floor(limit))
+        : dlq.slice(start);
+    }
+    return [];
+  }
+
+  async retryJob(id: string): Promise<Job<TData, TResult> | null> {
+    const retried =
+      typeof this.driver.retryJob === "function"
+        ? await this.driver.retryJob<TData, TResult>(this.name, id)
+        : await this.driver.retryDeadLetterJob<TData, TResult>(this.name, id);
+    if (retried) {
+      this.triggerPump();
+    }
+    return retried;
   }
 
   pause(): void {
@@ -414,7 +656,11 @@ export class Queue<TData = unknown, TResult = unknown> {
           this.inFlightCount++;
           let job: Job<TData, TResult> | null = null;
           try {
-            job = await this.driver.dequeue<TData, TResult>(this.name);
+            job = await this.driver.dequeue<TData, TResult>(
+              this.name,
+              Date.now(),
+              this.getDequeueOptions(),
+            );
             this.pumpErrorCount = 0;
             this.clearPumpRetryTimer();
           } catch (rawErr) {
@@ -514,6 +760,7 @@ export class Queue<TData = unknown, TResult = unknown> {
 
     try {
       const handler = this.resolveHandler(job.name);
+      const jobTraceparent = extractJobTraceparent(job);
       if (!handler) {
         const missingErr = new Error(
           `No processor registered for job "${job.name}" on queue "${this.name}".`,
@@ -526,6 +773,20 @@ export class Queue<TData = unknown, TResult = unknown> {
               missingErr,
               job.leaseToken,
             )) ?? job;
+          this.publishProcessDiagnostic({
+            phase: "error",
+            queue: this.name,
+            jobId: job.id,
+            jobName: job.name,
+            ...(job.groupId !== undefined ? { groupId: job.groupId } : {}),
+            ...(jobTraceparent !== undefined
+              ? { traceparent: jobTraceparent }
+              : {}),
+            attempt: job.attemptsMade + 1,
+            durationMs: 0,
+            status: dlqJob.status,
+            error: missingErr,
+          });
           await this.emitEvent("dead-letter", dlqJob, missingErr);
         } catch (dlqRawErr) {
           const dlqErr =
@@ -548,20 +809,48 @@ export class Queue<TData = unknown, TResult = unknown> {
 
       await this.emitEvent("active", job);
 
+      const carrier = extractJobClsCarrier(job);
+      const clsToRestore: ClsServiceLike | undefined =
+        this.clsService ??
+        (carrier !== undefined || getAmbientClsStore() !== undefined
+          ? getDefaultClsService()
+          : undefined);
+      const processStartMs = performance.now();
+      const attemptNumber = job.attemptsMade + 1;
+
+      const executeHandler = () => {
+        this.publishProcessDiagnostic({
+          phase: "start",
+          queue: this.name,
+          jobId: job.id,
+          jobName: job.name,
+          ...(job.groupId !== undefined ? { groupId: job.groupId } : {}),
+          ...(jobTraceparent !== undefined
+            ? { traceparent: jobTraceparent }
+            : {}),
+          attempt: attemptNumber,
+          status: "active",
+        });
+        return this.runWithTimeout(job, handler, leaseAbortController);
+      };
+
       let result: TResult | undefined;
       let handlerErr: Error | undefined;
       let failed = false;
       try {
-        result = await this.runWithTimeout(
-          job,
-          handler,
-          leaseAbortController,
-        );
+        result = clsToRestore
+          ? await this.clsPropagator.restore(
+              clsToRestore,
+              carrier,
+              executeHandler,
+            )
+          : await executeHandler();
       } catch (rawErr) {
         failed = true;
         handlerErr =
           rawErr instanceof Error ? rawErr : new Error(String(rawErr));
       }
+      const durationMs = Math.max(0, performance.now() - processStartMs);
 
       if (!failed) {
         try {
@@ -571,6 +860,19 @@ export class Queue<TData = unknown, TResult = unknown> {
             result as TResult,
             job.leaseToken,
           );
+          this.publishProcessDiagnostic({
+            phase: "end",
+            queue: this.name,
+            jobId: job.id,
+            jobName: job.name,
+            ...(job.groupId !== undefined ? { groupId: job.groupId } : {}),
+            ...(jobTraceparent !== undefined
+              ? { traceparent: jobTraceparent }
+              : {}),
+            attempt: attemptNumber,
+            durationMs,
+            status: completedJob?.status ?? "completed",
+          });
           if (completedJob !== null) {
             await this.emitEvent("completed", completedJob, result);
           }
@@ -598,6 +900,20 @@ export class Queue<TData = unknown, TResult = unknown> {
             retryAt,
             job.leaseToken,
           );
+          this.publishProcessDiagnostic({
+            phase: "error",
+            queue: this.name,
+            jobId: job.id,
+            jobName: job.name,
+            ...(job.groupId !== undefined ? { groupId: job.groupId } : {}),
+            ...(jobTraceparent !== undefined
+              ? { traceparent: jobTraceparent }
+              : {}),
+            attempt: nextAttempts,
+            durationMs,
+            status: nacked?.status ?? (delayMs > 0 ? "delayed" : "waiting"),
+            error: err,
+          });
           if (nacked !== null) {
             await this.emitEvent("failed", nacked, err);
             if (!this.closed && !this.workersClosing && !this.paused) {
@@ -627,6 +943,20 @@ export class Queue<TData = unknown, TResult = unknown> {
             err,
             job.leaseToken,
           );
+          this.publishProcessDiagnostic({
+            phase: "error",
+            queue: this.name,
+            jobId: job.id,
+            jobName: job.name,
+            ...(job.groupId !== undefined ? { groupId: job.groupId } : {}),
+            ...(jobTraceparent !== undefined
+              ? { traceparent: jobTraceparent }
+              : {}),
+            attempt: nextAttempts,
+            durationMs,
+            status: dlqJob?.status ?? "dead-letter",
+            error: err,
+          });
           if (dlqJob !== null) {
             await this.emitEvent("failed", dlqJob, err);
             await this.emitEvent("dead-letter", dlqJob, err);
@@ -706,21 +1036,62 @@ export class Queue<TData = unknown, TResult = unknown> {
     });
   }
 
+  private getDequeueOptions(): QueueDequeueOptions | undefined {
+    if (!this.groupConcurrency && !this.limiter) {
+      return undefined;
+    }
+    return {
+      ...(this.groupConcurrency
+        ? { groupConcurrency: this.groupConcurrency }
+        : {}),
+      ...(this.limiter ? { limiter: this.limiter } : {}),
+    };
+  }
+
+  private publishProcessDiagnostic(event: JobProcessDiagnosticEvent): void {
+    if (!jobsProcessChannel.hasSubscribers) {
+      return;
+    }
+    try {
+      jobsProcessChannel.publish(event);
+    } catch {
+      // Isolate diagnostic subscriber errors
+    }
+  }
+
   private async scheduleNextDelayedWakeup(): Promise<void> {
     if (this.closed || this.workersClosing || this.paused) {
       return;
     }
 
+    const now = Date.now();
     let delayMs: number | null = null;
     if (typeof this.driver.getNextDelayedTimestamp === "function") {
       const nextTs = await this.driver.getNextDelayedTimestamp(this.name);
       if (nextTs !== null) {
-        delayMs = Math.max(0, nextTs - Date.now());
+        delayMs = Math.max(0, nextTs - now);
       }
     } else {
       const counts = await this.driver.getCounts(this.name);
       if (counts.delayed > 0) {
         delayMs = this.pollIntervalMs;
+      }
+    }
+
+    if (
+      this.limiter &&
+      typeof this.driver.getNextRateLimitTimestamp === "function"
+    ) {
+      const nextRateLimitTs = await this.driver.getNextRateLimitTimestamp(
+        this.name,
+        now,
+        this.getDequeueOptions(),
+      );
+      if (nextRateLimitTs !== null) {
+        const rateLimitDelay = Math.max(1, nextRateLimitTs - now);
+        if (delayMs === null || rateLimitDelay < delayMs) {
+          delayMs = rateLimitDelay;
+        }
       }
     }
 
