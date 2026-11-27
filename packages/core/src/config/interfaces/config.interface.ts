@@ -149,6 +149,15 @@ export interface ConfigModuleOptions<T extends object = ConfigObject> {
    * Custom environment record used instead of `process.env` (useful for isolated tests).
    */
   envSource?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Preloaded typed configuration created via `loadConfig()` before `BunestFactory.create()`.
+   * When provided, `ConfigModule.forRoot()` hydrates the DI `ConfigService` directly from
+   * the preloaded snapshot without re-reading `.env` files or running validation a second time.
+   */
+  preloaded?: {
+    readonly values: T;
+    readonly service: unknown;
+  };
 }
 
 export interface EnvExpansionContext {

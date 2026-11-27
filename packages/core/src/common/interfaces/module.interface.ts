@@ -29,10 +29,10 @@ export interface AutoDiscoverOptions {
 }
 
 export interface ModuleMetadata {
-  imports?: ModuleImport[];
-  controllers?: Type<any>[];
-  providers?: Provider[];
-  exports?: ModuleExport[];
+  imports?: ReadonlyArray<ModuleImport>;
+  controllers?: ReadonlyArray<Type<any>>;
+  providers?: ReadonlyArray<Provider>;
+  exports?: ReadonlyArray<ModuleExport>;
   autoDiscover?: boolean | AutoDiscoverOptions;
 }
 

@@ -9,6 +9,7 @@ import {
   type SseMessageEvent,
   type SseOptions,
   StreamableFile,
+  type StreamableHandlerResponse,
 } from "../../common/index";
 import type { RequestContext } from "../context/request-context";
 import { mergeCorsHeaders } from "../security/cors";
@@ -975,6 +976,247 @@ function raceWithAbort<T>(
   });
 }
 
+interface ResumedReaderStreamOptions {
+  readonly delayClose?: boolean;
+  readonly onError?: (err: unknown) => "close" | "error" | void;
+}
+
+function invokeStreamablePreHeaderErrorHandler(
+  file: StreamableFile,
+  err: unknown,
+  ctx: RequestContext,
+  staticHeaders?: readonly HeaderMetadata[],
+): Response {
+  const errorObj = err instanceof Error ? err : new Error(String(err));
+  let responseBody: unknown = undefined;
+  const extraHeaders = new Map<string, string>();
+
+  const adapterRes: StreamableHandlerResponse = {
+    headersSent: false,
+    destroyed: false,
+    closed: false,
+    statusCode: undefined,
+    statusMessage: undefined,
+    status(code: number) {
+      adapterRes.statusCode = code;
+      return adapterRes;
+    },
+    setHeader(name: string, val: string) {
+      extraHeaders.set(name, String(val));
+      return adapterRes;
+    },
+    header(name: string, val: string) {
+      extraHeaders.set(name, String(val));
+      return adapterRes;
+    },
+    send(body?: unknown) {
+      responseBody = body;
+      return adapterRes;
+    },
+    end(chunk?: unknown) {
+      if (chunk !== undefined) {
+        responseBody = chunk;
+      }
+      adapterRes.closed = true;
+      return adapterRes;
+    },
+    destroy() {
+      adapterRes.destroyed = true;
+      adapterRes.closed = true;
+      return adapterRes;
+    },
+  };
+
+  file.errorHandler(errorObj, adapterRes);
+
+  const status = adapterRes.statusCode ?? HttpStatus.BAD_REQUEST;
+  const statusText = adapterRes.statusMessage;
+  const applyExtraHeaders = (headers: Headers): Headers => {
+    for (const [k, v] of extraHeaders.entries()) {
+      headers.set(k, v);
+    }
+    return headers;
+  };
+
+  if (responseBody === undefined || responseBody === null) {
+    const headers = applyExtraHeaders(buildMergedHeaders(ctx, staticHeaders));
+    return new Response(null, {
+      status,
+      ...(statusText !== undefined ? { statusText } : {}),
+      headers,
+    });
+  }
+
+  if (typeof responseBody === "string") {
+    const headers = applyExtraHeaders(
+      buildMergedHeaders(ctx, staticHeaders, "text/plain; charset=utf-8"),
+    );
+    return new Response(responseBody, {
+      status,
+      ...(statusText !== undefined ? { statusText } : {}),
+      headers,
+    });
+  }
+
+  if (
+    responseBody instanceof Uint8Array ||
+    responseBody instanceof ArrayBuffer ||
+    ArrayBuffer.isView(responseBody)
+  ) {
+    const headers = applyExtraHeaders(
+      buildMergedHeaders(ctx, staticHeaders, "application/octet-stream"),
+    );
+    const binary =
+      responseBody instanceof Uint8Array || responseBody instanceof ArrayBuffer
+        ? responseBody
+        : new Uint8Array(
+            responseBody.buffer,
+            responseBody.byteOffset,
+            responseBody.byteLength,
+          );
+    return new Response(binary, {
+      status,
+      ...(statusText !== undefined ? { statusText } : {}),
+      headers,
+    });
+  }
+
+  const headers = applyExtraHeaders(
+    buildMergedHeaders(ctx, staticHeaders, "application/json; charset=utf-8"),
+  );
+  return new Response(JSON.stringify(responseBody), {
+    status,
+    ...(statusText !== undefined ? { statusText } : {}),
+    headers,
+  });
+}
+
+function invokeStreamableMidStreamErrorHandler(
+  file: StreamableFile,
+  err: unknown,
+): "close" | "error" {
+  const errorObj = err instanceof Error ? err : new Error(String(err));
+  let shouldDestroy = false;
+  let shouldEnd = false;
+
+  const midStreamRes: StreamableHandlerResponse = {
+    headersSent: true,
+    destroyed: false,
+    closed: false,
+    destroy() {
+      shouldDestroy = true;
+      midStreamRes.destroyed = true;
+      midStreamRes.closed = true;
+      return midStreamRes;
+    },
+    end() {
+      shouldEnd = true;
+      midStreamRes.closed = true;
+      return midStreamRes;
+    },
+  };
+
+  try {
+    file.errorHandler(errorObj, midStreamRes);
+  } catch {
+    // Never leave the outgoing stream hanging if a custom errorHandler throws
+  }
+
+  return shouldEnd && !shouldDestroy ? "close" : "error";
+}
+
+function createStreamableForwardingStream(
+  reader: {
+    read(): Promise<{ done: boolean; value?: unknown }>;
+    cancel(): Promise<void>;
+  },
+  signal: AbortSignal,
+  options?: ResumedReaderStreamOptions,
+): ReadableStream<Uint8Array> {
+  let cleanedUp = false;
+  let streamController:
+    | ReadableStreamDefaultController<Uint8Array>
+    | undefined;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    signal.removeEventListener("abort", onAbort);
+    void reader.cancel().catch(() => {});
+  };
+
+  const onAbort = () => {
+    cleanup();
+    try {
+      streamController?.close();
+    } catch {
+      // Already closed
+    }
+  };
+
+  return new ReadableStream<Uint8Array>(
+    {
+      start(controller) {
+        streamController = controller;
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      },
+      async pull(controller) {
+        if (cleanedUp || signal.aborted) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            // Already closed
+          }
+          return;
+        }
+        try {
+          const step = await reader.read();
+          if (step.done || cleanedUp || signal.aborted) {
+            cleanup();
+            if (options?.delayClose) {
+              await new Promise((r) => setTimeout(r, 0));
+            }
+            try {
+              controller.close();
+            } catch {
+              // Already closed
+            }
+            return;
+          }
+          const bytes = encodeStreamChunk(step.value);
+          if (bytes.byteLength > 0) {
+            controller.enqueue(bytes);
+          }
+        } catch (err) {
+          cleanedUp = true;
+          signal.removeEventListener("abort", onAbort);
+          void reader.cancel().catch(() => {});
+          const action = options?.onError ? options.onError(err) : "error";
+          await new Promise((r) => setTimeout(r, 5));
+          try {
+            if (action === "close") {
+              controller.close();
+            } else {
+              controller.error(err);
+            }
+          } catch {
+            // Already closed
+          }
+        }
+      },
+      cancel() {
+        cleanup();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
 function createResumedReaderStream(
   firstBytes: Uint8Array,
   reader: {
@@ -982,6 +1224,7 @@ function createResumedReaderStream(
     cancel(): Promise<void>;
   },
   signal: AbortSignal,
+  options?: ResumedReaderStreamOptions,
 ): ReadableStream<Uint8Array> {
   let sentFirst = false;
   let cleanedUp = false;
@@ -1035,6 +1278,9 @@ function createResumedReaderStream(
         const step = await reader.read();
         if (step.done || cleanedUp || signal.aborted) {
           cleanup();
+          if (options?.delayClose) {
+            await new Promise((r) => setTimeout(r, 0));
+          }
           try {
             controller.close();
           } catch {
@@ -1050,10 +1296,15 @@ function createResumedReaderStream(
         cleanedUp = true;
         signal.removeEventListener("abort", onAbort);
         void reader.cancel().catch(() => {});
+        const action = options?.onError ? options.onError(err) : "error";
         // Allow Bun.serve to flush any already-enqueued first chunk before aborting the stream
         await new Promise((r) => setTimeout(r, 5));
         try {
-          controller.error(err);
+          if (action === "close") {
+            controller.close();
+          } else {
+            controller.error(err);
+          }
         } catch {
           // Already closed
         }
@@ -1284,7 +1535,11 @@ export function serializeResponseMaybeAsync(
     })();
   }
 
-  // 3. StreamableFile wrapping a BunFile: verify file exists before committing 200 headers
+  // 3. StreamableFile:
+  //    - BunFile: verify file exists before committing 200 headers
+  //    - ReadableStream: pre-pull first chunk so pre-header failures invoke
+  //      `value.errorHandler(err, adapterRes)` and mid-stream failures invoke
+  //      `value.errorHandler(err, { headersSent: true, ... })`
   if (value instanceof StreamableFile) {
     const src = value.getSource();
     if (
@@ -1302,11 +1557,92 @@ export function serializeResponseMaybeAsync(
         return serializeResponse(value, route, ctx);
       })();
     }
+    if (src instanceof ReadableStream) {
+      const fileHeaders = value.getHeaders();
+      const extraDefaults: Record<string, string> = {};
+      if (fileHeaders.disposition !== undefined) {
+        extraDefaults["Content-Disposition"] = fileHeaders.disposition;
+      }
+      if (fileHeaders.length !== undefined) {
+        extraDefaults["Content-Length"] = String(fileHeaders.length);
+      }
+      const headers = buildMergedHeaders(
+        ctx,
+        route.headers,
+        fileHeaders.type,
+        extraDefaults,
+      );
+      const forceChunked =
+        headers.get("transfer-encoding")?.toLowerCase().includes("chunked") ??
+        false;
+      if (forceChunked) {
+        headers.delete("content-length");
+        headers.delete("transfer-encoding");
+      }
+      if (isEmptyBodyStatus(status, reqMethod)) {
+        void src.cancel().catch(() => {});
+        return new Response(null, { status, headers });
+      }
+      return (async () => {
+        let reader:
+          | {
+              read(): Promise<{ done: boolean; value?: unknown }>;
+              cancel(): Promise<void>;
+              closed: Promise<unknown>;
+            }
+          | undefined;
+        try {
+          reader = src.getReader();
+        } catch (err) {
+          return invokeStreamablePreHeaderErrorHandler(
+            value,
+            err,
+            ctx,
+            route.headers,
+          );
+        }
+
+        const activeReader = reader;
+        const preflight = await Promise.race<
+          "closed" | "ready" | { readonly error: unknown }
+        >([
+          activeReader.closed.then(
+            () => "closed" as const,
+            (err: unknown) => ({ error: err }),
+          ),
+          new Promise<"ready">((resolve) => setTimeout(() => resolve("ready"), 0)),
+        ]);
+
+        if (typeof preflight === "object" && "error" in preflight) {
+          void activeReader.cancel().catch(() => {});
+          return invokeStreamablePreHeaderErrorHandler(
+            value,
+            preflight.error,
+            ctx,
+            route.headers,
+          );
+        }
+
+        if (preflight === "closed") {
+          return new Response(null, { status, headers });
+        }
+
+        const forwarded = createStreamableForwardingStream(
+          activeReader,
+          ctx.signal,
+          {
+            delayClose: forceChunked,
+            onError: (err) => invokeStreamableMidStreamErrorHandler(value, err),
+          },
+        );
+        return new Response(forwarded, { status, headers });
+      })();
+    }
     return serializeResponse(value, route, ctx);
   }
 
   // 4. Non-SSE ReadableStream: pre-pull first chunk, infer Content-Type, catch pre-commit errors
-  if (!route.isSse && value instanceof ReadableStream) {
+  if (!route.isSse && !route.redirect && value instanceof ReadableStream) {
     if (isEmptyBodyStatus(status, reqMethod)) {
       void value.cancel().catch(() => {});
       const headers = buildMergedHeaders(
@@ -1321,7 +1657,13 @@ export function serializeResponseMaybeAsync(
     }
     return (async () => {
       const reader = value.getReader();
-      const first = await raceWithAbort(reader.read(), ctx.signal);
+      let first: { done: boolean; value?: unknown } | typeof ABORTED_SENTINEL;
+      try {
+        first = await raceWithAbort(reader.read(), ctx.signal);
+      } catch (err) {
+        void reader.cancel().catch(() => {});
+        throw err;
+      }
       if (first === ABORTED_SENTINEL) {
         void reader.cancel().catch(() => {});
         const headers = buildMergedHeaders(

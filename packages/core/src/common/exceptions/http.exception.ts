@@ -65,6 +65,7 @@ export class IntrinsicException extends Error {
 const BUILT_IN_STATUS_LABELS: Record<number, string> = {
   400: "Bad Request",
   401: "Unauthorized",
+  402: "Payment Required",
   403: "Forbidden",
   404: "Not Found",
   405: "Method Not Allowed",
@@ -78,6 +79,8 @@ const BUILT_IN_STATUS_LABELS: Record<number, string> = {
   418: "I'm a teapot",
   421: "Misdirected",
   422: "Unprocessable Entity",
+  423: "Locked",
+  425: "Too Early",
   429: "Too Many Requests",
   500: "Internal Server Error",
   501: "Not Implemented",

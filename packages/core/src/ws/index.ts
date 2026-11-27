@@ -33,6 +33,8 @@ export type {
   WsMessageParser,
   WsParamMetadata,
   WsParamSource,
+  WsPreRequestContext,
+  WsPreRequestHook,
   WsResponse,
   WsRoomEmitter,
 } from "./interfaces/ws.interface";
@@ -47,7 +49,16 @@ export {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  WsParam,
 } from "./decorators/ws.decorators";
+
+export {
+  compileWsPathPattern,
+  EMPTY_WS_PARAMS,
+  isDynamicWsPath,
+  matchWsPath,
+  type CompiledWsPath,
+} from "./path-matcher";
 
 export { WsExecutionContext } from "./context/ws-execution-context";
 export {

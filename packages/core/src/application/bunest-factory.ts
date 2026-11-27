@@ -14,7 +14,7 @@ import {
   extractCallerDir,
   type AutoModuleManifestLoader,
 } from "../common/decorators/core.decorators";
-import { BunHttpAdapter } from "../http/index";
+import { BunHttpAdapter, type BunServerLike } from "../http/index";
 import { DIContainer } from "../di/di-container";
 import type {
   BunestApplicationContextOptions,
@@ -41,6 +41,32 @@ export interface BunestCreateAutoOptions extends BunestCreateOptions {
   readonly cwd?: string;
   readonly manifest?: readonly AutoModuleManifestLoader[];
   readonly filter?: (target: Type<unknown>) => boolean;
+}
+
+export interface BunestFetchHandlerOptions extends BunestCreateOptions {
+  /**
+   * Optional one-time configuration callback invoked after `BunestFactory.create()`
+   * and before `app.init()` / the first incoming request is handled.
+   */
+  readonly configure?: (app: BunestApplication) => void | Promise<void>;
+}
+
+/**
+ * Serverless / edge Web Fetch entrypoint created by `BunestFactory.createFetchHandler()`.
+ * Lazily bootstraps the `BunestApplication` on first request using single-flight
+ * deduplication so concurrent cold-start requests share one initialization.
+ */
+export interface BunestFetchHandler {
+  (req: Request, server?: unknown): Promise<Response>;
+  /**
+   * Triggers or awaits the single-flight cold-start bootstrap and returns the ready app.
+   */
+  readonly ready: () => Promise<BunestApplication>;
+  /**
+   * Gracefully shuts down the lazily bootstrapped application (if initialized or in flight).
+   */
+  readonly close: (signal?: string) => Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
 function isHttpAdapterInstance(value: unknown): value is BunHttpAdapter {
@@ -364,5 +390,106 @@ export class BunestFactory {
       }
       throw err;
     }
+  }
+
+  /**
+   * Creates a serverless / edge Fetch handler `(req: Request, server?: unknown) => Promise<Response>`
+   * that lazily bootstraps `rootModule` on the first request with single-flight deduplication,
+   * making concurrent cold-start traffic safe while exposing `.ready()`, `.close()`, and
+   * `Symbol.asyncDispose` for graceful teardown.
+   */
+  static createFetchHandler(
+    rootModule: IEntryNestModule,
+    options: BunestFetchHandlerOptions = {},
+  ): BunestFetchHandler {
+    const { configure, ...createOptions } = options;
+    let appInstance: BunestApplication | undefined;
+    let bootstrapPromise: Promise<BunestApplication> | undefined;
+    let closingPromise: Promise<void> | undefined;
+
+    const ensureBootstrapped = (): Promise<BunestApplication> => {
+      if (appInstance) {
+        return Promise.resolve(appInstance);
+      }
+      if (bootstrapPromise) {
+        return bootstrapPromise;
+      }
+
+      let pending: Promise<BunestApplication> | null = null;
+      pending = (async (): Promise<BunestApplication> => {
+        let createdApp: BunestApplication | undefined;
+        try {
+          createdApp = await BunestFactory.create(rootModule, createOptions);
+          if (configure) {
+            await configure(createdApp);
+          }
+          await createdApp.init();
+          appInstance = createdApp;
+          return createdApp;
+        } catch (err) {
+          if (createdApp) {
+            await createdApp.close().catch(() => {});
+          }
+          throw err;
+        } finally {
+          if (bootstrapPromise === pending) {
+            bootstrapPromise = undefined;
+          }
+        }
+      })();
+
+      bootstrapPromise = pending;
+      return pending;
+    };
+
+    const handler = (async (
+      req: Request,
+      server?: unknown,
+    ): Promise<Response> => {
+      const app = appInstance ?? (await ensureBootstrapped());
+      if (server !== undefined) {
+        return app
+          .getHttpAdapter()
+          .fetch(req, server as BunServerLike);
+      }
+      return app.fetch(req);
+    }) as BunestFetchHandler;
+
+    Object.defineProperties(handler, {
+      ready: {
+        enumerable: true,
+        value: (): Promise<BunestApplication> => ensureBootstrapped(),
+      },
+      close: {
+        enumerable: true,
+        value: (signal?: string): Promise<void> => {
+          if (closingPromise) {
+            return closingPromise;
+          }
+          const runClose = (async (): Promise<void> => {
+            const inFlight = bootstrapPromise;
+            const target =
+              appInstance ??
+              (inFlight ? await inFlight.catch(() => undefined) : undefined);
+            appInstance = undefined;
+            bootstrapPromise = undefined;
+            if (target) {
+              await target.close(signal);
+            }
+          })();
+          closingPromise = runClose.finally(() => {
+            if (closingPromise === runClose) {
+              closingPromise = undefined;
+            }
+          });
+          return closingPromise;
+        },
+      },
+      [Symbol.asyncDispose]: {
+        value: (): Promise<void> => handler.close(),
+      },
+    });
+
+    return handler;
   }
 }

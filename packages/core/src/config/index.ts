@@ -66,6 +66,13 @@ export { validateConfiguration } from "./validator";
 export { ConfigService } from "./config.service";
 export { ConfigModule } from "./config.module";
 export {
+  PRELOADED_CONFIG_MARKER,
+  isLoadedConfig,
+  loadConfig,
+  type LoadConfigOptions,
+  type LoadedConfig,
+} from "./load-config";
+export {
   CONFIG_VALUE_METADATA,
   ConfigValue,
   InjectConfig,

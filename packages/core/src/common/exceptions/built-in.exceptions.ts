@@ -52,6 +52,21 @@ export class UnauthorizedException extends HttpException {
   }
 }
 
+export class PaymentRequiredException extends HttpException {
+  constructor(
+    objectOrError?: HttpExceptionInput,
+    descriptionOrOptions?: string | HttpExceptionOptions,
+  ) {
+    const { body, options } = buildExceptionArgs(
+      objectOrError,
+      descriptionOrOptions,
+      "Payment Required",
+      HttpStatus.PAYMENT_REQUIRED,
+    );
+    super(body, HttpStatus.PAYMENT_REQUIRED, options);
+  }
+}
+
 export class ForbiddenException extends HttpException {
   constructor(
     objectOrError?: HttpExceptionInput,
@@ -169,6 +184,21 @@ export class UnprocessableEntityException extends HttpException {
       HttpStatus.UNPROCESSABLE_ENTITY,
     );
     super(body, HttpStatus.UNPROCESSABLE_ENTITY, options);
+  }
+}
+
+export class LockedException extends HttpException {
+  constructor(
+    objectOrError?: HttpExceptionInput,
+    descriptionOrOptions?: string | HttpExceptionOptions,
+  ) {
+    const { body, options } = buildExceptionArgs(
+      objectOrError,
+      descriptionOrOptions,
+      "Locked",
+      HttpStatus.LOCKED,
+    );
+    super(body, HttpStatus.LOCKED, options);
   }
 }
 

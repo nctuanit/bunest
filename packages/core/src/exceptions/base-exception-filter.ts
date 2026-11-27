@@ -11,6 +11,7 @@ import {
   type HttpServer,
 } from "../common/index";
 import { getCurrentRequestContext } from "../http/index";
+import { formatErrorForInternalLog } from "../http/pipeline/exception-handler";
 import { HttpAdapterHost } from "../helpers/http-adapter-host";
 
 /**
@@ -82,7 +83,12 @@ export class BaseExceptionFilter<T = any> implements ExceptionFilter<T> {
         };
 
     if (!(exception instanceof IntrinsicException)) {
-      if (this.isExceptionObject(exception)) {
+      if (exception instanceof Error) {
+        BaseExceptionFilter.logger.error(
+          exception.message,
+          formatErrorForInternalLog(exception),
+        );
+      } else if (this.isExceptionObject(exception)) {
         BaseExceptionFilter.logger.error(exception.message, exception.stack);
       } else {
         BaseExceptionFilter.logger.error(String(exception));

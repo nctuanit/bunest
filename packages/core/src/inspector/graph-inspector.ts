@@ -4,8 +4,10 @@ import {
   MetadataRegistry,
   Scope,
   isForwardReference,
+  type FactoryDependency,
   type InjectionToken,
   type InjectTokenMetadata,
+  type OptionalFactoryDependency,
   type PropertyInjectMetadata,
 } from "../common/index";
 import type { InstanceWrapper } from "../discovery/discovery.service";
@@ -29,14 +31,30 @@ export interface EnhancerMetadataCacheEntry {
   subtype: "guard" | "interceptor" | "pipe" | "filter";
 }
 
+interface SerializedGraphCarrier {
+  getSerializedGraph(): SerializedGraph;
+  getModules?(): ReadonlyMap<string, ModuleNode>;
+}
+
 function isSerializedGraphCarrier(
   value: unknown,
-): value is { getSerializedGraph(): SerializedGraph } {
+): value is SerializedGraphCarrier {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { getSerializedGraph?: unknown }).getSerializedGraph ===
       "function"
+  );
+}
+
+function isOptionalFactoryDep(
+  dep: FactoryDependency,
+): dep is OptionalFactoryDependency {
+  return (
+    typeof dep === "object" &&
+    dep !== null &&
+    "token" in dep &&
+    "optional" in dep
   );
 }
 
@@ -47,15 +65,27 @@ function isSerializedGraphCarrier(
 export class GraphInspector {
   private readonly graph: SerializedGraph;
   private readonly enhancersMetadataCache: EnhancerMetadataCacheEntry[] = [];
+  private readonly knownModules = new Map<string, ModuleNode>();
+  private readonly modulesSource?: () => ReadonlyMap<string, ModuleNode>;
 
   constructor(
     graphOrContainer:
       | SerializedGraph
-      | { getSerializedGraph(): SerializedGraph } = new SerializedGraph(),
+      | SerializedGraphCarrier = new SerializedGraph(),
   ) {
-    this.graph = isSerializedGraphCarrier(graphOrContainer)
-      ? graphOrContainer.getSerializedGraph()
-      : graphOrContainer;
+    if (isSerializedGraphCarrier(graphOrContainer)) {
+      this.graph = graphOrContainer.getSerializedGraph();
+      const getModules = graphOrContainer.getModules;
+      if (typeof getModules === "function") {
+        const boundGetModules = () => getModules.call(graphOrContainer);
+        this.modulesSource = boundGetModules;
+        for (const [id, mod] of boundGetModules().entries()) {
+          this.knownModules.set(id, mod);
+        }
+      }
+    } else {
+      this.graph = graphOrContainer;
+    }
   }
 
   getSerializedGraph(): SerializedGraph {
@@ -69,6 +99,10 @@ export class GraphInspector {
       modules instanceof Map
         ? [...modules.values()]
         : [...(modules as Iterable<ModuleNode>)];
+
+    for (const mod of list) {
+      this.knownModules.set(mod.id, mod);
+    }
 
     for (const mod of list) {
       this.graph.insertNode({
@@ -137,6 +171,7 @@ export class GraphInspector {
     wrapper: InstanceWrapper<any>,
     type: Exclude<GraphNodeDefinition["metadata"]["type"], "module">,
   ): void {
+    this.knownModules.set(moduleRef.id, moduleRef);
     const tokenLabel = formatToken(wrapper.token);
     const nodeId = `${moduleRef.id}:${type}:${tokenLabel}`;
     const providerEntry = moduleRef.providers.get(wrapper.token);
@@ -180,18 +215,69 @@ export class GraphInspector {
     source: InstanceWrapper<T>,
     moduleRef: ModuleNode,
   ): void {
+    this.knownModules.set(moduleRef.id, moduleRef);
     const metatype = source.metatype;
-    if (typeof metatype !== "function") {
-      return;
-    }
-
     const sourceTokenLabel = formatToken(source.token);
-    const sourceClassName = metatype.name || sourceTokenLabel;
     const sourceNodeId = this.graph.getNodeById(
       `${moduleRef.id}:controller:${sourceTokenLabel}`,
     )
       ? `${moduleRef.id}:controller:${sourceTokenLabel}`
       : `${moduleRef.id}:provider:${sourceTokenLabel}`;
+
+    const insertDependencyEdge = (
+      depToken: InjectionToken,
+      sourceClassName: string,
+      injectionType: "constructor" | "property" | "decorator",
+      keyOrIndex: string | number | symbol,
+    ): void => {
+      const targetLabel = formatToken(depToken);
+      const targetOwner = this.resolveDependencyOwner(moduleRef, depToken);
+      const targetNodeId = `${targetOwner.id}:provider:${targetLabel}`;
+      this.graph.insertEdge({
+        source: sourceNodeId,
+        target: targetNodeId,
+        metadata: {
+          type: "class-to-class",
+          sourceClassName,
+          targetClassName: targetLabel,
+          sourceClassToken: source.token,
+          targetClassToken: depToken,
+          sourceModuleName: moduleRef.name,
+          targetModuleName: targetOwner.name,
+          injectionType,
+          keyOrIndex,
+        },
+      });
+    };
+
+    if (typeof metatype !== "function") {
+      const providerDef = moduleRef.providers.get(source.token);
+      if (!providerDef) {
+        return;
+      }
+      if (providerDef.kind === "existing" && providerDef.useExisting !== undefined) {
+        const depToken = isForwardReference(providerDef.useExisting)
+          ? (providerDef.useExisting.forwardRef() as InjectionToken)
+          : providerDef.useExisting;
+        insertDependencyEdge(depToken, sourceTokenLabel, "constructor", 0);
+        return;
+      }
+      if (providerDef.inject && providerDef.inject.length > 0) {
+        for (let index = 0; index < providerDef.inject.length; index++) {
+          const entry = providerDef.inject[index];
+          if (entry === undefined) continue;
+          const raw = isOptionalFactoryDep(entry) ? entry.token : entry;
+          const depToken = isForwardReference(raw)
+            ? (raw.forwardRef() as InjectionToken)
+            : (raw as InjectionToken);
+          if (!depToken) continue;
+          insertDependencyEdge(depToken, sourceTokenLabel, "constructor", index);
+        }
+      }
+      return;
+    }
+
+    const sourceClassName = metatype.name || sourceTokenLabel;
 
     const paramTypes =
       MetadataRegistry.get<unknown[]>(DESIGN_METADATA_KEYS.PARAMTYPES, metatype) ??
@@ -217,25 +303,10 @@ export class GraphInspector {
 
     for (let index = 0; index < maxArgs; index++) {
       const depToken = (injectByIndex.get(index) ?? paramTypes[index]) as
-        InjectionToken | undefined;
+        | InjectionToken
+        | undefined;
       if (!depToken) continue;
-      const targetLabel = formatToken(depToken);
-      const targetNodeId = `${moduleRef.id}:provider:${targetLabel}`;
-      this.graph.insertEdge({
-        source: sourceNodeId,
-        target: targetNodeId,
-        metadata: {
-          type: "class-to-class",
-          sourceClassName,
-          targetClassName: targetLabel,
-          sourceClassToken: source.token,
-          targetClassToken: depToken,
-          sourceModuleName: moduleRef.name,
-          targetModuleName: moduleRef.name,
-          injectionType: "constructor",
-          keyOrIndex: index,
-        },
-      });
+      insertDependencyEdge(depToken, sourceClassName, "constructor", index);
     }
 
     const propInjects =
@@ -247,24 +318,87 @@ export class GraphInspector {
       const propToken = isForwardReference(prop.token)
         ? (prop.token.forwardRef() as InjectionToken)
         : prop.token;
-      const targetLabel = formatToken(propToken);
-      const targetNodeId = `${moduleRef.id}:provider:${targetLabel}`;
-      this.graph.insertEdge({
-        source: sourceNodeId,
-        target: targetNodeId,
-        metadata: {
-          type: "class-to-class",
-          sourceClassName,
-          targetClassName: targetLabel,
-          sourceClassToken: source.token,
-          targetClassToken: propToken,
-          sourceModuleName: moduleRef.name,
-          targetModuleName: moduleRef.name,
-          injectionType: "property",
-          keyOrIndex: prop.propertyKey,
-        },
-      });
+      if (!propToken) continue;
+      insertDependencyEdge(
+        propToken,
+        sourceClassName,
+        "property",
+        prop.propertyKey,
+      );
     }
+  }
+
+  /**
+   * Resolves the actual owning `ModuleNode` for `token` requested from `requestingModule`,
+   * honoring ADR-007 precedence: local provider > direct/re-exported imports > `@Global()` modules > known modules.
+   */
+  private resolveDependencyOwner(
+    requestingModule: ModuleNode,
+    token: InjectionToken,
+  ): ModuleNode {
+    // 1. Local provider in requesting module
+    if (requestingModule.providers.has(token)) {
+      return requestingModule;
+    }
+
+    // 2. Direct non-global imports (including transitive re-exports)
+    for (const imported of requestingModule.imports) {
+      if (imported.isGlobal) {
+        continue;
+      }
+      const owners = imported.getEffectiveExports().get(token);
+      if (owners && owners.size > 0) {
+        const [firstOwner] = owners;
+        if (firstOwner) {
+          return firstOwner;
+        }
+      }
+    }
+
+    // Sync any newly added modules from container if attached
+    if (this.modulesSource) {
+      for (const [id, mod] of this.modulesSource().entries()) {
+        if (!this.knownModules.has(id)) {
+          this.knownModules.set(id, mod);
+        }
+      }
+    }
+
+    // 3. @Global() modules (exported tokens first, then direct provider match)
+    const globalCandidates = new Set<ModuleNode>();
+    for (const imported of requestingModule.imports) {
+      if (imported.isGlobal) {
+        globalCandidates.add(imported);
+      }
+    }
+    for (const mod of this.knownModules.values()) {
+      if (mod.isGlobal) {
+        globalCandidates.add(mod);
+      }
+    }
+    for (const globalMod of globalCandidates) {
+      const owners = globalMod.getEffectiveExports().get(token);
+      if (owners && owners.size > 0) {
+        const [firstOwner] = owners;
+        if (firstOwner) {
+          return firstOwner;
+        }
+      }
+    }
+    for (const globalMod of globalCandidates) {
+      if (globalMod.providers.has(token)) {
+        return globalMod;
+      }
+    }
+
+    // 4. Fallback: any known module declaring the provider
+    for (const mod of this.knownModules.values()) {
+      if (mod.providers.has(token)) {
+        return mod;
+      }
+    }
+
+    return requestingModule;
   }
 
   insertEntrypointDefinition<T = Record<string, unknown>>(

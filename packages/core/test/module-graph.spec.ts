@@ -344,9 +344,10 @@ describe("ModuleScanner & Module Visibility (ADR-007)", () => {
     expect(cycGraph.modules.size).toBe(2);
 
     // Unwrapped circular module import fails fast
-    const dynA: DynamicModule = { module: class DynA {}, imports: [] };
+    const dynAImports: DynamicModule[] = [];
+    const dynA: DynamicModule = { module: class DynA {}, imports: dynAImports };
     const dynB: DynamicModule = { module: class DynB {}, imports: [dynA] };
-    dynA.imports!.push(dynB);
+    dynAImports.push(dynB);
     await expect(new ModuleScanner().scan(dynA)).rejects.toThrow(
       CircularDependencyException,
     );

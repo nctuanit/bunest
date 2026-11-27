@@ -13,6 +13,10 @@ export {
   APP_PIPE,
   BODY_SANITIZED_SYMBOL,
   INQUIRER,
+  MODULE_FILTER,
+  MODULE_GUARD,
+  MODULE_INTERCEPTOR,
+  MODULE_PIPE,
   REQUEST,
   REQUEST_CONTEXT,
   SSE_ABORT_CONTROLLER,
@@ -79,6 +83,7 @@ export {
 export type {
   BeforeApplicationShutdown,
   OnApplicationBootstrap,
+  OnApplicationListen,
   OnApplicationShutdown,
   OnModuleDestroy,
   OnModuleInit,
@@ -92,8 +97,11 @@ export type {
   CallHandler,
   CanActivate,
   ContextType,
+  DefaultHttpRequest,
+  DefaultHttpResponse,
   ExceptionFilter,
   ExecutionContext,
+  HttpAdapterTypes,
   HttpArgumentsHost,
   MiddlewareConsumer,
   MiddlewareFunction,
@@ -147,12 +155,18 @@ export type {
   IntrospectionResult,
   MessageEvent,
   PreRequestHook,
+  ProcessErrorHandler,
+  ProcessErrorHandlerContext,
+  ProcessErrorHandlersOptions,
+  ProcessErrorOrigin,
+  ProcessErrorShutdownOptions,
   ReferrerPolicyToken,
   RouteConflictPolicy,
   RouteConflictPolicyLevel,
   RouteConflictPolicyObject,
   RouteResolutionStrategy,
   ScopeOptions,
+  ShutdownHooksOptions,
   SseMessageEvent,
   StaticAssetsOptions,
   ValidationErrorFormat,
@@ -289,12 +303,14 @@ export {
   HttpVersionNotSupportedException,
   ImATeapotException,
   InternalServerErrorException,
+  LockedException,
   MethodNotAllowedException,
   MisdirectedException,
   NotAcceptableException,
   NotFoundException,
   NotImplementedException,
   PayloadTooLargeException,
+  PaymentRequiredException,
   PreconditionFailedException,
   RequestTimeoutException,
   ServiceUnavailableException,
@@ -681,7 +697,6 @@ export {
   uuidv4,
   uuidv7,
   valuesOf,
-  withTimeout,
   zip,
   type ArrayMatcher,
   type AsyncTernaryBranch,
@@ -785,6 +800,16 @@ export {
   type StreamableHandlerResponse,
 } from "./http/streamable-file";
 
+// Async Stream Interceptor Helpers
+export {
+  mapAsyncIterable,
+  tapAsyncIterable,
+  withTimeout,
+  type PromiseTimeoutOptions,
+  type StreamTimeoutOptions,
+  type TapAsyncIterableOptions,
+} from "./utils/stream-helpers";
+
 // Mapped DTO Types
 export {
   CompositionType,
@@ -813,6 +838,7 @@ export {
 export {
   VALIDATION_PIPE_OPTIONS,
   ValidationPipe,
+  type ValidationPipeFlatExceptionOptions,
   type ValidationPipeOptions,
 } from "./pipes/validation.pipe";
 export {

@@ -2,9 +2,11 @@ import {
   ShutdownSignal,
   type BeforeApplicationShutdown,
   type OnApplicationBootstrap,
+  type OnApplicationListen,
   type OnApplicationShutdown,
   type OnModuleDestroy,
   type OnModuleInit,
+  type ShutdownHooksOptions,
 } from "../common/index";
 import type {
   LifecycleManagerLike,
@@ -29,6 +31,63 @@ function isOnApplicationBootstrap(
     value !== null &&
     typeof (value as Partial<OnApplicationBootstrap>).onApplicationBootstrap ===
       "function"
+  );
+}
+
+function isOnApplicationListen(value: unknown): value is OnApplicationListen {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Partial<OnApplicationListen>).onApplicationListen ===
+      "function"
+  );
+}
+
+function getInstanceLabel(instance: object): string {
+  const ctor = (instance as { constructor?: { name?: string } }).constructor;
+  return ctor?.name && ctor.name !== "Object" ? ctor.name : "AnonymousProvider";
+}
+
+function describeThrownValue(value: unknown): string {
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    value === null ||
+    value === undefined
+  ) {
+    return String(value);
+  }
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+  try {
+    const json = JSON.stringify(value);
+    if (json !== undefined) {
+      return json;
+    }
+  } catch {
+    // Fallback for circular objects
+  }
+  return Object.prototype.toString.call(value);
+}
+
+function normalizeLifecycleError(
+  err: unknown,
+  hookName: string,
+  instance: object,
+  moduleName: string,
+): Error {
+  if (err instanceof Error) {
+    return err;
+  }
+  const instanceName = getInstanceLabel(instance);
+  return new Error(
+    `Non-Error value thrown in ${hookName}() of ${instanceName} (module "${moduleName}"): ${describeThrownValue(err)}`,
+    { cause: err },
   );
 }
 
@@ -76,7 +135,9 @@ export { ShutdownSignal };
 export class LifecycleManager implements LifecycleManagerLike {
   private initialized = false;
   private bootstrapped = false;
+  private listened = false;
   private closed = false;
+  private useProcessExitOnSignal = false;
   private readonly moduleInitCalled = new WeakSet<object>();
   private readonly signalListeners: Array<{
     signal: NodeJS.Signals;
@@ -105,7 +166,16 @@ export class LifecycleManager implements LifecycleManagerLike {
         if (this.moduleInitCalled.has(instance)) continue;
         this.moduleInitCalled.add(instance);
         if (isOnModuleInit(instance)) {
-          await instance.onModuleInit();
+          try {
+            await instance.onModuleInit();
+          } catch (err) {
+            throw normalizeLifecycleError(
+              err,
+              "onModuleInit",
+              instance,
+              group.module.name,
+            );
+          }
         }
       }
     }
@@ -125,7 +195,45 @@ export class LifecycleManager implements LifecycleManagerLike {
         if (seen.has(instance)) continue;
         seen.add(instance);
         if (isOnApplicationBootstrap(instance)) {
-          await instance.onApplicationBootstrap();
+          try {
+            await instance.onApplicationBootstrap();
+          } catch (err) {
+            throw normalizeLifecycleError(
+              err,
+              "onApplicationBootstrap",
+              instance,
+              group.module.name,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  async callApplicationListen(
+    groups: readonly LifecycleModuleGroupLike[],
+  ): Promise<void> {
+    if (this.listened) {
+      return;
+    }
+    this.listened = true;
+
+    const seen = new Set<object>();
+    for (const group of groups) {
+      for (const instance of group.instances) {
+        if (seen.has(instance)) continue;
+        seen.add(instance);
+        if (isOnApplicationListen(instance)) {
+          try {
+            await instance.onApplicationListen();
+          } catch (err) {
+            throw normalizeLifecycleError(
+              err,
+              "onApplicationListen",
+              instance,
+              group.module.name,
+            );
+          }
         }
       }
     }
@@ -167,6 +275,7 @@ export class LifecycleManager implements LifecycleManagerLike {
     const reversedGroups = [...groups].reverse();
 
     const runPhase = async (
+      hookName: string,
       invoke: (instance: object) => Promise<void> | void,
     ) => {
       const seen = new Set<object>();
@@ -178,25 +287,32 @@ export class LifecycleManager implements LifecycleManagerLike {
           try {
             await invoke(instance);
           } catch (err) {
-            errors.push(err);
+            errors.push(
+              normalizeLifecycleError(
+                err,
+                hookName,
+                instance,
+                group.module.name,
+              ),
+            );
           }
         }
       }
     };
 
-    await runPhase(async (instance) => {
+    await runPhase("onModuleDestroy", async (instance) => {
       if (isOnModuleDestroy(instance)) {
         await instance.onModuleDestroy();
       }
     });
 
-    await runPhase(async (instance) => {
+    await runPhase("beforeApplicationShutdown", async (instance) => {
       if (isBeforeApplicationShutdown(instance)) {
         await instance.beforeApplicationShutdown(signal);
       }
     });
 
-    await runPhase(async (instance) => {
+    await runPhase("onApplicationShutdown", async (instance) => {
       if (isOnApplicationShutdown(instance)) {
         await instance.onApplicationShutdown(signal);
       }
@@ -219,7 +335,12 @@ export class LifecycleManager implements LifecycleManagerLike {
       ShutdownSignal.SIGTERM,
     ],
     onSignal: (signal: NodeJS.Signals) => Promise<void> | void,
+    options?: ShutdownHooksOptions,
   ): void {
+    if (options?.useProcessExit !== undefined) {
+      this.useProcessExitOnSignal = options.useProcessExit;
+    }
+
     const registered = new Set<NodeJS.Signals>(
       this.signalListeners.map((entry) => entry.signal),
     );
@@ -233,7 +354,18 @@ export class LifecycleManager implements LifecycleManagerLike {
       }
       registered.add(normalized);
       const handler = () => {
-        void Promise.resolve(onSignal(normalized));
+        void Promise.resolve(onSignal(normalized)).then(
+          () => {
+            if (this.useProcessExitOnSignal) {
+              process.exit(0);
+            }
+          },
+          () => {
+            if (this.useProcessExitOnSignal) {
+              process.exit(1);
+            }
+          },
+        );
       };
       process.once(normalized, handler);
       this.signalListeners.push({ signal: normalized, handler });

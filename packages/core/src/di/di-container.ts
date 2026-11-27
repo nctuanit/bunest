@@ -4,7 +4,12 @@ import {
   APP_INTERCEPTOR,
   APP_PIPE,
   INQUIRER,
+  Logger,
   METADATA_KEYS,
+  MODULE_FILTER,
+  MODULE_GUARD,
+  MODULE_INTERCEPTOR,
+  MODULE_PIPE,
   MetadataRegistry,
   REQUEST,
   REQUEST_CONTEXT,
@@ -325,6 +330,7 @@ export class DIContainer
   private internalCoreModule?: ModuleNode;
   private readonly previewMode: boolean;
   private readonly snapshotEnabled: boolean;
+  private readonly bootProfileEnabled: boolean;
   private readonly instanceDecorator?: (instance: unknown) => unknown;
   private readonly deferredBoxes = new Map<string, DeferredProxyBox>();
   private readonly tokenKeyIds = new Map<InjectionToken, number>();
@@ -390,6 +396,8 @@ export class DIContainer
     number | symbol,
     RequestContainer
   >();
+  private readonly durableFallbackWarned = new Set<string>();
+  private readonly logger = new Logger("DIContainer");
   private readonly pendingLazyLoads = new Map<object, Promise<ModuleRef>>();
   private readonly pendingModuleInits = new Map<string, Promise<void>>();
   private readonly inFlightNodeHolders = new Map<string, Set<symbol>>();
@@ -410,7 +418,12 @@ export class DIContainer
     options: DIContainerOptions = {},
   ) {
     this.previewMode = options.preview === true;
-    this.snapshotEnabled = options.snapshot === true || this.previewMode;
+    const bootProfileEnv =
+      typeof process !== "undefined" &&
+      process.env?.BUNEST_BOOT_PROFILE === "1";
+    this.bootProfileEnabled = options.snapshot === true || bootProfileEnv;
+    this.snapshotEnabled =
+      options.snapshot === true || this.previewMode || bootProfileEnv;
     this.instanceDecorator = options.instrument?.instanceDecorator;
     this._contextOptions = options.contextOptions ?? {
       preview: options.preview,
@@ -444,7 +457,7 @@ export class DIContainer
 
     this.discoveryService = new DiscoveryService(this);
     this.lazyModuleLoader = new LazyModuleLoader(this);
-    this.graphInspector = new GraphInspector(this._serializedGraph);
+    this.graphInspector = new GraphInspector(this);
     this.externalContextCreator = ExternalContextCreator.fromContainer(this);
 
     for (const mod of this.topologicalModules) {
@@ -1606,7 +1619,7 @@ export class DIContainer
       }
     }
 
-    // Apply enhancer overrides onto matching APP_GUARD/APP_PIPE/APP_INTERCEPTOR/APP_FILTER multi-providers
+    // Apply enhancer overrides onto matching APP_* and MODULE_* multi-providers
     const multiOverridePairs: ReadonlyArray<
       [InjectionToken, Map<Type<unknown>, EnhancerOverrideEntry>]
     > = [
@@ -1614,6 +1627,10 @@ export class DIContainer
       [APP_PIPE, this.pipeOverrides],
       [APP_INTERCEPTOR, this.interceptorOverrides],
       [APP_FILTER, this.filterOverrides],
+      [MODULE_GUARD, this.guardOverrides],
+      [MODULE_PIPE, this.pipeOverrides],
+      [MODULE_INTERCEPTOR, this.interceptorOverrides],
+      [MODULE_FILTER, this.filterOverrides],
     ];
 
     for (const mod of this.graph.topologicalOrder) {
@@ -1645,7 +1662,10 @@ export class DIContainer
             override,
           );
           this.overriddenMultiProviders.add(replacement);
-          if (multiToken === APP_FILTER && override.kind !== "class") {
+          if (
+            (multiToken === APP_FILTER || multiToken === MODULE_FILTER) &&
+            override.kind !== "class"
+          ) {
             this.overriddenFilterOriginalClass.set(replacement, matchTarget);
           }
           list[i] = replacement;
@@ -1679,7 +1699,16 @@ export class DIContainer
 
       // Phase 2: Instantiate module classes, singleton providers, multi-providers, and controllers
       for (const mod of this.graph.topologicalOrder) {
-        await this.instantiateModuleSingletons(mod);
+        if (this.bootProfileEnabled) {
+          const modStart = performance.now();
+          await this.instantiateModuleSingletons(mod);
+          this._serializedGraph.setNodeInitTime(
+            mod.id,
+            Math.max(0, performance.now() - modStart),
+          );
+        } else {
+          await this.instantiateModuleSingletons(mod);
+        }
       }
 
       if (this.snapshotEnabled) {
@@ -1773,7 +1802,7 @@ export class DIContainer
           // unless the replacement itself defines @Catch(...)
           let syntheticToken: Type<unknown> | undefined;
           if (
-            token === APP_FILTER &&
+            (token === APP_FILTER || token === MODULE_FILTER) &&
             this.overriddenFilterOriginalClass.has(provider)
           ) {
             const origClass = this.overriddenFilterOriginalClass.get(provider)!;
@@ -1842,13 +1871,28 @@ export class DIContainer
     for (const ctrl of mod.controllers) {
       const ctrlScope = getControllerScope(ctrl);
       if (ctrlScope === Scope.SINGLETON) {
-        const instance = (await this.instantiateClass(
-          ctrl,
-          mod,
-          undefined,
-          new Set(),
-        )) as object;
-        this.controllerSingletons.set(ctrl, instance);
+        if (this.bootProfileEnabled) {
+          const ctrlStart = performance.now();
+          const instance = (await this.instantiateClass(
+            ctrl,
+            mod,
+            undefined,
+            new Set(),
+          )) as object;
+          this._serializedGraph.setNodeInitTime(
+            `${mod.id}:controller:${ctrl.name || "<AnonymousController>"}`,
+            Math.max(0, performance.now() - ctrlStart),
+          );
+          this.controllerSingletons.set(ctrl, instance);
+        } else {
+          const instance = (await this.instantiateClass(
+            ctrl,
+            mod,
+            undefined,
+            new Set(),
+          )) as object;
+          this.controllerSingletons.set(ctrl, instance);
+        }
       }
     }
   }
@@ -2061,12 +2105,29 @@ export class DIContainer
       return reqContainer;
     }
 
+    const hasExplicitPayload =
+      ctxId.payload !== undefined || parentCtxId.payload !== undefined;
     const payload =
       ctxId.payload !== undefined
         ? ctxId.payload
         : parentCtxId.payload !== undefined
           ? parentCtxId.payload
           : reqContainer.getRequestValue(REQUEST);
+
+    if (!hasExplicitPayload && payload !== undefined) {
+      const targetLabel =
+        token !== undefined && token !== null
+          ? formatToken(token)
+          : target !== undefined && target !== null
+            ? formatToken(target)
+            : "unknown";
+      if (!this.durableFallbackWarned.has(targetLabel)) {
+        this.durableFallbackWarned.add(targetLabel);
+        this.logger.warn(
+          `Durable provider "${targetLabel}" is falling back to a single caller's REQUEST because no context payload was provided. Return "{ resolve, payload }" from ContextIdStrategy.attach() to supply a shared tenant/context payload instead.`,
+        );
+      }
+    }
 
     let durable = this.durableContainers.get(parentCtxId.id);
     if (!durable) {
@@ -2742,6 +2803,29 @@ export class DIContainer
     syntheticToken?: Type<unknown>;
   }> {
     return this.multiProviderInstances.get(token) ?? [];
+  }
+
+  /**
+   * Returns shallow module-scoped multi-provider entries (`MODULE_GUARD`,
+   * `MODULE_PIPE`, `MODULE_INTERCEPTOR`, `MODULE_FILTER`) registered directly
+   * on `moduleIdOrNode` — never including imported or importing modules.
+   */
+  getModuleMultiProviderEntries(
+    token: InjectionToken,
+    moduleIdOrNode: string | ModuleNode,
+  ): ReadonlyArray<{
+    module: ModuleNode;
+    provider: NormalizedProvider;
+    instance?: unknown;
+    syntheticToken?: Type<unknown>;
+  }> {
+    const modId =
+      typeof moduleIdOrNode === "string" ? moduleIdOrNode : moduleIdOrNode.id;
+    const entries = this.multiProviderInstances.get(token);
+    if (!entries || entries.length === 0) {
+      return [];
+    }
+    return entries.filter((entry) => entry.module.id === modId);
   }
 
   private createSyntheticEnhancerToken(
@@ -4813,14 +4897,31 @@ export class DIContainer
 
       activeInstantiations.add(key);
       try {
-        const instance = await this.instantiateProvider(
-          owner,
-          provider,
-          requestContainer,
-          activeInstantiations,
-          allowRoot,
-          inquirer,
-        );
+        let instance: unknown;
+        if (this.bootProfileEnabled) {
+          const providerStart = performance.now();
+          instance = await this.instantiateProvider(
+            owner,
+            provider,
+            requestContainer,
+            activeInstantiations,
+            allowRoot,
+            inquirer,
+          );
+          this._serializedGraph.setNodeInitTime(
+            `${owner.id}:provider:${formatToken(provider.token)}`,
+            Math.max(0, performance.now() - providerStart),
+          );
+        } else {
+          instance = await this.instantiateProvider(
+            owner,
+            provider,
+            requestContainer,
+            activeInstantiations,
+            allowRoot,
+            inquirer,
+          );
+        }
         this.singletons.set(key, instance);
         const box = this.deferredBoxes.get(key);
         if (box && typeof instance === "object" && instance !== null) {

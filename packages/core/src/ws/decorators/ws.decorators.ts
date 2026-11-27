@@ -124,8 +124,16 @@ function registerWsParam(
   entry: WsParamMetadata,
 ): void {
   if (propertyKey === undefined) {
+    const decoratorName =
+      entry.source === "body"
+        ? "MessageBody"
+        : entry.source === "param"
+          ? "WsParam"
+          : entry.source === "ack"
+            ? "Ack"
+            : "ConnectedSocket";
     throw new Error(
-      `WebSocket parameter decorator (@${entry.source === "body" ? "MessageBody" : "ConnectedSocket"}) can only be used on gateway methods, not constructor parameters.`,
+      `WebSocket parameter decorator (@${decoratorName}) can only be used on gateway methods, not constructor parameters.`,
     );
   }
 
@@ -173,27 +181,14 @@ function isWsParameterDecoratorOptions(
   return "schema" in value || "pipes" in value || "property" in value;
 }
 
-/**
- * Extracts the parsed message payload (or a specific property key) and runs
- * any parameter-level pipes (`ValidationPipe`, `ParseIntPipe`, etc.) or schema.
- */
-export function MessageBody(): ParameterDecorator;
-export function MessageBody(
-  options: ParameterDecoratorOptions,
-): ParameterDecorator;
-export function MessageBody(...pipes: PipeLike[]): ParameterDecorator;
-export function MessageBody(
-  property: string,
-  options: ParameterDecoratorOptions,
-): ParameterDecorator;
-export function MessageBody(
-  property: string,
-  ...pipes: PipeLike[]
-): ParameterDecorator;
-export function MessageBody(
+function parseWsParamArgs(
   propertyOrPipeOrOptions?: string | PipeLike | ParameterDecoratorOptions,
-  ...restPipesOrOptions: (PipeLike | ParameterDecoratorOptions)[]
-): ParameterDecorator {
+  restPipesOrOptions: (PipeLike | ParameterDecoratorOptions)[] = [],
+): {
+  key?: string;
+  schema?: StandardSchemaV1;
+  pipes: PipeLike[];
+} {
   let key: string | undefined;
   let schema: StandardSchemaV1 | undefined;
   let pipes: PipeLike[] = [];
@@ -229,6 +224,35 @@ export function MessageBody(
     pipes = [...(restPipesOrOptions as PipeLike[])];
   }
 
+  return { key, schema, pipes };
+}
+
+/**
+ * Extracts the parsed message payload (or a specific property key) and runs
+ * any parameter-level pipes (`ValidationPipe`, `ParseIntPipe`, etc.) or schema.
+ */
+export function MessageBody(): ParameterDecorator;
+export function MessageBody(
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
+export function MessageBody(...pipes: PipeLike[]): ParameterDecorator;
+export function MessageBody(
+  property: string,
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
+export function MessageBody(
+  property: string,
+  ...pipes: PipeLike[]
+): ParameterDecorator;
+export function MessageBody(
+  propertyOrPipeOrOptions?: string | PipeLike | ParameterDecoratorOptions,
+  ...restPipesOrOptions: (PipeLike | ParameterDecoratorOptions)[]
+): ParameterDecorator {
+  const { key, schema, pipes } = parseWsParamArgs(
+    propertyOrPipeOrOptions,
+    restPipesOrOptions,
+  );
+
   return (
     target: object,
     propertyKey: string | symbol | undefined,
@@ -237,6 +261,48 @@ export function MessageBody(
     registerWsParam(target, propertyKey, {
       index: parameterIndex,
       source: "body",
+      key,
+      pipes: pipes.length > 0 ? pipes : undefined,
+      ...(schema !== undefined ? { schema } : {}),
+    });
+  };
+}
+
+/**
+ * Extracts dynamic path parameters matched from `@WebSocketGateway({ path: '/chat/:roomId/socket' })`
+ * (either the full frozen params object or a specific named parameter) and runs
+ * any parameter-level pipes or Standard Schema validation.
+ */
+export function WsParam(): ParameterDecorator;
+export function WsParam(
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
+export function WsParam(...pipes: PipeLike[]): ParameterDecorator;
+export function WsParam(
+  property: string,
+  options: ParameterDecoratorOptions,
+): ParameterDecorator;
+export function WsParam(
+  property: string,
+  ...pipes: PipeLike[]
+): ParameterDecorator;
+export function WsParam(
+  propertyOrPipeOrOptions?: string | PipeLike | ParameterDecoratorOptions,
+  ...restPipesOrOptions: (PipeLike | ParameterDecoratorOptions)[]
+): ParameterDecorator {
+  const { key, schema, pipes } = parseWsParamArgs(
+    propertyOrPipeOrOptions,
+    restPipesOrOptions,
+  );
+
+  return (
+    target: object,
+    propertyKey: string | symbol | undefined,
+    parameterIndex: number,
+  ) => {
+    registerWsParam(target, propertyKey, {
+      index: parameterIndex,
+      source: "param",
       key,
       pipes: pipes.length > 0 ? pipes : undefined,
       ...(schema !== undefined ? { schema } : {}),

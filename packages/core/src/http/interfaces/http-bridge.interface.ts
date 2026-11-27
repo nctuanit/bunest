@@ -3,8 +3,11 @@ import type {
   BunestMiddleware,
   ExceptionFilter,
   ExceptionFilterLike,
+  GuardLike,
   InjectionToken,
+  InterceptorLike,
   MiddlewareFunction,
+  PipeLike,
   ResponseContext,
   RouteInfo,
   Type,
@@ -53,6 +56,22 @@ export interface HttpRuntimeBridge {
     filterSpec: ExceptionFilterLike,
     resolvedInstance?: ExceptionFilter,
   ): readonly Type<any>[] | undefined;
+  getModuleEnhancersForController?(controllerToken: Type<unknown>):
+    | {
+        readonly guards: readonly GuardLike[];
+        readonly pipes: readonly PipeLike[];
+        readonly interceptors: readonly InterceptorLike[];
+        readonly filters: readonly ExceptionFilterLike[];
+      }
+    | undefined;
+  resolveMiddlewareOverride?(
+    middleware: MiddlewareFunction | Type<BunestMiddleware> | BunestMiddleware,
+  ):
+    | MiddlewareFunction
+    | Type<BunestMiddleware>
+    | BunestMiddleware
+    | null
+    | undefined;
 }
 
 /**

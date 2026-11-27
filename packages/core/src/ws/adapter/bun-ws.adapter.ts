@@ -1,7 +1,16 @@
 import {
+  APP_FILTER,
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_PIPE,
+  BadRequestException,
+  formatStandardSchemaIssues,
+  HttpException,
+  HttpStatus,
+  Logger,
+  METADATA_KEYS,
+  MetadataRegistry,
+  Scope,
   type ArgumentMetadata,
   type BunestInterceptor,
   type CallHandler,
@@ -10,19 +19,22 @@ import {
   type ExceptionFilter,
   type ExceptionFilterLike,
   type GuardLike,
-  HttpException,
   type INestApplicationContext,
   type InterceptorLike,
-  Logger,
   type LoggerService,
-  METADATA_KEYS,
-  MetadataRegistry,
   type PipeLike,
   type PipeTransform,
-  Scope,
+  type StandardSchemaV1,
   type Type,
   type WsMessageHandler,
 } from "../../common/index";
+import {
+  captureClsContext,
+  headersToCls,
+  restoreClsContext,
+  type ClsContextCarrier,
+} from "../../cls/cls-context-carrier";
+import { ClsService } from "../../cls/cls.service";
 import { ContextIdFactory } from "../../di/context-id.factory";
 import type { DIContainer } from "../../di/di-container";
 import type { RequestContainer } from "../../di/request-container";
@@ -68,8 +80,16 @@ import type {
   WsData,
   WsMessageParser,
   WsParamMetadata,
+  WsPreRequestContext,
+  WsPreRequestHook,
   WsResponse,
 } from "../interfaces/ws.interface";
+import {
+  compileWsPathPattern,
+  EMPTY_WS_PARAMS,
+  matchWsPath,
+  type CompiledWsPath,
+} from "../path-matcher";
 import { AbstractWsAdapter, type BaseWsInstance } from "./abstract-ws.adapter";
 
 interface CompiledWsFilter {
@@ -98,6 +118,7 @@ interface CompiledWsHandler {
 interface RegisteredGateway {
   readonly id: string;
   readonly path: string;
+  readonly compiledPath: CompiledWsPath;
   readonly namespace: string;
   readonly gatewayClass: Type<unknown>;
   readonly instance?: object;
@@ -214,6 +235,25 @@ function isBunHttpAdapterLike(value: unknown): value is BunHttpAdapter {
   );
 }
 
+async function runWsStandardSchema(
+  schema: StandardSchemaV1,
+  value: unknown,
+  metadata: ArgumentMetadata,
+): Promise<unknown> {
+  const result = await schema["~standard"].validate(value);
+  if (!result.issues) {
+    return result.value;
+  }
+  const fallbackField = metadata.data ?? metadata.type ?? "value";
+  const details = formatStandardSchemaIssues(result.issues, fallbackField);
+  throw new BadRequestException({
+    statusCode: HttpStatus.BAD_REQUEST,
+    error: "Bad Request",
+    message: "Validation failed",
+    details,
+  });
+}
+
 /**
  * Native Bun.serve WebSocket adapter multiplexing one or more `@WebSocketGateway()`
  * instances over Bun's native `Bun.serve({ websocket })` + `server.upgrade()` + pub/sub.
@@ -222,6 +262,12 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   private readonly gatewaysById = new Map<string, RegisteredGateway>();
   private readonly gatewaysByPath = new Map<string, RegisteredGateway>();
   private readonly gatewayGroupsByPath = new Map<string, RegisteredGateway[]>();
+  private readonly registeredPathOrder: Array<{
+    readonly path: string;
+    readonly compiled: CompiledWsPath;
+    readonly gateway: RegisteredGateway;
+  }> = [];
+  private hasDynamicPath = false;
   private readonly registeredInstances = new WeakSet<object>();
   private readonly registeredClasses = new WeakSet<Function>();
   private readonly connectionStates = new WeakMap<
@@ -232,6 +278,8 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   private globalGuardLikes: GuardLike[] = [];
   private globalPipeLikes: PipeLike[] = [];
   private globalInterceptorLikes: InterceptorLike[] = [];
+  private globalFilterLikes: ExceptionFilterLike[] = [];
+  private readonly preRequestHooks: WsPreRequestHook[] = [];
   private readonly requestScopedGlobalEnhancers = new Set<unknown>();
   private readonly defaultFilter: BaseWsExceptionFilter;
   protected readonly logger: LoggerService;
@@ -241,6 +289,18 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   protected readonly maxSendBufferSize: number;
   protected readonly unclaimedUpgradeTimeout: number;
   protected readonly maxPayload: number;
+  protected readonly gracefulShutdown: boolean;
+  protected readonly gracePeriod: number;
+  private isClosing = false;
+  private readonly inFlightHandlers = new Set<Promise<void>>();
+  private readonly pendingAcks = new Map<
+    symbol,
+    {
+      readonly client: BunWsClientImpl;
+      readonly promise: Promise<void>;
+      readonly settle: () => void;
+    }
+  >();
   private readonly activeHandlersPerClient = new WeakMap<object, number>();
   private readonly pendingQueuesPerClient = new WeakMap<
     object,
@@ -253,6 +313,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   private activeBunServer?: BunServerLike;
   private standaloneServer?: BunServerLike;
   private gatewayCounter = 0;
+  private clsService?: ClsService;
 
   constructor(
     options: WebSocketModuleOptions = {},
@@ -271,10 +332,28 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     this.unclaimedUpgradeTimeout = options.unclaimedUpgradeTimeout ?? 1000;
     this.maxPayload =
       options.maxPayload ?? options.maxPayloadLength ?? 1024 * 1024;
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
 
     if (options.httpAdapter) {
       this.httpAdapter = options.httpAdapter;
     }
+  }
+
+  /**
+   * Registers one or more global pre-request hooks executed *before* WebSocket
+   * guards, pipes, interceptors, handler execution, and exception filters.
+   * Useful for setting up `AsyncLocalStorage` (`ClsModule`), distributed tracing,
+   * or child loggers per incoming WS message.
+   */
+  registerPreRequestHook(...hooks: WsPreRequestHook[]): this {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (typeof hook === "function") {
+        this.preRequestHooks.push(hook);
+      }
+    }
+    return this;
   }
 
   /**
@@ -409,7 +488,10 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     }
 
     target.on("message", (buffer: unknown) => {
-      void this.bindMessageHandler(buffer, handlersMap, transform)
+      if (this.isClosing) {
+        return;
+      }
+      const task = this.bindMessageHandler(buffer, handlersMap, transform)
         .then((response) => {
           if (response === undefined || response === null) {
             return;
@@ -431,6 +513,10 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
             err instanceof Error ? err.stack : undefined,
           );
         });
+      this.inFlightHandlers.add(task);
+      void task.finally(() => {
+        this.inFlightHandlers.delete(task);
+      });
     });
   }
 
@@ -497,7 +583,13 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       return;
     }
     if (server instanceof BunWsServerImpl) {
-      server.disconnectAll(1001, "Server shutting down");
+      if (this.gracefulShutdown) {
+        this.isClosing = true;
+        await this.drainInFlight();
+        server.disconnectAll(1001, "Going Away");
+      } else {
+        server.disconnectAll(1001, "Server shutting down");
+      }
       this.createdServers.delete(server);
       return;
     }
@@ -505,19 +597,27 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   }
 
   override async dispose(): Promise<void> {
+    if (this.gracefulShutdown) {
+      this.isClosing = true;
+      await this.drainInFlight();
+    }
+    const reason = this.gracefulShutdown
+      ? "Going Away"
+      : "Server shutting down";
     for (const srv of this.createdServers) {
-      srv.disconnectAll(1001, "Server shutting down");
+      srv.disconnectAll(1001, reason);
     }
     this.createdServers.clear();
-    await this.closeAll();
+    await this.closeAll(1001, reason);
   }
 
   /**
-   * Attaches the DI container so global `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`
-   * multi-providers and `Scope.REQUEST` gateways/enhancers can be resolved per connection.
+   * Attaches the DI container so global `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`,
+   * `APP_FILTER` multi-providers and `Scope.REQUEST` gateways/enhancers can be resolved per connection.
    */
   setContainer(container: DIContainer): void {
     this.container = container;
+    this.clsService = undefined;
     this.requestScopedGlobalEnhancers.clear();
     const collect = <T>(token: symbol): T[] => {
       const items: T[] = [];
@@ -548,6 +648,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     this.globalGuardLikes = collect<GuardLike>(APP_GUARD);
     this.globalPipeLikes = collect<PipeLike>(APP_PIPE);
     this.globalInterceptorLikes = collect<InterceptorLike>(APP_INTERCEPTOR);
+    this.globalFilterLikes = collect<ExceptionFilterLike>(APP_FILTER);
   }
 
   /**
@@ -798,9 +899,13 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       }
     }
 
+    const compiledPath =
+      existingPrimary?.compiledPath ?? compileWsPathPattern(path);
+
     const registered: RegisteredGateway = {
       id: gatewayId,
       path,
+      compiledPath,
       namespace,
       gatewayClass,
       instance,
@@ -825,6 +930,14 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     if (!existingPrimary) {
       this.gatewaysByPath.set(path, registered);
       this.gatewayGroupsByPath.set(path, [registered]);
+      if (compiledPath.isDynamic) {
+        this.hasDynamicPath = true;
+      }
+      this.registeredPathOrder.push({
+        path,
+        compiled: compiledPath,
+        gateway: registered,
+      });
       if (this.httpAdapter) {
         this.bindGatewayToHttpAdapter(this.httpAdapter, registered);
       }
@@ -911,6 +1024,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     if (this.standaloneServer) {
       await this.closeAll();
     }
+    this.isClosing = false;
 
     const opts: ListenOptions =
       typeof portOrOptions === "number"
@@ -921,11 +1035,11 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       port: opts.port ?? 3000,
       fetch: async (req: Request, server: BunServerLike) => {
         const pathname = normalizePath(new URL(req.url).pathname);
-        const gateway = this.gatewaysByPath.get(pathname);
-        if (!gateway) {
+        const matched = this.matchGatewayForPathname(pathname);
+        if (!matched) {
           return new Response("Not Found", { status: 404 });
         }
-        return this.handleUpgrade(gateway, req, server);
+        return this.handleUpgrade(matched.gateway, req, server, matched.params);
       },
       websocket: this.createBunWebSocketHandler(),
     };
@@ -948,13 +1062,102 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   }
 
   /**
-   * Disconnects every open WebSocket client across all gateways and stops
-   * any standalone server cleanly.
+   * Matches an incoming upgrade pathname against registered gateways, preserving
+   * registration-order precedence for overlapping dynamic path patterns.
    */
-  async closeAll(code = 1001, reason = "Server shutting down"): Promise<void> {
-    for (const gateway of this.gatewaysById.values()) {
-      gateway.server.disconnectAll(code, reason);
+  private matchGatewayForPathname(
+    rawPathname: string,
+  ):
+    | {
+        readonly gateway: RegisteredGateway;
+        readonly params: Readonly<Record<string, string>>;
+      }
+    | undefined {
+    const normalized = normalizePath(rawPathname);
+    if (!this.hasDynamicPath) {
+      const gateway = this.gatewaysByPath.get(normalized);
+      return gateway ? { gateway, params: EMPTY_WS_PARAMS } : undefined;
     }
+    for (let i = 0; i < this.registeredPathOrder.length; i++) {
+      const entry = this.registeredPathOrder[i]!;
+      const params = matchWsPath(entry.compiled, normalized);
+      if (params !== null) {
+        return { gateway: entry.gateway, params };
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Drains in-flight `@SubscribeMessage()` handlers and pending `@Ack()` replies
+   * up to `this.gracePeriod` milliseconds.
+   */
+  private async drainInFlight(): Promise<void> {
+    const timeoutMs = Math.max(0, this.gracePeriod);
+    if (this.inFlightHandlers.size === 0 && this.pendingAcks.size === 0) {
+      return;
+    }
+
+    const waitAll = async (): Promise<void> => {
+      while (this.inFlightHandlers.size > 0 || this.pendingAcks.size > 0) {
+        const batch: Promise<void>[] = [...this.inFlightHandlers];
+        for (const entry of this.pendingAcks.values()) {
+          batch.push(entry.promise);
+        }
+        if (batch.length === 0) {
+          break;
+        }
+        await Promise.allSettled(batch);
+      }
+    };
+
+    if (timeoutMs === 0) {
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        waitAll(),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
+   * Disconnects every open WebSocket client across all gateways and stops
+   * any standalone server cleanly. When `gracefulShutdown: true`, stops accepting
+   * new upgrades/messages, drains in-flight handlers and pending `@Ack()` replies
+   * up to `gracePeriod`, sends close frame `1001 Going Away`, and force-closes
+   * any remaining connections after the deadline.
+   */
+  async closeAll(code = 1001, reason?: string): Promise<void> {
+    if (this.gracefulShutdown) {
+      this.isClosing = true;
+      await this.drainInFlight();
+    }
+    const effectiveReason =
+      reason ?? (this.gracefulShutdown ? "Going Away" : "Server shutting down");
+
+    for (const gateway of this.gatewaysById.values()) {
+      gateway.server.disconnectAll(code, effectiveReason);
+    }
+
+    // Settle any remaining pending acks after force-closing connections
+    if (this.pendingAcks.size > 0) {
+      const remaining = [...this.pendingAcks.values()];
+      this.pendingAcks.clear();
+      for (const entry of remaining) {
+        entry.settle();
+      }
+    }
+
     if (this.standaloneServer) {
       const s = this.standaloneServer;
       this.standaloneServer = undefined;
@@ -988,8 +1191,34 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     gateway: RegisteredGateway,
     req: Request,
     server: BunServerLike,
+    preMatchedParams?: Readonly<Record<string, string>>,
   ): Promise<Response | undefined> {
+    if (this.isClosing) {
+      return new Response(
+        JSON.stringify({
+          statusCode: 503,
+          error: "Service Unavailable",
+          message: "WebSocket server is shutting down",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        },
+      );
+    }
+
     this.activeBunServer = server;
+
+    // Resolve and URL-decode dynamic path parameters once during HTTP upgrade handshake
+    let params: Readonly<Record<string, string>>;
+    if (preMatchedParams !== undefined) {
+      params = preMatchedParams;
+    } else if (gateway.compiledPath.isDynamic) {
+      const pathname = normalizePath(new URL(req.url).pathname);
+      params = matchWsPath(gateway.compiledPath, pathname) ?? EMPTY_WS_PARAMS;
+    } else {
+      params = EMPTY_WS_PARAMS;
+    }
 
     // 1. Optional CORS origin check for cross-origin WebSocket upgrades
     if (gateway.cors && req.headers.has("origin")) {
@@ -1009,7 +1238,15 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       }
     }
 
-    // 2. Handshake authentication hook (gateway option -> gateway method -> module default)
+    // 2. Capture CLS context from upgrade headers + any active upstream CLS context
+    const cls = this.resolveClsService();
+    const headerCarrier = headersToCls(req.headers);
+    const activeCarrier = cls.isActive() ? captureClsContext(cls) : undefined;
+    let clsCarrier: ClsContextCarrier = activeCarrier
+      ? this.mergeClsCarriers(headerCarrier, activeCarrier)
+      : headerCarrier;
+
+    // 3. Handshake authentication hook (gateway option -> gateway method -> module default)
     const authFn: WsAuthenticateFn | undefined =
       gateway.options.authenticate ??
       (gateway.instance && hasGatewayAuthenticate(gateway.instance)
@@ -1021,7 +1258,14 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
 
     if (authFn) {
       try {
-        const decision = await authFn(req);
+        const decision = await restoreClsContext(cls, clsCarrier, async () => {
+          const res = await authFn(req);
+          clsCarrier = this.mergeClsCarriers(
+            clsCarrier,
+            captureClsContext(cls),
+          );
+          return res;
+        });
         if (decision instanceof Response) {
           return decision;
         }
@@ -1079,6 +1323,8 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       path: gateway.path,
       namespace: gateway.namespace,
       handshakeData,
+      params,
+      clsCarrier,
     };
 
     const upgraded = server.upgrade?.(req, { data: socketData }) ?? false;
@@ -1087,6 +1333,46 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     }
 
     return new Response("WebSocket upgrade failed", { status: 400 });
+  }
+
+  private resolveClsService(): ClsService {
+    if (this.clsService) {
+      return this.clsService;
+    }
+    if (this.container) {
+      try {
+        const resolved = this.container.getSync<ClsService>(
+          ClsService,
+          this.container.getGraph().root.id,
+          { strict: false },
+        );
+        if (resolved) {
+          this.clsService = resolved;
+          return resolved;
+        }
+      } catch {
+        // ClsModule not registered in DI; fall back to default shared-ALS ClsService
+      }
+    }
+    this.clsService = new ClsService();
+    return this.clsService;
+  }
+
+  private mergeClsCarriers(
+    base: ClsContextCarrier,
+    overlay: ClsContextCarrier,
+  ): ClsContextCarrier {
+    const values: Record<string, unknown> = {
+      ...base.values,
+      ...overlay.values,
+    };
+    const clsId = overlay.clsId ?? base.clsId;
+    const traceparent = overlay.traceparent ?? base.traceparent;
+    return {
+      ...(clsId !== undefined ? { clsId } : {}),
+      ...(traceparent !== undefined ? { traceparent } : {}),
+      values,
+    };
   }
 
   private getGatewayGroup(
@@ -1246,17 +1532,30 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       "handleConnection",
     );
 
+    const gatewayModule =
+      this.container && gateway.moduleId
+        ? this.container.getModuleByKey(gateway.moduleId)
+        : undefined;
     const resolvedFilters: CompiledWsFilter[] = [];
-    for (const f of gateway.gatewayFilterLikes) {
+    const appendFilter = async (
+      f: ExceptionFilterLike,
+      owningModule?: ModuleNode,
+    ): Promise<void> => {
       try {
         const filter = await this.resolveEnhancerForConnection<ExceptionFilter>(
           f,
           connState,
           "filter",
+          owningModule,
+          gateway,
         );
+        const rawCatchTypes = extractFilterCatchTypes(f);
         resolvedFilters.push({
           filter,
-          catchTypes: extractFilterCatchTypes(f),
+          catchTypes:
+            rawCatchTypes.length > 0
+              ? rawCatchTypes
+              : extractFilterCatchTypes(filter),
         });
       } catch (filterResolveError) {
         this.logger.error(
@@ -1264,6 +1563,12 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
           filterResolveError,
         );
       }
+    };
+    for (const f of gateway.gatewayFilterLikes) {
+      await appendFilter(f, gatewayModule);
+    }
+    for (const f of this.globalFilterLikes) {
+      await appendFilter(f, undefined);
     }
 
     await this.handleException(
@@ -1320,14 +1625,18 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       : gateway.instance;
 
     if (instance && hasGatewayDisconnect(instance)) {
-      const p = Promise.resolve()
-        .then(() => instance.handleDisconnect(client, code, reason))
-        .catch((err) => {
-          this.logger.error(
-            `Error in ${gateway.gatewayClass.name}.handleDisconnect`,
-            err,
-          );
-        });
+      const cls = this.resolveClsService();
+      const clsCarrier = client.raw.data?.clsCarrier;
+      const p = restoreClsContext(cls, clsCarrier, () =>
+        Promise.resolve()
+          .then(() => instance.handleDisconnect(client, code, reason))
+          .catch((err) => {
+            this.logger.error(
+              `Error in ${gateway.gatewayClass.name}.handleDisconnect`,
+              err,
+            );
+          }),
+      );
       connState.disconnectPromises.push(p);
     }
 
@@ -1364,6 +1673,10 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
   }
 
   private handleOpen(ws: BunServerWebSocketLike<BunWsSocketData>): void {
+    if (this.isClosing) {
+      ws.close(1001, "Going Away");
+      return;
+    }
     const socketData = ws.data;
     const group = this.getGatewayGroup(socketData);
     const primary = group[0];
@@ -1387,12 +1700,15 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       };
       connState.gatewayLifecycles.set(gw.id, lifecycle);
 
+      const cls = this.resolveClsService();
       if (!gw.isRequestScoped && gw.instance) {
         if (hasGatewayConnection(gw.instance)) {
+          const connInstance = gw.instance;
           try {
-            const maybePromise = gw.instance.handleConnection(
-              client,
-              socketData.request,
+            const maybePromise = restoreClsContext(
+              cls,
+              socketData.clsCarrier,
+              () => connInstance.handleConnection(client, socketData.request),
             );
             if (
               maybePromise !== null &&
@@ -1423,18 +1739,22 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
           lifecycle.connectionDone = true;
         }
       } else {
-        lifecycle.resolvePromise = (async () => {
-          try {
-            const instance = await this.resolveGatewayInstance(gw, connState);
-            if (hasGatewayConnection(instance)) {
-              await instance.handleConnection(client, socketData.request);
+        lifecycle.resolvePromise = restoreClsContext(
+          cls,
+          socketData.clsCarrier,
+          async () => {
+            try {
+              const instance = await this.resolveGatewayInstance(gw, connState);
+              if (hasGatewayConnection(instance)) {
+                await instance.handleConnection(client, socketData.request);
+              }
+            } catch (err) {
+              await this.handleConnectionException(gw, err, client, connState);
+            } finally {
+              this.onGatewayConnectionFinished(gw, group, client, connState);
             }
-          } catch (err) {
-            await this.handleConnectionException(gw, err, client, connState);
-          } finally {
-            this.onGatewayConnectionFinished(gw, group, client, connState);
-          }
-        })();
+          },
+        );
       }
     }
 
@@ -1459,12 +1779,38 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     primary.server.removeClient(client.id);
     connState.pendingClose = { code, reason };
 
+    // Release any pending @Ack() trackers belonging to this disconnected client
+    if (this.pendingAcks.size > 0) {
+      for (const [token, entry] of this.pendingAcks.entries()) {
+        if (entry.client === client) {
+          this.pendingAcks.delete(token);
+          entry.settle();
+        }
+      }
+    }
+
     if (connState.openSyncLoopDone) {
       this.flushPendingDisconnects(group, client, connState);
     }
   }
 
   private async handleMessage(
+    ws: BunServerWebSocketLike<BunWsSocketData>,
+    rawMessage: string | Uint8Array | Buffer,
+  ): Promise<void> {
+    if (this.isClosing) {
+      return;
+    }
+    const tracked = this.handleMessageInternal(ws, rawMessage);
+    this.inFlightHandlers.add(tracked);
+    try {
+      await tracked;
+    } finally {
+      this.inFlightHandlers.delete(tracked);
+    }
+  }
+
+  private async handleMessageInternal(
     ws: BunServerWebSocketLike<BunWsSocketData>,
     rawMessage: string | Uint8Array | Buffer,
   ): Promise<void> {
@@ -1658,127 +2004,96 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     );
     const connState = this.getOrCreateConnectionState(client);
 
-    // Resolve per-connection filters up front if needed for catch block
-    let resolvedFilters: readonly CompiledWsFilter[] = handler.filters;
+    const executePipeline = async (): Promise<void> => {
+      let pendingAckToken: symbol | undefined;
+      let settlePendingAck: (() => void) | undefined;
 
-    try {
-      // Wait for in-flight request-scoped gateway connection resolution if any
-      const lifecycle = connState.gatewayLifecycles.get(gateway.id);
-      if (lifecycle?.resolvePromise) {
-        await lifecycle.resolvePromise;
-      }
+      try {
+        // Wait for in-flight request-scoped gateway connection resolution if any
+        const lifecycle = connState.gatewayLifecycles.get(gateway.id);
+        if (lifecycle?.resolvePromise) {
+          await lifecycle.resolvePromise;
+        }
 
-      const gatewayInstance = await this.resolveGatewayInstance(
-        gateway,
-        connState,
-      );
+        const gatewayInstance = await this.resolveGatewayInstance(
+          gateway,
+          connState,
+        );
 
-      let guards: readonly CanActivate[];
-      let interceptors: readonly BunestInterceptor[];
-      let sharedPipes: readonly PipeTransform[];
-      let paramPipesList: readonly (readonly PipeTransform[])[];
+        let guards: readonly CanActivate[];
+        let interceptors: readonly BunestInterceptor[];
+        let sharedPipes: readonly PipeTransform[];
+        let paramPipesList: readonly (readonly PipeTransform[])[];
 
-      if (this.container) {
-        const gatewayModule = gateway.moduleId
-          ? this.container.getModuleByKey(gateway.moduleId)
-          : undefined;
-        const filtersAcc: CompiledWsFilter[] = [];
-        for (const f of handler.filterLikes) {
-          const filter =
-            await this.resolveEnhancerForConnection<ExceptionFilter>(
-              f,
-              connState,
-              "filter",
-              gatewayModule,
-              gateway,
+        if (this.container) {
+          const gatewayModule = gateway.moduleId
+            ? this.container.getModuleByKey(gateway.moduleId)
+            : undefined;
+
+          const guardsAcc: CanActivate[] = [];
+          for (const g of this.globalGuardLikes) {
+            guardsAcc.push(
+              await this.resolveEnhancerForConnection<CanActivate>(
+                g,
+                connState,
+                "guard",
+                undefined,
+                gateway,
+              ),
             );
-          filtersAcc.push({
-            filter,
-            catchTypes: extractFilterCatchTypes(f),
-          });
-        }
-        resolvedFilters = filtersAcc;
+          }
+          for (const g of handler.guardLikes) {
+            guardsAcc.push(
+              await this.resolveEnhancerForConnection<CanActivate>(
+                g,
+                connState,
+                "guard",
+                gatewayModule,
+                gateway,
+              ),
+            );
+          }
+          guards = guardsAcc;
 
-        const guardsAcc: CanActivate[] = [];
-        for (const g of this.globalGuardLikes) {
-          guardsAcc.push(
-            await this.resolveEnhancerForConnection<CanActivate>(
-              g,
-              connState,
-              "guard",
-              undefined,
-              gateway,
-            ),
-          );
-        }
-        for (const g of handler.guardLikes) {
-          guardsAcc.push(
-            await this.resolveEnhancerForConnection<CanActivate>(
-              g,
-              connState,
-              "guard",
-              gatewayModule,
-              gateway,
-            ),
-          );
-        }
-        guards = guardsAcc;
+          const interceptorsAcc: BunestInterceptor[] = [];
+          for (const ic of this.globalInterceptorLikes) {
+            interceptorsAcc.push(
+              await this.resolveEnhancerForConnection<BunestInterceptor>(
+                ic,
+                connState,
+                "interceptor",
+                undefined,
+                gateway,
+              ),
+            );
+          }
+          for (const ic of handler.interceptorLikes) {
+            interceptorsAcc.push(
+              await this.resolveEnhancerForConnection<BunestInterceptor>(
+                ic,
+                connState,
+                "interceptor",
+                gatewayModule,
+                gateway,
+              ),
+            );
+          }
+          interceptors = interceptorsAcc;
 
-        const interceptorsAcc: BunestInterceptor[] = [];
-        for (const ic of this.globalInterceptorLikes) {
-          interceptorsAcc.push(
-            await this.resolveEnhancerForConnection<BunestInterceptor>(
-              ic,
-              connState,
-              "interceptor",
-              undefined,
-              gateway,
-            ),
-          );
-        }
-        for (const ic of handler.interceptorLikes) {
-          interceptorsAcc.push(
-            await this.resolveEnhancerForConnection<BunestInterceptor>(
-              ic,
-              connState,
-              "interceptor",
-              gatewayModule,
-              gateway,
-            ),
-          );
-        }
-        interceptors = interceptorsAcc;
-
-        const sharedPipesAcc: PipeTransform[] = [];
-        for (const p of this.globalPipeLikes) {
-          sharedPipesAcc.push(
-            await this.resolveEnhancerForConnection<PipeTransform>(
-              p,
-              connState,
-              "pipe",
-              undefined,
-              gateway,
-            ),
-          );
-        }
-        for (const p of handler.sharedPipeLikes) {
-          sharedPipesAcc.push(
-            await this.resolveEnhancerForConnection<PipeTransform>(
-              p,
-              connState,
-              "pipe",
-              gatewayModule,
-              gateway,
-            ),
-          );
-        }
-        sharedPipes = sharedPipesAcc;
-
-        const paramPipesAcc: PipeTransform[][] = [];
-        for (const list of handler.paramPipeLikes) {
-          const resolvedList: PipeTransform[] = [];
-          for (const p of list) {
-            resolvedList.push(
+          const sharedPipesAcc: PipeTransform[] = [];
+          for (const p of this.globalPipeLikes) {
+            sharedPipesAcc.push(
+              await this.resolveEnhancerForConnection<PipeTransform>(
+                p,
+                connState,
+                "pipe",
+                undefined,
+                gateway,
+              ),
+            );
+          }
+          for (const p of handler.sharedPipeLikes) {
+            sharedPipesAcc.push(
               await this.resolveEnhancerForConnection<PipeTransform>(
                 p,
                 connState,
@@ -1788,135 +2103,340 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
               ),
             );
           }
-          paramPipesAcc.push(resolvedList);
-        }
-        paramPipesList = paramPipesAcc;
-      } else {
-        guards = handler.guards;
-        interceptors = handler.interceptors;
-        sharedPipes = handler.sharedPipes;
-        paramPipesList = handler.paramPipes;
-      }
+          sharedPipes = sharedPipesAcc;
 
-      // 1. Guards (Global -> Gateway -> Method)
-      for (let i = 0; i < guards.length; i++) {
-        const guard = guards[i];
-        if (!guard) continue;
-        const allowed = await guard.canActivate(executionContext);
-        if (!allowed) {
-          throw new WsException({
-            code: "FORBIDDEN",
-            message: "Forbidden WebSocket resource",
+          const paramPipesAcc: PipeTransform[][] = [];
+          for (const list of handler.paramPipeLikes) {
+            const resolvedList: PipeTransform[] = [];
+            for (const p of list) {
+              resolvedList.push(
+                await this.resolveEnhancerForConnection<PipeTransform>(
+                  p,
+                  connState,
+                  "pipe",
+                  gatewayModule,
+                  gateway,
+                ),
+              );
+            }
+            paramPipesAcc.push(resolvedList);
+          }
+          paramPipesList = paramPipesAcc;
+        } else {
+          guards = handler.guards;
+          interceptors = handler.interceptors;
+          sharedPipes = handler.sharedPipes;
+          paramPipesList = handler.paramPipes;
+        }
+
+        // 1. Guards (Global -> Gateway -> Method)
+        for (let i = 0; i < guards.length; i++) {
+          const guard = guards[i];
+          if (!guard) continue;
+          const allowed = await guard.canActivate(executionContext);
+          if (!allowed) {
+            throw new WsException({
+              code: "FORBIDDEN",
+              message: "Forbidden WebSocket resource",
+            });
+          }
+        }
+
+        const hasAckParam = handler.params.some((p) => p.source === "ack");
+        if (hasAckParam) {
+          const token = Symbol("ws:pending_ack");
+          let resolveAck!: () => void;
+          const ackPromise = new Promise<void>((resolve) => {
+            resolveAck = resolve;
+          });
+          pendingAckToken = token;
+          settlePendingAck = () => {
+            if (this.pendingAcks.delete(token)) {
+              resolveAck();
+            }
+          };
+          this.pendingAcks.set(token, {
+            client,
+            promise: ackPromise,
+            settle: settlePendingAck,
           });
         }
-      }
 
-      let ackHandledManually = false;
-      const ackFn = (...ackArgs: unknown[]): void => {
-        ackHandledManually = true;
-        const ackPayload = ackArgs.length <= 1 ? ackArgs[0] : ackArgs;
-        client.emit(event, ackPayload, frameId);
-      };
+        let ackHandledManually = false;
+        const ackFn = (...ackArgs: unknown[]): void => {
+          ackHandledManually = true;
+          const ackPayload = ackArgs.length <= 1 ? ackArgs[0] : ackArgs;
+          client.emit(event, ackPayload, frameId);
+          settlePendingAck?.();
+        };
 
-      // 2. Interceptors wrapping Parameter Extraction -> Pipes -> Handler
-      const executeInner = async (): Promise<unknown> => {
-        let args: unknown[];
+        // 2. Interceptors wrapping Parameter Extraction -> Pipes -> Handler
+        const executeInner = async (): Promise<unknown> => {
+          let args: unknown[];
 
-        if (handler.params.length === 0) {
-          // NestJS undecorated fallback signature: (client, data)
-          args = [client, payload];
-        } else {
-          args = new Array<unknown>(handler.argCount);
-          for (let i = 0; i < handler.params.length; i++) {
-            const param = handler.params[i];
-            if (!param) continue;
+          if (handler.params.length === 0) {
+            // NestJS undecorated fallback signature: (client, data)
+            args = [client, payload];
+          } else {
+            args = new Array<unknown>(handler.argCount);
+            for (let i = 0; i < handler.params.length; i++) {
+              const param = handler.params[i];
+              if (!param) continue;
 
-            if (param.source === "client") {
-              args[param.index] = client;
-              continue;
-            }
-            if (param.source === "ack") {
-              args[param.index] = ackFn;
-              continue;
-            }
-
-            let value =
-              param.key !== undefined
-                ? payload !== null && typeof payload === "object"
-                  ? (payload as Record<string, unknown>)[param.key]
-                  : undefined
-                : payload;
-
-            const argMeta: ArgumentMetadata = {
-              type: "body",
-              metatype: param.metatype,
-              data: param.key,
-            };
-
-            // Global -> Gateway -> Method pipes
-            for (let p = 0; p < sharedPipes.length; p++) {
-              const pipe = sharedPipes[p];
-              if (pipe) {
-                value = await pipe.transform(value, argMeta);
+              if (param.source === "client") {
+                args[param.index] = client;
+                continue;
               }
-            }
+              if (param.source === "ack") {
+                args[param.index] = ackFn;
+                continue;
+              }
 
-            // Parameter-level pipes
-            const paramPipes = paramPipesList[i];
-            if (paramPipes) {
-              for (let p = 0; p < paramPipes.length; p++) {
-                const pipe = paramPipes[p];
+              let value: unknown;
+              let argType: ArgumentMetadata["type"];
+
+              if (param.source === "param") {
+                value =
+                  param.key !== undefined
+                    ? client.params[param.key]
+                    : client.params;
+                argType = "param";
+              } else {
+                value =
+                  param.key !== undefined
+                    ? payload !== null && typeof payload === "object"
+                      ? (payload as Record<string, unknown>)[param.key]
+                      : undefined
+                    : payload;
+                argType = "body";
+              }
+
+              const argMeta: ArgumentMetadata = {
+                type: argType,
+                metatype: param.metatype,
+                data: param.key,
+              };
+
+              // Global -> Gateway -> Method pipes
+              for (let p = 0; p < sharedPipes.length; p++) {
+                const pipe = sharedPipes[p];
                 if (pipe) {
                   value = await pipe.transform(value, argMeta);
                 }
               }
-            }
 
-            args[param.index] = value;
+              // Inline Standard Schema validation
+              if (param.schema !== undefined) {
+                value = await runWsStandardSchema(param.schema, value, argMeta);
+              }
+
+              // Parameter-level pipes
+              const paramPipes = paramPipesList[i];
+              if (paramPipes) {
+                for (let p = 0; p < paramPipes.length; p++) {
+                  const pipe = paramPipes[p];
+                  if (pipe) {
+                    value = await pipe.transform(value, argMeta);
+                  }
+                }
+              }
+
+              args[param.index] = value;
+            }
           }
+
+          return await (
+            handler.handlerFn as (...a: unknown[]) => unknown
+          ).apply(gatewayInstance, args);
+        };
+
+        let result: unknown;
+        if (interceptors.length === 0) {
+          result = await executeInner();
+        } else {
+          let nextHandler: CallHandler = { handle: executeInner };
+          for (let i = interceptors.length - 1; i >= 0; i--) {
+            const interceptor = interceptors[i];
+            if (!interceptor) continue;
+            const currentNext = nextHandler;
+            nextHandler = {
+              handle: () =>
+                Promise.resolve(
+                  interceptor.intercept(executionContext, currentNext),
+                ),
+            };
+          }
+          result = await nextHandler.handle();
         }
 
-        return await (handler.handlerFn as (...a: unknown[]) => unknown).apply(
-          gatewayInstance,
-          args,
+        // 3. Emit response / acknowledgement frame when handler returns a value
+        if (result !== undefined && !ackHandledManually) {
+          if (isWsResponse(result)) {
+            client.emit(result.event, result.data, result.id ?? frameId);
+          } else {
+            client.emit(event, result, frameId);
+          }
+          settlePendingAck?.();
+        } else if (ackHandledManually && pendingAckToken !== undefined) {
+          settlePendingAck?.();
+        }
+      } catch (error) {
+        settlePendingAck?.();
+        if (this.container) {
+          await this.handleContainerException(
+            gateway,
+            handler,
+            error,
+            executionContext,
+            client,
+            connState,
+            frameId,
+          );
+          return;
+        }
+        await this.handleException(
+          error,
+          handler.filters,
+          executionContext,
+          client,
+          frameId,
         );
+      }
+    };
+
+    const cls = this.resolveClsService();
+    const clsCarrier = client.raw.data?.clsCarrier;
+
+    const runWithRestoredCls = async (): Promise<void> => {
+      if (this.preRequestHooks.length === 0) {
+        await executePipeline();
+        return;
+      }
+
+      const preReqCtx: WsPreRequestContext = {
+        client,
+        event,
+        data: payload,
+        pattern: event,
+        frameId,
+        executionContext,
       };
 
-      let result: unknown;
-      if (interceptors.length === 0) {
-        result = await executeInner();
-      } else {
-        let nextHandler: CallHandler = { handle: executeInner };
-        for (let i = interceptors.length - 1; i >= 0; i--) {
-          const interceptor = interceptors[i];
-          if (!interceptor) continue;
-          const currentNext = nextHandler;
-          nextHandler = {
-            handle: () =>
-              Promise.resolve(
-                interceptor.intercept(executionContext, currentNext),
-              ),
-          };
+      const hooks = this.preRequestHooks;
+      const dispatchHook = async (index: number): Promise<void> => {
+        if (index >= hooks.length) {
+          await executePipeline();
+          return;
         }
-        result = await nextHandler.handle();
+        const hook = hooks[index]!;
+        let nextCalled = false;
+        const invokeNext = async (): Promise<void> => {
+          if (nextCalled) return;
+          nextCalled = true;
+          await dispatchHook(index + 1);
+        };
+        await hook(preReqCtx, invokeNext);
+        if (!nextCalled && hook.length < 2) {
+          await invokeNext();
+        }
+      };
+
+      try {
+        await dispatchHook(0);
+      } catch (hookError) {
+        await this.handleException(
+          hookError,
+          handler.filters,
+          executionContext,
+          client,
+          frameId,
+        );
+      }
+    };
+
+    await restoreClsContext(cls, clsCarrier, runWithRestoredCls);
+  }
+
+  private async handleContainerException(
+    gateway: RegisteredGateway,
+    handler: CompiledWsHandler,
+    error: unknown,
+    executionContext: WsExecutionContext,
+    client: BunWsClientImpl,
+    connState: WsConnectionState,
+    frameId: string | undefined,
+  ): Promise<void> {
+    const gatewayModule =
+      this.container && gateway.moduleId
+        ? this.container.getModuleByKey(gateway.moduleId)
+        : undefined;
+
+    const candidates: Array<{
+      readonly filterLike: ExceptionFilterLike;
+      readonly owningModule?: ModuleNode;
+    }> = [];
+    for (const f of handler.filterLikes) {
+      candidates.push({ filterLike: f, owningModule: gatewayModule });
+    }
+    for (const f of this.globalFilterLikes) {
+      candidates.push({ filterLike: f, owningModule: undefined });
+    }
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i]!;
+      let filter: ExceptionFilter;
+      try {
+        filter = await this.resolveEnhancerForConnection<ExceptionFilter>(
+          candidate.filterLike,
+          connState,
+          "filter",
+          candidate.owningModule,
+          gateway,
+        );
+      } catch (filterResolveError) {
+        this.logger.error(
+          `Error resolving filter for ${gateway.gatewayClass.name}.${String(handler.handlerKey)}`,
+          filterResolveError,
+        );
+        continue;
       }
 
-      // 3. Emit response / acknowledgement frame when handler returns a value
-      if (result !== undefined && !ackHandledManually) {
-        if (isWsResponse(result)) {
-          client.emit(result.event, result.data, result.id ?? frameId);
-        } else {
-          client.emit(event, result, frameId);
-        }
+      const rawCatchTypes = extractFilterCatchTypes(candidate.filterLike);
+      const catchTypes =
+        rawCatchTypes.length > 0
+          ? rawCatchTypes
+          : extractFilterCatchTypes(filter);
+      if (!matchesExceptionFilter(error, catchTypes)) {
+        continue;
       }
-    } catch (error) {
-      await this.handleException(
-        error,
-        resolvedFilters,
-        executionContext,
-        client,
-        frameId,
-      );
+
+      try {
+        const res = await filter.catch(error, executionContext);
+        if (res !== undefined) {
+          if (isWsResponse(res)) {
+            client.emit(res.event, res.data, res.id ?? frameId);
+          } else {
+            client.emit("error", res, frameId);
+          }
+        }
+        return;
+      } catch (filterError) {
+        try {
+          this.defaultFilter.catch(filterError, executionContext, frameId);
+        } catch (emitError) {
+          this.logger.error(
+            "Failed to emit WebSocket filter error frame",
+            emitError,
+          );
+        }
+        return;
+      }
+    }
+
+    try {
+      this.defaultFilter.catch(error, executionContext, frameId);
+    } catch (emitError) {
+      this.logger.error("Failed to emit WebSocket error frame", emitError);
     }
   }
 
@@ -1999,6 +2519,8 @@ export class WsAdapter extends BunWebSocketAdapter {
         unclaimedUpgradeTimeout: options?.unclaimedUpgradeTimeout,
         maxPayload: options?.maxPayload,
         maxPayloadLength: options?.maxPayload,
+        gracefulShutdown: options?.gracefulShutdown,
+        gracePeriod: options?.gracePeriod,
       },
       defaultEnhancerResolver,
       new Logger("WsAdapter"),

@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from "../../common/interfaces/standard-schema.interface";
 import type { Duration } from "../types/duration.type";
 import type { HttpRetryOptions } from "./http-retry-options.interface";
 
@@ -67,6 +68,13 @@ export interface HttpSharedOptions {
   redirect?: "follow" | "error" | "manual" | undefined;
   /** Connection pool, proxy or TLS settings (an undici `Agent` or `ProxyAgent`). */
   dispatcher?: HttpDispatcher | undefined;
+  /**
+   * Automatically propagate active `ClsService` context keys as outgoing HTTP
+   * headers (`x-request-id`, `x-tenant-id`, `x-user-id`, `x-correlation-id` when
+   * `true`, or custom CLS keys when passing a `string[]`). Explicit headers on
+   * the client or request always take precedence.
+   */
+  propagateClsHeaders?: boolean | readonly string[] | undefined;
 }
 
 /** Request as seen by interceptors. Mutable; or pass a modified copy to `next`. */
@@ -97,6 +105,12 @@ export interface HttpRequestOptions extends HttpSharedOptions {
   /** Raw body, passed to fetch as is. Mutually exclusive with `json`. */
   body?: HttpRequestBody | undefined;
   responseType?: HttpResponseType | undefined;
+  /**
+   * Optional Standard Schema v1 validator applied to the parsed response body.
+   * When provided, validates (and transforms) `data` and throws
+   * `HttpClientValidationError` if validation produces issues.
+   */
+  responseSchema?: StandardSchemaV1<unknown, unknown> | undefined;
   signal?: AbortSignal | undefined;
   context?: Record<string, unknown> | undefined;
 }

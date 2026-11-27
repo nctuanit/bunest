@@ -13,6 +13,7 @@ import type {
   RequestMethod,
   RouteInfo,
   Scope,
+  ShutdownHooksOptions,
   ShutdownSignal,
   Type,
   VersionValue,
@@ -74,6 +75,9 @@ export interface LifecycleManagerLike {
   callApplicationBootstrap(
     groups: readonly LifecycleModuleGroupLike[],
   ): Promise<void>;
+  callApplicationListen?(
+    groups: readonly LifecycleModuleGroupLike[],
+  ): Promise<void>;
   callShutdown(
     groups: readonly LifecycleModuleGroupLike[],
     signal?: ShutdownSignalInput,
@@ -82,6 +86,7 @@ export interface LifecycleManagerLike {
   enableShutdownHooks(
     signals: readonly ShutdownSignalInput[] | undefined,
     onSignal: (signal: NodeJS.Signals) => Promise<void> | void,
+    options?: ShutdownHooksOptions,
   ): void;
   cleanupShutdownHooks(): void;
   getActiveHookCount(): number;

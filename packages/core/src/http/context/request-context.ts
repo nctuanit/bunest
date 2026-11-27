@@ -136,6 +136,10 @@ export class RequestContext {
   private cachedIp?: string;
   private _rawBody?: Uint8Array;
   private bodyPromise?: Promise<ParsedBodyResult>;
+  private interceptedBody?: unknown;
+  private hasInterceptedBody = false;
+  private interceptedFiles?: readonly UploadedFileInfo[];
+  private interceptedFileStream?: unknown;
 
   constructor(options: RequestContextOptions) {
     this.request = options.request;
@@ -330,7 +334,36 @@ export class RequestContext {
     return this.bodyPromise;
   }
 
+  /**
+   * Registers multipart fields/files/stream intercepted by `FileInterceptor` or
+   * `FilesInterceptor` so `@Body()`, `@UploadedFile()`, `@UploadedFiles()`, and
+   * `@UploadedFileStream()` read the streamed result without re-reading `req.body`.
+   */
+  setInterceptedMultipart(data: {
+    readonly body?: unknown;
+    readonly files?: readonly UploadedFileInfo[];
+    readonly fileStream?: unknown;
+  }): void {
+    if ("body" in data) {
+      this.interceptedBody = data.body;
+      this.hasInterceptedBody = true;
+    }
+    if (data.files !== undefined) {
+      this.interceptedFiles = data.files;
+    }
+    if ("fileStream" in data) {
+      this.interceptedFileStream = data.fileStream;
+    }
+  }
+
+  getInterceptedFileStream<T = unknown>(): T | undefined {
+    return this.interceptedFileStream as T | undefined;
+  }
+
   async getBody(): Promise<unknown> {
+    if (this.hasInterceptedBody) {
+      return this.interceptedBody;
+    }
     if (!this.bodyParserEnabled) {
       return undefined;
     }
@@ -348,6 +381,9 @@ export class RequestContext {
   }
 
   async getUploadedFiles(): Promise<readonly UploadedFileInfo[]> {
+    if (this.interceptedFiles !== undefined) {
+      return this.interceptedFiles;
+    }
     const parsed = await this.ensureBodyParsed();
     return parsed.files;
   }

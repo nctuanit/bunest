@@ -21,6 +21,7 @@ import type {
   NamespacedConfigFactory,
 } from "./interfaces/config.interface";
 import { isNamespacedConfigFactory } from "./register-as";
+import { isLoadedConfig, PRELOADED_CONFIG_MARKER } from "./load-config";
 import { validateConfiguration } from "./validator";
 
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
@@ -96,6 +97,15 @@ export class ConfigModule {
   static async forRoot<T extends object = ConfigObject>(
     options: ConfigModuleOptions<T> = {},
   ): Promise<DynamicModule> {
+    if (options.preloaded !== undefined) {
+      if (!isLoadedConfig<T>(options.preloaded)) {
+        throw new TypeError(
+          "ConfigModule.forRoot({ preloaded }) requires a handle returned by loadConfig().",
+        );
+      }
+      return ConfigModule.forRootPreloaded(options);
+    }
+
     const snapshot = loadEnvironmentSnapshot({
       envFilePath: options.envFilePath,
       ignoreEnvFile: options.ignoreEnvFile,
@@ -479,6 +489,216 @@ export class ConfigModule {
 
     for (let i = 0; i < resolvedNamespaceFactories.length; i++) {
       const nsFactory = resolvedNamespaceFactories[i]!;
+      providers.push({
+        provide: nsFactory.KEY,
+        inject: [CONFIG_STORE_TOKEN, rootLoaderToken],
+        useFactory: (store: Record<PropertyKey, unknown>) =>
+          readDotPath(store, nsFactory.namespace),
+      });
+      exportsList.push(nsFactory.KEY);
+      explicitNamespaceTokens.add(nsFactory.KEY);
+    }
+
+    const buildDynamicInjectConfigProviders = (): Provider[] => {
+      const extra: Provider[] = [];
+      for (const binding of getRegisteredInjectConfigBindings()) {
+        if (
+          binding.isNamespaceFactory ||
+          explicitNamespaceTokens.has(binding.token) ||
+          ConfigModule.forFeatureTokens.has(binding.token)
+        ) {
+          continue;
+        }
+        extra.push({
+          provide: binding.token,
+          inject: [ConfigService, rootLoaderToken],
+          useFactory: (config: ConfigService<Record<string, unknown>>) =>
+            binding.hasDefault
+              ? config.get(binding.lookupKey as string, binding.defaultValue)
+              : config.get(binding.lookupKey as string),
+        });
+      }
+      return extra;
+    };
+
+    const buildDynamicInjectConfigExports = (): InjectionToken[] => {
+      const extra: InjectionToken[] = [];
+      for (const binding of getRegisteredInjectConfigBindings()) {
+        if (
+          !binding.isNamespaceFactory &&
+          !explicitNamespaceTokens.has(binding.token) &&
+          !ConfigModule.forFeatureTokens.has(binding.token)
+        ) {
+          extra.push(binding.token);
+        }
+      }
+      return extra;
+    };
+
+    return {
+      module: ConfigModule,
+      global: options.isGlobal ?? false,
+      imports: [ConfigHostModule, ConfigServiceModule],
+      get providers(): Provider[] {
+        return [...providers, ...buildDynamicInjectConfigProviders()];
+      },
+      get exports(): Array<InjectionToken | typeof ConfigServiceModule> {
+        return [...exportsList, ...buildDynamicInjectConfigExports()];
+      },
+    };
+  }
+
+  private static async forRootPreloaded<T extends object = ConfigObject>(
+    options: ConfigModuleOptions<T>,
+  ): Promise<DynamicModule> {
+    const preloaded = options.preloaded as unknown as {
+      readonly [PRELOADED_CONFIG_MARKER]: {
+        readonly store: Record<PropertyKey, unknown>;
+        readonly internalOptions: ConfigServiceInternalOptions;
+        readonly namespaceFactories: ReadonlyArray<
+          NamespacedConfigFactory<any, any>
+        >;
+      };
+    };
+    const meta = preloaded[PRELOADED_CONFIG_MARKER];
+
+    // Signal any waiting `ConditionalModule.registerWhen()` calls immediately
+    ConfigModule.environmentVariablesLoadedSignal();
+
+    const loadEntries = options.load ?? [];
+    const extraLoadedConfigs: Array<{
+      factory: ConfigFactory | NamespacedConfigFactory<any, any>;
+      value: ConfigObject;
+    }> = [];
+    const resolvedNamespaceFactories: Array<NamespacedConfigFactory<any, any>> =
+      [...meta.namespaceFactories];
+
+    for (let i = 0; i < loadEntries.length; i++) {
+      const rawEntry = loadEntries[i];
+      if (!rawEntry) continue;
+      const factory = await rawEntry;
+      if (!factory) continue;
+      if (isNamespacedConfigFactory(factory)) {
+        resolvedNamespaceFactories.push(factory);
+      }
+      const loaded = await factory();
+      if (loaded && typeof loaded === "object") {
+        extraLoadedConfigs.push({ factory, value: loaded });
+      }
+    }
+
+    const rootLoaderToken = Symbol("bunest:config:preloaded-root-loader");
+
+    const providers: Provider[] = [
+      {
+        provide: rootLoaderToken,
+        inject: [CONFIG_STORE_TOKEN, CONFIG_OPTIONS_TOKEN, ConfigService],
+        useFactory: (
+          store: Record<PropertyKey, unknown>,
+          sharedOptions: ConfigServiceInternalOptions,
+          configService: ConfigService,
+        ): true => {
+          const preOpts = meta.internalOptions;
+          if ((options.cache ?? preOpts.cache) !== undefined) {
+            sharedOptions.cache = options.cache ?? preOpts.cache;
+          }
+          if ((options.skipProcessEnv ?? preOpts.skipProcessEnv) !== undefined) {
+            sharedOptions.skipProcessEnv =
+              options.skipProcessEnv ?? preOpts.skipProcessEnv;
+          }
+          if ((options.ignoreEnvVars ?? preOpts.ignoreEnvVars) !== undefined) {
+            sharedOptions.ignoreEnvVars =
+              options.ignoreEnvVars ?? preOpts.ignoreEnvVars;
+          }
+          if ((options.envSource ?? preOpts.envSource) !== undefined) {
+            sharedOptions.envSource = options.envSource ?? preOpts.envSource;
+          }
+          if (preOpts.envFilePaths !== undefined) {
+            sharedOptions.envFilePaths = [...preOpts.envFilePaths];
+          }
+          if ((options.parser ?? preOpts.parser) !== undefined) {
+            sharedOptions.parser = options.parser ?? preOpts.parser;
+          }
+          const combinedSecrets = [
+            ...(sharedOptions.secretKeys ?? []),
+            ...(preOpts.secretKeys ?? []),
+            ...(options.secretKeys ?? []),
+          ];
+          if (combinedSecrets.length > 0) {
+            sharedOptions.secretKeys = combinedSecrets;
+          }
+          if ((options.redactionMask ?? preOpts.redactionMask) !== undefined) {
+            sharedOptions.redactionMask =
+              options.redactionMask ?? preOpts.redactionMask;
+          }
+          if (preOpts.envExpansionContexts?.length) {
+            sharedOptions.envExpansionContexts ??= [];
+            sharedOptions.envExpansionContexts.push(
+              ...preOpts.envExpansionContexts,
+            );
+          }
+          if (preOpts.validatedKeys?.size) {
+            sharedOptions.validatedKeys ??= new Set<string>();
+            for (const k of preOpts.validatedKeys) {
+              sharedOptions.validatedKeys.add(k);
+            }
+          }
+          if (preOpts.validatedSources?.length) {
+            sharedOptions.validatedSources ??= [];
+            sharedOptions.validatedSources.push(...preOpts.validatedSources);
+          }
+          sharedOptions.onEnvAssigned = (k: string, v: string) => {
+            ConfigModule.loadedEnv.set(k, v);
+          };
+
+          configService.syncInternalOptions();
+
+          for (const [k, v] of Object.entries(meta.store)) {
+            if (DANGEROUS_KEYS.has(k)) continue;
+            Object.defineProperty(store, k, {
+              value: v,
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
+          }
+          for (const sym of Object.getOwnPropertySymbols(meta.store)) {
+            if (Object.prototype.propertyIsEnumerable.call(meta.store, sym)) {
+              store[sym] = meta.store[sym];
+            }
+          }
+
+          for (let i = 0; i < extraLoadedConfigs.length; i++) {
+            const { factory, value: loaded } = extraLoadedConfigs[i]!;
+            if (isNamespacedConfigFactory(factory)) {
+              configService.mergeNamespace(factory.namespace, loaded);
+            } else {
+              for (const [k, v] of Object.entries(loaded)) {
+                if (!DANGEROUS_KEYS.has(k)) {
+                  Object.defineProperty(store, k, {
+                    value: v,
+                    enumerable: true,
+                    writable: true,
+                    configurable: true,
+                  });
+                }
+              }
+            }
+          }
+
+          return true;
+        },
+      },
+    ];
+
+    const exportsList: Array<InjectionToken | typeof ConfigServiceModule> = [
+      ConfigServiceModule,
+    ];
+    const explicitNamespaceTokens = new Set<InjectionToken>();
+
+    for (let i = 0; i < resolvedNamespaceFactories.length; i++) {
+      const nsFactory = resolvedNamespaceFactories[i]!;
+      if (explicitNamespaceTokens.has(nsFactory.KEY)) continue;
       providers.push({
         provide: nsFactory.KEY,
         inject: [CONFIG_STORE_TOKEN, rootLoaderToken],

@@ -187,6 +187,52 @@ export type ViewEngineRenderer = (
   context?: { baseViewsDir?: string },
 ) => string | Promise<string>;
 
+export interface ShutdownHooksOptions {
+  /**
+   * When `true`, invokes `process.exit(0)` (or `process.exit(1)` if `close()`
+   * rejects) after graceful shutdown completes on a process signal. Useful for
+   * apps with open async handles such as async loggers or OTLP exporters.
+   * @default false
+   */
+  useProcessExit?: boolean;
+}
+
+export interface ProcessErrorShutdownOptions {
+  /**
+   * Exit code passed to `process.exit()` once graceful shutdown completes or times out.
+   * @default 1
+   */
+  exitCode?: number;
+  /**
+   * Maximum duration in milliseconds to wait for `close()` before forcing exit.
+   * @default 5000
+   */
+  timeout?: number;
+}
+
+export type ProcessErrorOrigin = "unhandledRejection" | "uncaughtException";
+
+export interface ProcessErrorHandlerContext {
+  readonly origin: ProcessErrorOrigin;
+  shutdown(options?: ProcessErrorShutdownOptions): Promise<void>;
+}
+
+export type ProcessErrorHandler = (
+  error: unknown,
+  context: ProcessErrorHandlerContext,
+) => void | Promise<void>;
+
+export interface ProcessErrorHandlersOptions {
+  /**
+   * Custom handler for `process.on("unhandledRejection")`, or `false` to disable.
+   */
+  unhandledRejection?: ProcessErrorHandler | false;
+  /**
+   * Custom handler for `process.on("uncaughtException")`, or `false` to disable.
+   */
+  uncaughtException?: ProcessErrorHandler | false;
+}
+
 export interface BunestApplicationOptions {
   logger?: boolean | LogLevel[] | LoggerService;
   cors?: boolean | CorsOptions;

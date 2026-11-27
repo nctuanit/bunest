@@ -8,6 +8,7 @@ import type {
   CsrfProtectionOptions,
   HttpSecurityHeadersOptions,
   PreRequestHook,
+  ShutdownHooksOptions,
   StaticAssetsOptions,
   ViewEngineRenderer,
 } from "./application.interface";
@@ -290,6 +291,7 @@ export interface INestApplicationContext {
   flushLogs(): void;
   enableShutdownHooks(
     signals?: readonly (ShutdownSignal | NodeJS.Signals | string)[],
+    options?: ShutdownHooksOptions,
   ): this;
   init(): Promise<this>;
 }

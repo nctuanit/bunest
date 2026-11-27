@@ -1,4 +1,4 @@
-import type { Type } from "../../common/index";
+import type { Type } from "../../common/interfaces/type.interface";
 import type {
   HttpClientInterceptor,
   HttpClientInterceptorLike,

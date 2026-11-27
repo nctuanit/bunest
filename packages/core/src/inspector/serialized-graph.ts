@@ -28,6 +28,7 @@ export interface GraphNodeDefinition {
     token?: string;
     scope?: Scope;
     initTime?: number;
+    initTimeMs?: number;
     enhancer?: boolean;
   };
 }
@@ -158,6 +159,15 @@ export class SerializedGraph {
 
   getNodeById(id: string): GraphNodeDefinition | undefined {
     return this.nodes.get(id);
+  }
+
+  setNodeInitTime(id: string, initTimeMs: number): void {
+    const node = this.nodes.get(id);
+    if (!node) {
+      return;
+    }
+    node.metadata.initTimeMs = initTimeMs;
+    node.metadata.initTime = initTimeMs;
   }
 
   toJSON(): SerializedGraphJson {

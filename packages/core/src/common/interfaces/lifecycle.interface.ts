@@ -6,6 +6,10 @@ export interface OnApplicationBootstrap {
   onApplicationBootstrap(): Promise<void> | void;
 }
 
+export interface OnApplicationListen {
+  onApplicationListen(): Promise<void> | void;
+}
+
 export interface OnModuleDestroy {
   onModuleDestroy(): Promise<void> | void;
 }

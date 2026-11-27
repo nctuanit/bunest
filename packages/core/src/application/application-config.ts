@@ -71,6 +71,12 @@ export class ApplicationConfig {
   private readonly globalRequestInterceptors: InstanceWrapper<NestInterceptor>[] =
     [];
   private readonly globalRequestGuards: InstanceWrapper<CanActivate>[] = [];
+  private readonly moduleGuards = new Map<string, GuardLike[]>();
+  private readonly modulePipes = new Map<string, PipeLike[]>();
+  private readonly moduleInterceptors = new Map<string, InterceptorLike[]>();
+  private readonly moduleFilters = new Map<string, ExceptionFilterLike[]>();
+  private readonly middlewareOverrides = new Map<unknown, unknown>();
+  private middlewareOverridesVersion = 0;
   private readonly globalPreRequestHooks: PreRequestHook[] = [];
   private versioningOptions?: VersioningOptions;
   private ioAdapter: WebSocketAdapter | null;
@@ -261,5 +267,86 @@ export class ApplicationConfig {
 
   getRouteResolutionStrategy(): RouteResolutionStrategy | undefined {
     return this.routeResolutionStrategy;
+  }
+
+  // =========================================================================
+  // Shallow Module-Scoped Enhancers (MODULE_GUARD / PIPE / INTERCEPTOR / FILTER)
+  // =========================================================================
+
+  addModuleGuard(moduleId: string, guard: GuardLike): void {
+    const list = this.moduleGuards.get(moduleId) ?? [];
+    list.push(guard);
+    this.moduleGuards.set(moduleId, list);
+  }
+
+  getModuleGuards(moduleId: string): readonly GuardLike[] {
+    const list = this.moduleGuards.get(moduleId);
+    return list ? [...list] : [];
+  }
+
+  addModulePipe(moduleId: string, pipe: PipeLike): void {
+    const list = this.modulePipes.get(moduleId) ?? [];
+    list.push(pipe);
+    this.modulePipes.set(moduleId, list);
+  }
+
+  getModulePipes(moduleId: string): readonly PipeLike[] {
+    const list = this.modulePipes.get(moduleId);
+    return list ? [...list] : [];
+  }
+
+  addModuleInterceptor(moduleId: string, interceptor: InterceptorLike): void {
+    const list = this.moduleInterceptors.get(moduleId) ?? [];
+    list.push(interceptor);
+    this.moduleInterceptors.set(moduleId, list);
+  }
+
+  getModuleInterceptors(moduleId: string): readonly InterceptorLike[] {
+    const list = this.moduleInterceptors.get(moduleId);
+    return list ? [...list] : [];
+  }
+
+  addModuleFilter(moduleId: string, filter: ExceptionFilterLike): void {
+    const list = this.moduleFilters.get(moduleId) ?? [];
+    list.push(filter);
+    this.moduleFilters.set(moduleId, list);
+  }
+
+  getModuleFilters(moduleId: string): readonly ExceptionFilterLike[] {
+    const list = this.moduleFilters.get(moduleId);
+    return list ? [...list] : [];
+  }
+
+  // =========================================================================
+  // Middleware Overrides (for TestingModuleBuilder.overrideMiddleware())
+  // =========================================================================
+
+  setMiddlewareOverrides(overrides: ReadonlyMap<unknown, unknown>): void {
+    this.middlewareOverrides.clear();
+    for (const [target, replacement] of overrides.entries()) {
+      this.middlewareOverrides.set(target, replacement);
+    }
+    this.middlewareOverridesVersion++;
+  }
+
+  setMiddlewareOverride(target: unknown, replacement: unknown): void {
+    this.middlewareOverrides.set(target, replacement);
+    this.middlewareOverridesVersion++;
+  }
+
+  getMiddlewareOverridesVersion(): number {
+    return this.middlewareOverridesVersion;
+  }
+
+  getMiddlewareOverride(target: unknown): unknown {
+    return this.middlewareOverrides.get(target);
+  }
+
+  hasMiddlewareOverride(target: unknown): boolean {
+    return this.middlewareOverrides.has(target);
+  }
+
+  getMiddlewareOverrides(): ReadonlyMap<unknown, unknown> {
+    return this.middlewareOverrides;
   }
 }

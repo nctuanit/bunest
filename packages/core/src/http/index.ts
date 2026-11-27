@@ -87,6 +87,38 @@ export {
   type ParsedBodyResult,
   type ParseRequestBodyOptions,
 } from "./parsers/body-parser";
+export {
+  extractMultipartStreamBoundary,
+  parseMultipartStream,
+  type MultipartFieldPart,
+  type MultipartFilePart,
+  type MultipartStreamOptions,
+  type MultipartStreamPart,
+} from "./parsers/multipart-stream";
+export {
+  FileInterceptor,
+  FilesInterceptor,
+  UploadedFileStream,
+  type FileInterceptorOptions,
+  type FileUploadMode,
+  type StoredUploadedFile,
+  type UploadStorageEngineFile,
+  type UploadStorageEngineLike,
+} from "./interceptors/file.interceptor";
+export {
+  FUNCTIONAL_ROUTE_GROUP_MARKER,
+  FunctionalModule,
+  defineRoutes,
+  isFunctionalRouteGroup,
+  type FunctionalModuleOptions,
+  type FunctionalRouteBuilder,
+  type FunctionalRouteContext,
+  type FunctionalRouteEntry,
+  type FunctionalRouteGroup,
+  type FunctionalRouteGroupOptions,
+  type FunctionalRouteHandler,
+  type FunctionalRouteOptions,
+} from "./functional/define-routes";
 
 // Scanner, Path Normalization & API Versioning
 export {

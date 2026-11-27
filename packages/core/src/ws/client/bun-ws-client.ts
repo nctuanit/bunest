@@ -1,3 +1,4 @@
+import type { ClsContextCarrier } from "../../cls/cls-context-carrier";
 import {
   isDangerousKey,
   sanitizeObject,
@@ -10,6 +11,7 @@ import type {
   WsMessageFrame,
   WsRoomEmitter,
 } from "../interfaces/ws.interface";
+import { EMPTY_WS_PARAMS } from "../path-matcher";
 
 export interface BunWsSocketData {
   readonly gatewayId: string;
@@ -18,6 +20,8 @@ export interface BunWsSocketData {
   readonly path: string;
   readonly namespace: string;
   readonly handshakeData: Record<string, unknown>;
+  readonly params?: Readonly<Record<string, string>>;
+  readonly clsCarrier?: ClsContextCarrier;
   client?: BunWsClientImpl;
 }
 
@@ -89,6 +93,7 @@ export class BunWsClientImpl<
 > implements BunWsClient<TData> {
   public readonly id: string;
   public readonly data: TData;
+  public readonly params: Readonly<Record<string, string>>;
   public readonly request: Request;
   public readonly raw: BunServerWebSocketLike<BunWsSocketData>;
   private readonly gatewayId: string;
@@ -101,6 +106,7 @@ export class BunWsClientImpl<
     this.raw = ws;
     this.id = socketData.clientId;
     this.data = socketData.handshakeData as TData;
+    this.params = socketData.params ?? EMPTY_WS_PARAMS;
     this.request = socketData.request;
     this.gatewayId = socketData.gatewayId;
   }

@@ -10,6 +10,7 @@ export type ColumnDataType =
   | "boolean"
   | "json"
   | "datetime"
+  | "date"
   | "blob"
   | "bigint"
   | "varchar"
@@ -40,6 +41,7 @@ export interface ColumnOptions {
   readonly description?: string;
   readonly example?: unknown;
   readonly transformer?: ColumnTransformer;
+  readonly select?: boolean;
   readonly createdAt?: boolean;
   readonly updatedAt?: boolean;
 }
@@ -96,6 +98,7 @@ interface StoredColumnMetadata {
   readonly description?: string;
   readonly example?: unknown;
   readonly transformer?: ColumnTransformer;
+  readonly select?: boolean;
   readonly createdAt: boolean;
   readonly updatedAt: boolean;
 }
@@ -122,6 +125,7 @@ export interface EntityColumnMetadata {
   readonly description?: string;
   readonly example?: unknown;
   readonly transformer?: ColumnTransformer;
+  readonly select?: boolean;
   readonly createdAt: boolean;
   readonly updatedAt: boolean;
 }
@@ -269,6 +273,7 @@ function recordColumnMetadata(
     ...(options.transformer !== undefined
       ? { transformer: options.transformer }
       : {}),
+    ...(options.select !== undefined ? { select: options.select } : {}),
     createdAt: options.createdAt === true,
     updatedAt: options.updatedAt === true,
   };
@@ -763,6 +768,7 @@ function getNativeEntityColumns(ctor: Function): EntityColumnMetadata[] {
       ...(stored.transformer !== undefined
         ? { transformer: stored.transformer }
         : {}),
+      ...(stored.select !== undefined ? { select: stored.select } : {}),
       createdAt: stored.createdAt,
       updatedAt: stored.updatedAt,
     });

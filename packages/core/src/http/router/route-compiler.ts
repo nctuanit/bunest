@@ -700,41 +700,75 @@ export async function compileRoutes(
       }
     }
 
+    const applyMiddlewareOverrides = (
+      list: readonly MiddlewareEntry[],
+    ): MiddlewareEntry[] => {
+      if (!bridge.resolveMiddlewareOverride) {
+        return [...list];
+      }
+      const out: MiddlewareEntry[] = [];
+      for (let idx = 0; idx < list.length; idx++) {
+        const mw = list[idx]!;
+        const override = bridge.resolveMiddlewareOverride(mw);
+        if (override === null) {
+          continue;
+        }
+        out.push(override !== undefined ? override : mw);
+      }
+      return out;
+    };
+
     const middlewareSpecs: MiddlewareEntry[] = [
-      ...globalMiddlewares,
+      ...applyMiddlewareOverrides(globalMiddlewares),
       ...matchedModuleMiddlewares,
-      ...((route.controllerMiddlewares ?? []) as readonly MiddlewareEntry[]),
-      ...((route.methodMiddlewares ?? []) as readonly MiddlewareEntry[]),
+      ...applyMiddlewareOverrides(
+        (route.controllerMiddlewares ?? []) as readonly MiddlewareEntry[],
+      ),
+      ...applyMiddlewareOverrides(
+        (route.methodMiddlewares ?? []) as readonly MiddlewareEntry[],
+      ),
     ];
 
-    // Strict ADR-008 §3 enhancer precedence
+    // Strict ADR-008 §3 enhancer precedence (with shallow MODULE_* enhancers):
+    // APP_* -> MODULE_* -> class @Use*() -> method @Use*()
     const skipHttpGlobalEnhancers =
       MetadataRegistry.get<boolean>(
         Symbol.for("bunest:skip_http_global_enhancers"),
         route.controller,
       ) === true;
+    const modEnhancers = bridge.getModuleEnhancersForController?.(
+      route.controller,
+    );
+    const moduleGuards = modEnhancers?.guards ?? [];
+    const moduleInterceptors = modEnhancers?.interceptors ?? [];
+    const modulePipes = modEnhancers?.pipes ?? [];
+    const moduleFilters = modEnhancers?.filters ?? [];
     const guardSpecs: GuardLike[] = [
       ...(skipHttpGlobalEnhancers ? [] : globalGuards),
+      ...moduleGuards,
       ...route.controllerGuards,
       ...route.methodGuards,
     ];
     const interceptorSpecs: InterceptorLike[] = [
       ...(skipHttpGlobalEnhancers ? [] : globalInterceptors),
+      ...moduleInterceptors,
       ...route.controllerInterceptors,
       ...route.methodInterceptors,
     ];
     const sharedPipeSpecs: PipeLike[] = [
       ...(skipHttpGlobalEnhancers ? [] : globalPipes),
+      ...modulePipes,
       ...route.controllerPipes,
       ...route.methodPipes,
     ];
-    // Exception Filters: Middleware -> Method -> Controller -> Global (most specific first)
+    // Exception Filters: Middleware -> Method -> Controller -> Module -> Global (most specific first)
     const filterSpecs = [
       ...matchedMiddlewareFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.methodFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...route.controllerFilters.map((f) =>
         buildFilterSpecWithBridge(f, bridge),
       ),
+      ...moduleFilters.map((f) => buildFilterSpecWithBridge(f, bridge)),
       ...globalFilterSpecs,
     ];
 
@@ -759,7 +793,12 @@ export async function compileRoutes(
       interceptorSpecs,
       sharedPipeSpecs,
       allParamPipeSpecs,
-      [...route.methodFilters, ...route.controllerFilters, ...globalFilters],
+      [
+        ...route.methodFilters,
+        ...route.controllerFilters,
+        ...moduleFilters,
+        ...globalFilters,
+      ],
     );
 
     const requiresRequestScope = bridge.requiresEnhancerRequestScope
@@ -795,6 +834,7 @@ export async function compileRoutes(
         [
           ...route.methodFilters,
           ...route.controllerFilters,
+          ...moduleFilters,
           ...globalFilters,
         ].some((f) =>
           bridge.requiresEnhancerRequestScope!(f, "filter", route.controller),

@@ -1,5 +1,6 @@
 import type {
   CorsOptions,
+  ExecutionContext,
   PipeLike,
   Scope,
   StandardSchemaV1,
@@ -43,6 +44,19 @@ export interface WsAdapterOptions {
    * @default 1048576 (1 MB)
    */
   maxPayload?: number;
+  /**
+   * Opt-in graceful shutdown: stop accepting new upgrades/messages during `close()`/`closeAll()`,
+   * drain in-flight `@SubscribeMessage()` handlers and pending `@Ack()` replies up to `gracePeriod`,
+   * send close frame `1001 Going Away`, and force-close any remaining connections after the deadline.
+   * @default false
+   */
+  gracefulShutdown?: boolean;
+  /**
+   * Maximum time in milliseconds to wait for in-flight handlers and pending `@Ack()` replies
+   * during graceful shutdown before force-closing remaining connections.
+   * @default 5000
+   */
+  gracePeriod?: number;
 }
 
 /**
@@ -184,6 +198,7 @@ export interface BunWsClient<
 > {
   readonly id: string;
   readonly data: TData;
+  readonly params: Readonly<Record<string, string>>;
   readonly request: Request;
   readonly rooms: ReadonlySet<string>;
   readonly raw: BunServerWebSocketLike;
@@ -236,7 +251,27 @@ export interface OnGatewayAuthenticate {
   ): WsAuthenticateResult | Promise<WsAuthenticateResult>;
 }
 
-export type WsParamSource = "body" | "client" | "ack";
+export type WsParamSource = "body" | "client" | "ack" | "param";
+
+export interface WsPreRequestContext {
+  readonly client: BunWsClient;
+  readonly event: string;
+  readonly data: unknown;
+  readonly pattern: string;
+  readonly frameId?: string;
+  readonly executionContext: ExecutionContext;
+}
+
+/**
+ * Pre-request hook invoked before WebSocket guards, pipes, interceptors, handler,
+ * and exception filters. Supports both one-arg `(ctx) => void | Promise<void>`
+ * (mirroring `@bunest/microservices` `PreRequestHook`) and wrapping two-arg
+ * `(ctx, next) => void | Promise<void>` (for `AsyncLocalStorage.run()` / tracing).
+ */
+export type WsPreRequestHook = (
+  context: WsPreRequestContext,
+  next?: () => Promise<void>,
+) => void | Promise<void>;
 
 export type WsAckCallback = (...args: unknown[]) => void;
 
@@ -303,4 +338,14 @@ export interface WebSocketModuleOptions {
    * Milliseconds before unclaimed upgrade requests are closed.
    */
   unclaimedUpgradeTimeout?: number;
+  /**
+   * Opt-in graceful shutdown draining in-flight handlers and pending `@Ack()` replies.
+   * @default false
+   */
+  gracefulShutdown?: boolean;
+  /**
+   * Maximum time in milliseconds to wait for in-flight handlers during graceful shutdown.
+   * @default 5000
+   */
+  gracePeriod?: number;
 }

@@ -5,6 +5,10 @@ import {
   APP_PIPE,
   DecoratorRegistry,
   METADATA_KEYS,
+  MODULE_FILTER,
+  MODULE_GUARD,
+  MODULE_INTERCEPTOR,
+  MODULE_PIPE,
   MetadataRegistry,
   Module,
   Scope,
@@ -95,6 +99,10 @@ export const MULTI_PROVIDER_TOKENS: ReadonlySet<InjectionToken> = new Set([
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
+  MODULE_GUARD,
+  MODULE_PIPE,
+  MODULE_INTERCEPTOR,
+  MODULE_FILTER,
 ]);
 
 export function getInjectableScope(target: Type<unknown>): Scope {

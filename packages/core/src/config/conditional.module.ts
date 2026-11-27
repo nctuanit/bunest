@@ -2,6 +2,7 @@ import {
   Logger,
   Module,
   type DynamicModule,
+  type ModuleExport,
   type ModuleImport,
 } from "../common/index";
 import { ConfigModule } from "./config.module";
@@ -82,18 +83,13 @@ export class ConditionalModule {
       }
     }
 
-    const returnModule: Required<
-      Pick<DynamicModule, "exports" | "imports" | "module">
-    > = {
-      module: ConditionalModule,
-      imports: [],
-      exports: [],
-    };
+    const imports: ModuleImport[] = [];
+    const exportsList: ModuleExport[] = [];
 
     const evaluation = predicate(process.env);
     if (evaluation) {
-      returnModule.imports.push(module);
-      returnModule.exports.push(module);
+      imports.push(module);
+      exportsList.push(module);
     } else if (debug) {
       Logger.debug(
         `${predicate.toString()} evaluated to false. Skipping the registration of ${moduleName}`,
@@ -101,6 +97,10 @@ export class ConditionalModule {
       );
     }
 
-    return returnModule;
+    return {
+      module: ConditionalModule,
+      imports,
+      exports: exportsList,
+    };
   }
 }

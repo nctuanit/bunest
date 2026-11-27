@@ -6,3 +6,8 @@ export {
   type HttpResponseErrorInit,
 } from "./http-response.error";
 export { HttpTimeoutError } from "./http-timeout.error";
+export {
+  HttpClientValidationError,
+  HttpClientValidationError as HttpValidationError,
+  type HttpClientValidationErrorInit,
+} from "./http-validation.error";

@@ -5,6 +5,10 @@ import {
   APP_PIPE,
   Logger,
   METADATA_KEYS,
+  MODULE_FILTER,
+  MODULE_GUARD,
+  MODULE_INTERCEPTOR,
+  MODULE_PIPE,
   MetadataRegistry,
   VersioningType,
   type BunestModule,
@@ -270,6 +274,52 @@ class CoreHttpBridge implements HttpRuntimeBridge {
   ): readonly Type<any>[] | undefined {
     return this.container.resolveFilterCatchTypes(filterSpec, resolvedInstance);
   }
+
+  getModuleEnhancersForController(controllerToken: Type<unknown>):
+    | {
+        readonly guards: readonly GuardLike[];
+        readonly pipes: readonly PipeLike[];
+        readonly interceptors: readonly InterceptorLike[];
+        readonly filters: readonly ExceptionFilterLike[];
+      }
+    | undefined {
+    const mod = this.container.getControllerOwner(controllerToken);
+    if (!mod) {
+      return undefined;
+    }
+    const appConfig = this.container.getApplicationConfig();
+    const guards = appConfig.getModuleGuards(mod.id);
+    const pipes = appConfig.getModulePipes(mod.id);
+    const interceptors = appConfig.getModuleInterceptors(mod.id);
+    const filters = appConfig.getModuleFilters(mod.id);
+    if (
+      guards.length === 0 &&
+      pipes.length === 0 &&
+      interceptors.length === 0 &&
+      filters.length === 0
+    ) {
+      return undefined;
+    }
+    return { guards, pipes, interceptors, filters };
+  }
+
+  resolveMiddlewareOverride(
+    middleware: MiddlewareEntry,
+  ): MiddlewareEntry | null | undefined {
+    const appConfig = this.container.getApplicationConfig();
+    if (!appConfig.hasMiddlewareOverride(middleware)) {
+      return undefined;
+    }
+    const replacement = appConfig.getMiddlewareOverride(middleware);
+    if (
+      replacement === null ||
+      replacement === false ||
+      replacement === undefined
+    ) {
+      return null;
+    }
+    return replacement as MiddlewareEntry;
+  }
 }
 
 /**
@@ -319,8 +369,12 @@ export class BunestApplication extends BunestApplicationContext {
   private isWsModuleRegistered = false;
   private routesDirty = true;
   private moduleMiddlewaresConfigured = false;
+  private appliedMiddlewareOverridesVersion = 0;
+  private registeredModuleMiddlewares: CompiledMiddlewareConfig[] = [];
   private diEnhancersWired = false;
   private hasListened = false;
+  private appInitPromise?: Promise<this>;
+  private recompilePromise?: Promise<void>;
 
   constructor(
     container: DIContainer,
@@ -472,32 +526,65 @@ export class BunestApplication extends BunestApplicationContext {
     return this;
   }
 
+  private syncMiddlewareOverridesIfNeeded(): boolean {
+    const currentVersion = this.container
+      .getApplicationConfig()
+      .getMiddlewareOverridesVersion();
+    if (currentVersion === this.appliedMiddlewareOverridesVersion) {
+      return false;
+    }
+    this.moduleMiddlewaresConfigured = false;
+    this.routesDirty = true;
+    return true;
+  }
+
   /**
    * Wires DI multi-providers (`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`),
    * executes `BunestModule.configure(MiddlewareConsumer)` across modules,
    * and compiles routes once so route collisions fail fast at creation time.
    */
   async prepareHttpPipeline(): Promise<void> {
+    this.syncMiddlewareOverridesIfNeeded();
     this.wireDiGlobalEnhancers();
     await this.configureModuleMiddlewares();
     await this.recompileRoutesIfNeeded();
   }
 
   override async init(): Promise<this> {
-    if (this.isInitialized && this.lifecycle.getIsInitialized()) {
+    if (
+      this.isInitialized &&
+      this.lifecycle.getIsInitialized() &&
+      !this.syncMiddlewareOverridesIfNeeded()
+    ) {
       return this;
     }
-    await this.prepareHttpPipeline();
-    for (const route of this.getRoutes()) {
-      this.logger.log(
-        `Mapped {${route.path}, ${route.method}} route`,
-        "RouterExplorer",
-      );
+    if (this.appInitPromise) {
+      return this.appInitPromise;
     }
-    await super.init();
-    this.container.getHttpAdapterHost().markInitialized();
-    this.logger.log("Nest application successfully started", "NestApplication");
-    return this;
+    const pending = (async (): Promise<this> => {
+      await this.prepareHttpPipeline();
+      for (const route of this.getRoutes()) {
+        this.logger.log(
+          `Mapped {${route.path}, ${route.method}} route`,
+          "RouterExplorer",
+        );
+      }
+      await super.init();
+      this.container.getHttpAdapterHost().markInitialized();
+      this.logger.log(
+        "Nest application successfully started",
+        "NestApplication",
+      );
+      return this;
+    })();
+    this.appInitPromise = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.appInitPromise === pending) {
+        this.appInitPromise = undefined;
+      }
+    }
   }
 
   override useLogger(logger: LoggerService | LogLevel[] | false): this {
@@ -1186,7 +1273,7 @@ export class BunestApplication extends BunestApplicationContext {
   async fetch(req: Request): Promise<Response> {
     if (!this.isInitialized) {
       await this.init();
-    } else {
+    } else if (this.routesDirty) {
       await this.recompileRoutesIfNeeded();
     }
     return this.httpAdapter.fetch(req);
@@ -1314,6 +1401,7 @@ export class BunestApplication extends BunestApplicationContext {
     );
     this.hasListened = true;
     this.container.getHttpAdapterHost().listening = true;
+    await this.callApplicationListenHook();
     await this.emitDevReadySignal(info);
     return info;
   }
@@ -1348,6 +1436,13 @@ export class BunestApplication extends BunestApplicationContext {
     } catch {
       // Best-effort dev ready signal: never disrupt listen() if the signal file is unavailable.
     }
+  }
+
+  override async close(signal?: string): Promise<void> {
+    if (this.appInitPromise) {
+      await this.appInitPromise.catch(() => {});
+    }
+    return super.close(signal);
   }
 
   protected override prepareClose(): void {
@@ -1448,11 +1543,11 @@ export class BunestApplication extends BunestApplicationContext {
           ) {
             const valDesc = describeProviderValue(entry.instance);
             const enhancerType =
-              tokenLabel === "APP_FILTER"
+              tokenLabel === "APP_FILTER" || tokenLabel === "MODULE_FILTER"
                 ? "exception filter"
-                : tokenLabel === "APP_GUARD"
+                : tokenLabel === "APP_GUARD" || tokenLabel === "MODULE_GUARD"
                   ? "guard"
-                  : tokenLabel === "APP_PIPE"
+                  : tokenLabel === "APP_PIPE" || tokenLabel === "MODULE_PIPE"
                     ? "pipe"
                     : "interceptor";
             const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
@@ -1506,6 +1601,80 @@ export class BunestApplication extends BunestApplicationContext {
         (w) => appConfig.addGlobalRequestFilter(w as any),
       ),
     });
+
+    // Collect shallow module-scoped enhancers (MODULE_GUARD / PIPE / INTERCEPTOR / FILTER)
+    const collectModuleToken = <T>(
+      token: InjectionToken,
+      tokenLabel: string,
+      methodName: string,
+      warnOnly: boolean,
+      register: (moduleId: string, item: T) => void,
+    ): void => {
+      for (const entry of this.container.getMultiProviderEntries(token)) {
+        if (entry.syntheticToken) {
+          register(entry.module.id, entry.syntheticToken as unknown as T);
+        } else if (entry.instance !== undefined) {
+          if (
+            entry.provider.kind === "value" &&
+            typeof (entry.instance as Record<string, unknown> | null)?.[
+              methodName
+            ] !== "function"
+          ) {
+            const valDesc = describeProviderValue(entry.instance);
+            const enhancerType =
+              tokenLabel === "MODULE_FILTER"
+                ? "exception filter"
+                : tokenLabel === "MODULE_GUARD"
+                  ? "guard"
+                  : tokenLabel === "MODULE_PIPE"
+                    ? "pipe"
+                    : "interceptor";
+            const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
+            if (warnOnly) {
+              enhancerLogger.warn(msg);
+            } else {
+              throw new Error(msg);
+            }
+          }
+          register(entry.module.id, entry.instance as T);
+        } else if (entry.provider.useClass) {
+          this.container.registerEnhancerOwner(
+            entry.provider.useClass,
+            entry.module,
+          );
+          register(entry.module.id, entry.provider.useClass as unknown as T);
+        }
+      }
+    };
+
+    collectModuleToken<GuardLike>(
+      MODULE_GUARD,
+      "MODULE_GUARD",
+      "canActivate",
+      false,
+      (modId, item) => appConfig.addModuleGuard(modId, item),
+    );
+    collectModuleToken<PipeLike>(
+      MODULE_PIPE,
+      "MODULE_PIPE",
+      "transform",
+      false,
+      (modId, item) => appConfig.addModulePipe(modId, item),
+    );
+    collectModuleToken<InterceptorLike>(
+      MODULE_INTERCEPTOR,
+      "MODULE_INTERCEPTOR",
+      "intercept",
+      false,
+      (modId, item) => appConfig.addModuleInterceptor(modId, item),
+    );
+    collectModuleToken<ExceptionFilterLike>(
+      MODULE_FILTER,
+      "MODULE_FILTER",
+      "catch",
+      true,
+      (modId, item) => appConfig.addModuleFilter(modId, item),
+    );
   }
 
   private async configureModuleMiddlewares(): Promise<void> {
@@ -1513,6 +1682,9 @@ export class BunestApplication extends BunestApplicationContext {
       return;
     }
     this.moduleMiddlewaresConfigured = true;
+    const overridesVersion = this.container
+      .getApplicationConfig()
+      .getMiddlewareOverridesVersion();
 
     const compiledConfigs: CompiledMiddlewareConfig[] = [];
     const graph = this.container.getGraph();
@@ -1578,32 +1750,74 @@ export class BunestApplication extends BunestApplicationContext {
       );
       await mod.instance.configure(consumer);
 
+      const appConfig = this.container.getApplicationConfig();
       for (const cfg of consumer.getConfigs()) {
+        let effectiveMiddleware: MiddlewareEntry = cfg.middleware;
+        if (appConfig.hasMiddlewareOverride(cfg.middleware)) {
+          const replacement = appConfig.getMiddlewareOverride(cfg.middleware);
+          if (
+            replacement === null ||
+            replacement === false ||
+            replacement === undefined
+          ) {
+            continue;
+          }
+          effectiveMiddleware = replacement as MiddlewareEntry;
+        }
         if (
-          typeof cfg.middleware === "function" &&
-          typeof (cfg.middleware as { prototype?: { use?: unknown } }).prototype
-            ?.use === "function"
+          typeof effectiveMiddleware === "function" &&
+          typeof (effectiveMiddleware as { prototype?: { use?: unknown } })
+            .prototype?.use === "function"
         ) {
           this.container.validateEnhancerClass(
-            cfg.middleware as Type<unknown>,
+            effectiveMiddleware as Type<unknown>,
             mod,
           );
         }
         compiledConfigs.push({
-          middleware: cfg.middleware,
+          middleware: effectiveMiddleware,
           include: cfg.include,
           exclude: cfg.exclude,
         });
       }
     }
 
-    if (compiledConfigs.length > 0) {
+    const prevConfigs = this.registeredModuleMiddlewares;
+    const hadPrevious = prevConfigs.length > 0;
+    if (typeof this.httpAdapter.replaceModuleMiddlewares === "function") {
+      this.httpAdapter.replaceModuleMiddlewares(prevConfigs, compiledConfigs);
+    } else if (compiledConfigs.length > 0) {
       this.httpAdapter.registerModuleMiddlewares(compiledConfigs);
+    }
+    this.registeredModuleMiddlewares = compiledConfigs;
+    this.appliedMiddlewareOverridesVersion = overridesVersion;
+    if (compiledConfigs.length > 0 || hadPrevious) {
       this.routesDirty = true;
     }
   }
 
   private async recompileRoutesIfNeeded(): Promise<void> {
+    if (this.syncMiddlewareOverridesIfNeeded()) {
+      await this.configureModuleMiddlewares();
+    }
+    if (!this.routesDirty) {
+      return;
+    }
+    if (this.recompilePromise) {
+      return this.recompilePromise;
+    }
+    const pending = this.executeRecompileRoutes();
+    this.recompilePromise = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.recompilePromise === pending) {
+        this.recompilePromise = undefined;
+      }
+    }
+  }
+
+  private async executeRecompileRoutes(): Promise<void> {
     if (!this.routesDirty) {
       return;
     }

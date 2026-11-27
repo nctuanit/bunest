@@ -1,5 +1,3 @@
-import { definedOnly } from "../../common/utils/object.util";
-import { computeBackoffDelay } from "../../common/utils/retry.util";
 import { HttpNetworkError } from "../errors/http-network.error";
 import { HttpTimeoutError } from "../errors/http-timeout.error";
 import type { HttpRequest } from "../interfaces/http-request.interface";
@@ -11,6 +9,36 @@ import type { Duration } from "../types/duration.type";
 import { durationOption } from "./duration.util";
 import { toResponseError } from "./response.util";
 import { parseRetryAfter } from "./retry-after.util";
+
+function definedOnly<T extends object>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out as Partial<T>;
+}
+
+function computeBackoffDelay(
+  backoff: ResolvedBackoff,
+  attempt: number,
+  random: () => number = Math.random,
+): number {
+  const exponent = Math.max(0, attempt - 1);
+  const ceiling = Math.min(
+    backoff.maxDelay,
+    backoff.delay * backoff.factor ** exponent,
+  );
+  switch (backoff.jitter) {
+    case "none":
+      return Math.floor(ceiling);
+    case "full":
+      return Math.floor(random() * ceiling);
+    case "equal":
+      return Math.floor(ceiling / 2 + (random() * ceiling) / 2);
+  }
+}
 
 export interface ResolvedBackoff {
   delay: number;

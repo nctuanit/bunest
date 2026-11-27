@@ -345,8 +345,19 @@ export class StandardSchemaValidationPipe<
     value: unknown,
     metadata: ArgumentMetadata = { type: "body" },
   ): Promise<T> {
+    if (!this.toValidate(metadata)) {
+      return value as T;
+    }
+
     const schema = this.schema ?? metadata?.schema;
-    if (!schema || !this.toValidate(metadata)) {
+    if (!schema) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        (value as Record<PropertyKey, unknown>)[BODY_SANITIZED_SYMBOL] !== true
+      ) {
+        this.stripProtoKeys(value);
+      }
       return value as T;
     }
 

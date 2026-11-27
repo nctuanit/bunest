@@ -48,6 +48,12 @@
       "import": "./dist/client/index.js",
       "default": "./dist/client/index.js"
     },
+    "./typed-client": {
+      "types": "./src/client/typed-client-entry.ts",
+      "bun": "./src/client/typed-client-entry.ts",
+      "import": "./dist/client/typed-client-entry.js",
+      "default": "./dist/client/typed-client-entry.js"
+    },
     "./ws": {
       "types": "./src/ws/index.ts",
       "bun": "./src/ws/index.ts",
@@ -65,7 +71,7 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/common/index.ts ./src/http/index.ts ./src/config/index.ts ./src/client/index.ts ./src/ws/index.ts ./src/i18n/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting",
+    "build": "bun build ./src/index.ts ./src/common/index.ts ./src/http/index.ts ./src/config/index.ts ./src/client/index.ts ./src/client/typed-client-entry.ts ./src/ws/index.ts ./src/i18n/index.ts --root ./src --outdir ./dist --target bun --format esm --splitting",
     "test": "bun test",
     "typecheck": "bun check"
   },

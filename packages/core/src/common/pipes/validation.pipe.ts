@@ -66,6 +66,18 @@ export interface ValidationPipeOptions extends ValidatorOptions {
    */
   disableErrorMessages?: boolean;
   /**
+   * When `true`, `createExceptionFactory()` skips flattening `ValidationError[]`
+   * into strings/details and emits the raw `ValidationError[]` array in `message`.
+   * @default false
+   */
+  disableFlattenErrorMessages?: boolean;
+  /**
+   * When `true` and a custom `exceptionFactory` is provided, passes the flattened
+   * `string[]` error messages to `exceptionFactory` instead of raw `ValidationError[]`.
+   * @default false
+   */
+  flatExceptionFactory?: boolean;
+  /**
    * HTTP status code used for validation failure responses.
    * @default HttpStatus.BAD_REQUEST (400)
    */
@@ -106,6 +118,15 @@ export interface ValidationPipeOptions extends ValidatorOptions {
    * Optional custom `class-transformer`-compatible package override.
    */
   transformerPackage?: TransformerPackageLike;
+}
+
+export interface ValidationPipeFlatExceptionOptions
+  extends Omit<
+    ValidationPipeOptions,
+    "flatExceptionFactory" | "exceptionFactory"
+  > {
+  flatExceptionFactory: true;
+  exceptionFactory?: (errors: string[]) => unknown;
 }
 
 const CANDIDATE_NON_DTO_METATYPES: ReadonlyArray<Function | undefined> = [
@@ -309,6 +330,8 @@ function closeSparseArrayGaps(
 export class ValidationPipe implements PipeTransform<unknown, unknown> {
   protected isTransformEnabled: boolean;
   protected isDetailedOutputDisabled: boolean;
+  protected isFlattenErrorMessagesDisabled: boolean;
+  protected isFlatExceptionFactoryEnabled: boolean;
   protected validatorOptions: ValidatorOptions;
   protected transformOptions: ClassTransformOptions;
   protected errorHttpStatusCode: ErrorHttpStatusCode;
@@ -324,15 +347,19 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
   private resolvedValidatorPkg?: ValidatorPackage;
   private resolvedTransformerPkg?: TransformerPackage;
 
+  constructor(options: ValidationPipeFlatExceptionOptions);
+  constructor(options?: ValidationPipeOptions);
   constructor(
     @Optional()
     @Inject(VALIDATION_PIPE_OPTIONS)
-    options: ValidationPipeOptions = {},
+    options: ValidationPipeOptions | ValidationPipeFlatExceptionOptions = {},
   ) {
     const {
       transform = true,
       transformOptions,
       disableErrorMessages = false,
+      disableFlattenErrorMessages = false,
+      flatExceptionFactory = false,
       errorHttpStatusCode = HttpStatus.BAD_REQUEST,
       exceptionFactory,
       expectedType,
@@ -356,6 +383,8 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
     this.isTransformEnabled = transform;
     this.isWhitelistEnabled = Boolean(whitelist);
     this.isDetailedOutputDisabled = disableErrorMessages;
+    this.isFlattenErrorMessagesDisabled = disableFlattenErrorMessages;
+    this.isFlatExceptionFactoryEnabled = flatExceptionFactory;
     this.errorHttpStatusCode = errorHttpStatusCode;
     this.expectedType = expectedType;
     this.validateCustomDecorators = validateCustomDecorators;
@@ -387,7 +416,14 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
       }),
     });
 
-    this.exceptionFactory = exceptionFactory ?? this.createExceptionFactory();
+    this.exceptionFactory = exceptionFactory
+      ? flatExceptionFactory
+        ? (errors: ValidationError[]) =>
+            (exceptionFactory as (errors: string[]) => unknown)(
+              this.flattenValidationErrors(errors),
+            )
+        : (exceptionFactory as (errors: ValidationError[]) => unknown)
+      : this.createExceptionFactory();
   }
 
   protected loadValidator(
@@ -441,6 +477,13 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
         metatype,
       })
     ) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        (value as Record<PropertyKey, unknown>)[BODY_SANITIZED_SYMBOL] !== true
+      ) {
+        this.stripProtoKeys(value);
+      }
       return value;
     }
 
@@ -613,6 +656,25 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
           [],
           this.errorHttpStatusCode,
           true,
+        );
+      }
+
+      if (this.isFlattenErrorMessagesDisabled) {
+        const budget = {
+          remaining: this.maxErrorMessagesLength,
+          isExceeded: false,
+        };
+        const limitedErrors = this.limitValidationErrors(
+          validationErrors,
+          budget,
+        );
+        return createStatusHttpException(
+          {
+            statusCode: this.errorHttpStatusCode,
+            error: getHttpReasonPhrase(this.errorHttpStatusCode),
+            message: limitedErrors,
+          },
+          this.errorHttpStatusCode,
         );
       }
 

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   BODY_SANITIZED_SYMBOL,
   ensureDir,
+  HttpStatus,
   join,
   PayloadTooLargeException,
   resolve,
@@ -340,6 +341,18 @@ function parseValidContentLength(header: string | null): number | undefined {
   return value;
 }
 
+function createPayloadTooLargeException(
+  message: string,
+  limit: number,
+): PayloadTooLargeException {
+  return new PayloadTooLargeException({
+    statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+    error: "Payload Too Large",
+    message,
+    limit,
+  });
+}
+
 function assertTextByteLength(
   text: string,
   maxBodyBytes: number | undefined,
@@ -348,8 +361,9 @@ function assertTextByteLength(
     return;
   }
   if (text.length > maxBodyBytes) {
-    throw new PayloadTooLargeException(
+    throw createPayloadTooLargeException(
       `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+      maxBodyBytes,
     );
   }
   // Each UTF-16 code unit encodes to at most 3 UTF-8 bytes (4 for surrogate pairs, i.e., 2 per code unit).
@@ -358,8 +372,9 @@ function assertTextByteLength(
     text.length * 3 > maxBodyBytes &&
     Buffer.byteLength(text, "utf8") > maxBodyBytes
   ) {
-    throw new PayloadTooLargeException(
+    throw createPayloadTooLargeException(
       `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+      maxBodyBytes,
     );
   }
 }
@@ -380,8 +395,9 @@ export function assertBodySizeHeader(
   }
   const contentLength = Number(contentLengthHeader);
   if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
-    throw new PayloadTooLargeException(
+    throw createPayloadTooLargeException(
       `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+      maxBodyBytes,
     );
   }
 }
@@ -416,8 +432,9 @@ async function readBoundedBytes(
       totalBytes += value.byteLength;
       if (maxBodyBytes !== undefined && totalBytes > maxBodyBytes) {
         await reader.cancel().catch(() => {});
-        throw new PayloadTooLargeException(
+        throw createPayloadTooLargeException(
           `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+          maxBodyBytes,
         );
       }
       chunks.push(value);
@@ -510,19 +527,22 @@ async function parseMultipartInMemory(
         continue;
       }
       if (maxFiles !== undefined && files.length + 1 > maxFiles) {
-        throw new PayloadTooLargeException(
+        throw createPayloadTooLargeException(
           `Uploaded file count exceeds maximum allowed limit of ${maxFiles}`,
+          maxFiles,
         );
       }
       if (maxFileSize !== undefined && entry.size > maxFileSize) {
-        throw new PayloadTooLargeException(
+        throw createPayloadTooLargeException(
           `Uploaded file "${originalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+          maxFileSize,
         );
       }
       const buffer = new Uint8Array(await entry.arrayBuffer());
       if (maxFileSize !== undefined && buffer.byteLength > maxFileSize) {
-        throw new PayloadTooLargeException(
+        throw createPayloadTooLargeException(
           `Uploaded file "${originalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+          maxFileSize,
         );
       }
       files.push({
@@ -798,8 +818,9 @@ async function parseMultipartToDisk(
               parsedHeader.originalname !== ""
             ) {
               if (maxFiles !== undefined && files.length + 1 > maxFiles) {
-                throw new PayloadTooLargeException(
+                throw createPayloadTooLargeException(
                   `Uploaded file count exceeds maximum allowed limit of ${maxFiles}`,
+                  maxFiles,
                 );
               }
               currentOriginalname = parsedHeader.originalname;
@@ -828,8 +849,9 @@ async function parseMultipartToDisk(
             if (boundaryIdx > 0) {
               currentFileBytes += boundaryIdx;
               if (maxFileSize !== undefined && currentFileBytes > maxFileSize) {
-                throw new PayloadTooLargeException(
+                throw createPayloadTooLargeException(
                   `Uploaded file "${currentOriginalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+                  maxFileSize,
                 );
               }
               const chunkToWrite = pending.slice(0, boundaryIdx);
@@ -859,8 +881,9 @@ async function parseMultipartToDisk(
             const flushLen = pending.byteLength - overlapKeep;
             currentFileBytes += flushLen;
             if (maxFileSize !== undefined && currentFileBytes > maxFileSize) {
-              throw new PayloadTooLargeException(
+              throw createPayloadTooLargeException(
                 `Uploaded file "${currentOriginalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
+                maxFileSize,
               );
             }
             const chunkToWrite = pending.slice(0, flushLen);
@@ -880,8 +903,9 @@ async function parseMultipartToDisk(
                 fieldBytes > maxFieldBytes ||
                 totalFieldBytes > maxFieldBytes
               ) {
-                throw new PayloadTooLargeException(
-                  `Multipart form field exceeds maximum allowed size`,
+                throw createPayloadTooLargeException(
+                  `Multipart form field exceeds maximum allowed size of ${maxFieldBytes} bytes`,
+                  maxFieldBytes,
                 );
               }
               fieldChunks.push(pending.slice(0, boundaryIdx));
@@ -920,8 +944,9 @@ async function parseMultipartToDisk(
             fieldBytes += flushLen;
             totalFieldBytes += flushLen;
             if (fieldBytes > maxFieldBytes || totalFieldBytes > maxFieldBytes) {
-              throw new PayloadTooLargeException(
-                `Multipart form field exceeds maximum allowed size`,
+              throw createPayloadTooLargeException(
+                `Multipart form field exceeds maximum allowed size of ${maxFieldBytes} bytes`,
+                maxFieldBytes,
               );
             }
             fieldChunks.push(pending.slice(0, flushLen));
@@ -1043,8 +1068,9 @@ export async function parseRequestBody(
   if (maxBodyBytes !== undefined && contentLengthHeader !== null) {
     const numericCl = Number(contentLengthHeader);
     if (Number.isFinite(numericCl) && numericCl > maxBodyBytes) {
-      throw new PayloadTooLargeException(
+      throw createPayloadTooLargeException(
         `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+        maxBodyBytes,
       );
     }
   }
@@ -1086,8 +1112,9 @@ export async function parseRequestBody(
     // Fast native binary read via `req.bytes()` when rawBody is requested or binary/multipart/non-UTF-8 charset
     const bytes = await req.bytes();
     if (maxBodyBytes !== undefined && bytes.byteLength > maxBodyBytes) {
-      throw new PayloadTooLargeException(
+      throw createPayloadTooLargeException(
         `Request body exceeds maximum allowed size of ${maxBodyBytes} bytes`,
+        maxBodyBytes,
       );
     }
     const rawBody = captureRawBody ? bytes : undefined;

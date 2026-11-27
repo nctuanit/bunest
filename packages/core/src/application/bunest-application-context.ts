@@ -8,6 +8,10 @@ import {
   type InjectionToken,
   type LogLevel,
   type LoggerService,
+  type ProcessErrorHandlersOptions,
+  type ProcessErrorOrigin,
+  type ProcessErrorShutdownOptions,
+  type ShutdownHooksOptions,
   type Type,
 } from "../common/index";
 import { DIContainer } from "../di/di-container";
@@ -159,6 +163,11 @@ export class BunestApplicationContext {
   protected readonly appOptions: BunestApplicationContextOptions;
   private didOverrideGlobalLogger = false;
   private previousGlobalLogger?: LoggerService;
+  private readonly processErrorListeners: Array<{
+    event: ProcessErrorOrigin;
+    handler: (...args: any[]) => void;
+  }> = [];
+  private processErrorShutdownPromise?: Promise<void>;
 
   constructor(
     protected readonly container: DIContainer,
@@ -439,12 +448,120 @@ export class BunestApplicationContext {
       ShutdownSignal.SIGINT,
       ShutdownSignal.SIGTERM,
     ],
+    options?: ShutdownHooksOptions,
   ): this {
-    this.listenToShutdownSignals(signals);
+    this.listenToShutdownSignals(signals, options);
     return this;
   }
 
+  /**
+   * Registers opt-in `unhandledRejection` and `uncaughtException` process listeners
+   * with a re-entrancy-guarded, timeout-bounded graceful `shutdown()` helper.
+   * Listeners are automatically removed on `close()`.
+   */
+  enableProcessErrorHandlers(
+    options: ProcessErrorHandlersOptions = {},
+  ): this {
+    this.cleanupProcessErrorHandlers();
+
+    const triggerShutdown = (
+      origin: ProcessErrorOrigin,
+      shutdownOptions?: ProcessErrorShutdownOptions,
+    ): Promise<void> => {
+      if (this.processErrorShutdownPromise) {
+        return this.processErrorShutdownPromise;
+      }
+
+      const exitCode = shutdownOptions?.exitCode ?? 1;
+      const timeoutMs = shutdownOptions?.timeout ?? 5000;
+
+      this.processErrorShutdownPromise = (async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const closePromise = this.close(origin).catch((closeErr) => {
+            this.logger.error(
+              `Error during graceful shutdown after ${origin}: ${
+                closeErr instanceof Error ? closeErr.message : String(closeErr)
+              }`,
+            );
+          });
+          if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
+            await Promise.race([
+              closePromise,
+              new Promise<void>((resolve) => {
+                timer = setTimeout(resolve, timeoutMs);
+                if (typeof timer.unref === "function") {
+                  timer.unref();
+                }
+              }),
+            ]);
+          } else {
+            await closePromise;
+          }
+        } finally {
+          if (timer !== undefined) {
+            clearTimeout(timer);
+          }
+        }
+        process.exit(exitCode);
+      })();
+
+      return this.processErrorShutdownPromise;
+    };
+
+    const registerHandler = (
+      origin: ProcessErrorOrigin,
+      customHandler:
+        | ProcessErrorHandlersOptions["unhandledRejection"]
+        | ProcessErrorHandlersOptions["uncaughtException"],
+    ): void => {
+      if (customHandler === false) {
+        return;
+      }
+      const handler = (error: unknown) => {
+        const ctx = {
+          origin,
+          shutdown: (shutdownOptions?: ProcessErrorShutdownOptions) =>
+            triggerShutdown(origin, shutdownOptions),
+        };
+        if (typeof customHandler === "function") {
+          void Promise.resolve(customHandler(error, ctx)).catch((handlerErr) => {
+            this.logger.error(
+              `Error in ${origin} handler: ${
+                handlerErr instanceof Error
+                  ? handlerErr.message
+                  : String(handlerErr)
+              }`,
+            );
+          });
+          return;
+        }
+        this.logger.error(
+          `Unhandled ${origin}: ${
+            error instanceof Error ? error.stack ?? error.message : String(error)
+          }`,
+        );
+        void ctx.shutdown();
+      };
+      process.on(origin, handler);
+      this.processErrorListeners.push({ event: origin, handler });
+    };
+
+    registerHandler("unhandledRejection", options.unhandledRejection);
+    registerHandler("uncaughtException", options.uncaughtException);
+
+    return this;
+  }
+
+  protected cleanupProcessErrorHandlers(): void {
+    for (const { event, handler } of this.processErrorListeners) {
+      process.removeListener(event, handler);
+    }
+    this.processErrorListeners.length = 0;
+  }
+
   async close(signal?: string): Promise<void> {
+    this.cleanupProcessErrorHandlers();
     if (this.initPromise) {
       await this.initPromise.catch(() => {});
     }
@@ -521,6 +638,11 @@ export class BunestApplicationContext {
     await this.lifecycle.callApplicationBootstrap(groups);
   }
 
+  protected async callApplicationListenHook(): Promise<void> {
+    const groups = this.container.getSingletonInstancesByModule();
+    await this.lifecycle.callApplicationListen?.(groups);
+  }
+
   protected async callDestroyHook(): Promise<void> {
     const groups = this.container.getSingletonInstancesByModule();
     await this.lifecycle.callShutdown(groups);
@@ -545,10 +667,15 @@ export class BunestApplicationContext {
 
   protected listenToShutdownSignals(
     signals: readonly ShutdownSignalInput[],
+    options?: ShutdownHooksOptions,
   ): void {
-    this.lifecycle.enableShutdownHooks(signals, async (sig) => {
-      await this.close(sig);
-    });
+    this.lifecycle.enableShutdownHooks(
+      signals,
+      async (sig) => {
+        await this.close(sig);
+      },
+      options,
+    );
   }
 
   protected unsubscribeFromProcessSignals(): void {

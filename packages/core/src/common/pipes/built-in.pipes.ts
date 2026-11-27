@@ -20,8 +20,27 @@ export interface ParsePipeOptions {
   optional?: boolean;
 }
 
-export type ParseIntPipeOptions = ParsePipeOptions;
-export type ParseFloatPipeOptions = ParsePipeOptions;
+export interface ParseIntPipeOptions extends ParsePipeOptions {
+  /**
+   * Optional inclusive lower bound for the parsed integer.
+   */
+  min?: number;
+  /**
+   * Optional inclusive upper bound for the parsed integer.
+   */
+  max?: number;
+}
+
+export interface ParseFloatPipeOptions extends ParsePipeOptions {
+  /**
+   * Optional inclusive lower bound for the parsed number.
+   */
+  min?: number;
+  /**
+   * Optional inclusive upper bound for the parsed number.
+   */
+  max?: number;
+}
 export type ParseBoolPipeOptions = ParsePipeOptions;
 export type ParseEnumPipeOptions = ParsePipeOptions;
 export type UUIDVersion =
@@ -61,7 +80,9 @@ const HTTP_STATUS_REASON_PHRASES: Readonly<Record<number, string>> = {
   [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: "Unsupported Media Type",
   [HttpStatus.I_AM_A_TEAPOT]: "I'm a Teapot",
   [HttpStatus.UNPROCESSABLE_ENTITY]: "Unprocessable Entity",
+  [HttpStatus.LOCKED]: "Locked",
   [HttpStatus.FAILED_DEPENDENCY]: "Failed Dependency",
+  [HttpStatus.TOO_EARLY]: "Too Early",
   [HttpStatus.PRECONDITION_REQUIRED]: "Precondition Required",
   [HttpStatus.TOO_MANY_REQUESTS]: "Too Many Requests",
   [HttpStatus.INTERNAL_SERVER_ERROR]: "Internal Server Error",
@@ -150,7 +171,18 @@ export class ParseIntPipe implements PipeTransform<
         "Validation failed (numeric integer string is expected)",
       );
     }
-    return parsed === 0 ? 0 : parsed;
+    const result = parsed === 0 ? 0 : parsed;
+    if (this.options?.min !== undefined && result < this.options.min) {
+      throw this.exceptionFactory(
+        `Validation failed (numeric integer must not be less than ${this.options.min})`,
+      );
+    }
+    if (this.options?.max !== undefined && result > this.options.max) {
+      throw this.exceptionFactory(
+        `Validation failed (numeric integer must not be greater than ${this.options.max})`,
+      );
+    }
+    return result;
   }
 
   protected isNumeric(value: unknown): boolean {
@@ -194,7 +226,18 @@ export class ParseFloatPipe implements PipeTransform<
         "Validation failed (numeric string is expected)",
       );
     }
-    return parsed === 0 ? 0 : parsed;
+    const result = parsed === 0 ? 0 : parsed;
+    if (this.options?.min !== undefined && result < this.options.min) {
+      throw this.exceptionFactory(
+        `Validation failed (numeric value must not be less than ${this.options.min})`,
+      );
+    }
+    if (this.options?.max !== undefined && result > this.options.max) {
+      throw this.exceptionFactory(
+        `Validation failed (numeric value must not be greater than ${this.options.max})`,
+      );
+    }
+    return result;
   }
 
   protected isNumeric(value: unknown): boolean {

@@ -46,9 +46,29 @@ export interface ResponseContext {
   clearCookie(name: string, options?: CookieOptions): this;
 }
 
+/**
+ * Augmentable interface allowing applications or custom HTTP adapters to
+ * override the default return types of `HttpArgumentsHost.getRequest()` and
+ * `HttpArgumentsHost.getResponse()` via TypeScript module augmentation.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface HttpAdapterTypes {}
+
+export type DefaultHttpRequest = HttpAdapterTypes extends {
+  request: infer TRequest;
+}
+  ? TRequest
+  : Request;
+
+export type DefaultHttpResponse = HttpAdapterTypes extends {
+  response: infer TResponse;
+}
+  ? TResponse
+  : ResponseContext;
+
 export interface HttpArgumentsHost {
-  getRequest<T = Request>(): T;
-  getResponse<T = ResponseContext>(): T;
+  getRequest<T = DefaultHttpRequest>(): T;
+  getResponse<T = DefaultHttpResponse>(): T;
   getNext<T = NextFunction>(): T;
 }
 

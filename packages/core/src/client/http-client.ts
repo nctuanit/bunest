@@ -1,6 +1,13 @@
-import type { Type } from "../common/index";
+import {
+  captureAmbientClsHeaders,
+  getAmbientTraceparent,
+} from "../cls/cls-context-carrier";
+import { diagnosticsChannel } from "../common/events/diagnostics-channel";
+import type { StandardSchemaV1 } from "../common/interfaces/standard-schema.interface";
+import type { Type } from "../common/interfaces/type.interface";
 import { HttpNetworkError } from "./errors/http-network.error";
 import { HttpTimeoutError } from "./errors/http-timeout.error";
+import { HttpClientValidationError } from "./errors/http-validation.error";
 import type {
   HttpClientInterceptor,
   HttpClientInterceptorFn,
@@ -45,11 +52,41 @@ import {
   resolveUrl,
 } from "./utils/url.util";
 
+/** Diagnostics channel name published on every outgoing `HttpClient` fetch attempt. */
+export const HTTP_CLIENT_REQUEST_CHANNEL = "bunest:http-client:request";
+
+const httpClientRequestChannel = diagnosticsChannel(
+  HTTP_CLIENT_REQUEST_CHANNEL,
+);
+
+/**
+ * Payload published on `diagnosticsChannel("bunest:http-client:request")`
+ * when at least one subscriber is active.
+ */
+export interface HttpClientRequestDiagnosticEvent {
+  readonly phase: "start" | "end" | "error";
+  readonly method: string;
+  readonly url: string;
+  readonly attempt: number;
+  readonly headers: Headers;
+  readonly status?: number;
+  readonly ok?: boolean;
+  readonly durationMs?: number;
+  readonly error?: unknown;
+  readonly traceparent?: string;
+}
+
 /** Options of the verb methods, which set `method` themselves. */
 type HttpVerbOptions = Omit<HttpRequestOptions, "method">;
 
-/** Call signature shared by `request()` and the verb methods; `data` follows `responseType`. */
+/** Call signature shared by `request()` and the verb methods; `data` follows `responseSchema` or `responseType`. */
 export interface HttpMethodCall<O extends object = HttpRequestOptions> {
+  <T>(
+    url: string,
+    options: Omit<O, "responseSchema"> & {
+      responseSchema: StandardSchemaV1<unknown, T>;
+    },
+  ): Promise<HttpResponse<T>>;
   (
     url: string,
     options: O & {
@@ -74,7 +111,7 @@ export interface HttpMethodCall<O extends object = HttpRequestOptions> {
       responseType: "response";
     },
   ): Promise<HttpResponse<Response>>;
-  /** `T` describes the parsed JSON body; nothing validates it at runtime. */
+  /** `T` describes the parsed JSON body; pass `responseSchema` to validate it at runtime. */
   <T = unknown>(url: string, options?: O): Promise<HttpResponse<T>>;
 }
 
@@ -157,6 +194,23 @@ export class HttpClient {
       options.headers,
     );
 
+    const propagateCls = options.propagateClsHeaders ?? config.propagateClsHeaders;
+    if (propagateCls) {
+      const clsHeaders = captureAmbientClsHeaders(propagateCls);
+      for (const [key, value] of Object.entries(clsHeaders)) {
+        if (!headers.has(key)) {
+          headers.set(key, value);
+        }
+      }
+    }
+
+    if (!headers.has("traceparent")) {
+      const traceparent = getAmbientTraceparent();
+      if (traceparent !== undefined) {
+        headers.set("traceparent", traceparent);
+      }
+    }
+
     let body = options.body;
     if (options.json !== undefined) {
       if (body !== undefined) {
@@ -172,6 +226,21 @@ export class HttpClient {
       throw new TypeError(
         `A ${method} request can't have a body. Send the values in \`query\`.`,
       );
+    }
+
+    const responseSchema = options.responseSchema;
+    if (responseSchema !== undefined) {
+      const std = (responseSchema as Partial<StandardSchemaV1>)["~standard"];
+      if (
+        typeof std !== "object" ||
+        std === null ||
+        std.version !== 1 ||
+        typeof std.validate !== "function"
+      ) {
+        throw new TypeError(
+          'HttpClient `responseSchema` must implement Standard Schema v1 (`"~standard": { version: 1, validate }`).',
+        );
+      }
     }
 
     const responseType = options.responseType ?? "auto";
@@ -304,8 +373,9 @@ export class HttpClient {
         timer?.clear();
       }
 
+      let result: HttpResponse<unknown>;
       try {
-        return await finish(
+        result = await finish(
           response,
           sent,
           responseType,
@@ -328,6 +398,29 @@ export class HttpClient {
       } finally {
         timer?.clear();
       }
+
+      if (responseSchema && result.ok) {
+        const validated = await responseSchema["~standard"].validate(
+          result.data,
+        );
+        if (validated.issues) {
+          throw new HttpClientValidationError({
+            method: sent.method,
+            url: result.url,
+            status: result.status,
+            statusText: result.statusText,
+            headers: result.headers,
+            body: result.data,
+            issues: validated.issues,
+          });
+        }
+        return {
+          ...result,
+          data: validated.value,
+        };
+      }
+
+      return result;
     }
   }
 
@@ -352,20 +445,75 @@ export class HttpClient {
       init.duplex = "half";
     }
 
-    try {
-      return this.baseUrl && !transport.redirect
-        ? await fetchWithinOrigin(fetchImpl, req.url, init, this.baseUrl.origin)
-        : await fetchImpl(req.url, init as RequestInit);
-    } catch (error) {
-      if (req.signal.aborted) {
-        throw error;
-      }
-      throw new HttpNetworkError({
+    const hasSubscribersAtStart = httpClientRequestChannel.hasSubscribers;
+    const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+    const traceparent = hasSubscribersAtStart
+      ? (req.headers.get("traceparent") ?? undefined)
+      : undefined;
+
+    if (hasSubscribersAtStart) {
+      httpClientRequestChannel.publish({
+        phase: "start",
         method: req.method,
         url: req.url.href,
-        cause:
-          (error as { cause?: unknown } | null | undefined)?.cause ?? error,
-      });
+        attempt: req.attempt,
+        headers: req.headers,
+        ...(traceparent !== undefined ? { traceparent } : {}),
+      } satisfies HttpClientRequestDiagnosticEvent);
+    }
+
+    try {
+      const response =
+        this.baseUrl && !transport.redirect
+          ? await fetchWithinOrigin(
+              fetchImpl,
+              req.url,
+              init,
+              this.baseUrl.origin,
+            )
+          : await fetchImpl(req.url, init as RequestInit);
+
+      if (httpClientRequestChannel.hasSubscribers) {
+        const tp = traceparent ?? req.headers.get("traceparent") ?? undefined;
+        httpClientRequestChannel.publish({
+          phase: "end",
+          method: req.method,
+          url: req.url.href,
+          attempt: req.attempt,
+          headers: req.headers,
+          status: response.status,
+          ok: response.ok,
+          durationMs: hasSubscribersAtStart ? performance.now() - startedAt : 0,
+          ...(tp !== undefined ? { traceparent: tp } : {}),
+        } satisfies HttpClientRequestDiagnosticEvent);
+      }
+
+      return response;
+    } catch (error) {
+      const failure = req.signal.aborted
+        ? error
+        : new HttpNetworkError({
+            method: req.method,
+            url: req.url.href,
+            cause:
+              (error as { cause?: unknown } | null | undefined)?.cause ?? error,
+          });
+
+      if (httpClientRequestChannel.hasSubscribers) {
+        const tp = traceparent ?? req.headers.get("traceparent") ?? undefined;
+        httpClientRequestChannel.publish({
+          phase: "error",
+          method: req.method,
+          url: req.url.href,
+          attempt: req.attempt,
+          headers: req.headers,
+          durationMs: hasSubscribersAtStart ? performance.now() - startedAt : 0,
+          error: failure,
+          ...(tp !== undefined ? { traceparent: tp } : {}),
+        } satisfies HttpClientRequestDiagnosticEvent);
+      }
+
+      throw failure;
     }
   }
 

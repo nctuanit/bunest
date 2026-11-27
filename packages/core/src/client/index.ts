@@ -12,7 +12,12 @@ export {
   type HttpClientOptionsFactory,
 } from "./http-client.module-definition";
 export * from "./decorators/index";
-export { HttpClient } from "./http-client";
+export {
+  HTTP_CLIENT_REQUEST_CHANNEL,
+  HttpClient,
+  type HttpClientRequestDiagnosticEvent,
+  type HttpMethodCall,
+} from "./http-client";
 export type {
   HttpBackoffOptions,
   HttpClientModuleOptions,
@@ -33,6 +38,58 @@ export type {
   HttpRequest,
 } from "./interfaces/index";
 export * from "./errors/index";
+export {
+  createRpcClient,
+  createTypedClient,
+  type ControllerHandlerNames,
+  type RouteControllerNames,
+  type RouteDefBody,
+  type RouteDefParams,
+  type RouteDefQuery,
+  type RouteDefResponse,
+  type RouteDefinition,
+  type RouteEntryFor,
+  type RouteManifestEntry,
+  type RouteManifestLike,
+  type RoutePathsForMethod,
+  type RouteRegistryLike,
+  type RpcClient,
+  type RpcClientOptions,
+  type TypedClient,
+  type TypedClientHttpMethod,
+  type TypedClientOptions,
+  type TypedHttpMethodFn,
+  type TypedRequestBaseOptions,
+  type TypedRouteCall,
+  type TypedRouteCallArgs,
+  type TypedRouteCallOptions,
+  type TypedRouteCallOptionsWithSchema,
+} from "./typed-client";
+export {
+  CONTRACT_MARKER,
+  CONTRACT_ROUTE_MARKER,
+  createContractClient,
+  defineContract,
+  defineRoute,
+  isContractDefinition,
+  isContractRoute,
+  type AnyContractRoute,
+  type ContractCallArgs,
+  type ContractCallOptions,
+  type ContractClient,
+  type ContractClientOptions,
+  type ContractDefinition,
+  type ContractHttpMethod,
+  type ContractRoute,
+  type ContractRouteInvoker,
+  type ContractRouteSpec,
+  type ContractTree,
+  type DefineContractOptions,
+  type InferContractRouteBody,
+  type InferContractRouteParams,
+  type InferContractRouteQuery,
+  type InferContractRouteResponse,
+} from "./contract";
 export {
   toHttpException,
   type ToHttpExceptionOptions,

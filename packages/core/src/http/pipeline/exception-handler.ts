@@ -129,6 +129,8 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
   417: "Expectation Failed",
   418: "I'm a teapot",
   422: "Unprocessable Entity",
+  423: "Locked",
+  425: "Too Early",
   429: "Too Many Requests",
   500: "Internal Server Error",
   501: "Not Implemented",
@@ -196,6 +198,121 @@ export function wrapHttpLikeMiddlewareError(err: unknown): unknown {
   return wrapped;
 }
 
+const STANDARD_ERROR_KEYS = new Set(["name", "message", "stack", "cause"]);
+const MAX_ERROR_CAUSE_DEPTH = 10;
+
+function safeSerializeValue(value: unknown, seen = new WeakSet<object>()): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null ||
+    value === undefined
+  ) {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return `${value.toString()}n`;
+  }
+  if (typeof value === "symbol" || typeof value === "function") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, (_k, v: unknown) => {
+      if (typeof v === "bigint") return `${v.toString()}n`;
+      if (typeof v === "object" && v !== null) {
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
+      }
+      return v;
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function extractEnumerableErrorProperties(
+  err: Error,
+): Record<string, unknown> | undefined {
+  const keys = Object.keys(err);
+  let customProps: Record<string, unknown> | undefined;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!;
+    if (STANDARD_ERROR_KEYS.has(key)) continue;
+    customProps ??= {};
+    try {
+      customProps[key] = (err as unknown as Record<string, unknown>)[key];
+    } catch {
+      customProps[key] = "[Unreadable]";
+    }
+  }
+  return customProps;
+}
+
+/**
+ * Formats an `Error` for internal server error logging, appending any enumerable
+ * custom properties (e.g. `code`, `detail`) and walking the ES2022 `error.cause`
+ * chain with cycle detection and depth bounding.
+ */
+export function formatErrorForInternalLog(error: Error): string | undefined {
+  const baseStack = error.stack;
+  const rootProps = extractEnumerableErrorProperties(error);
+  const rootCause = (error as { cause?: unknown }).cause;
+
+  if (rootProps === undefined && rootCause === undefined) {
+    return baseStack;
+  }
+
+  const parts: string[] = [];
+  if (baseStack) {
+    parts.push(baseStack);
+  } else {
+    parts.push(`${error.name || "Error"}: ${error.message}`);
+  }
+
+  if (rootProps !== undefined) {
+    parts.push(`  [properties]: ${safeSerializeValue(rootProps)}`);
+  }
+
+  if (rootCause !== undefined) {
+    const seen = new Set<object>([error]);
+    let current: unknown = rootCause;
+    let depth = 0;
+
+    while (current !== undefined) {
+      if (depth >= MAX_ERROR_CAUSE_DEPTH) {
+        parts.push("Caused by: [Max cause depth reached]");
+        break;
+      }
+      depth += 1;
+
+      if (typeof current === "object" && current !== null) {
+        if (seen.has(current)) {
+          parts.push("Caused by: [Circular]");
+          break;
+        }
+        seen.add(current);
+      }
+
+      if (current instanceof Error) {
+        const causeHeader =
+          current.stack || `${current.name || "Error"}: ${current.message}`;
+        parts.push(`Caused by: ${causeHeader}`);
+        const causeProps = extractEnumerableErrorProperties(current);
+        if (causeProps !== undefined) {
+          parts.push(`  [properties]: ${safeSerializeValue(causeProps)}`);
+        }
+        current = (current as { cause?: unknown }).cause;
+      } else {
+        parts.push(`Caused by: ${safeSerializeValue(current)}`);
+        break;
+      }
+    }
+  }
+
+  return parts.join("\n");
+}
+
 export class DefaultExceptionFilter implements ExceptionFilter {
   private readonly development?: boolean | (() => boolean | undefined);
   private readonly logger: LoggerService | (() => LoggerService);
@@ -236,9 +353,15 @@ export class DefaultExceptionFilter implements ExceptionFilter {
         const rootCause =
           (exception as { cause?: unknown }).cause ?? exception;
         if (rootCause instanceof Error) {
-          activeLogger.error(rootCause.message, rootCause.stack);
+          activeLogger.error(
+            rootCause.message,
+            formatErrorForInternalLog(rootCause),
+          );
         } else {
-          activeLogger.error(exception.message, exception.stack);
+          activeLogger.error(
+            exception.message,
+            formatErrorForInternalLog(exception),
+          );
         }
       }
       const status = exception.getStatus();
@@ -283,7 +406,10 @@ export class DefaultExceptionFilter implements ExceptionFilter {
     if (!(exception instanceof IntrinsicException)) {
       const activeLogger = this.resolveLogger();
       if (exception instanceof Error) {
-        activeLogger.error(exception.message, exception.stack);
+        activeLogger.error(
+          exception.message,
+          formatErrorForInternalLog(exception),
+        );
       } else {
         activeLogger.error("Unhandled non-Error exception", exception);
       }

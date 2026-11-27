@@ -1483,6 +1483,24 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     return this;
   }
 
+  replaceModuleMiddlewares(
+    previous: readonly CompiledMiddlewareConfig[],
+    next: readonly CompiledMiddlewareConfig[],
+  ): this {
+    if (previous.length > 0) {
+      const prevSet = new Set(previous);
+      for (let i = this.moduleMiddlewares.length - 1; i >= 0; i--) {
+        if (prevSet.has(this.moduleMiddlewares[i]!)) {
+          this.moduleMiddlewares.splice(i, 1);
+        }
+      }
+    }
+    if (next.length > 0) {
+      this.moduleMiddlewares.push(...next);
+    }
+    return this;
+  }
+
   useGlobalGuards(...guards: GuardLike[]): this {
     this.globalGuards.push(...guards);
     return this;
