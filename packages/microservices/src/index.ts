@@ -80,6 +80,7 @@ export {
 // Exceptions & Exception Filters
 export {
   BaseRpcExceptionFilter,
+  CircuitOpenError,
   GrpcAbortedException,
   GrpcAlreadyExistsException,
   GrpcCancelledException,
@@ -122,6 +123,16 @@ export {
   NatsRecordSerializer,
   RmqRecordSerializer,
 } from "./serializers";
+export {
+  CLOUD_EVENTS_SPEC_VERSION,
+  CloudEventsDeserializer,
+  CloudEventsSerializer,
+  isCloudEvent,
+  type CloudEvent,
+  type CloudEventIncomingPacket,
+  type CloudEventsDeserializerOptions,
+  type CloudEventsSerializerOptions,
+} from "./serializers/cloudevents.serializer";
 
 // Protocol Helpers
 export {
@@ -153,8 +164,12 @@ export {
   normalizePattern,
   type AsyncMicroserviceOptions,
   type AsyncOptions,
+  type CircuitBreakerOptions,
+  type CircuitBreakerState,
   type ClientGrpc,
   type ClientOptions,
+  type ClientResilienceOptions,
+  type ClientRetryOptions,
   type CustomStrategy,
   type GrpcCodec,
   type GrpcMetadataLike,
@@ -175,6 +190,8 @@ export {
   type KafkaProducerRecord,
   type KafkaTransportOptions,
   type MessageHandler,
+  type MicroserviceDeadLetterContext,
+  type MicroserviceDeadLetterHandler,
   type MicroserviceOptions,
   type MqttClientLike,
   type MqttMessageListener,
@@ -206,11 +223,13 @@ export {
   type RpcRequestEnvelope,
   type RpcResponseEnvelope,
   type SendOptions,
+  type ServerResilienceOptions,
   type TcpClientOptions,
   type TcpOptions,
   type TcpTransportOptions,
   type TransportConfig,
   type TransportId,
+  type WireFormat,
 } from "./interfaces";
 
 // Client Module & Proxy Option Interfaces
@@ -254,10 +273,19 @@ export {
   type CustomTransportStrategy,
 } from "./server";
 export {
+  ClientCircuitBreaker,
   ClientProxy,
+  type ClientProxyConstructorOptions,
   type ClientStatus,
   type ClientStatusListener,
+  type EmitOptions,
 } from "./client-proxy";
+export {
+  RPC_CLIENT_CHANNEL,
+  RPC_SERVER_CHANNEL,
+  type ClsPropagationConfig,
+  type RpcDiagnosticEvent,
+} from "./rpc-diagnostics";
 export {
   ClientProxyFactory,
   type IClientProxyFactory,

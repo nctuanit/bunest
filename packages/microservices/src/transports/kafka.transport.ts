@@ -318,21 +318,30 @@ export class KafkaServer extends MicroserviceTransportServer {
   private readonly client?: KafkaClientLike;
   private producer?: KafkaProducerLike;
   private consumer?: KafkaConsumerLike;
+  private readonly consumers = new Map<string, KafkaConsumerLike>();
+  private readonly warnedGroupIds = new Set<string>();
   private readonly groupId: string;
   private readonly fromBeginning: boolean;
   private readonly autoCommit: boolean;
+  private readonly topicConsumers: boolean;
 
   private readonly regexMessageHandlers: RegexKafkaHandler[] = [];
   private readonly regexEventHandlers: RegexKafkaHandler[] = [];
 
   constructor(options: KafkaTransportOptions = {}) {
     super();
+    this.configureServerOptions(options);
     this.client = options.client;
     this.producer = options.producer;
     this.consumer = options.consumer;
     this.groupId = options.groupId ?? "bunest-kafka-server";
     this.fromBeginning = options.fromBeginning ?? false;
     this.autoCommit = options.autoCommit ?? true;
+    this.topicConsumers = options.topicConsumers ?? false;
+  }
+
+  override get server(): KafkaConsumerLike | KafkaClientLike | undefined {
+    return this.consumer ?? this.client;
   }
 
   override addMessageHandler(
@@ -381,21 +390,8 @@ export class KafkaServer extends MicroserviceTransportServer {
       return;
     }
 
-    if (!this.consumer) {
-      if (!this.client) {
-        throw new Error(
-          "KafkaServer requires either `options.consumer` or `options.client`.",
-        );
-      }
-      this.consumer = this.client.consumer({ groupId: this.groupId });
-    }
     if (!this.producer && this.client) {
       this.producer = this.client.producer();
-    }
-
-    await this.consumer.connect();
-    if (this.producer) {
-      await this.producer.connect();
     }
 
     // Collect distinct string topics and RegExp topics to subscribe
@@ -422,25 +418,83 @@ export class KafkaServer extends MicroserviceTransportServer {
       }
     }
 
-    for (const topic of stringTopics) {
-      await this.consumer.subscribe({
-        topic,
-        fromBeginning: this.fromBeginning,
-      });
-    }
-    for (const regex of regexTopics) {
-      await this.consumer.subscribe({
-        topic: regex,
-        fromBeginning: this.fromBeginning,
-      });
-    }
+    if (this.topicConsumers) {
+      if (!this.client) {
+        throw new Error(
+          "KafkaServer with `topicConsumers: true` requires `options.client`.",
+        );
+      }
+      if (this.producer) {
+        await this.producer.connect();
+      }
 
-    await this.consumer.run({
-      autoCommit: this.autoCommit,
-      eachMessage: async (payload) => {
-        await this.handleMessage(payload);
-      },
-    });
+      const allTopics: Array<string | RegExp> = [
+        ...stringTopics,
+        ...regexTopics,
+      ];
+      for (const topic of allTopics) {
+        const topicKey = String(topic);
+        const composedGroupId = `${this.groupId}-${topicKey}`;
+        if (
+          (/\s/.test(composedGroupId) || composedGroupId.length > 255) &&
+          !this.warnedGroupIds.has(composedGroupId)
+        ) {
+          this.warnedGroupIds.add(composedGroupId);
+          this.logger.warn(
+            `KafkaServer topicConsumers composed groupId "${composedGroupId}" contains whitespace or exceeds 255 characters.`,
+          );
+        }
+        const topicConsumer = this.client.consumer({
+          groupId: composedGroupId,
+        });
+        this.consumers.set(topicKey, topicConsumer);
+        await topicConsumer.connect();
+        await topicConsumer.subscribe({
+          topic,
+          fromBeginning: this.fromBeginning,
+        });
+        await topicConsumer.run({
+          autoCommit: this.autoCommit,
+          eachMessage: async (payload) => {
+            await this.handleMessage(payload, topicConsumer);
+          },
+        });
+      }
+    } else {
+      if (!this.consumer) {
+        if (!this.client) {
+          throw new Error(
+            "KafkaServer requires either `options.consumer` or `options.client`.",
+          );
+        }
+        this.consumer = this.client.consumer({ groupId: this.groupId });
+      }
+
+      await this.consumer.connect();
+      if (this.producer) {
+        await this.producer.connect();
+      }
+
+      for (const topic of stringTopics) {
+        await this.consumer.subscribe({
+          topic,
+          fromBeginning: this.fromBeginning,
+        });
+      }
+      for (const regex of regexTopics) {
+        await this.consumer.subscribe({
+          topic: regex,
+          fromBeginning: this.fromBeginning,
+        });
+      }
+
+      await this.consumer.run({
+        autoCommit: this.autoCommit,
+        eachMessage: async (payload) => {
+          await this.handleMessage(payload, this.consumer);
+        },
+      });
+    }
 
     this.listening = true;
     this.emitStatus(KafkaStatus.CONNECTED);
@@ -451,7 +505,16 @@ export class KafkaServer extends MicroserviceTransportServer {
     this.listening = false;
     this.emitStatus(KafkaStatus.DISCONNECTED);
     try {
-      if (this.consumer) {
+      if (this.consumers.size > 0) {
+        const activeConsumers = [...this.consumers.values()];
+        this.consumers.clear();
+        await Promise.all(
+          activeConsumers.map(async (c) => {
+            await c.stop?.();
+            await c.disconnect();
+          }),
+        );
+      } else if (this.consumer) {
         await this.consumer.stop?.();
         await this.consumer.disconnect();
       }
@@ -497,7 +560,10 @@ export class KafkaServer extends MicroserviceTransportServer {
     return matches;
   }
 
-  private async handleMessage(payload: KafkaEachMessagePayload): Promise<void> {
+  private async handleMessage(
+    payload: KafkaEachMessagePayload,
+    activeConsumer: KafkaConsumerLike | undefined = this.consumer,
+  ): Promise<void> {
     const { topic, partition, message, heartbeat } = payload;
     const rawHeaders = message.headers ?? {};
     const headers = normalizeKafkaHeaders(rawHeaders);
@@ -514,14 +580,14 @@ export class KafkaServer extends MicroserviceTransportServer {
         : undefined;
 
     const commitOffset = async () => {
-      if (typeof this.consumer?.commitOffsets === "function") {
+      if (typeof activeConsumer?.commitOffsets === "function") {
         let nextOffset = offset;
         try {
           nextOffset = (BigInt(offset) + 1n).toString();
         } catch {
           nextOffset = offset;
         }
-        await this.consumer.commitOffsets([
+        await activeConsumer.commitOffsets([
           { topic, partition, offset: nextOffset },
         ]);
       }
@@ -540,7 +606,7 @@ export class KafkaServer extends MicroserviceTransportServer {
         rawMessage: message,
         heartbeat,
         commitOffset,
-        consumer: this.consumer,
+        consumer: activeConsumer,
         producer: this.producer,
       });
 
@@ -554,16 +620,22 @@ export class KafkaServer extends MicroserviceTransportServer {
         };
       } else {
         try {
-          const response = await this.runWithProcessingHooks(ctx, async () => {
-            if (this.preRequestHook) {
-              await this.preRequestHook({
-                pattern: matched.pattern,
-                data,
-                ctx,
-              });
-            }
-            return matched.handler(data, ctx);
-          });
+          const response = await this.executeWithServerContext(
+            "request",
+            matched.pattern,
+            ctx,
+            () =>
+              this.runWithProcessingHooks(ctx, async () => {
+                if (this.preRequestHook) {
+                  await this.preRequestHook({
+                    pattern: matched.pattern,
+                    data,
+                    ctx,
+                  });
+                }
+                return matched.handler(data, ctx);
+              }),
+          );
           outcome = { response };
         } catch (err) {
           if (err instanceof KafkaRetriableException) {
@@ -626,14 +698,17 @@ export class KafkaServer extends MicroserviceTransportServer {
         rawMessage: message,
         heartbeat,
         commitOffset,
-        consumer: this.consumer,
+        consumer: activeConsumer,
         producer: this.producer,
       });
       try {
-        await this.runWithProcessingHooks(ctx, async () =>
-          match.handler(data, ctx),
+        await this.executeWithServerContext("event", match.pattern, ctx, () =>
+          this.runWithProcessingHooks(ctx, async () =>
+            match.handler(data, ctx),
+          ),
         );
       } catch (err) {
+        await this.invokeDeadLetterHandlerSafe(match.pattern, data, ctx, err);
         if (err instanceof KafkaRetriableException) {
           throw err;
         }
@@ -687,7 +762,14 @@ export class KafkaClientProxy extends ClientProxy {
   private seq = 0;
 
   constructor(options: KafkaTransportOptions = {}) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.client = options.client;
     this._producer = options.producer;
     this._consumer = options.consumer;
@@ -785,11 +867,13 @@ export class KafkaClientProxy extends ClientProxy {
 
   async close(): Promise<void> {
     this.emitStatus("disconnected");
+    const closeErr = new Error("KafkaClientProxy closed.");
     for (const [id, entry] of this.pending.entries()) {
       clearTimeout(entry.timer);
       this.pending.delete(id);
-      entry.reject(new Error("KafkaClientProxy closed."));
+      entry.reject(closeErr);
     }
+    this.cancelActiveRequests(closeErr);
     this.pendingReplySubscribes.clear();
     this.subscribedReplyTopics.clear();
     try {
@@ -825,51 +909,55 @@ export class KafkaClientProxy extends ClientProxy {
     record: KafkaMessageRecord<TReq>,
     options?: SendOptions,
   ): Promise<TRes> {
-    if (this.preRequestHook) {
-      await this.preRequestHook({
-        pattern: topic,
-        data: record.value,
-        transport: this.transport,
-      });
-    }
-    const timeoutMs = Math.max(
-      1,
-      Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
-    );
-    const retries = Math.max(0, Math.floor(options?.retries ?? 0));
-    const retryDelayMs = Math.max(0, Math.floor(options?.retryDelayMs ?? 50));
+    return await this.trackInFlightRequest(topic, async () => {
+      if (this.preRequestHook) {
+        await this.preRequestHook({
+          pattern: topic,
+          data: record.value,
+          transport: this.transport,
+        });
+      }
+      const timeoutMs = Math.max(
+        1,
+        Math.floor(
+          options?.timeoutMs ?? this.requestTimeout ?? this.defaultTimeoutMs,
+        ),
+      );
+      const retries = Math.max(0, Math.floor(options?.retries ?? 0));
+      const retryDelayMs = Math.max(0, Math.floor(options?.retryDelayMs ?? 50));
 
-    let lastError: unknown;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        return await this.sendInternal<TRes, TReq>(
-          topic,
-          record.value,
-          timeoutMs,
-          record.key,
-          record.headers,
-          record.partition,
-        );
-      } catch (err) {
-        lastError = err;
-        if (
-          err instanceof RpcException &&
-          (err as { readonly isRetryable?: boolean }).isRetryable !== true
-        ) {
-          throw err;
-        }
-        if (attempt < retries && retryDelayMs > 0) {
-          await new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, retryDelayMs);
-            if (typeof (t as { unref?: () => void }).unref === "function") {
-              (t as { unref: () => void }).unref();
-            }
-          });
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          return await this.sendInternal<TRes, TReq>(
+            topic,
+            record.value,
+            timeoutMs,
+            record.key,
+            record.headers,
+            record.partition,
+          );
+        } catch (err) {
+          lastError = err;
+          if (
+            err instanceof RpcException &&
+            (err as { readonly isRetryable?: boolean }).isRetryable !== true
+          ) {
+            throw err;
+          }
+          if (attempt < retries && retryDelayMs > 0) {
+            await new Promise<void>((resolve) => {
+              const t = setTimeout(resolve, retryDelayMs);
+              if (typeof (t as { unref?: () => void }).unref === "function") {
+                (t as { unref: () => void }).unref();
+              }
+            });
+          }
         }
       }
-    }
 
-    throw lastError;
+      throw lastError;
+    });
   }
 
   /**
@@ -917,13 +1005,17 @@ export class KafkaClientProxy extends ClientProxy {
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
+    const kafkaHeaders = metadata
+      ? (toPacketMetadata(Object.entries(metadata)) as KafkaHeaderMap | undefined)
+      : undefined;
     return await this.sendInternal<TRes, TReq>(
       pattern,
       data,
       timeoutMs,
       undefined,
-      undefined,
+      kafkaHeaders,
       undefined,
       signal,
     );
@@ -932,11 +1024,20 @@ export class KafkaClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     await this.ensureProducerConnected();
+    const kafkaHeaders = metadata
+      ? (toPacketMetadata(Object.entries(metadata)) as KafkaHeaderMap | undefined)
+      : undefined;
     await this._producer!.send({
       topic: pattern,
-      messages: [{ value: serializeKafkaJson(data) }],
+      messages: [
+        {
+          value: serializeKafkaJson(data),
+          ...(kafkaHeaders !== undefined ? { headers: kafkaHeaders } : {}),
+        },
+      ],
     });
   }
 

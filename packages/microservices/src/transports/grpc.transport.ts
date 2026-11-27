@@ -467,10 +467,11 @@ export class GrpcServer extends MicroserviceTransportServer {
   private readonly maxMessageBytes: number;
 
   private readonly grpcRoutes = new Map<string, GrpcRouteEntry>();
-  private server: ReturnType<typeof Bun.serve> | undefined;
+  private _server: ReturnType<typeof Bun.serve> | undefined;
 
   constructor(options: GrpcTransportOptions = {}) {
     super();
+    this.configureServerOptions(options);
     const resolved = resolveHostAndPort(options);
     this.host = resolved.host;
     this.requestedPort = resolved.port;
@@ -485,24 +486,28 @@ export class GrpcServer extends MicroserviceTransportServer {
       options.maxMessageBytes ?? DEFAULT_MAX_GRPC_MESSAGE_BYTES;
   }
 
+  override get server(): ReturnType<typeof Bun.serve> | undefined {
+    return this._server;
+  }
+
   get port(): number | undefined {
-    return this.server?.port;
+    return this._server?.port;
   }
 
   get hostname(): string | undefined {
-    return this.server?.hostname;
+    return this._server?.hostname;
   }
 
   get url(): string | undefined {
-    if (!this.server) return undefined;
-    return `http://${this.server.hostname}:${this.server.port}`;
+    if (!this._server) return undefined;
+    return `http://${this._server.hostname}:${this._server.port}`;
   }
 
   get address(): { readonly hostname: string; readonly port: number } | null {
-    if (!this.server || this.server.port === undefined) return null;
+    if (!this._server || this._server.port === undefined) return null;
     return {
-      hostname: this.server.hostname ?? this.host,
-      port: this.server.port,
+      hostname: this._server.hostname ?? this.host,
+      port: this._server.port,
     };
   }
 
@@ -598,11 +603,11 @@ export class GrpcServer extends MicroserviceTransportServer {
   async listen(
     callback?: (...optionalParams: unknown[]) => any,
   ): Promise<void> {
-    if (this.listening && this.server) {
+    if (this.listening && this._server) {
       callback?.();
       return;
     }
-    this.server = Bun.serve({
+    this._server = Bun.serve({
       hostname: this.host,
       port: this.requestedPort,
       fetch: (req) => this.handleHttpRequest(req),
@@ -615,13 +620,13 @@ export class GrpcServer extends MicroserviceTransportServer {
   async close(): Promise<void> {
     this.listening = false;
     this.emitStatus("disconnected");
-    if (this.server) {
+    if (this._server) {
       try {
-        await this.server.stop(true);
+        await this._server.stop(true);
       } catch {
         // Ignore already-stopped server
       }
-      this.server = undefined;
+      this._server = undefined;
     }
   }
 
@@ -765,23 +770,31 @@ export class GrpcServer extends MicroserviceTransportServer {
     });
 
     try {
-      const result = await this.runWithProcessingHooks(grpcCtx, () =>
-        this.invokeWithDeadline(
-          async () => {
-            if (this.preRequestHook) {
-              await this.preRequestHook({
-                pattern: pathname,
-                data: requestData,
-                ctx: grpcCtx,
-              });
-            }
-            return await Promise.resolve(route.handler(requestData, grpcCtx));
-          },
-          abortController.signal,
-          () => timedOut,
-          pathname,
-          timeoutMs,
-        ),
+      const result = await this.executeWithServerContext(
+        "request",
+        pathname,
+        grpcCtx,
+        () =>
+          this.runWithProcessingHooks(grpcCtx, () =>
+            this.invokeWithDeadline(
+              async () => {
+                if (this.preRequestHook) {
+                  await this.preRequestHook({
+                    pattern: pathname,
+                    data: requestData,
+                    ctx: grpcCtx,
+                  });
+                }
+                return await Promise.resolve(
+                  route.handler(requestData, grpcCtx),
+                );
+              },
+              abortController.signal,
+              () => timedOut,
+              pathname,
+              timeoutMs,
+            ),
+          ),
       );
 
       if (route.streaming || isAsyncIterable(result)) {
@@ -1026,7 +1039,14 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
   private closed = false;
 
   constructor(options: GrpcTransportOptions = {}) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     const resolved = resolveHostAndPort(options);
     this.baseUrl =
       resolved.baseUrl ?? `http://${resolved.host}:${resolved.port}`;
@@ -1062,12 +1082,15 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
   async close(): Promise<void> {
     this.closed = true;
     this.emitStatus("disconnected");
+    const cancelErr = new GrpcException(
+      GrpcStatus.CANCELLED,
+      "GrpcClientProxy closed",
+    );
     for (const controller of [...this.activeControllers]) {
-      controller.abort(
-        new GrpcException(GrpcStatus.CANCELLED, "GrpcClientProxy closed"),
-      );
+      controller.abort(cancelErr);
     }
     this.activeControllers.clear();
+    this.cancelActiveRequests(cancelErr);
   }
 
   private buildMethodPath(service: string, method: string): string {
@@ -1699,14 +1722,26 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
     pattern: string,
     data: TReq,
     timeoutMs: number,
+    _signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     const resolved = this.parsePatternToServiceMethod(pattern);
+    let callMetadata: Record<string, string> | undefined;
+    if (metadata) {
+      for (const [k, v] of Object.entries(metadata)) {
+        if (typeof v === "string") {
+          callMetadata ??= {};
+          callMetadata[k] = v;
+        }
+      }
+    }
     const res = await this.callWithMetadata<TRes, TReq>(
       resolved.service,
       resolved.method,
       data,
       {
         timeoutMs,
+        ...(callMetadata !== undefined ? { metadata: callMetadata } : {}),
         _skipPreRequestHook: true,
       },
     );
@@ -1716,8 +1751,15 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.sendOnce(pattern, data, this.defaultTimeoutMs);
+    await this.sendOnce(
+      pattern,
+      data,
+      this.defaultTimeoutMs,
+      undefined,
+      metadata,
+    );
   }
 
   private parsePatternToServiceMethod(pattern: string): {

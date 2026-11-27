@@ -1,4 +1,6 @@
 import type {
+  ClsContextPropagatorOptions,
+  ClsServiceLike,
   InjectionToken,
   PipeLike,
   StandardSchemaV1,
@@ -179,6 +181,104 @@ export interface MessageHandler<
   extras?: Record<string, any>;
 }
 
+export interface ClientRetryOptions {
+  /**
+   * Maximum total number of attempts including the initial call
+   * (e.g. `attempts: 3` runs up to 1 initial + 2 retries).
+   */
+  readonly attempts: number;
+  /**
+   * Initial exponential backoff delay in milliseconds before the first retry.
+   * @default 50
+   */
+  readonly backoffMs?: number;
+  /**
+   * Maximum cap on exponential backoff delay in milliseconds.
+   * @default 10000
+   */
+  readonly maxBackoffMs?: number;
+  /**
+   * Apply randomized jitter (`[0.5x, 1.0x]` of the exponential ceiling) to
+   * prevent synchronized retry storms.
+   * @default true
+   */
+  readonly jitter?: boolean;
+  /**
+   * Optional predicate determining whether an error is eligible for retry.
+   * Defaults to retrying transient transport/timeout errors while immediately
+   * propagating non-retryable `RpcException` errors.
+   */
+  readonly retryOn?: (err: unknown) => boolean;
+}
+
+export type CircuitBreakerState = "closed" | "open" | "half-open";
+
+export interface CircuitBreakerOptions {
+  /** Number of consecutive failures required to open the circuit. */
+  readonly failureThreshold: number;
+  /** Time in milliseconds the circuit stays open before probing in half-open state. */
+  readonly resetTimeoutMs: number;
+  /**
+   * Maximum concurrent/probe calls allowed while half-open before closing.
+   * @default 1
+   */
+  readonly halfOpenMaxCalls?: number;
+  /**
+   * Optional predicate determining whether a thrown error counts as a circuit failure.
+   * Defaults to counting transient/transport/server errors and ignoring non-retryable
+   * application `RpcException` errors.
+   */
+  readonly isFailure?: (err: unknown) => boolean;
+  /** Optional listener invoked whenever the circuit transitions between states. */
+  readonly onStateChange?: (
+    from: CircuitBreakerState,
+    to: CircuitBreakerState,
+  ) => void;
+}
+
+export interface MicroserviceDeadLetterContext {
+  readonly pattern: string;
+  readonly data: unknown;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly error: unknown;
+  readonly transport: Transport;
+  readonly timestamp: string;
+}
+
+export type MicroserviceDeadLetterHandler = (
+  context: MicroserviceDeadLetterContext,
+) => Promise<void> | void;
+
+export interface ClientResilienceOptions {
+  readonly retry?: ClientRetryOptions;
+  readonly circuitBreaker?: CircuitBreakerOptions;
+  /**
+   * Controls automatic outbound CLS + W3C `traceparent` metadata propagation.
+   * @default true
+   */
+  readonly clsPropagation?:
+    | boolean
+    | readonly string[]
+    | ClsContextPropagatorOptions;
+  /** Optional explicit `ClsService` instance used to capture outbound CLS context. */
+  readonly cls?: ClsServiceLike;
+}
+
+export interface ServerResilienceOptions {
+  /** Poison-message dead-letter handler invoked when an `@EventPattern()` handler throws. */
+  readonly deadLetterHandler?: MicroserviceDeadLetterHandler;
+  /**
+   * Controls automatic inbound CLS context restoration from packet metadata/headers.
+   * @default true
+   */
+  readonly clsPropagation?:
+    | boolean
+    | readonly string[]
+    | ClsContextPropagatorOptions;
+  /** Optional explicit `ClsService` instance used to restore inbound CLS context. */
+  readonly cls?: ClsServiceLike;
+}
+
 export interface SendOptions {
   /**
    * Per-attempt timeout in milliseconds.
@@ -198,6 +298,16 @@ export interface SendOptions {
    * @default 50
    */
   readonly retryDelayMs?: number;
+
+  /**
+   * Structured exponential backoff + jitter retry policy overriding client defaults.
+   */
+  readonly retry?: ClientRetryOptions;
+
+  /**
+   * Optional per-call packet metadata merged with auto-propagated CLS/traceparent headers.
+   */
+  readonly metadata?: Record<string, unknown>;
 }
 
 export interface PatternHandlerMetadata {
@@ -236,7 +346,10 @@ export interface CustomStrategy {
   options?: Record<string, any>;
 }
 
-export interface TcpTransportOptions {
+export type WireFormat = "bunest" | "raw-json" | "cloudevents";
+
+export interface TcpTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly host?: string;
   readonly port?: number;
   readonly maxFrameBytes?: number;
@@ -247,6 +360,7 @@ export interface TcpTransportOptions {
   readonly retryDelay?: number;
   readonly serializer?: Serializer;
   readonly deserializer?: Deserializer;
+  readonly wireFormat?: WireFormat;
   readonly tlsOptions?: Record<string, unknown>;
   readonly socketClass?: Type<any>;
   readonly maxBufferSize?: number;
@@ -257,6 +371,8 @@ export interface TcpTransportOptions {
   readonly maxConcurrentMessages?: number;
   readonly gracefulShutdown?: boolean;
   readonly gracePeriod?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
 }
 
 export interface RedisTransportClientLike {
@@ -266,14 +382,15 @@ export interface RedisTransportClientLike {
   ): Promise<number | void> | number | void;
   subscribe(
     channel: string,
-    listener: (message: string, channel: string) => void,
+    listener: (message: string | Uint8Array, channel: string) => void,
   ): Promise<void> | void;
   unsubscribe?(channel: string): Promise<void> | void;
   quit?(): Promise<unknown>;
   close?(): Promise<void> | void;
 }
 
-export interface RedisTransportOptions {
+export interface RedisTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly pubClient?: RedisTransportClientLike;
   readonly subClient?: RedisTransportClientLike;
   /** Native Bun `Bun.RedisClient` URL (e.g. `"redis://localhost:6379"`). Used automatically when `pubClient` is omitted. */
@@ -281,6 +398,9 @@ export interface RedisTransportOptions {
   readonly channelPrefix?: string;
   readonly clientId?: string;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
+  readonly returnBuffers?: boolean;
   readonly host?: string;
   readonly port?: number;
   readonly retryAttempts?: number;
@@ -291,6 +411,7 @@ export interface RedisTransportOptions {
   readonly gracePeriod?: number;
   readonly serializer?: Serializer;
   readonly deserializer?: Deserializer;
+  readonly wireFormat?: WireFormat;
 }
 
 export interface NatsMessageLike {
@@ -327,15 +448,19 @@ export interface NatsTransportClientLike {
   close?(): Promise<void> | void;
 }
 
-export interface NatsTransportOptions {
+export interface NatsTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly client: NatsTransportClientLike;
   readonly subjectPrefix?: string;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
   readonly servers?: string[] | string;
   readonly queue?: string;
   readonly headers?: Record<string, string>;
   readonly serializer?: Serializer;
   readonly deserializer?: Deserializer;
+  readonly wireFormat?: WireFormat;
   readonly gracefulShutdown?: boolean;
   readonly gracePeriod?: number;
 }
@@ -377,7 +502,8 @@ export interface RabbitMqChannelLike {
   close?(): Promise<void> | void;
 }
 
-export interface RabbitMqTransportOptions {
+export interface RabbitMqTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly channel: RabbitMqChannelLike;
   readonly queue: string;
   readonly replyQueue?: string;
@@ -391,6 +517,7 @@ export interface RabbitMqTransportOptions {
   readonly consumerTag?: string;
   readonly serializer?: Serializer;
   readonly deserializer?: Deserializer;
+  readonly wireFormat?: WireFormat;
   readonly persistent?: boolean;
   readonly headers?: Record<string, string>;
   readonly noAssert?: boolean;
@@ -404,12 +531,19 @@ export interface RabbitMqTransportOptions {
   readonly maxConnectionAttempts?: number;
   readonly gracefulShutdown?: boolean;
   readonly gracePeriod?: number;
+  readonly nackOnInternalError?: boolean;
+  readonly nackRequeue?: boolean;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
 }
 
-export interface InMemoryTransportOptions {
+export interface InMemoryTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly channel?: string;
   readonly broker?: unknown;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
 }
 
 export interface GrpcCodec {
@@ -429,7 +563,8 @@ export interface GrpcMethodMetadata {
   readonly streaming: boolean;
 }
 
-export interface GrpcTransportOptions {
+export interface GrpcTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly url?: string;
   readonly host?: string;
   readonly port?: number;
@@ -437,6 +572,8 @@ export interface GrpcTransportOptions {
   readonly codec?: GrpcCodec;
   readonly maxMessageBytes?: number;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
   readonly metadata?: GrpcMetadataLike | Readonly<Record<string, string>>;
   readonly maxSendMessageLength?: number;
   readonly maxReceiveMessageLength?: number;
@@ -538,7 +675,8 @@ export interface KafkaClientLike {
   }): KafkaConsumerLike;
 }
 
-export interface KafkaTransportOptions {
+export interface KafkaTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly client?: KafkaClientLike;
   readonly producer?: KafkaProducerLike;
   readonly consumer?: KafkaConsumerLike;
@@ -547,6 +685,9 @@ export interface KafkaTransportOptions {
   readonly autoCommit?: boolean;
   readonly replyTopicSuffix?: string;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
+  readonly topicConsumers?: boolean;
   readonly postfixId?: string;
   readonly run?: Record<string, unknown>;
   readonly subscribe?: Record<string, unknown>;
@@ -605,16 +746,20 @@ export interface MqttClientLike {
   close?(): Promise<void> | void;
 }
 
-export interface MqttTransportOptions {
+export interface MqttTransportOptions
+  extends ClientResilienceOptions, ServerResilienceOptions {
   readonly client: MqttClientLike;
   readonly qos?: MqttQoS;
   readonly retain?: boolean;
   readonly clientId?: string;
   readonly defaultTimeoutMs?: number;
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
   readonly closeClientOnClose?: boolean;
   readonly url?: string;
   readonly serializer?: Serializer;
   readonly deserializer?: Deserializer;
+  readonly wireFormat?: WireFormat;
   readonly subscribeOptions?: Record<string, unknown>;
   readonly userProperties?: Record<string, string | string[]>;
   readonly maxConnectionAttempts?: number;

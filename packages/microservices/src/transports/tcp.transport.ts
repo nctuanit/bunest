@@ -5,12 +5,24 @@ import { TcpStatus } from "../enums";
 import { RpcException, RpcTimeoutException } from "../exceptions";
 import { FrameDecoder, encodeFrame } from "../framing";
 import type {
-  RpcEnvelope,
-  RpcEventEnvelope,
-  RpcRequestEnvelope,
   RpcResponseEnvelope,
   TcpTransportOptions,
+  WireFormat,
 } from "../interfaces";
+import {
+  toPacketMetadata,
+  type Deserializer,
+  type Serializer,
+} from "../packets";
+import {
+  decodeInboundMessage,
+  decodeInboundResponse,
+  encodeOutboundEvent,
+  encodeOutboundRequest,
+  encodeOutboundResponse,
+  isBunestEnvelope,
+  type DecodedInboundResponse,
+} from "../serializers/wire-codec";
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
@@ -22,7 +34,7 @@ interface SocketWriteState {
   readonly writeQueue: Uint8Array[];
   queuedBytes: number;
   inFlight: number;
-  readonly pendingEnvelopes: RpcEnvelope[];
+  readonly pendingEnvelopes: unknown[];
   readonly activeStreams: Set<AsyncIterator<unknown>>;
   incompleteTimer?: ReturnType<typeof setTimeout>;
   receiveTimer?: ReturnType<typeof setTimeout>;
@@ -234,6 +246,9 @@ export class TcpServer extends MicroserviceTransportServer {
   private readonly gracefulShutdown: boolean;
   private readonly gracePeriod: number;
   private readonly tlsOptions?: Record<string, unknown>;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
 
   private listener: TCPSocketListener<SocketWriteState> | undefined;
   private readonly clients = new Set<Socket<SocketWriteState>>();
@@ -242,6 +257,7 @@ export class TcpServer extends MicroserviceTransportServer {
 
   constructor(options: TcpTransportOptions = {}) {
     super();
+    this.configureServerOptions(options);
     this.host = options.host ?? "127.0.0.1";
     this.requestedPort = options.port ?? 0;
     this.maxFrameBytes = options.maxFrameBytes ?? options.maxBufferSize;
@@ -252,6 +268,9 @@ export class TcpServer extends MicroserviceTransportServer {
     this.gracefulShutdown = options.gracefulShutdown ?? false;
     this.gracePeriod = options.gracePeriod ?? 5000;
     this.tlsOptions = options.tlsOptions;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
   }
 
   get address(): { readonly hostname: string; readonly port: number } | null {
@@ -266,6 +285,10 @@ export class TcpServer extends MicroserviceTransportServer {
 
   get port(): number | undefined {
     return this.listener?.port;
+  }
+
+  override get server(): TCPSocketListener<SocketWriteState> | undefined {
+    return this.listener;
   }
 
   async listen(
@@ -294,9 +317,9 @@ export class TcpServer extends MicroserviceTransportServer {
             return;
           }
 
-          let envelopes: RpcEnvelope[];
+          let envelopes: unknown[];
           try {
-            envelopes = state.decoder.push<RpcEnvelope>(chunk);
+            envelopes = state.decoder.push<unknown>(chunk);
           } catch (err) {
             clearSocketTimers(state);
             const errorFrame = encodeFrame({
@@ -659,73 +682,109 @@ export class TcpServer extends MicroserviceTransportServer {
   private async handleEnvelope(
     socket: Socket<SocketWriteState>,
     state: SocketWriteState,
-    envelope: RpcEnvelope,
+    rawEnvelope: unknown,
   ): Promise<void> {
-    const pattern = envelope.type === "response" ? "" : envelope.pattern;
-    const packetMeta =
-      envelope.type === "response" ? undefined : envelope.metadata;
-    const ctx =
-      packetMeta !== undefined
-        ? new TcpContext(
-            [socket, pattern, packetMeta as Record<string, string>],
-            packetMeta,
-          )
-        : new TcpContext([socket, pattern], {
-            remoteAddress: socket.remoteAddress,
-          });
-
-    if (envelope.type === "event") {
-      await this.dispatchEvent(envelope.pattern, envelope.data, ctx);
+    if (
+      this.wireFormat === "bunest" &&
+      !this.deserializer &&
+      isBunestEnvelope(rawEnvelope) &&
+      rawEnvelope.type === "request" &&
+      !isValidPacketId(rawEnvelope.id)
+    ) {
       return;
     }
 
-    if (envelope.type === "request") {
-      if (!isValidPacketId(envelope.id)) {
-        return;
-      }
+    const decoded = await decodeInboundMessage({
+      raw: rawEnvelope,
+      wireFormat: this.wireFormat,
+      deserializer: this.deserializer,
+      channel: "",
+      isTcp: true,
+      hasMessageHandler: (p) => this.messageHandlers.has(p),
+      hasEventHandler: (p) => (this.eventHandlers.get(p)?.length ?? 0) > 0,
+      registeredPatterns: [
+        ...new Set([
+          ...this.messageHandlers.keys(),
+          ...this.eventHandlers.keys(),
+        ]),
+      ],
+    });
+    if (!decoded || decoded.kind === "response") {
+      return;
+    }
 
-      const outcome = await this.dispatchMessage(
-        envelope.pattern,
-        envelope.data,
-        ctx,
+    const packetMeta = decoded.metadata
+      ? toPacketMetadata(Object.entries(decoded.metadata))
+      : undefined;
+    const ctx =
+      decoded.metadata !== undefined
+        ? new TcpContext(
+            packetMeta !== undefined
+              ? [socket, decoded.pattern, packetMeta]
+              : [socket, decoded.pattern],
+            decoded.metadata,
+          )
+        : new TcpContext([socket, decoded.pattern], {
+            remoteAddress: socket.remoteAddress,
+          });
+
+    if (decoded.kind === "event") {
+      await this.dispatchEvent(decoded.pattern, decoded.data, ctx);
+      return;
+    }
+
+    if (decoded.id && !isValidPacketId(decoded.id)) {
+      return;
+    }
+
+    const outcome = await this.dispatchMessage(
+      decoded.pattern,
+      decoded.data,
+      ctx,
+    );
+    if (state.closed || !this.clients.has(socket)) {
+      if (isAsyncIterable(outcome.response)) {
+        try {
+          const iter = outcome.response[Symbol.asyncIterator]();
+          void Promise.resolve(iter.return?.()).catch(() => {});
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+
+    if (!outcome.error && isAsyncIterable(outcome.response)) {
+      await this.streamResponse(socket, state, decoded.id, outcome.response);
+      return;
+    }
+
+    if (!decoded.id && decoded.responseWireStyle !== "bunest") {
+      return;
+    }
+
+    const encodedResp = await encodeOutboundResponse({
+      id: decoded.id,
+      pattern: decoded.pattern,
+      response: outcome.response,
+      error: outcome.error,
+      isDisposed: true,
+      wireFormat: this.wireFormat,
+      responseWireStyle: decoded.responseWireStyle,
+      serializer: this.serializer,
+    });
+    try {
+      const ok = enqueueSocketWrite(
+        socket,
+        state,
+        encodeFrame(encodedResp),
+        this.maxSendBufferSize,
       );
-      if (state.closed || !this.clients.has(socket)) {
-        if (isAsyncIterable(outcome.response)) {
-          try {
-            const iter = outcome.response[Symbol.asyncIterator]();
-            void Promise.resolve(iter.return?.()).catch(() => {});
-          } catch {
-            // ignore
-          }
-        }
-        return;
-      }
-
-      if (!outcome.error && isAsyncIterable(outcome.response)) {
-        await this.streamResponse(socket, state, envelope.id, outcome.response);
-        return;
-      }
-
-      const responseEnvelope: RpcResponseEnvelope = {
-        type: "response",
-        id: String(envelope.id),
-        response: outcome.response,
-        error: outcome.error,
-        isDisposed: true,
-      };
-      try {
-        const ok = enqueueSocketWrite(
-          socket,
-          state,
-          encodeFrame(responseEnvelope),
-          this.maxSendBufferSize,
-        );
-        if (!ok) {
-          this.clients.delete(socket);
-        }
-      } catch {
+      if (!ok) {
         this.clients.delete(socket);
       }
+    } catch {
+      this.clients.delete(socket);
     }
   }
 
@@ -829,6 +888,9 @@ export class TcpClientProxy extends ClientProxy {
   private readonly port: number;
   private readonly maxFrameBytes?: number;
   private readonly autoReconnect: boolean;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
 
   private socket: Socket<SocketWriteState> | undefined;
   private connectPromise: Promise<Socket<SocketWriteState>> | undefined;
@@ -837,11 +899,21 @@ export class TcpClientProxy extends ClientProxy {
   private closed = false;
 
   constructor(options: TcpTransportOptions = {}) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.host = options.host ?? "127.0.0.1";
     this.port = options.port ?? 0;
     this.maxFrameBytes = options.maxFrameBytes;
     this.autoReconnect = options.autoReconnect ?? true;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
   }
 
   async connect(): Promise<void> {
@@ -855,7 +927,9 @@ export class TcpClientProxy extends ClientProxy {
     this.closed = true;
     this.emitStatus("disconnected");
     this.emitClientEvent("close");
-    this.rejectAllPending(new Error("TCP client proxy closed."));
+    const closeErr = new Error("TCP client proxy closed.");
+    this.rejectAllPending(closeErr);
+    this.cancelActiveRequests(closeErr);
 
     const sock = this.socket;
     this.socket = undefined;
@@ -886,13 +960,15 @@ export class TcpClientProxy extends ClientProxy {
     }
     const id = `tcp_${++this.reqSeq}_${crypto.randomUUID().slice(0, 8)}`;
 
-    const requestEnvelope: RpcRequestEnvelope = {
-      type: "request",
+    const encodedReq = await encodeOutboundRequest({
       id,
       pattern,
       data,
-      ...(metadata !== undefined ? { metadata } : {}),
-    };
+      metadata,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+      isTcp: true,
+    });
 
     return await new Promise<TRes>((resolve, reject) => {
       const onAbort = () => {
@@ -933,7 +1009,7 @@ export class TcpClientProxy extends ClientProxy {
       signal?.addEventListener("abort", onAbort, { once: true });
 
       try {
-        enqueueSocketWrite(socket, socket.data, encodeFrame(requestEnvelope));
+        enqueueSocketWrite(socket, socket.data, encodeFrame(encodedReq));
       } catch (err) {
         clearTimeout(timer);
         cleanup();
@@ -950,13 +1026,15 @@ export class TcpClientProxy extends ClientProxy {
     metadata?: Record<string, unknown>,
   ): Promise<void> {
     const socket = await this.ensureConnected();
-    const envelope: RpcEventEnvelope = {
-      type: "event",
+    const encoded = await encodeOutboundEvent({
       pattern,
       data,
-      ...(metadata !== undefined ? { metadata } : {}),
-    };
-    enqueueSocketWrite(socket, socket.data, encodeFrame(envelope));
+      metadata,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+      isTcp: true,
+    });
+    enqueueSocketWrite(socket, socket.data, encodeFrame(encoded));
   }
 
   private async ensureConnected(): Promise<Socket<SocketWriteState>> {
@@ -1005,16 +1083,31 @@ export class TcpClientProxy extends ClientProxy {
             },
             data(socket, chunk) {
               if (socket !== clientRef.socket || !socket.data) return;
-              let frames: RpcEnvelope[];
+              let frames: unknown[];
               try {
-                frames = socket.data.decoder.push<RpcEnvelope>(chunk);
+                frames = socket.data.decoder.push<unknown>(chunk);
               } catch (err) {
                 clientRef.handleDisconnect(err);
                 return;
               }
               for (const frame of frames) {
-                if (frame.type === "response") {
-                  clientRef.handleResponse(frame);
+                if (
+                  clientRef.wireFormat === "bunest" &&
+                  !clientRef.deserializer
+                ) {
+                  if (isBunestEnvelope(frame) && frame.type === "response") {
+                    clientRef.handleResponse(frame);
+                  }
+                } else {
+                  void decodeInboundResponse({
+                    raw: frame,
+                    wireFormat: clientRef.wireFormat,
+                    deserializer: clientRef.deserializer,
+                  }).then((decoded) => {
+                    if (decoded) {
+                      clientRef.handleResponse(decoded);
+                    }
+                  });
                 }
               }
             },
@@ -1054,8 +1147,12 @@ export class TcpClientProxy extends ClientProxy {
     return this.connectPromise;
   }
 
-  private handleResponse(envelope: RpcResponseEnvelope): void {
-    const entry = this.pending.get(envelope.id);
+  private handleResponse(envelope: DecodedInboundResponse): void {
+    const id = envelope.id;
+    if (!id) {
+      return;
+    }
+    const entry = this.pending.get(id);
     if (!entry) {
       return;
     }
@@ -1071,7 +1168,7 @@ export class TcpClientProxy extends ClientProxy {
     }
 
     clearTimeout(entry.timer);
-    this.pending.delete(envelope.id);
+    this.pending.delete(id);
 
     if (entry.stream) {
       if (envelope.error) {

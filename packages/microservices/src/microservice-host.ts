@@ -6,6 +6,10 @@ import {
   Inject,
   Injectable,
   METADATA_KEYS,
+  MODULE_FILTER,
+  MODULE_GUARD,
+  MODULE_INTERCEPTOR,
+  MODULE_PIPE,
   MetadataRegistry,
   Optional,
   Scope,
@@ -31,7 +35,12 @@ import {
   type Type,
   type WebSocketAdapter,
 } from "@bunest/core";
-import { DiscoveryService, MetadataScanner, ModuleRef } from "@bunest/core";
+import {
+  ClsService,
+  DiscoveryService,
+  MetadataScanner,
+  ModuleRef,
+} from "@bunest/core";
 import type { ClientProxy } from "./client-proxy";
 import { ClientProxyFactory } from "./client-proxy-factory";
 import { RpcException } from "./exceptions";
@@ -39,6 +48,7 @@ import type {
   ClientOptions,
   GrpcMethodMetadata,
   MessageHandler,
+  MicroserviceDeadLetterHandler,
   PatternHandlerMetadata,
   RpcContext,
   RpcParamMetadata,
@@ -111,6 +121,15 @@ interface MicroserviceContainerLike {
     controllerToken?: Type<unknown>,
   ): boolean;
   getMultiProviderEntries?(token: InjectionToken): ReadonlyArray<{
+    module: unknown;
+    provider: { useClass?: Type<unknown>; scope?: Scope };
+    instance?: unknown;
+    syntheticToken?: Type<unknown>;
+  }>;
+  getModuleMultiProviderEntries?(
+    token: InjectionToken,
+    moduleIdOrNode: string | unknown,
+  ): ReadonlyArray<{
     module: unknown;
     provider: { useClass?: Type<unknown>; scope?: Scope };
     instance?: unknown;
@@ -202,6 +221,7 @@ export class MicroserviceHost
   private isConnectedToAppFlag = false;
   private loggerOverride?: LoggerService | LogLevel[] | false;
   private wsAdapter?: WebSocketAdapter;
+  private deadLetterHandler?: MicroserviceDeadLetterHandler;
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -212,9 +232,11 @@ export class MicroserviceHost
     private readonly discoveryService?: DiscoveryService,
     @Optional()
     private readonly metadataScanner?: MetadataScanner,
+    @Optional()
+    private readonly clsService?: ClsService,
   ) {
     if (primaryServer) {
-      this.servers.push(primaryServer);
+      this.addServer(primaryServer);
     }
   }
 
@@ -258,6 +280,20 @@ export class MicroserviceHost
           }
         });
       }
+    }
+    return this;
+  }
+
+  /**
+   * Registers a poison-message dead-letter handler across all transport servers
+   * managed by this `MicroserviceHost` for failed `@EventPattern()` invocations.
+   */
+  setDeadLetterHandler(
+    handler: MicroserviceDeadLetterHandler | undefined,
+  ): this {
+    this.deadLetterHandler = handler;
+    for (const server of this.servers) {
+      server.setDeadLetterHandler(handler);
     }
     return this;
   }
@@ -385,6 +421,12 @@ export class MicroserviceHost
 
   addServer(server: MicroserviceTransportServer): void {
     if (!this.servers.includes(server)) {
+      if (this.clsService) {
+        server.setClsService(this.clsService);
+      }
+      if (this.deadLetterHandler) {
+        server.setDeadLetterHandler(this.deadLetterHandler);
+      }
       this.servers.push(server);
     }
   }
@@ -466,6 +508,36 @@ export class MicroserviceHost
   ): ScopedEnhancerSpec<T>[] {
     const container = this.getContainer();
     const entries = container?.getMultiProviderEntries?.(token) ?? [];
+    return this.entriesToScopedEnhancers<T>(entries);
+  }
+
+  private collectDiModuleEnhancers<T>(
+    token: InjectionToken,
+    moduleId: string | undefined,
+  ): ScopedEnhancerSpec<T>[] {
+    if (!moduleId) {
+      return [];
+    }
+    const container = this.getContainer();
+    if (!container) {
+      return [];
+    }
+    const entries = container.getModuleMultiProviderEntries
+      ? container.getModuleMultiProviderEntries(token, moduleId)
+      : (container.getMultiProviderEntries?.(token) ?? []).filter(
+          (entry) => (entry.module as { id?: string } | undefined)?.id === moduleId,
+        );
+    return this.entriesToScopedEnhancers<T>(entries);
+  }
+
+  private entriesToScopedEnhancers<T>(
+    entries: ReadonlyArray<{
+      module: unknown;
+      provider: { useClass?: Type<unknown>; scope?: Scope };
+      instance?: unknown;
+      syntheticToken?: Type<unknown>;
+    }>,
+  ): ScopedEnhancerSpec<T>[] {
     const out: ScopedEnhancerSpec<T>[] = [];
     for (const entry of entries) {
       if (entry.syntheticToken) {
@@ -541,11 +613,14 @@ export class MicroserviceHost
         : proto[meta.methodName];
       if (typeof fn !== "function") continue;
 
-      const compiled = this.compileHandler(
+      const compiled: MessageHandler = this.compileHandler(
         target,
         meta.methodName,
         fn as Function,
       );
+      if (meta.extras !== undefined) {
+        compiled.extras = { ...meta.extras };
+      }
 
       for (const server of this.servers) {
         if (meta.isEventHandler) {
@@ -702,10 +777,14 @@ export class MicroserviceHost
       );
 
       try {
-        // 1. Guards (DI global -> imperative global -> class -> method)
+        // 1. Guards (DI global -> imperative global -> module -> class -> method)
         const allGuards: ScopedEnhancerSpec<GuardLike>[] = [
           ...this.collectDiGlobalEnhancers<GuardLike>(APP_GUARD),
           ...this.globalGuards.map((spec) => ({ spec })),
+          ...this.collectDiModuleEnhancers<GuardLike>(
+            MODULE_GUARD,
+            target.moduleId,
+          ),
           ...localGuards,
         ];
         for (const guardEntry of allGuards) {
@@ -750,6 +829,10 @@ export class MicroserviceHost
         const allPipes: ScopedEnhancerSpec<PipeLike>[] = [
           ...this.collectDiGlobalEnhancers<PipeLike>(APP_PIPE),
           ...this.globalPipes.map((spec) => ({ spec })),
+          ...this.collectDiModuleEnhancers<PipeLike>(
+            MODULE_PIPE,
+            target.moduleId,
+          ),
           ...localPipes,
         ];
         const invokeCore = async (): Promise<unknown> => {
@@ -775,6 +858,10 @@ export class MicroserviceHost
         const allInterceptors: ScopedEnhancerSpec<InterceptorLike>[] = [
           ...this.collectDiGlobalEnhancers<InterceptorLike>(APP_INTERCEPTOR),
           ...this.globalInterceptors.map((spec) => ({ spec })),
+          ...this.collectDiModuleEnhancers<InterceptorLike>(
+            MODULE_INTERCEPTOR,
+            target.moduleId,
+          ),
           ...localInterceptors,
         ];
         let nextFn: () => Promise<unknown> = invokeCore;
@@ -799,6 +886,10 @@ export class MicroserviceHost
       } catch (err) {
         const allFilters: ScopedEnhancerSpec<ExceptionFilterLike>[] = [
           ...localFilters,
+          ...this.collectDiModuleEnhancers<ExceptionFilterLike>(
+            MODULE_FILTER,
+            target.moduleId,
+          ),
           ...this.globalFilters.map((spec) => ({ spec })),
           ...this.collectDiGlobalEnhancers<ExceptionFilterLike>(APP_FILTER),
         ];

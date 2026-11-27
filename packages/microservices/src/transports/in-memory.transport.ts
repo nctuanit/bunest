@@ -1,4 +1,5 @@
 import { ClientProxy } from "../client-proxy";
+import type { BaseRpcContext } from "../ctx-host";
 import { RpcException } from "../exceptions";
 import type { InMemoryTransportOptions, RpcContext } from "../interfaces";
 import { MicroserviceTransportServer } from "../server";
@@ -40,11 +41,16 @@ export class InMemoryServer extends MicroserviceTransportServer {
 
   constructor(options: InMemoryTransportOptions = {}) {
     super();
+    this.configureServerOptions(options);
     this.channel = options.channel ?? "default";
     this.broker =
       options.broker instanceof InMemoryBroker
         ? options.broker
         : defaultInMemoryBroker;
+  }
+
+  override get server(): InMemoryBroker {
+    return this.broker;
   }
 
   async listen(
@@ -65,6 +71,7 @@ export class InMemoryServer extends MicroserviceTransportServer {
   async handleRequest(
     pattern: string,
     data: unknown,
+    metadata?: Record<string, unknown>,
   ): Promise<{
     response?: unknown;
     error?: ReturnType<RpcException["toSerialized"]>;
@@ -72,17 +79,33 @@ export class InMemoryServer extends MicroserviceTransportServer {
     const ctx: RpcContext = {
       transport: Transport.IN_MEMORY,
       pattern,
-      metadata: { channel: this.channel },
+      metadata: { channel: this.channel, ...(metadata ?? {}) },
     };
     return await this.dispatchMessage(pattern, data, ctx);
   }
 
-  override async handleEvent(pattern: string, data: unknown): Promise<void> {
-    const ctx: RpcContext = {
-      transport: Transport.IN_MEMORY,
-      pattern,
-      metadata: { channel: this.channel },
-    };
+  override async handleEvent(
+    pattern: string,
+    data: unknown,
+    contextOrMetadata?: RpcContext | BaseRpcContext | Record<string, unknown>,
+  ): Promise<void> {
+    const isRpcCtx =
+      contextOrMetadata !== undefined &&
+      contextOrMetadata !== null &&
+      typeof contextOrMetadata === "object" &&
+      "transport" in contextOrMetadata &&
+      "pattern" in contextOrMetadata;
+    const ctx: RpcContext = isRpcCtx
+      ? (contextOrMetadata as RpcContext)
+      : {
+          transport: Transport.IN_MEMORY,
+          pattern,
+          metadata: {
+            channel: this.channel,
+            ...((contextOrMetadata as Record<string, unknown> | undefined) ??
+              {}),
+          },
+        };
     await this.dispatchEvent(pattern, data, ctx);
   }
 }
@@ -95,7 +118,14 @@ export class InMemoryClientProxy extends ClientProxy {
   private connected = false;
 
   constructor(options: InMemoryTransportOptions = {}) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.channel = options.channel ?? "default";
     this.broker =
       options.broker instanceof InMemoryBroker
@@ -109,6 +139,7 @@ export class InMemoryClientProxy extends ClientProxy {
 
   async close(): Promise<void> {
     this.connected = false;
+    this.cancelActiveRequests(new Error("InMemoryClientProxy closed."));
   }
 
   get isConnected(): boolean {
@@ -118,6 +149,9 @@ export class InMemoryClientProxy extends ClientProxy {
   protected override async sendOnce<TRes = any, TReq = any>(
     pattern: string,
     data: TReq,
+    _timeoutMs: number,
+    _signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     const server = this.broker.getServer(this.channel);
     if (!server || !server.isListening) {
@@ -127,7 +161,7 @@ export class InMemoryClientProxy extends ClientProxy {
     }
 
     this.connected = true;
-    const outcome = await server.handleRequest(pattern, data);
+    const outcome = await server.handleRequest(pattern, data, metadata);
     if (outcome.error) {
       if (outcome.error.isRpcException) {
         throw RpcException.fromSerialized(outcome.error);
@@ -142,6 +176,7 @@ export class InMemoryClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const server = this.broker.getServer(this.channel);
     if (!server || !server.isListening) {
@@ -150,6 +185,6 @@ export class InMemoryClientProxy extends ClientProxy {
       );
     }
     this.connected = true;
-    await server.handleEvent(pattern, data);
+    await server.handleEvent(pattern, data, metadata);
   }
 }

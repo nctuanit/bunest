@@ -98,6 +98,42 @@ export class RpcTimeoutException extends Error {
 }
 
 /**
+ * Thrown by `ClientProxy` when its circuit breaker is open (or has reached
+ * `halfOpenMaxCalls` concurrent probes) and short-circuits an outbound RPC call.
+ * Extends `RpcException` with `isRetryable = false` so retry loops never retry it.
+ */
+export class CircuitOpenError extends RpcException {
+  public readonly isRetryable = false;
+  public readonly pattern: string;
+  public readonly state: "open" | "half-open";
+  public readonly nextAttemptAt: number;
+
+  constructor(
+    pattern: string,
+    state: "open" | "half-open" = "open",
+    nextAttemptAt: number = Date.now(),
+  ) {
+    const remainingMs = Math.max(0, nextAttemptAt - Date.now());
+    const message =
+      state === "half-open"
+        ? `Circuit breaker is half-open (max probe calls reached) for pattern "${pattern}".`
+        : `Circuit breaker is open for pattern "${pattern}"${remainingMs > 0 ? ` (retry after ${remainingMs}ms)` : ""}.`;
+    super({
+      status: 503,
+      code: "CIRCUIT_OPEN",
+      pattern,
+      state,
+      nextAttemptAt,
+      message,
+    });
+    this.name = "CircuitOpenError";
+    this.pattern = pattern;
+    this.state = state;
+    this.nextAttemptAt = nextAttemptAt;
+  }
+}
+
+/**
  * Transient Kafka exception that instructs `KafkaServer` to bubble the error
  * back to the consumer so the broker/client may redeliver and retry the message.
  */

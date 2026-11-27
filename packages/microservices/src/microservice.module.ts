@@ -15,7 +15,11 @@ import type {
 } from "./client-interfaces";
 import type { ClientProxy } from "./client-proxy";
 import { ClientProxyFactory } from "./client-proxy-factory";
-import type { TransportConfig } from "./interfaces";
+import type {
+  MicroserviceDeadLetterHandler,
+  ServerResilienceOptions,
+  TransportConfig,
+} from "./interfaces";
 import { MicroserviceHost } from "./microservice-host";
 import {
   MicroserviceTransportServer,
@@ -117,15 +121,16 @@ class CustomStrategyServerAdapter extends MicroserviceTransportServer {
 }
 
 export type MicroserviceModuleOptions =
-  | (TransportConfig & { readonly global?: boolean })
-  | {
+  | (TransportConfig &
+      ServerResilienceOptions & { readonly global?: boolean })
+  | ({
       readonly server: MicroserviceTransportServer;
       readonly global?: boolean;
-    }
-  | {
+    } & ServerResilienceOptions)
+  | ({
       readonly strategy: CustomTransportStrategy;
       readonly global?: boolean;
-    };
+    } & ServerResilienceOptions);
 
 /**
  * Registers a `MicroserviceTransportServer` and `MicroserviceHost` that auto-discovers
@@ -142,6 +147,18 @@ export class MicroserviceModule {
             ? options.strategy
             : new CustomStrategyServerAdapter(options.strategy)
           : createTransportServer(options);
+
+    const dlqHandler: MicroserviceDeadLetterHandler | undefined =
+      options.deadLetterHandler;
+    if (dlqHandler !== undefined) {
+      server.setDeadLetterHandler(dlqHandler);
+    }
+    if (options.cls !== undefined) {
+      server.setClsService(options.cls);
+    }
+    if (options.clsPropagation !== undefined) {
+      server.setClsPropagation(options.clsPropagation);
+    }
 
     return {
       module: MicroserviceModule,

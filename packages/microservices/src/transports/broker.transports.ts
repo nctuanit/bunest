@@ -16,10 +16,156 @@ import type {
   RpcEventEnvelope,
   RpcRequestEnvelope,
   RpcResponseEnvelope,
+  WireFormat,
 } from "../interfaces";
+import {
+  toPacketMetadata,
+  type Deserializer,
+  type Serializer,
+} from "../packets";
 import { NatsRecord, RedisRecord, RmqRecord } from "../records";
+import {
+  decodeInboundMessage,
+  decodeInboundResponse,
+  encodeOutboundEvent,
+  encodeOutboundRequest,
+  encodeOutboundResponse,
+  stringifyWirePayload,
+} from "../serializers/wire-codec";
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
+
+function formatRedisChannel(prefix: string, name: string): string {
+  return prefix.length > 0 ? `${prefix}:${name}` : name;
+}
+
+function extractHeadersRecord(
+  headers: unknown,
+): Record<string, unknown> | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+  const iterHeaders = headers as {
+    keys?: () => Iterable<string>;
+    values?: (key: string) => Iterable<unknown>;
+  };
+  if (
+    typeof iterHeaders.keys === "function" &&
+    typeof iterHeaders.values === "function"
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const key of iterHeaders.keys()) {
+      const vals = Array.from(iterHeaders.values(key));
+      out[key] = vals.length === 1 ? vals[0] : vals;
+    }
+    return out;
+  }
+  return headers as Record<string, unknown>;
+}
+
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof (timer as { unref?: () => void }).unref === "function") {
+    (timer as { unref: () => void }).unref();
+  }
+}
+
+async function waitForInFlightDrain(
+  getInFlight: () => number,
+  waiters: Array<() => void>,
+  gracePeriod: number,
+): Promise<void> {
+  if (getInFlight() <= 0) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (graceTimer !== undefined) {
+        clearTimeout(graceTimer);
+        graceTimer = undefined;
+      }
+      resolve();
+    };
+
+    waiters.push(() => {
+      if (getInFlight() <= 0) {
+        finish();
+      }
+    });
+
+    if (
+      Number.isFinite(gracePeriod) &&
+      gracePeriod >= 0 &&
+      gracePeriod <= MAX_TIMEOUT_MS
+    ) {
+      graceTimer = setTimeout(finish, gracePeriod);
+      unrefTimer(graceTimer);
+    }
+  });
+}
+
+function notifyDrainWaiters(
+  getInFlight: () => number,
+  waiters: Array<() => void>,
+): void {
+  if (waiters.length === 0 || getInFlight() > 0) return;
+  const pending = waiters.splice(0);
+  for (const fn of pending) {
+    fn();
+  }
+}
+
+function prepareBuffersForJson(value: unknown): unknown {
+  if (value instanceof Uint8Array && !Buffer.isBuffer(value)) {
+    return Buffer.from(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(prepareBuffersForJson);
+  }
+  if (value !== null && typeof value === "object" && !Buffer.isBuffer(value)) {
+    const obj = value as Record<string, unknown>;
+    let mutated = false;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const next = prepareBuffersForJson(v);
+      if (next !== v) mutated = true;
+      out[k] = next;
+    }
+    return mutated ? out : value;
+  }
+  return value;
+}
+
+function reviveBuffers(value: unknown): unknown {
+  if (value === null || value === undefined || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(reviveBuffers);
+  }
+  const rec = value as Record<string, unknown>;
+  if (
+    rec.type === "Buffer" &&
+    Array.isArray(rec.data) &&
+    Object.keys(rec).length === 2
+  ) {
+    return Buffer.from(rec.data as number[]);
+  }
+  let mutated = false;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    const next = reviveBuffers(v);
+    if (next !== v) mutated = true;
+    out[k] = next;
+  }
+  return mutated ? out : value;
+}
 
 function matchAmqpPattern(pattern: string, routingKey: string): boolean {
   if (pattern === routingKey) return true;
@@ -81,25 +227,41 @@ function throwFromResponseError(
 // Redis Pub/Sub Transport Adapter (supports native Bun.RedisClient via url)
 // ---------------------------------------------------------------------------
 
-function createBunRedisPubSubClient(url?: string): RedisTransportClientLike {
+function createBunRedisPubSubClient(
+  url?: string,
+  returnBuffers = false,
+): RedisTransportClientLike {
   const native = url ? new Bun.RedisClient(url) : Bun.redis;
-  const listeners = new Map<string, (msg: string, channel: string) => void>();
+  const listeners = new Map<
+    string,
+    (msg: string | Uint8Array, channel: string) => void
+  >();
   return {
     publish: async (channel, message) => {
       await native.publish(channel, message);
     },
     subscribe: async (channel, handler) => {
-      const listener = (msg: string, ch: string) => {
+      const listener = (msg: string | Uint8Array, ch: string) => {
+        if (returnBuffers && msg instanceof Uint8Array) {
+          handler(msg, ch || channel);
+          return;
+        }
         handler(typeof msg === "string" ? msg : String(msg), ch || channel);
       };
       listeners.set(channel, listener);
-      await native.subscribe(channel, listener);
+      await native.subscribe(
+        channel,
+        listener as (msg: string, ch: string) => void,
+      );
     },
     unsubscribe: async (channel) => {
       const listener = listeners.get(channel);
       listeners.delete(channel);
       if (listener) {
-        await native.unsubscribe(channel, listener);
+        await native.unsubscribe(
+          channel,
+          listener as (msg: string, ch: string) => void,
+        );
       } else {
         await native.send("UNSUBSCRIBE", [channel]);
       }
@@ -123,8 +285,10 @@ function resolveRedisTransportClients(options: RedisTransportOptions): {
     (options.host
       ? `redis://${options.host}:${options.port ?? 6379}`
       : undefined);
-  const pubClient = createBunRedisPubSubClient(url);
-  const subClient = options.subClient ?? createBunRedisPubSubClient(url);
+  const returnBuffers = options.returnBuffers ?? false;
+  const pubClient = createBunRedisPubSubClient(url, returnBuffers);
+  const subClient =
+    options.subClient ?? createBunRedisPubSubClient(url, returnBuffers);
   return { pubClient, subClient };
 }
 
@@ -134,14 +298,34 @@ export class RedisTransportServer extends MicroserviceTransportServer {
   private readonly pubClient: RedisTransportClientLike;
   private readonly subClient: RedisTransportClientLike;
   private readonly prefix: string;
+  private readonly returnBuffers: boolean;
+  private readonly gracefulShutdown: boolean;
+  private readonly gracePeriod: number;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private readonly subscribedChannels: string[] = [];
+  private closing = false;
+  private inFlight = 0;
+  private drainWaiters: Array<() => void> = [];
 
   constructor(options: RedisTransportOptions) {
     super();
+    this.configureServerOptions(options);
     const resolved = resolveRedisTransportClients(options);
     this.pubClient = resolved.pubClient;
     this.subClient = resolved.subClient;
     this.prefix = options.channelPrefix ?? "bunest:rpc";
+    this.returnBuffers = options.returnBuffers ?? false;
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
+  }
+
+  override get server(): RedisTransportClientLike {
+    return this.subClient;
   }
 
   async listen(
@@ -152,13 +336,14 @@ export class RedisTransportServer extends MicroserviceTransportServer {
       return;
     }
 
+    this.closing = false;
     const patterns = new Set<string>([
       ...this.messageHandlers.keys(),
       ...this.eventHandlers.keys(),
     ]);
 
     for (const pattern of patterns) {
-      const channel = `${this.prefix}:${pattern}`;
+      const channel = formatRedisChannel(this.prefix, pattern);
       await this.subClient.subscribe(channel, (rawMessage) => {
         void this.onMessage(pattern, channel, rawMessage);
       });
@@ -174,42 +359,124 @@ export class RedisTransportServer extends MicroserviceTransportServer {
 
   async close(): Promise<void> {
     this.listening = false;
+    this.closing = true;
     this.emitStatus(RedisStatus.DISCONNECTED);
     for (const channel of this.subscribedChannels.splice(0)) {
       await this.subClient.unsubscribe?.(channel);
+    }
+
+    if (this.gracefulShutdown) {
+      await waitForInFlightDrain(
+        () => this.inFlight,
+        this.drainWaiters,
+        this.gracePeriod,
+      );
+      this.drainWaiters = [];
+      if (typeof this.subClient.quit === "function") {
+        await this.subClient.quit();
+      } else if (typeof this.subClient.close === "function") {
+        await this.subClient.close();
+      }
+      if (this.pubClient !== this.subClient) {
+        if (typeof this.pubClient.quit === "function") {
+          await this.pubClient.quit();
+        } else if (typeof this.pubClient.close === "function") {
+          await this.pubClient.close();
+        }
+      }
     }
   }
 
   private async onMessage(
     pattern: string,
     channel: string,
-    rawMessage: string,
+    rawMessage: string | Uint8Array,
   ): Promise<void> {
-    const envelope = tryDecodePayload(rawMessage);
-    if (!envelope) return;
-    const ctx = new RedisContext([channel], pattern, { channel });
+    if (this.closing) return;
+    this.inFlight++;
+    try {
+      if (
+        this.wireFormat === "bunest" &&
+        !this.deserializer &&
+        this.returnBuffers &&
+        rawMessage instanceof Uint8Array
+      ) {
+        const envelope = tryDecodePayload(rawMessage);
+        if (!envelope) {
+          const ctx = new RedisContext([channel], pattern, { channel });
+          if (this.eventHandlers.has(pattern)) {
+            await this.dispatchEvent(pattern, rawMessage, ctx);
+          } else if (this.messageHandlers.has(pattern)) {
+            await this.dispatchMessage(pattern, rawMessage, ctx);
+          }
+          return;
+        }
+      }
 
-    if (envelope.type === "event") {
-      await this.dispatchEvent(pattern, envelope.data, ctx);
-      return;
-    }
+      const decoded = await decodeInboundMessage({
+        raw: rawMessage,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+        channel: pattern,
+        hasMessageHandler: (p) => this.messageHandlers.has(p),
+        hasEventHandler: (p) => (this.eventHandlers.get(p)?.length ?? 0) > 0,
+      });
+      if (!decoded || decoded.kind === "response") {
+        return;
+      }
 
-    if (envelope.type === "request") {
-      const outcome = await this.dispatchMessage(pattern, envelope.data, ctx);
+      const packetMeta = decoded.metadata
+        ? toPacketMetadata(Object.entries(decoded.metadata))
+        : undefined;
+      const ctxMeta: Record<string, unknown> = {
+        channel,
+        ...(decoded.metadata ?? {}),
+      };
+      const ctx = new RedisContext(
+        packetMeta ? [channel, packetMeta] : [channel],
+        decoded.pattern,
+        ctxMeta,
+      );
+
+      if (decoded.kind === "event") {
+        const data = this.returnBuffers
+          ? reviveBuffers(decoded.data)
+          : decoded.data;
+        await this.dispatchEvent(decoded.pattern, data, ctx);
+        return;
+      }
+
+      const data = this.returnBuffers
+        ? reviveBuffers(decoded.data)
+        : decoded.data;
+      const outcome = await this.dispatchMessage(decoded.pattern, data, ctx);
       const replyChannel =
-        envelope.replyTo ?? `${this.prefix}:${pattern}.reply`;
+        decoded.replyTo ??
+        formatRedisChannel(this.prefix, `${decoded.pattern}.reply`);
       const unwrappedResponse =
         outcome.response instanceof RedisRecord
           ? outcome.response.data
           : outcome.response;
-      const response: RpcResponseEnvelope = {
-        type: "response",
-        id: envelope.id,
-        response: unwrappedResponse,
+      const preparedResponse = this.returnBuffers
+        ? prepareBuffersForJson(unwrappedResponse)
+        : unwrappedResponse;
+      const encodedReply = await encodeOutboundResponse({
+        id: decoded.id,
+        pattern: decoded.pattern,
+        response: preparedResponse,
         error: outcome.error,
         isDisposed: true,
-      };
-      await this.pubClient.publish(replyChannel, JSON.stringify(response));
+        wireFormat: this.wireFormat,
+        responseWireStyle: decoded.responseWireStyle,
+        serializer: this.serializer,
+      });
+      await this.pubClient.publish(
+        replyChannel,
+        stringifyWirePayload(encodedReply),
+      );
+    } finally {
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      notifyDrainWaiters(() => this.inFlight, this.drainWaiters);
     }
   }
 }
@@ -222,8 +489,15 @@ export class RedisClientProxy extends ClientProxy {
   private readonly pubClient: RedisTransportClientLike;
   private readonly subClient: RedisTransportClientLike;
   private readonly prefix: string;
+  private readonly returnBuffers: boolean;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private replySubscribed = false;
   private replySubscribePromise: Promise<void> | undefined;
+  private readonly rawReplyChannels = new Set<string>();
+  private readonly rawReplySubPromises = new Map<string, Promise<void>>();
+  private readonly rawPendingByChannel = new Map<string, string[]>();
   private closeGeneration = 0;
   private readonly pending = new Map<
     string,
@@ -231,18 +505,30 @@ export class RedisClientProxy extends ClientProxy {
       resolve: (v: unknown) => void;
       reject: (e: unknown) => void;
       timer: ReturnType<typeof setTimeout>;
+      replyChannel?: string;
     }
   >();
   private seq = 0;
 
   constructor(options: RedisTransportOptions) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     const resolved = resolveRedisTransportClients(options);
     this.pubClient = resolved.pubClient;
     this.subClient = resolved.subClient;
     this.prefix = options.channelPrefix ?? "bunest:rpc";
+    this.returnBuffers = options.returnBuffers ?? false;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
     this.clientId = options.clientId ?? crypto.randomUUID();
-    this.replyChannel = `${this.prefix}:reply:${this.clientId}`;
+    this.replyChannel = formatRedisChannel(this.prefix, `reply:${this.clientId}`);
   }
 
   async connect(): Promise<void> {
@@ -253,16 +539,90 @@ export class RedisClientProxy extends ClientProxy {
   async close(): Promise<void> {
     this.closeGeneration++;
     this.replySubscribePromise = undefined;
+    this.rawReplySubPromises.clear();
+    this.rawPendingByChannel.clear();
+    const closeErr = new Error("RedisClientProxy closed.");
     for (const [id, p] of this.pending.entries()) {
       clearTimeout(p.timer);
       this.pending.delete(id);
-      p.reject(new Error("RedisClientProxy closed."));
+      p.reject(closeErr);
     }
+    this.cancelActiveRequests(closeErr);
     this.emitStatus("disconnected");
     if (this.replySubscribed) {
       this.replySubscribed = false;
       await this.subClient.unsubscribe?.(this.replyChannel);
     }
+    for (const ch of [...this.rawReplyChannels]) {
+      this.rawReplyChannels.delete(ch);
+      await this.subClient.unsubscribe?.(ch);
+    }
+  }
+
+  private resolvePendingReply(
+    id: string | undefined,
+    replyChannel: string | undefined,
+    response: unknown,
+    error: RpcResponseEnvelope["error"],
+  ): void {
+    let targetId = id;
+    if ((!targetId || !this.pending.has(targetId)) && replyChannel) {
+      const queue = this.rawPendingByChannel.get(replyChannel);
+      while (queue && queue.length > 0) {
+        const candidate = queue.shift()!;
+        if (this.pending.has(candidate)) {
+          targetId = candidate;
+          break;
+        }
+      }
+    }
+    if (!targetId) return;
+    const entry = this.pending.get(targetId);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.pending.delete(targetId);
+    if (error) {
+      try {
+        throwFromResponseError(error);
+      } catch (err) {
+        entry.reject(err);
+      }
+    } else {
+      const responseVal = this.returnBuffers
+        ? reviveBuffers(response)
+        : response;
+      entry.resolve(responseVal);
+    }
+  }
+
+  private async handleReplyRaw(
+    raw: string | Uint8Array,
+    replyChannel?: string,
+  ): Promise<void> {
+    if (this.wireFormat === "bunest" && !this.deserializer) {
+      const envelope = tryDecodePayload(raw);
+      if (!envelope || envelope.type !== "response") return;
+      this.resolvePendingReply(
+        envelope.id,
+        replyChannel,
+        envelope.response,
+        envelope.error,
+      );
+      return;
+    }
+
+    const decoded = await decodeInboundResponse({
+      raw,
+      wireFormat: this.wireFormat,
+      deserializer: this.deserializer,
+    });
+    if (!decoded) return;
+    this.resolvePendingReply(
+      decoded.id,
+      replyChannel,
+      decoded.response,
+      decoded.error,
+    );
   }
 
   private async ensureReplyInbox(): Promise<void> {
@@ -276,21 +636,7 @@ export class RedisClientProxy extends ClientProxy {
     const gen = this.closeGeneration;
     const promise = Promise.resolve(
       this.subClient.subscribe(this.replyChannel, (raw) => {
-        const envelope = tryDecodePayload(raw);
-        if (!envelope || envelope.type !== "response") return;
-        const entry = this.pending.get(envelope.id);
-        if (!entry) return;
-        clearTimeout(entry.timer);
-        this.pending.delete(envelope.id);
-        if (envelope.error) {
-          try {
-            throwFromResponseError(envelope.error);
-          } catch (err) {
-            entry.reject(err);
-          }
-        } else {
-          entry.resolve(envelope.response);
-        }
+        void this.handleReplyRaw(raw, this.replyChannel);
       }),
     )
       .then(async () => {
@@ -311,17 +657,57 @@ export class RedisClientProxy extends ClientProxy {
     await promise;
   }
 
+  private async ensureRawPatternReplyChannel(channel: string): Promise<void> {
+    if (this.rawReplyChannels.has(channel)) {
+      return;
+    }
+    const existing = this.rawReplySubPromises.get(channel);
+    if (existing) {
+      await existing;
+      return;
+    }
+    const gen = this.closeGeneration;
+    const promise = Promise.resolve(
+      this.subClient.subscribe(channel, (raw) => {
+        void this.handleReplyRaw(raw, channel);
+      }),
+    )
+      .then(async () => {
+        if (this.closeGeneration !== gen) {
+          await this.subClient.unsubscribe?.(channel);
+          throw new Error("RedisClientProxy closed.");
+        }
+        this.rawReplyChannels.add(channel);
+      })
+      .finally(() => {
+        this.rawReplySubPromises.delete(channel);
+      });
+    this.rawReplySubPromises.set(channel, promise);
+    await promise;
+  }
+
   protected override async sendOnce<TRes = any, TReq = any>(
     pattern: string,
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
     }
     const gen = this.closeGeneration;
-    await this.ensureReplyInbox();
+    const usePatternReplyChannel =
+      this.wireFormat === "raw-json" && !this.serializer;
+    const targetReplyChannel = usePatternReplyChannel
+      ? formatRedisChannel(this.prefix, `${pattern}.reply`)
+      : this.replyChannel;
+
+    if (usePatternReplyChannel) {
+      await this.ensureRawPatternReplyChannel(targetReplyChannel);
+    } else {
+      await this.ensureReplyInbox();
+    }
     if (this.closeGeneration !== gen) {
       throw new Error("RedisClientProxy closed.");
     }
@@ -334,24 +720,41 @@ export class RedisClientProxy extends ClientProxy {
       data instanceof RedisRecord ? data.options?.headers : undefined;
 
     const id = `redis_${++this.seq}_${crypto.randomUUID().slice(0, 8)}`;
-    const req: RpcRequestEnvelope & { headers?: Record<string, string> } = {
-      type: "request",
+    const preparedData = this.returnBuffers
+      ? prepareBuffersForJson(unwrappedData)
+      : unwrappedData;
+    const encodedReq = await encodeOutboundRequest({
       id,
       pattern,
-      data: unwrappedData,
-      replyTo: this.replyChannel,
-      ...(headers !== undefined ? { headers } : {}),
-    };
+      data: preparedData,
+      replyTo: targetReplyChannel,
+      metadata,
+      headers,
+      includeHeadersInEnvelope: true,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payloadStr = stringifyWirePayload(encodedReq);
 
     return await new Promise<TRes>((resolve, reject) => {
+      const removeFromRawQueue = () => {
+        if (!usePatternReplyChannel) return;
+        const q = this.rawPendingByChannel.get(targetReplyChannel);
+        if (q) {
+          const idx = q.indexOf(id);
+          if (idx !== -1) q.splice(idx, 1);
+        }
+      };
       const onAbort = () => {
         if (this.pending.delete(id)) {
           clearTimeout(timer);
+          removeFromRawQueue();
           reject(new RpcTimeoutException(pattern, timeoutMs));
         }
       };
       const cleanup = () => {
         signal?.removeEventListener("abort", onAbort);
+        removeFromRawQueue();
       };
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
@@ -372,14 +775,24 @@ export class RedisClientProxy extends ClientProxy {
           reject(e);
         },
         timer,
+        replyChannel: targetReplyChannel,
       });
+
+      if (usePatternReplyChannel) {
+        let q = this.rawPendingByChannel.get(targetReplyChannel);
+        if (!q) {
+          q = [];
+          this.rawPendingByChannel.set(targetReplyChannel, q);
+        }
+        q.push(id);
+      }
 
       signal?.addEventListener("abort", onAbort, { once: true });
 
       Promise.resolve(
         this.pubClient.publish(
-          `${this.prefix}:${pattern}`,
-          JSON.stringify(req),
+          formatRedisChannel(this.prefix, pattern),
+          payloadStr,
         ),
       ).catch((err) => {
         clearTimeout(timer);
@@ -393,19 +806,26 @@ export class RedisClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const unwrappedData = data instanceof RedisRecord ? data.data : data;
     const headers =
       data instanceof RedisRecord ? data.options?.headers : undefined;
-    const envelope: RpcEventEnvelope & { headers?: Record<string, string> } = {
-      type: "event",
+    const preparedData = this.returnBuffers
+      ? prepareBuffersForJson(unwrappedData)
+      : unwrappedData;
+    const encoded = await encodeOutboundEvent({
       pattern,
-      data: unwrappedData,
-      ...(headers !== undefined ? { headers } : {}),
-    };
+      data: preparedData,
+      metadata,
+      headers,
+      includeHeadersInEnvelope: true,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
     await this.pubClient.publish(
-      `${this.prefix}:${pattern}`,
-      JSON.stringify(envelope),
+      formatRedisChannel(this.prefix, pattern),
+      stringifyWirePayload(encoded),
     );
   }
 }
@@ -424,12 +844,30 @@ export class NatsTransportServer extends MicroserviceTransportServer {
 
   private readonly client: NatsTransportClientLike;
   private readonly prefix: string;
+  private readonly gracefulShutdown: boolean;
+  private readonly gracePeriod: number;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private readonly subscriptions: NatsSubscriptionLike[] = [];
+  private closing = false;
+  private inFlight = 0;
+  private drainWaiters: Array<() => void> = [];
 
   constructor(options: NatsTransportOptions) {
     super();
+    this.configureServerOptions(options);
     this.client = options.client;
     this.prefix = options.subjectPrefix ? `${options.subjectPrefix}.` : "";
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
+  }
+
+  override get server(): NatsTransportClientLike {
+    return this.client;
   }
 
   async listen(
@@ -440,6 +878,7 @@ export class NatsTransportServer extends MicroserviceTransportServer {
       return;
     }
 
+    this.closing = false;
     const patterns = new Set<string>([
       ...this.messageHandlers.keys(),
       ...this.eventHandlers.keys(),
@@ -462,9 +901,24 @@ export class NatsTransportServer extends MicroserviceTransportServer {
 
   async close(): Promise<void> {
     this.listening = false;
+    this.closing = true;
     this.emitStatus(NatsStatus.DISCONNECTED);
     for (const sub of this.subscriptions.splice(0)) {
       await sub.unsubscribe?.();
+    }
+
+    if (this.gracefulShutdown) {
+      await waitForInFlightDrain(
+        () => this.inFlight,
+        this.drainWaiters,
+        this.gracePeriod,
+      );
+      this.drainWaiters = [];
+      if (typeof this.client.drain === "function") {
+        await this.client.drain();
+      } else if (typeof this.client.close === "function") {
+        await this.client.close();
+      }
     }
   }
 
@@ -472,41 +926,67 @@ export class NatsTransportServer extends MicroserviceTransportServer {
     pattern: string,
     msg: NatsMessageLike,
   ): Promise<void> {
-    const envelope = tryDecodePayload(msg.data);
-    if (!envelope) return;
+    if (this.closing) return;
+    this.inFlight++;
+    try {
+      const decoded = await decodeInboundMessage({
+        raw: msg.data,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+        channel: pattern,
+        replyTo: msg.reply,
+        headers: extractHeadersRecord(msg.headers),
+        hasMessageHandler: (p) => this.messageHandlers.has(p),
+        hasEventHandler: (p) => (this.eventHandlers.get(p)?.length ?? 0) > 0,
+      });
+      if (!decoded || decoded.kind === "response") return;
 
-    // If this subscription is a NATS wildcard (* or >) and an exact handler is
-    // registered for the concrete incoming subject, defer to the exact handler
-    // to avoid duplicate execution/replies.
-    if (pattern.includes("*") || pattern.includes(">")) {
-      const concretePattern =
-        this.prefix && msg.subject.startsWith(this.prefix)
-          ? msg.subject.slice(this.prefix.length)
-          : msg.subject;
-      if (
-        concretePattern !== pattern &&
-        ((envelope.type === "request" &&
-          this.messageHandlers.has(concretePattern)) ||
-          (envelope.type === "event" &&
-            this.eventHandlers.has(concretePattern)))
-      ) {
+      // If this subscription is a NATS wildcard (* or >) and an exact handler is
+      // registered for the concrete incoming subject, defer to the exact handler
+      // to avoid duplicate execution/replies.
+      if (pattern.includes("*") || pattern.includes(">")) {
+        const concretePattern =
+          this.prefix && msg.subject.startsWith(this.prefix)
+            ? msg.subject.slice(this.prefix.length)
+            : msg.subject;
+        if (
+          concretePattern !== pattern &&
+          ((decoded.kind === "request" &&
+            this.messageHandlers.has(concretePattern)) ||
+            (decoded.kind === "event" &&
+              this.eventHandlers.has(concretePattern)))
+        ) {
+          return;
+        }
+      }
+
+      const packetMeta = decoded.metadata
+        ? toPacketMetadata(Object.entries(decoded.metadata))
+        : undefined;
+      const effectiveHeaders =
+        msg.headers !== undefined ? msg.headers : packetMeta;
+      const ctx = new NatsContext(
+        [msg.subject, effectiveHeaders],
+        decoded.pattern,
+        {
+          subject: msg.subject,
+          reply: msg.reply,
+          ...(decoded.metadata ?? {}),
+        },
+      );
+
+      if (decoded.kind === "event") {
+        await this.dispatchEvent(decoded.pattern, decoded.data, ctx);
         return;
       }
-    }
 
-    const ctx = new NatsContext([msg.subject, msg.headers], pattern, {
-      subject: msg.subject,
-      reply: msg.reply,
-    });
-
-    if (envelope.type === "event") {
-      await this.dispatchEvent(pattern, envelope.data, ctx);
-      return;
-    }
-
-    if (envelope.type === "request") {
-      const outcome = await this.dispatchMessage(pattern, envelope.data, ctx);
-      if (!msg.reply) {
+      const outcome = await this.dispatchMessage(
+        decoded.pattern,
+        decoded.data,
+        ctx,
+      );
+      const replyTarget = msg.reply ?? decoded.replyTo;
+      if (!replyTarget) {
         return;
       }
       const isNatsRecord = outcome.response instanceof NatsRecord;
@@ -516,29 +996,36 @@ export class NatsTransportServer extends MicroserviceTransportServer {
       const responseHeaders = isNatsRecord
         ? (outcome.response as NatsRecord).headers
         : undefined;
-      const replyPayload = JSON.stringify({
-        type: "response",
-        id: envelope.id,
+      const encodedReply = await encodeOutboundResponse({
+        id: decoded.id,
+        pattern: decoded.pattern,
         response: unwrappedResponse,
         error: outcome.error,
         isDisposed: true,
-      } satisfies RpcResponseEnvelope);
+        wireFormat: this.wireFormat,
+        responseWireStyle: decoded.responseWireStyle,
+        serializer: this.serializer,
+      });
+      const replyPayload = stringifyWirePayload(encodedReply);
 
-      if (typeof msg.respond === "function") {
+      if (typeof msg.respond === "function" && msg.reply) {
         if (responseHeaders !== undefined) {
           await msg.respond(replyPayload, { headers: responseHeaders });
         } else {
           await msg.respond(replyPayload);
         }
-      } else if (msg.reply) {
+      } else {
         if (responseHeaders !== undefined) {
-          await this.client.publish(msg.reply, replyPayload, {
+          await this.client.publish(replyTarget, replyPayload, {
             headers: responseHeaders,
           });
         } else {
-          await this.client.publish(msg.reply, replyPayload);
+          await this.client.publish(replyTarget, replyPayload);
         }
       }
+    } finally {
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      notifyDrainWaiters(() => this.inFlight, this.drainWaiters);
     }
   }
 }
@@ -548,13 +1035,26 @@ export class NatsClientProxy extends ClientProxy {
 
   private readonly client: NatsTransportClientLike;
   private readonly prefix: string;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private seq = 0;
   private readonly activeFallbackCancels = new Set<(err: Error) => void>();
 
   constructor(options: NatsTransportOptions) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.client = options.client;
     this.prefix = options.subjectPrefix ? `${options.subjectPrefix}.` : "";
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
   }
 
   async connect(): Promise<void> {
@@ -568,6 +1068,7 @@ export class NatsClientProxy extends ClientProxy {
       cancel(closeErr);
     }
     this.activeFallbackCancels.clear();
+    this.cancelActiveRequests(closeErr);
   }
 
   protected override async sendOnce<TRes = any, TReq = any>(
@@ -575,6 +1076,7 @@ export class NatsClientProxy extends ClientProxy {
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
@@ -585,12 +1087,16 @@ export class NatsClientProxy extends ClientProxy {
 
     const id = `nats_${++this.seq}_${crypto.randomUUID().slice(0, 8)}`;
     const subject = `${this.prefix}${pattern}`;
-    const payload = JSON.stringify({
-      type: "request",
+    const encodedReq = await encodeOutboundRequest({
       id,
       pattern,
       data: unwrappedData,
-    } satisfies RpcRequestEnvelope);
+      metadata,
+      headers: extractHeadersRecord(recordHeaders),
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payload = stringifyWirePayload(encodedReq);
 
     if (typeof this.client.request === "function") {
       const requestOpts =
@@ -598,8 +1104,13 @@ export class NatsClientProxy extends ClientProxy {
           ? { timeout: timeoutMs, headers: recordHeaders }
           : { timeout: timeoutMs };
       const replyMsg = await this.client.request(subject, payload, requestOpts);
-      const response = tryDecodePayload(replyMsg.data);
-      if (!response || response.type !== "response") {
+      const response = await decodeInboundResponse({
+        raw: replyMsg.data,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+        fallbackId: id,
+      });
+      if (!response) {
         throw new Error("Received malformed NATS RPC response.");
       }
       if (response.error) {
@@ -640,12 +1151,20 @@ export class NatsClientProxy extends ClientProxy {
 
       Promise.resolve(
         this.client.subscribe(inbox, async (msg) => {
-          const response = tryDecodePayload(msg.data);
+          if (settled) return;
+          const response = await decodeInboundResponse({
+            raw: msg.data,
+            wireFormat: this.wireFormat,
+            deserializer: this.deserializer,
+            fallbackId: id,
+          });
+          if (!response || settled) {
+            return;
+          }
           if (
-            !response ||
-            response.type !== "response" ||
-            response.id !== id ||
-            settled
+            this.wireFormat === "bunest" &&
+            !this.deserializer &&
+            response.id !== id
           ) {
             return;
           }
@@ -691,16 +1210,21 @@ export class NatsClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const isRecord = data instanceof NatsRecord;
     const unwrappedData = isRecord ? data.data : data;
     const recordHeaders = isRecord ? data.headers : undefined;
     const subject = `${this.prefix}${pattern}`;
-    const payload = JSON.stringify({
-      type: "event",
+    const encoded = await encodeOutboundEvent({
       pattern,
       data: unwrappedData,
-    } satisfies RpcEventEnvelope);
+      metadata,
+      headers: extractHeadersRecord(recordHeaders),
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payload = stringifyWirePayload(encoded);
     if (recordHeaders !== undefined) {
       await this.client.publish(subject, payload, { headers: recordHeaders });
     } else {
@@ -725,15 +1249,37 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
   private readonly queue: string;
   private readonly noAck: boolean;
   private readonly wildcards: boolean;
+  private readonly gracefulShutdown: boolean;
+  private readonly gracePeriod: number;
+  private readonly nackOnInternalError: boolean;
+  private readonly nackRequeue: boolean;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private consumerTag?: string;
   private listenGeneration = 0;
+  private closing = false;
+  private inFlight = 0;
+  private drainWaiters: Array<() => void> = [];
 
   constructor(options: RabbitMqTransportOptions) {
     super();
+    this.configureServerOptions(options);
     this.channel = options.channel;
     this.queue = options.queue;
     this.noAck = options.noAck ?? false;
     this.wildcards = options.wildcards ?? false;
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
+    this.nackOnInternalError = options.nackOnInternalError ?? false;
+    this.nackRequeue = options.nackRequeue ?? false;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
+  }
+
+  override get server(): RabbitMqChannelLike {
+    return this.channel;
   }
 
   override unwrap<T = unknown>(): T {
@@ -748,6 +1294,7 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
       return;
     }
 
+    this.closing = false;
     const gen = ++this.listenGeneration;
     await this.channel.assertQueue(this.queue);
     if (this.listenGeneration !== gen) {
@@ -779,6 +1326,7 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
   async close(): Promise<void> {
     this.listenGeneration++;
     this.listening = false;
+    this.closing = true;
     this.emitStatus(RmqStatus.DISCONNECTED);
     const tag = this.consumerTag;
     this.consumerTag = undefined;
@@ -787,6 +1335,22 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
         await this.channel.cancel(tag);
       } catch {
         // Channel may already be closed
+      }
+    }
+
+    if (this.gracefulShutdown) {
+      await waitForInFlightDrain(
+        () => this.inFlight,
+        this.drainWaiters,
+        this.gracePeriod,
+      );
+      this.drainWaiters = [];
+      if (typeof this.channel.close === "function") {
+        try {
+          await this.channel.close();
+        } catch {
+          // Channel may already be closed
+        }
       }
     }
   }
@@ -824,57 +1388,102 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
   private async onMessage(
     msg: RabbitMqMessageLike | null | undefined,
   ): Promise<void> {
-    if (!msg || msg.content === undefined || msg.content === null) {
+    if (this.closing || !msg || msg.content === undefined || msg.content === null) {
       return;
     }
-    const envelope = tryDecodePayload(msg.content);
-    if (!envelope) {
-      if (!this.noAck) {
-        this.channel.nack?.(msg, false, false);
-      }
-      return;
-    }
-    const pattern = envelope.type === "response" ? "" : envelope.pattern;
-    const metadata: Record<string, unknown> = {
-      queue: this.queue,
-      correlationId: msg.properties?.correlationId,
-      replyTo: msg.properties?.replyTo,
-    };
-    if (msg.properties?.headers !== undefined) {
-      metadata.headers = msg.properties.headers;
-    }
-    const ctx = new RmqContext(
-      [msg as Record<string, any>, this.channel, pattern],
-      metadata,
-    );
-
+    this.inFlight++;
     try {
-      if (envelope.type === "event") {
-        const matchedKeys = this.resolveEventPatternKeys(envelope.pattern);
-        if (matchedKeys.length === 0) {
-          if (!this.noAck) {
-            this.channel.nack?.(msg, false, false);
-          }
-          return;
+      const rawRoutingKey =
+        typeof msg.fields?.routingKey === "string" &&
+        msg.fields.routingKey.length > 0
+          ? msg.fields.routingKey
+          : undefined;
+      const headerPattern =
+        typeof msg.properties?.headers?.["x-pattern"] === "string" &&
+        (msg.properties.headers["x-pattern"] as string).length > 0
+          ? (msg.properties.headers["x-pattern"] as string)
+          : typeof msg.properties?.headers?.pattern === "string" &&
+              (msg.properties.headers.pattern as string).length > 0
+            ? (msg.properties.headers.pattern as string)
+            : undefined;
+      const channelPattern = rawRoutingKey ?? headerPattern ?? this.queue;
+
+      const decoded = await decodeInboundMessage({
+        raw: msg.content,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+        channel: channelPattern,
+        replyTo: msg.properties?.replyTo,
+        correlationId: msg.properties?.correlationId,
+        headers: msg.properties?.headers,
+        hasMessageHandler: (p) => this.resolveMessagePatternKey(p) !== undefined,
+        hasEventHandler: (p) => this.resolveEventPatternKeys(p).length > 0,
+      });
+      if (!decoded) {
+        if (!this.noAck) {
+          this.channel.nack?.(msg, false, false);
         }
-        for (const key of matchedKeys) {
-          await this.dispatchEvent(key, envelope.data, ctx);
-        }
+        return;
+      }
+      if (decoded.kind === "response") {
         if (!this.noAck) {
           this.channel.ack?.(msg);
         }
         return;
       }
 
-      if (envelope.type === "request") {
-        const matchedKey = this.resolveMessagePatternKey(envelope.pattern);
-        const dispatchKey = matchedKey ?? envelope.pattern;
+      const pattern = decoded.pattern;
+      const metadata: Record<string, unknown> = {
+        queue: this.queue,
+        correlationId: msg.properties?.correlationId,
+        replyTo: msg.properties?.replyTo,
+        ...(rawRoutingKey !== undefined ? { routingKey: rawRoutingKey } : {}),
+        ...(decoded.metadata ?? {}),
+      };
+      if (msg.properties?.headers !== undefined) {
+        metadata.headers = msg.properties.headers;
+      }
+      const packetMeta = decoded.metadata
+        ? toPacketMetadata(Object.entries(decoded.metadata))
+        : undefined;
+      const msgForCtx: Record<string, any> =
+        packetMeta && !msg.properties?.headers
+          ? {
+              ...msg,
+              properties: {
+                ...(msg.properties ?? {}),
+                headers: packetMeta,
+              },
+            }
+          : (msg as Record<string, any>);
+      const ctx = new RmqContext([msgForCtx, this.channel, pattern], metadata);
+
+      try {
+        if (decoded.kind === "event") {
+          const matchedKeys = this.resolveEventPatternKeys(pattern);
+          if (matchedKeys.length === 0) {
+            if (!this.noAck) {
+              this.channel.nack?.(msg, false, false);
+            }
+            return;
+          }
+          for (const key of matchedKeys) {
+            await this.dispatchEvent(key, decoded.data, ctx);
+          }
+          if (!this.noAck) {
+            this.channel.ack?.(msg);
+          }
+          return;
+        }
+
+        const matchedKey = this.resolveMessagePatternKey(pattern);
+        const dispatchKey = matchedKey ?? pattern;
         const outcome = await this.dispatchMessage(
           dispatchKey,
-          envelope.data,
+          decoded.data,
           ctx,
         );
-        const replyTo = msg.properties?.replyTo;
+        const replyTo = msg.properties?.replyTo ?? decoded.replyTo;
         if (replyTo) {
           const isRecord = outcome.response instanceof RmqRecord;
           const unwrappedResponse = isRecord
@@ -883,36 +1492,48 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
           const recordOpts = isRecord
             ? (outcome.response as RmqRecord).options
             : undefined;
-          const correlationId = msg.properties?.correlationId ?? envelope.id;
-          const response: RpcResponseEnvelope = {
-            type: "response",
+          const correlationId = msg.properties?.correlationId ?? decoded.id;
+          const encodedReply = await encodeOutboundResponse({
             id: correlationId,
+            pattern,
             response: unwrappedResponse,
             error: outcome.error,
             isDisposed: true,
-          };
-          await this.channel.sendToQueue(replyTo, JSON.stringify(response), {
-            ...(recordOpts ?? {}),
-            correlationId: response.id,
+            wireFormat: this.wireFormat,
+            responseWireStyle: decoded.responseWireStyle,
+            serializer: this.serializer,
           });
+          await this.channel.sendToQueue(
+            replyTo,
+            stringifyWirePayload(encodedReply),
+            {
+              ...(recordOpts ?? {}),
+              correlationId,
+            },
+          );
         }
         if (!this.noAck) {
           if (!matchedKey) {
             this.channel.nack?.(msg, false, false);
+          } else if (outcome.error && this.nackOnInternalError) {
+            this.channel.nack?.(msg, false, this.nackRequeue);
           } else {
             this.channel.ack?.(msg);
           }
         }
         return;
+      } catch {
+        if (!this.noAck) {
+          this.channel.nack?.(
+            msg,
+            false,
+            this.nackOnInternalError ? this.nackRequeue : false,
+          );
+        }
       }
-
-      if (!this.noAck) {
-        this.channel.ack?.(msg);
-      }
-    } catch {
-      if (!this.noAck) {
-        this.channel.nack?.(msg, false, false);
-      }
+    } finally {
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      notifyDrainWaiters(() => this.inFlight, this.drainWaiters);
     }
   }
 }
@@ -923,6 +1544,9 @@ export class RabbitMqClientProxy extends ClientProxy {
   private readonly channel: RabbitMqChannelLike;
   private readonly queue: string;
   private readonly replyQueue: string;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private replyInitialized = false;
   private replyInitPromise?: Promise<void>;
   private replyConsumerTag?: string;
@@ -938,9 +1562,19 @@ export class RabbitMqClientProxy extends ClientProxy {
   private seq = 0;
 
   constructor(options: RabbitMqTransportOptions) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.channel = options.channel;
     this.queue = options.queue;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
     this.replyQueue =
       options.replyQueue ??
       `${options.queue}.reply.${crypto.randomUUID().slice(0, 8)}`;
@@ -958,11 +1592,13 @@ export class RabbitMqClientProxy extends ClientProxy {
   async close(): Promise<void> {
     this.closeGeneration++;
     this.replyInitPromise = undefined;
+    const closeErr = new Error("RabbitMqClientProxy closed.");
     for (const [id, p] of this.pending.entries()) {
       clearTimeout(p.timer);
       this.pending.delete(id);
-      p.reject(new Error("RabbitMqClientProxy closed."));
+      p.reject(closeErr);
     }
+    this.cancelActiveRequests(closeErr);
     this.emitStatus("disconnected");
     const tag = this.replyConsumerTag;
     this.replyConsumerTag = undefined;
@@ -977,6 +1613,7 @@ export class RabbitMqClientProxy extends ClientProxy {
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
@@ -995,12 +1632,25 @@ export class RabbitMqClientProxy extends ClientProxy {
     const recordOpts = isRecord ? data.options : undefined;
 
     const id = `rmq_${++this.seq}_${crypto.randomUUID().slice(0, 8)}`;
-    const req: RpcRequestEnvelope = {
-      type: "request",
+    const encodedReq = await encodeOutboundRequest({
       id,
       pattern,
       data: unwrappedData,
-    };
+      replyTo: this.replyQueue,
+      metadata,
+      headers: recordOpts?.headers as Record<string, unknown> | undefined,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payloadStr = stringifyWirePayload(encodedReq);
+
+    const sendHeaders =
+      this.wireFormat === "raw-json"
+        ? {
+            ...(recordOpts?.headers ?? {}),
+            "x-pattern": pattern,
+          }
+        : recordOpts?.headers;
 
     return await new Promise<TRes>((resolve, reject) => {
       const onAbort = () => {
@@ -1043,8 +1693,9 @@ export class RabbitMqClientProxy extends ClientProxy {
 
       try {
         Promise.resolve(
-          this.channel.sendToQueue(this.queue, JSON.stringify(req), {
+          this.channel.sendToQueue(this.queue, payloadStr, {
             ...(recordOpts ?? {}),
+            ...(sendHeaders !== undefined ? { headers: sendHeaders } : {}),
             correlationId: id,
             replyTo: this.replyQueue,
           }),
@@ -1058,24 +1709,36 @@ export class RabbitMqClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     await this.channel.assertQueue(this.queue);
     const isRecord = data instanceof RmqRecord;
     const unwrappedData = isRecord ? data.data : data;
     const recordOpts = isRecord ? data.options : undefined;
-    const envelope: RpcEventEnvelope = {
-      type: "event",
+    const encoded = await encodeOutboundEvent({
       pattern,
       data: unwrappedData,
-    };
-    if (recordOpts !== undefined) {
-      await this.channel.sendToQueue(
-        this.queue,
-        JSON.stringify(envelope),
-        recordOpts as Record<string, unknown>,
-      );
+      metadata,
+      headers: recordOpts?.headers as Record<string, unknown> | undefined,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payloadStr = stringifyWirePayload(encoded);
+    const sendHeaders =
+      this.wireFormat === "raw-json"
+        ? {
+            ...(recordOpts?.headers ?? {}),
+            "x-pattern": pattern,
+          }
+        : recordOpts?.headers;
+
+    if (recordOpts !== undefined || sendHeaders !== undefined) {
+      await this.channel.sendToQueue(this.queue, payloadStr, {
+        ...(recordOpts ?? {}),
+        ...(sendHeaders !== undefined ? { headers: sendHeaders } : {}),
+      });
     } else {
-      await this.channel.sendToQueue(this.queue, JSON.stringify(envelope));
+      await this.channel.sendToQueue(this.queue, payloadStr);
     }
   }
 
@@ -1098,25 +1761,31 @@ export class RabbitMqClientProxy extends ClientProxy {
       }
       const res = await this.channel.consume(
         this.replyQueue,
-        (msg) => {
+        async (msg) => {
           if (!msg || msg.content === undefined || msg.content === null) {
             return;
           }
-          const envelope = tryDecodePayload(msg.content);
-          if (!envelope || envelope.type !== "response") return;
-          const id = msg.properties?.correlationId ?? envelope.id;
+          const decoded = await decodeInboundResponse({
+            raw: msg.content,
+            wireFormat: this.wireFormat,
+            deserializer: this.deserializer,
+            fallbackId: msg.properties?.correlationId,
+          });
+          if (!decoded) return;
+          const id = msg.properties?.correlationId ?? decoded.id;
+          if (!id) return;
           const entry = this.pending.get(id);
           if (!entry) return;
           clearTimeout(entry.timer);
           this.pending.delete(id);
-          if (envelope.error) {
+          if (decoded.error) {
             try {
-              throwFromResponseError(envelope.error);
+              throwFromResponseError(decoded.error);
             } catch (err) {
               entry.reject(err);
             }
           } else {
-            entry.resolve(envelope.response);
+            entry.resolve(decoded.response);
           }
         },
         { noAck: true },

@@ -15,9 +15,23 @@ import type {
   RpcEventEnvelope,
   RpcRequestEnvelope,
   RpcResponseEnvelope,
+  WireFormat,
 } from "../interfaces";
-import { toPacketMetadata, type PacketMetadata } from "../packets";
+import {
+  toPacketMetadata,
+  type Deserializer,
+  type PacketMetadata,
+  type Serializer,
+} from "../packets";
 import { MqttRecord } from "../records";
+import {
+  decodeInboundMessage,
+  decodeInboundResponse,
+  encodeOutboundEvent,
+  encodeOutboundRequest,
+  encodeOutboundResponse,
+  stringifyWirePayload,
+} from "../serializers/wire-codec";
 import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
@@ -166,6 +180,7 @@ export interface MqttContextParams {
   readonly pattern: string;
   readonly topic: string;
   readonly packet: MqttPacketLike;
+  readonly extraMetadata?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -213,6 +228,7 @@ export class MqttContext
       qos: this.qos,
       retain: this.retain,
       packet: paramsOrArgs.packet,
+      ...(paramsOrArgs.extraMetadata ?? {}),
     };
   }
 
@@ -246,7 +262,11 @@ export class MqttContext
         Object.entries(userProperties as Record<string, unknown>),
       );
     }
-    return undefined;
+    return toPacketMetadata(
+      Object.entries(this.metadata).filter(
+        ([k]) => k !== "topic" && k !== "qos" && k !== "retain" && k !== "packet",
+      ),
+    );
   }
 }
 
@@ -255,20 +275,46 @@ export class MqttContext
  * `#` multi-level wildcard routing, QoS options, per-client reply topics,
  * `MqttContext`, and graceful disconnect.
  */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof (timer as { unref?: () => void }).unref === "function") {
+    (timer as { unref: () => void }).unref();
+  }
+}
+
 export class MqttServer extends MicroserviceTransportServer {
   public readonly transport = Transport.MQTT;
 
   private readonly client: MqttClientLike;
   private readonly qos: MqttQoS;
   private readonly closeClientOnClose: boolean;
+  private readonly gracefulShutdown: boolean;
+  private readonly gracePeriod: number;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
   private readonly subscribedTopics: string[] = [];
   private messageListener?: MqttMessageListener;
+  private closing = false;
+  private inFlight = 0;
+  private drainWaiters: Array<() => void> = [];
 
   constructor(options: MqttTransportOptions) {
     super();
+    this.configureServerOptions(options);
     this.client = options.client;
     this.qos = options.qos ?? 0;
     this.closeClientOnClose = options.closeClientOnClose ?? false;
+    this.gracefulShutdown = options.gracefulShutdown ?? false;
+    this.gracePeriod = options.gracePeriod ?? 5000;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
+  }
+
+  override get server(): MqttClientLike {
+    return this.client;
   }
 
   async listen(
@@ -279,6 +325,7 @@ export class MqttServer extends MicroserviceTransportServer {
       return;
     }
 
+    this.closing = false;
     this.messageListener = (topic, payload, packet) => {
       void this.onMessage(topic, payload, packet);
     };
@@ -291,7 +338,14 @@ export class MqttServer extends MicroserviceTransportServer {
 
     for (const pattern of patterns) {
       this.subscribedTopics.push(pattern);
-      await this.client.subscribe(pattern, { qos: this.qos });
+      const handler =
+        this.messageHandlers.get(pattern) ??
+        this.eventHandlers
+          .get(pattern)
+          ?.find((h) => h.extras?.qos !== undefined) ??
+        this.eventHandlers.get(pattern)?.[0];
+      const qos = (handler?.extras?.qos as MqttQoS | undefined) ?? this.qos;
+      await this.client.subscribe(pattern, { qos });
     }
 
     this.listening = true;
@@ -301,6 +355,7 @@ export class MqttServer extends MicroserviceTransportServer {
 
   async close(): Promise<void> {
     this.listening = false;
+    this.closing = true;
     this.emitStatus(MqttStatus.CLOSED);
     if (this.messageListener) {
       if (typeof this.client.off === "function") {
@@ -320,7 +375,40 @@ export class MqttServer extends MicroserviceTransportServer {
       }
     }
 
-    if (this.closeClientOnClose) {
+    if (this.gracefulShutdown && this.inFlight > 0) {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (graceTimer !== undefined) {
+            clearTimeout(graceTimer);
+            graceTimer = undefined;
+          }
+          resolve();
+        };
+
+        this.drainWaiters.push(() => {
+          if (this.inFlight <= 0) {
+            finish();
+          }
+        });
+
+        if (
+          Number.isFinite(this.gracePeriod) &&
+          this.gracePeriod >= 0 &&
+          this.gracePeriod <= MAX_TIMEOUT_MS
+        ) {
+          graceTimer = setTimeout(finish, this.gracePeriod);
+          unrefTimer(graceTimer);
+        }
+      });
+      this.drainWaiters = [];
+    }
+
+    if (this.closeClientOnClose || this.gracefulShutdown) {
       if (typeof this.client.end === "function") {
         await this.client.end();
       } else if (typeof this.client.close === "function") {
@@ -369,106 +457,164 @@ export class MqttServer extends MicroserviceTransportServer {
     payload: Uint8Array | Buffer | string,
     rawPacket?: MqttPacketLike,
   ): Promise<void> {
-    const packet: MqttPacketLike = rawPacket ?? {
-      topic,
-      payload,
-      qos: this.qos,
-      retain: false,
-    };
-
-    const { envelope, value } = decodeMqttMessage(payload);
-
-    if (envelope?.type === "response") {
-      return;
-    }
-
-    if (envelope?.type === "request") {
-      const matched = this.findMessageHandler(topic);
-      const ctx = new MqttContext({
-        pattern: matched?.filter ?? topic,
+    if (this.closing) return;
+    this.inFlight++;
+    try {
+      const packet: MqttPacketLike = rawPacket ?? {
         topic,
-        packet,
-      });
+        payload,
+        qos: this.qos,
+        retain: false,
+      };
 
-      let outcome: { response?: unknown; error?: RpcResponseEnvelope["error"] };
-      if (!matched) {
-        outcome = {
-          error: new RpcException({
-            status: 404,
-            message: `No MQTT @MessagePattern() handler found for topic "${topic}".`,
-          }).toSerialized(),
-        };
-      } else {
-        try {
-          const response = await this.runWithProcessingHooks(ctx, async () => {
-            if (this.preRequestHook) {
-              await this.preRequestHook({
-                pattern: matched.filter,
-                data: envelope.data,
-                ctx,
-              });
-            }
-            return matched.handler(envelope.data, ctx);
-          });
-          outcome = { response };
-        } catch (err) {
-          outcome = { error: this.serializeError(err) };
-        }
-      }
-
-      if (envelope.replyTo) {
-        const isRecord = outcome.response instanceof MqttRecord;
-        const unwrappedResponse = isRecord
-          ? (outcome.response as MqttRecord).data
-          : outcome.response;
-        const recordOpts = isRecord
-          ? (outcome.response as MqttRecord).options
+      const responseTopic =
+        typeof packet.properties?.responseTopic === "string"
+          ? packet.properties.responseTopic
           : undefined;
-        const responseEnvelope: RpcResponseEnvelope = {
-          type: "response",
-          id: envelope.id,
-          response: unwrappedResponse,
-          error: outcome.error,
-          isDisposed: true,
-        };
-        const publishOpts: MqttPublishOptions = {
-          qos: recordOpts?.qos ?? this.qos,
-          retain: recordOpts?.retain ?? false,
-          ...(recordOpts?.dup !== undefined ? { dup: recordOpts.dup } : {}),
-          ...(recordOpts?.properties !== undefined
-            ? { properties: recordOpts.properties }
-            : {}),
-        };
-        await this.client.publish(
-          envelope.replyTo,
-          JSON.stringify(responseEnvelope),
-          publishOpts,
-        );
-      }
-      return;
-    }
+      const userProperties =
+        packet.properties?.userProperties &&
+        typeof packet.properties.userProperties === "object"
+          ? (packet.properties.userProperties as Record<string, unknown>)
+          : undefined;
 
-    const eventData = envelope?.type === "event" ? envelope.data : value;
-    const matches = this.findEventHandlers(topic);
-    const hasHooks =
-      this.onProcessingStartHook !== undefined ||
-      this.onProcessingEndHook !== undefined;
-    for (const match of matches) {
-      const ctx = new MqttContext({
-        pattern: match.filter,
-        topic,
-        packet,
+      const decoded = await decodeInboundMessage({
+        raw: payload,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+        channel: topic,
+        replyTo: responseTopic,
+        headers: userProperties,
+        allowNonJsonText: this.wireFormat === "bunest" && !this.deserializer,
+        hasMessageHandler: (p) => this.findMessageHandler(p) !== undefined,
+        hasEventHandler: (p) => this.findEventHandlers(p).length > 0,
       });
-      try {
-        if (hasHooks) {
-          await this.runWithProcessingHooks(ctx, async () => {
-            await match.handler(eventData, ctx);
-          });
+
+      if (!decoded || decoded.kind === "response") {
+        return;
+      }
+
+      if (decoded.kind === "request") {
+        const matched = this.findMessageHandler(decoded.pattern);
+        const ctx = new MqttContext({
+          pattern: matched?.filter ?? decoded.pattern,
+          topic,
+          packet,
+          extraMetadata: decoded.metadata,
+        });
+
+        let outcome: { response?: unknown; error?: RpcResponseEnvelope["error"] };
+        if (!matched) {
+          outcome = {
+            error: new RpcException({
+              status: 404,
+              message: `No MQTT @MessagePattern() handler found for topic "${decoded.pattern}".`,
+            }).toSerialized(),
+          };
         } else {
-          await match.handler(eventData, ctx);
+          try {
+            const response = await this.executeWithServerContext(
+              "request",
+              matched.filter,
+              ctx,
+              () =>
+                this.runWithProcessingHooks(ctx, async () => {
+                  if (this.preRequestHook) {
+                    await this.preRequestHook({
+                      pattern: matched.filter,
+                      data: decoded.data,
+                      ctx,
+                    });
+                  }
+                  return matched.handler(decoded.data, ctx);
+                }),
+            );
+            outcome = { response };
+          } catch (err) {
+            outcome = { error: this.serializeError(err) };
+          }
         }
-      } catch {
-        // Never allow event handler exceptions to disrupt MQTT listener
+
+        const replyTarget =
+          decoded.replyTo ??
+          (this.wireFormat === "raw-json" ? `${topic}/reply` : undefined);
+        if (replyTarget) {
+          const isRecord = outcome.response instanceof MqttRecord;
+          const unwrappedResponse = isRecord
+            ? (outcome.response as MqttRecord).data
+            : outcome.response;
+          const recordOpts = isRecord
+            ? (outcome.response as MqttRecord).options
+            : undefined;
+          const encodedReply = await encodeOutboundResponse({
+            id: decoded.id,
+            pattern: decoded.pattern,
+            response: unwrappedResponse,
+            error: outcome.error,
+            isDisposed: true,
+            wireFormat: this.wireFormat,
+            responseWireStyle: decoded.responseWireStyle,
+            serializer: this.serializer,
+          });
+          const publishOpts: MqttPublishOptions = {
+            qos: recordOpts?.qos ?? this.qos,
+            retain: recordOpts?.retain ?? false,
+            ...(recordOpts?.dup !== undefined ? { dup: recordOpts.dup } : {}),
+            ...(recordOpts?.properties !== undefined
+              ? { properties: recordOpts.properties }
+              : {}),
+          };
+          await this.client.publish(
+            replyTarget,
+            stringifyWirePayload(encodedReply),
+            publishOpts,
+          );
+        }
+        return;
+      }
+
+      const matches = this.findEventHandlers(decoded.pattern);
+      const hasHooks =
+        this.onProcessingStartHook !== undefined ||
+        this.onProcessingEndHook !== undefined;
+      for (const match of matches) {
+        const ctx = new MqttContext({
+          pattern: match.filter,
+          topic,
+          packet,
+          extraMetadata: decoded.metadata,
+        });
+        try {
+          await this.executeWithServerContext(
+            "event",
+            match.filter,
+            ctx,
+            async () => {
+              if (hasHooks) {
+                await this.runWithProcessingHooks(ctx, async () => {
+                  await match.handler(decoded.data, ctx);
+                });
+              } else {
+                await match.handler(decoded.data, ctx);
+              }
+            },
+          );
+        } catch (err) {
+          await this.invokeDeadLetterHandlerSafe(
+            match.filter,
+            decoded.data,
+            ctx,
+            err,
+          );
+          // Never allow event handler exceptions to disrupt MQTT listener
+        }
+      }
+    } finally {
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      if (this.inFlight === 0 && this.drainWaiters.length > 0) {
+        const waiters = this.drainWaiters.splice(0);
+        for (const fn of waiters) {
+          fn();
+        }
       }
     }
   }
@@ -487,11 +633,15 @@ export class MqttClientProxy extends ClientProxy {
   private readonly qos: MqttQoS;
   private readonly retain: boolean;
   private readonly closeClientOnClose: boolean;
+  private readonly wireFormat: WireFormat;
+  private readonly serializer?: Serializer;
+  private readonly deserializer?: Deserializer;
 
   private listenerAttached = false;
   private messageListener?: MqttMessageListener;
   private readonly subscribedReplyTopics = new Set<string>();
   private readonly pendingSubscribes = new Map<string, Promise<void>>();
+  private readonly rawPendingByTopic = new Map<string, string[]>();
   private readonly pending = new Map<
     string,
     {
@@ -503,12 +653,22 @@ export class MqttClientProxy extends ClientProxy {
   private seq = 0;
 
   constructor(options: MqttTransportOptions) {
-    super(options.defaultTimeoutMs ?? 5000);
+    super(options.requestTimeout ?? options.defaultTimeoutMs ?? 5000, {
+      requestTimeout: options.requestTimeout,
+      maxPendingRequests: options.maxPendingRequests,
+      retry: options.retry,
+      circuitBreaker: options.circuitBreaker,
+      clsPropagation: options.clsPropagation,
+      cls: options.cls,
+    });
     this.client = options.client;
     this.qos = options.qos ?? 0;
     this.retain = options.retain ?? false;
     this.clientId = options.clientId ?? crypto.randomUUID().slice(0, 12);
     this.closeClientOnClose = options.closeClientOnClose ?? false;
+    this.wireFormat = options.wireFormat ?? "bunest";
+    this.serializer = options.serializer;
+    this.deserializer = options.deserializer;
   }
 
   getReplyTopic(topic: string): string {
@@ -521,11 +681,14 @@ export class MqttClientProxy extends ClientProxy {
   }
 
   async close(): Promise<void> {
+    const closeErr = new Error("MqttClientProxy closed.");
     for (const [id, entry] of this.pending.entries()) {
       clearTimeout(entry.timer);
       this.pending.delete(id);
-      entry.reject(new Error("MqttClientProxy closed."));
+      entry.reject(closeErr);
     }
+    this.rawPendingByTopic.clear();
+    this.cancelActiveRequests(closeErr);
 
     this.emitStatus("disconnected");
 
@@ -580,17 +743,20 @@ export class MqttClientProxy extends ClientProxy {
     topic: string,
     data: TReq,
     options?: MqttPublishOptions,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     assertValidMqttPublishTopic(topic);
     const isRecord = data instanceof MqttRecord;
     const unwrappedData = isRecord ? data.data : data;
     const recordOpts = isRecord ? data.options : undefined;
-    const envelope: RpcEventEnvelope = {
-      type: "event",
+    const encoded = await encodeOutboundEvent({
       pattern: topic,
       data: unwrappedData,
-    };
-    await this.client.publish(topic, JSON.stringify(envelope), {
+      metadata,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    await this.client.publish(topic, stringifyWirePayload(encoded), {
       qos: options?.qos ?? recordOpts?.qos ?? this.qos,
       retain: options?.retain ?? recordOpts?.retain ?? this.retain,
       dup: options?.dup ?? recordOpts?.dup,
@@ -625,6 +791,7 @@ export class MqttClientProxy extends ClientProxy {
     data: TReq,
     timeoutMs: number,
     signal?: AbortSignal,
+    metadata?: Record<string, unknown>,
   ): Promise<TRes> {
     assertValidMqttPublishTopic(pattern);
     if (signal?.aborted) {
@@ -633,7 +800,12 @@ export class MqttClientProxy extends ClientProxy {
     this.ensureListener();
 
     const replyTopic = this.getReplyTopic(pattern);
+    const fallbackRawReplyTopic =
+      this.wireFormat === "raw-json" ? `${pattern}/reply` : undefined;
     await this.ensureReplySubscribed(replyTopic);
+    if (fallbackRawReplyTopic) {
+      await this.ensureReplySubscribed(fallbackRawReplyTopic);
+    }
     if (signal?.aborted) {
       throw new RpcTimeoutException(pattern, timeoutMs);
     }
@@ -643,32 +815,55 @@ export class MqttClientProxy extends ClientProxy {
     const recordOpts = isRecord ? data.options : undefined;
 
     const id = `mqtt_${++this.seq}_${crypto.randomUUID().slice(0, 8)}`;
-    const req: RpcRequestEnvelope = {
-      type: "request",
+    const encodedReq = await encodeOutboundRequest({
       id,
       pattern,
       data: unwrappedData,
       replyTo: replyTopic,
-    };
+      metadata,
+      wireFormat: this.wireFormat,
+      serializer: this.serializer,
+    });
+    const payloadStr = stringifyWirePayload(encodedReq);
+
+    const properties =
+      this.wireFormat !== "bunest"
+        ? {
+            ...(recordOpts?.properties ?? {}),
+            responseTopic: replyTopic,
+          }
+        : recordOpts?.properties;
 
     const publishOpts: MqttPublishOptions = {
       qos: recordOpts?.qos ?? this.qos,
       retain: recordOpts?.retain ?? false,
       ...(recordOpts?.dup !== undefined ? { dup: recordOpts.dup } : {}),
-      ...(recordOpts?.properties !== undefined
-        ? { properties: recordOpts.properties }
-        : {}),
+      ...(properties !== undefined ? { properties } : {}),
     };
 
     return await new Promise<TRes>((resolve, reject) => {
+      const trackedRawTopics = fallbackRawReplyTopic
+        ? [replyTopic, fallbackRawReplyTopic]
+        : [];
+      const removeFromRawQueues = () => {
+        for (const t of trackedRawTopics) {
+          const q = this.rawPendingByTopic.get(t);
+          if (q) {
+            const idx = q.indexOf(id);
+            if (idx !== -1) q.splice(idx, 1);
+          }
+        }
+      };
       const onAbort = () => {
         if (this.pending.delete(id)) {
           clearTimeout(timer);
+          removeFromRawQueues();
           reject(new RpcTimeoutException(pattern, timeoutMs));
         }
       };
       const cleanup = () => {
         signal?.removeEventListener("abort", onAbort);
+        removeFromRawQueues();
       };
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
@@ -692,10 +887,19 @@ export class MqttClientProxy extends ClientProxy {
         timer,
       });
 
+      for (const t of trackedRawTopics) {
+        let q = this.rawPendingByTopic.get(t);
+        if (!q) {
+          q = [];
+          this.rawPendingByTopic.set(t, q);
+        }
+        q.push(id);
+      }
+
       signal?.addEventListener("abort", onAbort, { once: true });
 
       Promise.resolve(
-        this.client.publish(pattern, JSON.stringify(req), publishOpts),
+        this.client.publish(pattern, payloadStr, publishOpts),
       ).catch((err) => {
         clearTimeout(timer);
         cleanup();
@@ -708,8 +912,43 @@ export class MqttClientProxy extends ClientProxy {
   protected override async dispatchEvent<TReq = any>(
     pattern: string,
     data: TReq,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.publishEventInternal(pattern, data);
+    await this.publishEventInternal(pattern, data, undefined, metadata);
+  }
+
+  private resolvePendingMqttReply(
+    topic: string,
+    id: string | undefined,
+    response: unknown,
+    error: RpcResponseEnvelope["error"],
+  ): void {
+    let targetId = id;
+    if (!targetId || !this.pending.has(targetId)) {
+      const q = this.rawPendingByTopic.get(topic);
+      while (q && q.length > 0) {
+        const candidate = q.shift()!;
+        if (this.pending.has(candidate)) {
+          targetId = candidate;
+          break;
+        }
+      }
+    }
+    if (!targetId) return;
+    const entry = this.pending.get(targetId);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.pending.delete(targetId);
+
+    if (error) {
+      try {
+        throwFromResponseError(error);
+      } catch (err) {
+        entry.reject(err);
+      }
+    } else {
+      entry.resolve(response);
+    }
   }
 
   private ensureListener(): void {
@@ -721,26 +960,33 @@ export class MqttClientProxy extends ClientProxy {
       if (!this.subscribedReplyTopics.has(topic)) {
         return;
       }
-      const { envelope } = decodeMqttMessage(payload);
-      if (!envelope || envelope.type !== "response") {
-        return;
-      }
-      const entry = this.pending.get(envelope.id);
-      if (!entry) {
-        return;
-      }
-      clearTimeout(entry.timer);
-      this.pending.delete(envelope.id);
-
-      if (envelope.error) {
-        try {
-          throwFromResponseError(envelope.error);
-        } catch (err) {
-          entry.reject(err);
+      if (this.wireFormat === "bunest" && !this.deserializer) {
+        const { envelope } = decodeMqttMessage(payload);
+        if (!envelope || envelope.type !== "response") {
+          return;
         }
-      } else {
-        entry.resolve(envelope.response);
+        this.resolvePendingMqttReply(
+          topic,
+          envelope.id,
+          envelope.response,
+          envelope.error,
+        );
+        return;
       }
+
+      void decodeInboundResponse({
+        raw: payload,
+        wireFormat: this.wireFormat,
+        deserializer: this.deserializer,
+      }).then((decoded) => {
+        if (!decoded) return;
+        this.resolvePendingMqttReply(
+          topic,
+          decoded.id,
+          decoded.response,
+          decoded.error,
+        );
+      });
     };
     this.client.on("message", this.messageListener);
   }

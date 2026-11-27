@@ -1,6 +1,9 @@
 import {
   HttpException,
   Logger,
+  restoreClsContext,
+  type ClsContextPropagator,
+  type ClsServiceLike,
   type LoggerService,
   type PreRequestHook,
 } from "@bunest/core";
@@ -10,11 +13,23 @@ import {
   normalizePattern,
   type CustomTransportStrategy,
   type MessageHandler,
+  type MicroserviceDeadLetterHandler,
   type PatternInput,
   type RpcContext,
+  type ServerResilienceOptions,
   type TransportId,
 } from "./interfaces";
 import type { ReadPacket, WritePacket } from "./packets";
+import {
+  defaultRpcClsService,
+  extractInboundClsCarrier,
+  findTraceparentInMetadata,
+  hasCarrierContext,
+  resolveClsPropagator,
+  rpcServerChannel,
+  type ClsPropagationConfig,
+  type RpcDiagnosticEvent,
+} from "./rpc-diagnostics";
 import type { Transport } from "./tokens";
 
 export type { CustomTransportStrategy } from "./interfaces";
@@ -67,9 +82,66 @@ export abstract class MicroserviceTransportServer {
     transportId: TransportId,
     context: unknown,
   ) => void;
+  protected deadLetterHandler?: MicroserviceDeadLetterHandler;
+  protected clsService?: ClsServiceLike;
+  protected clsPropagationEnabled = true;
+  protected clsPropagator: ClsContextPropagator =
+    resolveClsPropagator(undefined).propagator;
+
+  protected configureServerOptions(options?: ServerResilienceOptions): void {
+    if (!options) return;
+    if (options.deadLetterHandler !== undefined) {
+      this.deadLetterHandler = options.deadLetterHandler;
+    }
+    if (options.cls !== undefined) {
+      this.clsService = options.cls;
+    }
+    if (options.clsPropagation !== undefined) {
+      const cfg = resolveClsPropagator(options.clsPropagation);
+      this.clsPropagationEnabled = cfg.enabled;
+      this.clsPropagator = cfg.propagator;
+    }
+  }
+
+  /**
+   * Registers a poison-message dead-letter handler invoked safely whenever an
+   * `@EventPattern()` handler throws an error.
+   */
+  setDeadLetterHandler(
+    handler: MicroserviceDeadLetterHandler | undefined,
+  ): this {
+    this.deadLetterHandler = handler;
+    return this;
+  }
+
+  /**
+   * Attaches an explicit `ClsService` used to restore inbound CLS context around
+   * `@MessagePattern()` and `@EventPattern()` execution.
+   */
+  setClsService(cls: ClsServiceLike | undefined): this {
+    this.clsService = cls;
+    return this;
+  }
+
+  /**
+   * Configures inbound CLS header extraction & restoration behavior.
+   */
+  setClsPropagation(config: ClsPropagationConfig): this {
+    const cfg = resolveClsPropagator(config);
+    this.clsPropagationEnabled = cfg.enabled;
+    this.clsPropagator = cfg.propagator;
+    return this;
+  }
 
   get isListening(): boolean {
     return this.listening;
+  }
+
+  /**
+   * Underlying transport server/client instance (overridden by concrete transport servers).
+   */
+  get server(): unknown {
+    return undefined;
   }
 
   /**
@@ -322,9 +394,63 @@ export abstract class MicroserviceTransportServer {
           };
 
     if (handler) {
-      await this.runWithProcessingHooks(context ?? ctx, async () => {
-        await handler(data, ctx);
-      });
+      const targetContext = context ?? ctx;
+      const carrier = extractInboundClsCarrier(
+        targetContext,
+        this.clsPropagator,
+      );
+      const traceparent =
+        carrier.traceparent ?? findTraceparentInMetadata(ctx.metadata);
+      const hasSubscribersAtStart = rpcServerChannel.hasSubscribers;
+      const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+
+      if (hasSubscribersAtStart) {
+        rpcServerChannel.publish({
+          phase: "start",
+          kind: "event",
+          pattern,
+          transport: String(this.transport),
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+
+      try {
+        await this.runWithInboundCls(carrier, async () => {
+          await this.runWithProcessingHooks(targetContext, async () => {
+            await handler(data, ctx);
+          });
+        });
+        if (rpcServerChannel.hasSubscribers) {
+          rpcServerChannel.publish({
+            phase: "end",
+            kind: "event",
+            pattern,
+            transport: String(this.transport),
+            durationMs: hasSubscribersAtStart
+              ? performance.now() - startedAt
+              : 0,
+            ...(traceparent !== undefined ? { traceparent } : {}),
+          } satisfies RpcDiagnosticEvent);
+        }
+      } catch (err) {
+        if (rpcServerChannel.hasSubscribers) {
+          rpcServerChannel.publish({
+            phase: "error",
+            kind: "event",
+            pattern,
+            transport: String(this.transport),
+            durationMs: hasSubscribersAtStart
+              ? performance.now() - startedAt
+              : 0,
+            error: err,
+            ...(traceparent !== undefined ? { traceparent } : {}),
+          } satisfies RpcDiagnosticEvent);
+        }
+        await this.invokeDeadLetterHandlerSafe(pattern, data, ctx, err);
+        if (this.propagatesEventHandlerErrors) {
+          throw err;
+        }
+      }
       return;
     }
 
@@ -438,18 +564,148 @@ export abstract class MicroserviceTransportServer {
     return awaitedHook as T;
   }
 
+  protected runWithInboundCls<T>(
+    carrier: ReturnType<typeof extractInboundClsCarrier>,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.clsPropagationEnabled) {
+      return fn();
+    }
+    if (!this.clsService && !hasCarrierContext(carrier)) {
+      return fn();
+    }
+    const cls = this.clsService ?? defaultRpcClsService;
+    return restoreClsContext(cls, carrier, fn);
+  }
+
+  protected async invokeDeadLetterHandlerSafe(
+    pattern: string,
+    data: unknown,
+    ctx: RpcContext,
+    error: unknown,
+  ): Promise<void> {
+    if (!this.deadLetterHandler) {
+      return;
+    }
+    try {
+      await this.deadLetterHandler({
+        pattern,
+        data,
+        metadata: ctx.metadata,
+        error,
+        transport: this.transport,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (dlqErr) {
+      this.logger.error(
+        `Dead-letter handler failed for event pattern "${pattern}": ${
+          dlqErr instanceof Error ? dlqErr.message : String(dlqErr)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Shared server-side wrapper used by custom transport dispatchers (Kafka, MQTT, gRPC)
+   * to restore inbound CLS context and emit `diagnosticsChannel("bunest:rpc:server")`.
+   */
+  protected async executeWithServerContext<T>(
+    kind: "request" | "event",
+    pattern: string,
+    ctx: RpcContext,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const carrier = extractInboundClsCarrier(ctx, this.clsPropagator);
+    const traceparent =
+      carrier.traceparent ?? findTraceparentInMetadata(ctx.metadata);
+    const hasSubscribersAtStart = rpcServerChannel.hasSubscribers;
+    const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+
+    if (hasSubscribersAtStart) {
+      rpcServerChannel.publish({
+        phase: "start",
+        kind,
+        pattern,
+        transport: String(this.transport),
+        ...(traceparent !== undefined ? { traceparent } : {}),
+      } satisfies RpcDiagnosticEvent);
+    }
+
+    try {
+      const result = await this.runWithInboundCls(carrier, fn);
+      if (rpcServerChannel.hasSubscribers) {
+        rpcServerChannel.publish({
+          phase: "end",
+          kind,
+          pattern,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+      return result;
+    } catch (err) {
+      if (rpcServerChannel.hasSubscribers) {
+        rpcServerChannel.publish({
+          phase: "error",
+          kind,
+          pattern,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          error: err,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+      throw err;
+    }
+  }
+
   protected async dispatchMessage(
     pattern: string,
     data: unknown,
     ctx: RpcContext,
   ): Promise<{ response?: unknown; error?: SerializedRpcError }> {
+    const carrier = extractInboundClsCarrier(ctx, this.clsPropagator);
+    const traceparent =
+      carrier.traceparent ?? findTraceparentInMetadata(ctx.metadata);
+    const hasSubscribersAtStart = rpcServerChannel.hasSubscribers;
+    const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+
+    if (hasSubscribersAtStart) {
+      rpcServerChannel.publish({
+        phase: "start",
+        kind: "request",
+        pattern,
+        transport: String(this.transport),
+        ...(traceparent !== undefined ? { traceparent } : {}),
+      } satisfies RpcDiagnosticEvent);
+    }
+
     const handler = this.messageHandlers.get(pattern);
     if (!handler) {
+      const notFoundErr = new RpcException({
+        status: 404,
+        message: `No @MessagePattern() handler found for pattern "${pattern}".`,
+      });
+      if (rpcServerChannel.hasSubscribers) {
+        rpcServerChannel.publish({
+          phase: "error",
+          kind: "request",
+          pattern,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          error: notFoundErr,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
       return {
-        error: new RpcException({
-          status: 404,
-          message: `No @MessagePattern() handler found for pattern "${pattern}".`,
-        }).toSerialized(),
+        error: notFoundErr.toSerialized(),
       };
     }
 
@@ -458,21 +714,48 @@ export abstract class MicroserviceTransportServer {
       this.onProcessingEndHook !== undefined;
 
     try {
-      const response = hasHooks
-        ? await this.runWithProcessingHooks(ctx, async () => {
-            if (this.preRequestHook) {
-              await this.preRequestHook({ pattern, data, ctx });
-            }
-            return await handler(data, ctx);
-          })
-        : await (async () => {
-            if (this.preRequestHook) {
-              await this.preRequestHook({ pattern, data, ctx });
-            }
-            return await handler(data, ctx);
-          })();
+      const response = await this.runWithInboundCls(carrier, async () =>
+        hasHooks
+          ? await this.runWithProcessingHooks(ctx, async () => {
+              if (this.preRequestHook) {
+                await this.preRequestHook({ pattern, data, ctx });
+              }
+              return await handler(data, ctx);
+            })
+          : await (async () => {
+              if (this.preRequestHook) {
+                await this.preRequestHook({ pattern, data, ctx });
+              }
+              return await handler(data, ctx);
+            })(),
+      );
+      if (rpcServerChannel.hasSubscribers) {
+        rpcServerChannel.publish({
+          phase: "end",
+          kind: "request",
+          pattern,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
       return { response };
     } catch (err) {
+      if (rpcServerChannel.hasSubscribers) {
+        rpcServerChannel.publish({
+          phase: "error",
+          kind: "request",
+          pattern,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          error: err,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
       return { error: this.serializeError(err) };
     }
   }
@@ -486,25 +769,69 @@ export abstract class MicroserviceTransportServer {
     if (!handlers || handlers.length === 0) {
       return;
     }
+    const carrier = extractInboundClsCarrier(ctx, this.clsPropagator);
+    const traceparent =
+      carrier.traceparent ?? findTraceparentInMetadata(ctx.metadata);
     const hasHooks =
       this.onProcessingStartHook !== undefined ||
       this.onProcessingEndHook !== undefined;
+
     for (const handler of [...handlers]) {
+      const hasSubscribersAtStart = rpcServerChannel.hasSubscribers;
+      const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+      if (hasSubscribersAtStart) {
+        rpcServerChannel.publish({
+          phase: "start",
+          kind: "event",
+          pattern,
+          transport: String(this.transport),
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+
       try {
-        if (hasHooks) {
-          await this.runWithProcessingHooks(ctx, async () => {
+        await this.runWithInboundCls(carrier, async () => {
+          if (hasHooks) {
+            await this.runWithProcessingHooks(ctx, async () => {
+              if (this.preRequestHook) {
+                await this.preRequestHook({ pattern, data, ctx });
+              }
+              await handler(data, ctx);
+            });
+          } else {
             if (this.preRequestHook) {
               await this.preRequestHook({ pattern, data, ctx });
             }
             await handler(data, ctx);
-          });
-        } else {
-          if (this.preRequestHook) {
-            await this.preRequestHook({ pattern, data, ctx });
           }
-          await handler(data, ctx);
+        });
+        if (rpcServerChannel.hasSubscribers) {
+          rpcServerChannel.publish({
+            phase: "end",
+            kind: "event",
+            pattern,
+            transport: String(this.transport),
+            durationMs: hasSubscribersAtStart
+              ? performance.now() - startedAt
+              : 0,
+            ...(traceparent !== undefined ? { traceparent } : {}),
+          } satisfies RpcDiagnosticEvent);
         }
       } catch (err) {
+        if (rpcServerChannel.hasSubscribers) {
+          rpcServerChannel.publish({
+            phase: "error",
+            kind: "event",
+            pattern,
+            transport: String(this.transport),
+            durationMs: hasSubscribersAtStart
+              ? performance.now() - startedAt
+              : 0,
+            error: err,
+            ...(traceparent !== undefined ? { traceparent } : {}),
+          } satisfies RpcDiagnosticEvent);
+        }
+        await this.invokeDeadLetterHandlerSafe(pattern, data, ctx, err);
         if (this.propagatesEventHandlerErrors) {
           throw err;
         }

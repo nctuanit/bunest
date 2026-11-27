@@ -1,7 +1,20 @@
-import type { OnModuleDestroy, PreRequestHook } from "@bunest/core";
-import { RpcException, RpcTimeoutException } from "./exceptions";
+import type {
+  ClsContextPropagator,
+  ClsContextPropagatorOptions,
+  ClsServiceLike,
+  OnModuleDestroy,
+  PreRequestHook,
+} from "@bunest/core";
+import {
+  CircuitOpenError,
+  RpcException,
+  RpcTimeoutException,
+} from "./exceptions";
 import {
   normalizePattern,
+  type CircuitBreakerOptions,
+  type CircuitBreakerState,
+  type ClientRetryOptions,
   type PatternInput,
   type SendOptions,
 } from "./interfaces";
@@ -12,10 +25,32 @@ import type {
   MessagePatternRequest,
   MessagePatternResponse,
 } from "./pattern-registry.interface";
+import {
+  buildOutboundRpcMetadata,
+  resolveClsPropagator,
+  rpcClientChannel,
+  type RpcDiagnosticEvent,
+} from "./rpc-diagnostics";
 import type { Transport } from "./tokens";
 
 export type ClientStatus = "connected" | "disconnected" | "reconnecting";
 export type ClientStatusListener = (status: ClientStatus) => void;
+
+export interface ClientProxyConstructorOptions {
+  readonly requestTimeout?: number;
+  readonly maxPendingRequests?: number;
+  readonly retry?: ClientRetryOptions;
+  readonly circuitBreaker?: CircuitBreakerOptions;
+  readonly clsPropagation?:
+    | boolean
+    | readonly string[]
+    | ClsContextPropagatorOptions;
+  readonly cls?: ClsServiceLike;
+}
+
+export interface EmitOptions {
+  readonly metadata?: Record<string, unknown>;
+}
 
 function sleepUnref(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -27,10 +62,191 @@ function sleepUnref(ms: number): Promise<void> {
   });
 }
 
+function isDefaultTransientError(err: unknown): boolean {
+  if (err instanceof CircuitOpenError) {
+    return false;
+  }
+  if (
+    err instanceof RpcException &&
+    (err as { readonly isRetryable?: boolean }).isRetryable !== true
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function computeExponentialBackoffDelay(
+  retry: ClientRetryOptions,
+  failedAttempt1Based: number,
+): number {
+  const backoffMs = Math.max(0, Math.floor(retry.backoffMs ?? 50));
+  if (backoffMs === 0) {
+    return 0;
+  }
+  const maxBackoffMs = Math.max(
+    backoffMs,
+    Math.floor(retry.maxBackoffMs ?? 10_000),
+  );
+  const exponent = Math.max(0, failedAttempt1Based - 1);
+  const ceiling = Math.min(maxBackoffMs, backoffMs * 2 ** exponent);
+  const useJitter = retry.jitter ?? true;
+  if (!useJitter) {
+    return Math.floor(ceiling);
+  }
+  // Equal jitter in [0.5 * ceiling, ceiling]: prevents retry storms while preserving growth
+  return Math.floor(ceiling * (0.5 + Math.random() * 0.5));
+}
+
+/**
+ * Self-contained closed -> open -> half-open circuit breaker state machine for `ClientProxy`.
+ */
+export class ClientCircuitBreaker {
+  private readonly failureThreshold: number;
+  private readonly resetTimeoutMs: number;
+  private readonly halfOpenMaxCalls: number;
+  private readonly isFailureFn: (err: unknown) => boolean;
+  private readonly onStateChange?: (
+    from: CircuitBreakerState,
+    to: CircuitBreakerState,
+  ) => void;
+
+  private _state: CircuitBreakerState = "closed";
+  private consecutiveFailures = 0;
+  private openedAt = 0;
+  private halfOpenInFlight = 0;
+  private halfOpenSuccesses = 0;
+
+  constructor(options: CircuitBreakerOptions) {
+    this.failureThreshold = Math.max(1, Math.floor(options.failureThreshold));
+    this.resetTimeoutMs = Math.max(0, Math.floor(options.resetTimeoutMs));
+    this.halfOpenMaxCalls = Math.max(
+      1,
+      Math.floor(options.halfOpenMaxCalls ?? 1),
+    );
+    this.isFailureFn = options.isFailure ?? isDefaultTransientError;
+    this.onStateChange = options.onStateChange;
+  }
+
+  get state(): CircuitBreakerState {
+    if (
+      this._state === "open" &&
+      Date.now() - this.openedAt >= this.resetTimeoutMs
+    ) {
+      return "half-open";
+    }
+    return this._state;
+  }
+
+  reset(): void {
+    const prev = this._state;
+    this._state = "closed";
+    this.consecutiveFailures = 0;
+    this.openedAt = 0;
+    this.halfOpenInFlight = 0;
+    this.halfOpenSuccesses = 0;
+    if (prev !== "closed") {
+      this.onStateChange?.(prev, "closed");
+    }
+  }
+
+  /**
+   * Checks whether a call is permitted and returns whether it was admitted as a
+   * half-open probe. Throws `CircuitOpenError` when the circuit rejects the call.
+   */
+  acquire(pattern: string): { readonly isHalfOpenProbe: boolean } {
+    if (this._state === "closed") {
+      return { isHalfOpenProbe: false };
+    }
+
+    if (this._state === "open") {
+      const now = Date.now();
+      if (now - this.openedAt < this.resetTimeoutMs) {
+        throw new CircuitOpenError(
+          pattern,
+          "open",
+          this.openedAt + this.resetTimeoutMs,
+        );
+      }
+      this.transition("half-open");
+      this.halfOpenInFlight = 1;
+      this.halfOpenSuccesses = 0;
+      return { isHalfOpenProbe: true };
+    }
+
+    // Half-open state: allow up to halfOpenMaxCalls concurrent probes
+    if (this.halfOpenInFlight >= this.halfOpenMaxCalls) {
+      throw new CircuitOpenError(pattern, "half-open", Date.now());
+    }
+    this.halfOpenInFlight++;
+    return { isHalfOpenProbe: true };
+  }
+
+  recordSuccess(isHalfOpenProbe: boolean): void {
+    if (isHalfOpenProbe) {
+      this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
+      if (this._state === "half-open") {
+        this.halfOpenSuccesses++;
+        if (this.halfOpenSuccesses >= this.halfOpenMaxCalls) {
+          this.consecutiveFailures = 0;
+          this.halfOpenInFlight = 0;
+          this.halfOpenSuccesses = 0;
+          this.transition("closed");
+        }
+      }
+      return;
+    }
+
+    if (this._state === "closed") {
+      this.consecutiveFailures = 0;
+    }
+  }
+
+  recordFailure(err: unknown, isHalfOpenProbe: boolean): void {
+    if (err instanceof CircuitOpenError) {
+      return;
+    }
+    if (!this.isFailureFn(err)) {
+      if (isHalfOpenProbe) {
+        this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
+      }
+      return;
+    }
+
+    if (isHalfOpenProbe) {
+      this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
+      if (this._state === "half-open") {
+        this.halfOpenSuccesses = 0;
+        this.openedAt = Date.now();
+        this.transition("open");
+      }
+      return;
+    }
+
+    if (this._state === "closed") {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= this.failureThreshold) {
+        this.openedAt = Date.now();
+        this.transition("open");
+      }
+    }
+  }
+
+  private transition(next: CircuitBreakerState): void {
+    if (this._state === next) {
+      return;
+    }
+    const prev = this._state;
+    this._state = next;
+    this.onStateChange?.(prev, next);
+  }
+}
+
 /**
  * Base RPC client proxy implementing request-reply `send()` (with per-attempt
- * timeouts and automatic retries on transient transport errors), fire-and-forget
- * `emit()`, NestJS v12 `setOnDispatchHook()` & `on()`, and `onModuleDestroy()` cleanup.
+ * timeouts, exponential backoff + jitter retries, and circuit breaker protection),
+ * fire-and-forget `emit()`, automatic CLS + W3C `traceparent` metadata propagation,
+ * `diagnosticsChannel("bunest:rpc:client")` telemetry, NestJS v12 `setOnDispatchHook()`
+ * & `on()`, and `onModuleDestroy()` cleanup.
  */
 export abstract class ClientProxy<
   EventsMap extends Record<string, Function> = Record<string, Function>,
@@ -39,6 +255,16 @@ export abstract class ClientProxy<
   abstract readonly transport: Transport;
 
   protected readonly defaultTimeoutMs: number;
+  protected readonly requestTimeout?: number;
+  protected readonly maxPendingRequests?: number;
+  protected retryOptions?: ClientRetryOptions;
+  protected circuitBreaker?: ClientCircuitBreaker;
+  protected clsPropagationEnabled: boolean;
+  protected clsPropagator: ClsContextPropagator;
+  protected clsService?: ClsServiceLike;
+
+  private inFlightRequests = 0;
+  private readonly activeRequests = new Set<(err: Error) => void>();
   protected currentStatus: ClientStatus = "disconnected";
   private readonly statusListeners = new Set<ClientStatusListener>();
   private readonly eventListeners = new Map<PropertyKey, Set<Function>>();
@@ -49,8 +275,109 @@ export abstract class ClientProxy<
     transport: Transport;
   }>;
 
-  constructor(defaultTimeoutMs: number = 5000) {
-    this.defaultTimeoutMs = Math.max(1, Math.floor(defaultTimeoutMs));
+  constructor(
+    defaultTimeoutMs: number = 5000,
+    options?: ClientProxyConstructorOptions,
+  ) {
+    const resolvedTimeout = options?.requestTimeout ?? defaultTimeoutMs;
+    this.defaultTimeoutMs = Math.max(1, Math.floor(resolvedTimeout));
+    this.requestTimeout =
+      options?.requestTimeout !== undefined
+        ? Math.max(1, Math.floor(options.requestTimeout))
+        : undefined;
+    this.maxPendingRequests =
+      options?.maxPendingRequests !== undefined &&
+      Number.isFinite(options.maxPendingRequests) &&
+      options.maxPendingRequests > 0
+        ? Math.floor(options.maxPendingRequests)
+        : undefined;
+    this.retryOptions = options?.retry;
+    this.circuitBreaker = options?.circuitBreaker
+      ? new ClientCircuitBreaker(options.circuitBreaker)
+      : undefined;
+    const clsCfg = resolveClsPropagator(options?.clsPropagation);
+    this.clsPropagationEnabled = clsCfg.enabled;
+    this.clsPropagator = clsCfg.propagator;
+    this.clsService = options?.cls;
+  }
+
+  /**
+   * Number of currently in-flight `send()` requests.
+   */
+  get pendingRequestCount(): number {
+    return this.inFlightRequests;
+  }
+
+  /**
+   * Returns the current circuit breaker state (`"closed" | "open" | "half-open"`),
+   * or `undefined` when no circuit breaker is configured.
+   */
+  getCircuitBreakerState(): CircuitBreakerState | undefined {
+    return this.circuitBreaker?.state;
+  }
+
+  /**
+   * Resets the configured circuit breaker back to `"closed"`.
+   */
+  resetCircuitBreaker(): void {
+    this.circuitBreaker?.reset();
+  }
+
+  /**
+   * Configures or replaces the default exponential-backoff retry policy on this client.
+   */
+  setRetryOptions(retry: ClientRetryOptions | undefined): this {
+    this.retryOptions = retry;
+    return this;
+  }
+
+  /**
+   * Configures or disables the circuit breaker on this client.
+   */
+  setCircuitBreaker(options: CircuitBreakerOptions | undefined): this {
+    this.circuitBreaker = options ? new ClientCircuitBreaker(options) : undefined;
+    return this;
+  }
+
+  /**
+   * Attaches an explicit `ClsService` for outbound context capture.
+   */
+  setClsService(cls: ClsServiceLike | undefined): this {
+    this.clsService = cls;
+    return this;
+  }
+
+  protected assertMaxPendingRequests(pattern: string): void {
+    if (
+      this.maxPendingRequests !== undefined &&
+      this.inFlightRequests >= this.maxPendingRequests
+    ) {
+      throw new Error(
+        `Max pending requests limit (${this.maxPendingRequests}) reached for pattern "${pattern}".`,
+      );
+    }
+  }
+
+  protected async trackInFlightRequest<T>(
+    pattern: string,
+    exec: () => Promise<T>,
+  ): Promise<T> {
+    this.assertMaxPendingRequests(pattern);
+    this.inFlightRequests++;
+    try {
+      return await exec();
+    } finally {
+      this.inFlightRequests = Math.max(0, this.inFlightRequests - 1);
+    }
+  }
+
+  protected cancelActiveRequests(
+    reason: Error = new Error("ClientProxy closed."),
+  ): void {
+    for (const cancel of [...this.activeRequests]) {
+      cancel(reason);
+    }
+    this.activeRequests.clear();
   }
 
   /**
@@ -148,8 +475,10 @@ export abstract class ClientProxy<
   ): Promise<void>;
 
   /**
-   * Sends a request-reply RPC message. Retries transient transport/timeout faults up to
-   * `options.retries` times; application `RpcException` errors propagate immediately.
+   * Sends a request-reply RPC message. Retries transient transport/timeout faults
+   * according to `options.retry` / `this.retryOptions` or legacy `options.retries`;
+   * protects downstream services via `circuitBreaker` when configured; propagates
+   * CLS context & W3C `traceparent` automatically.
    */
   send<K extends keyof BunestMessagePatternRegistry & string>(
     pattern: K,
@@ -169,56 +498,146 @@ export abstract class ClientProxy<
     options?: SendOptions,
   ): Promise<TRes> {
     const key = normalizePattern(pattern);
-    let packetMetadata: Record<string, unknown> | undefined;
-    if (this.onDispatchHook) {
-      const packet: ReadPacket<TReq> = { pattern: key, data };
-      this.onDispatchHook(packet);
-      if (packet.metadata && typeof packet.metadata === "object") {
-        packetMetadata = packet.metadata as Record<string, unknown>;
+    return await this.trackInFlightRequest(key, async () => {
+      let hookMetadata: Record<string, unknown> | undefined;
+      if (this.onDispatchHook) {
+        const packet: ReadPacket<TReq> = { pattern: key, data };
+        this.onDispatchHook(packet);
+        if (packet.metadata && typeof packet.metadata === "object") {
+          hookMetadata = packet.metadata as Record<string, unknown>;
+        }
       }
-    }
-    if (this.preRequestHook) {
-      await this.preRequestHook({
-        pattern: key,
-        data,
-        transport: this.transport,
-      });
-    }
-    const timeoutMs = Math.max(
-      1,
-      Math.floor(options?.timeoutMs ?? this.defaultTimeoutMs),
-    );
-    const retries = Math.max(0, Math.floor(options?.retries ?? 0));
-    const retryDelayMs = Math.max(0, Math.floor(options?.retryDelayMs ?? 50));
+      if (this.preRequestHook) {
+        await this.preRequestHook({
+          pattern: key,
+          data,
+          transport: this.transport,
+        });
+      }
 
-    let lastError: unknown;
-    for (let attempt = 0; attempt <= retries; attempt++) {
+      const { metadata: packetMetadata, traceparent } =
+        buildOutboundRpcMetadata({
+          userMetadata: options?.metadata,
+          hookMetadata,
+          propagator: this.clsPropagator,
+          cls: this.clsService,
+          enabled: this.clsPropagationEnabled,
+        });
+
+      const timeoutMs = Math.max(
+        1,
+        Math.floor(
+          options?.timeoutMs ?? this.requestTimeout ?? this.defaultTimeoutMs,
+        ),
+      );
+
+      // Resolve retry policy while keeping 100% backward compatibility with legacy `retries`/`retryDelayMs`
+      const structuredRetry = options?.retry ?? this.retryOptions;
+      const useLegacyRetry =
+        options?.retry === undefined && options?.retries !== undefined;
+      const maxAttempts = useLegacyRetry
+        ? 1 + Math.max(0, Math.floor(options!.retries!))
+        : structuredRetry
+          ? Math.max(1, Math.floor(structuredRetry.attempts))
+          : 1;
+      const legacyDelayMs = Math.max(
+        0,
+        Math.floor(options?.retryDelayMs ?? 50),
+      );
+
+      const hasSubscribersAtStart = rpcClientChannel.hasSubscribers;
+      const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+      if (hasSubscribersAtStart) {
+        rpcClientChannel.publish({
+          phase: "start",
+          kind: "request",
+          pattern: key,
+          transport: String(this.transport),
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+
+      let lastError: unknown;
+      let attemptsMade = 0;
+
       try {
-        return await this.runWithTimeout(key, timeoutMs, (signal) =>
-          this.sendOnce<TRes, TReq>(
-            key,
-            data,
-            timeoutMs,
-            signal,
-            packetMetadata,
-          ),
-        );
-      } catch (err) {
-        lastError = err;
-        // Never retry non-retryable application-level RpcException business errors
-        if (
-          err instanceof RpcException &&
-          (err as { readonly isRetryable?: boolean }).isRetryable !== true
-        ) {
-          throw err;
-        }
-        if (attempt < retries) {
-          await sleepUnref(retryDelayMs);
-        }
-      }
-    }
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          attemptsMade = attempt;
+          const probe = this.circuitBreaker?.acquire(key);
+          try {
+            const response = await this.runWithTimeout(key, timeoutMs, (signal) =>
+              this.sendOnce<TRes, TReq>(
+                key,
+                data,
+                timeoutMs,
+                signal,
+                packetMetadata,
+              ),
+            );
+            this.circuitBreaker?.recordSuccess(probe?.isHalfOpenProbe ?? false);
 
-    throw lastError;
+            if (rpcClientChannel.hasSubscribers) {
+              rpcClientChannel.publish({
+                phase: "end",
+                kind: "request",
+                pattern: key,
+                transport: String(this.transport),
+                attempt,
+                durationMs: hasSubscribersAtStart
+                  ? performance.now() - startedAt
+                  : 0,
+                ...(traceparent !== undefined ? { traceparent } : {}),
+              } satisfies RpcDiagnosticEvent);
+            }
+            return response;
+          } catch (err) {
+            lastError = err;
+            this.circuitBreaker?.recordFailure(
+              err,
+              probe?.isHalfOpenProbe ?? false,
+            );
+
+            // Never retry CircuitOpenError
+            if (err instanceof CircuitOpenError) {
+              throw err;
+            }
+
+            const retryAllowed = useLegacyRetry
+              ? isDefaultTransientError(err)
+              : structuredRetry?.retryOn
+                ? Boolean(structuredRetry.retryOn(err))
+                : isDefaultTransientError(err);
+
+            if (!retryAllowed || attempt >= maxAttempts) {
+              throw err;
+            }
+
+            const delayMs = useLegacyRetry
+              ? legacyDelayMs
+              : computeExponentialBackoffDelay(structuredRetry!, attempt);
+            await sleepUnref(delayMs);
+          }
+        }
+
+        throw lastError;
+      } catch (err) {
+        if (rpcClientChannel.hasSubscribers) {
+          rpcClientChannel.publish({
+            phase: "error",
+            kind: "request",
+            pattern: key,
+            transport: String(this.transport),
+            attempt: attemptsMade || 1,
+            durationMs: hasSubscribersAtStart
+              ? performance.now() - startedAt
+              : 0,
+            error: err,
+            ...(traceparent !== undefined ? { traceparent } : {}),
+          } satisfies RpcDiagnosticEvent);
+        }
+        throw err;
+      }
+    });
   }
 
   /**
@@ -227,21 +646,27 @@ export abstract class ClientProxy<
   emit<K extends keyof BunestEventPatternRegistry & string>(
     pattern: K,
     data: BunestEventPatternRegistry[K],
+    options?: EmitOptions,
   ): Promise<void>;
   emit<TReq = any, TPattern extends PatternInput = PatternInput>(
     pattern: TPattern extends keyof BunestEventPatternRegistry
       ? never
       : TPattern,
     data: TReq,
+    options?: EmitOptions,
   ): Promise<void>;
-  async emit<TReq = any>(pattern: PatternInput, data: TReq): Promise<void> {
+  async emit<TReq = any>(
+    pattern: PatternInput,
+    data: TReq,
+    options?: EmitOptions,
+  ): Promise<void> {
     const key = normalizePattern(pattern);
-    let packetMetadata: Record<string, unknown> | undefined;
+    let hookMetadata: Record<string, unknown> | undefined;
     if (this.onDispatchHook) {
       const packet: ReadPacket<TReq> = { pattern: key, data };
       this.onDispatchHook(packet);
       if (packet.metadata && typeof packet.metadata === "object") {
-        packetMetadata = packet.metadata as Record<string, unknown>;
+        hookMetadata = packet.metadata as Record<string, unknown>;
       }
     }
     if (this.preRequestHook) {
@@ -251,7 +676,60 @@ export abstract class ClientProxy<
         transport: this.transport,
       });
     }
-    await this.dispatchEvent(key, data, packetMetadata);
+
+    const { metadata: packetMetadata, traceparent } = buildOutboundRpcMetadata({
+      userMetadata: options?.metadata,
+      hookMetadata,
+      propagator: this.clsPropagator,
+      cls: this.clsService,
+      enabled: this.clsPropagationEnabled,
+    });
+
+    const hasSubscribersAtStart = rpcClientChannel.hasSubscribers;
+    const startedAt = hasSubscribersAtStart ? performance.now() : 0;
+    if (hasSubscribersAtStart) {
+      rpcClientChannel.publish({
+        phase: "start",
+        kind: "event",
+        pattern: key,
+        transport: String(this.transport),
+        ...(traceparent !== undefined ? { traceparent } : {}),
+      } satisfies RpcDiagnosticEvent);
+    }
+
+    const probe = this.circuitBreaker?.acquire(key);
+    try {
+      await this.dispatchEvent(key, data, packetMetadata);
+      this.circuitBreaker?.recordSuccess(probe?.isHalfOpenProbe ?? false);
+      if (rpcClientChannel.hasSubscribers) {
+        rpcClientChannel.publish({
+          phase: "end",
+          kind: "event",
+          pattern: key,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+    } catch (err) {
+      this.circuitBreaker?.recordFailure(err, probe?.isHalfOpenProbe ?? false);
+      if (rpcClientChannel.hasSubscribers) {
+        rpcClientChannel.publish({
+          phase: "error",
+          kind: "event",
+          pattern: key,
+          transport: String(this.transport),
+          durationMs: hasSubscribersAtStart
+            ? performance.now() - startedAt
+            : 0,
+          error: err,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+        } satisfies RpcDiagnosticEvent);
+      }
+      throw err;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -266,9 +744,21 @@ export abstract class ClientProxy<
     const controller = new AbortController();
     return await new Promise<T>((resolve, reject) => {
       let settled = false;
+      const cancel = (err: Error) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          this.activeRequests.delete(cancel);
+          controller.abort(err);
+          reject(err);
+        }
+      };
+      this.activeRequests.add(cancel);
+
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
+          this.activeRequests.delete(cancel);
           const timeoutErr = new RpcTimeoutException(pattern, timeoutMs);
           controller.abort(timeoutErr);
           reject(timeoutErr);
@@ -281,6 +771,7 @@ export abstract class ClientProxy<
       exec(controller.signal).then(
         (value) => {
           clearTimeout(timer);
+          this.activeRequests.delete(cancel);
           if (!settled) {
             settled = true;
             resolve(value);
@@ -288,6 +779,7 @@ export abstract class ClientProxy<
         },
         (err) => {
           clearTimeout(timer);
+          this.activeRequests.delete(cancel);
           if (!settled) {
             settled = true;
             reject(err);
