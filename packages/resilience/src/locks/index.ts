@@ -64,6 +64,28 @@ export type {
 export type { LocksStorageRegisterOptions } from "./interfaces/locks-storage-register-options.interface";
 export { LocksStorage } from "./storage/locks.storage";
 export { InMemoryLockStore } from "./stores/in-memory-lock.store";
+export {
+  LUA_REDIS_LOCK_ACQUIRE,
+  LUA_REDIS_LOCK_RELEASE,
+  LUA_REDIS_LOCK_RENEW,
+  RedisLockStore,
+  type RedisLockClientLike,
+  type RedisLockStoreOptions,
+} from "./stores/redis-lock.store";
+export {
+  SqlLockStore,
+  createBunSqliteLockExecutor,
+  getLocksMigrationSql,
+  getLocksMigrationStatements,
+  type BunSqlLockClientLike,
+  type BunSqliteLockDatabaseLike,
+  type LocksMigrationOptions,
+  type SqlLockDialect,
+  type SqlLockExecutorLike,
+  type SqlLockQueryExecutor,
+  type SqlLockQueryResult,
+  type SqlLockStoreOptions,
+} from "./stores/sql-lock.store";
 
 // Clock & test double
 export type {

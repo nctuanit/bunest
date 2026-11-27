@@ -64,3 +64,48 @@ export {
   type ResilienceRetryEvent,
   type ResilienceTimeoutEvent,
 } from "./events/index";
+
+// Distributed lock stores & migration helpers (also exported from `@bunest/resilience/locks`)
+export {
+  LUA_REDIS_LOCK_ACQUIRE,
+  LUA_REDIS_LOCK_RELEASE,
+  LUA_REDIS_LOCK_RENEW,
+  RedisLockStore,
+  SqlLockStore,
+  createBunSqliteLockExecutor,
+  getLocksMigrationSql,
+  getLocksMigrationStatements,
+  type BunSqlLockClientLike,
+  type BunSqliteLockDatabaseLike,
+  type LocksMigrationOptions,
+  type RedisLockClientLike,
+  type RedisLockStoreOptions,
+  type SqlLockDialect,
+  type SqlLockExecutorLike,
+  type SqlLockQueryExecutor,
+  type SqlLockQueryResult,
+  type SqlLockStoreOptions,
+} from "./locks/index";
+
+// Distributed idempotency stores & migration helpers (also exported from `@bunest/resilience/idempotency`)
+export {
+  LUA_REDIS_IDEMPOTENCY_ACQUIRE,
+  LUA_REDIS_IDEMPOTENCY_COMPLETE,
+  LUA_REDIS_IDEMPOTENCY_EXTEND,
+  LUA_REDIS_IDEMPOTENCY_RELEASE,
+  RedisIdempotencyStore,
+  SqlIdempotencyStore,
+  createBunSqliteIdempotencyExecutor,
+  getIdempotencyMigrationSql,
+  getIdempotencyMigrationStatements,
+  type BunSqlIdempotencyClientLike,
+  type BunSqliteIdempotencyDatabaseLike,
+  type IdempotencyMigrationOptions,
+  type RedisIdempotencyClientLike,
+  type RedisIdempotencyStoreOptions,
+  type SqlIdempotencyDialect,
+  type SqlIdempotencyExecutorLike,
+  type SqlIdempotencyQueryExecutor,
+  type SqlIdempotencyQueryResult,
+  type SqlIdempotencyStoreOptions,
+} from "./idempotency/index";

@@ -22,7 +22,28 @@ export type {
   IdempotencyStoredResponse,
 } from "./interfaces/index";
 export { IdempotencyStorage } from "./storage/index";
-export { InMemoryIdempotencyStore } from "./stores/index";
+export {
+  InMemoryIdempotencyStore,
+  LUA_REDIS_IDEMPOTENCY_ACQUIRE,
+  LUA_REDIS_IDEMPOTENCY_COMPLETE,
+  LUA_REDIS_IDEMPOTENCY_EXTEND,
+  LUA_REDIS_IDEMPOTENCY_RELEASE,
+  RedisIdempotencyStore,
+  SqlIdempotencyStore,
+  createBunSqliteIdempotencyExecutor,
+  getIdempotencyMigrationSql,
+  getIdempotencyMigrationStatements,
+  type BunSqlIdempotencyClientLike,
+  type BunSqliteIdempotencyDatabaseLike,
+  type IdempotencyMigrationOptions,
+  type RedisIdempotencyClientLike,
+  type RedisIdempotencyStoreOptions,
+  type SqlIdempotencyDialect,
+  type SqlIdempotencyExecutorLike,
+  type SqlIdempotencyQueryExecutor,
+  type SqlIdempotencyQueryResult,
+  type SqlIdempotencyStoreOptions,
+} from "./stores/index";
 
 // Errors & error codes
 export { IdempotencyStoreTimeoutError } from "./errors/index";
