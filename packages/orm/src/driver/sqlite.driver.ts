@@ -1,16 +1,38 @@
 import { ContextStorage as AsyncLocalStorage } from "@bunest/core";
 import { Database, type DatabaseOptions } from "bun:sqlite";
+import {
+  emitOrmTransactionDiagnostic,
+  hasOrmTransactionSubscribers,
+} from "../diagnostics";
 import { QueryFailedError } from "../errors";
+import {
+  assertTransactionPropagation,
+  completeTransactionHookCommit,
+  completeTransactionHookRollback,
+  createTransactionHookCollector,
+  executeWithTransactionRetries,
+  exitTransactionHookScope,
+  isRetryableTransactionError,
+  runInTransactionHookScope,
+  validateIsolationLevel,
+  validateTransactionPropagation,
+} from "../transaction-hooks";
 import type {
   OrmDialect,
   OrmQueryExecutor,
   OrmQueryLogEvent,
   OrmQueryResult,
+  OrmTransactionOptions,
 } from "../types";
-import { emitQueryLog, type OrmDriver } from "./driver.interface";
+import {
+  emitQueryTelemetry,
+  shouldTrackQuery,
+  type OrmDriver,
+} from "./driver.interface";
 
 interface SqliteTxContext {
   readonly depth: number;
+  readonly readOnly: boolean;
 }
 
 export interface SqliteOrmDriverOptions {
@@ -24,15 +46,19 @@ export interface SqliteOrmDriverOptions {
   readonly strict?: boolean;
   readonly busyTimeout?: number;
   readonly logging?: boolean | ((event: OrmQueryLogEvent) => void);
+  readonly dataSourceName?: string;
 }
 
 /**
  * Zero-dependency native `bun:sqlite` driver with AsyncLocalStorage nested
- * `SAVEPOINT` transactions, WAL mode, busy timeout, and FIFO transaction serialization.
+ * `SAVEPOINT` transactions, WAL mode, busy timeout, isolation/propagation/retries,
+ * transaction lifecycle hooks, diagnostics channel emission, and FIFO transaction serialization.
  */
 export class SqliteOrmDriver implements OrmDriver {
   readonly dialect: OrmDialect = "sqlite";
   readonly driverKind = "bun-sqlite";
+  readonly supportsManagedTransactions = true;
+  readonly dataSourceName?: string;
 
   private db?: Database;
   private readonly options: SqliteOrmDriverOptions;
@@ -42,6 +68,7 @@ export class SqliteOrmDriver implements OrmDriver {
 
   constructor(options: SqliteOrmDriverOptions = {}) {
     this.options = options;
+    this.dataSourceName = options.dataSourceName;
   }
 
   get isConnected(): boolean {
@@ -131,29 +158,64 @@ export class SqliteOrmDriver implements OrmDriver {
     params: readonly unknown[] = [],
   ): Promise<OrmQueryResult<T>> {
     const db = this.rawDatabase;
-    const start = performance.now();
+    const track = shouldTrackQuery(this.options.logging);
+    const start = track ? performance.now() : 0;
     const bound = this.normalizeSqliteParams(params);
     try {
       const stmt = db.query(sql);
       const args = bound as Parameters<typeof stmt.all>;
       if (this.isReadReturningSql(sql)) {
         const rows = stmt.all(...args) as T[];
-        emitQueryLog(this.options.logging, sql, params, start);
+        if (track) {
+          emitQueryTelemetry(
+            this.options.logging,
+            this.dialect,
+            sql,
+            params,
+            start,
+            rows.length,
+            undefined,
+            this.dataSourceName,
+          );
+        }
         return {
           rows,
           affectedRows: rows.length,
         };
       }
       const res = stmt.run(...args);
-      emitQueryLog(this.options.logging, sql, params, start);
+      const affectedRows = Number(res.changes ?? 0);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          affectedRows,
+          undefined,
+          this.dataSourceName,
+        );
+      }
       return {
         rows: [],
-        affectedRows: Number(res.changes ?? 0),
+        affectedRows,
         lastInsertRowid: res.lastInsertRowid ?? null,
       };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      emitQueryLog(this.options.logging, sql, params, start, error);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          undefined,
+          error,
+          this.dataSourceName,
+        );
+      }
       throw new QueryFailedError(error.message, sql, params, error);
     }
   }
@@ -164,18 +226,42 @@ export class SqliteOrmDriver implements OrmDriver {
   ): Promise<OrmQueryResult> {
     if (params.length === 0) {
       const db = this.rawDatabase;
-      const start = performance.now();
+      const track = shouldTrackQuery(this.options.logging);
+      const start = track ? performance.now() : 0;
       try {
         const res = db.run(sql);
-        emitQueryLog(this.options.logging, sql, params, start);
+        const affectedRows = Number(res.changes ?? 0);
+        if (track) {
+          emitQueryTelemetry(
+            this.options.logging,
+            this.dialect,
+            sql,
+            params,
+            start,
+            affectedRows,
+            undefined,
+            this.dataSourceName,
+          );
+        }
         return {
           rows: [],
-          affectedRows: Number(res.changes ?? 0),
+          affectedRows,
           lastInsertRowid: res.lastInsertRowid ?? null,
         };
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        emitQueryLog(this.options.logging, sql, params, start, error);
+        if (track) {
+          emitQueryTelemetry(
+            this.options.logging,
+            this.dialect,
+            sql,
+            params,
+            start,
+            undefined,
+            error,
+            this.dataSourceName,
+          );
+        }
         throw new QueryFailedError(error.message, sql, params, error);
       }
     }
@@ -184,54 +270,253 @@ export class SqliteOrmDriver implements OrmDriver {
 
   async transaction<T>(
     run: (executor: OrmQueryExecutor) => Promise<T> | T,
+    options: OrmTransactionOptions = {},
   ): Promise<T> {
     const db = this.rawDatabase;
+    const propagation = validateTransactionPropagation(
+      options.propagation ?? "REQUIRED",
+    );
+    const isolationLevel =
+      options.isolationLevel !== undefined
+        ? validateIsolationLevel(options.isolationLevel)
+        : undefined;
+    const dataSource = options.dataSource ?? this.dataSourceName;
     const existing = this.txStorage.getStore();
 
+    assertTransactionPropagation(propagation, existing !== undefined);
+
+    if (propagation === "NEVER") {
+      return await exitTransactionHookScope(() => run(this));
+    }
+
+    // Nested savepoint inside an active SQLite transaction (`REQUIRED`, `MANDATORY`,
+    // or single-connection `REQUIRES_NEW` with independent hook scope).
     if (existing) {
-      const spName = `bunest_orm_sp_${++this.savepointSeq}`;
-      db.run(`SAVEPOINT ${spName}`);
-      try {
-        const result = await this.txStorage.run(
-          { depth: existing.depth + 1 },
-          () => run(this),
-        );
-        db.run(`RELEASE SAVEPOINT ${spName}`);
-        return result;
-      } catch (err) {
+      const isRequiresNew = propagation === "REQUIRES_NEW";
+      const runSavepointAttempt = async (
+        isFinalAttempt: boolean,
+      ): Promise<T> => {
+        const spName = `bunest_orm_sp_${++this.savepointSeq}`;
+        const collector = createTransactionHookCollector(!isRequiresNew);
+        const trackTx = hasOrmTransactionSubscribers();
+        const start = trackTx ? performance.now() : 0;
+        const setQueryOnly = options.readOnly === true && !existing.readOnly;
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "begin",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+
+        db.run(`SAVEPOINT ${spName}`);
+        if (setQueryOnly) {
+          db.run("PRAGMA query_only = ON;");
+        }
+
+        let result!: T;
+        let succeeded = false;
         try {
-          db.run(`ROLLBACK TO SAVEPOINT ${spName}`);
+          result = await this.txStorage.run(
+            {
+              depth: isRequiresNew ? 1 : existing.depth + 1,
+              readOnly: existing.readOnly || options.readOnly === true,
+            },
+            () => runInTransactionHookScope(collector, () => run(this)),
+          );
+          if (setQueryOnly) {
+            db.run("PRAGMA query_only = OFF;");
+          }
           db.run(`RELEASE SAVEPOINT ${spName}`);
-        } catch {
-          // Ignore secondary rollback error
+          succeeded = true;
+        } catch (err) {
+          if (setQueryOnly) {
+            try {
+              db.run("PRAGMA query_only = OFF;");
+            } catch {
+              // Ignore secondary pragma reset error
+            }
+          }
+          try {
+            db.run(`ROLLBACK TO SAVEPOINT ${spName}`);
+            db.run(`RELEASE SAVEPOINT ${spName}`);
+          } catch {
+            // Ignore secondary rollback error
+          }
+          const error = err instanceof Error ? err : new Error(String(err));
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "rollback",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              durationMs: performance.now() - start,
+              error,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+          const willRetry =
+            isRequiresNew && !isFinalAttempt && isRetryableTransactionError(err);
+          if (!willRetry) {
+            await this.txStorage.exit(() =>
+              completeTransactionHookRollback(collector),
+            );
+          }
+          throw err;
         }
-        throw err;
-      }
-    }
 
-    const prev = this.txQueueTail;
-    let release!: () => void;
-    this.txQueueTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    await prev;
-    try {
-      db.run("BEGIN IMMEDIATE");
-      try {
-        const result = await this.txStorage.run({ depth: 1 }, () => run(this));
-        db.run("COMMIT");
+        if (succeeded) {
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "commit",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              durationMs: performance.now() - start,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+          if (isRequiresNew) {
+            await this.txStorage.exit(() =>
+              completeTransactionHookCommit(collector),
+            );
+          } else {
+            await completeTransactionHookCommit(collector);
+          }
+        }
         return result;
-      } catch (err) {
-        try {
-          db.run("ROLLBACK");
-        } catch {
-          // Ignore secondary rollback error
-        }
-        throw err;
+      };
+
+      if (isRequiresNew && options.retries && options.retries > 0) {
+        return await executeWithTransactionRetries(
+          options.retries,
+          options.retryDelayMs,
+          (_attempt, isFinal) => runSavepointAttempt(isFinal),
+        );
       }
-    } finally {
-      release();
+      return await runSavepointAttempt(true);
     }
+
+    // Top-level SQLite transaction (with optional retries + jittered backoff)
+    return await executeWithTransactionRetries(
+      options.retries,
+      options.retryDelayMs,
+      async (_attempt, isFinalAttempt) => {
+        const collector = createTransactionHookCollector(false);
+        const trackTx = hasOrmTransactionSubscribers();
+        const start = trackTx ? performance.now() : 0;
+
+        const prev = this.txQueueTail;
+        let release!: () => void;
+        this.txQueueTail = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+
+        await prev;
+
+        const beginSql =
+          options.readOnly === true || isolationLevel === "READ UNCOMMITTED"
+            ? "BEGIN DEFERRED"
+            : "BEGIN IMMEDIATE";
+        const setQueryOnly = options.readOnly === true;
+        const setReadUncommitted = isolationLevel === "READ UNCOMMITTED";
+
+        let result!: T;
+        let caughtErr: unknown;
+        let failed = false;
+
+        try {
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "begin",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+
+          if (setReadUncommitted) {
+            db.run("PRAGMA read_uncommitted = 1;");
+          }
+          db.run(beginSql);
+          if (setQueryOnly) {
+            db.run("PRAGMA query_only = ON;");
+          }
+
+          try {
+            result = await this.txStorage.run(
+              { depth: 1, readOnly: setQueryOnly },
+              () => runInTransactionHookScope(collector, () => run(this)),
+            );
+            if (setQueryOnly) {
+              db.run("PRAGMA query_only = OFF;");
+            }
+            db.run("COMMIT");
+            if (setReadUncommitted) {
+              db.run("PRAGMA read_uncommitted = 0;");
+            }
+          } catch (err) {
+            if (setQueryOnly) {
+              try {
+                db.run("PRAGMA query_only = OFF;");
+              } catch {
+                // Ignore secondary pragma reset error
+              }
+            }
+            try {
+              db.run("ROLLBACK");
+            } catch {
+              // Ignore secondary rollback error
+            }
+            if (setReadUncommitted) {
+              try {
+                db.run("PRAGMA read_uncommitted = 0;");
+              } catch {
+                // Ignore secondary pragma reset error
+              }
+            }
+            caughtErr = err;
+            failed = true;
+          }
+        } finally {
+          // Release queue lock BEFORE invoking post-commit / post-rollback hooks
+          // so callbacks can safely open independent transactions without deadlocking!
+          release();
+        }
+
+        if (failed) {
+          const error =
+            caughtErr instanceof Error ? caughtErr : new Error(String(caughtErr));
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "rollback",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              durationMs: performance.now() - start,
+              error,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+          const willRetry =
+            !isFinalAttempt && isRetryableTransactionError(caughtErr);
+          if (!willRetry) {
+            await completeTransactionHookRollback(collector);
+          }
+          throw caughtErr;
+        }
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "commit",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            durationMs: performance.now() - start,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+        await completeTransactionHookCommit(collector);
+        return result;
+      },
+    );
   }
 }

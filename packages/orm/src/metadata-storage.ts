@@ -11,6 +11,9 @@ import type {
   OrmIndexOptions,
   OrmJoinColumnOptions,
   OrmJoinTableOptions,
+  OrmMorphManyOptions,
+  OrmMorphTargets,
+  OrmMorphToOptions,
   OrmRelationOptions,
   PrimaryGeneratedStrategy,
   RelationKind,
@@ -72,9 +75,13 @@ export interface StoredOrmIndexMetadata {
 export interface StoredOrmRelationMetadata {
   readonly propertyName: string;
   readonly kind: RelationKind;
-  readonly target: EntityTarget;
+  readonly target?: EntityTarget;
   readonly inverseSide?: InverseSideSelector;
   readonly options: OrmRelationOptions;
+  readonly morphTargets?: OrmMorphTargets;
+  readonly morphName?: string;
+  readonly morphToOptions?: OrmMorphToOptions;
+  readonly morphManyOptions?: OrmMorphManyOptions;
 }
 
 export interface StoredOrmJoinColumnMetadata {

@@ -290,6 +290,44 @@ export async function saveEntityGraph<T extends object>(
             }
           }
           m2mTasks.push({ ownerNode: node, rel, targets });
+          continue;
+        }
+
+        // 5. Inverse MorphMany (`post.comments = [comment1, comment2]`)
+        if (rel.kind === "morph-many" && Array.isArray(relVal)) {
+          if (!canCascade) continue;
+          const childMorphRel = rel.morphName
+            ? targetMeta.relationsByProperty.get(rel.morphName)
+            : undefined;
+          for (let i = 0; i < relVal.length; i++) {
+            const childRaw = relVal[i];
+            if (!childRaw || typeof childRaw !== "object") continue;
+            const childInst = ensureEntityInstance(
+              targetMeta,
+              childRaw as Record<string, unknown>,
+              ctx,
+            );
+            relVal[i] = childInst;
+            if (childMorphRel && childInst[childMorphRel.propertyName] === undefined) {
+              childInst[childMorphRel.propertyName] = node.entity;
+            }
+            const childNode = getOrRegisterNode(targetMeta, childInst);
+            if (rel.morphIdColumnName) {
+              const already = childNode.fkDeps.some(
+                (d) =>
+                  d.targetNode === node &&
+                  d.fkColumnName === rel.morphIdColumnName,
+              );
+              if (!already) {
+                childNode.fkDeps.push({
+                  targetNode: node,
+                  rel,
+                  fkColumnName: rel.morphIdColumnName,
+                });
+              }
+            }
+            queue.push(childNode);
+          }
         }
       }
     }

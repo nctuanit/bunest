@@ -1,15 +1,37 @@
 import { ContextStorage as AsyncLocalStorage } from "@bunest/core";
 import { SQL, type TransactionSQL } from "bun";
+import {
+  emitOrmTransactionDiagnostic,
+  hasOrmTransactionSubscribers,
+} from "../diagnostics";
 import { QueryFailedError } from "../errors";
 import { normalizeDialect } from "../identifiers";
+import {
+  assertTransactionPropagation,
+  completeTransactionHookCommit,
+  completeTransactionHookRollback,
+  createTransactionHookCollector,
+  executeWithTransactionRetries,
+  exitTransactionHookScope,
+  isRetryableTransactionError,
+  runInTransactionHookScope,
+  validateIsolationLevel,
+  validateTransactionPropagation,
+} from "../transaction-hooks";
 import type {
   OrmDialect,
+  OrmIsolationLevel,
   OrmQueryExecutor,
   OrmQueryLogEvent,
   OrmQueryResult,
   OrmSslOption,
+  OrmTransactionOptions,
 } from "../types";
-import { emitQueryLog, type OrmDriver } from "./driver.interface";
+import {
+  emitQueryTelemetry,
+  shouldTrackQuery,
+  type OrmDriver,
+} from "./driver.interface";
 
 export interface BunSqlOrmDriverOptions {
   readonly dialect?: OrmDialect;
@@ -48,6 +70,7 @@ export interface BunSqlOrmDriverOptions {
   readonly onclose?: (err: Error | null) => void;
   readonly client?: SQL;
   readonly logging?: boolean | ((event: OrmQueryLogEvent) => void);
+  readonly dataSourceName?: string;
 }
 
 /**
@@ -148,6 +171,23 @@ export function buildBunSqlConfig(
   return cfg;
 }
 
+function buildSetTransactionSql(
+  isolationLevel: OrmIsolationLevel | undefined,
+  readOnly: boolean | undefined,
+): string | undefined {
+  const parts: string[] = [];
+  if (isolationLevel !== undefined) {
+    parts.push(`ISOLATION LEVEL ${isolationLevel}`);
+  }
+  if (readOnly === true) {
+    parts.push("READ ONLY");
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return `SET TRANSACTION ${parts.join(", ")}`;
+}
+
 /**
  * Multi-dialect native `Bun.SQL` driver powering:
  * - PostgreSQL (`postgres`, `postgresql`, `aurora-postgres`)
@@ -157,19 +197,28 @@ export function buildBunSqlConfig(
  * - SQLite (`sqlite`, when `useBunSql: true` or `sqlite://` URL)
  *
  * Uses Bun's built-in C/Zig `Bun.SQL` connection pool, TLS, prepared statements,
- * and `AsyncLocalStorage`-propagated transactions & nested `SAVEPOINT`s.
+ * `AsyncLocalStorage`-propagated transactions & nested `SAVEPOINT`s, isolation levels,
+ * propagation modes, retries, lifecycle hooks, and zero-overhead diagnostics channel emission.
  */
+interface BunSqlTxContext {
+  readonly tx: TransactionSQL;
+  readonly readOnly: boolean;
+}
+
 export class BunSqlOrmDriver implements OrmDriver {
   readonly dialect: OrmDialect;
   readonly driverKind = "bun-sql";
+  readonly supportsManagedTransactions = true;
+  readonly dataSourceName?: string;
 
   private client?: SQL;
   private readonly options: BunSqlOrmDriverOptions;
-  private readonly txStorage = new AsyncLocalStorage<TransactionSQL>();
+  private readonly txStorage = new AsyncLocalStorage<BunSqlTxContext>();
   private readonly ownsClient: boolean;
 
   constructor(options: BunSqlOrmDriverOptions = {}) {
     this.options = options;
+    this.dataSourceName = options.dataSourceName;
     this.ownsClient = options.client === undefined;
     this.dialect =
       options.dialect ?? this.inferDialectFromUrl(options.url) ?? "postgres";
@@ -276,8 +325,15 @@ export class BunSqlOrmDriver implements OrmDriver {
     }
   }
 
+  private getRootClient(): SQL {
+    if (!this.client) {
+      throw new Error("BunSqlOrmDriver is not connected.");
+    }
+    return this.client;
+  }
+
   private getActiveClient(): SQL {
-    const active = this.txStorage.getStore() ?? this.client;
+    const active = this.txStorage.getStore()?.tx ?? this.client;
     if (!active) {
       throw new Error("BunSqlOrmDriver is not connected.");
     }
@@ -301,7 +357,8 @@ export class BunSqlOrmDriver implements OrmDriver {
     params: readonly unknown[] = [],
   ): Promise<OrmQueryResult<T>> {
     const active = this.getActiveClient();
-    const start = performance.now();
+    const track = shouldTrackQuery(this.options.logging);
+    const start = track ? performance.now() : 0;
     const bound = this.normalizeParams(params);
     try {
       const result =
@@ -315,7 +372,18 @@ export class BunSqlOrmDriver implements OrmDriver {
           : typeof result.count === "number"
             ? result.count
             : rows.length;
-      emitQueryLog(this.options.logging, sql, params, start);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          rows.length > 0 ? rows.length : affectedRows,
+          undefined,
+          this.dataSourceName,
+        );
+      }
       return {
         rows,
         affectedRows,
@@ -323,7 +391,18 @@ export class BunSqlOrmDriver implements OrmDriver {
       };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      emitQueryLog(this.options.logging, sql, params, start, error);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          undefined,
+          error,
+          this.dataSourceName,
+        );
+      }
       throw new QueryFailedError(error.message, sql, params, error);
     }
   }
@@ -337,16 +416,255 @@ export class BunSqlOrmDriver implements OrmDriver {
 
   async transaction<T>(
     run: (executor: OrmQueryExecutor) => Promise<T> | T,
+    options: OrmTransactionOptions = {},
   ): Promise<T> {
+    const propagation = validateTransactionPropagation(
+      options.propagation ?? "REQUIRED",
+    );
+    const isolationLevel =
+      options.isolationLevel !== undefined
+        ? validateIsolationLevel(options.isolationLevel)
+        : undefined;
+    const dataSource = options.dataSource ?? this.dataSourceName;
     const parentTx = this.txStorage.getStore();
-    if (parentTx) {
-      return await parentTx.savepoint(async (sp) =>
-        this.txStorage.run(sp, () => run(this)),
-      );
+
+    assertTransactionPropagation(propagation, parentTx !== undefined);
+
+    if (propagation === "NEVER") {
+      return await exitTransactionHookScope(() => run(this));
     }
-    const root = this.getActiveClient();
-    return await root.begin(async (tx) =>
-      this.txStorage.run(tx, () => run(this)),
+
+    // Nested savepoint inside an active transaction:
+    // - REQUIRED / MANDATORY always savepoint inside parentTx.
+    // - REQUIRES_NEW on SQLite uses an isolated savepoint + independent hook scope
+    //   (SQLite is single-writer, so opening a concurrent writer would deadlock).
+    if (
+      parentTx &&
+      (propagation === "REQUIRED" ||
+        propagation === "MANDATORY" ||
+        (propagation === "REQUIRES_NEW" && this.dialect === "sqlite"))
+    ) {
+      const isRequiresNew = propagation === "REQUIRES_NEW";
+      const runSavepoint = async (isFinalAttempt: boolean): Promise<T> => {
+        const collector = createTransactionHookCollector(!isRequiresNew);
+        const trackTx = hasOrmTransactionSubscribers();
+        const start = trackTx ? performance.now() : 0;
+        const setQueryOnly =
+          this.dialect === "sqlite" &&
+          options.readOnly === true &&
+          !parentTx.readOnly;
+        const nextReadOnly = parentTx.readOnly || options.readOnly === true;
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "begin",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+
+        let result!: T;
+        try {
+          result = (await parentTx.tx.savepoint(async (sp) => {
+            if (setQueryOnly) {
+              await sp.unsafe("PRAGMA query_only = ON;");
+              try {
+                return await this.txStorage.run(
+                  { tx: sp, readOnly: nextReadOnly },
+                  () => runInTransactionHookScope(collector, () => run(this)),
+                );
+              } finally {
+                try {
+                  await sp.unsafe("PRAGMA query_only = OFF;");
+                } catch {
+                  // Ignore secondary pragma reset error
+                }
+              }
+            }
+            return await this.txStorage.run(
+              { tx: sp, readOnly: nextReadOnly },
+              () => runInTransactionHookScope(collector, () => run(this)),
+            );
+          })) as T;
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "rollback",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              durationMs: performance.now() - start,
+              error,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+          const willRetry =
+            isRequiresNew && !isFinalAttempt && isRetryableTransactionError(err);
+          if (!willRetry) {
+            await this.txStorage.exit(() =>
+              completeTransactionHookRollback(collector),
+            );
+          }
+          throw err;
+        }
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "commit",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            durationMs: performance.now() - start,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+        if (isRequiresNew) {
+          await this.txStorage.exit(() =>
+            completeTransactionHookCommit(collector),
+          );
+        } else {
+          await completeTransactionHookCommit(collector);
+        }
+        return result;
+      };
+
+      if (isRequiresNew && options.retries && options.retries > 0) {
+        return await executeWithTransactionRetries(
+          options.retries,
+          options.retryDelayMs,
+          (_attempt, isFinal) => runSavepoint(isFinal),
+        );
+      }
+      return await runSavepoint(true);
+    }
+
+    // Top-level transaction OR pooled `REQUIRES_NEW` (suspending any outer ALS tx!)
+    const root = this.getRootClient();
+
+    return await executeWithTransactionRetries(
+      options.retries,
+      options.retryDelayMs,
+      async (_attempt, isFinalAttempt) => {
+        const collector = createTransactionHookCollector(false);
+        const trackTx = hasOrmTransactionSubscribers();
+        const start = trackTx ? performance.now() : 0;
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "begin",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+
+        let result!: T;
+        try {
+          const setTxSql = buildSetTransactionSql(
+            isolationLevel,
+            options.readOnly,
+          );
+          const isReadOnly = options.readOnly === true;
+
+          if (this.dialect === "sqlite") {
+            const sqliteMode =
+              isReadOnly || isolationLevel === "READ UNCOMMITTED"
+                ? "DEFERRED"
+                : isolationLevel === "SERIALIZABLE"
+                  ? "IMMEDIATE"
+                  : undefined;
+
+            const body = async (tx: TransactionSQL) => {
+              if (isReadOnly) {
+                await tx.unsafe("PRAGMA query_only = ON;");
+                try {
+                  return await this.txStorage.run(
+                    { tx, readOnly: true },
+                    () => runInTransactionHookScope(collector, () => run(this)),
+                  );
+                } finally {
+                  try {
+                    await tx.unsafe("PRAGMA query_only = OFF;");
+                  } catch {
+                    // Ignore secondary pragma reset error
+                  }
+                }
+              }
+              return await this.txStorage.run({ tx, readOnly: false }, () =>
+                runInTransactionHookScope(collector, () => run(this)),
+              );
+            };
+
+            result = (
+              sqliteMode !== undefined
+                ? await root.begin(sqliteMode, body)
+                : await root.begin(body)
+            ) as T;
+          } else if (
+            (this.dialect === "mysql" || this.dialect === "mariadb") &&
+            setTxSql &&
+            typeof root.reserve === "function"
+          ) {
+            // MySQL/MariaDB require SET TRANSACTION before START TRANSACTION on the same connection
+            const conn = await root.reserve();
+            try {
+              await conn.unsafe(setTxSql);
+              result = (await conn.begin(async (tx) =>
+                this.txStorage.run({ tx, readOnly: isReadOnly }, () =>
+                  runInTransactionHookScope(collector, () => run(this)),
+                ),
+              )) as T;
+            } finally {
+              await conn.release();
+            }
+          } else {
+            // PostgreSQL / CockroachDB (and fallback for minimal mock clients)
+            result = (await root.begin(async (tx) => {
+              if (setTxSql) {
+                await tx.unsafe(setTxSql);
+              }
+              return await this.txStorage.run(
+                { tx, readOnly: isReadOnly },
+                () => runInTransactionHookScope(collector, () => run(this)),
+              );
+            })) as T;
+          }
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          if (trackTx) {
+            emitOrmTransactionDiagnostic({
+              phase: "rollback",
+              ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+              propagation,
+              durationMs: performance.now() - start,
+              error,
+              ...(dataSource !== undefined ? { dataSource } : {}),
+            });
+          }
+          const willRetry =
+            !isFinalAttempt && isRetryableTransactionError(err);
+          if (!willRetry) {
+            await this.txStorage.exit(() =>
+              completeTransactionHookRollback(collector),
+            );
+          }
+          throw err;
+        }
+
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "commit",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            durationMs: performance.now() - start,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+        await this.txStorage.exit(() =>
+          completeTransactionHookCommit(collector),
+        );
+        return result;
+      },
     );
   }
 }

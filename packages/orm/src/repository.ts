@@ -62,6 +62,7 @@ export interface OrmRepositoryRuntime {
   readonly maxEagerDepth: number;
   readonly safeJsonSerialization: boolean;
   readonly circularJsonStrategy: CircularJsonStrategy;
+  readonly dataSourceName?: string;
 }
 
 function instantiateEmbeddedInput(

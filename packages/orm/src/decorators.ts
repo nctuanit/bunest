@@ -32,6 +32,9 @@ import type {
   OrmIndexOptions,
   OrmJoinColumnOptions,
   OrmJoinTableOptions,
+  OrmMorphManyOptions,
+  OrmMorphTargets,
+  OrmMorphToOptions,
   OrmRelationOptions,
   OrmUniqueOptions,
   PrimaryGeneratedStrategy,
@@ -60,8 +63,9 @@ function toCommonColumnType(
     case "jsonb":
       return "json";
     case "timestamp":
-    case "date":
       return "datetime";
+    case "date":
+      return "date";
     case "objectid":
       return "text";
     default:
@@ -154,9 +158,11 @@ function materializeOrmCommonColumns(
     const commonGenStrategy: ColumnGenerationStrategy | undefined =
       col.generationStrategy === "uuid"
         ? "uuid"
-        : col.generated
-          ? "increment"
-          : undefined;
+        : col.generationStrategy === "objectid"
+          ? undefined
+          : col.generated
+            ? "increment"
+            : undefined;
     const mappedType = toCommonColumnType(col.type);
     const resolvedType: ColumnDataType =
       mappedType ??
@@ -191,6 +197,7 @@ function materializeOrmCommonColumns(
       ...(col.description !== undefined ? { description: col.description } : {}),
       ...(col.example !== undefined ? { example: col.example } : {}),
       ...(col.transformer !== undefined ? { transformer: col.transformer } : {}),
+      ...(col.select === false ? { select: false } : {}),
       createdAt: col.createdAt,
       updatedAt: col.updatedAt,
     });
@@ -578,7 +585,7 @@ export function BaseEntity<Key = number>(
             nullable: false,
           },
           "objectid",
-          false,
+          true,
           true,
         );
       } else if (
@@ -765,7 +772,7 @@ export function ObjectIdColumn(
         nullable: false,
       },
       "objectid",
-      false,
+      true,
     );
   };
 }
@@ -1040,6 +1047,62 @@ export function JoinTable(
     const ctor = resolveConstructor(proto);
     if (!ctor) return;
     OrmMetadataStorage.setJoinTable(ctor, String(propertyKey), options);
+  };
+}
+
+/**
+ * Declares a polymorphic owning relation (`comment.commentable -> Post | Video`)
+ * backed by a type discriminator column (`<name>_type`) and ID column (`<name>_id`).
+ *
+ * Accepts either a map of `{ typeKey: () => TargetEntity }` or an array `[() => Post, () => Video]`.
+ */
+export function MorphTo(
+  targets: OrmMorphTargets,
+  options: OrmMorphToOptions = {},
+): PropertyDecorator {
+  return (proto: object, propertyKey: string | symbol) => {
+    const ctor = resolveConstructor(proto);
+    if (!ctor) return;
+    OrmMetadataStorage.addRelation(ctor, {
+      propertyName: String(propertyKey),
+      kind: "morph-to",
+      morphTargets: targets,
+      morphToOptions: options,
+      options: {
+        nullable: options.nullable ?? true,
+        eager: options.eager === true,
+        persistence: options.persistence ?? true,
+        createForeignKeyConstraints: false,
+      },
+    });
+  };
+}
+
+/**
+ * Declares the inverse polymorphic one-to-many relation (`post.comments -> Comment[]`)
+ * targeting the child entity's `@MorphTo()` property named `morphName`.
+ */
+export function MorphMany<T = unknown>(
+  target: EntityTarget<T>,
+  morphName: string,
+  options: OrmMorphManyOptions = {},
+): PropertyDecorator {
+  return (proto: object, propertyKey: string | symbol) => {
+    const ctor = resolveConstructor(proto);
+    if (!ctor) return;
+    OrmMetadataStorage.addRelation(ctor, {
+      propertyName: String(propertyKey),
+      kind: "morph-many",
+      target,
+      morphName,
+      morphManyOptions: options,
+      options: {
+        ...(options.cascade !== undefined ? { cascade: options.cascade } : {}),
+        eager: options.eager === true,
+        persistence: options.persistence ?? true,
+        createForeignKeyConstraints: false,
+      },
+    });
   };
 }
 

@@ -162,6 +162,35 @@ export async function loadRelationsForEntities(
   }
 
   for (const { rel, childTree, isEagerStep } of relationsToLoad) {
+    if (rel.kind === "morph-to") {
+      const loadedByMeta = await loadMorphTo(
+        meta,
+        entities,
+        rel,
+        ctx,
+        isEagerStep ? visitedEagerEdges : undefined,
+      );
+      for (const [concreteTargetMeta, group] of loadedByMeta.entries()) {
+        if (group.length === 0) continue;
+        const uniqueTargets = [...new Set(group)];
+        const nextVisited = new Set(visitedEagerEdges);
+        if (isEagerStep) {
+          nextVisited.add(
+            `${meta.name}.${rel.propertyName}->${concreteTargetMeta.name}`,
+          );
+        }
+        await loadRelationsForEntities(
+          concreteTargetMeta,
+          uniqueTargets,
+          childTree,
+          ctx,
+          isEagerStep ? eagerDepth + 1 : eagerDepth,
+          nextVisited,
+        );
+      }
+      continue;
+    }
+
     const targetMeta = ctx.graph.byTarget.get(rel.target);
     if (!targetMeta) continue;
 
@@ -173,6 +202,8 @@ export async function loadRelationsForEntities(
       loadedTargets = await loadInverseToOneOrMany(meta, entities, rel, targetMeta, ctx);
     } else if (rel.kind === "many-to-many") {
       loadedTargets = await loadManyToMany(meta, entities, rel, targetMeta, ctx);
+    } else if (rel.kind === "morph-many") {
+      loadedTargets = await loadMorphMany(meta, entities, rel, targetMeta, ctx);
     }
 
     if (loadedTargets.length > 0) {
@@ -181,6 +212,9 @@ export async function loadRelationsForEntities(
       const nextVisited = new Set(visitedEagerEdges);
       if (isEagerStep) {
         nextVisited.add(`${meta.name}.${rel.propertyName}->${rel.targetName}`);
+        if (rel.kind === "morph-many" && rel.morphName) {
+          nextVisited.add(`${rel.targetName}.${rel.morphName}->${meta.name}`);
+        }
       }
       await loadRelationsForEntities(
         targetMeta,
@@ -209,12 +243,77 @@ function readEntityFk(
   return undefined;
 }
 
+function readMorphFields(
+  entity: object,
+  rel: CompiledRelationMetadata,
+): { typeVal: unknown; idVal: unknown } {
+  const rec = entity as Record<string, unknown>;
+  const typeVal =
+    rel.morphTypePropertyName && rec[rel.morphTypePropertyName] !== undefined
+      ? rec[rel.morphTypePropertyName]
+      : rel.morphTypeColumnName
+        ? getShadowFk(entity, rel.morphTypeColumnName)
+        : undefined;
+  const idVal =
+    rel.morphIdPropertyName && rec[rel.morphIdPropertyName] !== undefined
+      ? rec[rel.morphIdPropertyName]
+      : rel.morphIdColumnName
+        ? getShadowFk(entity, rel.morphIdColumnName)
+        : undefined;
+  return { typeVal, idVal };
+}
+
+function resolveMorphTargetEntry(
+  rel: CompiledRelationMetadata,
+  rawType: unknown,
+) {
+  if (rawType === undefined || rawType === null || !rel.morphTargets) {
+    return undefined;
+  }
+  const typeStr = String(rawType);
+  const exact = rel.morphTargets.get(typeStr);
+  if (exact) return exact;
+  const lower = typeStr.toLowerCase();
+  for (const entry of rel.morphTargets.values()) {
+    if (
+      entry.typeKey.toLowerCase() === lower ||
+      entry.targetName.toLowerCase() === lower
+    ) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
 function linkFromIdentityMapOnly(
   _meta: CompiledEntityMetadata,
   entities: object[],
   rel: CompiledRelationMetadata,
   ctx: LoadRelationsContext,
 ): void {
+  if (rel.kind === "morph-to") {
+    for (const entity of entities) {
+      const { typeVal, idVal } = readMorphFields(entity, rel);
+      if (
+        typeVal === undefined ||
+        typeVal === null ||
+        idVal === undefined ||
+        idVal === null
+      ) {
+        continue;
+      }
+      const entry = resolveMorphTargetEntry(rel, typeVal);
+      if (!entry) continue;
+      const targetMeta = ctx.graph.byTarget.get(entry.target);
+      if (!targetMeta) continue;
+      const existing = ctx.identityMap.getByPkValues(targetMeta, [idVal]);
+      if (existing) {
+        (entity as Record<string, unknown>)[rel.propertyName] = existing;
+      }
+    }
+    return;
+  }
+
   const targetMeta = ctx.graph.byTarget.get(rel.target);
   if (!targetMeta) return;
   if (rel.isOwning && (rel.kind === "many-to-one" || rel.kind === "one-to-one")) {
@@ -506,6 +605,265 @@ async function loadManyToMany(
         ? (grouped.get(String(idVal)) ?? [])
         : [];
     (entity as Record<string, unknown>)[rel.propertyName] = items;
+  }
+
+  return allTargets;
+}
+
+/**
+ * Cycle-safe batched `@MorphTo` loader:
+ * Groups parent entities by concrete morph type key and executes AT MOST ONE
+ * `WHERE pk IN (...)` query per concrete target type (zero N+1 queries!).
+ */
+async function loadMorphTo(
+  ownerMeta: CompiledEntityMetadata,
+  entities: object[],
+  rel: CompiledRelationMetadata,
+  ctx: LoadRelationsContext,
+  skipVisitedEagerEdges?: ReadonlySet<string>,
+): Promise<Map<CompiledEntityMetadata, object[]>> {
+  interface MorphTargetBucket {
+    readonly targetMeta: CompiledEntityMetadata;
+    readonly refColName: string;
+    readonly refPropName: string;
+    readonly skipQuery: boolean;
+    readonly missingIds: unknown[];
+    readonly missingSet: Set<string>;
+    readonly resolvedByKey: Map<string, object>;
+  }
+
+  const bucketsByMeta = new Map<CompiledEntityMetadata, MorphTargetBucket>();
+  const entityBindings: Array<{
+    readonly entity: object;
+    readonly bucket?: MorphTargetBucket;
+    readonly idKey?: string;
+  }> = [];
+
+  for (const entity of entities) {
+    const { typeVal, idVal } = readMorphFields(entity, rel);
+    if (
+      typeVal === undefined ||
+      typeVal === null ||
+      idVal === undefined ||
+      idVal === null
+    ) {
+      (entity as Record<string, unknown>)[rel.propertyName] = null;
+      entityBindings.push({ entity });
+      continue;
+    }
+
+    const entry = resolveMorphTargetEntry(rel, typeVal);
+    if (!entry) {
+      (entity as Record<string, unknown>)[rel.propertyName] = null;
+      entityBindings.push({ entity });
+      continue;
+    }
+
+    const targetMeta = ctx.graph.byTarget.get(entry.target);
+    if (!targetMeta) {
+      (entity as Record<string, unknown>)[rel.propertyName] = null;
+      entityBindings.push({ entity });
+      continue;
+    }
+
+    let bucket = bucketsByMeta.get(targetMeta);
+    if (!bucket) {
+      const edgeKey = `${ownerMeta.name}.${rel.propertyName}->${targetMeta.name}`;
+      bucket = {
+        targetMeta,
+        refColName: entry.primaryColumnName,
+        refPropName: entry.primaryPropertyName,
+        skipQuery: skipVisitedEagerEdges?.has(edgeKey) === true,
+        missingIds: [],
+        missingSet: new Set<string>(),
+        resolvedByKey: new Map<string, object>(),
+      };
+      bucketsByMeta.set(targetMeta, bucket);
+    }
+
+    const idKey = String(idVal);
+    const cached = ctx.identityMap.getByPkValues(targetMeta, [idVal]);
+    if (cached) {
+      bucket.resolvedByKey.set(idKey, cached);
+    } else if (!bucket.skipQuery && !bucket.missingSet.has(idKey)) {
+      bucket.missingSet.add(idKey);
+      bucket.missingIds.push(idVal);
+    }
+
+    entityBindings.push({ entity, bucket, idKey });
+  }
+
+  // Execute ONE batched `IN (...)` query per distinct concrete target type!
+  const dialect = ctx.executor.dialect;
+  for (const bucket of bucketsByMeta.values()) {
+    if (bucket.skipQuery || bucket.missingIds.length === 0) continue;
+    const { targetMeta, refColName, refPropName, missingIds } = bucket;
+    const tableRef = formatTableRef(
+      targetMeta.tableName,
+      targetMeta.schema,
+      dialect,
+    );
+    const refColQ = quoteIdentifier(refColName, dialect);
+    const placeholders = missingIds
+      .map((_, i) => formatPlaceholder(i + 1, dialect))
+      .join(", ");
+
+    let sql = `SELECT * FROM ${tableRef} WHERE ${refColQ} IN (${placeholders})`;
+    if (!ctx.withDeleted && targetMeta.deleteDateColumn) {
+      sql += ` AND ${quoteIdentifier(targetMeta.deleteDateColumn.columnName, dialect)} IS NULL`;
+    }
+
+    const res = await ctx.executor.query<Record<string, unknown>>(
+      sql,
+      missingIds,
+    );
+    for (const row of res.rows) {
+      const hydrated = hydrateEntityRow<Record<string, unknown>>(
+        targetMeta,
+        row,
+        {
+          identityMap: ctx.identityMap,
+          safeJsonSerialization: ctx.safeJsonSerialization,
+          circularJsonStrategy: ctx.circularJsonStrategy,
+        },
+      );
+      if (!ctx.loadedHooks.has(hydrated)) {
+        ctx.loadedHooks.add(hydrated);
+        await invokeLifecycleHooks(targetMeta, "after-load", hydrated);
+      }
+      const keyVal = hydrated[refPropName];
+      if (keyVal !== undefined && keyVal !== null) {
+        bucket.resolvedByKey.set(String(keyVal), hydrated);
+      }
+    }
+  }
+
+  // Hydrate resolved targets onto parent entities & group loaded targets by concrete targetMeta
+  const loadedByMeta = new Map<CompiledEntityMetadata, object[]>();
+  for (const binding of entityBindings) {
+    if (!binding.bucket || binding.idKey === undefined) {
+      continue;
+    }
+    const found = binding.bucket.resolvedByKey.get(binding.idKey) ?? null;
+    (binding.entity as Record<string, unknown>)[rel.propertyName] = found;
+    if (found) {
+      let group = loadedByMeta.get(binding.bucket.targetMeta);
+      if (!group) {
+        group = [];
+        loadedByMeta.set(binding.bucket.targetMeta, group);
+      }
+      group.push(found);
+    }
+  }
+
+  return loadedByMeta;
+}
+
+/**
+ * Cycle-safe batched `@MorphMany` loader:
+ * Executes ONE batched `WHERE <typeCol> = $1 AND <idCol> IN ($2, ...)` query
+ * across all parent entities (zero N+1 queries!).
+ */
+async function loadMorphMany(
+  ownerMeta: CompiledEntityMetadata,
+  entities: object[],
+  rel: CompiledRelationMetadata,
+  targetMeta: CompiledEntityMetadata,
+  ctx: LoadRelationsContext,
+): Promise<object[]> {
+  const typeCol = rel.morphTypeColumnName;
+  const idCol = rel.morphIdColumnName;
+  const morphTypeVal = rel.morphTypeValue ?? ownerMeta.name;
+  if (!typeCol || !idCol) return [];
+
+  const ownerRefProp =
+    rel.referencedPropertyName ?? ownerMeta.primaryColumn.propertyName;
+
+  const ownerIds: unknown[] = [];
+  const ownerIdSet = new Set<string>();
+  for (const entity of entities) {
+    const idVal = (entity as Record<string, unknown>)[ownerRefProp];
+    if (idVal === undefined || idVal === null) continue;
+    const key = String(idVal);
+    if (!ownerIdSet.has(key)) {
+      ownerIdSet.add(key);
+      ownerIds.push(idVal);
+    }
+  }
+
+  if (ownerIds.length === 0) {
+    for (const entity of entities) {
+      (entity as Record<string, unknown>)[rel.propertyName] = [];
+    }
+    return [];
+  }
+
+  const dialect = ctx.executor.dialect;
+  const targetTableRef = formatTableRef(
+    targetMeta.tableName,
+    targetMeta.schema,
+    dialect,
+  );
+  const typeColQ = quoteIdentifier(typeCol, dialect);
+  const idColQ = quoteIdentifier(idCol, dialect);
+
+  const typePh = formatPlaceholder(1, dialect);
+  const idPlaceholders = ownerIds
+    .map((_, i) => formatPlaceholder(i + 2, dialect))
+    .join(", ");
+
+  let sql = `SELECT * FROM ${targetTableRef} WHERE ${typeColQ} = ${typePh} AND ${idColQ} IN (${idPlaceholders})`;
+  if (!ctx.withDeleted && targetMeta.deleteDateColumn) {
+    sql += ` AND ${quoteIdentifier(targetMeta.deleteDateColumn.columnName, dialect)} IS NULL`;
+  }
+
+  const res = await ctx.executor.query<Record<string, unknown>>(sql, [
+    morphTypeVal,
+    ...ownerIds,
+  ]);
+
+  const grouped = new Map<string, object[]>();
+  const allTargets: object[] = [];
+
+  for (const row of res.rows) {
+    const hydrated = hydrateEntityRow<Record<string, unknown>>(
+      targetMeta,
+      row,
+      {
+        identityMap: ctx.identityMap,
+        safeJsonSerialization: ctx.safeJsonSerialization,
+        circularJsonStrategy: ctx.circularJsonStrategy,
+      },
+    );
+    if (!ctx.loadedHooks.has(hydrated)) {
+      ctx.loadedHooks.add(hydrated);
+      await invokeLifecycleHooks(targetMeta, "after-load", hydrated);
+    }
+    const rowType = row[typeCol];
+    const rowId = row[idCol];
+    if (rowType !== undefined) {
+      setShadowFk(hydrated, typeCol, rowType);
+    }
+    if (rowId !== undefined && rowId !== null) {
+      setShadowFk(hydrated, idCol, rowId);
+      const key = String(rowId);
+      let bucket = grouped.get(key);
+      if (!bucket) {
+        bucket = [];
+        grouped.set(key, bucket);
+      }
+      bucket.push(hydrated);
+    }
+    allTargets.push(hydrated);
+  }
+
+  for (const entity of entities) {
+    const idVal = (entity as Record<string, unknown>)[ownerRefProp];
+    const children =
+      idVal !== undefined && idVal !== null
+        ? (grouped.get(String(idVal)) ?? [])
+        : [];
+    (entity as Record<string, unknown>)[rel.propertyName] = children;
   }
 
   return allTargets;

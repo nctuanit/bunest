@@ -8,7 +8,7 @@ import {
   type MethodAspectHandler,
 } from "@bunest/core";
 import { DataSource } from "../data-source";
-import type { EntityTarget } from "../types";
+import type { EntityTarget, OrmTransactionOptions } from "../types";
 import {
   DEFAULT_ORM_DATA_SOURCE,
   getOrmDataSourceToken,
@@ -18,7 +18,7 @@ import {
   getOrmTransactionalAspectToken,
 } from "./tokens";
 
-export interface OrmTransactionalOptions {
+export interface OrmTransactionalOptions extends OrmTransactionOptions {
   readonly dataSource?: string;
 }
 
@@ -80,7 +80,7 @@ export class OrmTransactionalAspect
   constructor(private readonly dataSource: DataSource) {}
 
   intercept(ctx: MethodAspectContext<OrmTransactionalOptions>): unknown {
-    return this.dataSource.transaction(() => ctx.proceed());
+    return this.dataSource.transaction(() => ctx.proceed(), ctx.options);
   }
 }
 

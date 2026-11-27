@@ -6,7 +6,11 @@ import type {
   OrmQueryLogEvent,
   OrmQueryResult,
 } from "../types";
-import { emitQueryLog, type OrmDriver } from "./driver.interface";
+import {
+  emitQueryTelemetry,
+  shouldTrackQuery,
+  type OrmDriver,
+} from "./driver.interface";
 
 export interface LibSqlOrmDriverOptions {
   /**
@@ -16,6 +20,7 @@ export interface LibSqlOrmDriverOptions {
   readonly authToken?: string;
   readonly headers?: Record<string, string>;
   readonly logging?: boolean | ((event: OrmQueryLogEvent) => void);
+  readonly dataSourceName?: string;
 }
 
 interface HranaValue {
@@ -108,6 +113,7 @@ function decodeHranaValue(v: HranaValue | undefined): unknown {
 export class LibSqlOrmDriver implements OrmDriver {
   readonly dialect: OrmDialect = "libsql";
   readonly driverKind = "libsql-http";
+  readonly dataSourceName?: string;
 
   private readonly baseUrl: string;
   private readonly options: LibSqlOrmDriverOptions;
@@ -117,6 +123,7 @@ export class LibSqlOrmDriver implements OrmDriver {
 
   constructor(options: LibSqlOrmDriverOptions) {
     this.options = options;
+    this.dataSourceName = options.dataSourceName;
     this.baseUrl = normalizeHranaUrl(options.url);
   }
 
@@ -187,7 +194,8 @@ export class LibSqlOrmDriver implements OrmDriver {
     sql: string,
     params: readonly unknown[] = [],
   ): Promise<OrmQueryResult<T>> {
-    const start = performance.now();
+    const track = shouldTrackQuery(this.options.logging);
+    const start = track ? performance.now() : 0;
     const tx = this.txStorage.getStore();
     try {
       const reqs: Record<string, unknown>[] = [
@@ -207,7 +215,18 @@ export class LibSqlOrmDriver implements OrmDriver {
       const payload = await this.sendPipeline(reqs, tx);
       const first = payload.results?.[0];
       if (!first) {
-        emitQueryLog(this.options.logging, sql, params, start);
+        if (track) {
+          emitQueryTelemetry(
+            this.options.logging,
+            this.dialect,
+            sql,
+            params,
+            start,
+            0,
+            undefined,
+            this.dataSourceName,
+          );
+        }
         return { rows: [], affectedRows: 0 };
       }
       if (first.type === "error") {
@@ -233,7 +252,18 @@ export class LibSqlOrmDriver implements OrmDriver {
           ? Number(res.affected_row_count)
           : rows.length;
 
-      emitQueryLog(this.options.logging, sql, params, start);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          rows.length > 0 ? rows.length : affectedRows,
+          undefined,
+          this.dataSourceName,
+        );
+      }
       return {
         rows,
         affectedRows,
@@ -244,7 +274,18 @@ export class LibSqlOrmDriver implements OrmDriver {
       };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      emitQueryLog(this.options.logging, sql, params, start, error);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          undefined,
+          error,
+          this.dataSourceName,
+        );
+      }
       throw new QueryFailedError(error.message, sql, params, error);
     }
   }

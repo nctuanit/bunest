@@ -776,7 +776,78 @@ export function dehydrateEntity(
   }
 
   // Handle owning FK columns (from populated relation objects, explicit FK columns, or preserved shadow FKs)
+  // AND polymorphic `@MorphTo` columns (`morphTypeColumnName` + `morphIdColumnName`).
   for (const rel of meta.relations) {
+    if (rel.kind === "morph-to" && rel.persistence) {
+      const typeCol = rel.morphTypeColumnName;
+      const idCol = rel.morphIdColumnName;
+      if (!typeCol || !idCol) continue;
+
+      const relVal = entity[rel.propertyName];
+      if (relVal !== undefined) {
+        if (relVal === null) {
+          columnValues[typeCol] = null;
+          columnValues[idCol] = null;
+          if (rel.morphTypePropertyName) entity[rel.morphTypePropertyName] = null;
+          if (rel.morphIdPropertyName) entity[rel.morphIdPropertyName] = null;
+          setShadowFk(entity, typeCol, null);
+          setShadowFk(entity, idCol, null);
+        } else if (typeof relVal === "object") {
+          const ctor = (relVal as { constructor?: Function }).constructor;
+          const morphEntry = ctor ? rel.morphTargetByClass?.get(ctor) : undefined;
+          if (morphEntry) {
+            const pkVal = (relVal as Record<string, unknown>)[
+              morphEntry.primaryPropertyName
+            ];
+            columnValues[typeCol] = morphEntry.typeKey;
+            if (rel.morphTypePropertyName) {
+              entity[rel.morphTypePropertyName] = morphEntry.typeKey;
+            }
+            setShadowFk(entity, typeCol, morphEntry.typeKey);
+
+            if (pkVal !== undefined) {
+              columnValues[idCol] = pkVal;
+              if (rel.morphIdPropertyName) {
+                entity[rel.morphIdPropertyName] = pkVal;
+              }
+              setShadowFk(entity, idCol, pkVal);
+            }
+          }
+        }
+      } else {
+        if (
+          rel.morphTypePropertyName &&
+          entity[rel.morphTypePropertyName] !== undefined
+        ) {
+          columnValues[typeCol] = entity[rel.morphTypePropertyName];
+          setShadowFk(entity, typeCol, entity[rel.morphTypePropertyName]);
+        } else {
+          const shadowType = getShadowFk(entity, typeCol);
+          if (shadowType !== undefined) {
+            columnValues[typeCol] = shadowType;
+          } else if (mode === "insert" && rel.nullable) {
+            columnValues[typeCol] = null;
+          }
+        }
+
+        if (
+          rel.morphIdPropertyName &&
+          entity[rel.morphIdPropertyName] !== undefined
+        ) {
+          columnValues[idCol] = entity[rel.morphIdPropertyName];
+          setShadowFk(entity, idCol, entity[rel.morphIdPropertyName]);
+        } else {
+          const shadowId = getShadowFk(entity, idCol);
+          if (shadowId !== undefined) {
+            columnValues[idCol] = shadowId;
+          } else if (mode === "insert" && rel.nullable) {
+            columnValues[idCol] = null;
+          }
+        }
+      }
+      continue;
+    }
+
     if (!rel.isOwning || !rel.joinColumnName || !rel.persistence) continue;
     const fkColName = rel.joinColumnName;
 

@@ -14,6 +14,7 @@ import {
   DataSource,
   Entity,
   Index,
+  ObjectIdColumn,
   Repository,
   PrimaryColumn,
   SoftDelete,
@@ -230,5 +231,42 @@ describe("@BaseEntity<Key> decorator", () => {
 
     // Second call hits the WeakMap cache
     expect(getEntitySchema(LazyProduct)).toBe(schema);
+  });
+
+  it("propagates select: false, preserves 'date' column type, and includes @ObjectIdColumn() in common EntitySchema", () => {
+    @Entity("audit_accounts")
+    class AuditAccount {
+      @ObjectIdColumn()
+      _id!: string;
+
+      @Column("varchar", { length: 120 })
+      email!: string;
+
+      @Column("varchar", { select: false })
+      passwordHash!: string;
+
+      @Column("date")
+      birthDate!: string;
+    }
+
+    const schema = getEntitySchema(AuditAccount);
+    expect(schema).toBeDefined();
+    expect(schema!.primaryKey?.propertyName).toBe("_id");
+    expect(schema!.primaryKey?.primary).toBe(true);
+    expect(schema!.primaryKey?.type).toBe("text");
+    expect(schema!.primaryKey?.generated).toBe(true);
+    expect(schema!.primaryKey?.generationStrategy).toBeUndefined();
+
+    const cols = getEntityColumns(AuditAccount);
+    const pwCol = cols.find((c) => c.propertyName === "passwordHash");
+    expect(pwCol).toBeDefined();
+    expect(pwCol!.select).toBe(false);
+
+    const emailCol = cols.find((c) => c.propertyName === "email");
+    expect(emailCol?.select).toBeUndefined();
+
+    const birthCol = cols.find((c) => c.propertyName === "birthDate");
+    expect(birthCol).toBeDefined();
+    expect(birthCol!.type).toBe("date");
   });
 });

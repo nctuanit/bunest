@@ -24,6 +24,7 @@ import type {
   OrmDialect,
   OrmDriverLike,
   OrmMigrationRecord,
+  OrmTransactionOptions,
 } from "./types";
 
 interface MutableOrmRepositoryRuntime {
@@ -32,6 +33,7 @@ interface MutableOrmRepositoryRuntime {
   maxEagerDepth: number;
   safeJsonSerialization: boolean;
   circularJsonStrategy: OrmRepositoryRuntime["circularJsonStrategy"];
+  dataSourceName: string;
 }
 
 /**
@@ -121,7 +123,10 @@ export class DataSource {
       return this;
     }
 
-    const driver = createDriverFromOptions(this.options);
+    const driver = createDriverFromOptions({
+      ...this.options,
+      name: this.name,
+    });
     await driver.connect();
 
     const graph = compileMetadataGraph({
@@ -136,6 +141,7 @@ export class DataSource {
       maxEagerDepth: this.options.maxEagerDepth ?? 2,
       safeJsonSerialization: this.options.safeJsonSerialization ?? true,
       circularJsonStrategy: this.options.circularJsonStrategy ?? "omit",
+      dataSourceName: this.name,
     };
 
     this._driver = driver;
@@ -326,8 +332,9 @@ export class DataSource {
 
   async transaction<T>(
     runInTransaction: (entityManager: EntityManager) => Promise<T> | T,
+    options?: OrmTransactionOptions,
   ): Promise<T> {
-    return this.manager.transaction(runInTransaction);
+    return this.manager.transaction(runInTransaction, options);
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

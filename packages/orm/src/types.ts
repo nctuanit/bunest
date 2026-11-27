@@ -183,7 +183,97 @@ export type RelationKind =
   | "one-to-one"
   | "many-to-one"
   | "one-to-many"
-  | "many-to-many";
+  | "many-to-many"
+  | "morph-to"
+  | "morph-many";
+
+export type OrmMorphTargets =
+  | Readonly<Record<string, EntityTarget>>
+  | readonly EntityTarget[];
+
+export interface OrmMorphToOptions {
+  /**
+   * SQL column name (or property name) storing the polymorphic target type discriminator.
+   * Defaults to `${camelToSnake(propertyName)}_type` (e.g. `commentable_type`).
+   */
+  readonly typeColumn?: string;
+  /**
+   * SQL column name (or property name) storing the polymorphic target primary key.
+   * Defaults to `${camelToSnake(propertyName)}_id` (e.g. `commentable_id`).
+   */
+  readonly idColumn?: string;
+  /**
+   * SQL column type for the auto-synthesized polymorphic ID column (inferred from target PKs when omitted).
+   */
+  readonly idColumnType?: OrmColumnType;
+  readonly nullable?: boolean;
+  readonly eager?: boolean;
+  readonly persistence?: boolean;
+}
+
+export interface OrmMorphManyOptions {
+  /**
+   * Explicit discriminator string matching this parent entity in the child's type column.
+   * Automatically inferred from the child `@MorphTo()` target map when omitted.
+   */
+  readonly morphType?: string;
+  /**
+   * Override the child's SQL type column name (defaults to child `@MorphTo()` metadata).
+   */
+  readonly typeColumn?: string;
+  /**
+   * Override the child's SQL ID column name (defaults to child `@MorphTo()` metadata).
+   */
+  readonly idColumn?: string;
+  readonly cascade?: CascadeOption;
+  readonly eager?: boolean;
+  readonly persistence?: boolean;
+}
+
+export type OrmIsolationLevel =
+  | "READ UNCOMMITTED"
+  | "READ COMMITTED"
+  | "REPEATABLE READ"
+  | "SERIALIZABLE";
+
+export type OrmTransactionPropagation =
+  | "REQUIRED"
+  | "REQUIRES_NEW"
+  | "MANDATORY"
+  | "NEVER";
+
+export interface OrmTransactionOptions {
+  /**
+   * SQL transaction isolation level applied to top-level / `REQUIRES_NEW` transactions.
+   */
+  readonly isolationLevel?: OrmIsolationLevel;
+  /**
+   * Transaction propagation behavior (default: `"REQUIRED"`).
+   * - `"REQUIRED"`: join active tx via nested `SAVEPOINT`, or open a new tx.
+   * - `"REQUIRES_NEW"`: suspend outer ALS tx and open an independent tx.
+   * - `"MANDATORY"`: require an active tx; throws `TransactionPropagationError` if none.
+   * - `"NEVER"`: forbid an active tx; throws `TransactionPropagationError` if one exists.
+   */
+  readonly propagation?: OrmTransactionPropagation;
+  /**
+   * Dialect-aware read-only transaction hint (`SET TRANSACTION READ ONLY` on PG/MySQL,
+   * `BEGIN DEFERRED` + `PRAGMA query_only = ON` on SQLite).
+   */
+  readonly readOnly?: boolean;
+  /**
+   * Automatic retries with jittered exponential backoff on transient serialization,
+   * deadlock, or `SQLITE_BUSY` errors at top-level transactions.
+   */
+  readonly retries?: number;
+  /**
+   * Base backoff delay in milliseconds between retries (default: `10`).
+   */
+  readonly retryDelayMs?: number;
+  /**
+   * Optional logical DataSource name used for diagnostics channel telemetry.
+   */
+  readonly dataSource?: string;
+}
 
 export type CascadeOption =
   | boolean
@@ -547,10 +637,20 @@ export interface OrmDriverLike extends OrmQueryExecutor {
    * Optional underlying database family (`"bun-sqlite"`, `"bun-sql"`, `"libsql-http"`, `"d1"`, `"mongodb-wire"`, `"mongodb-local"`, `"replicated"`, etc.).
    */
   readonly driverKind?: string;
+  /**
+   * Optional logical DataSource name attached for diagnostics channel telemetry.
+   */
+  readonly dataSourceName?: string;
+  /**
+   * Indicates the driver natively enforces `OrmTransactionOptions` (propagation,
+   * isolation, retries, lifecycle hooks, and diagnostics channel emission).
+   */
+  readonly supportsManagedTransactions?: boolean;
   connect(): Promise<void>;
   close(): Promise<void>;
   transaction<T>(
     run: (executor: OrmQueryExecutor) => Promise<T> | T,
+    options?: OrmTransactionOptions,
   ): Promise<T>;
   isInTransaction(): boolean;
   setForeignKeysEnabled?(enabled: boolean): Promise<void>;

@@ -116,6 +116,14 @@ export interface CompiledJoinTableMetadata {
   readonly onUpdate: ReferentialAction;
 }
 
+export interface CompiledMorphTargetEntry {
+  readonly typeKey: string;
+  readonly target: ObjectType;
+  readonly targetName: string;
+  readonly primaryPropertyName: string;
+  readonly primaryColumnName: string;
+}
+
 export interface CompiledRelationMetadata {
   readonly propertyName: string;
   readonly kind: RelationKind;
@@ -142,6 +150,17 @@ export interface CompiledRelationMetadata {
   readonly explicitFkPropertyName?: string;
   readonly foreignKeyConstraintName?: string;
   readonly joinTable?: CompiledJoinTableMetadata;
+  /**
+   * Polymorphic relation metadata (`@MorphTo` / `@MorphMany`).
+   */
+  readonly morphName?: string;
+  readonly morphTypeColumnName?: string;
+  readonly morphIdColumnName?: string;
+  readonly morphTypePropertyName?: string;
+  readonly morphIdPropertyName?: string;
+  readonly morphTypeValue?: string;
+  readonly morphTargets?: ReadonlyMap<string, CompiledMorphTargetEntry>;
+  readonly morphTargetByClass?: ReadonlyMap<Function, CompiledMorphTargetEntry>;
   readonly nullable: boolean;
   readonly eager: boolean;
   readonly cascadeInsert: boolean;
@@ -831,9 +850,23 @@ export function compileMetadataGraph(options: {
     rawByClass.set(cls, raw);
 
     for (const rel of raw.relations) {
-      const targetCls = resolveEntityTargetClass(rel.target, localLookup);
-      if (targetCls) {
-        enqueue(targetCls);
+      if (rel.kind === "morph-to" && rel.morphTargets) {
+        const targetsList = Array.isArray(rel.morphTargets)
+          ? rel.morphTargets
+          : Object.values(rel.morphTargets);
+        for (const morphTarget of targetsList) {
+          const targetCls = resolveEntityTargetClass(morphTarget, localLookup);
+          if (targetCls) {
+            enqueue(targetCls);
+          }
+        }
+        continue;
+      }
+      if (rel.target !== undefined) {
+        const targetCls = resolveEntityTargetClass(rel.target, localLookup);
+        if (targetCls) {
+          enqueue(targetCls);
+        }
       }
     }
   }
@@ -968,7 +1001,256 @@ export function compileMetadataGraph(options: {
 
   for (const partial of partialByTarget.values()) {
     for (const rel of partial.raw.relations) {
-      const targetCls = resolveEntityTargetClass(rel.target, localLookup);
+      if (rel.kind === "morph-to") {
+        const rawTargets = rel.morphTargets;
+        if (!rawTargets) {
+          throw new RelationMetadataError(
+            `@MorphTo() on "${partial.name}.${rel.propertyName}" requires at least one target entity.`,
+          );
+        }
+
+        const morphTargets = new Map<string, CompiledMorphTargetEntry>();
+        const morphTargetByClass = new Map<Function, CompiledMorphTargetEntry>();
+        const targetPkTypes = new Set<OrmColumnType>();
+
+        const entries: Array<[string | undefined, EntityTarget]> = Array.isArray(
+          rawTargets,
+        )
+          ? rawTargets.map((t) => [undefined, t])
+          : Object.entries(rawTargets);
+
+        if (entries.length === 0) {
+          throw new RelationMetadataError(
+            `@MorphTo() on "${partial.name}.${rel.propertyName}" requires at least one target entity.`,
+          );
+        }
+
+        for (const [explicitKey, targetRef] of entries) {
+          const targetCls = resolveEntityTargetClass(targetRef, localLookup);
+          if (!targetCls) {
+            throw new RelationMetadataError(
+              `Cannot resolve @MorphTo() target for "${partial.name}.${rel.propertyName}".`,
+            );
+          }
+          const targetPartial = partialByTarget.get(targetCls);
+          if (!targetPartial) {
+            throw new EntityMetadataNotFoundError(
+              targetCls,
+              `Referenced by @MorphTo() "${partial.name}.${rel.propertyName}".`,
+            );
+          }
+          const targetPk = targetPartial.primaryColumns[0]!;
+          targetPkTypes.add(targetPk.type);
+          const typeKey = explicitKey ?? targetPartial.name;
+          const compiledEntry: CompiledMorphTargetEntry = {
+            typeKey,
+            target: targetPartial.target,
+            targetName: targetPartial.name,
+            primaryPropertyName: targetPk.propertyName,
+            primaryColumnName: targetPk.columnName,
+          };
+          morphTargets.set(typeKey, compiledEntry);
+          morphTargetByClass.set(targetPartial.target, compiledEntry);
+        }
+
+        const morphOpts = rel.morphToOptions ?? {};
+        const defaultBase = partial.camelCaseMapping
+          ? camelToSnake(rel.propertyName)
+          : rel.propertyName;
+
+        const requestedTypeCol = morphOpts.typeColumn ?? `${defaultBase}_type`;
+        const requestedIdCol = morphOpts.idColumn ?? `${defaultBase}_id`;
+
+        const existingTypeCol = partial.columns.find(
+          (c) =>
+            c.columnName === requestedTypeCol ||
+            c.propertyName === requestedTypeCol ||
+            c.propertyName === `${rel.propertyName}Type`,
+        );
+        const existingIdCol = partial.columns.find(
+          (c) =>
+            c.columnName === requestedIdCol ||
+            c.propertyName === requestedIdCol ||
+            c.propertyName === `${rel.propertyName}Id`,
+        );
+
+        const morphTypeColumnName =
+          existingTypeCol?.columnName ??
+          (morphOpts.typeColumn
+            ? partial.camelCaseMapping && /[A-Z]/.test(morphOpts.typeColumn)
+              ? camelToSnake(morphOpts.typeColumn)
+              : morphOpts.typeColumn
+            : `${defaultBase}_type`);
+        const morphIdColumnName =
+          existingIdCol?.columnName ??
+          (morphOpts.idColumn
+            ? partial.camelCaseMapping && /[A-Z]/.test(morphOpts.idColumn)
+              ? camelToSnake(morphOpts.idColumn)
+              : morphOpts.idColumn
+            : `${defaultBase}_id`);
+
+        assertSafeSqlIdentifier(
+          morphTypeColumnName,
+          `morph type column for "${partial.name}.${rel.propertyName}"`,
+        );
+        assertSafeSqlIdentifier(
+          morphIdColumnName,
+          `morph id column for "${partial.name}.${rel.propertyName}"`,
+        );
+
+        const morphNullable = morphOpts.nullable ?? rel.options.nullable ?? true;
+
+        if (!existingTypeCol) {
+          partial.columns.push({
+            propertyName: `__morph_type_${rel.propertyName}`,
+            propertyPath: [`__morph_type_${rel.propertyName}`],
+            columnName: morphTypeColumnName,
+            type: "text",
+            nullable: morphNullable,
+            unique: false,
+            hasDefault: false,
+            primary: false,
+            generated: false,
+            select: true,
+            insert: true,
+            update: true,
+            createdAt: false,
+            updatedAt: false,
+            deletedAt: false,
+            version: false,
+            isEmbeddedFlat: false,
+            isEmbeddedJson: false,
+            isVirtualJoinColumn: true,
+            relationPropertyName: rel.propertyName,
+          });
+        }
+
+        if (!existingIdCol) {
+          const inferredIdType: OrmColumnType =
+            morphOpts.idColumnType ??
+            (targetPkTypes.size === 1 ? [...targetPkTypes][0]! : "text");
+          partial.columns.push({
+            propertyName: `__morph_id_${rel.propertyName}`,
+            propertyPath: [`__morph_id_${rel.propertyName}`],
+            columnName: morphIdColumnName,
+            type: inferredIdType,
+            nullable: morphNullable,
+            unique: false,
+            hasDefault: false,
+            primary: false,
+            generated: false,
+            select: true,
+            insert: true,
+            update: true,
+            createdAt: false,
+            updatedAt: false,
+            deletedAt: false,
+            version: false,
+            isEmbeddedFlat: false,
+            isEmbeddedJson: false,
+            isVirtualJoinColumn: true,
+            relationPropertyName: rel.propertyName,
+          });
+        }
+
+        const firstEntry = [...morphTargets.values()][0]!;
+        partial.relations.push({
+          propertyName: rel.propertyName,
+          kind: "morph-to",
+          target: firstEntry.target,
+          targetName: [...morphTargets.values()]
+            .map((e) => e.targetName)
+            .join("|"),
+          isOwning: true,
+          morphName: rel.propertyName,
+          morphTypeColumnName,
+          morphIdColumnName,
+          ...(existingTypeCol
+            ? { morphTypePropertyName: existingTypeCol.propertyName }
+            : {}),
+          ...(existingIdCol
+            ? { morphIdPropertyName: existingIdCol.propertyName }
+            : {}),
+          morphTargets,
+          morphTargetByClass,
+          nullable: morphNullable,
+          eager: rel.options.eager === true,
+          cascadeInsert: false,
+          cascadeUpdate: false,
+          cascadeRemove: false,
+          cascadeSoftRemove: false,
+          onDelete: "NO ACTION",
+          onUpdate: "NO ACTION",
+          createForeignKeyConstraints: false,
+          persistence: rel.options.persistence ?? true,
+        });
+        continue;
+      }
+
+      if (rel.kind === "morph-many") {
+        const targetCls =
+          rel.target !== undefined
+            ? resolveEntityTargetClass(rel.target, localLookup)
+            : undefined;
+        if (!targetCls) {
+          throw new RelationMetadataError(
+            `Cannot resolve target for @MorphMany() relation "${partial.name}.${rel.propertyName}".`,
+          );
+        }
+        const targetPartial = partialByTarget.get(targetCls);
+        if (!targetPartial) {
+          throw new EntityMetadataNotFoundError(
+            targetCls,
+            `Referenced by @MorphMany() "${partial.name}.${rel.propertyName}".`,
+          );
+        }
+        const morphName = rel.morphName;
+        if (!morphName) {
+          throw new RelationMetadataError(
+            `@MorphMany() on "${partial.name}.${rel.propertyName}" requires a morphName.`,
+          );
+        }
+        const cascade = parseCascade(rel.options.cascade);
+        const morphManyOpts = rel.morphManyOptions ?? {};
+        const ownerPk = partial.primaryColumns[0]!;
+
+        partial.relations.push({
+          propertyName: rel.propertyName,
+          kind: "morph-many",
+          target: targetPartial.target,
+          targetName: targetPartial.name,
+          inversePropertyName: morphName,
+          isOwning: false,
+          referencedColumnName: ownerPk.columnName,
+          referencedPropertyName: ownerPk.propertyName,
+          morphName,
+          ...(morphManyOpts.typeColumn !== undefined
+            ? { morphTypeColumnName: morphManyOpts.typeColumn }
+            : {}),
+          ...(morphManyOpts.idColumn !== undefined
+            ? { morphIdColumnName: morphManyOpts.idColumn }
+            : {}),
+          ...(morphManyOpts.morphType !== undefined
+            ? { morphTypeValue: morphManyOpts.morphType }
+            : {}),
+          nullable: true,
+          eager: rel.options.eager === true,
+          cascadeInsert: cascade.insert,
+          cascadeUpdate: cascade.update,
+          cascadeRemove: cascade.remove,
+          cascadeSoftRemove: cascade.softRemove,
+          onDelete: "NO ACTION",
+          onUpdate: "NO ACTION",
+          createForeignKeyConstraints: false,
+          persistence: rel.options.persistence ?? true,
+        });
+        continue;
+      }
+
+      const targetCls =
+        rel.target !== undefined
+          ? resolveEntityTargetClass(rel.target, localLookup)
+          : undefined;
       if (!targetCls) {
         throw new RelationMetadataError(
           `Cannot resolve target for relation "${partial.name}.${rel.propertyName}". ` +
@@ -1156,6 +1438,49 @@ export function compileMetadataGraph(options: {
       if (rel.isOwning) continue;
 
       const targetPartial = partialByTarget.get(rel.target)!;
+      if (rel.kind === "morph-many") {
+        const childMorphRel = targetPartial.relations.find(
+          (r) => r.kind === "morph-to" && r.propertyName === rel.morphName,
+        );
+        const defaultBase = targetPartial.camelCaseMapping
+          ? camelToSnake(rel.morphName!)
+          : rel.morphName!;
+        const morphTypeColumnName =
+          rel.morphTypeColumnName ??
+          childMorphRel?.morphTypeColumnName ??
+          `${defaultBase}_type`;
+        const morphIdColumnName =
+          rel.morphIdColumnName ??
+          childMorphRel?.morphIdColumnName ??
+          `${defaultBase}_id`;
+        assertSafeSqlIdentifier(
+          morphTypeColumnName,
+          `morph type column for "${partial.name}.${rel.propertyName}"`,
+        );
+        assertSafeSqlIdentifier(
+          morphIdColumnName,
+          `morph id column for "${partial.name}.${rel.propertyName}"`,
+        );
+        const inferredMorphType =
+          rel.morphTypeValue ??
+          childMorphRel?.morphTargetByClass?.get(partial.target)?.typeKey ??
+          partial.name;
+
+        partial.relations[i] = {
+          ...rel,
+          morphTypeColumnName,
+          morphIdColumnName,
+          morphTypeValue: inferredMorphType,
+          ...(childMorphRel?.morphTypePropertyName !== undefined
+            ? { morphTypePropertyName: childMorphRel.morphTypePropertyName }
+            : {}),
+          ...(childMorphRel?.morphIdPropertyName !== undefined
+            ? { morphIdPropertyName: childMorphRel.morphIdPropertyName }
+            : {}),
+        };
+        continue;
+      }
+
       const inverseRel = rel.inversePropertyName
         ? targetPartial.relations.find(
             (r) => r.propertyName === rel.inversePropertyName,

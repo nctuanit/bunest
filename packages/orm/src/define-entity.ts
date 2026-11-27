@@ -11,6 +11,9 @@ import type {
   OrmIndexOptions,
   OrmJoinColumnOptions,
   OrmJoinTableOptions,
+  OrmMorphManyOptions,
+  OrmMorphTargets,
+  OrmMorphToOptions,
   OrmRelationOptions,
   RelationKind,
 } from "./types";
@@ -18,10 +21,14 @@ import type {
 export interface DefineRelationConfig<TTarget = unknown>
   extends Omit<OrmRelationOptions, "inverseSide"> {
   readonly kind: RelationKind;
-  readonly target: EntityTarget<TTarget>;
+  readonly target?: EntityTarget<TTarget>;
   readonly inverseSide?: InverseSideSelector<TTarget>;
   readonly joinColumn?: boolean | OrmJoinColumnOptions;
   readonly joinTable?: boolean | OrmJoinTableOptions;
+  readonly morphTargets?: OrmMorphTargets;
+  readonly morphName?: string;
+  readonly morphToOptions?: OrmMorphToOptions;
+  readonly morphManyOptions?: OrmMorphManyOptions;
 }
 
 export interface DefineEmbeddedConfig<TTarget = unknown>
@@ -139,9 +146,19 @@ function applySchemaMembers<TEntity>(
       OrmMetadataStorage.addRelation(target, {
         propertyName,
         kind: rel.kind,
-        target: rel.target,
+        ...(rel.target !== undefined ? { target: rel.target } : {}),
         ...(rel.inverseSide !== undefined
           ? { inverseSide: rel.inverseSide as InverseSideSelector }
+          : {}),
+        ...(rel.morphTargets !== undefined
+          ? { morphTargets: rel.morphTargets }
+          : {}),
+        ...(rel.morphName !== undefined ? { morphName: rel.morphName } : {}),
+        ...(rel.morphToOptions !== undefined
+          ? { morphToOptions: rel.morphToOptions }
+          : {}),
+        ...(rel.morphManyOptions !== undefined
+          ? { morphManyOptions: rel.morphManyOptions }
           : {}),
         options: rel,
       });

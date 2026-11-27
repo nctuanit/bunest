@@ -1,13 +1,30 @@
+import {
+  emitOrmTransactionDiagnostic,
+  hasOrmTransactionSubscribers,
+} from "./diagnostics";
 import type { CompiledMetadataGraph } from "./metadata-graph";
 import { MongoRepository } from "./mongo-repository";
 import type { SelectQueryBuilder } from "./query-builder";
 import { OrmRepository, type OrmRepositoryRuntime } from "./repository";
+import {
+  assertTransactionPropagation,
+  completeTransactionHookCommit,
+  completeTransactionHookRollback,
+  createTransactionHookCollector,
+  executeWithTransactionRetries,
+  exitTransactionHookScope,
+  isRetryableTransactionError,
+  runInTransactionHookScope,
+  validateIsolationLevel,
+  validateTransactionPropagation,
+} from "./transaction-hooks";
 import type {
   DeepPartial,
   EntityTarget,
   FindManyOptions,
   FindOneOptions,
   FindOptionsWhere,
+  OrmTransactionOptions,
   RemoveOptions,
   SaveOptions,
 } from "./types";
@@ -209,12 +226,111 @@ export class EntityManager {
 
   /**
    * Executes `runInTransaction` inside a database transaction (or nested `SAVEPOINT`
-   * when already inside an active transaction) propagated automatically via `AsyncLocalStorage`.
+   * when already inside an active transaction) propagated automatically via `AsyncLocalStorage`,
+   * supporting `isolationLevel`, `propagation`, `readOnly`, `retries`, lifecycle hooks,
+   * and diagnostics channel telemetry.
    */
   async transaction<T>(
     runInTransaction: (entityManager: EntityManager) => Promise<T> | T,
+    options: OrmTransactionOptions = {},
   ): Promise<T> {
-    return await this.runtime.driver.transaction(() => runInTransaction(this));
+    const dataSource =
+      options.dataSource ??
+      this.runtime.dataSourceName ??
+      this.runtime.driver.dataSourceName;
+    const effectiveOptions: OrmTransactionOptions = {
+      ...options,
+      ...(dataSource !== undefined ? { dataSource } : {}),
+    };
+
+    if (this.runtime.driver.supportsManagedTransactions) {
+      return await this.runtime.driver.transaction(
+        () => runInTransaction(this),
+        effectiveOptions,
+      );
+    }
+
+    // Fallback orchestration for custom/mock OrmDriverLike implementations
+    const propagation = validateTransactionPropagation(
+      effectiveOptions.propagation ?? "REQUIRED",
+    );
+    const isolationLevel =
+      effectiveOptions.isolationLevel !== undefined
+        ? validateIsolationLevel(effectiveOptions.isolationLevel)
+        : undefined;
+    const inTx = this.runtime.driver.isInTransaction();
+
+    assertTransactionPropagation(propagation, inTx);
+
+    if (propagation === "NEVER") {
+      return await exitTransactionHookScope(() => runInTransaction(this));
+    }
+
+    const isNested =
+      inTx && (propagation === "REQUIRED" || propagation === "MANDATORY");
+
+    const runAttempt = async (isFinalAttempt: boolean): Promise<T> => {
+      const collector = createTransactionHookCollector(isNested);
+      const trackTx = hasOrmTransactionSubscribers();
+      const start = trackTx ? performance.now() : 0;
+
+      if (trackTx) {
+        emitOrmTransactionDiagnostic({
+          phase: "begin",
+          ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+          propagation,
+          ...(dataSource !== undefined ? { dataSource } : {}),
+        });
+      }
+
+      let result!: T;
+      try {
+        result = await this.runtime.driver.transaction(
+          () => runInTransactionHookScope(collector, () => runInTransaction(this)),
+          effectiveOptions,
+        );
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (trackTx) {
+          emitOrmTransactionDiagnostic({
+            phase: "rollback",
+            ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+            propagation,
+            durationMs: performance.now() - start,
+            error,
+            ...(dataSource !== undefined ? { dataSource } : {}),
+          });
+        }
+        const willRetry =
+          !isNested && !isFinalAttempt && isRetryableTransactionError(err);
+        if (!willRetry) {
+          await completeTransactionHookRollback(collector);
+        }
+        throw err;
+      }
+
+      if (trackTx) {
+        emitOrmTransactionDiagnostic({
+          phase: "commit",
+          ...(isolationLevel !== undefined ? { isolationLevel } : {}),
+          propagation,
+          durationMs: performance.now() - start,
+          ...(dataSource !== undefined ? { dataSource } : {}),
+        });
+      }
+      await completeTransactionHookCommit(collector);
+      return result;
+    };
+
+    if (!isNested && effectiveOptions.retries && effectiveOptions.retries > 0) {
+      return await executeWithTransactionRetries(
+        effectiveOptions.retries,
+        effectiveOptions.retryDelayMs,
+        (_attempt, isFinal) => runAttempt(isFinal),
+      );
+    }
+
+    return await runAttempt(true);
   }
 
   clearRepositoryCache(): void {

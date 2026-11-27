@@ -1,5 +1,10 @@
+import {
+  emitOrmQueryDiagnostic,
+  hasOrmQuerySubscribers,
+} from "../diagnostics";
 import type {
   OrmDataSourceOptions,
+  OrmDialect,
   OrmDocumentDriverLike,
   OrmDriverLike,
   OrmQueryLogEvent,
@@ -89,5 +94,55 @@ export function emitQueryLog(
     );
   } else {
     console.log(`[BunestORM] QUERY (${durationMs.toFixed(2)}ms): ${sql}`, params);
+  }
+}
+
+export function shouldTrackQuery(
+  logging: boolean | ((event: OrmQueryLogEvent) => void) | undefined,
+): boolean {
+  return Boolean(logging) || hasOrmQuerySubscribers();
+}
+
+export function emitQueryTelemetry(
+  logging: boolean | ((event: OrmQueryLogEvent) => void) | undefined,
+  dialect: OrmDialect,
+  sql: string,
+  params: readonly unknown[],
+  startTime: number,
+  rowCount?: number,
+  error?: Error,
+  dataSource?: string,
+): void {
+  const hasSubs = hasOrmQuerySubscribers();
+  if (!logging && !hasSubs) return;
+  const durationMs = performance.now() - startTime;
+  if (logging) {
+    const event: OrmQueryLogEvent = {
+      sql,
+      params,
+      durationMs,
+      ...(error !== undefined ? { error } : {}),
+    };
+    if (typeof logging === "function") {
+      logging(event);
+    } else if (error) {
+      console.error(
+        `[BunestORM] QUERY ERROR (${durationMs.toFixed(2)}ms): ${sql}`,
+        params,
+        error.message,
+      );
+    } else {
+      console.log(`[BunestORM] QUERY (${durationMs.toFixed(2)}ms): ${sql}`, params);
+    }
+  }
+  if (hasSubs) {
+    emitOrmQueryDiagnostic({
+      sql,
+      dialect,
+      durationMs,
+      ...(rowCount !== undefined ? { rowCount } : {}),
+      ...(error !== undefined ? { error } : {}),
+      ...(dataSource !== undefined ? { dataSource } : {}),
+    });
   }
 }

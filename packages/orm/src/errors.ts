@@ -112,6 +112,25 @@ export class DataSourceNotInitializedError extends OrmError {
   }
 }
 
+/**
+ * Thrown when a transaction propagation invariant is violated (e.g. `"MANDATORY"`
+ * without an active transaction, or `"NEVER"` inside an active transaction).
+ */
+export class TransactionPropagationError extends OrmError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Thrown when a tenant schema or RLS GUC identifier fails strict SQL-injection validation.
+ */
+export class InvalidTenantIdentifierError extends OrmError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 function safeStringify(value: unknown): string {
   const seen = new WeakSet<object>();
   try {

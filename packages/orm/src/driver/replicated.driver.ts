@@ -3,6 +3,7 @@ import type {
   OrmDriverLike,
   OrmQueryExecutor,
   OrmQueryResult,
+  OrmTransactionOptions,
 } from "../types";
 
 /**
@@ -101,9 +102,18 @@ export class ReplicatedOrmDriver implements OrmDriverLike {
     return await this.master.execute(sql, params);
   }
 
+  get dataSourceName(): string | undefined {
+    return this.master.dataSourceName;
+  }
+
+  get supportsManagedTransactions(): boolean {
+    return this.master.supportsManagedTransactions === true;
+  }
+
   async transaction<T>(
     run: (executor: OrmQueryExecutor) => Promise<T> | T,
+    options?: OrmTransactionOptions,
   ): Promise<T> {
-    return await this.master.transaction(() => run(this.master));
+    return await this.master.transaction(() => run(this.master), options);
   }
 }

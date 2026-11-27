@@ -306,10 +306,19 @@ function compileRelationWhere(
   subquerySeq: { count: number },
   outClauses: string[],
 ): void {
+  const ownerAliasQ = quoteIdentifier(ownerAlias, dialect);
+
+  if (rel.kind === "morph-to") {
+    if (filterVal === null && rel.morphTypeColumnName && rel.morphIdColumnName) {
+      outClauses.push(
+        `${ownerAliasQ}.${quoteIdentifier(rel.morphTypeColumnName, dialect)} IS NULL`,
+      );
+    }
+    return;
+  }
+
   const targetMeta = graph.byTarget.get(rel.target);
   if (!targetMeta) return;
-
-  const ownerAliasQ = quoteIdentifier(ownerAlias, dialect);
 
   if (filterVal === null) {
     if (rel.isOwning && rel.joinColumnName) {
@@ -394,6 +403,23 @@ function compileRelationWhere(
       innerClauses.length > 0 ? ` AND ${innerClauses.join(" AND ")}` : "";
     outClauses.push(
       `EXISTS (SELECT 1 FROM ${jtTableRef} ${jtAliasQ} INNER JOIN ${targetTableRef} ${subAliasQ} ON ${subAliasQ}.${targetPkQ} = ${jtAliasQ}.${jtTargetColQ} WHERE ${jtAliasQ}.${jtOwnerColQ} = ${ownerAliasQ}.${ownerPkQ}${whereBody})`,
+    );
+    return;
+  }
+
+  if (rel.kind === "morph-many" && rel.morphTypeColumnName && rel.morphIdColumnName) {
+    const typeQ = quoteIdentifier(rel.morphTypeColumnName, dialect);
+    const idQ = quoteIdentifier(rel.morphIdColumnName, dialect);
+    const ownerRefQ = quoteIdentifier(
+      rel.referencedColumnName ?? ownerMeta.primaryColumn.columnName,
+      dialect,
+    );
+    const typePh = params.add(rel.morphTypeValue ?? ownerMeta.name);
+    const morphCond = `${subAliasQ}.${typeQ} = ${typePh} AND ${subAliasQ}.${idQ} = ${ownerAliasQ}.${ownerRefQ}`;
+    // Keep SQL placeholder order strictly aligned with ParameterCollector insertion order (`innerClauses` first, then `typePh`)!
+    const allInner = [...innerClauses, morphCond].join(" AND ");
+    outClauses.push(
+      `EXISTS (SELECT 1 FROM ${targetTableRef} ${subAliasQ} WHERE ${allInner})`,
     );
     return;
   }

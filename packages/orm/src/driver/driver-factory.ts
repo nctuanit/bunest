@@ -60,6 +60,7 @@ function createSingleDriver(options: OrmDataSourceOptions): OrmDriverLike {
           onconnect: options.onconnect,
           onclose: options.onclose,
           logging: options.logging,
+          dataSourceName: options.name ?? "default",
         });
       }
       return new SqliteOrmDriver({
@@ -73,6 +74,7 @@ function createSingleDriver(options: OrmDataSourceOptions): OrmDriverLike {
         strict: options.strict,
         busyTimeout: options.busyTimeout,
         logging: options.logging,
+        dataSourceName: options.name ?? "default",
       });
     }
 
@@ -109,6 +111,7 @@ function createSingleDriver(options: OrmDataSourceOptions): OrmDriverLike {
         onconnect: options.onconnect,
         onclose: options.onclose,
         logging: options.logging,
+        dataSourceName: options.name ?? "default",
       });
 
     case "libsql": {
@@ -123,6 +126,7 @@ function createSingleDriver(options: OrmDataSourceOptions): OrmDriverLike {
         authToken: options.authToken,
         headers: options.headers,
         logging: options.logging,
+        dataSourceName: options.name ?? "default",
       });
     }
 
@@ -135,6 +139,7 @@ function createSingleDriver(options: OrmDataSourceOptions): OrmDriverLike {
         apiBaseUrl: options.url !== undefined ? String(options.url) : undefined,
         headers: options.headers,
         logging: options.logging,
+        dataSourceName: options.name ?? "default",
       });
 
     case "mongodb":

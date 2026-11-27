@@ -37,11 +37,15 @@ export type {
   OrmEmbeddedOptions,
   OrmEntityOptions,
   OrmIndexOptions,
+  OrmIsolationLevel,
   OrmJoinColumnOptions,
   OrmJoinTableOptions,
   OrmMigration,
   OrmMigrationRecord,
   OrmMigrationStatus,
+  OrmMorphManyOptions,
+  OrmMorphTargets,
+  OrmMorphToOptions,
   OrmQueryExecutor,
   OrmQueryLogEvent,
   OrmQueryResult,
@@ -49,6 +53,8 @@ export type {
   OrmReplicationOptions,
   OrmSslOption,
   OrmTlsOptions,
+  OrmTransactionOptions,
+  OrmTransactionPropagation,
   OrmUniqueOptions,
   PrimaryGeneratedStrategy,
   ReferentialAction,
@@ -64,11 +70,43 @@ export {
   DataSourceNotInitializedError,
   EntityMetadataNotFoundError,
   EntityNotFoundError,
+  InvalidTenantIdentifierError,
   OptimisticLockError,
   OrmError,
   QueryFailedError,
   RelationMetadataError,
+  TransactionPropagationError,
 } from "./errors";
+
+// Zero-overhead Diagnostics Channel Telemetry
+export {
+  ORM_QUERY_CHANNEL,
+  ORM_TRANSACTION_CHANNEL,
+  emitOrmQueryDiagnostic,
+  emitOrmTransactionDiagnostic,
+  hasOrmQuerySubscribers,
+  hasOrmTransactionSubscribers,
+  type OrmQueryDiagnosticEvent,
+  type OrmTransactionDiagnosticEvent,
+} from "./diagnostics";
+
+// Transaction Lifecycle Hooks & Helpers
+export {
+  hasActiveTransactionHookScope,
+  isRetryableTransactionError,
+  onTransactionCommit,
+  onTransactionRollback,
+  type TransactionLifecycleHook,
+} from "./transaction-hooks";
+
+// PostgreSQL RLS & Schema-per-Tenant Multi-Tenancy
+export {
+  runInTenantTransaction,
+  validateRlsSettingName,
+  validateTenantSchemaIdentifier,
+  type TenantTransactionMode,
+  type TenantTransactionOptions,
+} from "./tenant-rls";
 
 // Identifiers & EntityRef helpers
 export {
@@ -157,6 +195,8 @@ export {
   JoinTable,
   ManyToMany,
   ManyToOne,
+  MorphMany,
+  MorphTo,
   ObjectIdColumn,
   OneToMany,
   OneToOne,
@@ -192,6 +232,7 @@ export {
   type CompiledIndexMetadata,
   type CompiledJoinTableMetadata,
   type CompiledMetadataGraph,
+  type CompiledMorphTargetEntry,
   type CompiledRelationMetadata,
 } from "./metadata-graph";
 
@@ -376,6 +417,48 @@ export {
   type OrmModuleAsyncOptions,
   type OrmOptionsFactory,
 } from "./di/orm.module";
+
+// Zero-Dep Drizzle & Prisma First-Class Integrations
+export {
+  DEFAULT_DRIZZLE_TOKEN,
+  DrizzleModule,
+  DrizzleTransactionHost,
+  DrizzleTransactional,
+  DrizzleTransactionalAspect,
+  InjectDrizzle,
+  InjectDrizzleTransactionHost,
+  getDrizzleToken,
+  getDrizzleTransactionHostToken,
+  getDrizzleTransactionalAspectToken,
+  type DrizzleDatabaseLike,
+  type DrizzleIsolationLevel,
+  type DrizzleModuleAsyncOptions,
+  type DrizzleModuleOptions,
+  type DrizzleOptionsFactory,
+  type DrizzleTransactionConfig,
+  type DrizzleTransactionOptions,
+  type DrizzleTransactionalOptions,
+} from "./integrations/drizzle.module";
+export {
+  DEFAULT_PRISMA_TOKEN,
+  InjectPrisma,
+  InjectPrismaTransactionHost,
+  PrismaModule,
+  PrismaTransactionHost,
+  PrismaTransactional,
+  PrismaTransactionalAspect,
+  getPrismaToken,
+  getPrismaTransactionHostToken,
+  getPrismaTransactionalAspectToken,
+  type PrismaClientLike,
+  type PrismaInteractiveTransactionOptions,
+  type PrismaIsolationLevel,
+  type PrismaModuleAsyncOptions,
+  type PrismaModuleOptions,
+  type PrismaOptionsFactory,
+  type PrismaTransactionOptions,
+  type PrismaTransactionalOptions,
+} from "./integrations/prisma.module";
 
 // Bun Circular-Safe Plugin helpers
 export {

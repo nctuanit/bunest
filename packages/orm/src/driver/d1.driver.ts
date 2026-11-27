@@ -6,7 +6,11 @@ import type {
   OrmQueryLogEvent,
   OrmQueryResult,
 } from "../types";
-import { emitQueryLog, type OrmDriver } from "./driver.interface";
+import {
+  emitQueryTelemetry,
+  shouldTrackQuery,
+  type OrmDriver,
+} from "./driver.interface";
 
 export interface D1OrmDriverOptions {
   /**
@@ -25,6 +29,7 @@ export interface D1OrmDriverOptions {
   readonly apiBaseUrl?: string;
   readonly headers?: Record<string, string>;
   readonly logging?: boolean | ((event: OrmQueryLogEvent) => void);
+  readonly dataSourceName?: string;
 }
 
 interface D1ApiResponse<T> {
@@ -48,6 +53,7 @@ interface D1ApiResponse<T> {
 export class D1OrmDriver implements OrmDriver {
   readonly dialect: OrmDialect = "d1";
   readonly driverKind = "d1";
+  readonly dataSourceName?: string;
 
   private readonly options: D1OrmDriverOptions;
   private connected = false;
@@ -55,6 +61,7 @@ export class D1OrmDriver implements OrmDriver {
 
   constructor(options: D1OrmDriverOptions) {
     this.options = options;
+    this.dataSourceName = options.dataSourceName;
   }
 
   get isConnected(): boolean {
@@ -102,7 +109,8 @@ export class D1OrmDriver implements OrmDriver {
     sql: string,
     params: readonly unknown[] = [],
   ): Promise<OrmQueryResult<T>> {
-    const start = performance.now();
+    const track = shouldTrackQuery(this.options.logging);
+    const start = track ? performance.now() : 0;
     const bound = this.normalizeParams(params);
     try {
       if (this.options.binding) {
@@ -110,10 +118,22 @@ export class D1OrmDriver implements OrmDriver {
         const stmt = bound.length > 0 ? prepared.bind(...bound) : prepared;
         const res = await stmt.all<T>();
         const rows = res.results ?? [];
-        emitQueryLog(this.options.logging, sql, params, start);
+        const affectedRows = res.meta?.changes ?? rows.length;
+        if (track) {
+          emitQueryTelemetry(
+            this.options.logging,
+            this.dialect,
+            sql,
+            params,
+            start,
+            rows.length > 0 ? rows.length : affectedRows,
+            undefined,
+            this.dataSourceName,
+          );
+        }
         return {
           rows,
-          affectedRows: res.meta?.changes ?? rows.length,
+          affectedRows,
           lastInsertRowid: res.meta?.last_row_id ?? null,
         };
       }
@@ -147,15 +167,38 @@ export class D1OrmDriver implements OrmDriver {
 
       const first = data.result?.[0];
       const rows = first?.results ?? [];
-      emitQueryLog(this.options.logging, sql, params, start);
+      const affectedRows = first?.meta?.changes ?? rows.length;
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          rows.length > 0 ? rows.length : affectedRows,
+          undefined,
+          this.dataSourceName,
+        );
+      }
       return {
         rows,
-        affectedRows: first?.meta?.changes ?? rows.length,
+        affectedRows,
         lastInsertRowid: first?.meta?.last_row_id ?? null,
       };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      emitQueryLog(this.options.logging, sql, params, start, error);
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          undefined,
+          error,
+          this.dataSourceName,
+        );
+      }
       throw new QueryFailedError(error.message, sql, params, error);
     }
   }
