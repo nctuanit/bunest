@@ -1,3 +1,4 @@
+import { isPromiseLike } from "@bunest/core/common";
 import { ValidationTypes } from "../constants/validation-types";
 import { replaceMessageSpecialTokens } from "../error/message-formatter";
 import { ValidationError } from "../error/validation-error";
@@ -16,14 +17,6 @@ import {
   type CompiledPropertyPlan,
   type CompiledRule,
 } from "../compiler/validation-plan-compiler";
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
 
 function isBinaryValue(value: unknown): boolean {
   return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
@@ -506,12 +499,7 @@ export class ValidationExecutor {
         subValue instanceof Map
       ) {
         const subChildren: ValidationError[] = [];
-        const arr =
-          subValue instanceof Set
-            ? Array.from(subValue)
-            : subValue instanceof Map
-              ? Array.from(subValue.values())
-              : subValue;
+        const arr = convertToArray(subValue);
         for (let k = 0; k < arr.length; k++) {
           this.validateNestedCollectionItem(
             subValue,
@@ -592,14 +580,14 @@ export class ValidationExecutor {
     metadata: ValidationMetadata,
     constraintMeta: ConstraintMetadata | undefined,
   ): [string, string] {
-    const targetName =
-      typeof objectOrTarget === "string"
-        ? objectOrTarget
-        : typeof objectOrTarget === "function"
-          ? objectOrTarget.name
-          : objectOrTarget?.constructor
-            ? objectOrTarget.constructor.name
-            : "";
+    let targetName = "";
+    if (typeof objectOrTarget === "string") {
+      targetName = objectOrTarget;
+    } else if (typeof objectOrTarget === "function") {
+      targetName = objectOrTarget.name;
+    } else if (objectOrTarget?.constructor) {
+      targetName = objectOrTarget.constructor.name;
+    }
 
     const type =
       constraintMeta && constraintMeta.name

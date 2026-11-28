@@ -1,4 +1,5 @@
 import type { CanActivate, ExecutionContext, Type } from "@bunest/core";
+import { isFunction, isPromiseLike } from "@bunest/core/common";
 
 export type { Type };
 
@@ -203,10 +204,7 @@ export class BunestPassportInstance {
             }
           };
           const maybePromise = fn(user, done);
-          if (
-            maybePromise &&
-            typeof (maybePromise as PromiseLike<unknown>).then === "function"
-          ) {
+          if (isPromiseLike(maybePromise)) {
             Promise.resolve(maybePromise).catch((err: unknown) => {
               if (!settled) {
                 settled = true;
@@ -249,10 +247,7 @@ export class BunestPassportInstance {
             }
           };
           const maybePromise = fn(payload, done);
-          if (
-            maybePromise &&
-            typeof (maybePromise as PromiseLike<unknown>).then === "function"
-          ) {
+          if (isPromiseLike(maybePromise)) {
             Promise.resolve(maybePromise).catch((err: unknown) => {
               if (!settled) {
                 settled = true;
@@ -361,12 +356,12 @@ export function PassportStrategy<
 
       if (callbackArity !== undefined) {
         const validateFn = new.target?.prototype?.validate;
-        const arity =
-          callbackArity === true
-            ? typeof validateFn === "function"
-              ? validateFn.length + 1
-              : undefined
-            : callbackArity;
+        let arity: number | undefined;
+        if (callbackArity !== true) {
+          arity = callbackArity;
+        } else if (isFunction(validateFn)) {
+          arity = validateFn.length + 1;
+        }
         if (arity !== undefined) {
           Object.defineProperty(callback, "length", {
             value: arity,

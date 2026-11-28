@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import {
   type ArgumentMetadata,
   type BunestInterceptor,
@@ -69,6 +70,11 @@ import {
   GRAPHQL_SDL_FILE_HEADER,
 } from "../constants";
 import { FileSystemHelper } from "./file-system.helper";
+import {
+  getCachedRequestDataLoader,
+  resolveRequestScopedDataLoader,
+  type BunestDataLoaderFactory,
+} from "../dataloader/dataloader";
 import { GraphQLExecutionContextHost } from "../context/gql-execution-context";
 import {
   getResolverFields,
@@ -131,6 +137,23 @@ function isScopedEnhancer<T>(
     value !== null &&
     (value as { __gqlScoped?: unknown }).__gqlScoped === true
   );
+}
+
+function mergeGqlExtensions(
+  base: Record<string, unknown> | undefined,
+  directives: readonly string[],
+  complexity?: unknown,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!base && !extra && directives.length === 0 && complexity === undefined) {
+    return undefined;
+  }
+  return {
+    ...(base ?? {}),
+    ...(extra ?? {}),
+    ...(directives.length > 0 ? { directives } : {}),
+    ...(complexity !== undefined ? { complexity } : {}),
+  };
 }
 
 const contextIdMap = new WeakMap<object, ContextId>();
@@ -233,6 +256,10 @@ interface CompiledGqlMethod {
   readonly interceptors: readonly ResolvableEnhancer<BunestInterceptor>[];
   readonly sharedPipes: readonly ResolvableEnhancer<PipeTransform>[];
   readonly paramPipes: readonly (readonly ResolvableEnhancer<PipeTransform>[])[];
+  readonly paramLoaders: readonly (
+    | ResolvableEnhancer<BunestDataLoaderFactory<any, any, any>>
+    | undefined
+  )[];
   readonly filters: readonly CompiledGqlFilter[];
 }
 
@@ -1192,12 +1219,24 @@ export class GraphQLSchemaFactory {
     }
 
     const paramPipes: ResolvableEnhancer<PipeTransform>[][] = [];
+    const paramLoaders: Array<
+      ResolvableEnhancer<BunestDataLoaderFactory<any, any, any>> | undefined
+    > = [];
     for (const param of params) {
       const list: ResolvableEnhancer<PipeTransform>[] = [];
       for (const p of param.pipes ?? []) {
         list.push(await this.compileEnhancer<PipeTransform>(p));
       }
       paramPipes.push(list);
+      if (param.source === "loader" && param.loaderToken) {
+        paramLoaders.push(
+          await this.compileEnhancer<BunestDataLoaderFactory<any, any, any>>(
+            param.loaderToken as Type<BunestDataLoaderFactory<any, any, any>>,
+          ),
+        );
+      } else {
+        paramLoaders.push(undefined);
+      }
     }
 
     // Precedence: method filters -> class filters -> global filters
@@ -1231,6 +1270,7 @@ export class GraphQLSchemaFactory {
       interceptors,
       sharedPipes,
       paramPipes,
+      paramLoaders,
       filters,
     };
   }
@@ -1243,16 +1283,23 @@ export class GraphQLSchemaFactory {
       info: GraphQLResolveInfo,
     ): Promise<unknown> => {
       const ctxObj = contextValue ?? {};
+      const isObjectContext =
+        ctxObj !== null &&
+        (typeof ctxObj === "object" || typeof ctxObj === "function");
       const argsObj = rawArgs ?? {};
 
       let cachedContextId: ContextId | undefined;
       const getCtxId = (): ContextId => {
         if (!cachedContextId) {
           cachedContextId =
-            getGraphQLContextId(ctxObj) ??
-            this.defaultGlobalEnhancers.ensureContextId?.(ctxObj) ??
+            (isObjectContext ? getGraphQLContextId(ctxObj) : undefined) ??
+            (isObjectContext
+              ? this.defaultGlobalEnhancers.ensureContextId?.(ctxObj)
+              : undefined) ??
             ContextIdFactory.create();
-          setGraphQLContextId(ctxObj, cachedContextId);
+          if (isObjectContext) {
+            setGraphQLContextId(ctxObj, cachedContextId);
+          }
         }
         return cachedContextId;
       };
@@ -1315,6 +1362,49 @@ export class GraphQLSchemaFactory {
               if (param.source === "context") {
                 callArgs[param.index] =
                   param.key !== undefined ? ctxObj[param.key] : ctxObj;
+                continue;
+              }
+              if (param.source === "loader") {
+                if (!param.loaderToken) {
+                  throw new Error(
+                    `@Loader() on ${compiled.resolverClass.name}.${String(compiled.handlerKey)} is missing a loader factory class.`,
+                  );
+                }
+                const loaderToken = param.loaderToken as Type<
+                  BunestDataLoaderFactory<any, any, any>
+                >;
+                const cachedLoader = getCachedRequestDataLoader(
+                  ctxObj,
+                  loaderToken,
+                );
+                if (cachedLoader) {
+                  callArgs[param.index] = cachedLoader;
+                  continue;
+                }
+                const compiledLoader = compiled.paramLoaders[i];
+                let factory: BunestDataLoaderFactory<any, any, any> | undefined;
+                if (compiledLoader !== undefined) {
+                  factory = isScopedEnhancer(compiledLoader)
+                    ? await resolveMaybeScoped(compiledLoader)
+                    : compiledLoader;
+                } else {
+                  factory = await this.resolveEnhancer<
+                    BunestDataLoaderFactory<any, any, any>
+                  >(loaderToken);
+                }
+                if (
+                  !factory ||
+                  typeof factory.createDataLoader !== "function"
+                ) {
+                  throw new Error(
+                    `@Loader(${loaderToken.name || "DataLoaderFactory"}) provider must implement createDataLoader(): BunestDataLoader<K, V>.`,
+                  );
+                }
+                callArgs[param.index] = resolveRequestScopedDataLoader(
+                  ctxObj,
+                  loaderToken,
+                  factory,
+                );
                 continue;
               }
 
@@ -1761,15 +1851,10 @@ export class GraphQLSchemaFactory {
 
     const ifaceExtensions = getGraphQLExtensions(cls);
     const ifaceDirectives = getGraphQLDirectives(cls);
-    const mergedIfaceExtensions =
-      ifaceExtensions || ifaceDirectives.length > 0
-        ? {
-            ...(ifaceExtensions ?? {}),
-            ...(ifaceDirectives.length > 0
-              ? { directives: ifaceDirectives }
-              : {}),
-          }
-        : undefined;
+    const mergedIfaceExtensions = mergeGqlExtensions(
+      ifaceExtensions,
+      ifaceDirectives,
+    );
 
     const ifaceDirectiveNodes = parseDirectiveNodes(ifaceDirectives);
     const ifaceType = new GraphQLInterfaceType({
@@ -1816,13 +1901,7 @@ export class GraphQLSchemaFactory {
               parentIface,
               fieldMeta.propertyKey,
             );
-            const mergedFieldExt =
-              fieldExt || fieldDirs.length > 0
-                ? {
-                    ...(fieldExt ?? {}),
-                    ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
-                  }
-                : undefined;
+            const mergedFieldExt = mergeGqlExtensions(fieldExt, fieldDirs);
             const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
             fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
@@ -1855,13 +1934,7 @@ export class GraphQLSchemaFactory {
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
           const fieldExt = getGraphQLExtensions(cls, fieldMeta.propertyKey);
           const fieldDirs = getGraphQLDirectives(cls, fieldMeta.propertyKey);
-          const mergedFieldExt =
-            fieldExt || fieldDirs.length > 0
-              ? {
-                  ...(fieldExt ?? {}),
-                  ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
-                }
-              : undefined;
+          const mergedFieldExt = mergeGqlExtensions(fieldExt, fieldDirs);
           const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
           fields[fieldMeta.name ?? fieldMeta.propertyKey] = {
             type: this.resolveOutputType(rawType, fieldMeta.nullable),
@@ -2138,19 +2211,22 @@ export class GraphQLSchemaFactory {
             ];
             const fieldExt = getGraphQLExtensions(iface, fieldMeta.propertyKey);
             const fieldDirs = getGraphQLDirectives(iface, fieldMeta.propertyKey);
-            const mergedFieldExt =
-              fieldExt || fieldDirs.length > 0
-                ? {
-                    ...(fieldExt ?? {}),
-                    ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
-                  }
-                : undefined;
+            const mergedFieldExt = mergeGqlExtensions(fieldExt, fieldDirs);
             const baseResolve: GraphQLFieldResolver<any, any> =
               fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
                 ? (parent: Record<string, unknown>) =>
                     parent?.[fieldMeta.propertyKey]
                 : defaultFieldResolver;
             const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
+            let ifaceFieldResolve: GraphQLFieldResolver<any, any> | undefined;
+            if (fieldMw.length > 0) {
+              ifaceFieldResolve = applyFieldMiddleware(fieldMw, baseResolve);
+            } else if (
+              fieldMeta.name &&
+              fieldMeta.name !== fieldMeta.propertyKey
+            ) {
+              ifaceFieldResolve = baseResolve;
+            }
             fields[fieldName] = {
               type: this.resolveOutputType(rawType, fieldMeta.nullable),
               description: fieldMeta.description,
@@ -2169,12 +2245,7 @@ export class GraphQLSchemaFactory {
                     },
                   }
                 : {}),
-              resolve:
-                fieldMw.length > 0
-                  ? applyFieldMiddleware(fieldMw, baseResolve)
-                  : fieldMeta.name && fieldMeta.name !== fieldMeta.propertyKey
-                    ? baseResolve
-                    : undefined,
+              resolve: ifaceFieldResolve,
             };
           }
           // Reserve key order for interface @ResolveField()s right after interface @Field()s
@@ -2202,18 +2273,11 @@ export class GraphQLSchemaFactory {
             : (fieldMeta.designType as ReturnTypeFuncValue | undefined);
           const fieldExt = getGraphQLExtensions(cls, fieldMeta.propertyKey);
           const fieldDirs = getGraphQLDirectives(cls, fieldMeta.propertyKey);
-          const mergedFieldExt =
-            fieldExt ||
-            fieldDirs.length > 0 ||
-            fieldMeta.complexity !== undefined
-              ? {
-                  ...(fieldExt ?? {}),
-                  ...(fieldDirs.length > 0 ? { directives: fieldDirs } : {}),
-                  ...(fieldMeta.complexity !== undefined
-                    ? { complexity: fieldMeta.complexity }
-                    : {}),
-                }
-              : undefined;
+          const mergedFieldExt = mergeGqlExtensions(
+            fieldExt,
+            fieldDirs,
+            fieldMeta.complexity,
+          );
           const ownFieldMw: FieldMiddleware[] = [
             ...(fieldMeta.middleware ?? []),
             ...getUseFieldMiddleware(cls, fieldMeta.propertyKey),
@@ -2262,6 +2326,12 @@ export class GraphQLSchemaFactory {
           };
 
           const fieldDirectiveNodes = parseDirectiveNodes(fieldDirs);
+          let ownFieldResolve: GraphQLFieldResolver<any, any> | undefined;
+          if (fieldMw.length > 0) {
+            ownFieldResolve = applyFieldMiddleware(fieldMw, baseResolve);
+          } else if (needsCustomResolve) {
+            ownFieldResolve = baseResolve;
+          }
           fields[fieldName] = {
             type: resolvedFieldType,
             description: fieldMeta.description,
@@ -2280,12 +2350,7 @@ export class GraphQLSchemaFactory {
                   },
                 }
               : {}),
-            resolve:
-              fieldMw.length > 0
-                ? applyFieldMiddleware(fieldMw, baseResolve)
-                : needsCustomResolve
-                  ? baseResolve
-                  : undefined,
+            resolve: ownFieldResolve,
           };
         }
 
@@ -2389,22 +2454,12 @@ export class GraphQLSchemaFactory {
             ? (existingField.extensions.directives as string[])
             : [];
           const combinedDirs = [...existingDirs, ...rfDirs];
-          const mergedRfExt =
-            existingField?.extensions ||
-            rfExt ||
-            combinedDirs.length > 0 ||
-            rfMeta.complexity !== undefined
-              ? {
-                  ...(existingField?.extensions ?? {}),
-                  ...(rfExt ?? {}),
-                  ...(combinedDirs.length > 0
-                    ? { directives: combinedDirs }
-                    : {}),
-                  ...(rfMeta.complexity !== undefined
-                    ? { complexity: rfMeta.complexity }
-                    : {}),
-                }
-              : undefined;
+          const mergedRfExt = mergeGqlExtensions(
+            existingField?.extensions as Record<string, unknown> | undefined,
+            combinedDirs,
+            rfMeta.complexity,
+            rfExt,
+          );
 
           const combinedDirectiveNodes = [
             ...(existingField?.astNode?.directives ?? []),
@@ -2483,15 +2538,10 @@ export class GraphQLSchemaFactory {
       isOneOf = true;
     }
     const inputExtensions = getGraphQLExtensions(cls);
-    const mergedInputExtensions =
-      inputExtensions || inputDirectives.length > 0
-        ? {
-            ...(inputExtensions ?? {}),
-            ...(inputDirectives.length > 0
-              ? { directives: inputDirectives }
-              : {}),
-          }
-        : undefined;
+    const mergedInputExtensions = mergeGqlExtensions(
+      inputExtensions,
+      inputDirectives,
+    );
 
     const inputType = new GraphQLInputObjectType({
       name: typeName,
@@ -3077,12 +3127,7 @@ export class GraphQLSchemaFactory {
 
         const inputResolvers: SchemaFirstResolversMap | SchemaFirstResolversMap[] =
           options.resolvers
-            ? [
-                discovered,
-                ...(Array.isArray(options.resolvers)
-                  ? options.resolvers
-                  : [options.resolvers]),
-              ]
+            ? [discovered, ...toArray(options.resolvers)]
             : discovered;
         const effectiveResolvers =
           await options.transformResolvers(inputResolvers);
@@ -3093,17 +3138,11 @@ export class GraphQLSchemaFactory {
           entry.field.subscribe = undefined;
         }
 
-        const resolverMaps = Array.isArray(effectiveResolvers)
-          ? effectiveResolvers
-          : [effectiveResolvers];
-        for (const map of resolverMaps) {
+        for (const map of toArray(effectiveResolvers)) {
           this.applyResolversMap(schema, map);
         }
       } else if (options.resolvers) {
-        const resolverMaps = Array.isArray(options.resolvers)
-          ? options.resolvers
-          : [options.resolvers];
-        for (const map of resolverMaps) {
+        for (const map of toArray(options.resolvers)) {
           this.applyResolversMap(schema, map);
         }
       }
@@ -3203,12 +3242,7 @@ export class GraphQLSchemaFactory {
     resolverInstances: readonly object[],
     options: GraphQLModuleOptions,
   ): Promise<GraphQLSchema> {
-    const inlineSdl =
-      typeof options.typeDefs === "string"
-        ? options.typeDefs
-        : Array.isArray(options.typeDefs)
-          ? options.typeDefs.join("\n")
-          : "";
+    const inlineSdl = toArray(options.typeDefs).join("\n");
     const loadedSdl =
       options.typePaths && options.typePaths.length > 0
         ? await this.typesLoader.mergeTypesByPaths(options.typePaths)

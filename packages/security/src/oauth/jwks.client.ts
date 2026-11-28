@@ -7,6 +7,7 @@ import {
   type FactoryDependency,
   type ModuleMetadata,
 } from "@bunest/core";
+import { isString, toArray } from "@bunest/core/common";
 import {
   JwtExpiredException,
   JwtInvalidException,
@@ -770,15 +771,8 @@ export class JwksClient {
     }
 
     if (opts.audience !== undefined) {
-      const expectedList = Array.isArray(opts.audience)
-        ? opts.audience
-        : [opts.audience];
-      const tokenAudiences =
-        typeof payload.aud === "string"
-          ? [payload.aud]
-          : Array.isArray(payload.aud)
-            ? payload.aud.filter((a): a is string => typeof a === "string")
-            : [];
+      const expectedList = toArray(opts.audience);
+      const tokenAudiences = toArray(payload.aud).filter(isString);
 
       const matched = expectedList.some((expected) =>
         expected instanceof RegExp

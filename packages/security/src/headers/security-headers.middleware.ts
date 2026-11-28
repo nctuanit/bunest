@@ -47,18 +47,30 @@ function serializeCspString(
     .join("; ");
 }
 
+function resolveHsts(
+  sts: SecurityHeadersOptions["strictTransportSecurity"],
+): HttpSecurityHeadersOptions["strictTransportSecurity"] {
+  if (!sts) {
+    return false;
+  }
+  if (sts === true) {
+    return { maxAge: 15552000, includeSubDomains: true };
+  }
+  return {
+    maxAge: sts.maxAge ?? 15552000,
+    includeSubDomains: sts.includeSubDomains !== false,
+    preload: sts.preload,
+  };
+}
+
 function buildStaticHeaders(
   options: SecurityHeadersOptions,
 ): Array<[string, string]> {
   // Delegate standard Helmet headers to @bunest/http's shared compileSecurityHeaders()
   const httpOpts: HttpSecurityHeadersOptions = {
     xContentTypeOptions:
-      options.contentTypeOptions === false
-        ? false
-        : options.contentTypeOptions === undefined ||
-            options.contentTypeOptions === "nosniff"
-          ? true
-          : false,
+      options.contentTypeOptions === undefined ||
+      options.contentTypeOptions === "nosniff",
     xFrameOptions:
       options.frameOptions === false
         ? false
@@ -93,18 +105,7 @@ function buildStaticHeaders(
         ? false
         : { allow: options.dnsPrefetchControl === "on" },
     contentSecurityPolicy: false,
-    strictTransportSecurity:
-      options.strictTransportSecurity === false ||
-      options.strictTransportSecurity === undefined
-        ? false
-        : options.strictTransportSecurity === true
-          ? { maxAge: 15552000, includeSubDomains: true }
-          : {
-              maxAge: options.strictTransportSecurity.maxAge ?? 15552000,
-              includeSubDomains:
-                options.strictTransportSecurity.includeSubDomains !== false,
-              preload: options.strictTransportSecurity.preload,
-            },
+    strictTransportSecurity: resolveHsts(options.strictTransportSecurity),
     originAgentCluster: false,
     xDownloadOptions: false,
     xPermittedCrossDomainPolicies: false,

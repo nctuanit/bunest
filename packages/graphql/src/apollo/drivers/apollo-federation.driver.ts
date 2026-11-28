@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import {
   Injectable,
   MetadataRegistry,
@@ -162,11 +163,7 @@ function ensureFederationSubgraphSchema(
 
   // Collect `__resolveReference` resolvers from schema-first `options.resolvers`
   const refResolvers = new Map<string, Function>();
-  const rawResolversList = Array.isArray(options.resolvers)
-    ? options.resolvers
-    : options.resolvers
-      ? [options.resolvers]
-      : [];
+  const rawResolversList = toArray(options.resolvers);
   for (const map of rawResolversList) {
     if (!map || typeof map !== "object") continue;
     for (const [typeName, typeResolvers] of Object.entries(map)) {
@@ -388,11 +385,7 @@ export class ApolloFederationDriver extends ApolloBaseDriver {
     };
 
     if (rawTypeDefs || (options.typePaths && options.typePaths.length > 0)) {
-      const existing = Array.isArray(rawTypeDefs)
-        ? [...rawTypeDefs]
-        : rawTypeDefs
-          ? [rawTypeDefs]
-          : [];
+      const existing = rawTypeDefs ? toArray(rawTypeDefs) : [];
       preparedOptions.typeDefs = [
         FEDERATION_V2_DIRECTIVE_PREAMBLE,
         ...existing,

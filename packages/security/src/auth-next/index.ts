@@ -270,5 +270,44 @@ export type {
   WebAuthnOptions,
 } from "./webauthn/webauthn.interface";
 
+// Modern auth ecosystem integrations (Better Auth, Auth.js, Lucia, Clerk, Supabase, Auth0, OIDC/JWKS)
+export {
+  BETTER_AUTH_INSTANCE,
+  BETTER_AUTH_MODULE_OPTIONS,
+  BetterAuthModule,
+  BetterAuthProvider,
+  EXTERNAL_JWT_AUTH_OPTIONS,
+  ExternalJwtAuthModule,
+  ExternalJwtProvider,
+  ExternalSessionProvider,
+  InjectBetterAuth,
+  WEB_AUTH_MODULE_OPTIONS,
+  WebAuthModule,
+  extractBearerToken,
+  extractCookieValue,
+  extractHttpRequest,
+  extractWebHeaders,
+  normalizeAuthMountPath,
+  parseCookieHeader,
+  type Auth0AuthOptions,
+  type Auth0User,
+  type BetterAuthLike,
+  type BetterAuthModuleAsyncOptions,
+  type BetterAuthModuleOptions,
+  type BetterAuthSessionEnvelope,
+  type BetterAuthSharedOptions,
+  type ClerkAuthOptions,
+  type ClerkUser,
+  type ExternalJwksAuthOptions,
+  type ExternalJwtSharedOptions,
+  type SupabaseAuthOptions,
+  type SupabaseUser,
+  type WebAuthHandler,
+  type WebAuthModuleAsyncOptions,
+  type WebAuthModuleOptions,
+  type WebAuthSessionContext,
+  type WebAuthSessionResolver,
+} from "./integrations/index";
+
 // Declaration merging hook
 export type { AuthenticationTypes } from "./interfaces/authentication-types.interface";

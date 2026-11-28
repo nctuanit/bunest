@@ -1,3 +1,4 @@
+import { isPlainObject } from "@bunest/core/common";
 import { TransformationType } from "../enums/transformation-type.enum";
 import {
   DEFAULT_TRANSFORM_OPTIONS,
@@ -89,24 +90,13 @@ function checkGroups(
   return false;
 }
 
-function isPlainRecordObject(value: object): boolean {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 export function tryFastPlainToInstance(
   targetType: Function,
   plain: unknown,
   options: ClassTransformOptions | undefined,
   storage: TransformMetadataStorage = defaultMetadataStorage,
 ): { matched: true; result: unknown } | { matched: false } {
-  if (
-    plain === null ||
-    plain === undefined ||
-    typeof plain !== "object" ||
-    Array.isArray(plain) ||
-    !isPlainRecordObject(plain)
-  ) {
+  if (!isPlainObject(plain)) {
     return { matched: false };
   }
 
@@ -152,6 +142,21 @@ export function tryFastPlainToInstance(
   return { matched: true, result: instance };
 }
 
+function createTargetCollection(
+  arrayType: Function | undefined,
+  isPlainToClass: boolean,
+  isClassToClass: boolean,
+  isInputSet: boolean,
+): unknown[] | Set<unknown> {
+  if (arrayType && isPlainToClass) {
+    return instantiateArrayType(arrayType);
+  }
+  if (isInputSet && (isPlainToClass || isClassToClass)) {
+    return new Set();
+  }
+  return [];
+}
+
 export class TransformExecutor {
   private readonly transformationType: TransformationType;
   private readonly options: ClassTransformOptions;
@@ -184,12 +189,12 @@ export class TransformExecutor {
         this.transformationType === TransformationType.PLAIN_TO_CLASS;
       const isClassToClass =
         this.transformationType === TransformationType.CLASS_TO_CLASS;
-      const newCollection: unknown[] | Set<unknown> =
-        arrayType && isPlainToClass
-          ? instantiateArrayType(arrayType)
-          : value instanceof Set && (isPlainToClass || isClassToClass)
-            ? new Set()
-            : [];
+      const newCollection = createTargetCollection(
+        arrayType,
+        isPlainToClass,
+        isClassToClass,
+        value instanceof Set,
+      );
       const isSetOut = newCollection instanceof Set;
       const isSourceArr = Array.isArray(source);
       const isDescriptor =

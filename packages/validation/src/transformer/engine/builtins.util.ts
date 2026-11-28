@@ -1,16 +1,10 @@
+export { isPromiseLike } from "@bunest/core/common";
+
 const TRUE_BOOLEAN_STRINGS = new Set(["true", "1"]);
 const FALSE_BOOLEAN_STRINGS = new Set(["false", "0"]);
 
 export function isDangerousKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
-}
-
-export function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
 }
 
 export function isPassthroughNativeObject(value: object): boolean {

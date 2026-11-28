@@ -2,11 +2,11 @@ import type {
   SqlDialect,
   SqlExecuteResult,
   SqlExecutor,
-  SqlIsolationLevel,
   SqlTransaction,
   SqlTransactionOptions,
 } from "../interfaces/sql-executor.interface";
 import { notATransaction } from "../sql/not-a-transaction";
+import { isolationSql } from "../utils/executor.util";
 
 export interface BunSqlExecutorOptions<D extends SqlDialect = SqlDialect> {
   /** Target dialect (`"postgres"` or `"mysql"`). Auto-detected from URL when omitted. */
@@ -32,17 +32,11 @@ function detectDialectFromUrl(urlOrSql: string | Bun.SQL): SqlDialect {
   return adapter === "mysql" ? "mysql" : "postgres";
 }
 
-function isolationSql(level: SqlIsolationLevel): string {
-  switch (level) {
-    case "read uncommitted":
-      return "READ UNCOMMITTED";
-    case "read committed":
-      return "READ COMMITTED";
-    case "repeatable read":
-      return "REPEATABLE READ";
-    case "serializable":
-      return "SERIALIZABLE";
-  }
+function resolveAffectedRows(result: unknown): number {
+  const rec = result as { count?: unknown; affectedRows?: unknown } | undefined;
+  if (typeof rec?.count === "number") return rec.count;
+  if (typeof rec?.affectedRows === "number") return rec.affectedRows;
+  return Array.isArray(result) ? result.length : 0;
 }
 
 function createTxWrapper(txClient: Bun.SQL, native: unknown): SqlTransaction {
@@ -59,20 +53,8 @@ function createTxWrapper(txClient: Bun.SQL, native: unknown): SqlTransaction {
       text: string,
       params: readonly unknown[] = [],
     ): Promise<SqlExecuteResult> {
-      const result = (await txClient.unsafe(text, [...params])) as {
-        count?: number;
-        affectedRows?: number;
-        length?: number;
-      };
-      const affectedRows =
-        typeof result?.count === "number"
-          ? result.count
-          : typeof result?.affectedRows === "number"
-            ? result.affectedRows
-            : Array.isArray(result)
-              ? result.length
-              : 0;
-      return { affectedRows };
+      const result = await txClient.unsafe(text, [...params]);
+      return { affectedRows: resolveAffectedRows(result) };
     },
   };
 }
@@ -103,19 +85,8 @@ export function createBunSqlExecutor<D extends SqlDialect = SqlDialect>(
       text: string,
       params: readonly unknown[] = [],
     ): Promise<SqlExecuteResult> {
-      const result = (await sql.unsafe(text, [...params])) as {
-        count?: number;
-        affectedRows?: number;
-      };
-      const affectedRows =
-        typeof result?.count === "number"
-          ? result.count
-          : typeof result?.affectedRows === "number"
-            ? result.affectedRows
-            : Array.isArray(result)
-              ? result.length
-              : 0;
-      return { affectedRows };
+      const result = await sql.unsafe(text, [...params]);
+      return { affectedRows: resolveAffectedRows(result) };
     },
     async transaction<T>(
       work: (transaction: SqlTransaction) => Promise<T>,

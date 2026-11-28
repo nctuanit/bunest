@@ -12,6 +12,7 @@
  * Zero external dependencies.
  */
 
+import { isPromiseLike } from "@bunest/core/common";
 import {
   type DirectiveNode,
   type DocumentNode,
@@ -101,11 +102,7 @@ interface ExecutionContext {
 }
 
 function isPromise<T>(value: unknown): value is Promise<T> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<T>).then === "function"
-  );
+  return isPromiseLike(value);
 }
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
@@ -997,12 +994,12 @@ function ensureValidRuntimeType(
     );
   }
 
-  const runtimeTypeName =
-    typeof runtimeTypeNameOrObj === "string"
-      ? runtimeTypeNameOrObj
-      : isObjectType(runtimeTypeNameOrObj)
-        ? runtimeTypeNameOrObj.name
-        : undefined;
+  let runtimeTypeName: string | undefined;
+  if (typeof runtimeTypeNameOrObj === "string") {
+    runtimeTypeName = runtimeTypeNameOrObj;
+  } else if (isObjectType(runtimeTypeNameOrObj)) {
+    runtimeTypeName = runtimeTypeNameOrObj.name;
+  }
 
   if (!runtimeTypeName) {
     throw new GraphQLError(
@@ -1526,15 +1523,15 @@ function graphqlImpl(args: GraphQLArgs): Promise<ExecutionResult> | ExecutionRes
   try {
     document = parse(source);
   } catch (syntaxErr) {
-    return {
-      errors: [
-        isGraphQLError(syntaxErr)
-          ? syntaxErr
-          : new GraphQLError(
-              syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr),
-            ),
-      ],
-    };
+    let err: GraphQLError;
+    if (isGraphQLError(syntaxErr)) {
+      err = syntaxErr;
+    } else {
+      err = new GraphQLError(
+        syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr),
+      );
+    }
+    return { errors: [err] };
   }
 
   const validationErrors = validate(schema, document);

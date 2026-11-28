@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import {
   base64UrlDecode,
   base64UrlEncode,
@@ -95,7 +96,7 @@ function formatAaguid(bytes: Uint8Array): string {
 }
 
 function normalizeOrigins(origin: string | readonly string[]): string[] {
-  const list = Array.isArray(origin) ? origin : [origin];
+  const list = toArray(origin);
   const normalized: string[] = [];
   for (const item of list) {
     if (typeof item !== "string" || item.trim().length === 0) {

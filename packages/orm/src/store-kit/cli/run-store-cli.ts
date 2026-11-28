@@ -116,9 +116,16 @@ function usageOf(schemas: readonly CliStoreSchema[]): string {
   const stores = `${named.length > 1 ? `${named.slice(0, -1).join(", ")} or ${named.at(-1)}` : named[0]}:`;
   const mysql = schemas.some((schema) => schema.dialect === "mysql");
   const postgres = schemas.some((schema) => schema.dialect === "postgres");
-  const migrate = !mysql
-    ? "Apply the migrations the schema hasn't had yet (one transaction, under an advisory lock)"
-    : `Apply the migrations the schema hasn't had yet${postgres ? " (PostgreSQL: one transaction, under an advisory lock;\n            MySQL: " : " ("}one statement at a time, under GET_LOCK(), resuming where a failed run stopped)`;
+  let migrate: string;
+  if (!mysql) {
+    migrate =
+      "Apply the migrations the schema hasn't had yet (one transaction, under an advisory lock)";
+  } else {
+    const prefix = postgres
+      ? " (PostgreSQL: one transaction, under an advisory lock;\n            MySQL: "
+      : " (";
+    migrate = `Apply the migrations the schema hasn't had yet${prefix}one statement at a time, under GET_LOCK(), resuming where a failed run stopped)`;
+  }
   const urls = [
     ...(postgres ? ["postgres://..."] : []),
     ...(mysql ? ["mysql://..."] : []),

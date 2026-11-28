@@ -31,9 +31,7 @@ export async function retryOnDeadlock<T>(
       if (attempt >= attempts || mysqlErrorCode(error) !== DEADLOCK) {
         throw error;
       }
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.random() * 20 * attempt),
-      );
+      await Bun.sleep(Math.random() * 20 * attempt);
     }
   }
 }

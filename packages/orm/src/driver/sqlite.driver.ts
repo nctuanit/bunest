@@ -161,47 +161,28 @@ export class SqliteOrmDriver implements OrmDriver {
     const track = shouldTrackQuery(this.options.logging);
     const start = track ? performance.now() : 0;
     const bound = this.normalizeSqliteParams(params);
+    let queryResult: OrmQueryResult<T>;
+    let telemetryCount: number;
     try {
       const stmt = db.query(sql);
       const args = bound as Parameters<typeof stmt.all>;
       if (this.isReadReturningSql(sql)) {
         const rows = stmt.all(...args) as T[];
-        if (track) {
-          emitQueryTelemetry(
-            this.options.logging,
-            this.dialect,
-            sql,
-            params,
-            start,
-            rows.length,
-            undefined,
-            this.dataSourceName,
-          );
-        }
-        return {
+        telemetryCount = rows.length;
+        queryResult = {
           rows,
           affectedRows: rows.length,
         };
-      }
-      const res = stmt.run(...args);
-      const affectedRows = Number(res.changes ?? 0);
-      if (track) {
-        emitQueryTelemetry(
-          this.options.logging,
-          this.dialect,
-          sql,
-          params,
-          start,
+      } else {
+        const res = stmt.run(...args);
+        const affectedRows = Number(res.changes ?? 0);
+        telemetryCount = affectedRows;
+        queryResult = {
+          rows: [],
           affectedRows,
-          undefined,
-          this.dataSourceName,
-        );
+          lastInsertRowid: res.lastInsertRowid ?? null,
+        };
       }
-      return {
-        rows: [],
-        affectedRows,
-        lastInsertRowid: res.lastInsertRowid ?? null,
-      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (track) {
@@ -218,6 +199,19 @@ export class SqliteOrmDriver implements OrmDriver {
       }
       throw new QueryFailedError(error.message, sql, params, error);
     }
+    if (track) {
+      emitQueryTelemetry(
+        this.options.logging,
+        this.dialect,
+        sql,
+        params,
+        start,
+        telemetryCount,
+        undefined,
+        this.dataSourceName,
+      );
+    }
+    return queryResult;
   }
 
   async execute(
@@ -228,22 +222,12 @@ export class SqliteOrmDriver implements OrmDriver {
       const db = this.rawDatabase;
       const track = shouldTrackQuery(this.options.logging);
       const start = track ? performance.now() : 0;
+      let queryResult: OrmQueryResult;
+      let affectedRows: number;
       try {
         const res = db.run(sql);
-        const affectedRows = Number(res.changes ?? 0);
-        if (track) {
-          emitQueryTelemetry(
-            this.options.logging,
-            this.dialect,
-            sql,
-            params,
-            start,
-            affectedRows,
-            undefined,
-            this.dataSourceName,
-          );
-        }
-        return {
+        affectedRows = Number(res.changes ?? 0);
+        queryResult = {
           rows: [],
           affectedRows,
           lastInsertRowid: res.lastInsertRowid ?? null,
@@ -264,6 +248,19 @@ export class SqliteOrmDriver implements OrmDriver {
         }
         throw new QueryFailedError(error.message, sql, params, error);
       }
+      if (track) {
+        emitQueryTelemetry(
+          this.options.logging,
+          this.dialect,
+          sql,
+          params,
+          start,
+          affectedRows,
+          undefined,
+          this.dataSourceName,
+        );
+      }
+      return queryResult;
     }
     return this.query(sql, params);
   }

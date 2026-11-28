@@ -1,3 +1,4 @@
+import { isPlainObject, uncapitalize } from "@bunest/core/common";
 import {
   DecoratorRegistry,
   MetadataRegistry,
@@ -298,19 +299,6 @@ function snakeToCamel(input: string): string {
   return input.replace(/_([a-z0-9])/g, (_, ch: string) => ch.toUpperCase());
 }
 
-function lowerFirst(input: string): string {
-  if (input.length === 0) return input;
-  return input[0]!.toLowerCase() + input.slice(1);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 function booleanLiteral(dialect: OrmDialect, value: boolean): string {
   if (
     dialect === "sqlite" ||
@@ -440,11 +428,10 @@ function collectEntityMetaFromRegistries(entity: Function): {
       (effectiveCamel ? camelToSnake(stored.propertyName) : stored.propertyName);
     const type: OrmColumnType =
       stored.type ??
-      (stored.generationStrategy === "uuid"
-        ? "uuid"
-        : stored.generationStrategy === "objectid"
-          ? "objectid"
-          : inferColumnType(stored.designType));
+      (stored.generationStrategy === "uuid" ||
+      stored.generationStrategy === "objectid"
+        ? stored.generationStrategy
+        : inferColumnType(stored.designType));
     return {
       propertyName: stored.propertyName,
       columnName,
@@ -524,12 +511,14 @@ export function Repository<TEntity = any, TKey = number>(
       `@Repository<TEntity, TKey>() without a runtime entity argument requires registerBunestPlugin() in bunfig.toml preload (or pass the entity class explicitly: @Repository(MyEntity)).`,
     );
   }
-  const opts: OrmRepositoryOptions<TEntity> =
-    typeof entityOrOptions === "function"
-      ? { entity: entityOrOptions }
-      : typeof entityOrOptions === "string"
-        ? { table: entityOrOptions }
-        : entityOrOptions;
+  let opts: OrmRepositoryOptions<TEntity>;
+  if (typeof entityOrOptions === "function") {
+    opts = { entity: entityOrOptions };
+  } else if (typeof entityOrOptions === "string") {
+    opts = { table: entityOrOptions };
+  } else {
+    opts = entityOrOptions;
+  }
 
   const entity = opts.entity;
   const regInfo = entity ? collectEntityMetaFromRegistries(entity) : undefined;
@@ -576,13 +565,14 @@ export function Repository<TEntity = any, TKey = number>(
 
   const camelCaseMapping =
     opts.camelCaseMapping ?? regInfo?.camelCaseMapping ?? true;
+  const defaultIdProperty = camelCaseMapping
+    ? snakeToCamel(idColumn)
+    : idColumn;
   const idProperty =
     opts.idProperty ??
     (opts.idColumn === undefined && pkCol !== undefined
       ? pkCol.propertyName
-      : camelCaseMapping
-        ? snakeToCamel(idColumn)
-        : idColumn);
+      : defaultIdProperty);
 
   const dataSource = opts.dataSource ?? opts.connectionName;
 
@@ -902,7 +892,7 @@ function resolvePropertyColumnName(
   propSegment: string,
   meta: OrmRepositoryMetadata,
 ): string {
-  const propName = lowerFirst(propSegment);
+  const propName = uncapitalize(propSegment);
   const mapped =
     meta.columns[propName] ??
     meta.columns[propSegment] ??
@@ -2104,7 +2094,7 @@ function compileCustomQueryMethod(
     } else {
       const bindings = compiled.bindings;
       extractParams = (args) => {
-        if (args.length === 1 && isPlainRecord(args[0])) {
+        if (args.length === 1 && isPlainObject(args[0])) {
           const record = args[0];
           return bindings.map((b) => {
             if (b.kind === "named") {
@@ -2722,10 +2712,11 @@ export function compileOrmRepository<TRepo extends object>(
           1,
         );
         const selectExpr = findByIdProj ? findByIdProj.selectSql : "*";
+        const scopeAnd = scopeWhere.sql ? ` AND ${scopeWhere.sql}` : "";
         const sql =
           !scopeWhere.sql && !findByIdProj
             ? findByIdSql
-            : `SELECT ${selectExpr} FROM ${tableRef} WHERE ${quotedId} = ${p1}${scopeWhere.sql ? ` AND ${scopeWhere.sql}` : ""}${limitOne}`;
+            : `SELECT ${selectExpr} FROM ${tableRef} WHERE ${quotedId} = ${p1}${scopeAnd}${limitOne}`;
         const params = scopeWhere.sql
           ? [args[0], ...scopeWhere.params]
           : [args[0]];
@@ -2749,10 +2740,11 @@ export function compileOrmRepository<TRepo extends object>(
         const selectExpr = findByIdOrFailProj
           ? findByIdOrFailProj.selectSql
           : "*";
+        const scopeAnd = scopeWhere.sql ? ` AND ${scopeWhere.sql}` : "";
         const sql =
           !scopeWhere.sql && !findByIdOrFailProj
             ? findByIdSql
-            : `SELECT ${selectExpr} FROM ${tableRef} WHERE ${quotedId} = ${p1}${scopeWhere.sql ? ` AND ${scopeWhere.sql}` : ""}${limitOne}`;
+            : `SELECT ${selectExpr} FROM ${tableRef} WHERE ${quotedId} = ${p1}${scopeAnd}${limitOne}`;
         const params = scopeWhere.sql
           ? [args[0], ...scopeWhere.params]
           : [args[0]];
@@ -2778,10 +2770,11 @@ export function compileOrmRepository<TRepo extends object>(
           0,
         );
         const selectExpr = findAllProj ? findAllProj.selectSql : "*";
+        const scopeClause = scopeWhere.sql ? ` WHERE ${scopeWhere.sql}` : "";
         const sql =
           !scopeWhere.sql && !findAllProj
             ? findAllSql
-            : `SELECT ${selectExpr} FROM ${tableRef}${scopeWhere.sql ? ` WHERE ${scopeWhere.sql}` : ""}`;
+            : `SELECT ${selectExpr} FROM ${tableRef}${scopeClause}`;
         const res = await host.driver.query<Record<string, unknown>>(
           sql,
           scopeWhere.params,
@@ -3064,6 +3057,7 @@ export function compileOrmRepository<TRepo extends object>(
       const hasCursor =
         cursorPageable.cursor !== undefined && cursorPageable.cursor !== null;
 
+      const cursorOp = direction === "DESC" ? "<" : ">";
       const { whereClause, params } = buildDerivedWhereAndParams(
         parsed,
         dialect,
@@ -3077,7 +3071,7 @@ export function compileOrmRepository<TRepo extends object>(
         hasCursor
           ? {
               build: (nextPh) => ({
-                sql: `${quotedCursor} ${direction === "DESC" ? "<" : ">"} ${nextPh()}`,
+                sql: `${quotedCursor} ${cursorOp} ${nextPh()}`,
                 params: [serializeScopeValue(cursorCol, cursorPageable.cursor)],
               }),
             }
@@ -3220,33 +3214,41 @@ export function compileOrmRepository<TRepo extends object>(
           }
         }
 
-        const { sql, params } =
+        const useStaticZeroArg =
           staticZeroArgSql !== undefined &&
           args.length === 0 &&
-          getActiveScopes(methodName).length === 0
-            ? { sql: staticZeroArgSql, params: [] as unknown[] }
-            : buildDerivedSqlAndParams(
-                parsed,
-                tableRef,
-                dialect,
-                args,
-                methodName,
-                colMaps,
-                {
-                  ...(compiledProjection !== undefined
-                    ? { selectSql: compiledProjection.selectSql }
-                    : {}),
-                  scopeWhere: {
-                    evaluate: (startIdx) =>
-                      evaluateScopesWhere(
-                        host.driver,
-                        "derived",
-                        methodName,
-                        startIdx,
-                      ),
-                  },
-                },
-              );
+          getActiveScopes(methodName).length === 0;
+        let sql: string;
+        let params: unknown[];
+        if (useStaticZeroArg) {
+          sql = staticZeroArgSql;
+          params = [];
+        } else {
+          const built = buildDerivedSqlAndParams(
+            parsed,
+            tableRef,
+            dialect,
+            args,
+            methodName,
+            colMaps,
+            {
+              ...(compiledProjection !== undefined
+                ? { selectSql: compiledProjection.selectSql }
+                : {}),
+              scopeWhere: {
+                evaluate: (startIdx) =>
+                  evaluateScopesWhere(
+                    host.driver,
+                    "derived",
+                    methodName,
+                    startIdx,
+                  ),
+              },
+            },
+          );
+          sql = built.sql;
+          params = built.params;
+        }
 
         switch (parsed.action) {
           case "findOne": {

@@ -122,9 +122,7 @@ export class MemoryCacheStore implements CacheStore {
     ttlMsOrOptions?: CacheTtlOrOptions,
   ): void {
     const opts = normalizeSetOptions(ttlMsOrOptions);
-    const explicitTtl = opts.ttlMs !== undefined ? opts.ttlMs : opts.ttl;
-    const effectiveTtl =
-      explicitTtl !== undefined ? explicitTtl : this.defaultTtlMs;
+    const effectiveTtl = opts.ttlMs ?? opts.ttl ?? this.defaultTtlMs;
 
     const existing = this.entries.get(key);
     if (existing) {

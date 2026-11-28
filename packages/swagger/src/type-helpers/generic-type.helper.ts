@@ -411,22 +411,22 @@ export function UnionType<const TVariants extends readonly UnionVariantInput[]>(
     configurable: true,
   });
 
+  let discriminator: SwaggerUnionTypeMeta["discriminator"];
+  if (opts?.discriminator) {
+    discriminator = {
+      propertyName: opts.discriminator.propertyName,
+      ...(opts.discriminator.mapping !== undefined
+        ? { mapping: { ...opts.discriminator.mapping } }
+        : {}),
+    };
+  }
   const meta: SwaggerUnionTypeMeta = {
     variants: [...variants],
     name: schemaName,
     ...(opts?.description !== undefined
       ? { description: opts.description }
       : {}),
-    ...(opts?.discriminator !== undefined
-      ? {
-          discriminator: {
-            propertyName: opts.discriminator.propertyName,
-            ...(opts.discriminator.mapping !== undefined
-              ? { mapping: { ...opts.discriminator.mapping } }
-              : {}),
-          },
-        }
-      : {}),
+    ...(discriminator !== undefined ? { discriminator } : {}),
   };
 
   Object.defineProperty(UnionDto, SWAGGER_UNION_TYPE_META, {

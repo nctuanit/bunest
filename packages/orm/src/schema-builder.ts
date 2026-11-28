@@ -155,19 +155,12 @@ function buildJoinTableSql(
     "referenced column",
   );
 
-  const fkClauseA =
-    dialect === "spanner"
-      ? `FOREIGN KEY (${colA}) REFERENCES ${ownerTableRef} (${ownerPkQuoted})`
-      : dialect === "oracle"
-        ? `FOREIGN KEY (${colA}) REFERENCES ${ownerTableRef} (${ownerPkQuoted}) ON DELETE CASCADE`
-        : `FOREIGN KEY (${colA}) REFERENCES ${ownerTableRef} (${ownerPkQuoted}) ON DELETE ${jt.onDelete} ON UPDATE ${jt.onUpdate}`;
+  let fkActions = ` ON DELETE ${jt.onDelete} ON UPDATE ${jt.onUpdate}`;
+  if (dialect === "spanner") fkActions = "";
+  else if (dialect === "oracle") fkActions = " ON DELETE CASCADE";
 
-  const fkClauseB =
-    dialect === "spanner"
-      ? `FOREIGN KEY (${colB}) REFERENCES ${targetTableRef} (${targetPkQuoted})`
-      : dialect === "oracle"
-        ? `FOREIGN KEY (${colB}) REFERENCES ${targetTableRef} (${targetPkQuoted}) ON DELETE CASCADE`
-        : `FOREIGN KEY (${colB}) REFERENCES ${targetTableRef} (${targetPkQuoted}) ON DELETE ${jt.onDelete} ON UPDATE ${jt.onUpdate}`;
+  const fkClauseA = `FOREIGN KEY (${colA}) REFERENCES ${ownerTableRef} (${ownerPkQuoted})${fkActions}`;
+  const fkClauseB = `FOREIGN KEY (${colB}) REFERENCES ${targetTableRef} (${targetPkQuoted})${fkActions}`;
 
   if (dialect === "spanner") {
     const lines = [`${colA} ${typeA} NOT NULL`, `${colB} ${typeB} NOT NULL`, fkClauseA, fkClauseB];

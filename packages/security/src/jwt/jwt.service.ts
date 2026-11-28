@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from "@bunest/core";
+import { isString, toArray } from "@bunest/core/common";
 import {
   base64UrlDecode,
   base64UrlDecodeUtf8,
@@ -1045,15 +1046,8 @@ export class JwtService {
     }
 
     if (opts.audience !== undefined) {
-      const expectedList = Array.isArray(opts.audience)
-        ? opts.audience
-        : [opts.audience];
-      const tokenAudiences =
-        typeof payload.aud === "string"
-          ? [payload.aud]
-          : Array.isArray(payload.aud)
-            ? payload.aud.filter((a): a is string => typeof a === "string")
-            : [];
+      const expectedList = toArray(opts.audience);
+      const tokenAudiences = toArray(payload.aud).filter(isString);
 
       const matched = expectedList.some((expected) =>
         expected instanceof RegExp

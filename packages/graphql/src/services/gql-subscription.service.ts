@@ -157,12 +157,12 @@ export class GqlSubscriptionService {
       },
     };
 
-    const fallbackContext: GraphQLWsOptions["context"] =
-      typeof options.context === "function"
-        ? (options.context as GraphQLWsOptions["context"])
-        : options.context
-          ? () => options.context as Record<string, unknown>
-          : undefined;
+    let fallbackContext: GraphQLWsOptions["context"];
+    if (typeof options.context === "function") {
+      fallbackContext = options.context as GraphQLWsOptions["context"];
+    } else if (options.context) {
+      fallbackContext = () => options.context as Record<string, unknown>;
+    }
 
     this.wsHandler = new GraphQLWsHandler(executor, {
       ...wsConfig,
@@ -184,12 +184,12 @@ export class GqlSubscriptionService {
       registerWebsocketHandler?: unknown;
       getHttpAdapter?: () => BunHttpAdapter;
     };
-    const adapter =
-      typeof srv.registerWebsocketHandler === "function"
-        ? (this.httpServer as BunHttpAdapter)
-        : typeof srv.getHttpAdapter === "function"
-          ? srv.getHttpAdapter()
-          : undefined;
+    let adapter: BunHttpAdapter | undefined;
+    if (typeof srv.registerWebsocketHandler === "function") {
+      adapter = this.httpServer as BunHttpAdapter;
+    } else if (typeof srv.getHttpAdapter === "function") {
+      adapter = srv.getHttpAdapter();
+    }
     if (adapter && typeof adapter.registerWebsocketHandler === "function") {
       this.wsHandler.attachToHttpAdapter(adapter, this.wsHandler.getPath());
     }

@@ -669,12 +669,7 @@ export class LiteralSchema<T extends LiteralPrimitive> extends BaseSchema<T, T> 
           ctx.target,
         );
       }
-      const type =
-        typeof val === "number"
-          ? Number.isInteger(val)
-            ? "integer"
-            : "number"
-          : typeof val;
+      const type = Number.isInteger(val) ? "integer" : typeof val;
       return applyMetaToJsonSchema(
         { type, enum: [val] },
         this._meta,

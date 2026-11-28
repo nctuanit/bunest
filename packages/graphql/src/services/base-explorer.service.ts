@@ -89,12 +89,12 @@ export class BaseExplorerService {
   ): T[] {
     const out: T[] = [];
     for (const mod of modules) {
-      const providers: Iterable<unknown> =
-        mod?.providers instanceof Map
-          ? mod.providers.values()
-          : Array.isArray(mod?.providers)
-            ? mod.providers
-            : [];
+      let providers: Iterable<unknown> = [];
+      if (mod?.providers instanceof Map) {
+        providers = mod.providers.values();
+      } else if (Array.isArray(mod?.providers)) {
+        providers = mod.providers;
+      }
       for (const wrapper of providers) {
         const mapped = callback(wrapper as TProvider, mod);
         if (Array.isArray(mapped)) {

@@ -756,4 +756,25 @@ export interface OrmDataSourceOptions extends OrmConnectionCredentials {
   readonly logging?: boolean | ((event: OrmQueryLogEvent) => void);
   readonly enableWAL?: boolean;
   readonly enforceForeignKeys?: boolean;
+  /**
+   * Opt-in runtime N+1 query detector (subscribes to `"bunest:orm:query"`).
+   * Zero overhead when `false` or omitted.
+   * @default false
+   */
+  readonly detectNPlusOne?:
+    | boolean
+    | {
+        readonly threshold?: number;
+        readonly windowMs?: number;
+        readonly strict?: boolean;
+        readonly onDetect?: (event: {
+          readonly fingerprint: string;
+          readonly sampleSql: string;
+          readonly count: number;
+          readonly threshold: number;
+          readonly dataSource?: string;
+        }) => void;
+        readonly ignorePatterns?: readonly RegExp[];
+        readonly maxDetections?: number;
+      };
 }

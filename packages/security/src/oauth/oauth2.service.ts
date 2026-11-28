@@ -9,6 +9,7 @@ import {
   type FactoryDependency,
   type ModuleMetadata,
 } from "@bunest/core";
+import { definedOnly, isFiniteNumber, isString } from "@bunest/core/common";
 import type { FetchLike } from "./jwks.client";
 import {
   computePkceChallenge,
@@ -226,9 +227,7 @@ export class OAuth2Service {
     return {
       url: url.toString(),
       state,
-      ...(codeVerifier !== undefined ? { codeVerifier } : {}),
-      ...(codeChallenge !== undefined ? { codeChallenge } : {}),
-      ...(codeChallengeMethod !== undefined ? { codeChallengeMethod } : {}),
+      ...definedOnly({ codeVerifier, codeChallenge, codeChallengeMethod }),
     };
   }
 
@@ -420,25 +419,27 @@ export class OAuth2Service {
     }
 
     const rawExpires = raw.expires_in;
-    const expiresIn =
-      typeof rawExpires === "number" && Number.isFinite(rawExpires)
-        ? rawExpires
-        : typeof rawExpires === "string" && /^\d+$/.test(rawExpires)
-          ? Number.parseInt(rawExpires, 10)
-          : undefined;
+    let expiresIn: number | undefined;
+    if (isFiniteNumber(rawExpires)) {
+      expiresIn = rawExpires;
+    } else if (isString(rawExpires) && /^\d+$/.test(rawExpires)) {
+      expiresIn = Number.parseInt(rawExpires, 10);
+    }
 
     return {
       accessToken: raw.access_token,
       tokenType:
-        typeof raw.token_type === "string" && raw.token_type.length > 0
+        isString(raw.token_type) && raw.token_type.length > 0
           ? raw.token_type
           : "Bearer",
-      ...(expiresIn !== undefined ? { expiresIn } : {}),
-      ...(typeof raw.refresh_token === "string"
-        ? { refreshToken: raw.refresh_token }
-        : {}),
-      ...(typeof raw.scope === "string" ? { scope: raw.scope } : {}),
-      ...(typeof raw.id_token === "string" ? { idToken: raw.id_token } : {}),
+      ...definedOnly({
+        expiresIn,
+        refreshToken: isString(raw.refresh_token)
+          ? raw.refresh_token
+          : undefined,
+        scope: isString(raw.scope) ? raw.scope : undefined,
+        idToken: isString(raw.id_token) ? raw.id_token : undefined,
+      }),
       raw,
     };
   }

@@ -199,13 +199,18 @@ async function runTransaction<T>(
 
 function mysql2Transaction(transaction: unknown): SqlTransaction {
   if (!isMysql2Client(transaction) || hasMethod(transaction, "getConnection")) {
+    let reason: string;
+    if (hasMethod(transaction, "getConnection")) {
+      reason =
+        "not the pool: it runs each statement on any of its connections, outside your transaction.";
+    } else if (isPgClient(transaction)) {
+      reason =
+        "not a node-postgres client: the store's statements run on MySQL.";
+    } else {
+      reason = `got ${describeValue(transaction)}.`;
+    }
     throw notATransaction(
-      "Pass the mysql2 connection your transaction runs on (const connection = await pool.getConnection(); await connection.beginTransaction()), " +
-        (hasMethod(transaction, "getConnection")
-          ? "not the pool: it runs each statement on any of its connections, outside your transaction."
-          : isPgClient(transaction)
-            ? "not a node-postgres client: the store's statements run on MySQL."
-            : `got ${describeValue(transaction)}.`),
+      `Pass the mysql2 connection your transaction runs on (const connection = await pool.getConnection(); await connection.beginTransaction()), ${reason}`,
     );
   }
   const connection = promised(transaction) as Mysql2ConnectionLike;

@@ -102,14 +102,20 @@ function applySchemaMembers<TEntity>(
         col.generated === "increment" ||
         col.generated === "uuid" ||
         col.generated === "objectid";
-      const generationStrategy =
-        col.generated === "objectid" || (generatedFlag && col.type === "objectid")
-          ? ("objectid" as const)
-          : col.generated === "uuid" || (generatedFlag && col.type === "uuid")
-            ? ("uuid" as const)
-            : generatedFlag
-              ? ("increment" as const)
-              : undefined;
+      let generationStrategy: "objectid" | "uuid" | "increment" | undefined;
+      if (
+        col.generated === "objectid" ||
+        (generatedFlag && col.type === "objectid")
+      ) {
+        generationStrategy = "objectid";
+      } else if (
+        col.generated === "uuid" ||
+        (generatedFlag && col.type === "uuid")
+      ) {
+        generationStrategy = "uuid";
+      } else if (generatedFlag) {
+        generationStrategy = "increment";
+      }
       const hasDefault = "default" in col && col.default !== undefined;
 
       OrmMetadataStorage.addColumn(target, {

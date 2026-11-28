@@ -1710,12 +1710,15 @@ export function coerceInputValue(
       }
       return parseResult;
     } catch (err) {
-      const gqlErr = isGraphQLError(err)
-        ? err
-        : new GraphQLError(
-            `Expected type "${type.name}". ${err instanceof Error ? err.message : String(err)}`,
-            { originalError: err instanceof Error ? err : undefined },
-          );
+      let gqlErr: GraphQLError;
+      if (isGraphQLError(err)) {
+        gqlErr = err;
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        gqlErr = new GraphQLError(`Expected type "${type.name}". ${msg}`, {
+          originalError: err instanceof Error ? err : undefined,
+        });
+      }
       onError(path, inputValue, gqlErr);
       return undefined;
     }

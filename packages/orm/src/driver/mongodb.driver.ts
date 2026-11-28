@@ -1,3 +1,9 @@
+import {
+  deleteNestedValue,
+  hmacSha256,
+  setNestedValue,
+  sha256,
+} from "@bunest/core/common";
 import { Database } from "bun:sqlite";
 import { QueryFailedError } from "../errors";
 import type {
@@ -61,6 +67,9 @@ function parseMongoConnection(
       urlRaw.startsWith("mongodb+srv://") ||
       tlsParam === "true" ||
       Boolean(options.tls ?? options.ssl);
+    const urlPassword = parsed.password
+      ? decodeURIComponent(parsed.password)
+      : undefined;
     return {
       isRemote: true,
       hostname: host ?? parsed.hostname ?? "127.0.0.1",
@@ -68,11 +77,7 @@ function parseMongoConnection(
       database: options.database ?? dbFromPath,
       username: options.username ?? options.user ?? (parsed.username ? decodeURIComponent(parsed.username) : undefined),
       password:
-        typeof options.password === "string"
-          ? options.password
-          : parsed.password
-            ? decodeURIComponent(parsed.password)
-            : undefined,
+        typeof options.password === "string" ? options.password : urlPassword,
       authSource:
         options.authSource ?? parsed.searchParams.get("authSource") ?? "admin",
       useTls,
@@ -121,24 +126,15 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy;
 }
 
-async function hmacSha256(key: Uint8Array, msg: string | Uint8Array): Promise<Uint8Array> {
-  const data = typeof msg === "string" ? new TextEncoder().encode(msg) : msg;
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBufferView(key),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return new Uint8Array(
-    await crypto.subtle.sign("HMAC", cryptoKey, toArrayBufferView(data)),
-  );
+function hmacSha256Bytes(
+  key: Uint8Array,
+  msg: string | Uint8Array,
+): Uint8Array {
+  return new Uint8Array(Buffer.from(hmacSha256(key, msg, "base64"), "base64"));
 }
 
-async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(
-    await crypto.subtle.digest("SHA-256", toArrayBufferView(data)),
-  );
+function sha256Bytes(data: Uint8Array): Uint8Array {
+  return new Uint8Array(Buffer.from(sha256(data, "base64"), "base64"));
 }
 
 async function pbkdf2Sha256(
@@ -324,11 +320,11 @@ class BunMongoWireTransport {
     const iterations = Number(parts.i ?? 4096);
 
     const saltedPassword = await pbkdf2Sha256(password, salt, iterations);
-    const clientKey = await hmacSha256(saltedPassword, "Client Key");
-    const storedKey = await sha256(clientKey);
+    const clientKey = hmacSha256Bytes(saltedPassword, "Client Key");
+    const storedKey = sha256Bytes(clientKey);
     const clientFinalWithoutProof = `c=biws,r=${serverNonce}`;
     const authMessage = `${clientFirstBare},${serverFirst},${clientFinalWithoutProof}`;
-    const clientSignature = await hmacSha256(storedKey, authMessage);
+    const clientSignature = hmacSha256Bytes(storedKey, authMessage);
     const clientProof = Buffer.from(xorBytes(clientKey, clientSignature)).toString(
       "base64",
     );
@@ -371,38 +367,6 @@ function getNestedValue(doc: Record<string, unknown>, path: string): unknown {
     curr = (curr as Record<string, unknown>)[part];
   }
   return curr;
-}
-
-function setNestedValue(
-  doc: Record<string, unknown>,
-  path: string,
-  value: unknown,
-): void {
-  const parts = path.split(".");
-  let curr = doc;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i]!;
-    if (
-      curr[key] === undefined ||
-      curr[key] === null ||
-      typeof curr[key] !== "object"
-    ) {
-      curr[key] = {};
-    }
-    curr = curr[key] as Record<string, unknown>;
-  }
-  curr[parts[parts.length - 1]!] = value;
-}
-
-function unsetNestedValue(doc: Record<string, unknown>, path: string): void {
-  const parts = path.split(".");
-  let curr: Record<string, unknown> = doc;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const next = curr[parts[i]!];
-    if (!next || typeof next !== "object") return;
-    curr = next as Record<string, unknown>;
-  }
-  delete curr[parts[parts.length - 1]!];
 }
 
 function normalizeComparable(v: unknown): unknown {
@@ -562,7 +526,7 @@ function applyMongoUpdate(
   }
   if (update.$unset && typeof update.$unset === "object") {
     for (const k of Object.keys(update.$unset as Record<string, unknown>)) {
-      unsetNestedValue(clone, k);
+      deleteNestedValue(clone, k);
     }
   }
   if (update.$inc && typeof update.$inc === "object") {

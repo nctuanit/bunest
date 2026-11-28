@@ -231,12 +231,13 @@ export class GraphQLAstExplorer {
     );
     if (doc) lines.push(doc);
 
-    const keyword =
-      mode === "class"
-        ? isRootType || isInterfaceNode
+    let keyword = "export interface";
+    if (mode === "class") {
+      keyword =
+        isRootType || isInterfaceNode
           ? "export abstract class"
-          : "export class"
-        : "export interface";
+          : "export class";
+    }
 
     let header = `${keyword} ${transformedName}`;
     if (

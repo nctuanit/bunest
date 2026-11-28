@@ -116,30 +116,19 @@ function compileOperator(
       return bindNamedParamsInFragment(rawSql, rawParamMap, params);
     }
 
-    case "and": {
-      const items = Array.isArray(op.value) ? op.value : [];
-      if (items.length === 0) return "1 = 1";
-      const parts = items.map((item) =>
-        isFindOperator(item)
-          ? compileOperator(colRef, col, item, params, dialect)
-          : item === null
-            ? `${colRef} IS NULL`
-            : `${colRef} = ${params.add(convert(item))}`,
-      );
-      return `(${parts.join(" AND ")})`;
-    }
-
+    case "and":
     case "or": {
       const items = Array.isArray(op.value) ? op.value : [];
-      if (items.length === 0) return "1 = 0";
-      const parts = items.map((item) =>
-        isFindOperator(item)
-          ? compileOperator(colRef, col, item, params, dialect)
-          : item === null
-            ? `${colRef} IS NULL`
-            : `${colRef} = ${params.add(convert(item))}`,
-      );
-      return `(${parts.join(" OR ")})`;
+      if (items.length === 0) return op.type === "and" ? "1 = 1" : "1 = 0";
+      const parts = items.map((item) => {
+        if (isFindOperator(item)) {
+          return compileOperator(colRef, col, item, params, dialect);
+        }
+        return item === null
+          ? `${colRef} IS NULL`
+          : `${colRef} = ${params.add(convert(item))}`;
+      });
+      return `(${parts.join(op.type === "and" ? " AND " : " OR ")})`;
     }
   }
 }

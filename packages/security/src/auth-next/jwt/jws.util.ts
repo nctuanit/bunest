@@ -1,4 +1,5 @@
 import { Logger } from "@bunest/core";
+import { escapeRegExp, isString, toArray } from "@bunest/core/common";
 import { JwtError } from "../errors/jwt.error";
 import type {
   ClaimRules,
@@ -782,18 +783,9 @@ export function validateClaims(claims: JwtClaims, rules: ClaimRules): void {
     throw new JwtError("unexpected issuer");
   }
   if (rules.audience !== undefined && rules.audience !== false) {
-    const accepted = Array.isArray(rules.audience)
-      ? rules.audience
-      : [rules.audience];
-    const given =
-      claims.aud === undefined
-        ? []
-        : Array.isArray(claims.aud)
-          ? claims.aud
-          : [claims.aud];
-    if (
-      !given.some((aud) => typeof aud === "string" && accepted.includes(aud))
-    ) {
+    const accepted = toArray(rules.audience);
+    const given = toArray(claims.aud);
+    if (!given.some((aud) => isString(aud) && accepted.includes(aud))) {
       throw new JwtError("unexpected audience");
     }
   }
@@ -1015,7 +1007,7 @@ function sanitizeJwkForImport(jwk: Record<string, unknown>): SubtleJwk {
 }
 
 function parsePemBlock(text: string, label: string): JwsKey {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = escapeRegExp(label);
   const re = new RegExp(
     `-----BEGIN ${escaped}-----([\\s\\S]*?)-----END ${escaped}-----`,
   );
@@ -1140,17 +1132,10 @@ function wrapDer(tag: number, content: Uint8Array): Uint8Array<ArrayBuffer> {
 }
 
 function concatBytes(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
-  let total = 0;
-  for (const part of parts) {
-    total += part.length;
+  if (parts.length === 0) {
+    return new Uint8Array(0);
   }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    out.set(part, offset);
-    offset += part.length;
-  }
-  return out;
+  return new Uint8Array(Bun.concatArrayBuffers(parts));
 }
 
 function wrapBitString(content: Uint8Array): Uint8Array<ArrayBuffer> {

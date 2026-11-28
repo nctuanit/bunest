@@ -1,3 +1,4 @@
+import { definedOnly } from "@bunest/core/common";
 import {
   ContextStorage,
   DecoratorRegistry,
@@ -362,18 +363,13 @@ export class PrismaTransactionHost<
     }
 
     // Top-level OR `REQUIRES_NEW` independent interactive `$transaction` on root `this.client`
+    const definedOpts = definedOnly({
+      isolationLevel: prismaIsolation,
+      maxWait: options.maxWait,
+      timeout: options.timeout,
+    });
     const prismaOpts: PrismaInteractiveTransactionOptions | undefined =
-      prismaIsolation !== undefined ||
-      options.maxWait !== undefined ||
-      options.timeout !== undefined
-        ? {
-            ...(prismaIsolation !== undefined
-              ? { isolationLevel: prismaIsolation }
-              : {}),
-            ...(options.maxWait !== undefined ? { maxWait: options.maxWait } : {}),
-            ...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
-          }
-        : undefined;
+      Object.keys(definedOpts).length > 0 ? definedOpts : undefined;
 
     return await executeWithTransactionRetries(
       options.retries,

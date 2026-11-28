@@ -5,9 +5,10 @@ export const jitter = (): Promise<void> => Bun.sleep(Math.random() * 4);
 
 export function show(value: unknown): string {
   return (
-    JSON.stringify(value, (_key, v) =>
-      v === undefined ? "<undefined>" : typeof v === "bigint" ? `${v}n` : v,
-    ) ?? String(value)
+    JSON.stringify(value, (_key, v) => {
+      if (v === undefined) return "<undefined>";
+      return typeof v === "bigint" ? `${v}n` : v;
+    }) ?? String(value)
   );
 }
 
@@ -70,7 +71,8 @@ export async function setsNative({
   });
   const outside = await transaction(async (tx) => {
     const { native } = executor.wrapTransaction(tx);
-    return native === undefined ? "none" : native === tx ? "given" : "another";
+    if (native === undefined) return "none";
+    return native === tx ? "given" : "another";
   });
   if (!inside && outside === "none") {
     return false;

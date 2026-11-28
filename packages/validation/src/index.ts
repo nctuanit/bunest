@@ -71,6 +71,31 @@ export {
 } from "@bunest/core/common";
 
 export {
+  Prop,
+  type PropOptions,
+} from "./prop/prop.decorator";
+export {
+  Serialize,
+  type SerializeOptionsConfig,
+} from "./serialize/serialize.decorator";
+export {
+  CursorPaginationQueryDto,
+  OffsetPaginationQueryDto,
+  createPaginatedResponse,
+  type PaginatedMeta,
+  type PaginatedResponse,
+  type SortOrder,
+} from "./pagination/pagination.dto";
+export {
+  BUNEST_PROP_DOC_STORAGE_SYMBOL,
+  PropDocMetadataStorage,
+  getPropDocMetadata,
+  getPropDocMetadataStorage,
+  type PropDocMetadata,
+} from "./prop/prop-metadata";
+export type { ValidateNestedOptions } from "./validator/decorators/core.decorators";
+
+export {
   ArraySchema,
   BaseSchema,
   BooleanSchema,

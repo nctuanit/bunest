@@ -1,3 +1,4 @@
+import { isPlainObject } from "@bunest/core/common";
 import {
   Logger,
   MetadataRegistry,
@@ -276,6 +277,7 @@ function isLazyTypeThunk(
     getStandardSchemaFromDto(value) !== undefined ||
     hasClassValidatorMetadata(value) ||
     hasTransformerMetadata(value) ||
+    hasPropDocMetadata(value) ||
     Object.getOwnPropertyNames(value.prototype).length > 1
   ) {
     return false;
@@ -318,7 +320,11 @@ export function isSchemaDecoratedClass(target: Function): boolean {
       return true;
     }
   }
-  return hasClassValidatorMetadata(target) || hasTransformerMetadata(target);
+  return (
+    hasClassValidatorMetadata(target) ||
+    hasTransformerMetadata(target) ||
+    hasPropDocMetadata(target)
+  );
 }
 
 function isOptionalEntityColumn(col: EntityColumnMetadata): boolean {
@@ -610,14 +616,6 @@ function isAnnotationKey(key: string): boolean {
   return OAS_ANNOTATION_KEYS.has(key) || key.startsWith("x-");
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 export function applyNullable30(
   schema: OpenApiSchema,
   nullable?: boolean,
@@ -678,13 +676,15 @@ export function convertSchemaToOas31(
       }
       out[k] = mapped;
     } else if (k === "items" && v && typeof v === "object") {
-      out[k] = Array.isArray(v)
-        ? v.map((item) =>
-            item && typeof item === "object"
-              ? convertSchemaToOas31(item as OpenApiSchema, seen)
-              : item,
-          )
-        : convertSchemaToOas31(v as OpenApiSchema, seen);
+      if (Array.isArray(v)) {
+        out[k] = v.map((item) =>
+          item && typeof item === "object"
+            ? convertSchemaToOas31(item as OpenApiSchema, seen)
+            : item,
+        );
+      } else {
+        out[k] = convertSchemaToOas31(v as OpenApiSchema, seen);
+      }
     } else if (
       (k === "additionalProperties" || k === "propertyNames" || k === "not") &&
       v &&
@@ -1316,6 +1316,62 @@ function extractClassValidatorHints(dto: Function): ExtractedValidatorHints {
   }
 
   return { properties, optionalProperties };
+}
+
+interface PropDocHints {
+  readonly description?: string;
+  readonly example?: unknown;
+  readonly examples?: readonly unknown[] | Record<string, unknown>;
+  readonly deprecated?: boolean;
+  readonly format?: string;
+  readonly title?: string;
+  readonly default?: unknown;
+  readonly readOnly?: boolean;
+  readonly writeOnly?: boolean;
+  readonly nullable?: boolean;
+  readonly hide?: boolean;
+}
+
+const BUNEST_PROP_DOC_STORAGE_SYMBOL = Symbol.for(
+  "bunest:dto:prop:doc-storage",
+);
+
+interface PropDocStorageLike {
+  getForClass?(target: Function): Map<string, PropDocHints>;
+  getOwn?(target: Function): ReadonlyMap<string, PropDocHints> | undefined;
+}
+
+function getPropDocStorage(): PropDocStorageLike | undefined {
+  try {
+    const g = globalThis as Record<PropertyKey, unknown>;
+    const storage = g[BUNEST_PROP_DOC_STORAGE_SYMBOL] as
+      | PropDocStorageLike
+      | undefined;
+    if (storage && typeof storage === "object") {
+      return storage;
+    }
+  } catch {
+    // Gracefully skip if @bunest/validation prop doc storage is unavailable
+  }
+  return undefined;
+}
+
+function extractPropDocHints(
+  dto: Type<unknown> | Function,
+): Map<string, PropDocHints> {
+  try {
+    const storage = getPropDocStorage();
+    if (storage && typeof storage.getForClass === "function") {
+      return storage.getForClass(dto);
+    }
+  } catch {
+    // Gracefully skip if @bunest/validation prop doc storage is unavailable
+  }
+  return new Map();
+}
+
+function hasPropDocMetadata(target: Function): boolean {
+  return extractPropDocHints(target).size > 0;
 }
 
 export interface SchemaExplorerOptions {
@@ -1963,6 +2019,7 @@ export class SchemaExplorer {
 
   private collectHiddenProperties(dto: Function): Set<string> {
     const hidden = new Set<string>();
+    const explicitApiProps = new Set<string>();
     for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
       const ownHidden = MetadataRegistry.getOwn<readonly string[]>(
         SWAGGER_METADATA_KEYS.API_HIDDEN_PROPERTIES,
@@ -1971,8 +2028,146 @@ export class SchemaExplorer {
       if (ownHidden) {
         for (const k of ownHidden) hidden.add(k);
       }
+      const ownApiProps = MetadataRegistry.getOwn<
+        readonly ApiPropertyMetadata[]
+      >(SWAGGER_METADATA_KEYS.API_PROPERTIES, ctor);
+      if (ownApiProps) {
+        for (const entry of ownApiProps) {
+          if (entry) explicitApiProps.add(entry.propertyKey);
+        }
+      }
+    }
+    const propDocHints = extractPropDocHints(dto);
+    for (const [propKey, meta] of propDocHints.entries()) {
+      if (meta.hide === true && !explicitApiProps.has(propKey)) {
+        hidden.add(propKey);
+      }
     }
     return hidden;
+  }
+
+  private collectPartialInheritedProperties(
+    dto: Type<unknown> | Function,
+  ): Set<string> {
+    const partialProps = new Set<string>();
+    const propDocStorage = getPropDocStorage();
+
+    for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
+      const mappedMeta = Object.prototype.hasOwnProperty.call(
+        ctor,
+        SWAGGER_MAPPED_TYPE_META,
+      )
+        ? (ctor as unknown as Record<symbol, SwaggerMappedTypeMeta>)[
+            SWAGGER_MAPPED_TYPE_META
+          ]
+        : undefined;
+
+      if (mappedMeta) {
+        if (mappedMeta.kind === "partial" || mappedMeta.kind === "deepPartial") {
+          for (const k of extractPropDocHints(ctor).keys()) {
+            partialProps.add(k);
+          }
+          for (const k of extractClassValidatorHints(ctor).properties.keys()) {
+            partialProps.add(k);
+          }
+          const tHints = extractTransformerHints(ctor);
+          for (const k of tHints.exposedProperties) {
+            partialProps.add(k);
+          }
+          for (const k of tHints.typeResolvers.keys()) {
+            partialProps.add(k);
+          }
+          for (const src of mappedMeta.sources) {
+            for (const k of extractPropDocHints(src).keys()) {
+              partialProps.add(k);
+            }
+            for (const k of extractClassValidatorHints(src).properties.keys()) {
+              partialProps.add(k);
+            }
+            const srcTHints = extractTransformerHints(src);
+            for (const k of srcTHints.exposedProperties) {
+              partialProps.add(k);
+            }
+            for (const k of srcTHints.typeResolvers.keys()) {
+              partialProps.add(k);
+            }
+          }
+        } else {
+          const keySet = mappedMeta.keys ? new Set(mappedMeta.keys) : undefined;
+          for (const src of mappedMeta.sources) {
+            for (const k of this.collectPartialInheritedProperties(src)) {
+              if (mappedMeta.kind === "pick" && keySet && !keySet.has(k)) {
+                continue;
+              }
+              if (mappedMeta.kind === "omit" && keySet && keySet.has(k)) {
+                continue;
+              }
+              partialProps.add(k);
+            }
+          }
+        }
+        continue;
+      }
+
+      if (partialProps.size > 0) {
+        const ownDocs = propDocStorage?.getOwn?.(ctor);
+        const ownValOptional = new Set<string>();
+        const ownValRequired = new Set<string>();
+        try {
+          for (const meta of getValidationMetadatasForTarget(
+            ctor,
+            false,
+            false,
+          )) {
+            if (meta.target !== ctor || !meta.propertyName) continue;
+            if (
+              meta.type === "conditionalValidation" &&
+              meta.name === "isOptional"
+            ) {
+              ownValOptional.add(meta.propertyName);
+            } else {
+              ownValRequired.add(meta.propertyName);
+            }
+          }
+        } catch {
+          // Ignore if validation metadata storage is unavailable
+        }
+        if (ownDocs) {
+          for (const propKey of ownDocs.keys()) {
+            if (!ownValOptional.has(propKey)) {
+              partialProps.delete(propKey);
+            }
+          }
+        }
+        for (const propKey of ownValRequired) {
+          if (!ownValOptional.has(propKey)) {
+            partialProps.delete(propKey);
+          }
+        }
+      }
+    }
+
+    return partialProps;
+  }
+
+  private getDeepPartialWrapper(
+    dto: Type<unknown> | Function,
+  ): ((ctor: Type<unknown>) => Type<unknown>) | undefined {
+    let wrapper: ((ctor: Type<unknown>) => Type<unknown>) | undefined;
+    for (const ctor of MetadataRegistry.getPrototypeChain(dto)) {
+      const mappedMeta = Object.prototype.hasOwnProperty.call(
+        ctor,
+        SWAGGER_MAPPED_TYPE_META,
+      )
+        ? (ctor as unknown as Record<symbol, SwaggerMappedTypeMeta>)[
+            SWAGGER_MAPPED_TYPE_META
+          ]
+        : undefined;
+      if (mappedMeta?.kind === "deepPartial" && mappedMeta.wrapNestedDto) {
+        wrapper = mappedMeta.wrapNestedDto;
+      }
+    }
+    return wrapper;
   }
 
   private sanitizeDefaultValue(
@@ -2225,16 +2420,16 @@ export class SchemaExplorer {
           }
           const prevHadExplicitReq =
             merged !== undefined && hasExplicitApiRequired(merged);
+          const fallbackReq =
+            typeof factoryOpt.required === "boolean"
+              ? factoryOpt.required
+              : (merged?.required ?? true);
           const nextMerged: ApiPropertyMetadata = {
             ...(merged ?? {}),
             ...factoryOpt,
             ...(effectiveType !== undefined ? { type: effectiveType } : {}),
             propertyKey: propKey,
-            required: prevHadExplicitReq
-              ? merged!.required
-              : typeof factoryOpt.required === "boolean"
-                ? factoryOpt.required
-                : (merged?.required ?? true),
+            required: prevHadExplicitReq ? merged!.required : fallbackReq,
           };
           if (prevHadExplicitReq) {
             Object.defineProperty(nextMerged, API_PROPERTY_EXPLICIT_REQUIRED, {
@@ -2423,12 +2618,20 @@ export class SchemaExplorer {
     // Collect @bunest/validation/transformer hints (@Exclude, @Expose, @Type)
     const transformerHints = extractTransformerHints(dto);
 
+    // Collect @Prop(...) documentation hints (0 runtime coupling to @bunest/validation)
+    const propDocHints = extractPropDocHints(dto);
+
+    // Collect inherited partial-type property keys & deep-partial wrapper (if any)
+    const partialInheritedProps = this.collectPartialInheritedProperties(dto);
+    const deepPartialWrapper = this.getDeepPartialWrapper(dto);
+
     const allPropertyNames = new Set<string>([
       ...entityColumnMap.keys(),
       ...propertyMap.keys(),
       ...validatorHints.properties.keys(),
       ...transformerHints.exposedProperties,
       ...transformerHints.typeResolvers.keys(),
+      ...propDocHints.keys(),
     ]);
 
     const properties: Record<string, OpenApiSchema | ReferenceObject> = {};
@@ -2475,6 +2678,10 @@ export class SchemaExplorer {
 
       const apiMeta = propertyMap.get(propKey);
       const valHints = validatorHints.properties.get(propKey);
+      const propDoc = propDocHints.get(propKey);
+      if (propDoc?.hide === true && !hasExplicitApiProperty) {
+        continue;
+      }
       const isOptionalByValidator =
         validatorHints.optionalProperties.has(propKey);
       const transformerTypeFn = transformerHints.typeResolvers.get(propKey);
@@ -2490,29 +2697,33 @@ export class SchemaExplorer {
         valHints,
         entityCol,
         transformerTypeFn,
+        propDoc,
+        deepPartialWrapper,
       );
       properties[outputName] = propSchema;
 
-      const explicitReq =
-        apiMeta?.selfRequired !== undefined
-          ? apiMeta.selfRequired
-          : typeof apiMeta?.required === "boolean"
-            ? apiMeta.required
-            : true;
+      const defaultExplicitReq =
+        typeof apiMeta?.required === "boolean" ? apiMeta.required : true;
+      const explicitReq = apiMeta?.selfRequired ?? defaultExplicitReq;
+      const isOptionalByPartial = partialInheritedProps.has(propKey);
 
       let isRequired: boolean;
       if (apiMeta !== undefined) {
         if (entityCol !== undefined && !hasExplicitApiRequired(apiMeta)) {
           isRequired =
-            !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
+            !isOptionalEntityColumn(entityCol) &&
+            !isOptionalByValidator &&
+            !isOptionalByPartial;
         } else {
           isRequired = explicitReq && !isOptionalByValidator;
         }
       } else if (entityCol !== undefined) {
         isRequired =
-          !isOptionalEntityColumn(entityCol) && !isOptionalByValidator;
+          !isOptionalEntityColumn(entityCol) &&
+          !isOptionalByValidator &&
+          !isOptionalByPartial;
       } else {
-        isRequired = !isOptionalByValidator;
+        isRequired = !isOptionalByValidator && !isOptionalByPartial;
       }
       if (isRequired && !required.includes(outputName)) {
         required.push(outputName);
@@ -2829,11 +3040,16 @@ export class SchemaExplorer {
   private applyValidatorHintsToSchema(
     target: OpenApiSchema,
     hints: Partial<OpenApiSchema>,
+    allowOverrideObjectType = false,
   ): void {
     if (target.$ref) {
       return;
     }
-    if (hints.type !== undefined && target.type === undefined) {
+    if (
+      hints.type !== undefined &&
+      (target.type === undefined ||
+        (allowOverrideObjectType && target.type === "object"))
+    ) {
       target.type = hints.type;
     } else if (hints.type === "integer" && target.type === "number") {
       target.type = "integer";
@@ -2900,6 +3116,70 @@ export class SchemaExplorer {
     }
   }
 
+  private applyPropDocHintsToSchema(
+    schema: OpenApiSchema,
+    propDoc: PropDocHints,
+    defaultModelCtor?: Function,
+  ): void {
+    if (propDoc.title !== undefined) schema.title = propDoc.title;
+    if (propDoc.description !== undefined) {
+      schema.description = propDoc.description;
+    }
+    if (propDoc.format !== undefined) {
+      if (
+        schema.type === "array" &&
+        schema.items &&
+        !Array.isArray(schema.items) &&
+        !("$ref" in schema.items)
+      ) {
+        schema.items = { ...schema.items, format: propDoc.format };
+      } else {
+        schema.format = propDoc.format;
+      }
+    }
+    if (propDoc.default !== undefined) {
+      const isDynamic = isDynamicDefaultValue(propDoc.default);
+      if (!(this.options.excludeDynamicDefaults && isDynamic)) {
+        const rawDefault =
+          typeof propDoc.default === "function"
+            ? (propDoc.default as () => unknown)()
+            : propDoc.default;
+        schema.default = this.sanitizeDefaultValue(
+          rawDefault,
+          defaultModelCtor,
+        );
+      }
+    }
+    const maxDepth = this.options.exampleMaxDepth;
+    if (propDoc.example !== undefined) {
+      schema.example =
+        maxDepth !== undefined
+          ? truncateExampleDepth(propDoc.example, maxDepth)
+          : propDoc.example;
+    }
+    if (propDoc.examples !== undefined) {
+      const unwrapExample = (entry: unknown): unknown =>
+        isPlainObject(entry) && "value" in entry ? entry.value : entry;
+      const rawValues = Array.isArray(propDoc.examples)
+        ? [...propDoc.examples]
+        : Object.values(propDoc.examples).map(unwrapExample);
+      const boundedValues =
+        maxDepth !== undefined
+          ? rawValues.map((ex) => truncateExampleDepth(ex, maxDepth))
+          : rawValues;
+      if (this.isOas31()) {
+        schema.examples = boundedValues;
+      } else if (schema.example === undefined && boundedValues.length > 0) {
+        schema.example = boundedValues[0];
+      }
+    }
+    if (propDoc.deprecated !== undefined) {
+      schema.deprecated = propDoc.deprecated;
+    }
+    if (propDoc.readOnly !== undefined) schema.readOnly = propDoc.readOnly;
+    if (propDoc.writeOnly !== undefined) schema.writeOnly = propDoc.writeOnly;
+  }
+
   private buildPropertySchema(
     dto: Type<unknown> | Function,
     propKey: string,
@@ -2907,6 +3187,8 @@ export class SchemaExplorer {
     valHints: Partial<OpenApiSchema> | undefined,
     entityCol?: EntityColumnMetadata,
     transformerTypeFn?: (options?: unknown) => unknown,
+    propDoc?: PropDocHints,
+    deepPartialWrapper?: (ctor: Type<unknown>) => Type<unknown>,
   ): OpenApiSchema {
     if (apiMeta?.schema) {
       const cloned = { ...apiMeta.schema };
@@ -2920,7 +3202,7 @@ export class SchemaExplorer {
       }
       return this.finalizeNullable(
         cloned,
-        apiMeta.nullable ?? entityCol?.nullable,
+        apiMeta.nullable ?? propDoc?.nullable ?? entityCol?.nullable,
       );
     }
 
@@ -2946,26 +3228,68 @@ export class SchemaExplorer {
       } else {
         base = isEnumArray ? { type: "array", items: enumRef } : enumRef;
       }
+      if (apiMeta.title !== undefined) {
+        base.title = apiMeta.title;
+      } else if (propDoc?.title !== undefined) {
+        base.title = propDoc.title;
+      }
       if (apiMeta.description !== undefined) {
         base.description = apiMeta.description;
+      } else if (propDoc?.description !== undefined) {
+        base.description = propDoc.description;
       } else if (entityCol?.description !== undefined) {
         base.description = entityCol.description;
       }
+      let resolvedDefault: unknown;
       if (apiMeta.default !== undefined) {
-        base.default = apiMeta.default;
+        resolvedDefault = apiMeta.default;
+      } else if (propDoc?.default !== undefined) {
+        resolvedDefault = propDoc.default;
       } else if (entityCol?.hasDefault && entityCol.default !== undefined) {
-        base.default = entityCol.default;
+        resolvedDefault = entityCol.default;
       }
+      if (resolvedDefault !== undefined) {
+        const isDynamic = isDynamicDefaultValue(resolvedDefault);
+        if (!(this.options.excludeDynamicDefaults && isDynamic)) {
+          base.default =
+            typeof resolvedDefault === "function"
+              ? (resolvedDefault as () => unknown)()
+              : resolvedDefault;
+        }
+      }
+      const maxDepth = apiMeta.exampleMaxDepth ?? this.options.exampleMaxDepth;
+      let resolvedExample: unknown;
       if (apiMeta.example !== undefined) {
-        base.example = apiMeta.example;
-      } else if (entityCol?.example !== undefined) {
-        base.example = entityCol.example;
+        resolvedExample = apiMeta.example;
+      } else if (propDoc?.example !== undefined) {
+        resolvedExample = propDoc.example;
+      } else {
+        resolvedExample = entityCol?.example;
       }
-      if (apiMeta.deprecated !== undefined)
+      if (resolvedExample !== undefined) {
+        base.example =
+          maxDepth !== undefined
+            ? truncateExampleDepth(resolvedExample, maxDepth)
+            : resolvedExample;
+      }
+      if (apiMeta.deprecated !== undefined) {
         base.deprecated = apiMeta.deprecated;
+      } else if (propDoc?.deprecated !== undefined) {
+        base.deprecated = propDoc.deprecated;
+      }
+      if (apiMeta.readOnly !== undefined) {
+        base.readOnly = apiMeta.readOnly;
+      } else if (propDoc?.readOnly !== undefined) {
+        base.readOnly = propDoc.readOnly;
+      }
+      if (apiMeta.writeOnly !== undefined) {
+        base.writeOnly = apiMeta.writeOnly;
+      } else if (propDoc?.writeOnly !== undefined) {
+        base.writeOnly = propDoc.writeOnly;
+      }
       return this.finalizeNullable(
         base,
-        apiMeta.nullable ?? entityCol?.nullable,
+        apiMeta.nullable ?? propDoc?.nullable ?? entityCol?.nullable,
       );
     }
 
@@ -3011,8 +3335,12 @@ export class SchemaExplorer {
     } else if (hasExplicitCombinator && !isArray) {
       schema = {};
     } else if (resolvedTransformerType !== undefined) {
+      const effectiveTransformerType =
+        deepPartialWrapper && isDtoConstructor(resolvedTransformerType)
+          ? deepPartialWrapper(resolvedTransformerType)
+          : resolvedTransformerType;
       schema = this.resolveTypeSchema(
-        resolvedTransformerType,
+        effectiveTransformerType,
         isArray || reflectedDesignType === Array,
       );
     } else if (entityCol !== undefined) {
@@ -3021,7 +3349,11 @@ export class SchemaExplorer {
       reflectedDesignType !== undefined &&
       reflectedDesignType !== Array
     ) {
-      schema = this.resolveTypeSchema(reflectedDesignType, false);
+      const effectiveDesignType =
+        deepPartialWrapper && isDtoConstructor(reflectedDesignType)
+          ? deepPartialWrapper(reflectedDesignType)
+          : reflectedDesignType;
+      schema = this.resolveTypeSchema(effectiveDesignType, false);
     } else if (isArray) {
       schema = {
         type: "array",
@@ -3038,7 +3370,23 @@ export class SchemaExplorer {
 
     // Apply @bunest/validation inferred hints next (explicit @ApiProperty overrides both)
     if (valHints) {
-      this.applyValidatorHintsToSchema(schema, valHints);
+      const canOverrideObjectType =
+        explicitType === undefined &&
+        entityCol === undefined &&
+        resolvedTransformerType === undefined &&
+        reflectedDesignType === Object;
+      this.applyValidatorHintsToSchema(schema, valHints, canOverrideObjectType);
+    }
+
+    // Apply @Prop(...) documentation metadata (overridden by explicit @ApiProperty)
+    if (propDoc) {
+      let defaultModelCtor: Function | undefined;
+      if (isDtoConstructor(resolvedTransformerType)) {
+        defaultModelCtor = resolvedTransformerType;
+      } else if (isDtoConstructor(reflectedDesignType)) {
+        defaultModelCtor = reflectedDesignType;
+      }
+      this.applyPropDocHintsToSchema(schema, propDoc, defaultModelCtor);
     }
 
     // Apply explicit @ApiProperty options (highest precedence)
@@ -3047,7 +3395,7 @@ export class SchemaExplorer {
     }
 
     const effectiveNullable =
-      apiMeta?.nullable !== undefined ? apiMeta.nullable : entityCol?.nullable;
+      apiMeta?.nullable ?? propDoc?.nullable ?? entityCol?.nullable;
     return this.finalizeNullable(schema, effectiveNullable);
   }
 }

@@ -1,3 +1,5 @@
+import { clamp } from "@bunest/core/common";
+
 export const seconds = (howMany: number): number => howMany * 1000;
 export const minutes = (howMany: number): number => 60 * howMany * seconds(1);
 export const hours = (howMany: number): number => 60 * howMany * minutes(1);
@@ -182,7 +184,7 @@ export function normalizeIp(
   }
 
   const prefix = Number.isFinite(ipv6SubnetPrefix)
-    ? Math.min(Math.max(Math.trunc(ipv6SubnetPrefix), 0), 128)
+    ? clamp(Math.trunc(ipv6SubnetPrefix), 0, 128)
     : DEFAULT_IPV6_SUBNET_PREFIX;
 
   return `${formatIpv6(maskHextets(hextets, prefix))}/${prefix}`;

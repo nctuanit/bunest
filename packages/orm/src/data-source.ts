@@ -14,6 +14,10 @@ import {
   type CompiledMetadataGraph,
 } from "./metadata-graph";
 import { OrmMigrationRunner } from "./migration-runner";
+import {
+  createNPlusOneDetector,
+  type NPlusOneDetectorHandle,
+} from "./n-plus-one-detector";
 import type { MongoRepository } from "./mongo-repository";
 import type { SelectQueryBuilder } from "./query-builder";
 import type { OrmRepository, OrmRepositoryRuntime } from "./repository";
@@ -56,6 +60,7 @@ export class DataSource {
   private _manager?: EntityManager;
   private _schemaBuilder?: SchemaBuilder;
   private _migrationRunner?: OrmMigrationRunner;
+  private _nPlusOneDetector?: NPlusOneDetectorHandle;
   private readonly _registeredEntities: EntityTarget[] = [];
   private readonly _declarativeRepoCache = new Map<Function, object>();
 
@@ -173,6 +178,14 @@ export class DataSource {
       await this.runMigrations();
     }
 
+    if (this.options.detectNPlusOne) {
+      const detectorOpts =
+        this.options.detectNPlusOne === true
+          ? { dataSourceName: this.name }
+          : { ...this.options.detectNPlusOne, dataSourceName: this.name };
+      this._nPlusOneDetector = createNPlusOneDetector(detectorOpts);
+    }
+
     return this;
   }
 
@@ -223,6 +236,8 @@ export class DataSource {
 
   async destroy(): Promise<void> {
     if (!this._isInitialized) return;
+    this._nPlusOneDetector?.stop();
+    this._nPlusOneDetector = undefined;
     this._manager?.clearRepositoryCache();
     this._declarativeRepoCache.clear();
     await this._driver?.close();

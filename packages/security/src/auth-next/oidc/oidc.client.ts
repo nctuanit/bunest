@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import { JwtError } from "../errors/jwt.error";
 import { OidcError } from "../errors/oidc.error";
 import type { JwtClaims } from "../interfaces/jwt.interface";
@@ -309,11 +310,7 @@ export class OidcClient {
     if (typeof claims.sub !== "string" || !claims.sub) {
       throw new OidcError("id_token without subject", "verification");
     }
-    const audiences = Array.isArray(claims.aud)
-      ? claims.aud
-      : claims.aud !== undefined
-        ? [claims.aud]
-        : [];
+    const audiences = toArray(claims.aud);
     if (
       (audiences.length > 1 || claims.azp !== undefined) &&
       claims.azp !== this.config.clientId

@@ -248,19 +248,17 @@ function readMorphFields(
   rel: CompiledRelationMetadata,
 ): { typeVal: unknown; idVal: unknown } {
   const rec = entity as Record<string, unknown>;
-  const typeVal =
-    rel.morphTypePropertyName && rec[rel.morphTypePropertyName] !== undefined
-      ? rec[rel.morphTypePropertyName]
-      : rel.morphTypeColumnName
-        ? getShadowFk(entity, rel.morphTypeColumnName)
-        : undefined;
-  const idVal =
-    rel.morphIdPropertyName && rec[rel.morphIdPropertyName] !== undefined
-      ? rec[rel.morphIdPropertyName]
-      : rel.morphIdColumnName
-        ? getShadowFk(entity, rel.morphIdColumnName)
-        : undefined;
-  return { typeVal, idVal };
+  const readField = (
+    propName: string | undefined,
+    colName: string | undefined,
+  ): unknown => {
+    if (propName && rec[propName] !== undefined) return rec[propName];
+    return colName ? getShadowFk(entity, colName) : undefined;
+  };
+  return {
+    typeVal: readField(rel.morphTypePropertyName, rel.morphTypeColumnName),
+    idVal: readField(rel.morphIdPropertyName, rel.morphIdColumnName),
+  };
 }
 
 function resolveMorphTargetEntry(

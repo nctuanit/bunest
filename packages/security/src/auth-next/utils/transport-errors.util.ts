@@ -44,6 +44,11 @@ const PHRASES: Record<401 | 403 | 409, string> = {
   403: "Forbidden",
   409: "Conflict",
 };
+const HTTP_EXCEPTIONS = {
+  401: UnauthorizedException,
+  403: ForbiddenException,
+  409: ConflictException,
+} as const;
 
 /** The refusal for an `AuthenticationError` a provider or a handler threw. */
 export function refusalOf(error: AuthenticationError): Refusal {
@@ -110,12 +115,7 @@ export async function refusal(
       break;
   }
 
-  const Exception =
-    status === 409
-      ? ConflictException
-      : status === 403
-        ? ForbiddenException
-        : UnauthorizedException;
+  const Exception = HTTP_EXCEPTIONS[status];
   const options: HttpExceptionOptions = {
     cause,
     ...(code

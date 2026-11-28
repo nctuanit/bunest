@@ -13,6 +13,7 @@ import {
   type Type,
 } from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
+import { isPromiseLike, toArray } from "@bunest/core/common";
 import { getCurrentRequestContext } from "@bunest/core/http";
 import type { JwtPayload, JwtVerifyOptions } from "../jwt/jwt.interface";
 import { JwtService } from "../jwt/jwt.service";
@@ -217,10 +218,7 @@ async function executeStrategy(
 
       try {
         const maybePromise = instance.authenticate(req, options);
-        if (
-          maybePromise &&
-          typeof (maybePromise as PromiseLike<unknown>).then === "function"
-        ) {
+        if (isPromiseLike(maybePromise)) {
           Promise.resolve(maybePromise).catch((err: unknown) =>
             finish({ err, user: null }),
           );
@@ -292,11 +290,7 @@ const authGuardMixinCache = new Map<string, Type<IAuthGuard>>();
  */
 export function AuthGuard(type?: string | readonly string[]): Type<IAuthGuard> {
   const strategyList: readonly string[] | undefined =
-    type === undefined
-      ? undefined
-      : Array.isArray(type)
-        ? [...type]
-        : [type as string];
+    type === undefined ? undefined : toArray(type);
 
   if (strategyList !== undefined) {
     if (strategyList.length === 0) {
@@ -529,15 +523,9 @@ export function AuthGuard(type?: string | readonly string[]): Type<IAuthGuard> {
       if (strategyList !== undefined) {
         return strategyList;
       }
-      const fromRegistry = this.registry?.getDefaultStrategy();
-      if (fromRegistry) {
-        return Array.isArray(fromRegistry) ? fromRegistry : [fromRegistry];
-      }
-      const fromOpts = mergedOptions.defaultStrategy;
-      if (fromOpts) {
-        return Array.isArray(fromOpts) ? fromOpts : [fromOpts];
-      }
-      return [];
+      const configured =
+        this.registry?.getDefaultStrategy() || mergedOptions.defaultStrategy;
+      return configured ? toArray(configured) : [];
     }
   }
 

@@ -79,6 +79,16 @@ export {
 } from "./errors";
 
 // Zero-overhead Diagnostics Channel Telemetry
+export { runInRollbackTransaction } from "./testing-transaction";
+export {
+  OrmNPlusOneError,
+  createNPlusOneDetector,
+  normalizeSqlFingerprint,
+  withNPlusOneDetection,
+  type NPlusOneDetectionEvent,
+  type NPlusOneDetectorHandle,
+  type NPlusOneDetectorOptions,
+} from "./n-plus-one-detector";
 export {
   ORM_QUERY_CHANNEL,
   ORM_TRANSACTION_CHANNEL,

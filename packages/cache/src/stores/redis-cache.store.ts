@@ -1,3 +1,4 @@
+import { trimPrefix } from "@bunest/core/common";
 import type {
   CacheSetOptions,
   CacheStore,
@@ -120,8 +121,7 @@ export class RedisCacheStore implements CacheStore {
     ttlMsOrOptions?: CacheTtlOrOptions,
   ): Promise<void> {
     const opts = normalizeSetOptions(ttlMsOrOptions);
-    const explicitTtl = opts.ttlMs !== undefined ? opts.ttlMs : opts.ttl;
-    const ttlMs = explicitTtl !== undefined ? explicitTtl : this.defaultTtlMs;
+    const ttlMs = opts.ttlMs ?? opts.ttl ?? this.defaultTtlMs;
     const fullKey = this.prefixKey(key);
 
     if (ttlMs < 0) {
@@ -199,11 +199,7 @@ export class RedisCacheStore implements CacheStore {
     const pattern = `${escapeGlob(this.prefixKey(prefix))}*`;
     const matched = await this.scanMatchingKeys(pattern);
     return matched
-      .map((fullKey) =>
-        this.keyPrefix.length > 0 && fullKey.startsWith(this.keyPrefix)
-          ? fullKey.slice(this.keyPrefix.length)
-          : fullKey,
-      )
+      .map((fullKey) => trimPrefix(fullKey, this.keyPrefix))
       .filter((key) => !key.startsWith("__tag:"));
   }
 

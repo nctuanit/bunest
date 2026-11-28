@@ -109,11 +109,14 @@ export function ApiOperation(
       SWAGGER_METADATA_KEYS.API_OPERATION,
       descriptor.value,
     );
-    const merged: ApiOperationOptions = existing
-      ? overrideExisting
+    let merged: ApiOperationOptions;
+    if (!existing) {
+      merged = { ...options };
+    } else {
+      merged = overrideExisting
         ? { ...existing, ...options }
-        : { ...options, ...existing }
-      : { ...options };
+        : { ...options, ...existing };
+    }
     MetadataRegistry.define<ApiOperationOptions>(
       SWAGGER_METADATA_KEYS.API_OPERATION,
       merged,
@@ -414,13 +417,10 @@ export function ApiProperty(
       options.selfRequired !== undefined ||
       typeof options.required === "boolean";
 
+    const explicitRequired = options.selfRequired ?? Boolean(options.required);
     const mergedRequired = hasExplicitRequired
-      ? options.selfRequired !== undefined
-        ? options.selfRequired
-        : Boolean(options.required)
-      : existingEntry !== undefined
-        ? existingEntry.required
-        : true;
+      ? explicitRequired
+      : (existingEntry?.required ?? true);
 
     const entry: ApiPropertyMetadata = {
       ...(existingEntry ?? {}),

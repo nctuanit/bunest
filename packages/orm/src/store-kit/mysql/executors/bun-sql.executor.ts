@@ -163,12 +163,12 @@ async function write(
   const result = (await db.unsafe(text, [...params])) as
     | { affectedRows?: unknown; count?: unknown }
     | undefined;
-  const affectedRows =
-    typeof result?.affectedRows === "number"
-      ? result.affectedRows
-      : typeof result?.count === "number"
-        ? result.count
-        : 0;
+  let affectedRows = 0;
+  if (typeof result?.affectedRows === "number") {
+    affectedRows = result.affectedRows;
+  } else if (typeof result?.count === "number") {
+    affectedRows = result.count;
+  }
   return { affectedRows };
 }
 

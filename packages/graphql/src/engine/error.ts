@@ -133,12 +133,9 @@ export class GraphQLError extends Error {
         ? (originalErrorInput.extensions as GraphQLErrorExtensions)
         : undefined;
 
+    const baseExtensions = extensionsInput ?? origExtensions;
     const extensions: GraphQLErrorExtensions =
-      extensionsInput != null
-        ? { ...extensionsInput }
-        : origExtensions != null
-          ? { ...origExtensions }
-          : Object.create(null);
+      baseExtensions != null ? { ...baseExtensions } : Object.create(null);
 
     this.nodes = nodes;
     this.source = source;
@@ -209,14 +206,16 @@ export function locatedError(
     return rawOriginalError;
   }
 
-  const originalError =
-    rawOriginalError instanceof Error
-      ? rawOriginalError
-      : new Error(
-          typeof rawOriginalError === "string"
-            ? rawOriginalError
-            : String(rawOriginalError),
-        );
+  let originalError: Error;
+  if (rawOriginalError instanceof Error) {
+    originalError = rawOriginalError;
+  } else {
+    originalError = new Error(
+      typeof rawOriginalError === "string"
+        ? rawOriginalError
+        : String(rawOriginalError),
+    );
+  }
 
   const isAlreadyGql = isGraphQLError(rawOriginalError);
   return new GraphQLError(originalError.message, {

@@ -1,6 +1,4 @@
-function escapeHtml(text: string): string {
-  return Bun.escapeHTML(text);
-}
+import { escapeHtml } from "@bunest/core/common";
 
 function escapeJsonForScript(value: unknown): string {
   return JSON.stringify(value)

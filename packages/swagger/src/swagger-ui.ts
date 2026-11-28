@@ -1,11 +1,8 @@
+import { escapeHtml } from "@bunest/core/common";
 import type {
   OpenApiDocument,
   SwaggerSetupOptions,
 } from "./interfaces/openapi.interface";
-
-function escapeHtml(text: string): string {
-  return Bun.escapeHTML(text);
-}
 
 function serializeSafeJsValue(value: unknown): string {
   return JSON.stringify(value)
@@ -315,14 +312,16 @@ export function renderSwaggerHtml(
     ? `\n        <a id="api-yaml-link" href="${safeInitialYamlUrl}" target="_blank" rel="noopener">OpenAPI YAML (${safeInitialYamlUrl})</a>`
     : "";
 
-  const versionSelectorHtml = hasVersionSelector
-    ? `\n      <select id="version-selector" aria-label="API Version" class="version-select">${specUrls
-        .map(
-          (entry, idx) =>
-            `<option value="${escapeHtml(entry.url)}"${idx === defaultUrlIndex ? " selected" : ""}>${escapeHtml(entry.name)}</option>`,
-        )
-        .join("")}</select>`
-    : "";
+  let versionSelectorHtml = "";
+  if (hasVersionSelector) {
+    const optionTags = specUrls
+      .map((entry, idx) => {
+        const selected = idx === defaultUrlIndex ? " selected" : "";
+        return `<option value="${escapeHtml(entry.url)}"${selected}>${escapeHtml(entry.name)}</option>`;
+      })
+      .join("");
+    versionSelectorHtml = `\n      <select id="version-selector" aria-label="API Version" class="version-select">${optionTags}</select>`;
+  }
 
   const explorerBarHtml = options.explorer
     ? `\n    <div style="margin-bottom: 16px;"><input id="explorer-filter" type="text" placeholder="Filter endpoints by path, summary, or tag..." /></div>`

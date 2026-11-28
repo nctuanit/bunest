@@ -123,11 +123,12 @@ class TypeOrmExecutor implements SqlExecutor<"postgres"> {
   }
 
   wrapTransaction(transaction: unknown): SqlTransaction {
-    const runner = isEntityManager(transaction)
-      ? transaction.queryRunner
-      : isQueryRunner(transaction)
-        ? transaction
-        : undefined;
+    let runner: TypeOrmQueryRunnerLike | undefined;
+    if (isEntityManager(transaction)) {
+      runner = transaction.queryRunner;
+    } else if (isQueryRunner(transaction)) {
+      runner = transaction;
+    }
     if (!runner?.isTransactionActive) {
       throw notATransaction(
         isEntityManager(transaction) || isQueryRunner(transaction)

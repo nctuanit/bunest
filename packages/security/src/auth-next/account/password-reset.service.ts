@@ -83,7 +83,7 @@ export class PasswordResetService implements OnModuleDestroy {
     if (!isMailableEmail(requested)) {
       return;
     }
-    const work = new Promise<void>((resolve) => setTimeout(resolve, 0))
+    const work = Bun.sleep(0)
       .then(() => this.issue(requested))
       .catch((error) =>
         PasswordResetService.logger.error(

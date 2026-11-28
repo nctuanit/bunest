@@ -112,6 +112,8 @@ export class D1OrmDriver implements OrmDriver {
     const track = shouldTrackQuery(this.options.logging);
     const start = track ? performance.now() : 0;
     const bound = this.normalizeParams(params);
+    let queryResult: OrmQueryResult<T>;
+    let telemetryCount: number;
     try {
       if (this.options.binding) {
         const prepared = this.options.binding.prepare(sql);
@@ -119,72 +121,50 @@ export class D1OrmDriver implements OrmDriver {
         const res = await stmt.all<T>();
         const rows = res.results ?? [];
         const affectedRows = res.meta?.changes ?? rows.length;
-        if (track) {
-          emitQueryTelemetry(
-            this.options.logging,
-            this.dialect,
-            sql,
-            params,
-            start,
-            rows.length > 0 ? rows.length : affectedRows,
-            undefined,
-            this.dataSourceName,
-          );
-        }
-        return {
+        telemetryCount = rows.length > 0 ? rows.length : affectedRows;
+        queryResult = {
           rows,
           affectedRows,
           lastInsertRowid: res.meta?.last_row_id ?? null,
         };
+      } else {
+        const base = (
+          this.options.apiBaseUrl ?? "https://api.cloudflare.com/client/v4"
+        ).replace(/\/+$/, "");
+        const url = `${base}/accounts/${this.options.accountId}/d1/database/${this.options.databaseId}/query`;
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.options.apiToken}`,
+            ...(this.options.headers ?? {}),
+          },
+          body: JSON.stringify({ sql, params: bound }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text().catch(() => response.statusText);
+          throw new Error(`Cloudflare D1 HTTP ${response.status}: ${text}`);
+        }
+
+        const data = (await response.json()) as D1ApiResponse<T>;
+        if (data.success === false) {
+          throw new Error(
+            data.errors?.map((e) => e.message).join("; ") || "Cloudflare D1 query failed",
+          );
+        }
+
+        const first = data.result?.[0];
+        const rows = first?.results ?? [];
+        const affectedRows = first?.meta?.changes ?? rows.length;
+        telemetryCount = rows.length > 0 ? rows.length : affectedRows;
+        queryResult = {
+          rows,
+          affectedRows,
+          lastInsertRowid: first?.meta?.last_row_id ?? null,
+        };
       }
-
-      const base = (
-        this.options.apiBaseUrl ?? "https://api.cloudflare.com/client/v4"
-      ).replace(/\/+$/, "");
-      const url = `${base}/accounts/${this.options.accountId}/d1/database/${this.options.databaseId}/query`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.options.apiToken}`,
-          ...(this.options.headers ?? {}),
-        },
-        body: JSON.stringify({ sql, params: bound }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
-        throw new Error(`Cloudflare D1 HTTP ${response.status}: ${text}`);
-      }
-
-      const data = (await response.json()) as D1ApiResponse<T>;
-      if (data.success === false) {
-        throw new Error(
-          data.errors?.map((e) => e.message).join("; ") || "Cloudflare D1 query failed",
-        );
-      }
-
-      const first = data.result?.[0];
-      const rows = first?.results ?? [];
-      const affectedRows = first?.meta?.changes ?? rows.length;
-      if (track) {
-        emitQueryTelemetry(
-          this.options.logging,
-          this.dialect,
-          sql,
-          params,
-          start,
-          rows.length > 0 ? rows.length : affectedRows,
-          undefined,
-          this.dataSourceName,
-        );
-      }
-      return {
-        rows,
-        affectedRows,
-        lastInsertRowid: first?.meta?.last_row_id ?? null,
-      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (track) {
@@ -201,6 +181,19 @@ export class D1OrmDriver implements OrmDriver {
       }
       throw new QueryFailedError(error.message, sql, params, error);
     }
+    if (track) {
+      emitQueryTelemetry(
+        this.options.logging,
+        this.dialect,
+        sql,
+        params,
+        start,
+        telemetryCount,
+        undefined,
+        this.dataSourceName,
+      );
+    }
+    return queryResult;
   }
 
   async execute(

@@ -41,16 +41,20 @@ export interface DrizzleMySqlDatabaseLike {
 export function fromDrizzle(db: DrizzleMySqlDatabaseLike): SqlExecutor {
   if (!isDatabase(db) || isTransaction(db) || !hasMethod(db, "execute")) {
     const other = otherDatabase(db);
-    throw new TypeError(
-      isTransaction(db)
-        ? "fromDrizzle() takes the database drizzle() returns, not a transaction: pass the tx to a store method that takes your transaction ({ transaction: tx })."
-        : other
-          ? `fromDrizzle() takes a Drizzle MySQL database (drizzle() of drizzle-orm/mysql2), not a ${other} one` +
-            (other === "PostgreSQL"
-              ? ": a PostgreSQL store takes that, through fromDrizzle() from its package's /postgres subpath."
-              : ".")
-          : `fromDrizzle() takes a Drizzle MySQL database (drizzle() of drizzle-orm/mysql2), got ${describeValue(db)}.`,
-    );
+    let message: string;
+    if (isTransaction(db)) {
+      message =
+        "fromDrizzle() takes the database drizzle() returns, not a transaction: pass the tx to a store method that takes your transaction ({ transaction: tx }).";
+    } else if (other) {
+      const hint =
+        other === "PostgreSQL"
+          ? ": a PostgreSQL store takes that, through fromDrizzle() from its package's /postgres subpath."
+          : ".";
+      message = `fromDrizzle() takes a Drizzle MySQL database (drizzle() of drizzle-orm/mysql2), not a ${other} one${hint}`;
+    } else {
+      message = `fromDrizzle() takes a Drizzle MySQL database (drizzle() of drizzle-orm/mysql2), got ${describeValue(db)}.`;
+    }
+    throw new TypeError(message);
   }
   const client = db.$client;
   if (isMysql2Client(client)) {
@@ -97,13 +101,16 @@ class DrizzleExecutor implements SqlExecutor {
   wrapTransaction(transaction: unknown): SqlTransaction {
     if (!isTransaction(transaction)) {
       const other = otherDatabase(transaction);
-      throw notATransaction(
-        isDatabase(transaction)
-          ? "Pass the tx your db.transaction() callback receives, not the database: a statement on the database runs outside your transaction."
-          : other
-            ? `Pass the tx of a Drizzle MySQL database, not of a ${other} one: the store's statements run on MySQL.`
-            : `Pass the tx your Drizzle db.transaction() callback receives, got ${describeValue(transaction)}.`,
-      );
+      let message: string;
+      if (isDatabase(transaction)) {
+        message =
+          "Pass the tx your db.transaction() callback receives, not the database: a statement on the database runs outside your transaction.";
+      } else if (other) {
+        message = `Pass the tx of a Drizzle MySQL database, not of a ${other} one: the store's statements run on MySQL.`;
+      } else {
+        message = `Pass the tx your Drizzle db.transaction() callback receives, got ${describeValue(transaction)}.`;
+      }
+      throw notATransaction(message);
     }
     return drizzleTransaction(transaction as DrizzleMySqlDatabaseLike);
   }

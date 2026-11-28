@@ -1,3 +1,4 @@
+import { omit } from "@bunest/core/common";
 import {
   HttpException,
   HttpStatus,
@@ -53,15 +54,6 @@ const apolloPredefinedExceptions: Record<number, string> = {
   [HttpStatus.UNAUTHORIZED]: "UNAUTHENTICATED",
   [HttpStatus.FORBIDDEN]: "FORBIDDEN",
 };
-
-function omitKey<T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  key: K,
-): Omit<T, K> {
-  const copy = { ...obj };
-  delete copy[key];
-  return copy;
-}
 
 export abstract class ApolloBaseDriver<
   T extends Record<string, any> = ApolloDriverConfig,
@@ -125,7 +117,7 @@ export abstract class ApolloBaseDriver<
 
     const merged = (await super.mergeDefaultOptions(
       options,
-      omitKey(defaults, "plugins"),
+      omit(defaults, ["plugins"]),
     )) as Record<string, unknown>;
 
     const defaultPlugins = Array.isArray(defaults.plugins)

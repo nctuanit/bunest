@@ -80,12 +80,12 @@ export class PluginsExplorerService extends BaseExplorerService {
     }
 
     const instance = w.instance;
-    const ctor =
-      instance && typeof instance === "object"
-        ? (instance as { constructor?: Function }).constructor
-        : typeof w.metatype === "function"
-          ? w.metatype
-          : undefined;
+    let ctor: Function | undefined;
+    if (instance && typeof instance === "object") {
+      ctor = (instance as { constructor?: Function }).constructor;
+    } else if (typeof w.metatype === "function") {
+      ctor = w.metatype;
+    }
 
     if (!ctor || typeof ctor !== "function") {
       return undefined;

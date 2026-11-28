@@ -4,6 +4,7 @@ import {
   type MethodAspectContext,
   type MethodAspectHandler,
 } from "@bunest/core";
+import { definedOnly, isFunction, isString } from "@bunest/core/common";
 import { CacheService } from "../cache.service";
 import type { CacheSetOptions } from "../interfaces/cache.interface";
 
@@ -127,10 +128,10 @@ function resolveKey(
   ctx: MethodAspectContext<unknown>,
   keyOption?: CacheAspectKeyResolver,
 ): string {
-  if (typeof keyOption === "function") {
+  if (isFunction(keyOption)) {
     return keyOption(...ctx.args);
   }
-  if (typeof keyOption === "string" && keyOption.length > 0) {
+  if (isString(keyOption) && keyOption.length > 0) {
     return keyOption;
   }
   return buildDefaultCacheKey(ctx);
@@ -145,12 +146,12 @@ function resolveTags(
   if (!tagsOption) {
     return undefined;
   }
-  const resolved =
-    typeof tagsOption === "function"
-      ? hasResult
-        ? tagsOption(...args, result)
-        : tagsOption(...args)
-      : tagsOption;
+  let resolved: readonly string[] | undefined;
+  if (isFunction(tagsOption)) {
+    resolved = hasResult ? tagsOption(...args, result) : tagsOption(...args);
+  } else {
+    resolved = tagsOption;
+  }
   return resolved && resolved.length > 0 ? [...resolved] : undefined;
 }
 
@@ -160,7 +161,7 @@ function buildSetOptions(
 ): CacheSetOptions | number | undefined {
   if (tags && tags.length > 0) {
     return {
-      ...(ttl !== undefined ? { ttlMs: ttl } : {}),
+      ...definedOnly({ ttlMs: ttl }),
       tags,
     };
   }
@@ -264,10 +265,9 @@ export class CacheEvictAspectHandler implements MethodAspectHandler<CacheEvictOp
     }
 
     if (options.prefix !== undefined) {
-      const prefix =
-        typeof options.prefix === "function"
-          ? options.prefix(...ctx.args)
-          : options.prefix;
+      const prefix = isFunction(options.prefix)
+        ? options.prefix(...ctx.args)
+        : options.prefix;
       await this.cacheService.deleteByPrefix(prefix);
       didEvict = true;
     }
@@ -315,8 +315,9 @@ export class CachePutAspectHandler implements MethodAspectHandler<CachePutOption
 export function Cacheable(
   options: CacheableOptions | string = {},
 ): ClassDecorator & MethodDecorator {
-  const normalized: CacheableOptions =
-    typeof options === "string" ? { key: options } : options;
+  const normalized: CacheableOptions = isString(options)
+    ? { key: options }
+    : options;
   return createMethodAspectDecorator(CacheableAspectHandler, normalized);
 }
 
@@ -328,8 +329,9 @@ export function Cacheable(
 export function CacheEvict(
   options: CacheEvictOptions | string = {},
 ): ClassDecorator & MethodDecorator {
-  const normalized: CacheEvictOptions =
-    typeof options === "string" ? { key: options } : options;
+  const normalized: CacheEvictOptions = isString(options)
+    ? { key: options }
+    : options;
   return createMethodAspectDecorator(CacheEvictAspectHandler, normalized);
 }
 
@@ -340,7 +342,8 @@ export function CacheEvict(
 export function CachePut(
   options: CachePutOptions | string = {},
 ): ClassDecorator & MethodDecorator {
-  const normalized: CachePutOptions =
-    typeof options === "string" ? { key: options } : options;
+  const normalized: CachePutOptions = isString(options)
+    ? { key: options }
+    : options;
   return createMethodAspectDecorator(CachePutAspectHandler, normalized);
 }

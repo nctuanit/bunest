@@ -13,6 +13,64 @@ import {
   createValidationMetadata,
   getMetadataStorage,
 } from "../storage/metadata-storage";
+import { readDesignType } from "../../transformer/engine/builtins.util";
+import { defaultMetadataStorage as defaultTransformMetadataStorage } from "../../transformer/storage/metadata-storage";
+
+const NON_DTO_DESIGN_TYPES = new Set<Function>(
+  (
+    [
+      Object,
+      Array,
+      String,
+      Number,
+      Boolean,
+      Date,
+      RegExp,
+      Function,
+      Map,
+      Set,
+      WeakMap,
+      WeakSet,
+      Promise,
+      Symbol,
+      BigInt,
+      Error,
+      ArrayBuffer,
+      DataView,
+      Int8Array,
+      Uint8Array,
+      Uint8ClampedArray,
+      Int16Array,
+      Uint16Array,
+      Int32Array,
+      Uint32Array,
+      Float32Array,
+      Float64Array,
+      BigInt64Array,
+      BigUint64Array,
+      typeof SharedArrayBuffer === "function" ? SharedArrayBuffer : undefined,
+      typeof Buffer === "function" ? Buffer : undefined,
+      typeof URL === "function" ? URL : undefined,
+      typeof URLSearchParams === "function" ? URLSearchParams : undefined,
+      typeof Blob === "function" ? Blob : undefined,
+      typeof File === "function" ? File : undefined,
+      typeof FormData === "function" ? FormData : undefined,
+      typeof Headers === "function" ? Headers : undefined,
+      typeof Request === "function" ? Request : undefined,
+      typeof Response === "function" ? Response : undefined,
+      typeof ReadableStream === "function" ? ReadableStream : undefined,
+    ] as Array<Function | undefined>
+  ).filter((ctor): ctor is Function => typeof ctor === "function"),
+);
+
+export interface ValidateNestedOptions extends ValidationOptions {
+  /**
+   * Optional nested DTO constructor resolver (e.g. `() => ItemDto`).
+   * Automatically registers transformer `@Type(type)` metadata so you do not
+   * need to stack `@ValidateNested({ each: true })` with `@Type(() => ItemDto)`.
+   */
+  readonly type?: () => Function;
+}
 
 export const IS_OPTIONAL = "isOptional";
 export const IS_DEFINED = ValidationTypes.IS_DEFINED;
@@ -155,23 +213,51 @@ export function ValidateIf<
 }
 
 export function ValidateNested(
-  validationOptions?: ValidationOptions,
+  validationOptions?: ValidateNestedOptions,
 ): PropertyDecorator {
-  const opts: ValidationOptions = { ...validationOptions };
+  const { type: nestedTypeFn, ...restOpts } = validationOptions ?? {};
+  const opts: ValidationOptions = { ...restOpts };
   const eachPrefix = opts.each ? "each value in " : "";
   opts.message =
     opts.message ??
     `${eachPrefix}nested property $property must be either object or array`;
 
   return (object: object, propertyName: string | symbol): void => {
+    const prop = String(propertyName);
     getMetadataStorage().addValidationMetadata(
       createValidationMetadata({
         type: ValidationTypes.NESTED_VALIDATION,
         target: object.constructor,
-        propertyName: String(propertyName),
+        propertyName: prop,
         validationOptions: opts,
       }),
     );
+
+    const reflectedType = readDesignType(object, prop);
+    if (typeof nestedTypeFn === "function") {
+      defaultTransformMetadataStorage.addTypeMetadata({
+        target: object.constructor,
+        propertyName: prop,
+        reflectedType,
+        typeFunction: nestedTypeFn,
+        options: {},
+      });
+    } else if (
+      !opts.each &&
+      typeof reflectedType === "function" &&
+      !NON_DTO_DESIGN_TYPES.has(reflectedType) &&
+      !defaultTransformMetadataStorage
+        .getOwnTypeMap(object.constructor)
+        ?.has(prop)
+    ) {
+      defaultTransformMetadataStorage.addTypeMetadata({
+        target: object.constructor,
+        propertyName: prop,
+        reflectedType,
+        typeFunction: () => reflectedType,
+        options: {},
+      });
+    }
   };
 }
 

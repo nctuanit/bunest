@@ -1,8 +1,6 @@
 import {
-  base64UrlEncode,
   randomToken,
   timingSafeEqualString,
-  utf8Encode,
 } from "../utils/crypto.util";
 
 export type PkceCodeChallengeMethod = "S256";
@@ -53,22 +51,27 @@ export function isValidPkceVerifier(codeVerifier: string): boolean {
 }
 
 /**
- * Computes an RFC 7636 `S256` PKCE `code_challenge` from a `code_verifier`
- * using native WebCrypto SHA-256 (`BASE64URL(SHA256(ASCII(code_verifier)))`).
+ * Synchronously computes an RFC 7636 `S256` PKCE `code_challenge` from a
+ * `code_verifier` using Bun's Zig-native `Bun.CryptoHasher`
+ * (`BASE64URL(SHA256(ASCII(code_verifier)))`).
  */
-export async function computePkceChallenge(
-  codeVerifier: string,
-): Promise<string> {
+export function computePkceChallengeSync(codeVerifier: string): string {
   if (!isValidPkceVerifier(codeVerifier)) {
     throw new Error(
       "Invalid PKCE code_verifier: must be 43-128 characters from [A-Za-z0-9-._~]",
     );
   }
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    utf8Encode(codeVerifier),
-  );
-  return base64UrlEncode(new Uint8Array(digest));
+  return Bun.CryptoHasher.hash("sha256", codeVerifier, "base64url");
+}
+
+/**
+ * Computes an RFC 7636 `S256` PKCE `code_challenge` from a `code_verifier`
+ * using Bun's Zig-native `Bun.CryptoHasher` (`BASE64URL(SHA256(ASCII(code_verifier)))`).
+ */
+export async function computePkceChallenge(
+  codeVerifier: string,
+): Promise<string> {
+  return computePkceChallengeSync(codeVerifier);
 }
 
 /**

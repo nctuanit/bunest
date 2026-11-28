@@ -7,6 +7,7 @@ import {
   type FactoryDependency,
   type ModuleMetadata,
 } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import { JwtInvalidException } from "../jwt/jwt.errors";
 import type { JwtPayload } from "../jwt/jwt.interface";
 import { timingSafeEqualString } from "../utils/crypto.util";
@@ -389,11 +390,7 @@ export class OidcService {
     }
 
     // OIDC Core §3.1.3.7 rules 4 & 5: azp validation
-    const audiences = Array.isArray(claims.aud)
-      ? claims.aud
-      : typeof claims.aud === "string"
-        ? [claims.aud]
-        : [];
+    const audiences = toArray(claims.aud);
     if (audiences.length > 1) {
       if (typeof claims.azp !== "string" || claims.azp.length === 0) {
         throw new JwtInvalidException(

@@ -1,3 +1,4 @@
+import { isPromiseLike } from "@bunest/core/common";
 import type {
   BunestSchema,
   BunestStandardProps,
@@ -15,15 +16,7 @@ const JSON_SCHEMA_2020_12_URI =
   "https://json-schema.org/draft/2020-12/schema";
 const JSON_SCHEMA_DRAFT_07_URI = "http://json-schema.org/draft-07/schema#";
 
-export function isPromiseLike<T = unknown>(
-  value: unknown,
-): value is PromiseLike<T> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
+export { isPromiseLike };
 
 export function describeType(value: unknown): string {
   if (value === null) return "null";
@@ -171,17 +164,17 @@ export class SchemaValidationError extends Error {
   constructor(issues: ReadonlyArray<StandardSchemaV1Issue>) {
     const summary = issues
       .map((issue) => {
-        const path =
-          issue.path && issue.path.length > 0
-            ? `${issue.path
-                .map((seg) =>
-                  typeof seg === "object" && seg !== null && "key" in seg
-                    ? String(seg.key)
-                    : String(seg),
-                )
-                .join(".")}: `
-            : "";
-        return `${path}${issue.message}`;
+        if (!issue.path || issue.path.length === 0) {
+          return issue.message;
+        }
+        const path = issue.path
+          .map((seg) =>
+            typeof seg === "object" && seg !== null && "key" in seg
+              ? String(seg.key)
+              : String(seg),
+          )
+          .join(".");
+        return `${path}: ${issue.message}`;
       })
       .join("; ");
     super(summary || "Schema validation failed");
@@ -527,6 +520,17 @@ export class RefinedSchema<Input, Output> extends BaseSchema<Input, Output> {
     }
   }
 
+  private _buildFailure(): StandardSchemaV1Result<Output> {
+    return {
+      issues: [
+        {
+          message: this.message,
+          ...(this.issuePath ? { path: [...this.issuePath] } : {}),
+        },
+      ],
+    };
+  }
+
   private _checkValue(
     val: Output,
   ):
@@ -535,29 +539,10 @@ export class RefinedSchema<Input, Output> extends BaseSchema<Input, Output> {
     const ok = this.predicate(val);
     if (isPromiseLike(ok)) {
       return Promise.resolve(ok).then((passed) =>
-        passed
-          ? { value: val }
-          : {
-              issues: [
-                {
-                  message: this.message,
-                  ...(this.issuePath ? { path: [...this.issuePath] } : {}),
-                },
-              ],
-            },
+        passed ? { value: val } : this._buildFailure(),
       );
     }
-    if (!ok) {
-      return {
-        issues: [
-          {
-            message: this.message,
-            ...(this.issuePath ? { path: [...this.issuePath] } : {}),
-          },
-        ],
-      };
-    }
-    return { value: val };
+    return ok ? { value: val } : this._buildFailure();
   }
 
   _parse(

@@ -173,14 +173,16 @@ export class TypeInfo {
         this._directive = schema.getDirective(node.name.value);
         break;
       case Kind.OPERATION_DEFINITION: {
-        const rootType =
-          typeof schema.getRootType === "function"
-            ? schema.getRootType(node.operation)
-            : node.operation === "query"
-              ? schema.getQueryType()
-              : node.operation === "mutation"
-                ? schema.getMutationType()
-                : schema.getSubscriptionType();
+        let rootType: unknown;
+        if (typeof schema.getRootType === "function") {
+          rootType = schema.getRootType(node.operation);
+        } else if (node.operation === "query") {
+          rootType = schema.getQueryType();
+        } else if (node.operation === "mutation") {
+          rootType = schema.getMutationType();
+        } else {
+          rootType = schema.getSubscriptionType();
+        }
         this._typeStack.push(isObjectType(rootType) ? rootType : undefined);
         break;
       }

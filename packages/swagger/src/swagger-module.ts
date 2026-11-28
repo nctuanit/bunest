@@ -1,3 +1,4 @@
+import { ensurePrefix, toArray, unique } from "@bunest/core/common";
 import {
   Controller,
   Get,
@@ -671,11 +672,12 @@ function compareVersionsNaturally(a: string, b: string): number {
     sensitivity: "base",
   });
   if (cmp !== 0) return cmp;
-  return a < b ? -1 : a > b ? 1 : 0;
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 function formatVersionSegment(version: string): string {
-  return version.startsWith("v") ? version : `v${version}`;
+  return ensurePrefix(version, "v");
 }
 
 function isVersionedDocuments(
@@ -723,11 +725,7 @@ function applyUriVersionToPath(
   }
   const normalizedFull = normalizePath(fullPath);
   const versionSegment = `${uriPrefix}${version}`;
-  const candidateGlobals = Array.isArray(globalPrefix)
-    ? globalPrefix
-    : globalPrefix
-      ? [globalPrefix]
-      : [];
+  const candidateGlobals = globalPrefix ? toArray(globalPrefix) : [];
 
   for (const rawGlobal of candidateGlobals) {
     const normalizedGlobal = normalizePath(rawGlobal);
@@ -996,7 +994,7 @@ export class SwaggerModule {
     const hasVersionFilter = options.version !== undefined;
     const requestedVersionSet = hasVersionFilter
       ? new Set(
-          (Array.isArray(options.version) ? options.version : [options.version])
+          toArray(options.version)
             .map((v) => String(v).trim())
             .filter((v) => v.length > 0),
         )
@@ -1375,12 +1373,10 @@ export class SwaggerModule {
           }
 
           const pathItem = ensurePathItem();
-          const baseOpId =
-            operation.operationId !== undefined
-              ? opIdSuffix
-                ? `${operation.operationId}_${opIdSuffix}`
-                : operation.operationId
-              : undefined;
+          let baseOpId = operation.operationId;
+          if (baseOpId !== undefined && opIdSuffix) {
+            baseOpId = `${baseOpId}_${opIdSuffix}`;
+          }
 
           const existingOp =
             isStandard || isQuery
@@ -1480,14 +1476,9 @@ export class SwaggerModule {
             fn,
           );
           if (!whMeta) continue;
-          const rPaths = Array.isArray(rr.path) ? rr.path : [rr.path];
-          const globalPrefixList = Array.isArray(globalPrefix)
-            ? globalPrefix.length > 0
-              ? globalPrefix
-              : [""]
-            : globalPrefix
-              ? [globalPrefix]
-              : [""];
+          const rPaths = toArray(rr.path);
+          const rawGlobals = globalPrefix ? toArray(globalPrefix) : [];
+          const globalPrefixList = rawGlobals.length > 0 ? rawGlobals : [""];
           for (const gp of globalPrefixList) {
             for (const cp of ctrlPaths) {
               for (const rp of rPaths) {
@@ -2308,16 +2299,14 @@ export class SwaggerModule {
         handlerFn,
       ) ?? [];
     const opMetaTags = opMeta?.tags ?? [];
-    const combinedTags = [
-      ...new Set([...ctrlTags, ...methodTags, ...opMetaTags]),
-    ];
+    const combinedTags = unique([...ctrlTags, ...methodTags, ...opMetaTags]);
     const autoTag = options.autoTagControllers !== false;
-    const tags =
-      combinedTags.length > 0
-        ? combinedTags
-        : autoTag
-          ? [defaultTagForController(controller)]
-          : undefined;
+    let tags: string[] | undefined;
+    if (combinedTags.length > 0) {
+      tags = combinedTags;
+    } else if (autoTag) {
+      tags = [defaultTagForController(controller)];
+    }
 
     const controllerName = controller.name || "Controller";
     const handlerName = String(route.handlerKey);
@@ -2675,15 +2664,12 @@ export class SwaggerModule {
             stdSchema && !("$ref" in stdSchema)
               ? stdSchema.description
               : undefined;
+          const description = promotedDesc ?? existing?.description;
           put({
             name: rp.key,
             in: "path",
             required: existing?.required ?? true,
-            ...(promotedDesc !== undefined
-              ? { description: promotedDesc }
-              : existing?.description !== undefined
-                ? { description: existing.description }
-                : {}),
+            ...(description !== undefined ? { description } : {}),
             schema:
               existingSchemaObj?.pattern &&
               !("$ref" in schema) &&
@@ -2716,15 +2702,12 @@ export class SwaggerModule {
                 propSchema && !("$ref" in propSchema)
                   ? propSchema.description
                   : undefined;
+              const description = propDesc ?? existing?.description;
               put({
                 name: propName,
                 in: "path",
                 required: existing?.required ?? true,
-                ...(propDesc !== undefined
-                  ? { description: propDesc }
-                  : existing?.description !== undefined
-                    ? { description: existing.description }
-                    : {}),
+                ...(description !== undefined ? { description } : {}),
                 schema: resolvedSchema,
               });
             }
@@ -3126,15 +3109,14 @@ export class SwaggerModule {
       }
       if (q.enum && !q.enumName) schema.enum = normalizeEnumValues(q.enum);
 
+      const queryDescription = q.description ?? existing?.description;
       const paramObj: OpenApiParameter & Record<string, unknown> = {
         name: qName,
         in: "query",
         required: q.required ?? true,
-        ...(q.description !== undefined
-          ? { description: q.description }
-          : existing?.description !== undefined
-            ? { description: existing.description }
-            : {}),
+        ...(queryDescription !== undefined
+          ? { description: queryDescription }
+          : {}),
         ...(q.deprecated !== undefined ? { deprecated: q.deprecated } : {}),
         ...(q.allowEmptyValue !== undefined
           ? { allowEmptyValue: q.allowEmptyValue }
@@ -3399,21 +3381,23 @@ export class SwaggerModule {
     }
 
     const mediaTypes =
-      consumes.length > 0 ? [...new Set(consumes)] : ["application/json"];
+      consumes.length > 0 ? unique(consumes) : ["application/json"];
 
     const wholeBody = bodyParams.find((p) => p.key === undefined);
     if (wholeBody) {
       const rawParamSchema = (
         wholeBody as ParameterMetadata & { schema?: unknown }
       ).schema;
-      const schema =
-        rawParamSchema !== undefined
-          ? (explorer.resolveStandardSchema(rawParamSchema, "input") ?? {
-              type: "object" as const,
-            })
-          : wholeBody.metatype !== undefined
-            ? explorer.resolveTypeSchema(wholeBody.metatype, false)
-            : { type: "object" as const };
+      let schema: OpenApiSchema;
+      if (rawParamSchema !== undefined) {
+        schema = explorer.resolveStandardSchema(rawParamSchema, "input") ?? {
+          type: "object" as const,
+        };
+      } else if (wholeBody.metatype !== undefined) {
+        schema = explorer.resolveTypeSchema(wholeBody.metatype, false);
+      } else {
+        schema = { type: "object" as const };
+      }
       const content: Record<string, OpenApiMediaType> = {};
       for (const mt of mediaTypes) {
         content[mt] = { schema };
@@ -3482,14 +3466,14 @@ export class SwaggerModule {
     const headerContentType = route.headers?.find(
       (h) => h.name.toLowerCase() === "content-type",
     )?.value;
+    let fallbackContentType = "application/json";
+    if (route.isSse) {
+      fallbackContentType = "text/event-stream";
+    } else if (route.renderTemplate !== undefined) {
+      fallbackContentType = "text/html";
+    }
     const defaultContentType =
-      produces[0] ??
-      headerContentType ??
-      (route.isSse
-        ? "text/event-stream"
-        : route.renderTemplate !== undefined
-          ? "text/html"
-          : "application/json");
+      produces[0] ?? headerContentType ?? fallbackContentType;
     const ctrlResponses =
       MetadataRegistry.getMergedClassArray<ApiResponseOptions>(
         SWAGGER_METADATA_KEYS.API_RESPONSES,

@@ -134,7 +134,9 @@ export {
 
 export {
   BunestDataLoader,
+  resolveRequestScopedDataLoader,
   type BatchLoadFn,
+  type BunestDataLoaderFactory,
   type BunestDataLoaderOptions,
 } from "./dataloader/dataloader";
 
@@ -183,6 +185,7 @@ export {
   getResolverMethodParams,
   getResolverOperations,
   Info,
+  Loader,
   Mutation,
   Parent,
   Query,

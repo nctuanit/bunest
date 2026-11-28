@@ -155,6 +155,7 @@ export {
 // OAuth2, OIDC, PKCE & JWKS
 export {
   computePkceChallenge,
+  computePkceChallengeSync,
   generateNonce,
   generatePkcePair,
   generateState,

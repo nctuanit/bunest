@@ -4,6 +4,12 @@ import {
   Optional,
   type OnApplicationShutdown,
 } from "@bunest/core";
+import {
+  definedOnly,
+  isNumber,
+  isObject,
+  trimPrefix,
+} from "@bunest/core/common";
 import { Cache } from "./cache.abstract";
 import { CACHE_MODULE_OPTIONS, CACHE_STORE } from "./constants";
 import type {
@@ -21,12 +27,7 @@ import type {
 import { MemoryCacheStore } from "./stores/memory-cache.store";
 
 function isMsetObjectItem(item: unknown): item is CacheMsetItem {
-  return (
-    typeof item === "object" &&
-    item !== null &&
-    !Array.isArray(item) &&
-    "key" in item
-  );
+  return isObject(item) && "key" in item;
 }
 
 function isWrapOptionsObject<T>(value: unknown): value is CacheWrapOptions<T> {
@@ -64,8 +65,7 @@ export class CacheService extends Cache implements OnApplicationShutdown {
   ) {
     super();
 
-    const effectiveDefaultTtl =
-      options.ttl !== undefined ? options.ttl : options.ttlMs;
+    const effectiveDefaultTtl = options.ttl ?? options.ttlMs;
     this.defaultTtlMs = effectiveDefaultTtl;
     this.namespace = options.namespace;
     this.defaultRefreshThreshold = options.refreshThreshold;
@@ -321,19 +321,17 @@ export class CacheService extends Cache implements OnApplicationShutdown {
       return [this.formatKey(key), value, this.applyDefaultTtl(opts)] as const;
     });
 
-    const emitList = entries.map((entry) =>
-      isMsetObjectItem(entry)
-        ? { key: entry.key, value: entry.value, ttl: entry.ttl }
-        : {
-            key: (entry as CacheMsetTuple)[0],
-            value: (entry as CacheMsetTuple)[1],
-            ttl:
-              typeof (entry as CacheMsetTuple)[2] === "number"
-                ? ((entry as CacheMsetTuple)[2] as number)
-                : ((entry as CacheMsetTuple)[2] as CacheSetOptions | undefined)
-                    ?.ttlMs,
-          },
-    );
+    const emitList = entries.map((entry) => {
+      if (isMsetObjectItem(entry)) {
+        return { key: entry.key, value: entry.value, ttl: entry.ttl };
+      }
+      const [key, value, opts] = entry as CacheMsetTuple;
+      return {
+        key,
+        value,
+        ttl: isNumber(opts) ? opts : opts?.ttlMs,
+      };
+    });
 
     try {
       const writeStore = async (store: CacheStore) => {
@@ -484,10 +482,10 @@ export class CacheService extends Cache implements OnApplicationShutdown {
           typeof ttlOrOptions.ttl === "function"
             ? ttlOrOptions.ttl(computed)
             : (ttlOrOptions.ttl ?? ttlOrOptions.ttlMs);
-        const setOpts: CacheSetOptions = {
-          ...(rawTtl !== undefined ? { ttlMs: rawTtl } : {}),
-          ...(ttlOrOptions.tags ? { tags: ttlOrOptions.tags } : {}),
-        };
+        const setOpts: CacheSetOptions = definedOnly({
+          ttlMs: rawTtl,
+          tags: ttlOrOptions.tags,
+        });
         return this.applyDefaultTtl(setOpts);
       }
       return this.applyDefaultTtl(undefined);
@@ -653,10 +651,7 @@ export class CacheService extends Cache implements OnApplicationShutdown {
     if (typeof ttlMsOrOptions === "number") {
       return ttlMsOrOptions;
     }
-    const explicitTtl =
-      ttlMsOrOptions.ttlMs !== undefined
-        ? ttlMsOrOptions.ttlMs
-        : ttlMsOrOptions.ttl;
+    const explicitTtl = ttlMsOrOptions.ttlMs ?? ttlMsOrOptions.ttl;
     if (explicitTtl !== undefined) {
       return { ...ttlMsOrOptions, ttlMs: explicitTtl };
     }
@@ -678,11 +673,7 @@ export class CacheService extends Cache implements OnApplicationShutdown {
   }
 
   private stripNamespace(rawKey: string): string {
-    if (!this.namespace) {
-      return rawKey;
-    }
-    const nsPrefix = `${this.namespace}:`;
-    return rawKey.startsWith(nsPrefix) ? rawKey.slice(nsPrefix.length) : rawKey;
+    return this.namespace ? trimPrefix(rawKey, `${this.namespace}:`) : rawKey;
   }
 
   private emitEvent(event: string, payload?: unknown): void {

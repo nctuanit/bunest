@@ -1,3 +1,4 @@
+import { capitalize, isObject, isPromiseLike } from "@bunest/core/common";
 import {
   CompositionType as CoreCompositionType,
   IntersectionType as CoreIntersectionType,
@@ -5,6 +6,7 @@ import {
   PartialType as CorePartialType,
   PickType as CorePickType,
   MetadataRegistry,
+  getValidationMetadatasForTarget,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
@@ -107,16 +109,8 @@ function getStandardSchemaFromClass(
   return undefined;
 }
 
-function isPromiseLike<T = unknown>(value: unknown): value is PromiseLike<T> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value)) {
     return false;
   }
   return (
@@ -708,8 +702,12 @@ function collectVisibleDocumentedKeys(classRef: Function): Set<string> {
         SWAGGER_METADATA_KEYS.API_PROPERTIES,
         ctor,
       );
+      const ownApiKeys = new Set<string>();
       if (ownProps) {
-        for (const p of ownProps) documented.add(p.propertyKey);
+        for (const p of ownProps) {
+          documented.add(p.propertyKey);
+          ownApiKeys.add(p.propertyKey);
+        }
       }
       const ownHidden = MetadataRegistry.getOwn<readonly string[]>(
         SWAGGER_METADATA_KEYS.API_HIDDEN_PROPERTIES,
@@ -717,6 +715,39 @@ function collectVisibleDocumentedKeys(classRef: Function): Set<string> {
       );
       if (ownHidden) {
         for (const k of ownHidden) hidden.add(k);
+      }
+      try {
+        const g = globalThis as Record<PropertyKey, unknown>;
+        const propDocStorage = g[
+          Symbol.for("bunest:dto:prop:doc-storage")
+        ] as
+          | {
+              getOwn?(
+                target: Function,
+              ): ReadonlyMap<string, { readonly hide?: boolean }> | undefined;
+            }
+          | undefined;
+        const ownPropDocs = propDocStorage?.getOwn?.(ctor);
+        if (ownPropDocs) {
+          for (const [k, meta] of ownPropDocs.entries()) {
+            if (meta.hide === true && !ownApiKeys.has(k)) {
+              hidden.add(k);
+            } else {
+              documented.add(k);
+            }
+          }
+        }
+      } catch {
+        // Gracefully skip if @bunest/validation prop doc storage is unavailable
+      }
+      try {
+        for (const meta of getValidationMetadatasForTarget(ctor, false, false)) {
+          if (meta.target === ctor && meta.propertyName) {
+            documented.add(meta.propertyName);
+          }
+        }
+      } catch {
+        // Gracefully skip if validation metadata storage is unavailable
       }
     }
   };
@@ -738,7 +769,7 @@ function buildKeySuffixedName(
   const keySuffix = keys
     .map((k) => String(k))
     .filter((k) => visible.has(k))
-    .map((k) => (k.length > 0 ? k[0]!.toUpperCase() + k.slice(1) : ""))
+    .map(capitalize)
     .join("");
   return `${prefix}${baseName}${keySuffix}`;
 }

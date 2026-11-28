@@ -1,3 +1,4 @@
+import { definedOnly } from "@bunest/core/common";
 import {
   DecoratorRegistry,
   Global,
@@ -159,32 +160,16 @@ function mergeAsyncOrmOptions(
       : undefined;
   return {
     ...resolved,
-    ...(mergedEntities !== undefined ? { entities: mergedEntities } : {}),
-    ...(resolved.synchronize !== undefined
-      ? { synchronize: resolved.synchronize }
-      : asyncOptions.synchronize !== undefined
-        ? { synchronize: asyncOptions.synchronize }
-        : {}),
-    ...(resolved.autoSync !== undefined
-      ? { autoSync: resolved.autoSync }
-      : asyncOptions.autoSync !== undefined
-        ? { autoSync: asyncOptions.autoSync }
-        : {}),
-    ...(resolved.migrationsRun !== undefined
-      ? { migrationsRun: resolved.migrationsRun }
-      : asyncOptions.migrationsRun !== undefined
-        ? { migrationsRun: asyncOptions.migrationsRun }
-        : {}),
-    ...(resolved.autoMigrate !== undefined
-      ? { autoMigrate: resolved.autoMigrate }
-      : asyncOptions.autoMigrate !== undefined
-        ? { autoMigrate: asyncOptions.autoMigrate }
-        : {}),
-    ...(resolved.autoRegisterRepositories !== undefined
-      ? { autoRegisterRepositories: resolved.autoRegisterRepositories }
-      : asyncOptions.autoRegisterRepositories !== undefined
-        ? { autoRegisterRepositories: asyncOptions.autoRegisterRepositories }
-        : {}),
+    ...definedOnly({
+      entities: mergedEntities,
+      synchronize: resolved.synchronize ?? asyncOptions.synchronize,
+      autoSync: resolved.autoSync ?? asyncOptions.autoSync,
+      migrationsRun: resolved.migrationsRun ?? asyncOptions.migrationsRun,
+      autoMigrate: resolved.autoMigrate ?? asyncOptions.autoMigrate,
+      autoRegisterRepositories:
+        resolved.autoRegisterRepositories ??
+        asyncOptions.autoRegisterRepositories,
+    }),
   };
 }
 

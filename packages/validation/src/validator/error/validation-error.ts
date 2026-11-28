@@ -42,9 +42,10 @@ export class ValidationError {
       );
     }
 
+    const separator = parentPath ? "." : "";
     const formattedProperty = Number.isInteger(+this.property)
       ? `[${this.property}]`
-      : `${parentPath ? "." : ""}${this.property}`;
+      : `${separator}${this.property}`;
 
     if (this.constraints) {
       return propConstraintFailed(formattedProperty);

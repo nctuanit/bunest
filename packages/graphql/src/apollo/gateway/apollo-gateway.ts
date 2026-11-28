@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import {
   type ArgumentNode,
   buildASTSchema,
@@ -737,14 +738,10 @@ export class ApolloGateway implements GatewayInterface {
               rawVal !== null &&
               rawVal !== undefined
             ) {
-              const items: Record<string, unknown>[] = Array.isArray(rawVal)
-                ? rawVal.filter(
-                    (x): x is Record<string, unknown> =>
-                      x !== null && typeof x === "object",
-                  )
-                : typeof rawVal === "object"
-                  ? [rawVal as Record<string, unknown>]
-                  : [];
+              const items = toArray(rawVal).filter(
+                (x): x is Record<string, unknown> =>
+                  x !== null && typeof x === "object",
+              );
 
               if (items.length > 0) {
                 const entity = model.entities.get(plan.entityName)!;

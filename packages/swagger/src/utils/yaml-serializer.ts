@@ -64,7 +64,12 @@ function formatScalarString(
     }
     const needsExplicitIndent = firstNonEmpty.startsWith(" ");
     const indentIndicator = needsExplicitIndent ? "2" : "";
-    const chomp = str.endsWith("\n\n") ? "+" : str.endsWith("\n") ? "" : "-";
+    let chomp = "-";
+    if (str.endsWith("\n\n")) {
+      chomp = "+";
+    } else if (str.endsWith("\n")) {
+      chomp = "";
+    }
     const pad = " ".repeat(indent + 2);
     const contentLines = str.endsWith("\n") ? lines.slice(0, -1) : lines;
     const body = contentLines

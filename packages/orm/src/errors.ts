@@ -8,23 +8,31 @@ export class OrmError extends Error {
   }
 }
 
+function describeEntityTarget(target: unknown): string {
+  if (typeof target === "function") {
+    return target.name || "AnonymousClass";
+  }
+  if (typeof target === "string") {
+    return `"${target}"`;
+  }
+  if (
+    typeof target === "object" &&
+    target !== null &&
+    "name" in target &&
+    typeof (target as { name?: unknown }).name === "string"
+  ) {
+    return `EntityRef("${(target as { name: string }).name}")`;
+  }
+  return String(target);
+}
+
 /**
  * Thrown when an entity class, string name, or `EntityRef` cannot be resolved
  * during metadata graph compilation or repository lookup.
  */
 export class EntityMetadataNotFoundError extends OrmError {
   constructor(target: unknown, hint?: string) {
-    const label =
-      typeof target === "function"
-        ? target.name || "AnonymousClass"
-        : typeof target === "string"
-          ? `"${target}"`
-          : typeof target === "object" &&
-              target !== null &&
-              "name" in target &&
-              typeof (target as { name?: unknown }).name === "string"
-            ? `EntityRef("${(target as { name: string }).name}")`
-            : String(target);
+    const label = describeEntityTarget(target);
     const suffix = hint ? ` ${hint}` : "";
     super(
       `No metadata found for entity ${label}. Ensure it is decorated with @Entity() (or registered via defineEntity()) and included in DataSource.entities or autoLoadEntities: true.${suffix}`,

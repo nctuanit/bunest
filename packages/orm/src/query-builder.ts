@@ -934,14 +934,18 @@ export class InsertQueryBuilder<Entity = Record<string, unknown>> {
         placeholders.push(collector.add(val));
       }
 
-      const sql =
-        profile.returningStyle === "output"
-          ? `INSERT INTO ${tableRef} (${colNames.join(", ")}) OUTPUT INSERTED.* VALUES (${placeholders.join(", ")})`
-          : profile.returningStyle === "then-return"
-            ? `INSERT INTO ${tableRef} (${colNames.join(", ")}) VALUES (${placeholders.join(", ")}) THEN RETURN *`
-            : profile.returningStyle === "returning"
-              ? `INSERT INTO ${tableRef} (${colNames.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`
-              : `INSERT INTO ${tableRef} (${colNames.join(", ")}) VALUES (${placeholders.join(", ")})`;
+      const baseInsert = `INSERT INTO ${tableRef} (${colNames.join(", ")})`;
+      const valuesClause = `VALUES (${placeholders.join(", ")})`;
+      let sql: string;
+      if (profile.returningStyle === "output") {
+        sql = `${baseInsert} OUTPUT INSERTED.* ${valuesClause}`;
+      } else if (profile.returningStyle === "then-return") {
+        sql = `${baseInsert} ${valuesClause} THEN RETURN *`;
+      } else if (profile.returningStyle === "returning") {
+        sql = `${baseInsert} ${valuesClause} RETURNING *`;
+      } else {
+        sql = `${baseInsert} ${valuesClause}`;
+      }
       const res = await this.executor.query<Record<string, unknown>>(
         sql,
         collector.values,

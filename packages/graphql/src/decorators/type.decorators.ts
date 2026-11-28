@@ -1,3 +1,4 @@
+import { unique } from "@bunest/core/common";
 import {
   Injectable,
   MetadataRegistry,
@@ -1244,7 +1245,7 @@ registerMappedTypeMetadataHook((ctx) => {
         existingMw.length > 0 &&
         existingMw.every((fn) => sourceUseMw.includes(fn))
           ? [...sourceUseMw]
-          : Array.from(new Set([...existingMw, ...sourceUseMw]));
+          : unique([...existingMw, ...sourceUseMw]);
       MetadataRegistry.define<FieldMiddleware[]>(
         GRAPHQL_METADATA_KEYS.FIELD_MIDDLEWARE,
         mergedMw,
@@ -1265,7 +1266,7 @@ registerMappedTypeMetadataHook((ctx) => {
         ) ?? [];
       MetadataRegistry.define<string[]>(
         GRAPHQL_METADATA_KEYS.DIRECTIVES,
-        Array.from(new Set([...existingDirs, ...sourceDirectives])),
+        unique([...existingDirs, ...sourceDirectives]),
         ctx.target,
         field.propertyKey,
       );

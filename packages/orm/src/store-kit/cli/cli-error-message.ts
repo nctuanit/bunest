@@ -1,3 +1,5 @@
+import { unique } from "@bunest/core/common";
+
 /** How deep the message is looked for in `errors` and `cause`. */
 const MAX_DEPTH = 8;
 
@@ -6,7 +8,7 @@ const MAX_DEPTH = 8;
  * `url` above all, has the password masked.
  */
 export function cliErrorMessage(error: unknown, url?: string): string {
-  const messages = [...new Set(messagesOf(error, 0))];
+  const messages = unique(messagesOf(error, 0));
   return redact(
     messages.length > 0
       ? messages.join("\n")
@@ -44,11 +46,11 @@ function messagesOf(error: unknown, depth: number): string[] {
     }
   }
   if ((typeof code === "string" && code !== "") || typeof code === "number") {
-    return [
-      typeof address === "string" && address !== ""
-        ? `${code} ${address}${typeof port === "number" ? `:${port}` : ""}`
-        : String(code),
-    ];
+    if (typeof address === "string" && address !== "") {
+      const portSuffix = typeof port === "number" ? `:${port}` : "";
+      return [`${code} ${address}${portSuffix}`];
+    }
+    return [String(code)];
   }
   const text = stringOf(error);
   return text && text !== "[object Object]" ? [text] : [];

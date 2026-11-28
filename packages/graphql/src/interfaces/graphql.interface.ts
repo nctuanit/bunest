@@ -371,7 +371,7 @@ export type ArgsOptions = {
   deprecationReason?: string;
 };
 
-export type GqlParamSource = "args" | "parent" | "context" | "info";
+export type GqlParamSource = "args" | "parent" | "context" | "info" | "loader";
 
 export interface GqlParamMetadata {
   readonly index: number;
@@ -384,6 +384,7 @@ export interface GqlParamMetadata {
   readonly deprecationReason?: string;
   readonly pipes?: readonly PipeLike[];
   readonly metatype?: Function;
+  readonly loaderToken?: Type<unknown>;
 }
 
 export interface EnumValueConfigOptions {

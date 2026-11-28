@@ -892,19 +892,14 @@ export function getEnterLeaveForKind(
   if (typeof kindVisitor === "function") {
     return { enter: kindVisitor };
   }
-  const enter =
-    typeof rec.enter === "function"
-      ? rec.enter
-      : typeof rec.enter === "object" && rec.enter !== null
-        ? rec.enter[kind]
-        : undefined;
-  const leave =
-    typeof rec.leave === "function"
-      ? rec.leave
-      : typeof rec.leave === "object" && rec.leave !== null
-        ? rec.leave[kind]
-        : undefined;
-  return { enter, leave };
+  const resolveHook = (entry: unknown): ASTVisitFn<any> | undefined => {
+    if (typeof entry === "function") return entry as ASTVisitFn<any>;
+    if (typeof entry === "object" && entry !== null) {
+      return (entry as Record<string, ASTVisitFn<any>>)[kind];
+    }
+    return undefined;
+  };
+  return { enter: resolveHook(rec.enter), leave: resolveHook(rec.leave) };
 }
 
 /**

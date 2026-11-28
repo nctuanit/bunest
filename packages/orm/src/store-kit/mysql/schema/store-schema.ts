@@ -307,9 +307,7 @@ export class StoreSchema {
           ) {
             throw error;
           }
-          await new Promise((resolve) =>
-            setTimeout(resolve, pauseMs * attempt),
-          );
+          await Bun.sleep(pauseMs * attempt);
         }
       }
     };

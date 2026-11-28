@@ -352,7 +352,7 @@ export async function executeWithTransactionRetries<T>(
       const cap = Math.min(baseDelay * 2 ** attempt, 500);
       const jittered = Math.max(1, Math.round(cap * (0.5 + Math.random() * 0.5)));
       attempt += 1;
-      await new Promise<void>((resolve) => setTimeout(resolve, jittered));
+      await Bun.sleep(jittered);
     }
   }
 }

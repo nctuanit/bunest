@@ -4,6 +4,7 @@ import {
   MetadataRegistry,
   type PipeLike,
   Scope,
+  type Type,
 } from "@bunest/core";
 import { GRAPHQL_METADATA_KEYS } from "../constants";
 import type {
@@ -89,11 +90,11 @@ export function Resolver(
       isAbstract: resolvedOptions.isAbstract,
     };
     MetadataRegistry.define(GRAPHQL_METADATA_KEYS.RESOLVER, meta, ctor);
+    const resolvedOf =
+      typeof effectiveOf === "function" ? effectiveOf : undefined;
     TypeMetadataStorage.addResolverMetadata({
       target: ctor,
-      typeFn: effectiveOf
-        ? () => (typeof effectiveOf === "function" ? effectiveOf : undefined)
-        : undefined,
+      typeFn: effectiveOf ? () => resolvedOf : undefined,
       isAbstract: resolvedOptions.isAbstract,
     });
     if (!MetadataRegistry.hasOwn(METADATA_KEYS.INJECTABLE, ctor)) {
@@ -490,6 +491,30 @@ export function Context(property?: string): ParameterDecorator {
       index: parameterIndex,
       source: "context",
       key: property,
+    });
+  };
+}
+
+/**
+ * Injects a per-request `BunestDataLoader` instance created by `loaderFactory`
+ * (`BunestDataLoaderFactory<K, V>`), keeping both the resolver and loader factory
+ * `Scope.SINGLETON` while isolating DataLoader caches per GraphQL request.
+ */
+export function Loader(loaderFactory: Type<unknown>): ParameterDecorator {
+  if (typeof loaderFactory !== "function") {
+    throw new Error(
+      `@Loader() requires a DataLoader factory class implementing BunestDataLoaderFactory (received ${String(loaderFactory)}).`,
+    );
+  }
+  return (
+    target: object,
+    propertyKey: string | symbol | undefined,
+    parameterIndex: number,
+  ) => {
+    registerGqlParam(target, propertyKey, {
+      index: parameterIndex,
+      source: "loader",
+      loaderToken: loaderFactory,
     });
   };
 }

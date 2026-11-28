@@ -47,7 +47,7 @@ export class SessionCookieService {
   private readonly ttlSeconds: number;
   private readonly cookieOptions: CookieOptions;
   private readonly csrfSecret: string;
-  private readonly keyPromise: Promise<CryptoKey>;
+  private readonly rawSecret: Uint8Array;
 
   constructor(@Inject(SESSION_COOKIE_OPTIONS) options: SessionCookieOptions) {
     const rawSecret =
@@ -57,6 +57,7 @@ export class SessionCookieService {
     if (rawSecret.byteLength === 0) {
       throw new Error("SessionCookieService requires a non-empty secret");
     }
+    this.rawSecret = rawSecret;
     this.csrfSecret =
       typeof options.secret === "string"
         ? options.secret
@@ -69,13 +70,12 @@ export class SessionCookieService {
       path: "/",
       ...options.cookieOptions,
     };
-    this.keyPromise = crypto.subtle.importKey(
-      "raw",
-      rawSecret,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
+  }
+
+  private computeHmac(encoded: string): Uint8Array {
+    return new Bun.CryptoHasher("sha256", this.rawSecret)
+      .update(encoded)
+      .digest();
   }
 
   async sign<T extends Record<string, unknown>>(
@@ -87,10 +87,7 @@ export class SessionCookieService {
       exp: Math.floor(Date.now() / 1000) + ttlSeconds,
     };
     const encoded = base64UrlEncode(JSON.stringify(envelope));
-    const key = await this.keyPromise;
-    const sig = new Uint8Array(
-      await crypto.subtle.sign("HMAC", key, utf8Encode(encoded)),
-    );
+    const sig = this.computeHmac(encoded);
     return `${encoded}.${base64UrlEncode(sig)}`;
   }
 
@@ -120,10 +117,7 @@ export class SessionCookieService {
       return null;
     }
 
-    const key = await this.keyPromise;
-    const expectedSig = new Uint8Array(
-      await crypto.subtle.sign("HMAC", key, utf8Encode(encoded)),
-    );
+    const expectedSig = this.computeHmac(encoded);
     if (!timingSafeEqualBytes(expectedSig, providedSig)) {
       return null;
     }

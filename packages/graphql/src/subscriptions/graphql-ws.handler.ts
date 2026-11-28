@@ -1,4 +1,5 @@
 import { ForbiddenException } from "@bunest/core";
+import { isObject } from "@bunest/core/common";
 import {
   type BunHttpAdapter,
   type BunServerLike,
@@ -85,10 +86,6 @@ function isAsyncIterable(
     typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] ===
       "function"
   );
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
@@ -353,7 +350,7 @@ export class GraphQLWsHandler {
       return;
     }
 
-    if (!isPlainRecord(parsed) || typeof parsed.type !== "string") {
+    if (!isObject(parsed) || typeof parsed.type !== "string") {
       this.closeSocketWithProtocolError(
         ws,
         GRAPHQL_WS_CLOSE_CODES.BAD_REQUEST,
@@ -378,7 +375,7 @@ export class GraphQLWsHandler {
           data.initTimer = undefined;
         }
 
-        const connectionParams = isPlainRecord(parsed.payload)
+        const connectionParams = isObject(parsed.payload)
           ? { ...parsed.payload }
           : {};
         data.connectionParams = connectionParams;
@@ -421,7 +418,7 @@ export class GraphQLWsHandler {
               );
               return;
             }
-            if (isPlainRecord(decision)) {
+            if (isObject(decision)) {
               Object.assign(data.extra, decision);
             }
           } catch (err) {
@@ -481,7 +478,7 @@ export class GraphQLWsHandler {
         if (
           typeof id !== "string" ||
           id.length === 0 ||
-          !isPlainRecord(payload) ||
+          !isObject(payload) ||
           typeof payload.query !== "string"
         ) {
           this.closeSocketWithProtocolError(
@@ -533,23 +530,28 @@ export class GraphQLWsHandler {
 
         data.subscriptions.set(id, entry);
 
+        let variables: Record<string, unknown> | null | undefined;
+        if (isObject(payload.variables)) {
+          variables = payload.variables;
+        } else if (payload.variables === null) {
+          variables = null;
+        }
+
+        let operationName: string | null | undefined;
+        if (typeof payload.operationName === "string") {
+          operationName = payload.operationName;
+        } else if (payload.operationName === null) {
+          operationName = null;
+        }
+
         const subscribeMsg: GraphQLWsSubscribeMessage = {
           id,
           type: "subscribe",
           payload: {
             query: payload.query,
-            variables: isPlainRecord(payload.variables)
-              ? payload.variables
-              : payload.variables === null
-                ? null
-                : undefined,
-            operationName:
-              typeof payload.operationName === "string"
-                ? payload.operationName
-                : payload.operationName === null
-                  ? null
-                  : undefined,
-            extensions: isPlainRecord(payload.extensions)
+            variables,
+            operationName,
+            extensions: isObject(payload.extensions)
               ? payload.extensions
               : undefined,
           },
@@ -627,22 +629,26 @@ export class GraphQLWsHandler {
           this.sendJson(ws, {
             id,
             type: "error",
-            payload: subHookResult.map((e: unknown) =>
-              e && typeof e === "object" && "toJSON" in e
-                ? (e as { toJSON(): unknown }).toJSON()
-                : { message: e instanceof Error ? e.message : String(e) },
-            ),
+            payload: subHookResult.map((e: unknown) => {
+              if (e && typeof e === "object" && "toJSON" in e) {
+                return (e as { toJSON(): unknown }).toJSON();
+              }
+              return { message: e instanceof Error ? e.message : String(e) };
+            }),
           });
           return;
         }
       }
 
-      const customContext =
-        typeof this.options.context === "function"
-          ? await this.options.context(connCtx, msg)
-          : this.options.context && typeof this.options.context === "object"
-            ? (this.options.context as Record<string, unknown>)
-            : {};
+      let customContext: Record<string, unknown> = {};
+      if (typeof this.options.context === "function") {
+        customContext = await this.options.context(connCtx, msg);
+      } else if (
+        this.options.context &&
+        typeof this.options.context === "object"
+      ) {
+        customContext = this.options.context as Record<string, unknown>;
+      }
 
       if (entry.isCancelled()) {
         releaseSlot();

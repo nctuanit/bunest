@@ -84,6 +84,7 @@ export {
   ValidateBy,
   ValidateIf,
   ValidateNested,
+  type ValidateNestedOptions,
   ValidatePromise,
   ValidatorConstraint,
   isDefined,

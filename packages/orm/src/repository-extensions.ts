@@ -470,14 +470,17 @@ export function runWithIgnoredScopes<T>(
   specOrNames: IgnoreScopeSpec | readonly string[] | undefined,
   fn: () => T,
 ): T {
-  const incoming: IgnoreScopeSpec =
-    specOrNames === undefined
-      ? { all: true, names: [] }
-      : Array.isArray(specOrNames)
-        ? specOrNames.length === 0
-          ? { all: true, names: [] }
-          : { all: false, names: [...specOrNames] }
-        : (specOrNames as IgnoreScopeSpec);
+  let incoming: IgnoreScopeSpec;
+  if (specOrNames === undefined) {
+    incoming = { all: true, names: [] };
+  } else if (Array.isArray(specOrNames)) {
+    incoming =
+      specOrNames.length === 0
+        ? { all: true, names: [] }
+        : { all: false, names: [...specOrNames] };
+  } else {
+    incoming = specOrNames as IgnoreScopeSpec;
+  }
   const merged = mergeIgnoreScopeSpecs(
     ambientIgnoreScopeStorage.getStore(),
     incoming,

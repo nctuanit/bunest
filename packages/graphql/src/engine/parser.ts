@@ -91,16 +91,18 @@ class Parser {
   private _tokenCounter = 0;
 
   constructor(source: string | Source, options: ParseOptions = {}) {
-    const src =
-      typeof source === "string"
-        ? new Source(source)
-        : source instanceof Source
-          ? source
-          : new Source(
-              (source as Source).body,
-              (source as Source).name,
-              (source as Source).locationOffset,
-            );
+    let src: Source;
+    if (typeof source === "string") {
+      src = new Source(source);
+    } else if (source instanceof Source) {
+      src = source;
+    } else {
+      src = new Source(
+        (source as Source).body,
+        (source as Source).name,
+        (source as Source).locationOffset,
+      );
+    }
     this._lexer = new Lexer(src);
     this._options = options;
   }

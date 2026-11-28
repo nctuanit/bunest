@@ -1,3 +1,4 @@
+import { isObject } from "@bunest/core/common";
 import {
   APP_FILTER,
   APP_GUARD,
@@ -82,10 +83,6 @@ const textEncoder = new TextEncoder();
 
 function isProductionEnv(): boolean {
   return Reflect.get(process.env, "NODE_ENV") === "production";
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isAsyncIterable(
@@ -179,23 +176,22 @@ export class GraphQLService
         }
       }
       if (adapter) {
+        let resolvedWsContext = wsConfig.context;
+        if (!resolvedWsContext && this.options.context) {
+          const ctxOpt = this.options.context;
+          resolvedWsContext = async (connCtx) => {
+            const raw =
+              typeof ctxOpt === "function"
+                ? await ctxOpt({ req: connCtx.request })
+                : ctxOpt;
+            return raw && typeof raw === "object"
+              ? (raw as Record<string, unknown>)
+              : {};
+          };
+        }
         const mergedWsConfig: GraphQLWsOptions = {
           ...wsConfig,
-          context:
-            wsConfig.context ??
-            (this.options.context
-              ? async (connCtx) => {
-                  const raw =
-                    typeof this.options.context === "function"
-                      ? await this.options.context({
-                          req: connCtx.request,
-                        })
-                      : this.options.context;
-                  return raw && typeof raw === "object"
-                    ? (raw as Record<string, unknown>)
-                    : {};
-                }
-              : undefined),
+          context: resolvedWsContext,
         };
         this.attachWebSocket(adapter, mergedWsConfig);
       }
@@ -905,7 +901,7 @@ export class GraphQLService
   }> {
     const schema = await this.ensureSchema();
     const sanitizedVars =
-      params.variables && isPlainRecord(params.variables)
+      params.variables && isObject(params.variables)
         ? sanitizeObject(params.variables)
         : undefined;
 
@@ -984,7 +980,7 @@ export class GraphQLService
     if (
       params.variables !== undefined &&
       params.variables !== null &&
-      !isPlainRecord(params.variables)
+      !isObject(params.variables)
     ) {
       return {
         status: 400,
@@ -1095,7 +1091,7 @@ export class GraphQLService
     if (
       params.variables !== undefined &&
       params.variables !== null &&
-      !isPlainRecord(params.variables)
+      !isObject(params.variables)
     ) {
       return {
         errors: [{ message: "GraphQL variables must be a JSON object." }],
@@ -1251,7 +1247,7 @@ export class GraphQLService
           );
         }
         if (parsedVars !== null) {
-          if (!isPlainRecord(parsedVars)) {
+          if (!isObject(parsedVars)) {
             return Response.json(
               {
                 errors: [
@@ -1290,7 +1286,7 @@ export class GraphQLService
         );
       }
 
-      if (!isPlainRecord(parsedBody)) {
+      if (!isObject(parsedBody)) {
         return Response.json(
           {
             errors: [
@@ -1320,7 +1316,7 @@ export class GraphQLService
       if (
         rawVariables !== undefined &&
         rawVariables !== null &&
-        !isPlainRecord(rawVariables)
+        !isObject(rawVariables)
       ) {
         return Response.json(
           { errors: [{ message: "GraphQL variables must be a JSON object." }] },
@@ -1372,12 +1368,12 @@ export class GraphQLService
     wantsSse: boolean,
     isGetRequest: boolean,
   ): Promise<Response> {
-    const rawContext =
-      typeof this.options.context === "function"
-        ? await this.options.context({ req, res })
-        : this.options.context && typeof this.options.context === "object"
-          ? this.options.context
-          : undefined;
+    let rawContext: unknown;
+    if (typeof this.options.context === "function") {
+      rawContext = await this.options.context({ req, res });
+    } else if (this.options.context && typeof this.options.context === "object") {
+      rawContext = this.options.context;
+    }
     const contextValue: Record<string, unknown> =
       rawContext && typeof rawContext === "object"
         ? Object.assign(

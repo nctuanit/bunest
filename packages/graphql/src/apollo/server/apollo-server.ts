@@ -1,4 +1,5 @@
 import { LruCache, type ResponseContext } from "@bunest/core";
+import { isObject, sha256 } from "@bunest/core/common";
 import {
   type DocumentNode,
   execute,
@@ -95,10 +96,6 @@ function createMaxRecursiveSelectionsRule(maxDepth: number): ValidationRule {
       visit(node.selectionSet, 0);
     },
   });
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export interface BunestApolloServerOptions<
@@ -289,12 +286,12 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
     };
 
     if (includeStack) {
-      const stackSrc =
-        originalError instanceof Error
-          ? originalError.stack
-          : isGraphQLErr
-            ? err.stack
-            : undefined;
+      let stackSrc: string | undefined;
+      if (originalError instanceof Error) {
+        stackSrc = originalError.stack;
+      } else if (isGraphQLErr) {
+        stackSrc = err.stack;
+      }
       if (stackSrc && !extensions.stacktrace) {
         extensions.stacktrace = stackSrc.split("\n");
       }
@@ -490,9 +487,7 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
           }
           querySource = cached;
         } else {
-          const computed = new Bun.CryptoHasher("sha256")
-            .update(querySource)
-            .digest("hex");
+          const computed = sha256(querySource);
           if (computed !== hash) {
             const err = new GraphQLError("provided sha does not match query", {
               extensions: { code: ApolloServerErrorCode.BAD_REQUEST },
@@ -530,9 +525,7 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
     }
 
     requestContext.source = querySource;
-    requestContext.queryHash = new Bun.CryptoHasher("sha256")
-      .update(querySource)
-      .digest("hex");
+    requestContext.queryHash = sha256(querySource);
 
     // 1. Parse
     const parseEndHooks: Array<(err?: Error) => Promise<void> | void> = [];
@@ -556,10 +549,14 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
       }
       for (const hook of parseEndHooks) await hook();
     } catch (err) {
-      const gqlErr =
-        err instanceof GraphQLError
-          ? err
-          : new GraphQLError(err instanceof Error ? err.message : String(err));
+      let gqlErr: GraphQLError;
+      if (err instanceof GraphQLError) {
+        gqlErr = err;
+      } else {
+        gqlErr = new GraphQLError(
+          err instanceof Error ? err.message : String(err),
+        );
+      }
       for (const hook of parseEndHooks) await hook(gqlErr);
       return finalize(
         {
@@ -862,7 +859,7 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
       if (rawVars) {
         try {
           const parsed = JSON.parse(rawVars);
-          if (parsed !== null && !isPlainRecord(parsed)) {
+          if (parsed !== null && !isObject(parsed)) {
             return Response.json(
               {
                 errors: [
@@ -895,7 +892,7 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
       if (extensionsRaw) {
         try {
           const parsedExt = JSON.parse(extensionsRaw);
-          extensions = isPlainRecord(parsedExt) ? parsedExt : undefined;
+          extensions = isObject(parsedExt) ? parsedExt : undefined;
         } catch {
           return Response.json(
             {
@@ -1003,18 +1000,18 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
             const contextValue = this.options.context
               ? await this.options.context({ req, res })
               : ({ req, res } as unknown as TContext);
-            const rec = isPlainRecord(item) ? item : {};
+            const rec = isObject(item) ? item : {};
             const opRes = await this.executeOperation(
               {
                 query: typeof rec.query === "string" ? rec.query : undefined,
-                variables: isPlainRecord(rec.variables)
+                variables: isObject(rec.variables)
                   ? rec.variables
                   : undefined,
                 operationName:
                   typeof rec.operationName === "string"
                     ? rec.operationName
                     : undefined,
-                extensions: isPlainRecord(rec.extensions)
+                extensions: isObject(rec.extensions)
                   ? rec.extensions
                   : undefined,
                 http: { method, headers, search: url.search },
@@ -1033,7 +1030,7 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
         });
       }
 
-      if (!isPlainRecord(body)) {
+      if (!isObject(body)) {
         return Response.json(
           {
             errors: [
@@ -1054,12 +1051,12 @@ export class BunestApolloServer<TContext extends BaseContext = BaseContext> {
       const execRes = await this.executeOperation(
         {
           query: typeof body.query === "string" ? body.query : undefined,
-          variables: isPlainRecord(body.variables) ? body.variables : undefined,
+          variables: isObject(body.variables) ? body.variables : undefined,
           operationName:
             typeof body.operationName === "string"
               ? body.operationName
               : undefined,
-          extensions: isPlainRecord(body.extensions)
+          extensions: isObject(body.extensions)
             ? body.extensions
             : undefined,
           http: { method, headers, search: url.search },

@@ -1,3 +1,4 @@
+import { isPromiseLike } from "@bunest/core/common";
 import {
   SCHEMA_DTO_RAW_INPUT_KEY,
   applySchemaOutputToInstance,
@@ -58,11 +59,7 @@ function validateStandardSchemaDtoObject(
   };
 
   const resultOrPromise = schema["~standard"].validate(rawInput);
-  if (
-    resultOrPromise !== null &&
-    typeof resultOrPromise === "object" &&
-    typeof (resultOrPromise as PromiseLike<unknown>).then === "function"
-  ) {
+  if (isPromiseLike(resultOrPromise)) {
     if (syncOnly) {
       return [];
     }

@@ -394,16 +394,17 @@ function dehydrateSingleJsonNestedObject(
     }
     const col = effectiveEmb.columns.find((c) => c.propertyName === key);
     if (col) {
-      out[key] =
-        col.type === "boolean"
-          ? Boolean(v)
-          : col.type === "datetime" || col.type === "timestamp" || col.type === "date"
-            ? v instanceof Date
-              ? v.toISOString()
-              : v
-            : col.transformer
-              ? col.transformer.to(v)
-              : v;
+      if (col.type === "boolean") {
+        out[key] = Boolean(v);
+      } else if (
+        col.type === "datetime" ||
+        col.type === "timestamp" ||
+        col.type === "date"
+      ) {
+        out[key] = v instanceof Date ? v.toISOString() : v;
+      } else {
+        out[key] = col.transformer ? col.transformer.to(v) : v;
+      }
       continue;
     }
     const childEmb = effectiveEmb.nestedEmbeddeds.find(
@@ -664,14 +665,18 @@ export function dehydrateEntity(
       (col.generationStrategy === "uuid" || col.generationStrategy === "objectid")
     ) {
       const existing = entity[col.propertyName];
-      const generatedId =
-        existing !== undefined && existing !== null
-          ? existing instanceof ObjectId
+      let generatedId: string;
+      if (existing !== undefined && existing !== null) {
+        generatedId =
+          existing instanceof ObjectId
             ? existing.toHexString()
-            : String(existing)
-          : col.generationStrategy === "objectid"
+            : String(existing);
+      } else {
+        generatedId =
+          col.generationStrategy === "objectid"
             ? generateObjectId()
             : crypto.randomUUID();
+      }
       entity[col.propertyName] = generatedId;
       generatedValues[col.propertyName] = generatedId;
       columnValues[col.columnName] = generatedId;

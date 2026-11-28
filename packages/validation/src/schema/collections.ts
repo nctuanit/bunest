@@ -1,3 +1,4 @@
+import { isObject } from "@bunest/core/common";
 import {
   BaseSchema,
   OptionalSchema,
@@ -19,8 +20,15 @@ import type {
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+const UNKNOWN_KEYS_ADDITIONAL_PROPS: Readonly<
+  Record<string, Record<string, unknown>>
+> = {
+  strict: { additionalProperties: false },
+  passthrough: { additionalProperties: true },
+};
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value)) {
     return false;
   }
   if (
@@ -376,11 +384,9 @@ export class TupleSchema<
       minItems: this.items.length,
       ...(restJson === undefined ? { maxItems: this.items.length } : {}),
       items:
-        allSchemas.length === 0
-          ? {}
-          : allSchemas.length === 1
-            ? allSchemas[0]
-            : { anyOf: allSchemas },
+        allSchemas.length <= 1
+          ? (allSchemas[0] ?? {})
+          : { anyOf: allSchemas },
     };
     return applyMetaToJsonSchema(out, this._meta, ctx.target);
   }
@@ -782,11 +788,7 @@ export class ObjectSchema<TShape extends ObjectShape> extends BaseSchema<
       type: "object",
       properties,
       ...(required.length > 0 ? { required } : {}),
-      ...(this.unknownKeys === "strict"
-        ? { additionalProperties: false }
-        : this.unknownKeys === "passthrough"
-          ? { additionalProperties: true }
-          : {}),
+      ...(UNKNOWN_KEYS_ADDITIONAL_PROPS[this.unknownKeys] ?? {}),
     };
 
     return applyMetaToJsonSchema(out, this._meta, ctx.target);

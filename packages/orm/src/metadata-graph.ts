@@ -487,11 +487,8 @@ function buildCompiledColumn(
       ? "uuid"
       : inferColumnType(stored.designType, "text"));
 
-  const nullable = stored.primary
-    ? false
-    : forceNullable
-      ? true
-      : (stored.nullable ?? false);
+  const nullable =
+    !stored.primary && (forceNullable || (stored.nullable ?? false));
 
   return {
     propertyName: stored.propertyName,
@@ -1074,20 +1071,21 @@ export function compileMetadataGraph(options: {
             c.propertyName === `${rel.propertyName}Id`,
         );
 
+        const resolveMorphColName = (
+          explicit: string | undefined,
+          fallback: string,
+        ): string => {
+          if (!explicit) return fallback;
+          return partial.camelCaseMapping && /[A-Z]/.test(explicit)
+            ? camelToSnake(explicit)
+            : explicit;
+        };
         const morphTypeColumnName =
           existingTypeCol?.columnName ??
-          (morphOpts.typeColumn
-            ? partial.camelCaseMapping && /[A-Z]/.test(morphOpts.typeColumn)
-              ? camelToSnake(morphOpts.typeColumn)
-              : morphOpts.typeColumn
-            : `${defaultBase}_type`);
+          resolveMorphColName(morphOpts.typeColumn, `${defaultBase}_type`);
         const morphIdColumnName =
           existingIdCol?.columnName ??
-          (morphOpts.idColumn
-            ? partial.camelCaseMapping && /[A-Z]/.test(morphOpts.idColumn)
-              ? camelToSnake(morphOpts.idColumn)
-              : morphOpts.idColumn
-            : `${defaultBase}_id`);
+          resolveMorphColName(morphOpts.idColumn, `${defaultBase}_id`);
 
         assertSafeSqlIdentifier(
           morphTypeColumnName,

@@ -15,6 +15,7 @@ import {
   ModulesContainer,
   type InstanceWrapper,
 } from "@bunest/core";
+import { cond } from "@bunest/core/common";
 import {
   AUTHENTICATION_GUARD,
   AUTHORIZATION_GUARD,
@@ -198,11 +199,7 @@ export class PolicyRegistry implements OnModuleInit {
     }
     const policies = new Map<Type<unknown>, unknown>();
     for (const wrapper of this.discovery.getProviders()) {
-      const key = isPolicy(wrapper.token)
-        ? wrapper.token
-        : isPolicy(wrapper.metatype)
-          ? wrapper.metatype
-          : undefined;
+      const key = [wrapper.token, wrapper.metatype].find(isPolicy);
       if (!key || policies.has(key)) {
         continue;
       }
@@ -212,11 +209,13 @@ export class PolicyRegistry implements OnModuleInit {
           : wrapper.isDependencyTreeStatic !== false;
       const isTransient = wrapper.scope === Scope.TRANSIENT;
       if (!isStatic || isTransient) {
-        const why = isTransient
-          ? "is transient"
-          : wrapper.scope === Scope.REQUEST
-            ? "is request-scoped"
-            : "depends on a request-scoped provider";
+        const why = cond(
+          [
+            [isTransient, "is transient"],
+            [wrapper.scope === Scope.REQUEST, "is request-scoped"],
+          ],
+          "depends on a request-scoped provider",
+        );
         throw new Error(
           `${key.name} ${why}. Policies must be singletons: pass what varies per request to the ability as an argument.`,
         );

@@ -83,13 +83,10 @@ export function fromTypeOrm(
     );
   }
   const options = source.options;
-  const flags = [options.flags, options.extra?.flags].flatMap((value) =>
-    Array.isArray(value)
-      ? value
-      : typeof value === "string"
-        ? value.split(",")
-        : [],
-  );
+  const flags = [options.flags, options.extra?.flags].flatMap((value) => {
+    if (Array.isArray(value)) return value;
+    return typeof value === "string" ? value.split(",") : [];
+  });
   if (
     flags.some((flag) => String(flag).trim().toUpperCase() === "-FOUND_ROWS")
   ) {
@@ -145,11 +142,12 @@ class TypeOrmExecutor implements SqlExecutor {
   }
 
   wrapTransaction(transaction: unknown): SqlTransaction {
-    const runner = isEntityManager(transaction)
-      ? transaction.queryRunner
-      : isQueryRunner(transaction)
-        ? transaction
-        : undefined;
+    let runner: TypeOrmMySqlQueryRunnerLike | undefined;
+    if (isEntityManager(transaction)) {
+      runner = transaction.queryRunner;
+    } else if (isQueryRunner(transaction)) {
+      runner = transaction;
+    }
     if (!runner?.isTransactionActive) {
       throw notATransaction(
         isEntityManager(transaction) || isQueryRunner(transaction)

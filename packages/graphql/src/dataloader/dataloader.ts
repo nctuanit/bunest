@@ -1,3 +1,5 @@
+import type { Type } from "@bunest/core";
+
 export type BatchLoadFn<K, V> = (
   keys: readonly K[],
 ) => Promise<ReadonlyArray<V | Error>> | ReadonlyArray<V | Error>;
@@ -209,4 +211,72 @@ export class BunestDataLoader<K, V, C = K> {
       }
     }
   }
+}
+
+/**
+ * Factory provider contract for per-request GraphQL DataLoaders injected via `@Loader(MyLoader)`.
+ * Both the factory provider and the consuming `@Resolver()` stay `Scope.SINGLETON` while
+ * each GraphQL request gets its own isolated `BunestDataLoader` instance.
+ */
+export interface BunestDataLoaderFactory<K = any, V = any, C = K> {
+  createDataLoader(context?: unknown): BunestDataLoader<K, V, C>;
+}
+
+const REQUEST_DATALOADER_CACHE = new WeakMap<
+  object,
+  Map<Function, BunestDataLoader<any, any, any>>
+>();
+
+/**
+ * Returns an already-cached per-request `BunestDataLoader` instance for `(context, loaderToken)`
+ * without invoking the factory, or `undefined` on cache miss.
+ */
+export function getCachedRequestDataLoader<K = any, V = any, C = K>(
+  context: object | undefined,
+  loaderToken: Type<BunestDataLoaderFactory<K, V, C>>,
+): BunestDataLoader<K, V, C> | undefined {
+  if (!context || typeof context !== "object") {
+    return undefined;
+  }
+  return REQUEST_DATALOADER_CACHE.get(context)?.get(loaderToken) as
+    | BunestDataLoader<K, V, C>
+    | undefined;
+}
+
+/**
+ * Resolves (and caches for the lifetime of the GraphQL `context` object) a per-request
+ * `BunestDataLoader` instance from a `BunestDataLoaderFactory`.
+ */
+export function resolveRequestScopedDataLoader<K = any, V = any, C = K>(
+  context: object | undefined,
+  loaderToken: Type<BunestDataLoaderFactory<K, V, C>>,
+  factory: BunestDataLoaderFactory<K, V, C>,
+): BunestDataLoader<K, V, C> {
+  const isObjectContext =
+    context !== null && context !== undefined && typeof context === "object";
+
+  if (isObjectContext) {
+    const cached = REQUEST_DATALOADER_CACHE.get(context)?.get(loaderToken);
+    if (cached) {
+      return cached as BunestDataLoader<K, V, C>;
+    }
+  }
+
+  const created = factory.createDataLoader(context);
+  if (!created || typeof created !== "object") {
+    throw new Error(
+      `@Loader(${loaderToken.name || "DataLoaderFactory"}).createDataLoader() must return a BunestDataLoader instance.`,
+    );
+  }
+
+  if (isObjectContext) {
+    let perRequest = REQUEST_DATALOADER_CACHE.get(context);
+    if (!perRequest) {
+      perRequest = new Map();
+      REQUEST_DATALOADER_CACHE.set(context, perRequest);
+    }
+    perRequest.set(loaderToken, created);
+  }
+
+  return created;
 }

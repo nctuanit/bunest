@@ -197,6 +197,8 @@ export class LibSqlOrmDriver implements OrmDriver {
     const track = shouldTrackQuery(this.options.logging);
     const start = track ? performance.now() : 0;
     const tx = this.txStorage.getStore();
+    let queryResult: OrmQueryResult<T>;
+    let telemetryCount: number;
     try {
       const reqs: Record<string, unknown>[] = [
         {
@@ -215,63 +217,42 @@ export class LibSqlOrmDriver implements OrmDriver {
       const payload = await this.sendPipeline(reqs, tx);
       const first = payload.results?.[0];
       if (!first) {
-        if (track) {
-          emitQueryTelemetry(
-            this.options.logging,
-            this.dialect,
-            sql,
-            params,
-            start,
-            0,
-            undefined,
-            this.dataSourceName,
+        telemetryCount = 0;
+        queryResult = { rows: [], affectedRows: 0 };
+      } else {
+        if (first.type === "error") {
+          throw new Error(
+            first.error?.message ?? `LibSQL execution error (${first.error?.code ?? "UNKNOWN"})`,
           );
         }
-        return { rows: [], affectedRows: 0 };
-      }
-      if (first.type === "error") {
-        throw new Error(
-          first.error?.message ?? `LibSQL execution error (${first.error?.code ?? "UNKNOWN"})`,
-        );
-      }
 
-      const res = first.response?.result;
-      const cols = res?.cols ?? [];
-      const rawRows = res?.rows ?? [];
-      const rows: T[] = rawRows.map((rowVals) => {
-        const obj: Record<string, unknown> = {};
-        for (let i = 0; i < cols.length; i++) {
-          const colName = cols[i]?.name ?? `col_${i}`;
-          obj[colName] = decodeHranaValue(rowVals[i]);
-        }
-        return obj as T;
-      });
+        const res = first.response?.result;
+        const cols = res?.cols ?? [];
+        const rawRows = res?.rows ?? [];
+        const rows: T[] = rawRows.map((rowVals) => {
+          const obj: Record<string, unknown> = {};
+          for (let i = 0; i < cols.length; i++) {
+            const colName = cols[i]?.name ?? `col_${i}`;
+            obj[colName] = decodeHranaValue(rowVals[i]);
+          }
+          return obj as T;
+        });
 
-      const affectedRows =
-        res?.affected_row_count !== undefined
-          ? Number(res.affected_row_count)
-          : rows.length;
+        const affectedRows =
+          res?.affected_row_count !== undefined
+            ? Number(res.affected_row_count)
+            : rows.length;
 
-      if (track) {
-        emitQueryTelemetry(
-          this.options.logging,
-          this.dialect,
-          sql,
-          params,
-          start,
-          rows.length > 0 ? rows.length : affectedRows,
-          undefined,
-          this.dataSourceName,
-        );
+        telemetryCount = rows.length > 0 ? rows.length : affectedRows;
+        queryResult = {
+          rows,
+          affectedRows,
+          lastInsertRowid:
+            res?.last_insert_rowid !== undefined && res?.last_insert_rowid !== null
+              ? Number(res.last_insert_rowid)
+              : null,
+        };
       }
-      return {
-        rows,
-        affectedRows,
-        lastInsertRowid:
-          res?.last_insert_rowid !== undefined && res?.last_insert_rowid !== null
-            ? Number(res.last_insert_rowid)
-            : null,
-      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (track) {
@@ -288,6 +269,19 @@ export class LibSqlOrmDriver implements OrmDriver {
       }
       throw new QueryFailedError(error.message, sql, params, error);
     }
+    if (track) {
+      emitQueryTelemetry(
+        this.options.logging,
+        this.dialect,
+        sql,
+        params,
+        start,
+        telemetryCount,
+        undefined,
+        this.dataSourceName,
+      );
+    }
+    return queryResult;
   }
 
   async execute(

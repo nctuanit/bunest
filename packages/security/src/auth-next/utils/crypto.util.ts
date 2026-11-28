@@ -1,10 +1,11 @@
 import {
+  isString,
   randomInt,
   randomToken,
   sha256 as coreSha256,
   timingSafeEqualBytes,
   timingSafeEqualStr,
-} from "@bunest/core";
+} from "@bunest/core/common";
 
 export { randomInt, randomToken, timingSafeEqualBytes };
 
@@ -38,7 +39,7 @@ const MAX_REDIRECT_LENGTH = 2_048;
  */
 export function safeRedirectPath(value: unknown): string | undefined {
   if (
-    typeof value !== "string" ||
+    !isString(value) ||
     !value.startsWith("/") ||
     value.length > MAX_REDIRECT_LENGTH
   ) {

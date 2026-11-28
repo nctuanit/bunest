@@ -143,9 +143,8 @@ export function ArrayUnique<T = unknown>(
 ): PropertyDecorator {
   const isIdentifier = typeof identifierOrOptions === "function";
   const identifier = isIdentifier ? identifierOrOptions : undefined;
-  const opts = isIdentifier
-    ? validationOptions
-    : isValidationOptions(identifierOrOptions)
+  const opts =
+    !isIdentifier && isValidationOptions(identifierOrOptions)
       ? identifierOrOptions
       : validationOptions;
 

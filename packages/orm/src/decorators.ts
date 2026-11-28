@@ -155,14 +155,12 @@ function materializeOrmCommonColumns(
     const resolvedName =
       col.explicitName ??
       (camelCaseMapping ? camelToSnake(col.propertyName) : col.propertyName);
-    const commonGenStrategy: ColumnGenerationStrategy | undefined =
-      col.generationStrategy === "uuid"
-        ? "uuid"
-        : col.generationStrategy === "objectid"
-          ? undefined
-          : col.generated
-            ? "increment"
-            : undefined;
+    let commonGenStrategy: ColumnGenerationStrategy | undefined;
+    if (col.generationStrategy === "uuid") {
+      commonGenStrategy = "uuid";
+    } else if (col.generationStrategy !== "objectid" && col.generated) {
+      commonGenStrategy = "increment";
+    }
     const mappedType = toCommonColumnType(col.type);
     const resolvedType: ColumnDataType =
       mappedType ??
@@ -300,26 +298,28 @@ function recordColumn(
     options.generated === "uuid" ||
     options.generated === "objectid";
 
-  const generationStrategy: PrimaryGeneratedStrategy | undefined =
+  let generationStrategy: PrimaryGeneratedStrategy | undefined;
+  if (
     options.generated === "objectid" ||
     (generatedFlag && options.type === "objectid")
-      ? "objectid"
-      : options.generated === "uuid" || (generatedFlag && options.type === "uuid")
-        ? "uuid"
-        : generatedFlag
-          ? "increment"
-          : undefined;
+  ) {
+    generationStrategy = "objectid";
+  } else if (
+    options.generated === "uuid" ||
+    (generatedFlag && options.type === "uuid")
+  ) {
+    generationStrategy = "uuid";
+  } else if (generatedFlag) {
+    generationStrategy = "increment";
+  }
 
   const hasDefault = "default" in options && options.default !== undefined;
+  const resolvedType = options.type ?? fallbackType;
 
   const entry: StoredOrmColumnMetadata = {
     propertyName,
     ...(options.name !== undefined ? { explicitName: options.name } : {}),
-    ...(options.type !== undefined
-      ? { type: options.type }
-      : fallbackType !== undefined
-        ? { type: fallbackType }
-        : {}),
+    ...(resolvedType !== undefined ? { type: resolvedType } : {}),
     ...(designType !== undefined ? { designType } : {}),
     ...(options.length !== undefined ? { length: options.length } : {}),
     ...(options.minLength !== undefined ? { minLength: options.minLength } : {}),

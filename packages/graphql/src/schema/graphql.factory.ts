@@ -135,12 +135,17 @@ export class GraphQLFederationFactory {
     options: T = {} as T,
     resolvers: readonly object[] = [],
   ): Promise<GraphQLSchema> {
-    const federationConfig =
-      typeof autoSchemaFile === "object" && autoSchemaFile?.federation
-        ? typeof autoSchemaFile.federation === "number"
-          ? { version: autoSchemaFile.federation }
-          : autoSchemaFile.federation
-        : (options.federation ?? { version: 2 });
+    const autoFed =
+      typeof autoSchemaFile === "object"
+        ? autoSchemaFile?.federation
+        : undefined;
+    let federationConfig: GraphQLModuleOptions["federation"];
+    if (autoFed) {
+      federationConfig =
+        typeof autoFed === "number" ? { version: autoFed } : autoFed;
+    } else {
+      federationConfig = options.federation ?? { version: 2 };
+    }
 
     return this.schemaFactory.create(resolvers, {
       ...options,

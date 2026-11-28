@@ -105,11 +105,7 @@ export function buildBunSqlConfig(
 
   // PostgreSQL, CockroachDB (Postgres wire protocol), MySQL, MariaDB
   const adapter: "postgres" | "mysql" | "mariadb" =
-    dialect === "mariadb"
-      ? "mariadb"
-      : dialect === "mysql"
-        ? "mysql"
-        : "postgres";
+    dialect === "mariadb" || dialect === "mysql" ? dialect : "postgres";
 
   const cfg: Bun.SQL.PostgresOrMySQLOptions = { adapter };
 
@@ -360,31 +356,22 @@ export class BunSqlOrmDriver implements OrmDriver {
     const track = shouldTrackQuery(this.options.logging);
     const start = track ? performance.now() : 0;
     const bound = this.normalizeParams(params);
+    let queryResult: OrmQueryResult<T>;
+    let telemetryCount: number;
     try {
       const result =
         bound.length > 0
           ? await active.unsafe<T[]>(sql, bound)
           : await active.unsafe<T[]>(sql);
       const rows = Array.isArray(result) ? ([...result] as T[]) : [];
-      const affectedRows =
-        typeof result.affectedRows === "number"
-          ? result.affectedRows
-          : typeof result.count === "number"
-            ? result.count
-            : rows.length;
-      if (track) {
-        emitQueryTelemetry(
-          this.options.logging,
-          this.dialect,
-          sql,
-          params,
-          start,
-          rows.length > 0 ? rows.length : affectedRows,
-          undefined,
-          this.dataSourceName,
-        );
+      let affectedRows = rows.length;
+      if (typeof result.affectedRows === "number") {
+        affectedRows = result.affectedRows;
+      } else if (typeof result.count === "number") {
+        affectedRows = result.count;
       }
-      return {
+      telemetryCount = rows.length > 0 ? rows.length : affectedRows;
+      queryResult = {
         rows,
         affectedRows,
         lastInsertRowid: result.lastInsertRowid ?? null,
@@ -405,6 +392,19 @@ export class BunSqlOrmDriver implements OrmDriver {
       }
       throw new QueryFailedError(error.message, sql, params, error);
     }
+    if (track) {
+      emitQueryTelemetry(
+        this.options.logging,
+        this.dialect,
+        sql,
+        params,
+        start,
+        telemetryCount,
+        undefined,
+        this.dataSourceName,
+      );
+    }
+    return queryResult;
   }
 
   async execute(
@@ -567,12 +567,12 @@ export class BunSqlOrmDriver implements OrmDriver {
           const isReadOnly = options.readOnly === true;
 
           if (this.dialect === "sqlite") {
-            const sqliteMode =
-              isReadOnly || isolationLevel === "READ UNCOMMITTED"
-                ? "DEFERRED"
-                : isolationLevel === "SERIALIZABLE"
-                  ? "IMMEDIATE"
-                  : undefined;
+            let sqliteMode: "DEFERRED" | "IMMEDIATE" | undefined;
+            if (isReadOnly || isolationLevel === "READ UNCOMMITTED") {
+              sqliteMode = "DEFERRED";
+            } else if (isolationLevel === "SERIALIZABLE") {
+              sqliteMode = "IMMEDIATE";
+            }
 
             const body = async (tx: TransactionSQL) => {
               if (isReadOnly) {

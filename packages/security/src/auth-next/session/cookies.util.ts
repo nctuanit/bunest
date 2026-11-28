@@ -87,16 +87,32 @@ export function assertCookieAttributes(
   }
 }
 
+const COOKIE_NAME_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+// eslint-disable-next-line no-control-regex
+const COOKIE_ATTR_UNSAFE_RE = /[\x00-\x1f\x7f;]/;
+
 export function serializeCookie(
   name: string,
   value: string,
   attributes: CookieAttributes & { maxAge: number },
 ): string {
+  if (!COOKIE_NAME_TOKEN_RE.test(name)) {
+    throw new TypeError(`Invalid cookie name: ${JSON.stringify(name)}`);
+  }
+  const path = attributes.path ?? "/";
+  if (COOKIE_ATTR_UNSAFE_RE.test(path)) {
+    throw new TypeError(`Invalid cookie Path attribute: ${JSON.stringify(path)}`);
+  }
+  if (attributes.domain !== undefined && COOKIE_ATTR_UNSAFE_RE.test(attributes.domain)) {
+    throw new TypeError(
+      `Invalid cookie Domain attribute: ${JSON.stringify(attributes.domain)}`,
+    );
+  }
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${Math.max(0, Math.floor(attributes.maxAge))}`,
   ];
-  parts.push(`Path=${attributes.path ?? "/"}`);
+  parts.push(`Path=${path}`);
   if (attributes.domain) {
     parts.push(`Domain=${attributes.domain}`);
   }

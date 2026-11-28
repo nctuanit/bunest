@@ -1,3 +1,4 @@
+import { escapeRegExp } from "@bunest/core/common";
 import type { ValidationOptions } from "../../interfaces/validation-options.interface";
 import { buildMessage, createBuiltInDecorator } from "../core.decorators";
 
@@ -265,17 +266,18 @@ export function IsISBN(
   );
 }
 
+const ISSN_PATTERNS = [
+  /^\d{4}-?\d{3}[\dXx]$/,
+  /^\d{4}-?\d{3}[\dX]$/,
+  /^\d{4}-\d{3}[\dXx]$/,
+  /^\d{4}-\d{3}[\dX]$/,
+] as const;
+
 export function isISSN(value: unknown, options: IsISSNOptions = {}): boolean {
   if (typeof value !== "string" || value.length > 9) return false;
   const requireHyphen = options.require_hyphen ?? false;
   const caseSensitive = options.case_sensitive ?? false;
-  const re = requireHyphen
-    ? caseSensitive
-      ? /^\d{4}-\d{3}[\dX]$/
-      : /^\d{4}-\d{3}[\dXx]$/
-    : caseSensitive
-      ? /^\d{4}-?\d{3}[\dX]$/
-      : /^\d{4}-?\d{3}[\dXx]$/;
+  const re = ISSN_PATTERNS[(requireHyphen ? 2 : 0) | (caseSensitive ? 1 : 0)]!;
   if (!re.test(value)) return false;
   const digits = value.replace("-", "").toUpperCase();
   let sum = 0;
@@ -311,7 +313,7 @@ export function isEAN(value: unknown): boolean {
   let sum = 0;
   for (let i = 0; i < len - 1; i++) {
     const d = value.charCodeAt(i) - 48;
-    const weight = len === 13 ? (i % 2 === 0 ? 1 : 3) : i % 2 === 0 ? 3 : 1;
+    const weight = (len === 13) !== (i % 2 === 0) ? 3 : 1;
     sum += d * weight;
   }
   const check = (10 - (sum % 10)) % 10;
@@ -389,10 +391,6 @@ export function IsISRC(
   );
 }
 
-function escapeRegExpLiteral(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 export function isCurrency(
   value: unknown,
   options: IsCurrencyOptions = {},
@@ -400,7 +398,7 @@ export function isCurrency(
   if (typeof value !== "string" || value.length === 0 || value.length > 64) {
     return false;
   }
-  const symbol = escapeRegExpLiteral(options.symbol ?? "$");
+  const symbol = escapeRegExp(options.symbol ?? "$");
   const requireSymbol = options.require_symbol ?? false;
   const allowSpaceAfterSymbol = options.allow_space_after_symbol ?? false;
   const symbolAfterDigits = options.symbol_after_digits ?? false;
@@ -410,8 +408,8 @@ export function isCurrency(
   const negativeAfter = options.negative_sign_after_digits ?? false;
   const allowNegativePlaceholder =
     options.allow_negative_sign_placeholder ?? false;
-  const thousandsSep = escapeRegExpLiteral(options.thousands_separator ?? ",");
-  const decimalSep = escapeRegExpLiteral(options.decimal_separator ?? ".");
+  const thousandsSep = escapeRegExp(options.thousands_separator ?? ",");
+  const decimalSep = escapeRegExp(options.decimal_separator ?? ".");
   const allowDecimal = options.allow_decimal ?? true;
   const requireDecimal = options.require_decimal ?? false;
   const digitsAfterDecimal = options.digits_after_decimal ?? [2];
@@ -419,15 +417,17 @@ export function isCurrency(
 
   const symPart = `(?:${symbol})${requireSymbol ? "" : "?"}`;
   const spaceAfterSym = allowSpaceAfterSymbol ? " ?" : "";
+  const spaceAfterDigits = allowSpaceAfterDigits ? " ?" : "";
   const wholeDigits = `(?:[1-9]\\d{0,2}(?:${thousandsSep}\\d{3})*|0|[1-9]\\d*)`;
   const decLengths = digitsAfterDecimal.map((d) => `\\d{${d}}`).join("|");
+  const decimalQuantifier = requireDecimal ? "" : "?";
   const decimalPart = allowDecimal
-    ? `(?:${decimalSep}(?:${decLengths}))${requireDecimal ? "" : "?"}`
+    ? `(?:${decimalSep}(?:${decLengths}))${decimalQuantifier}`
     : "";
   const amount = `(?:${wholeDigits}${decimalPart}|${decimalSep}(?:${decLengths}))`;
 
   const body = symbolAfterDigits
-    ? `${amount}${allowSpaceAfterDigits ? " ?" : ""}${symPart}`
+    ? `${amount}${spaceAfterDigits}${symPart}`
     : `${symPart}${spaceAfterSym}${amount}`;
 
   let negPrefix = "";

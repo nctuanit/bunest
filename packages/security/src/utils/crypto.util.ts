@@ -1,9 +1,10 @@
 import {
   base64UrlEncode,
+  isFiniteNumber,
   randomToken,
   timingSafeEqualBytes,
   timingSafeEqualStr,
-} from "@bunest/core";
+} from "@bunest/core/common";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
@@ -54,13 +55,23 @@ export function randomBytes(length: number): Uint8Array<ArrayBuffer> {
 
 const DURATION_REGEX = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i;
 
+const DURATION_UNIT_SECONDS: Record<string, number> = {
+  ms: 1 / 1000,
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86400,
+  w: 604800,
+  y: 31557600,
+};
+
 /**
  * Parses a duration in seconds (number) or shorthand string ("30s", "15m", "2h", "7d", "2w", "1y", "500ms")
  * into seconds.
  */
 export function parseDurationToSeconds(value: number | string): number {
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || value < 0) {
+    if (!isFiniteNumber(value) || value < 0) {
       throw new Error(`Invalid duration value: ${value}`);
     }
     return Math.floor(value);
@@ -73,25 +84,11 @@ export function parseDurationToSeconds(value: number | string): number {
 
   const amount = Number.parseFloat(match[1]!);
   const unit = (match[2] ?? "s").toLowerCase();
-
-  switch (unit) {
-    case "ms":
-      return Math.floor(amount / 1000);
-    case "s":
-      return Math.floor(amount);
-    case "m":
-      return Math.floor(amount * 60);
-    case "h":
-      return Math.floor(amount * 3600);
-    case "d":
-      return Math.floor(amount * 86400);
-    case "w":
-      return Math.floor(amount * 604800);
-    case "y":
-      return Math.floor(amount * 31557600);
-    default:
-      throw new Error(`Unsupported duration unit: "${unit}"`);
+  const multiplier = DURATION_UNIT_SECONDS[unit];
+  if (multiplier === undefined) {
+    throw new Error(`Unsupported duration unit: "${unit}"`);
   }
+  return Math.floor(amount * multiplier);
 }
 
 /**

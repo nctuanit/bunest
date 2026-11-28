@@ -49,14 +49,15 @@ export abstract class AbstractGraphQLDriver<
           const subCfg = subs[key];
           if (subCfg && typeof subCfg === "object") {
             const subObj = subCfg as { path?: string };
-            const rawSubPath =
+            const fallbackPath =
+              typeof options.path === "string" && options.path.length > 0
+                ? options.path
+                : "/graphql";
+            const rawSubPath = normalizePath(
               typeof subObj.path === "string" && subObj.path.length > 0
-                ? normalizePath(subObj.path)
-                : normalizePath(
-                    typeof options.path === "string" && options.path.length > 0
-                      ? options.path
-                      : "/graphql",
-                  );
+                ? subObj.path
+                : fallbackPath,
+            );
             subs[key] = {
               ...subObj,
               path: this.applyGlobalPrefix(rawSubPath, merged),
