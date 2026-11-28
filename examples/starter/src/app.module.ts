@@ -1,32 +1,15 @@
-import {
-  Controller,
-  Get,
-  Module,
-  type Logger,
-  type OnApplicationBootstrap,
-} from "@bunest/core";
+import { Module, type Logger, type OnApplicationBootstrap } from "@bunest/core";
 import { OrmModule } from "@bunest/orm";
 import { BrandEntity } from "./brands/brand.entity";
 import { BrandsModule } from "./brands/brands.module";
 import { BrandsService } from "./brands/brands.service";
+import { HealthController } from "./health.controller";
 import { OrderItemEntity } from "./orders/order-item.entity";
 import { OrderEntity } from "./orders/order.entity";
 import { OrdersModule } from "./orders/orders.module";
 import { ShoeEntity } from "./shoes/shoe.entity";
 import { ShoesModule } from "./shoes/shoes.module";
 import { ShoesService } from "./shoes/shoes.service";
-
-@Controller()
-export class HealthController {
-  @Get("health")
-  health() {
-    return {
-      status: "ok",
-      shop: Bun.env.APP_NAME ?? "Bunest Sneaker Shop",
-      runtime: `Bun ${Bun.version}`,
-    };
-  }
-}
 
 @Module({
   imports: [

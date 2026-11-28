@@ -1,0 +1,19 @@
+{
+  "name": "@bunest-example/modern-auth-integrations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/security": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

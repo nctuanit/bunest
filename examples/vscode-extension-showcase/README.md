@@ -17,9 +17,9 @@ Mở riêng thư mục này trong **Antigravity IDE / VS Code** (`File -> Open F
    - Mở `src/orders/coupon.entity.ts` → bấm CodeLens **`✨ Generate CrudRepository for CouponEntity`** → tự tạo file `coupon.repository.ts` có sẵn finder theo `@Unique()` / `@Index()`.
 5. **Entities & Value Objects** (`src/users/user.entity.ts`, `src/users/money.vo.ts`):
    - Xem `UserEntity` (`@Entity("users")`, `@PrimaryGeneratedColumn()`, `@Column()`, `@Unique()`, `@Index()`) và immutable value object `Money` (`withAmount()`, `toString()`).
-6. **Service-Layer AOP Pipeline & Cache Providers** (`src/magic/aop-pipeline.ts`, `src/magic/conditional-cache.ts`):
-   - Xem `@AuditedOperation()` (`defineAspectPipeline` + `AspectPhase.OBSERVABILITY` / `AspectPhase.AUDIT`) trên `UsersService.findAll()` và `OrdersService.listByStatus()`.
-   - Xem abstract token `ShowcaseCacheStore`, `InMemoryShowcaseCacheStore`, và `DevShowcaseBanner` trong `src/magic/conditional-cache.ts`.
+6. **Service-Layer AOP Pipeline & Cache Providers** (`src/magic/aop-pipeline.ts`, `src/magic/showcase-cache-store.ts`):
+   - Xem `@AuditedOperation()` (`defineAspectPipeline` + `AspectPhase.OBSERVABILITY` / `AspectPhase.AUDIT`) cùng `ShowcaseAspectTrace`, `ShowcaseObservabilityAspect`, `ShowcaseAuditAspect` trên `UsersService.findAll()` và `OrdersService.listByStatus()`.
+   - Xem abstract token `ShowcaseCacheStore` (`src/magic/showcase-cache-store.ts`), `InMemoryShowcaseCacheStore` (`src/magic/in-memory-showcase-cache.store.ts`), và `DevShowcaseBanner` (`src/magic/dev-showcase-banner.ts`).
 7. **Cross-Jump & Secret Redaction** (`src/users/users.service.ts`, `src/users/users.events.ts`):
    - Hover vào `"JWT_SECRET"` trong `config.get("JWT_SECRET")` → hiển thị **`[REDACTED]`**; hover vào `"PORT"` → hiển thị **`3100`**.
    - `Cmd+Click` vào `"user.created"` → nhảy thẳng sang `@OnEvent("user.created")` trong `src/users/users.events.ts`.

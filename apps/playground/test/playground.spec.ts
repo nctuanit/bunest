@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
-import {
-  AppModule,
-  configurePlaygroundApp,
-  type TodoItem,
-} from "../src/app.module";
+import { AppModule, configurePlaygroundApp } from "../src/app.module";
+import type { TodoItem } from "../src/todos/todo.entity";
 
 describe("Bunest Playground App", () => {
   it("serves Todos CRUD, Swagger /docs, /health, /metrics, and /_devtools/graph", async () => {

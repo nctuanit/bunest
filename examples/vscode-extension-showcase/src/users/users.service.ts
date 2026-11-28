@@ -3,7 +3,8 @@ import { ConfigService } from "@bunest/core/config";
 import { EventEmitterService } from "@bunest/messaging/events";
 import { Transactional } from "@bunest/orm";
 import { AuditedOperation } from "../magic/aop-pipeline";
-import { Money, UserNotFoundError } from "./money.vo";
+import { Money } from "./money.vo";
+import { UserNotFoundError } from "./user-not-found.error";
 import { UserEntity } from "./user.entity";
 import { UserRepository } from "./user.repository";
 

@@ -15,13 +15,6 @@ export class Money {
   }
 }
 
-export class UserNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserNotFoundError";
-  }
-}
-
 export function slugifyText(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, "-");
 }

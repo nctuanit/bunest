@@ -3,16 +3,12 @@ import { ConfigModule } from "@bunest/core/config";
 import { EventEmitterModule } from "@bunest/messaging/events";
 import { OrmModule } from "@bunest/orm";
 import { appConfig } from "./config/app.config";
-import {
-  ShowcaseAspectTrace,
-  ShowcaseAuditAspect,
-  ShowcaseObservabilityAspect,
-} from "./magic/aop-pipeline";
-import {
-  DevShowcaseBanner,
-  InMemoryShowcaseCacheStore,
-  ShowcaseCacheStore,
-} from "./magic/conditional-cache";
+import { DevShowcaseBanner } from "./magic/dev-showcase-banner";
+import { InMemoryShowcaseCacheStore } from "./magic/in-memory-showcase-cache.store";
+import { ShowcaseAspectTrace } from "./magic/showcase-aspect-trace";
+import { ShowcaseAuditAspect } from "./magic/showcase-audit.aspect";
+import { ShowcaseCacheStore } from "./magic/showcase-cache-store";
+import { ShowcaseObservabilityAspect } from "./magic/showcase-observability.aspect";
 import { OrderEntity } from "./orders/order.entity";
 import { OrderRepository } from "./orders/order.repository";
 import { OrdersController } from "./orders/orders.controller";

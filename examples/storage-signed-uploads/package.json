@@ -1,0 +1,23 @@
+{
+  "name": "@bunest/example-storage-signed-uploads",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "Production file storage & signed upload/download URLs with @bunest/storage: InMemoryDisk/LocalDisk/S3Disk config, signedUrl, signedUpload, serveSignedUrl, receiveSignedUpload, Range 206, ETag 304, and inspectImage",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

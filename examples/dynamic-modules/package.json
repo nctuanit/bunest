@@ -1,0 +1,22 @@
+{
+  "name": "@bunest/example-dynamic-modules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 25-dynamic-modules equivalent: DynamicModule register/registerAsync, ConfigurableModuleBuilder, and namespaced ConfigModule",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

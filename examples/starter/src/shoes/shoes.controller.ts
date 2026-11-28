@@ -10,8 +10,9 @@ import {
   Post,
   Query,
 } from "@bunest/core";
-import { CreateShoeDto, UpdateShoeDto } from "./shoe.dto";
+import { CreateShoeDto } from "./create-shoe.dto";
 import { ShoesService } from "./shoes.service";
+import { UpdateShoeDto } from "./update-shoe.dto";
 
 @Controller("shoes")
 export class ShoesController {

@@ -1,0 +1,22 @@
+{
+  "name": "@bunest/example-sse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 28-sse equivalent: Server-Sent Events with @Sse(), AsyncGenerator streams, @SseSignal() disconnect cleanup, and live push notifications",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

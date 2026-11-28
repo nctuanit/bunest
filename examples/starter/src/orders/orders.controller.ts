@@ -9,9 +9,10 @@ import {
   Post,
   Query,
 } from "@bunest/core";
-import { CreateOrderDto, UpdateOrderStatusDto } from "./order.dto";
+import { CreateOrderDto } from "./create-order.dto";
 import type { OrderStatus } from "./order.entity";
 import { OrdersService } from "./orders.service";
+import { UpdateOrderStatusDto } from "./update-order-status.dto";
 
 @Controller("orders")
 export class OrdersController {

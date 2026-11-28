@@ -2,11 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { loadBunestConfig } from "@bunest/cli";
 import { BunestFactory, resolve } from "@bunest/core";
 import { AppModule } from "../src/app.module";
-import { ShowcaseAspectTrace } from "../src/magic/aop-pipeline";
-import {
-  DevShowcaseBanner,
-  ShowcaseCacheStore,
-} from "../src/magic/conditional-cache";
+import { DevShowcaseBanner } from "../src/magic/dev-showcase-banner";
+import { ShowcaseAspectTrace } from "../src/magic/showcase-aspect-trace";
+import { ShowcaseCacheStore } from "../src/magic/showcase-cache-store";
 import { OrderRepository } from "../src/orders/order.repository";
 import { Money, slugifyText } from "../src/users/money.vo";
 import { UsersService } from "../src/users/users.service";

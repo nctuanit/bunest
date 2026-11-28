@@ -1,0 +1,22 @@
+{
+  "name": "@bunest/example-serve-static",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 24-serve-static equivalent: ServeStaticModule (Bun.file + ETag/304 + SPA fallback) alongside /api endpoints and StreamableFile downloads",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

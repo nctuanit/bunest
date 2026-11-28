@@ -1,16 +1,11 @@
 import { Injectable, Logger } from "@bunest/core";
 import { OnEvent } from "@bunest/messaging/events";
+import { AuditPrinter } from "./audit-printer";
 
 export interface UserCreatedEvent {
   readonly id: number;
   readonly email: string;
   readonly name: string;
-}
-
-export class AuditPrinter {
-  formatAuditLine(action: string, subject: string): string {
-    return `[AUDIT] ${action} -> ${subject}`;
-  }
 }
 
 @Injectable()

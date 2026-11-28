@@ -7,9 +7,10 @@ import {
 } from "@bunest/core";
 import { InjectRepository, type OrmRepository } from "@bunest/orm";
 import { BrandEntity } from "../brands/brand.entity";
-import type { CreateShoeDto, UpdateShoeDto } from "./shoe.dto";
+import type { CreateShoeDto } from "./create-shoe.dto";
 import { ShoeEntity } from "./shoe.entity";
 import { ShoeRepository } from "./shoe.repository";
+import type { UpdateShoeDto } from "./update-shoe.dto";
 
 @Injectable()
 export class ShoesService {

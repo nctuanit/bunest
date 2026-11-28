@@ -1,0 +1,23 @@
+{
+  "name": "@bunest/example-scheduling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 27-scheduling equivalent: ScheduleModule with @Cron, @Interval, @Timeout, and dynamic SchedulerRegistry API",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/jobs": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

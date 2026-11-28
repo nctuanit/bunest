@@ -1,0 +1,23 @@
+{
+  "name": "@bunest/example-file-upload",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 29-file-upload equivalent: FileInterceptor, FilesInterceptor, @UploadedFile, ParseFilePipeBuilder magic-byte validation, and @bunest/storage",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

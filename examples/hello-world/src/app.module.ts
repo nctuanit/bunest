@@ -1,30 +1,6 @@
-import { Controller, Get, Injectable, Module, Query } from "@bunest/core";
-
-@Injectable()
-export class AppService {
-  getGreeting(name?: string): { message: string; runtime: string } {
-    const target = name?.trim() || "Bunest";
-    return {
-      message: `Hello, ${target}!`,
-      runtime: `Bun ${Bun.version}`,
-    };
-  }
-}
-
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Get()
-  getHello(@Query("name") name?: string) {
-    return this.appService.getGreeting(name);
-  }
-
-  @Get("/health")
-  getHealth() {
-    return { status: "ok" };
-  }
-}
+import { Module } from "@bunest/core";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
 
 @Module({
   controllers: [AppController],

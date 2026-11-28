@@ -7,7 +7,7 @@ import {
 import { InjectRepository, Transactional, type OrmRepository } from "@bunest/orm";
 import { ShoeEntity } from "../shoes/shoe.entity";
 import { ShoeRepository } from "../shoes/shoe.repository";
-import type { CreateOrderDto } from "./order.dto";
+import type { CreateOrderDto } from "./create-order.dto";
 import { OrderItemEntity } from "./order-item.entity";
 import { OrderEntity, type OrderStatus } from "./order.entity";
 import { OrderRepository, type SalesSummary } from "./order.repository";

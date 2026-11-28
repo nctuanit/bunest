@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Test } from "@bunest/testing";
-import {
-  AppModule,
-  UsersService,
-  configureRestCrudApp,
-  type UserRecord,
-} from "../src/app.module";
+import { AppModule, configureRestCrudApp } from "../src/app.module";
+import { UsersService, type UserRecord } from "../src/users/users.service";
 
 describe("REST CRUD Example (E2E)", () => {
   it("executes full Users CRUD, DTO ValidationPipe 400 checks, 404 filter, and OpenAPI /docs-json", async () => {

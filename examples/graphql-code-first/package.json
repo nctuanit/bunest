@@ -1,0 +1,24 @@
+{
+  "name": "@bunest/example-graphql-code-first",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 23-graphql-code-first equivalent: code-first GraphQL Recipes API with @ObjectType, @InputType, @ArgsType, @ResolveField, ValidationPipe, and ApolloDriver",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/graphql": "workspace:*",
+    "@bunest/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

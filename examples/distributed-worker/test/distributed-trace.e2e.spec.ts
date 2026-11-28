@@ -2,11 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { InMemorySpanExporter } from "@bunest/observability";
 import { DataSource } from "@bunest/orm";
 import { Test } from "@bunest/testing";
-import {
-  OrderEventAuditListener,
-  createDistributedWorkerModule,
-  type OrderRecord,
-} from "../src/app.module";
+import { createDistributedWorkerModule } from "../src/app.module";
+import { OrderEventAuditListener } from "../src/orders/order-event-audit.listener";
+import type { OrderRecord } from "../src/orders/order.entity";
 
 async function waitUntil(
   predicate: () => boolean,

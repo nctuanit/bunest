@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package hero;
+
+service HeroService {
+  rpc FindOne (HeroById) returns (Hero);
+  rpc FindMany (FindManyRequest) returns (stream Hero);
+}
+
+message HeroById {
+  int32 id = 1;
+}
+
+message FindManyRequest {
+  int32 minPower = 1;
+}
+
+message Hero {
+  int32 id = 1;
+  string name = 2;
+  int32 power = 3;
+}

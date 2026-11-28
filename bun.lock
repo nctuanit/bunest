@@ -44,6 +44,16 @@
         "typescript": "^7.0.2",
       },
     },
+    "examples/application-context": {
+      "name": "@bunest/example-application-context",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
     "examples/auth-jwt-sqlite": {
       "name": "@bunest/example-auth-jwt-sqlite",
       "version": "0.1.0",
@@ -55,6 +65,51 @@
       },
       "devDependencies": {
         "@bunest/cli": "workspace:*",
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/broker-microservices": {
+      "name": "@bunest-example/broker-microservices",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/microservices": "workspace:*",
+        "@bunest/resilience": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/cache": {
+      "name": "@bunest/example-cache",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/cache": "workspace:*",
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/cats-app": {
+      "name": "@bunest/example-cats-app",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/cqrs": {
+      "name": "@bunest/example-cqrs",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/messaging": "workspace:*",
+      },
+      "devDependencies": {
         "@bunest/testing": "workspace:*",
       },
     },
@@ -73,8 +128,153 @@
         "@bunest/testing": "workspace:*",
       },
     },
+    "examples/dynamic-modules": {
+      "name": "@bunest/example-dynamic-modules",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/event-emitter": {
+      "name": "@bunest/example-event-emitter",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/messaging": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/file-upload": {
+      "name": "@bunest/example-file-upload",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/fullstack-contract-rpc": {
+      "name": "@bunest/example-fullstack-contract-rpc",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/swagger": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/functional-minimal": {
+      "name": "@bunest/example-functional-minimal",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/swagger": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/graphql-code-first": {
+      "name": "@bunest/example-graphql-code-first",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/graphql": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/graphql-federation": {
+      "name": "@bunest/example-graphql-federation",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/graphql": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/graphql-schema-first": {
+      "name": "@bunest/example-graphql-schema-first",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/graphql": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/grpc": {
+      "name": "@bunest/example-grpc",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/microservices": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
     "examples/hello-world": {
       "name": "@bunest/example-hello-world",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/microservices-tcp": {
+      "name": "@bunest/example-microservices-tcp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/microservices": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/modern-auth-integrations": {
+      "name": "@bunest-example/modern-auth-integrations",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/security": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/multi-auth-security": {
+      "name": "@bunest-example/multi-auth-security",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/security": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/mvc": {
+      "name": "@bunest/example-mvc",
       "version": "0.1.0",
       "dependencies": {
         "@bunest/core": "workspace:*",
@@ -96,6 +296,17 @@
         "@bunest/testing": "workspace:*",
       },
     },
+    "examples/queues": {
+      "name": "@bunest/example-queues",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/jobs": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
     "examples/rest-crud": {
       "name": "@bunest/example-rest-crud",
       "version": "0.1.0",
@@ -103,6 +314,48 @@
         "@bunest/core": "workspace:*",
         "@bunest/swagger": "workspace:*",
         "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/scheduling": {
+      "name": "@bunest/example-scheduling",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/jobs": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/serializer": {
+      "name": "@bunest/example-serializer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/serve-static": {
+      "name": "@bunest/example-serve-static",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/sse": {
+      "name": "@bunest/example-sse",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
       },
       "devDependencies": {
         "@bunest/testing": "workspace:*",
@@ -118,6 +371,17 @@
       },
       "devDependencies": {
         "@bunest/cli": "workspace:*",
+        "@bunest/testing": "workspace:*",
+      },
+    },
+    "examples/storage-signed-uploads": {
+      "name": "@bunest/example-storage-signed-uploads",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bunest/core": "workspace:*",
+        "@bunest/storage": "workspace:*",
+      },
+      "devDependencies": {
         "@bunest/testing": "workspace:*",
       },
     },
@@ -336,6 +600,12 @@
     },
   },
   "packages": {
+    "@bunest-example/broker-microservices": ["@bunest-example/broker-microservices@workspace:examples/broker-microservices"],
+
+    "@bunest-example/modern-auth-integrations": ["@bunest-example/modern-auth-integrations@workspace:examples/modern-auth-integrations"],
+
+    "@bunest-example/multi-auth-security": ["@bunest-example/multi-auth-security@workspace:examples/multi-auth-security"],
+
     "@bunest/ai": ["@bunest/ai@workspace:packages/ai"],
 
     "@bunest/cache": ["@bunest/cache@workspace:packages/cache"],
@@ -348,17 +618,59 @@
 
     "@bunest/elasticsearch": ["@bunest/elasticsearch@workspace:packages/elasticsearch"],
 
+    "@bunest/example-application-context": ["@bunest/example-application-context@workspace:examples/application-context"],
+
     "@bunest/example-auth-jwt-sqlite": ["@bunest/example-auth-jwt-sqlite@workspace:examples/auth-jwt-sqlite"],
+
+    "@bunest/example-cache": ["@bunest/example-cache@workspace:examples/cache"],
+
+    "@bunest/example-cats-app": ["@bunest/example-cats-app@workspace:examples/cats-app"],
+
+    "@bunest/example-cqrs": ["@bunest/example-cqrs@workspace:examples/cqrs"],
 
     "@bunest/example-distributed-worker": ["@bunest/example-distributed-worker@workspace:examples/distributed-worker"],
 
+    "@bunest/example-dynamic-modules": ["@bunest/example-dynamic-modules@workspace:examples/dynamic-modules"],
+
+    "@bunest/example-event-emitter": ["@bunest/example-event-emitter@workspace:examples/event-emitter"],
+
+    "@bunest/example-file-upload": ["@bunest/example-file-upload@workspace:examples/file-upload"],
+
+    "@bunest/example-fullstack-contract-rpc": ["@bunest/example-fullstack-contract-rpc@workspace:examples/fullstack-contract-rpc"],
+
+    "@bunest/example-functional-minimal": ["@bunest/example-functional-minimal@workspace:examples/functional-minimal"],
+
+    "@bunest/example-graphql-code-first": ["@bunest/example-graphql-code-first@workspace:examples/graphql-code-first"],
+
+    "@bunest/example-graphql-federation": ["@bunest/example-graphql-federation@workspace:examples/graphql-federation"],
+
+    "@bunest/example-graphql-schema-first": ["@bunest/example-graphql-schema-first@workspace:examples/graphql-schema-first"],
+
+    "@bunest/example-grpc": ["@bunest/example-grpc@workspace:examples/grpc"],
+
     "@bunest/example-hello-world": ["@bunest/example-hello-world@workspace:examples/hello-world"],
+
+    "@bunest/example-microservices-tcp": ["@bunest/example-microservices-tcp@workspace:examples/microservices-tcp"],
+
+    "@bunest/example-mvc": ["@bunest/example-mvc@workspace:examples/mvc"],
 
     "@bunest/example-production-rest-postgres": ["@bunest/example-production-rest-postgres@workspace:examples/production-rest-postgres"],
 
+    "@bunest/example-queues": ["@bunest/example-queues@workspace:examples/queues"],
+
     "@bunest/example-rest-crud": ["@bunest/example-rest-crud@workspace:examples/rest-crud"],
 
+    "@bunest/example-scheduling": ["@bunest/example-scheduling@workspace:examples/scheduling"],
+
+    "@bunest/example-serializer": ["@bunest/example-serializer@workspace:examples/serializer"],
+
+    "@bunest/example-serve-static": ["@bunest/example-serve-static@workspace:examples/serve-static"],
+
+    "@bunest/example-sse": ["@bunest/example-sse@workspace:examples/sse"],
+
     "@bunest/example-starter": ["@bunest/example-starter@workspace:examples/starter"],
+
+    "@bunest/example-storage-signed-uploads": ["@bunest/example-storage-signed-uploads@workspace:examples/storage-signed-uploads"],
 
     "@bunest/example-vscode-extension-showcase": ["@bunest/example-vscode-extension-showcase@workspace:examples/vscode-extension-showcase"],
 

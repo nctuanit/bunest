@@ -1,0 +1,23 @@
+{
+  "name": "@bunest/example-cache",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 20-cache equivalent: CacheModule, HTTP CacheInterceptor (@CacheKey, @CacheTTL, @NoCache), and service-level @Cacheable/@CacheEvict with tags",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/cache": "workspace:*",
+    "@bunest/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}

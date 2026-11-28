@@ -1,0 +1,23 @@
+{
+  "name": "@bunest/example-grpc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "description": "NestJS 04-grpc equivalent: HeroService gRPC unary & server-streaming RPCs, GrpcMetadata, GrpcException status codes, and HTTP gateway",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check"
+  },
+  "dependencies": {
+    "@bunest/core": "workspace:*",
+    "@bunest/microservices": "workspace:*"
+  },
+  "devDependencies": {
+    "@bunest/testing": "workspace:*"
+  }
+}
