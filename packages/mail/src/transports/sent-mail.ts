@@ -1,4 +1,4 @@
-import type { Type } from "@bunest/core";
+import { isString, type Type } from "@bunest/core/common";
 import type {
   MailAddress,
   MailAttachment,
@@ -87,13 +87,14 @@ export class SentMail {
    */
   link(match?: string | RegExp): URL {
     const links = this.links;
-    const found = links.find((link) =>
-      match === undefined
-        ? true
-        : typeof match === "string"
-          ? link.includes(match)
-          : match.test(link),
-    );
+    let found: string | undefined;
+    if (match === undefined) {
+      found = links[0];
+    } else {
+      found = links.find((link) =>
+        isString(match) ? link.includes(match) : match.test(link),
+      );
+    }
     if (found === undefined) {
       throw new Error(
         `No link${match === undefined ? "" : ` matching ${String(match)}`} in the mail "${this.subject}". ` +

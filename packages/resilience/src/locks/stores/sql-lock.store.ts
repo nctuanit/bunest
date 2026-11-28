@@ -1,3 +1,4 @@
+import { isNumber, sha256 } from "@bunest/core/common";
 import type {
   LockAcquireResult,
   LockStore,
@@ -125,7 +126,7 @@ function resolveTableName(options: LocksMigrationOptions = {}): string {
 }
 
 function hashKey(key: string): string {
-  return new Bun.CryptoHasher("sha256").update(key).digest("hex");
+  return sha256(key);
 }
 
 function normalizeTtlMs(ttl: number, method: string): number {
@@ -481,25 +482,14 @@ export class SqlLockStore implements LockStore {
         count?: number | null;
       };
       const affected =
-        typeof meta.affectedRows === "number"
-          ? meta.affectedRows
-          : typeof meta.count === "number"
-            ? meta.count
-            : raw.length;
+        [meta.affectedRows, meta.count].find(isNumber) ?? raw.length;
       return { rows: [...raw] as T[], affectedRows: affected };
     }
     const obj = raw as SqlLockQueryResult<T>;
     const rows = Array.isArray(obj.rows) ? ([...obj.rows] as T[]) : [];
     const affected =
-      typeof obj.affectedRows === "number"
-        ? obj.affectedRows
-        : typeof obj.rowCount === "number"
-          ? obj.rowCount
-          : typeof obj.changes === "number"
-            ? obj.changes
-            : typeof obj.count === "number"
-              ? obj.count
-              : rows.length;
+      [obj.affectedRows, obj.rowCount, obj.changes, obj.count].find(isNumber) ??
+      rows.length;
     return { rows, affectedRows: affected };
   }
 

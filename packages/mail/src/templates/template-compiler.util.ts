@@ -278,6 +278,7 @@ export function renderTemplate(
   template: CompiledTemplate,
   context: object,
   partials: Map<string, CompiledTemplate>,
+  options?: { readonly escapeHtmlValues?: boolean },
 ): string {
   return renderNodes(
     template,
@@ -285,6 +286,7 @@ export function renderTemplate(
     { scopes: [context] },
     partials,
     0,
+    options?.escapeHtmlValues,
   );
 }
 
@@ -294,6 +296,7 @@ function renderNodes(
   frame: Frame,
   partials: Map<string, CompiledTemplate>,
   depth: number,
+  escapeHtmlValues?: boolean,
 ): string {
   let out = "";
   for (const node of nodes) {
@@ -302,7 +305,7 @@ function renderNodes(
         out += node.value;
         break;
       case "value":
-        out += display(template, node, lookup(node.path, frame));
+        out += display(template, node, lookup(node.path, frame), escapeHtmlValues);
         break;
       case "if": {
         const truthy = !isEmpty(lookup(node.path, frame));
@@ -312,13 +315,21 @@ function renderNodes(
           frame,
           partials,
           depth,
+          escapeHtmlValues,
         );
         break;
       }
       case "each": {
         const items = entries(lookup(node.path, frame));
         if (!items.length) {
-          out += renderNodes(template, node.otherwise, frame, partials, depth);
+          out += renderNodes(
+            template,
+            node.otherwise,
+            frame,
+            partials,
+            depth,
+            escapeHtmlValues,
+          );
           break;
         }
         items.forEach(([key, item], index) => {
@@ -334,6 +345,7 @@ function renderNodes(
             { scopes: [...frame.scopes, item], data },
             partials,
             depth,
+            escapeHtmlValues,
           );
         });
         break;
@@ -354,6 +366,7 @@ function renderNodes(
           frame,
           partials,
           depth + 1,
+          escapeHtmlValues,
         );
         out += node.indent ? indent(result, node.indent) : result;
         break;
@@ -670,6 +683,7 @@ function display(
   template: CompiledTemplate,
   node: ValueNode,
   value: unknown,
+  escapeHtmlValues?: boolean,
 ): string {
   if (value === null || value === undefined) {
     return "";
@@ -692,7 +706,8 @@ function display(
       },
     );
   }
-  return template.kind === "html" && !node.raw ? escapeHtml(text) : text;
+  const shouldEscape = escapeHtmlValues ?? template.kind === "html";
+  return shouldEscape && !node.raw ? escapeHtml(text) : text;
 }
 
 function indent(text: string, prefix: string): string {

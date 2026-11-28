@@ -5,6 +5,7 @@ import type {
   OnModuleDestroy,
   PreRequestHook,
 } from "@bunest/core";
+import { computeBackoffDelay } from "@bunest/core/common";
 import {
   CircuitOpenError,
   RpcException,
@@ -18,6 +19,12 @@ import {
   type PatternInput,
   type SendOptions,
 } from "./interfaces";
+import {
+  isEventContract,
+  isMessageContract,
+  type EventContract,
+  type MessageContract,
+} from "./contracts";
 import type { ReadPacket } from "./packets";
 import type {
   BunestEventPatternRegistry,
@@ -87,14 +94,15 @@ function computeExponentialBackoffDelay(
     backoffMs,
     Math.floor(retry.maxBackoffMs ?? 10_000),
   );
-  const exponent = Math.max(0, failedAttempt1Based - 1);
-  const ceiling = Math.min(maxBackoffMs, backoffMs * 2 ** exponent);
-  const useJitter = retry.jitter ?? true;
-  if (!useJitter) {
-    return Math.floor(ceiling);
-  }
-  // Equal jitter in [0.5 * ceiling, ceiling]: prevents retry storms while preserving growth
-  return Math.floor(ceiling * (0.5 + Math.random() * 0.5));
+  return computeBackoffDelay(
+    {
+      delay: backoffMs,
+      factor: 2,
+      maxDelay: maxBackoffMs,
+      jitter: (retry.jitter ?? true) ? "equal" : "none",
+    },
+    failedAttempt1Based,
+  );
 }
 
 /**
@@ -475,6 +483,29 @@ export abstract class ClientProxy<
   ): Promise<void>;
 
   /**
+   * Sends a strongly-typed RPC request using a `MessageContract` created by
+   * `defineMessageContract<TReq, TRes>(pattern)`.
+   */
+  sendContract<TReq, TRes>(
+    contract: MessageContract<PatternInput, TReq, TRes>,
+    data: TReq,
+    options?: SendOptions,
+  ): Promise<TRes> {
+    if (!isMessageContract(contract)) {
+      throw new Error(
+        "ClientProxy.sendContract() requires a MessageContract created with defineMessageContract().",
+      );
+    }
+    return (
+      this.send as (
+        pattern: PatternInput,
+        payload: TReq,
+        opts?: SendOptions,
+      ) => Promise<TRes>
+    )(contract.pattern, data, options);
+  }
+
+  /**
    * Sends a request-reply RPC message. Retries transient transport/timeout faults
    * according to `options.retry` / `this.retryOptions` or legacy `options.retries`;
    * protects downstream services via `circuitBreaker` when configured; propagates
@@ -535,11 +566,12 @@ export abstract class ClientProxy<
       const structuredRetry = options?.retry ?? this.retryOptions;
       const useLegacyRetry =
         options?.retry === undefined && options?.retries !== undefined;
-      const maxAttempts = useLegacyRetry
-        ? 1 + Math.max(0, Math.floor(options!.retries!))
-        : structuredRetry
-          ? Math.max(1, Math.floor(structuredRetry.attempts))
-          : 1;
+      let maxAttempts = 1;
+      if (useLegacyRetry) {
+        maxAttempts = 1 + Math.max(0, Math.floor(options!.retries!));
+      } else if (structuredRetry) {
+        maxAttempts = Math.max(1, Math.floor(structuredRetry.attempts));
+      }
       const legacyDelayMs = Math.max(
         0,
         Math.floor(options?.retryDelayMs ?? 50),
@@ -602,11 +634,11 @@ export abstract class ClientProxy<
               throw err;
             }
 
-            const retryAllowed = useLegacyRetry
-              ? isDefaultTransientError(err)
-              : structuredRetry?.retryOn
-                ? Boolean(structuredRetry.retryOn(err))
-                : isDefaultTransientError(err);
+            const retryPredicate =
+              !useLegacyRetry && structuredRetry?.retryOn
+                ? structuredRetry.retryOn
+                : isDefaultTransientError;
+            const retryAllowed = Boolean(retryPredicate(err));
 
             if (!retryAllowed || attempt >= maxAttempts) {
               throw err;
@@ -638,6 +670,29 @@ export abstract class ClientProxy<
         throw err;
       }
     });
+  }
+
+  /**
+   * Emits a strongly-typed fire-and-forget event using an `EventContract` created by
+   * `defineEventContract<TPayload>(pattern)`.
+   */
+  emitContract<TPayload>(
+    contract: EventContract<PatternInput, TPayload>,
+    data: TPayload,
+    options?: EmitOptions,
+  ): Promise<void> {
+    if (!isEventContract(contract)) {
+      throw new Error(
+        "ClientProxy.emitContract() requires an EventContract created with defineEventContract().",
+      );
+    }
+    return (
+      this.emit as (
+        pattern: PatternInput,
+        payload: TPayload,
+        opts?: EmitOptions,
+      ) => Promise<void>
+    )(contract.pattern, data, options);
   }
 
   /**

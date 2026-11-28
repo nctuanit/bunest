@@ -1,4 +1,4 @@
-import { getHostname, isIp } from "@bunest/core";
+import { getHostname, indexOfLine, isIp } from "@bunest/core";
 import { MailConnectionError } from "../errors/mail-connection.error";
 import { MailRecipientsRejectedError } from "../errors/mail-recipients-rejected.error";
 import { MailSmtpError } from "../errors/mail-smtp.error";
@@ -368,15 +368,34 @@ export class SmtpConnection {
   }
 
   private onData(chunk: Buffer | Uint8Array): void {
-    this.buffer += this.decoder.decode(chunk, { stream: true });
-    let index: number;
-    while ((index = this.buffer.indexOf("\n")) !== -1) {
-      const line = this.buffer.slice(0, index).replace(/\r$/, "");
-      this.buffer = this.buffer.slice(index + 1);
+    const bytes =
+      chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+    let offset = 0;
+    const len = bytes.byteLength;
+
+    while (offset < len) {
+      const nlIdx = indexOfLine(bytes, offset);
+      if (nlIdx === -1) {
+        this.buffer += this.decoder.decode(bytes.subarray(offset), {
+          stream: true,
+        });
+        break;
+      }
+      const lineEnd =
+        nlIdx > offset && bytes[nlIdx - 1] === 0x0d ? nlIdx - 1 : nlIdx;
+      const decodedPart = this.decoder.decode(
+        bytes.subarray(offset, lineEnd),
+      );
+      const line = (
+        this.buffer.length > 0 ? this.buffer + decodedPart : decodedPart
+      ).replace(/\r$/, "");
+      this.buffer = "";
+      offset = nlIdx + 1;
       if (!this.onLine(line)) {
         return;
       }
     }
+
     if (this.buffer.length > MAX_LINE) {
       this.protocolError("a reply line longer than 4096 characters");
     }

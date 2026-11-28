@@ -19,6 +19,7 @@ import {
   type EnhancerOverrideValue,
   type MockFactory,
 } from "@bunest/core";
+import { definedOnly } from "@bunest/core/common";
 import type {
   OverrideBy,
   OverrideByEnhancer,
@@ -166,11 +167,7 @@ export class TestingModuleBuilder {
     options: TestingModuleCompileOptions = {},
   ): Promise<TestingModule> {
     const effectiveLogger =
-      options.logger !== undefined
-        ? options.logger
-        : this.loggerOption !== undefined
-          ? this.loggerOption
-          : new TestingLogger();
+      options.logger ?? this.loggerOption ?? new TestingLogger();
 
     if (
       this.loggerOption !== undefined &&
@@ -204,11 +201,10 @@ export class TestingModuleBuilder {
           ? { moduleIdGeneratorAlgorithm }
           : {}),
       });
-      const container = new DIContainer(graph, {
-        ...(preview !== undefined ? { preview } : {}),
-        ...(snapshot !== undefined ? { snapshot } : {}),
-        ...(instrument !== undefined ? { instrument } : {}),
-      });
+      const container = new DIContainer(
+        graph,
+        definedOnly({ preview, snapshot, instrument }),
+      );
 
       const overrides: ContainerOverrides = {
         providers: new Map(this.providerOverrides),

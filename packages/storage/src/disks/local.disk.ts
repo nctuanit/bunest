@@ -1,4 +1,5 @@
 import {
+  definedOnly,
   dirname,
   ensureDir,
   type FsStats,
@@ -16,8 +17,9 @@ import {
   renamePath,
   resolve,
   sep,
+  sha256,
   statPath,
-} from "@bunest/core";
+} from "@bunest/core/common";
 import {
   StorageError,
   StorageFileNotFoundError,
@@ -52,11 +54,26 @@ interface SidecarMetadata {
 }
 
 function fileEtag(stats: { size: number; mtimeMs: number }): string {
-  const hash = new Bun.CryptoHasher("sha256")
-    .update(`${stats.size}:${Math.trunc(stats.mtimeMs)}`)
-    .digest("hex")
-    .slice(0, 32);
-  return `"${hash}"`;
+  return `"${sha256(`${stats.size}:${Math.trunc(stats.mtimeMs)}`).slice(0, 32)}"`;
+}
+
+function buildSidecar(
+  source: {
+    contentType: string;
+    cacheControl?: string;
+    contentDisposition?: string;
+    metadata: Record<string, string>;
+  },
+  explicitContentType: boolean,
+): SidecarMetadata | undefined {
+  const sidecar: SidecarMetadata = definedOnly({
+    contentType: explicitContentType ? source.contentType : undefined,
+    cacheControl: source.cacheControl,
+    contentDisposition: source.contentDisposition,
+    metadata:
+      Object.keys(source.metadata).length > 0 ? source.metadata : undefined,
+  });
+  return Object.keys(sidecar).length > 0 ? sidecar : undefined;
 }
 
 function hasErrCode(err: unknown, ...codes: string[]): boolean {
@@ -130,26 +147,7 @@ export class LocalDisk extends StorageDisk {
     }
     await fh.close();
 
-    const sidecar: SidecarMetadata | undefined =
-      file.explicitContentType ||
-      file.cacheControl !== undefined ||
-      file.contentDisposition !== undefined ||
-      Object.keys(file.metadata).length > 0
-        ? {
-            ...(file.explicitContentType
-              ? { contentType: file.contentType }
-              : {}),
-            ...(file.cacheControl !== undefined
-              ? { cacheControl: file.cacheControl }
-              : {}),
-            ...(file.contentDisposition !== undefined
-              ? { contentDisposition: file.contentDisposition }
-              : {}),
-            ...(Object.keys(file.metadata).length > 0
-              ? { metadata: file.metadata }
-              : {}),
-          }
-        : undefined;
+    const sidecar = buildSidecar(file, file.explicitContentType);
 
     try {
       const target = this.pathOf(key);
@@ -181,24 +179,7 @@ export class LocalDisk extends StorageDisk {
     try {
       await Bun.write(tempPath, Bun.file(srcPath));
       const explicitCt = srcInfo.contentType !== contentTypeFromKey(to);
-      const sidecar: SidecarMetadata | undefined =
-        explicitCt ||
-        srcInfo.cacheControl !== undefined ||
-        srcInfo.contentDisposition !== undefined ||
-        Object.keys(srcInfo.metadata).length > 0
-          ? {
-              ...(explicitCt ? { contentType: srcInfo.contentType } : {}),
-              ...(srcInfo.cacheControl !== undefined
-                ? { cacheControl: srcInfo.cacheControl }
-                : {}),
-              ...(srcInfo.contentDisposition !== undefined
-                ? { contentDisposition: srcInfo.contentDisposition }
-                : {}),
-              ...(Object.keys(srcInfo.metadata).length > 0
-                ? { metadata: srcInfo.metadata }
-                : {}),
-            }
-          : undefined;
+      const sidecar = buildSidecar(srcInfo, explicitCt);
       const stats = await this.commit(to, tempPath, this.pathOf(to), sidecar);
       return {
         key: to,
@@ -224,24 +205,7 @@ export class LocalDisk extends StorageDisk {
     const srcPath = await this.assertSafeFilePath(from);
     const target = this.pathOf(to);
     const explicitCt = srcInfo.contentType !== contentTypeFromKey(to);
-    const sidecar: SidecarMetadata | undefined =
-      explicitCt ||
-      srcInfo.cacheControl !== undefined ||
-      srcInfo.contentDisposition !== undefined ||
-      Object.keys(srcInfo.metadata).length > 0
-        ? {
-            ...(explicitCt ? { contentType: srcInfo.contentType } : {}),
-            ...(srcInfo.cacheControl !== undefined
-              ? { cacheControl: srcInfo.cacheControl }
-              : {}),
-            ...(srcInfo.contentDisposition !== undefined
-              ? { contentDisposition: srcInfo.contentDisposition }
-              : {}),
-            ...(Object.keys(srcInfo.metadata).length > 0
-              ? { metadata: srcInfo.metadata }
-              : {}),
-          }
-        : undefined;
+    const sidecar = buildSidecar(srcInfo, explicitCt);
     const stats = await this.commit(to, srcPath, target, sidecar);
     await removePath(this.sidecarDir(from), {
       recursive: true,
@@ -565,8 +529,7 @@ export class LocalDisk extends StorageDisk {
   }
 
   private sidecarDir(key: string): string {
-    const hash = new Bun.CryptoHasher("sha256").update(key).digest("hex");
-    return join(this.metaDir, hash);
+    return join(this.metaDir, sha256(key));
   }
 
   private versionKey(stats: {
@@ -704,12 +667,10 @@ export class LocalDisk extends StorageDisk {
       contentType: sidecar?.contentType ?? contentTypeFromKey(key),
       lastModified: stats.mtime,
       etag: fileEtag(stats),
-      ...(sidecar?.cacheControl !== undefined
-        ? { cacheControl: sidecar.cacheControl }
-        : {}),
-      ...(sidecar?.contentDisposition !== undefined
-        ? { contentDisposition: sidecar.contentDisposition }
-        : {}),
+      ...definedOnly({
+        cacheControl: sidecar?.cacheControl,
+        contentDisposition: sidecar?.contentDisposition,
+      }),
       metadata: sidecar?.metadata ? { ...sidecar.metadata } : {},
     };
   }

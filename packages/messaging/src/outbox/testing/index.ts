@@ -1,8 +1,11 @@
 import {
   type AssertPredicate,
+  deferred,
+  pick as corePick,
+  sleep,
   strictAssert as assert,
   uuidv7,
-} from "@bunest/core";
+} from "@bunest/core/common";
 import { OutboxTransactionRequiredError } from "../errors/outbox-transaction-required.error";
 import type { Awaitable } from "../interfaces/awaitable.interface";
 import type { OutboxAttempt } from "../interfaces/outbox-dead-letter.interface";
@@ -151,21 +154,11 @@ const failure = (attempt: number): OutboxAttempt => ({
   error: `boom ${attempt}`,
 });
 
-const sleep = (ms: number) => Bun.sleep(ms);
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  return { promise, resolve };
-}
-
 function pick<T extends object, K extends keyof T>(
   value: T | undefined,
   keys: readonly K[],
 ): Pick<T, K> | undefined {
-  return (
-    value &&
-    (Object.fromEntries(keys.map((key) => [key, value[key]])) as Pick<T, K>)
-  );
+  return value && corePick(value, keys);
 }
 
 async function rejects(

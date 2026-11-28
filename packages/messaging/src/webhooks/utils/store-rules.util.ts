@@ -1,3 +1,4 @@
+import { compareAsc } from "@bunest/core/common";
 import type {
   WebhookDelivery,
   WebhookDeliveryFilter,
@@ -31,12 +32,8 @@ export function inEndpointOrder(
   deliveries: readonly WebhookDelivery[],
 ): WebhookDelivery[] {
   return [...deliveries].sort(
-    (a, b) => compare(a.endpointId, b.endpointId) || compare(a.id, b.id),
+    (a, b) => compareAsc(a.endpointId, b.endpointId) || compareAsc(a.id, b.id),
   );
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /**

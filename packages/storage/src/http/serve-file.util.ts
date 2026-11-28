@@ -7,6 +7,7 @@ import {
   NotFoundException,
   StreamableFile,
 } from "@bunest/core";
+import { isString } from "@bunest/core/common";
 import {
   contentDisposition,
   servesSignedUrls,
@@ -147,13 +148,7 @@ export function requestUrl(req: unknown): string {
     return req.url;
   }
   const r = req as { originalUrl?: unknown; url?: unknown };
-  if (typeof r.originalUrl === "string") {
-    return r.originalUrl;
-  }
-  if (typeof r.url === "string") {
-    return r.url;
-  }
-  return "";
+  return [r.originalUrl, r.url].find(isString) ?? "";
 }
 
 function parseSingleRangeHeader(

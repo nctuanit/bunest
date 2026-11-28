@@ -19,6 +19,12 @@ import {
   type ExecutionContext,
   type Type,
 } from "@bunest/core";
+import {
+  getNestedValue,
+  isFunction,
+  isInteger,
+  isObject,
+} from "@bunest/core/common";
 import type { IdempotencyErrorCode } from "../interfaces/idempotency-error-code.interface";
 import type { IdempotencyStoredResponse } from "../interfaces/idempotency-store.interface";
 import type { IdempotencyContextType } from "../interfaces/idempotent-options.interface";
@@ -120,14 +126,7 @@ export function jsonClone<T>(value: T): T {
 
 /** Reads a nested property (`meta.eventId`) from a payload or arguments. */
 export function pick(data: unknown, path: string): unknown {
-  let cur: unknown = data;
-  for (const part of path.split(".")) {
-    if (cur == null || typeof cur !== "object") {
-      return undefined;
-    }
-    cur = (cur as Record<string, unknown>)[part];
-  }
-  return cur;
+  return isObject(data) ? getNestedValue(data, path) : undefined;
 }
 
 /**
@@ -135,20 +134,19 @@ export function pick(data: unknown, path: string): unknown {
  * or an Express/Fastify-like request object (`Record<string, string | string[]>`).
  */
 export function getHeaderFromRequest(req: unknown, name: string): unknown {
-  if (!req || typeof req !== "object") {
+  if (!isObject(req)) {
     return undefined;
   }
   const headers = (req as { headers?: unknown }).headers;
-  if (!headers || typeof headers !== "object") {
+  if (!isObject(headers)) {
     return undefined;
   }
-  if (typeof (headers as Headers).get === "function") {
-    const val = (headers as Headers).get(name);
+  if (isFunction((headers as unknown as Headers).get)) {
+    const val = (headers as unknown as Headers).get(name);
     return val === null ? undefined : val;
   }
-  const record = headers as Record<string, unknown>;
   const lower = name.toLowerCase();
-  return record[lower] ?? record[name];
+  return headers[lower] ?? headers[name];
 }
 
 /**
@@ -220,18 +218,12 @@ const BUILTIN_EXCEPTIONS: Record<number, Type<HttpException>> = {
 
 /** The `HttpException` for an error with a numeric 4xx `status` or `statusCode`, if it has one. */
 function clientErrorException(error: unknown): HttpException | undefined {
-  if (typeof error !== "object" || error === null) {
+  if (!isObject(error)) {
     return undefined;
   }
-  const errObj = error as { status?: unknown; statusCode?: unknown };
   const code =
-    typeof errObj.status === "number" ? errObj.status : errObj.statusCode;
-  if (
-    typeof code !== "number" ||
-    !Number.isInteger(code) ||
-    code < 400 ||
-    code > 499
-  ) {
+    typeof error.status === "number" ? error.status : error.statusCode;
+  if (!isInteger(code) || code < 400 || code > 499) {
     return undefined;
   }
   const ExceptionClass = BUILTIN_EXCEPTIONS[code];

@@ -1,4 +1,5 @@
 import { HttpException } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import { ClientProxy } from "../client-proxy";
 import { BaseRpcContext } from "../ctx-host";
 import { GrpcStatus } from "../enums";
@@ -23,6 +24,16 @@ import { MicroserviceTransportServer } from "../server";
 import { Transport } from "../tokens";
 
 export { GrpcException, GrpcMetadata, GrpcStatus };
+
+function resolveGrpcResponseStatus(
+  response: Response,
+  statusHeader: string | null,
+): GrpcStatus {
+  if (statusHeader !== null) {
+    return Number(statusHeader) as GrpcStatus;
+  }
+  return response.ok ? GrpcStatus.OK : mapHttpStatusToGrpc(response.status);
+}
 
 function safeDecodeGrpcMessage(
   raw: string | null | undefined,
@@ -475,12 +486,7 @@ export class GrpcServer extends MicroserviceTransportServer {
     const resolved = resolveHostAndPort(options);
     this.host = resolved.host;
     this.requestedPort = resolved.port;
-    this.packages =
-      options.package === undefined
-        ? []
-        : Array.isArray(options.package)
-          ? options.package
-          : [options.package];
+    this.packages = toArray(options.package);
     this.codec = options.codec ?? defaultGrpcCodec;
     this.maxMessageBytes =
       options.maxMessageBytes ?? DEFAULT_MAX_GRPC_MESSAGE_BYTES;
@@ -701,7 +707,7 @@ export class GrpcServer extends MicroserviceTransportServer {
     // Parse incoming 5-byte gRPC frame
     let requestData: unknown;
     try {
-      const rawBuf = new Uint8Array(await req.arrayBuffer());
+      const rawBuf = await req.bytes();
       if (rawBuf.byteLength > 0) {
         const frames = decodeGrpcFrames(rawBuf, this.maxMessageBytes);
         if (frames.length === 0) {
@@ -1178,12 +1184,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
       const statusHeader = response.headers.get("grpc-status");
       const messageHeader = response.headers.get("grpc-message");
-      const grpcStatus =
-        statusHeader !== null
-          ? (Number(statusHeader) as GrpcStatus)
-          : response.ok
-            ? GrpcStatus.OK
-            : mapHttpStatusToGrpc(response.status);
+      const grpcStatus = resolveGrpcResponseStatus(response, statusHeader);
 
       if (grpcStatus !== GrpcStatus.OK) {
         const msg = safeDecodeGrpcMessage(
@@ -1193,7 +1194,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
         throw new GrpcException(grpcStatus, msg, responseMetadata);
       }
 
-      const rawBytes = new Uint8Array(await response.arrayBuffer());
+      const rawBytes = await response.bytes();
       const decoder = new GrpcFrameDecoder(this.maxMessageBytes);
       const frames = decoder.push(rawBytes);
       if (decoder.remainingBytes > 0) {
@@ -1335,12 +1336,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
       const statusHeader = response.headers.get("grpc-status");
       const messageHeader = response.headers.get("grpc-message");
-      const initialStatus =
-        statusHeader !== null
-          ? (Number(statusHeader) as GrpcStatus)
-          : response.ok
-            ? GrpcStatus.OK
-            : mapHttpStatusToGrpc(response.status);
+      const initialStatus = resolveGrpcResponseStatus(response, statusHeader);
 
       if (initialStatus !== GrpcStatus.OK) {
         const msg = safeDecodeGrpcMessage(
@@ -1470,7 +1466,9 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       encodeGrpcFrame(this.codec.encode(item, path)),
     );
     const body =
-      frames.length === 0 ? new Uint8Array(0) : Buffer.concat(frames);
+      frames.length === 0
+        ? new Uint8Array(0)
+        : new Uint8Array(Bun.concatArrayBuffers(frames));
     const headers: Record<string, string> = {
       ...this.buildRequestHeaders(timeoutMs, options?.metadata),
       "x-bunest-grpc-stream-request": "1",
@@ -1497,12 +1495,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
       const statusHeader = response.headers.get("grpc-status");
       const messageHeader = response.headers.get("grpc-message");
-      const grpcStatus =
-        statusHeader !== null
-          ? (Number(statusHeader) as GrpcStatus)
-          : response.ok
-            ? GrpcStatus.OK
-            : mapHttpStatusToGrpc(response.status);
+      const grpcStatus = resolveGrpcResponseStatus(response, statusHeader);
       if (grpcStatus !== GrpcStatus.OK) {
         const msg = safeDecodeGrpcMessage(
           messageHeader,
@@ -1510,7 +1503,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
         );
         throw new GrpcException(grpcStatus, msg, responseMetadata);
       }
-      const rawBytes = new Uint8Array(await response.arrayBuffer());
+      const rawBytes = await response.bytes();
       const decoder = new GrpcFrameDecoder(this.maxMessageBytes);
       const resFrames = decoder.push(rawBytes);
       let resultData: TRes = undefined as TRes;
@@ -1580,7 +1573,9 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       encodeGrpcFrame(this.codec.encode(item, path)),
     );
     const body =
-      frames.length === 0 ? new Uint8Array(0) : Buffer.concat(frames);
+      frames.length === 0
+        ? new Uint8Array(0)
+        : new Uint8Array(Bun.concatArrayBuffers(frames));
     const headers: Record<string, string> = {
       ...this.buildRequestHeaders(timeoutMs, options?.metadata),
       "x-bunest-grpc-stream-request": "1",
@@ -1608,12 +1603,7 @@ export class GrpcClientProxy extends ClientProxy implements ClientGrpc {
       const responseMetadata = GrpcMetadata.fromHeaders(response.headers);
       const statusHeader = response.headers.get("grpc-status");
       const messageHeader = response.headers.get("grpc-message");
-      const initialStatus =
-        statusHeader !== null
-          ? (Number(statusHeader) as GrpcStatus)
-          : response.ok
-            ? GrpcStatus.OK
-            : mapHttpStatusToGrpc(response.status);
+      const initialStatus = resolveGrpcResponseStatus(response, statusHeader);
       if (initialStatus !== GrpcStatus.OK) {
         const msg = safeDecodeGrpcMessage(
           messageHeader,

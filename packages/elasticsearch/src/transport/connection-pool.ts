@@ -1,3 +1,4 @@
+import { isString, toArray } from "@bunest/core/common";
 import type {
   NodeConnectionState,
   NodeFilterFn,
@@ -30,7 +31,7 @@ export function parseCloudId(cloudId: string): string {
 }
 
 function normalizeNode(entry: string | NodeOptions): NodeConnectionState {
-  if (typeof entry === "string") {
+  if (isString(entry)) {
     const url = new URL(entry);
     return {
       id: url.href,
@@ -84,8 +85,7 @@ export class ElasticsearchConnectionPool {
 
     const rawNodes = options.nodes ?? options.node;
     if (rawNodes) {
-      const list = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
-      for (const item of list) {
+      for (const item of toArray(rawNodes)) {
         this.addConnection(item);
       }
     } else if (options.cloud?.id) {

@@ -13,6 +13,7 @@ import {
   type Type,
   type ValueProvider,
 } from "@bunest/core";
+import { isFunction } from "@bunest/core/common";
 import {
   HttpExecutionContext,
   HttpResponseContext,
@@ -194,8 +195,8 @@ export function createMockExecutionContext(
   )?.[handlerKey];
   const handler =
     options.handler ??
-    (typeof protoHandler === "function"
-      ? (protoHandler as Function)
+    (isFunction(protoHandler)
+      ? protoHandler
       : DefaultMockController.prototype.handle);
   const request = options.request ?? createMockRequest("/");
   const next: NextFunction = options.next ?? (() => undefined);
@@ -242,12 +243,11 @@ export function createMockExecutionContext(
   const rpcData = options.rpc?.data;
   const rpcContext = options.rpc?.context;
 
-  const args: unknown[] =
-    contextType === "ws"
-      ? [wsClient, wsData, wsPattern]
-      : contextType === "rpc"
-        ? [rpcData, rpcContext]
-        : [request, customRes, next];
+  const argsByType: Record<string, unknown[]> = {
+    ws: [wsClient, wsData, wsPattern],
+    rpc: [rpcData, rpcContext],
+  };
+  const args: unknown[] = argsByType[contextType] ?? [request, customRes, next];
 
   return {
     getType: <TContext extends string = ContextType>() =>
@@ -292,7 +292,7 @@ export function createMockCallHandler<T = unknown>(
     },
     async handle(): Promise<T> {
       count += 1;
-      if (typeof valueOrFactory === "function") {
+      if (isFunction(valueOrFactory)) {
         return await (valueOrFactory as () => T | Promise<T>)();
       }
       return valueOrFactory;

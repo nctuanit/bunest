@@ -716,14 +716,13 @@ export class TcpServer extends MicroserviceTransportServer {
     const packetMeta = decoded.metadata
       ? toPacketMetadata(Object.entries(decoded.metadata))
       : undefined;
+    const tcpArgs: [unknown, string] | [unknown, string, unknown] =
+      packetMeta !== undefined
+        ? [socket, decoded.pattern, packetMeta]
+        : [socket, decoded.pattern];
     const ctx =
       decoded.metadata !== undefined
-        ? new TcpContext(
-            packetMeta !== undefined
-              ? [socket, decoded.pattern, packetMeta]
-              : [socket, decoded.pattern],
-            decoded.metadata,
-          )
+        ? new TcpContext(tcpArgs as any, decoded.metadata)
         : new TcpContext([socket, decoded.pattern], {
             remoteAddress: socket.remoteAddress,
           });

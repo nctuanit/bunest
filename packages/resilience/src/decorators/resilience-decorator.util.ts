@@ -5,6 +5,7 @@ import {
   createMethodAspectDecorator,
   type MethodAspectMetadata,
 } from "@bunest/core";
+import { isFunction } from "@bunest/core/common";
 import type { EntrypointDecorator } from "../interfaces/entrypoint-options.interface";
 import { RESILIENCE_METHOD_ASPECT } from "../resilience.constants";
 
@@ -58,10 +59,9 @@ export function withResilienceAspect(
     }
 
     // Method-level decoration
-    const ctor =
-      typeof target === "function"
-        ? target
-        : (target as { constructor?: Function }).constructor;
+    const ctor = isFunction(target)
+      ? target
+      : (target as { constructor?: Function }).constructor;
     if (ctor && propertyKey !== undefined) {
       const existingMethodAspects =
         MetadataRegistry.getOwn<readonly MethodAspectMetadata[]>(

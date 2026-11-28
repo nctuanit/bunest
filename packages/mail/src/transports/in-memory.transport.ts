@@ -1,3 +1,4 @@
+import { isFunction, isString } from "@bunest/core/common";
 import type { MailTransportResult } from "../interfaces/mail-transport.interface";
 import type { SentMailQuery } from "../interfaces/sent-mail-query.interface";
 import { LOCAL_TRANSPORT } from "../mail.constants";
@@ -96,7 +97,7 @@ function matches(mail: SentMail, query?: SentMailQuery): boolean {
   if (query === undefined) {
     return true;
   }
-  if (typeof query === "function") {
+  if (isFunction(query)) {
     return query(mail);
   }
   if (query.to !== undefined) {
@@ -110,10 +111,9 @@ function matches(mail: SentMail, query?: SentMailQuery): boolean {
     }
   }
   if (query.subject !== undefined) {
-    const ok =
-      typeof query.subject === "string"
-        ? mail.subject === query.subject
-        : query.subject.test(mail.subject);
+    const ok = isString(query.subject)
+      ? mail.subject === query.subject
+      : query.subject.test(mail.subject);
     if (!ok) {
       return false;
     }
@@ -128,7 +128,7 @@ function describe(query?: SentMailQuery): string {
   if (query === undefined) {
     return "";
   }
-  if (typeof query === "function") {
+  if (isFunction(query)) {
     return "matching the predicate";
   }
   const parts: string[] = [];

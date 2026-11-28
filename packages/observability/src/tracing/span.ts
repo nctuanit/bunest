@@ -1,3 +1,4 @@
+import { nowMonotonicAndUnixNano } from "@bunest/core/common";
 import type { SpanContext } from "./trace-context";
 
 export type SpanKind =
@@ -136,8 +137,16 @@ export function spanDataToOtlp(span: SpanData): OtlpSpan {
   };
 }
 
-function nowUnixNanoString(epochMs: number): string {
+function epochMsToUnixNanoString(epochMs: number): string {
   return (BigInt(Math.round(epochMs * 1_000)) * 1_000n).toString();
+}
+
+function sampleMonotonicUnixNano(): {
+  readonly monoNs: number;
+  readonly unixNano: bigint;
+} {
+  const { monotonicNs, unixNano } = nowMonotonicAndUnixNano();
+  return { monoNs: monotonicNs, unixNano };
 }
 
 export class Span {
@@ -145,9 +154,10 @@ export class Span {
   private readonly attributes: Record<string, SpanAttributeValue> = {};
   private readonly events: SpanEvent[] = [];
   private readonly startEpochMs: number;
-  private readonly startPerfMs: number;
+  private readonly startMonoNs: number;
+  private readonly startUnixNano: bigint;
   private readonly hasExplicitStartTime: boolean;
-  private endEpochMs?: number;
+  private endUnixNano?: bigint;
   private durationMs = 0;
   private status: SpanStatus = { code: "UNSET" };
   private ended = false;
@@ -165,8 +175,15 @@ export class Span {
     this.context = context;
     this.hasExplicitStartTime =
       typeof startTimeMs === "number" && Number.isFinite(startTimeMs);
-    this.startEpochMs = this.hasExplicitStartTime ? startTimeMs! : Date.now();
-    this.startPerfMs = performance.now();
+    const sampled = sampleMonotonicUnixNano();
+    this.startMonoNs = sampled.monoNs;
+    if (this.hasExplicitStartTime) {
+      this.startEpochMs = startTimeMs!;
+      this.startUnixNano = BigInt(Math.round(startTimeMs! * 1_000)) * 1_000n;
+    } else {
+      this.startUnixNano = sampled.unixNano;
+      this.startEpochMs = Number(this.startUnixNano / 1_000_000n);
+    }
     if (initialAttributes) {
       Object.assign(this.attributes, initialAttributes);
     }
@@ -205,7 +222,7 @@ export class Span {
     if (!this.ended) {
       this.events.push({
         name,
-        timeUnixNano: nowUnixNanoString(Date.now()),
+        timeUnixNano: sampleMonotonicUnixNano().unixNano.toString(),
         attributes: attributes ? { ...attributes } : undefined,
       });
     }
@@ -254,14 +271,23 @@ export class Span {
       typeof endTimeMs === "number" && Number.isFinite(endTimeMs);
     if (this.hasExplicitStartTime) {
       const resolvedEnd = hasExplicitEnd ? endTimeMs! : Date.now();
-      this.endEpochMs = Math.max(this.startEpochMs, resolvedEnd);
-      this.durationMs = Math.max(0, this.endEpochMs - this.startEpochMs);
+      const clampedEnd = Math.max(this.startEpochMs, resolvedEnd);
+      this.durationMs = Math.max(0, clampedEnd - this.startEpochMs);
+      this.endUnixNano = BigInt(Math.round(clampedEnd * 1_000)) * 1_000n;
+    } else if (hasExplicitEnd) {
+      const endNs = BigInt(Math.round(endTimeMs! * 1_000)) * 1_000n;
+      const clampedEndNs =
+        endNs >= this.startUnixNano ? endNs : this.startUnixNano;
+      this.endUnixNano = clampedEndNs;
+      this.durationMs = Number(clampedEndNs - this.startUnixNano) / 1_000_000;
     } else {
-      const elapsed = Math.max(0, performance.now() - this.startPerfMs);
-      this.durationMs = elapsed;
-      this.endEpochMs = hasExplicitEnd
-        ? endTimeMs!
-        : this.startEpochMs + elapsed;
+      const ended = sampleMonotonicUnixNano();
+      const elapsedNs = Math.max(0, ended.monoNs - this.startMonoNs);
+      this.durationMs = elapsedNs / 1_000_000;
+      this.endUnixNano =
+        ended.unixNano >= this.startUnixNano
+          ? ended.unixNano
+          : this.startUnixNano;
     }
 
     const data: SpanData = {
@@ -271,8 +297,8 @@ export class Span {
       spanId: this.context.spanId,
       parentSpanId: this.context.parentSpanId,
       traceFlags: this.context.traceFlags,
-      startTimeUnixNano: nowUnixNanoString(this.startEpochMs),
-      endTimeUnixNano: nowUnixNanoString(this.endEpochMs),
+      startTimeUnixNano: this.startUnixNano.toString(),
+      endTimeUnixNano: this.endUnixNano.toString(),
       durationMs: this.durationMs,
       attributes: { ...this.attributes },
       events: [...this.events],
@@ -289,7 +315,22 @@ export class Span {
     if (this.finalData) {
       return this.finalData;
     }
-    const nowMs = Date.now();
+    let currentEndNs: string;
+    let currentDurationMs: number;
+    if (this.hasExplicitStartTime) {
+      const clampedEnd = Math.max(this.startEpochMs, Date.now());
+      currentEndNs = epochMsToUnixNanoString(clampedEnd);
+      currentDurationMs = Math.max(0, clampedEnd - this.startEpochMs);
+    } else {
+      const sampled = sampleMonotonicUnixNano();
+      const elapsedNs = Math.max(0, sampled.monoNs - this.startMonoNs);
+      currentEndNs = (
+        sampled.unixNano >= this.startUnixNano
+          ? sampled.unixNano
+          : this.startUnixNano
+      ).toString();
+      currentDurationMs = elapsedNs / 1_000_000;
+    }
     return {
       name: this.name,
       kind: this.kind,
@@ -297,9 +338,9 @@ export class Span {
       spanId: this.context.spanId,
       parentSpanId: this.context.parentSpanId,
       traceFlags: this.context.traceFlags,
-      startTimeUnixNano: nowUnixNanoString(this.startEpochMs),
-      endTimeUnixNano: nowUnixNanoString(nowMs),
-      durationMs: Math.max(0, performance.now() - this.startPerfMs),
+      startTimeUnixNano: this.startUnixNano.toString(),
+      endTimeUnixNano: currentEndNs,
+      durationMs: currentDurationMs,
       attributes: { ...this.attributes },
       events: [...this.events],
       status: { ...this.status },

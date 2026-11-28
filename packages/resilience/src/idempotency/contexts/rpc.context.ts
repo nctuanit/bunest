@@ -1,4 +1,5 @@
 import { MetadataRegistry, type ExecutionContext } from "@bunest/core";
+import { isString } from "@bunest/core/common";
 import { DEFAULT_KEY_FIELD } from "../idempotency.constants";
 import type { IdempotencyStoredResponse } from "../interfaces/idempotency-store.interface";
 import { canonicalJson } from "../utils/fingerprint.util";
@@ -36,13 +37,10 @@ class FallbackRpcException extends Error {
   private readonly errorPayload: string | object;
 
   constructor(error: string | object) {
-    super(
-      typeof error === "string"
-        ? error
-        : typeof (error as { message?: unknown })?.message === "string"
-          ? (error as { message: string }).message
-          : JSON.stringify(error),
-    );
+    const msg = isString(error)
+      ? error
+      : (error as { message?: unknown })?.message;
+    super(isString(msg) ? msg : JSON.stringify(error));
     this.name = "RpcException";
     this.errorPayload = error;
   }

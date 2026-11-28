@@ -7,6 +7,11 @@ import {
   type OnApplicationShutdown,
   type OnModuleInit,
 } from "@bunest/core";
+import { first, isNumber, isString } from "@bunest/core/common";
+import {
+  loadBunJsc,
+  readBunDnsCacheStats,
+} from "../metrics/bun-runtime-metrics";
 import {
   HealthCheckAttempt,
   HealthIndicatorService,
@@ -459,6 +464,114 @@ export class QueueHealthIndicator extends HealthIndicator {
       const ok = violations.length === 0;
       return this.getStatus(key, ok, {
         ...counts,
+        ...(ok ? {} : { message: violations.join("; ") }),
+      });
+    } catch (err) {
+      return this.getStatus(key, false, {
+        message: formatErrorMessage(err),
+      });
+    }
+  }
+}
+
+// ============================================================================
+// WorkerPoolHealthIndicator (Structural Duck-Type for `@bunest/jobs/workers`)
+// ============================================================================
+
+export interface WorkerPoolHealthSnapshotLike {
+  readonly name: string;
+  readonly healthy: boolean;
+  readonly closed: boolean;
+  readonly totalWorkers: number;
+  readonly activeWorkers: number;
+  readonly idleWorkers: number;
+  readonly queuedTasks: number;
+  readonly maxQueueSize: number;
+  readonly maxThreads: number;
+  readonly consecutiveCrashes: number;
+  readonly queueUtilization: number;
+}
+
+export interface WorkerPoolHealthTarget {
+  getHealthSnapshot?(): WorkerPoolHealthSnapshotLike;
+  getHealthSnapshots?(): readonly WorkerPoolHealthSnapshotLike[];
+}
+
+export interface WorkerPoolHealthThresholds {
+  /** Maximum permitted queue utilization ratio in `[0, 1]` (default: `0.95`). */
+  readonly maxQueueUtilization?: number;
+  /** Maximum permitted queued tasks across a pool. */
+  readonly maxQueuedTasks?: number;
+  /** Maximum consecutive crashes tolerated before marking unhealthy (default: `3`). */
+  readonly maxConsecutiveCrashes?: number;
+}
+
+/**
+ * Checks one `WorkerPool` or a `WorkerPoolRegistry` for closed pools,
+ * repeated worker crashes, or queue saturation (zero cross-package dependency
+ * on `@bunest/jobs`).
+ */
+export class WorkerPoolHealthIndicator extends HealthIndicator {
+  constructor(
+    private readonly target: WorkerPoolHealthTarget,
+    private readonly thresholds: WorkerPoolHealthThresholds = {},
+  ) {
+    super();
+  }
+
+  async check(key = "workers"): Promise<HealthIndicatorResult> {
+    try {
+      const snapshots: readonly WorkerPoolHealthSnapshotLike[] =
+        typeof this.target.getHealthSnapshots === "function"
+          ? this.target.getHealthSnapshots()
+          : typeof this.target.getHealthSnapshot === "function"
+            ? [this.target.getHealthSnapshot()]
+            : [];
+
+      const maxUtil = this.thresholds.maxQueueUtilization ?? 0.95;
+      const maxCrashes = this.thresholds.maxConsecutiveCrashes ?? 3;
+      const violations: string[] = [];
+
+      for (const snap of snapshots) {
+        if (snap.closed) {
+          violations.push(`pool "${snap.name}" is closed`);
+        }
+        if (!snap.healthy) {
+          violations.push(`pool "${snap.name}" reported unhealthy`);
+        }
+        if (snap.consecutiveCrashes > maxCrashes) {
+          violations.push(
+            `pool "${snap.name}" consecutiveCrashes (${snap.consecutiveCrashes}) > ${maxCrashes}`,
+          );
+        }
+        if (snap.queueUtilization > maxUtil) {
+          violations.push(
+            `pool "${snap.name}" queueUtilization (${snap.queueUtilization.toFixed(2)}) > ${maxUtil}`,
+          );
+        }
+        if (
+          this.thresholds.maxQueuedTasks !== undefined &&
+          snap.queuedTasks > this.thresholds.maxQueuedTasks
+        ) {
+          violations.push(
+            `pool "${snap.name}" queuedTasks (${snap.queuedTasks}) > ${this.thresholds.maxQueuedTasks}`,
+          );
+        }
+      }
+
+      const ok = violations.length === 0;
+      return this.getStatus(key, ok, {
+        pools: snapshots.map((snap) => ({
+          name: snap.name,
+          healthy: snap.healthy,
+          closed: snap.closed,
+          activeWorkers: snap.activeWorkers,
+          idleWorkers: snap.idleWorkers,
+          totalWorkers: snap.totalWorkers,
+          queuedTasks: snap.queuedTasks,
+          queueUtilization: snap.queueUtilization,
+          consecutiveCrashes: snap.consecutiveCrashes,
+        })),
         ...(ok ? {} : { message: violations.join("; ") }),
       });
     } catch (err) {
@@ -1112,14 +1225,11 @@ function parseHostPortFromOptions(
       port: opts.port,
     };
   }
-  const urlCandidate =
-    typeof opts.url === "string"
-      ? opts.url
-      : Array.isArray(opts.urls) && typeof opts.urls[0] === "string"
-        ? opts.urls[0]
-        : Array.isArray(opts.servers) && typeof opts.servers[0] === "string"
-          ? opts.servers[0]
-          : undefined;
+  const urlCandidate = [
+    opts.url,
+    Array.isArray(opts.urls) ? first(opts.urls) : undefined,
+    Array.isArray(opts.servers) ? first(opts.servers) : undefined,
+  ].find(isString);
   if (urlCandidate) {
     try {
       const normalized = urlCandidate.includes("://")
@@ -1349,6 +1459,12 @@ const GrpcServingStatus: Record<number, string> = {
   3: "SERVICE_UNKNOWN",
 };
 
+const GRPC_STATUS_CODES: Record<string, number> = {
+  SERVING: 1,
+  NOT_SERVING: 2,
+  SERVICE_UNKNOWN: 3,
+};
+
 export type HealthServiceCheck = (
   healthService: any,
   service: string,
@@ -1476,16 +1592,9 @@ export class GRPCHealthIndicator
           );
         }
 
-        const statusCode =
-          typeof response?.status === "number"
-            ? response.status
-            : response?.status === "SERVING"
-              ? 1
-              : response?.status === "NOT_SERVING"
-                ? 2
-                : response?.status === "SERVICE_UNKNOWN"
-                  ? 3
-                  : 0;
+        const statusCode = isNumber(response?.status)
+          ? response.status
+          : (GRPC_STATUS_CODES[String(response?.status ?? "")] ?? 0);
         const servingStatus =
           GrpcServingStatus[statusCode] ??
           String(response?.status ?? "UNKNOWN");
@@ -1514,6 +1623,121 @@ export class GRPCHealthIndicator
         return { code };
       })
       .withTimeout(timeout);
+  }
+}
+
+export interface JscHeapHealthOptions {
+  /** Maximum current JSC memory footprint (`ByteSize`, e.g. `"512mb"` or bytes). */
+  readonly maxCurrentBytes?: ByteSize;
+  /** Maximum live JSC heap object count. */
+  readonly maxObjectCount?: number;
+}
+
+/**
+ * Checks JavaScriptCore memory footprint and heap object counts natively via
+ * Bun's built-in `bun:jsc` (`memoryUsage()` + `heapStats()`).
+ */
+@Injectable()
+export class JscHeapHealthIndicator extends HealthIndicator {
+  check(
+    key = "jsc_heap",
+    options: JscHeapHealthOptions = {},
+  ): HealthIndicatorResult {
+    const jsc = loadBunJsc();
+    if (!jsc) {
+      return this.getStatus(key, false, {
+        message: "bun:jsc module is unavailable in the current runtime",
+      });
+    }
+    const mem = jsc.memoryUsage?.();
+    const stats = jsc.heapStats?.();
+    const maxBytes =
+      options.maxCurrentBytes !== undefined
+        ? toBytes(options.maxCurrentBytes, "JSC memory threshold")
+        : undefined;
+
+    const bytesOk =
+      maxBytes === undefined || !mem || mem.current <= maxBytes;
+    const objectsOk =
+      options.maxObjectCount === undefined ||
+      typeof stats?.objectCount !== "number" ||
+      stats.objectCount <= options.maxObjectCount;
+    const ok = bytesOk && objectsOk;
+
+    return this.getStatus(key, ok, {
+      ...(mem
+        ? {
+            currentBytes: mem.current,
+            peakBytes: mem.peak,
+            currentCommitBytes: mem.currentCommit,
+            pageFaults: mem.pageFaults,
+          }
+        : {}),
+      ...(stats
+        ? {
+            ...(typeof stats.objectCount === "number"
+              ? { objectCount: stats.objectCount }
+              : {}),
+            ...(typeof stats.extraMemorySize === "number"
+              ? { extraMemorySize: stats.extraMemorySize }
+              : {}),
+          }
+        : {}),
+      ...(ok
+        ? {}
+        : { message: "JSC heap usage exceeded configured threshold" }),
+    });
+  }
+}
+
+export interface DnsCacheHealthOptions {
+  /** Maximum permitted DNS lookup error count. */
+  readonly maxErrors?: number;
+  /** Minimum cache hit rate (`0..1`) once at least `minSamples` lookups occurred. */
+  readonly minHitRate?: number;
+  /** Minimum total lookups before enforcing `minHitRate` (default `10`). */
+  readonly minSamples?: number;
+}
+
+/**
+ * Reports Bun's native DNS cache telemetry (`Bun.dns.getCacheStats()`).
+ */
+@Injectable()
+export class DnsCacheHealthIndicator extends HealthIndicator {
+  check(
+    key = "dns_cache",
+    options: DnsCacheHealthOptions = {},
+  ): HealthIndicatorResult {
+    const stats = readBunDnsCacheStats();
+    if (!stats) {
+      return this.getStatus(key, false, {
+        message: "Bun.dns.getCacheStats() is unavailable in the current runtime",
+      });
+    }
+
+    const hits = stats.cacheHitsCompleted + stats.cacheHitsInflight;
+    const total = hits + stats.cacheMisses;
+    const hitRate = total > 0 ? hits / total : 1;
+    const minSamples = options.minSamples ?? 10;
+
+    const errorsOk =
+      options.maxErrors === undefined || stats.errors <= options.maxErrors;
+    const hitRateOk =
+      options.minHitRate === undefined ||
+      total < minSamples ||
+      hitRate >= options.minHitRate;
+    const ok = errorsOk && hitRateOk;
+
+    return this.getStatus(key, ok, {
+      size: stats.size,
+      cacheHitsCompleted: stats.cacheHitsCompleted,
+      cacheHitsInflight: stats.cacheHitsInflight,
+      cacheMisses: stats.cacheMisses,
+      errors: stats.errors,
+      totalCount: stats.totalCount,
+      hitRate: Number(hitRate.toFixed(4)),
+      ...(ok ? {} : { message: "Bun DNS cache health threshold exceeded" }),
+    });
   }
 }
 

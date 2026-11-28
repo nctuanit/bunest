@@ -1,3 +1,4 @@
+import { isObject, isPlainObject } from "@bunest/core/common";
 import type { Serializer } from "./packets";
 import { MqttRecord, NatsRecord, RmqRecord } from "./records";
 
@@ -9,14 +10,6 @@ const KAFKA_MESSAGE_FIELDS = new Set([
   "partition",
   "timestamp",
 ]);
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === null || proto === Object.prototype;
-}
 
 export type EncodedKafkaValue = string | Buffer | Uint8Array | null;
 
@@ -57,12 +50,7 @@ export class KafkaRequestSerializer implements Serializer<
     const record: Record<string, unknown> = isNotKafkaMessage
       ? { value }
       : (value as Record<string, unknown>);
-    const headers =
-      record.headers &&
-      typeof record.headers === "object" &&
-      !Array.isArray(record.headers)
-        ? (record.headers as Record<string, unknown>)
-        : {};
+    const headers = isObject(record.headers) ? record.headers : {};
 
     let headerValues = 0;
     for (const headerValue of Object.values(headers)) {

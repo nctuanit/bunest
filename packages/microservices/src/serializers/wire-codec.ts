@@ -1,3 +1,4 @@
+import { isObject, isString } from "@bunest/core/common";
 import type { SerializedRpcError } from "../exceptions";
 import {
   normalizePattern,
@@ -60,20 +61,45 @@ export interface DecodedInboundResponse {
 }
 
 export function isBunestEnvelope(value: unknown): value is RpcEnvelope {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value)) {
     return false;
   }
-  const type = (value as { type?: unknown }).type;
+  const type = value.type;
   return type === "request" || type === "response" || type === "event";
 }
 
 function isSerializedErrorLike(value: unknown): value is SerializedRpcError {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof (value as { message?: unknown }).message === "string"
-  );
+  return isObject(value) && isString(value.message);
+}
+
+function resolveResponseWireStyle(
+  wireFormat: WireFormat,
+  isTcp = false,
+): ResponseWireStyle {
+  if (wireFormat === "cloudevents") {
+    return "cloudevents";
+  }
+  if (wireFormat === "raw-json") {
+    return isTcp ? "nest-tcp" : "raw-json";
+  }
+  return "bunest";
+}
+
+function resolveTargetPattern(
+  rawPattern: string,
+  channel: string,
+  hasMessageHandler: (pattern: string) => boolean,
+  hasEventHandler: (pattern: string) => boolean,
+): string {
+  const hasHandler = (p: string): boolean =>
+    Boolean(p) && (hasMessageHandler(p) || hasEventHandler(p));
+  if (hasHandler(rawPattern)) {
+    return rawPattern;
+  }
+  if (hasHandler(channel)) {
+    return channel;
+  }
+  return rawPattern || channel;
 }
 
 function toSerializedError(err: unknown): SerializedRpcError {
@@ -175,14 +201,7 @@ export async function decodeInboundMessage(
           headers,
           hasMessageHandler,
           hasEventHandler,
-          defaultResponseStyle:
-            wireFormat === "cloudevents"
-              ? "cloudevents"
-              : wireFormat === "raw-json"
-                ? isTcp
-                  ? "nest-tcp"
-                  : "raw-json"
-                : "bunest",
+          defaultResponseStyle: resolveResponseWireStyle(wireFormat, isTcp),
         },
       );
     }
@@ -250,11 +269,7 @@ export async function decodeInboundMessage(
       return null;
     }
 
-    const ce = isCloudEvent(parsed)
-      ? parsed
-      : isCloudEvent(deserialized.cloudEvent)
-        ? deserialized.cloudEvent
-        : undefined;
+    const ce = [parsed, deserialized.cloudEvent].find(isCloudEvent);
 
     const rawPattern =
       deserialized.pattern !== undefined && deserialized.pattern !== ""
@@ -262,18 +277,15 @@ export async function decodeInboundMessage(
         : (ce?.type ?? "");
 
     // Prefer ce.type if a handler is registered for it; otherwise fall back to channel
-    const targetPattern =
-      rawPattern &&
-      (hasMessageHandler(rawPattern) || hasEventHandler(rawPattern))
-        ? rawPattern
-        : channel && (hasMessageHandler(channel) || hasEventHandler(channel))
-          ? channel
-          : rawPattern || channel;
+    const targetPattern = resolveTargetPattern(
+      rawPattern,
+      channel,
+      hasMessageHandler,
+      hasEventHandler,
+    );
 
     const metaObj: Record<string, unknown> = {
-      ...(deserialized.metadata && typeof deserialized.metadata === "object"
-        ? (deserialized.metadata as Record<string, unknown>)
-        : {}),
+      ...(isObject(deserialized.metadata) ? deserialized.metadata : {}),
       ...(ce ? { cloudEvent: ce } : {}),
       ...(ce?.traceparent ? { traceparent: ce.traceparent } : {}),
       ...(ce?.tracestate ? { tracestate: ce.tracestate } : {}),
@@ -281,15 +293,14 @@ export async function decodeInboundMessage(
 
     const resolvedReplyTo =
       replyTo ??
-      (typeof deserialized.replyTo === "string"
-        ? deserialized.replyTo
-        : typeof ce?.replyto === "string"
-          ? ce.replyto
-          : undefined);
+      (isString(deserialized.replyTo) ? deserialized.replyTo : undefined) ??
+      (isString(ce?.replyto) ? ce.replyto : undefined);
 
     const id =
       correlationId ??
-      (typeof deserialized.id === "string" ? deserialized.id : ce?.id ?? "");
+      (isString(deserialized.id) ? deserialized.id : undefined) ??
+      ce?.id ??
+      "";
 
     const payloadData = "data" in deserialized ? deserialized.data : parsed;
 
@@ -513,30 +524,24 @@ async function decodeViaCustomDeserializer(
         ? normalizePattern(rec.pattern as PatternInput)
         : "";
 
-    const targetPattern =
-      rawPattern &&
-      (ctx.hasMessageHandler(rawPattern) || ctx.hasEventHandler(rawPattern))
-        ? rawPattern
-        : ctx.channel &&
-            (ctx.hasMessageHandler(ctx.channel) ||
-              ctx.hasEventHandler(ctx.channel))
-          ? ctx.channel
-          : rawPattern || ctx.channel;
+    const targetPattern = resolveTargetPattern(
+      rawPattern,
+      ctx.channel,
+      ctx.hasMessageHandler,
+      ctx.hasEventHandler,
+    );
 
     const payloadData = "data" in rec ? rec.data : res;
     const resolvedReplyTo =
-      ctx.replyTo ??
-      (typeof rec.replyTo === "string" ? rec.replyTo : undefined);
-    const metaObj: Record<string, unknown> | undefined =
-      rec.metadata || ce
-        ? {
-            ...(rec.metadata && typeof rec.metadata === "object"
-              ? (rec.metadata as Record<string, unknown>)
-              : {}),
-            ...(ce ? { cloudEvent: ce } : {}),
-            ...(ce?.traceparent ? { traceparent: ce.traceparent } : {}),
-          }
-        : undefined;
+      ctx.replyTo ?? (isString(rec.replyTo) ? rec.replyTo : undefined);
+    let metaObj: Record<string, unknown> | undefined;
+    if (rec.metadata || ce) {
+      metaObj = {
+        ...(isObject(rec.metadata) ? rec.metadata : {}),
+        ...(ce ? { cloudEvent: ce } : {}),
+        ...(ce?.traceparent ? { traceparent: ce.traceparent } : {}),
+      };
+    }
 
     const hasId =
       rec.id !== undefined &&
@@ -750,12 +755,7 @@ export async function encodeOutboundResponse(opts: {
   }
 
   const effectiveStyle =
-    responseWireStyle ??
-    (wireFormat === "cloudevents"
-      ? "cloudevents"
-      : wireFormat === "raw-json"
-        ? "raw-json"
-        : "bunest");
+    responseWireStyle ?? resolveResponseWireStyle(wireFormat);
 
   if (effectiveStyle === "cloudevents") {
     return sharedCeSerializer.serialize(
@@ -933,16 +933,18 @@ function normalizeDeserializedResponse(
     const rawErr = rec.error ?? rec.err;
     const hasResponseField = "response" in rec;
     const hasDataField = "data" in rec;
+    let responsePayload: unknown = res;
+    if (hasResponseField) {
+      responsePayload = rec.response;
+    } else if (hasDataField) {
+      responsePayload = rec.data;
+    }
     return {
       id:
         typeof rec.id === "string" || typeof rec.id === "number"
           ? String(rec.id)
           : fallbackId,
-      response: hasResponseField
-        ? rec.response
-        : hasDataField
-          ? rec.data
-          : res,
+      response: responsePayload,
       error: rawErr !== undefined ? toSerializedError(rawErr) : undefined,
       isDisposed: typeof rec.isDisposed === "boolean" ? rec.isDisposed : true,
     };

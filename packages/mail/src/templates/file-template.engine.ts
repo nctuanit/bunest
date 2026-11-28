@@ -1,4 +1,10 @@
-import { join, resolve, sep } from "@bunest/core";
+import {
+  findEmbeddedFile,
+  isStandaloneExecutable,
+  join,
+  resolve,
+  sep,
+} from "@bunest/core";
 import { MailTemplateError } from "../errors/mail-template.error";
 import type {
   FileTemplateEngineOptions,
@@ -49,6 +55,7 @@ export class FileTemplateEngine extends MailTemplateEngine {
   private readonly dir: string;
   private readonly layout: string | undefined;
   private readonly cache: boolean;
+  private readonly embeddedFiles: readonly Blob[] | undefined;
   /** By path relative to `dir`: the compiled file, or `undefined` when there is no such file. */
   private readonly files = new Map<
     string,
@@ -77,6 +84,7 @@ export class FileTemplateEngine extends MailTemplateEngine {
     this.dir = resolve(options.dir);
     this.layout = options.layout;
     this.cache = options.cache ?? true;
+    this.embeddedFiles = options.embeddedFiles;
   }
 
   override async render(
@@ -103,17 +111,115 @@ export class FileTemplateEngine extends MailTemplateEngine {
       );
     }
     const html = await this.find(name, "html", locale);
-    if (!html) {
-      throw new MailTemplateError(
-        `No template "${name}" in ${this.dir} (looked for ${this.candidates(name, "html", locale).join(", ")})`,
-        { template: name },
-      );
-    }
     const text = await this.find(name, "text", locale);
+
+    if (!html) {
+      const md = await this.findMarkdown(name, locale);
+      if (!md) {
+        const lookedFor = [
+          ...this.candidates(name, "html", locale),
+          ...this.markdownCandidates(name, locale),
+        ];
+        throw new MailTemplateError(
+          `No template "${name}" in ${this.dir} (looked for ${lookedFor.join(", ")})`,
+          { template: name },
+        );
+      }
+      const mdPartials = await this.partials(md, locale);
+      // Escape interpolated values for the HTML render to prevent XSS while
+      // preserving template Markdown syntax and explicit `{{{ raw }}}` / `unsafeHtml()`.
+      const escapedMd = renderTemplate(md, context, mdPartials, {
+        escapeHtmlValues: true,
+      });
+      const mdHtml = (
+        Bun as unknown as { markdown: { html(input: string): string } }
+      ).markdown.html(escapedMd);
+      const finalHtml = await this.wrapHtmlInLayout(mdHtml, context, locale);
+      const plainText = text
+        ? await this.renderFile(text, context, locale)
+        : await this.wrapTextInLayout(
+            renderTemplate(md, context, mdPartials, {
+              escapeHtmlValues: false,
+            }),
+            context,
+            locale,
+          );
+      return {
+        html: finalHtml,
+        text: plainText,
+      };
+    }
+
     return {
       html: await this.renderFile(html, context, locale),
       ...(text && { text: await this.renderFile(text, context, locale) }),
     };
+  }
+
+  private async wrapHtmlInLayout(
+    bodyHtml: string,
+    context: object,
+    locale: string | undefined,
+  ): Promise<string> {
+    if (this.layout === undefined) {
+      return bodyHtml;
+    }
+    const layout = await this.find(this.layout, "html", locale);
+    if (!layout) {
+      throw new MailTemplateError(
+        `No layout "${this.layout}" in ${this.dir} (looked for ${this.candidates(this.layout, "html", locale).join(", ")})`,
+        { template: this.layout },
+      );
+    }
+    const wrapped = { ...context, body: unsafeHtml(bodyHtml) };
+    return renderTemplate(layout, wrapped, await this.partials(layout, locale));
+  }
+
+  private async wrapTextInLayout(
+    bodyText: string,
+    context: object,
+    locale: string | undefined,
+  ): Promise<string> {
+    if (this.layout === undefined) {
+      return bodyText;
+    }
+    const layout = await this.find(this.layout, "text", locale);
+    if (!layout) {
+      return bodyText;
+    }
+    const wrapped = { ...context, body: bodyText };
+    return renderTemplate(layout, wrapped, await this.partials(layout, locale));
+  }
+
+  private markdownCandidates(
+    name: string,
+    locale: string | undefined,
+  ): string[] {
+    const tags: string[] = [];
+    for (
+      let tag = locale ?? "";
+      tag;
+      tag = tag.slice(
+        0,
+        Math.max(tag.lastIndexOf("-"), tag.lastIndexOf("_"), 0),
+      )
+    ) {
+      tags.push(tag);
+    }
+    return [...tags.map((tag) => `${name}.${tag}.md`), `${name}.md`];
+  }
+
+  private async findMarkdown(
+    name: string,
+    locale: string | undefined,
+  ): Promise<CompiledTemplate | undefined> {
+    for (const candidate of this.markdownCandidates(name, locale)) {
+      const template = await this.load(candidate, "text");
+      if (template) {
+        return template;
+      }
+    }
+    return undefined;
   }
 
   /** The template with its partials, wrapped in the layout (the text layout only if there is one). */
@@ -154,18 +260,24 @@ export class FileTemplateEngine extends MailTemplateEngine {
     locale: string | undefined,
     found = new Map<string, CompiledTemplate>(),
   ): Promise<Map<string, CompiledTemplate>> {
+    const isMarkdown = template.shownAs.endsWith(".md");
     for (const { name, at } of template.partials) {
       if (found.has(name)) {
         continue;
       }
-      const partial = await this.find(
-        `partials/${name}`,
-        template.kind,
-        locale,
-      );
+      const partial = isMarkdown
+        ? ((await this.findMarkdown(`partials/${name}`, locale)) ??
+            (await this.find(`partials/${name}`, "text", locale)))
+        : await this.find(`partials/${name}`, template.kind, locale);
       if (!partial) {
+        const lookedFor = isMarkdown
+          ? [
+              ...this.markdownCandidates(`partials/${name}`, locale),
+              ...this.candidates(`partials/${name}`, "text", locale),
+            ]
+          : this.candidates(`partials/${name}`, template.kind, locale);
         throw new MailTemplateError(
-          `no partial "${name}" (looked for ${this.candidates(`partials/${name}`, template.kind, locale).join(", ")})`,
+          `no partial "${name}" (looked for ${lookedFor.join(", ")})`,
           { file: template.file, shownAs: template.shownAs, ...at },
         );
       }
@@ -247,6 +359,13 @@ export class FileTemplateEngine extends MailTemplateEngine {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") {
+        if (this.embeddedFiles || isStandaloneExecutable()) {
+          const embedded = findEmbeddedFile(file, this.embeddedFiles);
+          if (embedded) {
+            source = await embedded.text();
+            return compileTemplate(source, { path, shownAs: file, kind });
+          }
+        }
         return undefined;
       }
       throw error;

@@ -1,3 +1,4 @@
+import { isString } from "@bunest/core/common";
 import { MailMessageError } from "../errors/mail-message.error";
 import { MailProviderError } from "../errors/mail-provider.error";
 import type { MailAddress } from "../interfaces/mail-message.interface";
@@ -99,14 +100,15 @@ export class SendGridTransport extends HttpProviderTransport {
     const errors = (
       body as { errors?: Array<{ field?: string; message?: string }> } | null
     )?.errors;
-    const detail = Array.isArray(errors)
-      ? errors
-          .map((e) => (e.field ? `${e.field}: ${e.message}` : e.message))
-          .filter(Boolean)
-          .join("; ")
-      : typeof body === "string"
-        ? body
-        : undefined;
+    let detail: string | undefined;
+    if (Array.isArray(errors)) {
+      detail = errors
+        .map((e) => (e.field ? `${e.field}: ${e.message}` : e.message))
+        .filter(Boolean)
+        .join("; ");
+    } else if (isString(body)) {
+      detail = body;
+    }
     return new MailProviderError({
       provider: "sendgrid",
       status,

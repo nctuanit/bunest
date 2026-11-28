@@ -1,3 +1,5 @@
+import { escapeHtml, escapeRegExp, isObject } from "@bunest/core/common";
+
 export function decodeXml(text: string): string {
   return text
     .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex: string) =>
@@ -14,7 +16,7 @@ export function decodeXml(text: string): string {
 }
 
 export function encodeXml(text: string): string {
-  return Bun.escapeHTML(text).replaceAll("&#x27;", "&apos;");
+  return escapeHtml(text).replaceAll("&#x27;", "&apos;");
 }
 
 /**
@@ -26,10 +28,7 @@ export function parseS3Xml(xml: string): Record<string, unknown> | undefined {
   if (!trimmed) return undefined;
   try {
     const parsed = Bun.XML.parse(trimmed);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return undefined;
+    return isObject(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -100,7 +99,7 @@ export function xmlNodes(xml: string, tag: string): Array<Record<string, unknown
 
 /** The inner XML of every `<tag>` element (and `''` for `<tag/>`). */
 export function xmlElements(xml: string, tag: string): string[] {
-  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = escapeRegExp(tag);
   const re = new RegExp(
     `<${escaped}(?:\\s[^>]*)?(?:/>|>([\\s\\S]*?)</${escaped}>)`,
     "g",

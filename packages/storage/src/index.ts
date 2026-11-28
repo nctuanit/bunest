@@ -19,7 +19,26 @@ export {
   type BunS3ClientLike,
   type BunS3DiskOptions,
   type BunS3FileLike,
+  type BunS3FileWriterLike,
 } from "./s3/bun-s3.disk";
+export {
+  archiveDiskPrefix,
+  createTarArchive,
+  extractArchiveToDisk,
+  extractTarArchive,
+  type ArchiveDiskPrefixOptions,
+  type ExtractArchiveToDiskOptions,
+  type TarArchiveCreateOptions,
+} from "./utils/archive.util";
+export {
+  inspectImage,
+  transformImage,
+  type ImageMetadataInfo,
+  type ImageTransformOptions,
+  type ImageTransformResult,
+  type StorageImageFit,
+  type StorageImageFormat,
+} from "./utils/image.util";
 export { assertValidKey, assertValidPrefix } from "./utils/keys.util";
 export type {
   Duration,

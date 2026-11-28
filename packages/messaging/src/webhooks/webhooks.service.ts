@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from "@bunest/core";
+import { isPromiseLike } from "@bunest/core/common";
 import { Outbox } from "../outbox/index";
 import type { Awaitable } from "./interfaces/awaitable.interface";
 import type { ResolvedWebhooksConfig } from "./interfaces/resolved-webhooks-config.interface";
@@ -64,7 +65,7 @@ export class Webhooks<Tx = unknown> {
       })),
     );
     const output = batch ? messages : messages[0]!;
-    return isPromise(added) ? added.then(() => output) : output;
+    return isPromiseLike(added) ? added.then(() => output) : output;
   }
 
   /** Run the outbox relay now (and so the fan-out) instead of at its next poll. Call it after the commit. */
@@ -127,12 +128,4 @@ export class Webhooks<Tx = unknown> {
     }
     return this.outbox;
   }
-}
-
-function isPromise(value: unknown): value is Promise<unknown> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as Promise<unknown>).then === "function"
-  );
 }

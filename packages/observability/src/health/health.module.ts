@@ -9,6 +9,7 @@ import {
   type Provider,
   type Type,
 } from "@bunest/core";
+import { ensurePrefix } from "@bunest/core/common";
 import {
   HealthIndicatorService,
   type HealthIndicatorFunction,
@@ -86,7 +87,7 @@ function resolveLoggerFromAsyncOptions(
 function normalizePath(path: string): string {
   const trimmed = path.trim();
   if (!trimmed || trimmed === "/") return "/";
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return ensurePrefix(trimmed, "/");
 }
 
 function createHealthController(

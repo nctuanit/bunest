@@ -1,3 +1,4 @@
+import { isPlainObject, isString, trimPrefix } from "@bunest/core/common";
 import type {
   FetchCapable,
   QueryParamValue,
@@ -75,14 +76,6 @@ const MIME_SHORTHANDS: Readonly<Record<string, string>> = {
 
 function resolveMimeAlias(value: string): string {
   return MIME_SHORTHANDS[value.toLowerCase()] ?? value;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 function isRedirectStatus(status: number): boolean {
@@ -323,10 +316,8 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
   }
 
   query(params: string | Record<string, QueryParamValue>): this {
-    if (typeof params === "string") {
-      const parsed = new URLSearchParams(
-        params.startsWith("?") ? params.slice(1) : params,
-      );
+    if (isString(params)) {
+      const parsed = new URLSearchParams(trimPrefix(params, "?"));
       for (const [k, v] of parsed.entries()) {
         this.queryEntries.push([k, v]);
       }
@@ -364,7 +355,7 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
   }
 
   send(body: unknown): this {
-    if (this.hasRawBody && isPlainRecord(this.rawBody) && isPlainRecord(body)) {
+    if (this.hasRawBody && isPlainObject(this.rawBody) && isPlainObject(body)) {
       this.rawBody = { ...this.rawBody, ...body };
     } else {
       this.rawBody = body;
@@ -597,7 +588,7 @@ export class SupertestRequest implements PromiseLike<SupertestResponse> {
     // URL-encoded form serialization when .type("form") is set
     if (
       /application\/x-www-form-urlencoded/i.test(contentType) &&
-      isPlainRecord(payload)
+      isPlainObject(payload)
     ) {
       const formParams = new URLSearchParams();
       for (const [k, v] of Object.entries(payload)) {

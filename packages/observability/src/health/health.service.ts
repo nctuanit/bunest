@@ -7,6 +7,7 @@ import {
   type HttpExceptionResponse,
   type LoggerService,
 } from "@bunest/core";
+import { cond } from "@bunest/core/common";
 import {
   HealthCheckAttempt,
   type HealthIndicatorFunction,
@@ -246,13 +247,14 @@ export class HealthCheckService implements BeforeApplicationShutdown {
     }
 
     const hasError = Object.keys(error).length > 0;
-    const status: HealthCheckStatus = this.isShuttingDown
-      ? HealthCheckStatus.SHUTTING_DOWN
-      : hasError
-        ? HealthCheckStatus.ERROR
-        : hasDegraded
-          ? HealthCheckStatus.DEGRADED
-          : HealthCheckStatus.OK;
+    const status: HealthCheckStatus = cond(
+      [
+        [this.isShuttingDown, HealthCheckStatus.SHUTTING_DOWN],
+        [hasError, HealthCheckStatus.ERROR],
+        [hasDegraded, HealthCheckStatus.DEGRADED],
+      ],
+      HealthCheckStatus.OK,
+    );
 
     const result: HealthCheckResult<InferHealthIndicatorResults<TFns>> = {
       status,

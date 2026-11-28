@@ -1,3 +1,4 @@
+import { compareAsc, sha256 } from "@bunest/core/common";
 import type { S3Credentials } from "../interfaces/storage-types";
 import { encodeRfc3986 } from "../utils/keys.util";
 
@@ -6,7 +7,7 @@ export const EMPTY_SHA256 =
 export const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
 
 export function sha256Hex(data: string | Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(data).digest("hex");
+  return sha256(data);
 }
 
 function hmac(key: string | Uint8Array, data: string): Buffer {
@@ -32,17 +33,7 @@ export function canonicalQuery(pairs: Iterable<[string, string]>): string {
   for (const [k, v] of pairs) {
     encoded.push([encodeRfc3986(k), encodeRfc3986(v)]);
   }
-  encoded.sort((a, b) =>
-    a[0] === b[0]
-      ? a[1] < b[1]
-        ? -1
-        : a[1] > b[1]
-          ? 1
-          : 0
-      : a[0] < b[0]
-        ? -1
-        : 1,
-  );
+  encoded.sort((a, b) => compareAsc(a[0], b[0]) || compareAsc(a[1], b[1]));
   return encoded.map(([k, v]) => `${k}=${v}`).join("&");
 }
 

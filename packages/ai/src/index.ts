@@ -24,6 +24,7 @@ export type {
 export { AiModels } from "./models/ai-models.service";
 export { AiEmbeddingModels } from "./models/ai-embedding-models.service";
 export { AiService } from "./services/ai.service";
+export { parseJsonlStream } from "./providers/http-provider";
 export {
   AiTextStream,
   type AiStreamResponseOptions,

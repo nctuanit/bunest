@@ -1,3 +1,5 @@
+import { concatBytes } from "@bunest/core/common";
+
 const HEADER_BYTES = 4;
 const DEFAULT_MAX_FRAME_BYTES = 16 * 1024 * 1024; // 16 MiB
 
@@ -36,10 +38,16 @@ export class FrameDecoder {
       ? chunk
       : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
 
-    this.buffer =
-      this.buffer.byteLength === 0
-        ? Buffer.from(incoming)
-        : Buffer.concat([this.buffer, incoming]);
+    if (this.buffer.byteLength === 0) {
+      this.buffer = Buffer.from(incoming);
+    } else {
+      const merged = concatBytes([this.buffer, incoming]);
+      this.buffer = Buffer.from(
+        merged.buffer,
+        merged.byteOffset,
+        merged.byteLength,
+      );
+    }
 
     const messages: T[] = [];
 

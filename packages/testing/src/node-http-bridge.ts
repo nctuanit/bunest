@@ -1,3 +1,4 @@
+import { ensureError } from "@bunest/core/common";
 import type { FetchCapable } from "./interfaces/testing.interface";
 
 export interface BridgeAddressInfo {
@@ -181,7 +182,7 @@ class BunHttpBridgeServer implements NodeHttpBridgeServer {
         this.emit("close");
       },
       (err: unknown) => {
-        const error = err instanceof Error ? err : new Error(String(err));
+        const error = ensureError(err);
         callback?.(error);
         this.emit("error", error);
       },

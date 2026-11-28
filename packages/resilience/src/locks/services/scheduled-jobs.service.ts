@@ -9,6 +9,7 @@ import {
   MetadataScanner,
   type InstanceWrapper,
 } from "@bunest/core";
+import { isFunction } from "@bunest/core/common";
 import { runInLockScope } from "../context/locks.context";
 import type { LocksJobSkipReason } from "../events/locks-events.interface";
 import { LocksEvents } from "../events/locks-events.service";
@@ -149,12 +150,12 @@ export class ScheduledJobs implements OnModuleInit, OnModuleDestroy {
       const isStatic = isWrapperStatic(wrapper);
 
       if (!isStatic) {
-        const prototype =
-          instance && typeof instance === "object"
-            ? (Object.getPrototypeOf(instance) as object | null)
-            : typeof wrapper.metatype === "function"
-              ? (wrapper.metatype.prototype as object | null)
-              : null;
+        let prototype: object | null = null;
+        if (instance && typeof instance === "object") {
+          prototype = Object.getPrototypeOf(instance) as object | null;
+        } else if (isFunction(wrapper.metatype)) {
+          prototype = wrapper.metatype.prototype as object | null;
+        }
         if (!prototype) {
           continue;
         }

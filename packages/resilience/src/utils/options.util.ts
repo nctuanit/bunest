@@ -1,3 +1,4 @@
+import { isFiniteNumber, isPromiseLike } from "@bunest/core/common";
 import { OptionError } from "../errors/option.error";
 import type { Duration } from "../interfaces/duration.interface";
 import { toMs } from "./duration.util";
@@ -69,12 +70,7 @@ export function numberOption(
   minExclusive = false,
 ): number {
   const aboveMin = minExclusive ? value > min : value >= min;
-  if (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    aboveMin &&
-    value <= max
-  ) {
+  if (isFiniteNumber(value) && aboveMin && value <= max) {
     return value;
   }
   const range = `${minExclusive ? "above" : "of at least"} ${min}${max === Infinity ? "" : ` and at most ${max}`}`;
@@ -95,12 +91,8 @@ export function callPredicate<A extends unknown[]>(
   ...args: A
 ): boolean {
   const result = predicate(...args) as unknown;
-  if (
-    result !== null &&
-    (typeof result === "object" || typeof result === "function") &&
-    typeof (result as PromiseLike<unknown>).then === "function"
-  ) {
-    (result as PromiseLike<unknown>).then(undefined, () => undefined);
+  if (isPromiseLike(result)) {
+    result.then(undefined, () => undefined);
     throw new TypeError(
       `${name} returned a Promise. It must return a boolean, synchronously.`,
     );

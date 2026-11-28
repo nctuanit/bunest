@@ -1,1 +1,1 @@
-export { describeError } from "@bunest/core";
+export { describeError } from "@bunest/core/common";

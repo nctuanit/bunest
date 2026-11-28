@@ -8,6 +8,7 @@ import {
   type OnModuleInit,
   type Subscribable,
 } from "@bunest/core";
+import { isFunction, isObject } from "@bunest/core/common";
 import { NonRetryableMessageError } from "../errors/non-retryable-message.error";
 import { OutboxNoHandlerError } from "../errors/outbox-no-handler.error";
 import type {
@@ -91,12 +92,12 @@ export class OutboxDispatcher extends OutboxTransport implements OnModuleInit {
             ).isDependencyTreeStatic()
           : wrapper.isDependencyTreeStatic !== false;
 
-      const prototype: Record<string, unknown> | undefined =
-        instance && typeof instance === "object"
-          ? (Object.getPrototypeOf(instance) as Record<string, unknown>)
-          : typeof wrapper.metatype === "function"
-            ? (wrapper.metatype.prototype as Record<string, unknown>)
-            : undefined;
+      let prototype: Record<string, unknown> | undefined;
+      if (isObject(instance)) {
+        prototype = Object.getPrototypeOf(instance) as Record<string, unknown>;
+      } else if (isFunction(wrapper.metatype)) {
+        prototype = wrapper.metatype.prototype as Record<string, unknown>;
+      }
 
       if (!prototype) {
         continue;

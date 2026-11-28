@@ -9,6 +9,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from "@bunest/core";
+import { definedOnly } from "@bunest/core/common";
 import type { SpanAttributeValue, SpanKind } from "./span";
 import {
   formatTraceParent,
@@ -26,6 +27,7 @@ export const ORM_QUERY_DIAGNOSTICS_CHANNEL = "bunest:orm:query";
 export const ORM_TRANSACTION_DIAGNOSTICS_CHANNEL = "bunest:orm:transaction";
 export const JOBS_ENQUEUE_DIAGNOSTICS_CHANNEL = "bunest:jobs:enqueue";
 export const JOBS_PROCESS_DIAGNOSTICS_CHANNEL = "bunest:jobs:process";
+export const WORKERS_DISPATCH_DIAGNOSTICS_CHANNEL = "bunest:workers:dispatch";
 export const RPC_CLIENT_DIAGNOSTICS_CHANNEL = "bunest:rpc:client";
 export const RPC_SERVER_DIAGNOSTICS_CHANNEL = "bunest:rpc:server";
 export const HTTP_CLIENT_REQUEST_DIAGNOSTICS_CHANNEL =
@@ -41,6 +43,8 @@ export interface AutoInstrumentOptions {
   readonly orm?: boolean;
   /** Subscribe to `"bunest:jobs:enqueue"` and `"bunest:jobs:process"`. @default true */
   readonly jobs?: boolean;
+  /** Subscribe to `"bunest:workers:dispatch"`. @default true */
+  readonly workers?: boolean;
   /** Subscribe to `"bunest:rpc:client"` and `"bunest:rpc:server"`. @default true */
   readonly rpc?: boolean;
   /** Subscribe to `"bunest:http-client:request"`. @default true */
@@ -145,6 +149,7 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
   private readonly enabled: boolean;
   private readonly ormEnabled: boolean;
   private readonly jobsEnabled: boolean;
+  private readonly workersEnabled: boolean;
   private readonly rpcEnabled: boolean;
   private readonly httpClientEnabled: boolean;
   private readonly ambientTraceparentEnabled: boolean;
@@ -159,6 +164,7 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
     this.enabled = options.enabled !== false;
     this.ormEnabled = options.orm !== false;
     this.jobsEnabled = options.jobs !== false;
+    this.workersEnabled = options.workers !== false;
     this.rpcEnabled = options.rpc !== false;
     this.httpClientEnabled = options.httpClient !== false;
     this.ambientTraceparentEnabled = options.ambientTraceparent !== false;
@@ -217,6 +223,12 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       );
       this.attach(JOBS_PROCESS_DIAGNOSTICS_CHANNEL, (msg) =>
         this.handleJobProcess(msg),
+      );
+    }
+
+    if (this.workersEnabled) {
+      this.attach(WORKERS_DISPATCH_DIAGNOSTICS_CHANNEL, (msg) =>
+        this.handleWorkerDispatch(msg),
       );
     }
 
@@ -317,12 +329,14 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
     const attributes: Record<string, SpanAttributeValue> = {
       "db.system": dialect,
       "db.operation": op,
-      ...(rawSql
-        ? { "db.statement": truncateStatement(rawSql, this.maxSqlLength) }
-        : {}),
-      ...(durationMs !== undefined ? { "db.duration_ms": durationMs } : {}),
-      ...(rowCount !== undefined ? { "db.rows_affected": rowCount } : {}),
-      ...(dataSource !== undefined ? { "db.name": dataSource } : {}),
+      ...definedOnly({
+        "db.statement": rawSql
+          ? truncateStatement(rawSql, this.maxSqlLength)
+          : undefined,
+        "db.duration_ms": durationMs,
+        "db.rows_affected": rowCount,
+        "db.name": dataSource,
+      }),
     };
 
     const parentContext =
@@ -404,15 +418,14 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       "messaging.system": "bunest.jobs",
       "messaging.operation": "publish",
       "messaging.destination.name": queue,
-      ...(jobId !== undefined
-        ? { "messaging.message.id": jobId, "bunest.job.id": jobId }
-        : {}),
-      ...(jobName !== undefined ? { "bunest.job.name": jobName } : {}),
-      ...(groupId !== undefined ? { "bunest.job.group_id": groupId } : {}),
-      ...(traceparent !== undefined
-        ? { "bunest.job.traceparent": traceparent }
-        : {}),
-      ...(status !== undefined ? { "bunest.job.status": status } : {}),
+      ...definedOnly({
+        "messaging.message.id": jobId,
+        "bunest.job.id": jobId,
+        "bunest.job.name": jobName,
+        "bunest.job.group_id": groupId,
+        "bunest.job.traceparent": traceparent,
+        "bunest.job.status": status,
+      }),
     };
 
     const parentContext =
@@ -452,16 +465,15 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       "messaging.system": "bunest.jobs",
       "messaging.operation": "process",
       "messaging.destination.name": queue,
-      ...(jobId !== undefined
-        ? { "messaging.message.id": jobId, "bunest.job.id": jobId }
-        : {}),
-      ...(jobName !== undefined ? { "bunest.job.name": jobName } : {}),
-      ...(groupId !== undefined ? { "bunest.job.group_id": groupId } : {}),
-      ...(traceparent !== undefined
-        ? { "bunest.job.traceparent": traceparent }
-        : {}),
-      ...(status !== undefined ? { "bunest.job.status": status } : {}),
-      ...(durationMs !== undefined ? { "bunest.job.duration_ms": durationMs } : {}),
+      ...definedOnly({
+        "messaging.message.id": jobId,
+        "bunest.job.id": jobId,
+        "bunest.job.name": jobName,
+        "bunest.job.group_id": groupId,
+        "bunest.job.traceparent": traceparent,
+        "bunest.job.status": status,
+        "bunest.job.duration_ms": durationMs,
+      }),
     };
 
     // Link consumer span to the producer traceparent carried in the job payload
@@ -479,6 +491,61 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       errorStatusMessage:
         ev.error === undefined && (status === "failed" || status === "error")
           ? `Job process ${status}`
+          : undefined,
+    });
+  }
+
+  private handleWorkerDispatch(message: unknown): void {
+    const ev = asRecord(message);
+    if (!ev) return;
+    const phase = readString(ev, "phase");
+    if (phase === "start") return;
+
+    const pool = readString(ev, "pool") ?? "default";
+    const task = readString(ev, "task") ?? "default";
+    const taskId = readString(ev, "taskId");
+    const workerId = readString(ev, "workerId");
+    const queueWaitMs = readNumber(ev, "queueWaitMs");
+    const durationMs = readNumber(ev, "durationMs");
+    const status = readString(ev, "status");
+    const traceparent = readString(ev, "traceparent");
+
+    const attributes: Record<string, SpanAttributeValue> = {
+      "worker.system": "bunest.workers",
+      "worker.pool": pool,
+      "worker.task": task,
+      ...(taskId !== undefined ? { "worker.task_id": taskId } : {}),
+      ...(workerId !== undefined ? { "worker.thread_id": workerId } : {}),
+      ...(queueWaitMs !== undefined
+        ? { "worker.queue_wait_ms": queueWaitMs }
+        : {}),
+      ...(durationMs !== undefined ? { "worker.duration_ms": durationMs } : {}),
+      ...(status !== undefined ? { "worker.status": status } : {}),
+      ...(traceparent !== undefined
+        ? { "worker.traceparent": traceparent }
+        : {}),
+    };
+
+    const parentContext =
+      traceContextStorage.getCurrentSpanContext() ??
+      parseTraceParentContext(traceparent);
+
+    const isErrorStatus =
+      status === "failed" ||
+      status === "timeout" ||
+      status === "aborted" ||
+      status === "saturated";
+
+    this.recordCompletedSpan({
+      name: `workers.run ${pool}/${task}`,
+      kind: "INTERNAL",
+      parentContext,
+      durationMs,
+      attributes,
+      error: ev.error,
+      errorStatusMessage:
+        ev.error === undefined && isErrorStatus
+          ? `Worker task ${status}`
           : undefined,
     });
   }
@@ -502,9 +569,11 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       "rpc.system": readString(ev, "system") ?? transport,
       "rpc.method": method,
       "bunest.rpc.transport": transport,
-      ...(rpcKind !== undefined ? { "bunest.rpc.kind": rpcKind } : {}),
-      ...(attempt !== undefined ? { "bunest.rpc.attempt": attempt } : {}),
-      ...(durationMs !== undefined ? { "bunest.rpc.duration_ms": durationMs } : {}),
+      ...definedOnly({
+        "bunest.rpc.kind": rpcKind,
+        "bunest.rpc.attempt": attempt,
+        "bunest.rpc.duration_ms": durationMs,
+      }),
     };
 
     const parentContext =
@@ -546,20 +615,28 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       "http.request.method": method,
       "url.full": rawUrl,
       "url.path": urlParts.pathname,
-      ...(urlParts.hostname !== undefined
-        ? { "server.address": urlParts.hostname }
-        : {}),
-      ...(urlParts.port !== undefined ? { "server.port": urlParts.port } : {}),
-      ...(status !== undefined ? { "http.response.status_code": status } : {}),
-      ...(attempt !== undefined && attempt > 1
-        ? { "http.request.resend_count": attempt - 1 }
-        : {}),
-      ...(durationMs !== undefined ? { "http.duration_ms": durationMs } : {}),
+      ...definedOnly({
+        "server.address": urlParts.hostname,
+        "server.port": urlParts.port,
+        "http.response.status_code": status,
+        "http.request.resend_count":
+          attempt !== undefined && attempt > 1 ? attempt - 1 : undefined,
+        "http.duration_ms": durationMs,
+      }),
     };
 
     const parentContext =
       traceContextStorage.getCurrentSpanContext() ??
       parseTraceParentContext(traceparent);
+
+    let errorStatusMessage: string | undefined;
+    if (
+      ev.error === undefined &&
+      (phase === "error" || (status !== undefined && status >= 400))
+    ) {
+      errorStatusMessage =
+        status !== undefined ? `HTTP ${status}` : "HTTP client error";
+    }
 
     this.recordCompletedSpan({
       name: `HTTP ${method} ${urlParts.pathname}`,
@@ -568,13 +645,7 @@ export class OtelAutoInstrumentation implements OnModuleInit, OnModuleDestroy {
       durationMs,
       attributes,
       error: ev.error,
-      errorStatusMessage:
-        ev.error === undefined &&
-        (phase === "error" || (status !== undefined && status >= 400))
-          ? status !== undefined
-            ? `HTTP ${status}`
-            : "HTTP client error"
-          : undefined,
+      errorStatusMessage,
     });
   }
 }

@@ -30,4 +30,10 @@ export interface FileTemplateEngineOptions {
    * development to see edits without a restart.
    */
   cache?: boolean;
+  /**
+   * Optional embedded template list (defaults to `Bun.embeddedFiles` when running
+   * as a `bun build --compile` standalone executable) used as fallback when files
+   * are absent on disk.
+   */
+  embeddedFiles?: readonly Blob[];
 }

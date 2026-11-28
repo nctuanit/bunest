@@ -1,3 +1,5 @@
+import { isObject, isString } from "@bunest/core/common";
+
 export interface ElasticsearchErrorMeta {
   body?: unknown;
   statusCode?: number | null;
@@ -37,19 +39,11 @@ export class ElasticsearchResponseError extends ElasticsearchError {
   constructor(
     meta: ElasticsearchErrorMeta & { statusCode: number; body: unknown },
   ) {
-    const bodyObj =
-      meta.body && typeof meta.body === "object"
-        ? (meta.body as Record<string, unknown>)
-        : undefined;
+    const bodyObj = isObject(meta.body) ? meta.body : undefined;
     const errorField = bodyObj?.error;
-    const errorObj =
-      errorField && typeof errorField === "object"
-        ? (errorField as { reason?: unknown; type?: unknown })
-        : undefined;
+    const errorObj = isObject(errorField) ? errorField : undefined;
     const reason =
-      (typeof errorObj?.reason === "string" ? errorObj.reason : undefined) ??
-      (typeof errorObj?.type === "string" ? errorObj.type : undefined) ??
-      (typeof errorField === "string" ? errorField : undefined) ??
+      [errorObj?.reason, errorObj?.type, errorField].find(isString) ??
       `HTTP ${meta.statusCode}`;
     super(`Response Error (${meta.statusCode}): ${reason}`, meta);
     this.name = "ResponseError";

@@ -1,4 +1,4 @@
-import { computeBackoffDelay } from "@bunest/core";
+import { computeBackoffDelay } from "@bunest/core/common";
 import type { BackoffOptions } from "../interfaces/backoff-options.interface";
 import { durationOption, numberOption } from "./options.util";
 

@@ -1,3 +1,10 @@
+import {
+  isFunction,
+  isObject,
+  isPromiseLike,
+  sha256 as coreSha256,
+} from "@bunest/core/common";
+
 /**
  * A deterministic text form of a payload, only ever hashed. It is JSON, with
  * object keys sorted at every level (array order still counts), and like
@@ -20,7 +27,7 @@ function write(value: unknown, ancestors: Set<object>): string | undefined {
   if (
     isObject(value) &&
     !isBinary(value) &&
-    typeof (value as { toJSON?: unknown }).toJSON === "function"
+    isFunction((value as { toJSON?: unknown }).toJSON)
   ) {
     value = (value as { toJSON: () => unknown }).toJSON();
   }
@@ -54,7 +61,7 @@ function write(value: unknown, ancestors: Set<object>): string | undefined {
   ) {
     return "<stream>";
   }
-  if (typeof object.then === "function") {
+  if (isPromiseLike(object)) {
     return "<promise>";
   }
   if (ancestors.has(object)) {
@@ -90,10 +97,6 @@ function write(value: unknown, ancestors: Set<object>): string | undefined {
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isBinary(value: unknown): value is ArrayBufferView | ArrayBuffer {
   return ArrayBuffer.isView(value) || value instanceof ArrayBuffer;
 }
@@ -102,9 +105,7 @@ function digest(value: ArrayBufferView | ArrayBuffer): string {
   const bytes = ArrayBuffer.isView(value)
     ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
     : new Uint8Array(value);
-  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest();
-  return Buffer.from(digest.buffer, digest.byteOffset, digest.byteLength)
-    .toString("base64url");
+  return coreSha256(bytes, "base64url");
 }
 
 /** SHA-256 over the parts, each prefixed with its byte length, so parts can't run into each other. */

@@ -1,4 +1,4 @@
-import { basename, extname, type Type } from "@bunest/core";
+import { basename, extname, sha256, type Type } from "@bunest/core/common";
 import { MailMessageError } from "../errors/mail-message.error";
 import type {
   MailAddress,
@@ -112,12 +112,7 @@ export async function createMailMessage(
     throw new MailMessageError("subject", "must be a string");
   }
   const subject = checkHeaderValue(input.subject, "subject");
-  const html =
-    input.html === undefined
-      ? undefined
-      : isSafeHtml(input.html)
-        ? input.html.value
-        : input.html;
+  const html = isSafeHtml(input.html) ? input.html.value : input.html;
   if (html !== undefined && typeof html !== "string") {
     throw new MailMessageError(
       "html",
@@ -192,13 +187,7 @@ export function assertRecipients(message: MailMessage): void {
 function messageId(from: MailAddress, idempotencyKey?: string): string {
   const domain = from.address.slice(from.address.lastIndexOf("@") + 1);
   const id = idempotencyKey
-    ? Buffer.from(
-        new Bun.CryptoHasher("sha256")
-          .update(`nestjs-mail:${idempotencyKey}`)
-          .digest(),
-      )
-        .toString("base64url")
-        .slice(0, 32)
+    ? sha256(`nestjs-mail:${idempotencyKey}`, "base64url").slice(0, 32)
     : crypto.randomUUID();
   return `<${id}@${domain}>`;
 }
@@ -311,7 +300,12 @@ async function readContent(
         "must be a local file path (URLs are not fetched)",
       );
     }
-    return Buffer.from(await Bun.file(path).arrayBuffer());
+    const fileBytes = await Bun.file(path).bytes();
+    return Buffer.from(
+      fileBytes.buffer,
+      fileBytes.byteOffset,
+      fileBytes.byteLength,
+    );
   }
   if (typeof content === "string") {
     return Buffer.from(content, "utf8");

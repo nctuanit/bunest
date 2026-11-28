@@ -1,3 +1,4 @@
+import { ensureSuffix, randomToken } from "@bunest/core/common";
 import type {
   MailAddress,
   MailAttachment,
@@ -75,7 +76,7 @@ export function buildMime(message: MimeMessageInput): Buffer {
   }
   headers.push("MIME-Version: 1.0");
   const mime = serialize(structure(message), headers);
-  return Buffer.from(mime.endsWith("\r\n") ? mime : `${mime}\r\n`, "utf8");
+  return Buffer.from(ensureSuffix(mime, "\r\n"), "utf8");
 }
 
 function structure(message: MimeMessageInput): MimeNode {
@@ -152,7 +153,7 @@ function serialize(node: MimeNode, headers: string[]): string {
   if ("body" in node) {
     return [...headers, ...node.headers].join("\r\n") + "\r\n\r\n" + node.body;
   }
-  const boundary = `=_${Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url")}`;
+  const boundary = `=_${randomToken(18)}`;
   const own = [
     ...headers,
     foldHeader("Content-Type", [

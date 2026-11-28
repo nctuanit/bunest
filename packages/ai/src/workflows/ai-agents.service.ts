@@ -1,5 +1,6 @@
 import { Injectable } from "@bunest/core";
 import { ModuleRef } from "@bunest/core";
+import { isString } from "@bunest/core/common";
 import {
   NonRetryableStepError,
   WorkflowClient,
@@ -387,6 +388,15 @@ function callOptions(settings: AgentSettings): AiCallOptions {
   };
 }
 
+function formatToolOutput(result: AiToolResult) {
+  if (result.error !== undefined) {
+    return { type: "error-text" as const, value: result.error };
+  }
+  return isString(result.output)
+    ? { type: "text" as const, value: result.output }
+    : { type: "json" as const, value: result.output ?? null };
+}
+
 function toolMessage(results: AiToolResult[]): ModelMessage {
   return {
     role: "tool",
@@ -394,12 +404,7 @@ function toolMessage(results: AiToolResult[]): ModelMessage {
       type: "tool-result",
       toolCallId: result.toolCallId,
       toolName: result.toolName,
-      output:
-        result.error !== undefined
-          ? { type: "error-text", value: result.error }
-          : typeof result.output === "string"
-            ? { type: "text", value: result.output }
-            : { type: "json", value: result.output ?? null },
+      output: formatToolOutput(result),
     })),
   };
 }

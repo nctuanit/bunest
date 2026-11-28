@@ -1,3 +1,5 @@
+import { escapeHtml } from "@bunest/core/common";
+
 declare const SAFE_HTML_KEY: unique symbol;
 
 const SAFE_HTML: typeof SAFE_HTML_KEY = Symbol.for(
@@ -46,9 +48,7 @@ export type HtmlValue =
 const TAG_START = /[A-Za-z/!?]/;
 
 /** Escapes `& < > " '`, which makes text safe in element content and in quoted attribute values (via SIMD `Bun.escapeHTML`). */
-export function escapeHtml(text: string): string {
-  return Bun.escapeHTML(text);
-}
+export { escapeHtml };
 
 /**
  * An auto-escaping template tag. Every interpolated value is escaped unless it is

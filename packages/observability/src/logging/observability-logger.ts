@@ -17,6 +17,7 @@ import {
   type LoggerService,
   type OnModuleDestroy,
 } from "@bunest/core";
+import { isPlainObject } from "@bunest/core/common";
 import { traceContextStorage } from "../tracing/trace-context";
 
 export const OBSERVABILITY_LOGGER_OPTIONS = Symbol.for(
@@ -67,24 +68,6 @@ function defaultWriter(line: string, level: LogLevel): void {
   } else {
     console.log(line);
   }
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  if (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Error ||
-    value instanceof Headers ||
-    value instanceof Map ||
-    value instanceof Set
-  ) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 /**
@@ -404,7 +387,7 @@ export class ObservabilityLogger implements LoggerService, OnModuleDestroy {
 
     // Pino-style structured-first call: logger.info({ orderId: "1" }, "order created", ...extra)
     if (
-      isPlainRecord(messageOrFields) &&
+      isPlainObject(messageOrFields) &&
       optionalParams.length >= 1 &&
       typeof optionalParams[0] === "string"
     ) {

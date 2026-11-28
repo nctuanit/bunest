@@ -1,4 +1,4 @@
-import { computeBackoffDelay } from "@bunest/core";
+import { computeBackoffDelay, sleep as coreSleep } from "@bunest/core/common";
 import type {
   Duration,
   StorageBackoffOptions,
@@ -85,20 +85,5 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) {
     return Promise.resolve();
   }
-  if (signal?.aborted) {
-    return Promise.reject(
-      signal.reason ?? new DOMException("Aborted", "AbortError"),
-    );
-  }
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+  return coreSleep(ms, signal);
 }

@@ -1,4 +1,19 @@
 
+// Type-safe Message & Event Contracts
+export {
+  EVENT_CONTRACT_SYMBOL,
+  MESSAGE_CONTRACT_SYMBOL,
+  defineEventContract,
+  defineMessageContract,
+  isEventContract,
+  isMessageContract,
+  type ContractPayload,
+  type ContractRequest,
+  type ContractResponse,
+  type EventContract,
+  type MessageContract,
+} from "./contracts";
+
 // Tokens & Constants
 export {
   CLIENT_CONFIGURATION_METADATA,

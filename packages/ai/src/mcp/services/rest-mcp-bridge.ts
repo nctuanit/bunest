@@ -25,6 +25,8 @@ import {
   type Type,
   type ValidationErrorDetail,
 } from "@bunest/core";
+import { isBoolean } from "@bunest/core/common";
+import { extractRequestCookies } from "@bunest/core/http";
 import type {
   McpContext,
   McpExposeOptions,
@@ -359,11 +361,7 @@ function introspectClassicDtoJsonSchema(
     properties[outKey] = propSchema;
 
     const explicitRequired =
-      api?.selfRequired !== undefined
-        ? api.selfRequired
-        : typeof api?.required === "boolean"
-          ? api.required
-          : true;
+      api?.selfRequired ?? (isBoolean(api?.required) ? api.required : true);
     if (explicitRequired && !optionalSet.has(key)) {
       requiredSet.add(outKey);
     }
@@ -452,27 +450,6 @@ function formatStandardSchemaIssuesToBadRequest(
     message: "Validation failed",
     details,
   });
-}
-
-function parseCookieHeader(
-  headerValue: string | null,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headerValue) return out;
-  for (const part of headerValue.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    const key = part.slice(0, idx).trim();
-    const val = part.slice(idx + 1).trim();
-    if (key && !FORBIDDEN_KEYS.has(key)) {
-      try {
-        out[key] = decodeURIComponent(val);
-      } catch {
-        out[key] = val;
-      }
-    }
-  }
-  return out;
 }
 
 function buildSyntheticHttpRequest(
@@ -847,15 +824,11 @@ export function buildBridgedRestToolsForController(
       decision.methodExpose?.scopes ?? decision.classExpose?.scopes;
     assertScopes(scopes, where);
 
-    const toolName = decision.methodExpose?.name
-      ? decision.methodExpose.name
-      : sanitizeToolName(
-          decision.classExpose?.name
-            ? `${decision.classExpose.name}_${toSnakeCase(methodName)}`
-            : ctrlPrefix
-              ? `${ctrlPrefix}_${toSnakeCase(methodName)}`
-              : toSnakeCase(methodName),
-        );
+    const prefix = decision.classExpose?.name || ctrlPrefix;
+    const baseName = toSnakeCase(methodName);
+    const toolName =
+      decision.methodExpose?.name ||
+      sanitizeToolName(prefix ? `${prefix}_${baseName}` : baseName);
     assertToolName(toolName, where);
 
     const description = resolveRouteDescription(
@@ -1096,7 +1069,7 @@ export function buildBridgedRestToolsForController(
             return mcpCtx.signal;
           case "cookies":
           case "signedCookies": {
-            const parsed = parseCookieHeader(httpRequest.headers.get("cookie"));
+            const parsed = extractRequestCookies(httpRequest);
             return param.key !== undefined ? parsed[param.key] : parsed;
           }
           case "next":

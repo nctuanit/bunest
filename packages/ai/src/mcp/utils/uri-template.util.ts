@@ -1,3 +1,5 @@
+import { escapeRegExp } from "@bunest/core/common";
+
 /**
  * Compiles an RFC 6570 Level 1/2 URI template (e.g. `notes://{id}`, `files://{+path}`,
  * `repo://{owner}/{name}`) into a matcher extracting decoded variable values.
@@ -6,10 +8,6 @@ export interface CompiledUriTemplate {
   readonly template: string;
   readonly variableNames: string[];
   match(uri: string): Record<string, string> | null;
-}
-
-function escapeRegex(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function compileUriTemplate(template: string): CompiledUriTemplate {
@@ -21,7 +19,7 @@ export function compileUriTemplate(template: string): CompiledUriTemplate {
   for (const match of template.matchAll(exprRe)) {
     const idx = match.index ?? 0;
     if (idx > cursor) {
-      pattern += escapeRegex(template.slice(cursor, idx));
+      pattern += escapeRegExp(template.slice(cursor, idx));
     }
     const operator = match[1] ?? "";
     const rawVars = (match[2] ?? "").split(",");
@@ -46,7 +44,7 @@ export function compileUriTemplate(template: string): CompiledUriTemplate {
   }
 
   if (cursor < template.length) {
-    pattern += escapeRegex(template.slice(cursor));
+    pattern += escapeRegExp(template.slice(cursor));
   }
   pattern += "$";
   const regex = new RegExp(pattern);

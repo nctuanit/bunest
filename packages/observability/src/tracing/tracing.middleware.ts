@@ -19,6 +19,7 @@ import {
   type NextFunction,
   type ResponseContext,
 } from "@bunest/core";
+import { first, toArray } from "@bunest/core/common";
 import {
   extractTraceContext,
   formatTraceParent,
@@ -49,14 +50,8 @@ function resolveHttpRouteTemplate(context: ExecutionContext): string {
     handler,
   );
 
-  const rawPrefix = ctrlMeta
-    ? Array.isArray(ctrlMeta.path)
-      ? (ctrlMeta.path[0] ?? "")
-      : ctrlMeta.path
-    : "";
-  const rawSuffix = Array.isArray(methodPath)
-    ? (methodPath[0] ?? "")
-    : (methodPath ?? "");
+  const rawPrefix = first(toArray(ctrlMeta?.path)) ?? "";
+  const rawSuffix = first(toArray(methodPath)) ?? "";
 
   const combined = `/${rawPrefix}/${rawSuffix}`
     .replace(/\/+/g, "/")

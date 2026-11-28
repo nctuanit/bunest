@@ -1,4 +1,10 @@
 import {
+  base64UrlDecode,
+  base64UrlEncode,
+  definedOnly,
+  md5,
+} from "@bunest/core/common";
+import {
   StorageFileNotFoundError,
   StorageRangeNotSatisfiableError,
 } from "../errors";
@@ -31,15 +37,15 @@ export function compareKeys(a: string, b: string): number {
 }
 
 export function encodeCursor(key: string): string {
-  return Buffer.from(key, "utf8").toString("base64url");
+  return base64UrlEncode(key);
 }
 
 export function decodeCursor(cursor: string): string {
-  return Buffer.from(cursor, "base64url").toString("utf8");
+  return base64UrlDecode(cursor);
 }
 
 function md5Etag(data: Buffer): string {
-  return `"${new Bun.CryptoHasher("md5").update(data).digest("hex")}"`;
+  return `"${md5(data)}"`;
 }
 
 /**
@@ -72,12 +78,10 @@ export class InMemoryDisk extends StorageDisk {
     this.objects.set(key, {
       data,
       contentType: file.contentType,
-      ...(file.cacheControl !== undefined
-        ? { cacheControl: file.cacheControl }
-        : {}),
-      ...(file.contentDisposition !== undefined
-        ? { contentDisposition: file.contentDisposition }
-        : {}),
+      ...definedOnly({
+        cacheControl: file.cacheControl,
+        contentDisposition: file.contentDisposition,
+      }),
       metadata: { ...file.metadata },
       lastModified: new Date(),
       etag,
@@ -167,12 +171,10 @@ export class InMemoryDisk extends StorageDisk {
     const copied: StoredObject = {
       data: Buffer.from(entry.data),
       contentType: entry.contentType,
-      ...(entry.cacheControl !== undefined
-        ? { cacheControl: entry.cacheControl }
-        : {}),
-      ...(entry.contentDisposition !== undefined
-        ? { contentDisposition: entry.contentDisposition }
-        : {}),
+      ...definedOnly({
+        cacheControl: entry.cacheControl,
+        contentDisposition: entry.contentDisposition,
+      }),
       metadata: { ...entry.metadata },
       lastModified: new Date(),
       etag: entry.etag,
@@ -212,12 +214,10 @@ export class InMemoryDisk extends StorageDisk {
       contentType: entry.contentType,
       lastModified: new Date(entry.lastModified.getTime()),
       etag: entry.etag,
-      ...(entry.cacheControl !== undefined
-        ? { cacheControl: entry.cacheControl }
-        : {}),
-      ...(entry.contentDisposition !== undefined
-        ? { contentDisposition: entry.contentDisposition }
-        : {}),
+      ...definedOnly({
+        cacheControl: entry.cacheControl,
+        contentDisposition: entry.contentDisposition,
+      }),
       metadata: { ...entry.metadata },
     };
   }

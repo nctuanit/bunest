@@ -1,3 +1,4 @@
+import { compareDesc } from "@bunest/core/common";
 import type {
   WebhookClaimRequest,
   WebhookClaimedDelivery,
@@ -457,10 +458,6 @@ export class InMemoryWebhookStore
       (row.leaseUntil === null || row.leaseUntil <= now)
     );
   }
-}
-
-function compareDesc(a: string, b: string): number {
-  return a < b ? 1 : a > b ? -1 : 0;
 }
 
 /** A deep copy through JSON, as a database stores it. */

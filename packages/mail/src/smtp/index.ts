@@ -17,3 +17,8 @@ export {
   type DkimSigner,
   type HeaderField,
 } from "./dkim.util";
+export {
+  hasValidMxRecord,
+  resolveMxRecords,
+  type MxRecordInfo,
+} from "./dns.util";

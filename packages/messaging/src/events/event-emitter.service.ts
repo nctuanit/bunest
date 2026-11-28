@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from "@bunest/core";
+import { isAppEvent, type AppEvent } from "./app-event";
 import { EVENT_EMITTER_OPTIONS } from "./constants";
 import type {
   BunestEventRegistry,
@@ -655,6 +656,47 @@ export class EventEmitterService {
     }
 
     return true;
+  }
+
+  /**
+   * Emits a strongly-typed `AppEvent` synchronously (matching `emit()`).
+   */
+  emitAppEvent<TPayload>(
+    event: AppEvent<string, TPayload>,
+    ...args: [TPayload] extends [void]
+      ? [] | [payload?: TPayload]
+      : [payload: TPayload]
+  ): boolean {
+    if (!isAppEvent(event)) {
+      throw new Error(
+        "EventEmitterService.emitAppEvent() requires an AppEvent created with defineAppEvent().",
+      );
+    }
+    return (
+      this.emit as (name: EventInput, ...values: unknown[]) => boolean
+    )(event.name, ...args);
+  }
+
+  /**
+   * Emits a strongly-typed `AppEvent` asynchronously (matching `emitAsync()`).
+   */
+  emitAppEventAsync<TPayload>(
+    event: AppEvent<string, TPayload>,
+    ...args: [TPayload] extends [void]
+      ? [] | [payload?: TPayload]
+      : [payload: TPayload]
+  ): Promise<unknown[]> {
+    if (!isAppEvent(event)) {
+      throw new Error(
+        "EventEmitterService.emitAppEventAsync() requires an AppEvent created with defineAppEvent().",
+      );
+    }
+    return (
+      this.emitAsync as (
+        name: EventInput,
+        ...values: unknown[]
+      ) => Promise<unknown[]>
+    )(event.name, ...args);
   }
 
   /**

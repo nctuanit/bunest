@@ -5,6 +5,7 @@ import {
   type ArgumentsHost,
   type RpcExceptionFilter,
 } from "@bunest/core";
+import { isString } from "@bunest/core/common";
 import { GrpcStatus } from "./enums";
 import type { GrpcMetadata } from "./grpc-metadata";
 
@@ -114,10 +115,12 @@ export class CircuitOpenError extends RpcException {
     nextAttemptAt: number = Date.now(),
   ) {
     const remainingMs = Math.max(0, nextAttemptAt - Date.now());
+    const retryHint =
+      remainingMs > 0 ? ` (retry after ${remainingMs}ms)` : "";
     const message =
       state === "half-open"
         ? `Circuit breaker is half-open (max probe calls reached) for pattern "${pattern}".`
-        : `Circuit breaker is open for pattern "${pattern}"${remainingMs > 0 ? ` (retry after ${remainingMs}ms)` : ""}.`;
+        : `Circuit breaker is open for pattern "${pattern}"${retryHint}.`;
     super({
       status: 503,
       code: "CIRCUIT_OPEN",
@@ -177,17 +180,14 @@ export class GrpcException extends RpcException {
     metadata?: GrpcMetadata,
   ) {
     const isCodeFirst = typeof codeOrMessage === "number";
-    const code: GrpcStatus = isCodeFirst
-      ? codeOrMessage
-      : typeof messageOrCode === "number"
-        ? messageOrCode
-        : GrpcStatus.UNKNOWN;
+    const code: GrpcStatus =
+      (isCodeFirst ? codeOrMessage : undefined) ??
+      (typeof messageOrCode === "number" ? messageOrCode : undefined) ??
+      GrpcStatus.UNKNOWN;
     const message: string =
-      typeof codeOrMessage === "string"
-        ? codeOrMessage
-        : typeof messageOrCode === "string"
-          ? messageOrCode
-          : "";
+      (isString(codeOrMessage) ? codeOrMessage : undefined) ??
+      (isString(messageOrCode) ? messageOrCode : undefined) ??
+      "";
 
     super(
       isCodeFirst

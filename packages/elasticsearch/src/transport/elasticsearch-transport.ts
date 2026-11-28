@@ -1,3 +1,4 @@
+import { ensurePrefix } from "@bunest/core/common";
 import {
   ElasticsearchAbortError,
   ElasticsearchConnectionError,
@@ -84,7 +85,7 @@ export class ElasticsearchTransport {
   readonly maxRetries: number;
   readonly requestTimeout?: number;
   readonly pingTimeout: number;
-  readonly compression: boolean;
+  readonly compression: boolean | "gzip" | "zstd";
   readonly enableMetaHeader: boolean;
   readonly opaqueIdPrefix?: string;
   readonly maxPathLength?: number | null;
@@ -168,9 +169,7 @@ export class ElasticsearchTransport {
             ...(options.querystring ?? {}),
           };
     const qs = this.serializer.qserialize(mergedQuery);
-    const cleanPath = params.path.startsWith("/")
-      ? params.path
-      : `/${params.path}`;
+    const cleanPath = ensurePrefix(params.path, "/");
     const fullPath = qs ? `${cleanPath}?${qs}` : cleanPath;
 
     if (
@@ -243,33 +242,43 @@ export class ElasticsearchTransport {
         headers.set("authorization", this.authHeader);
       }
 
-      const opaqueId = options.opaqueId
-        ? this.opaqueIdPrefix
-          ? `${this.opaqueIdPrefix}${options.opaqueId}`
-          : options.opaqueId
-        : this.opaqueIdPrefix
-          ? `${this.opaqueIdPrefix}${requestId}`
+      const baseOpaqueId =
+        options.opaqueId || (this.opaqueIdPrefix ? requestId : undefined);
+      const opaqueId =
+        baseOpaqueId !== undefined
+          ? `${this.opaqueIdPrefix ?? ""}${baseOpaqueId}`
           : undefined;
       if (opaqueId && !headers.has("x-opaque-id")) {
         headers.set("x-opaque-id", opaqueId);
       }
 
+      const methodUpper = params.method.toUpperCase();
+      const canSendBody = methodUpper !== "GET" && methodUpper !== "HEAD";
       let finalBody: RequestInit["body"] | undefined;
-      if (serializedBody !== undefined) {
+      if (canSendBody && serializedBody !== undefined) {
         if (!headers.has("content-type")) {
           headers.set(
             "content-type",
             useNdjson ? "application/x-ndjson" : "application/json",
           );
         }
-        const shouldCompress = options.compression ?? this.compression;
-        if (shouldCompress) {
+        const compressionMode = options.compression ?? this.compression;
+        if (compressionMode) {
           const rawBytes =
             typeof serializedBody === "string"
               ? Buffer.from(serializedBody, "utf8")
-              : new Uint8Array(serializedBody);
-          finalBody = Bun.gzipSync(rawBytes);
-          headers.set("content-encoding", "gzip");
+              : serializedBody;
+          if (compressionMode === "zstd") {
+            finalBody = await Bun.zstdCompress(rawBytes);
+            headers.set("content-encoding", "zstd");
+          } else {
+            const gzipInput: Uint8Array<ArrayBuffer> =
+              rawBytes.buffer instanceof ArrayBuffer
+                ? (rawBytes as Uint8Array<ArrayBuffer>)
+                : new Uint8Array(rawBytes);
+            finalBody = Bun.gzipSync(gzipInput);
+            headers.set("content-encoding", "gzip");
+          }
         } else {
           finalBody = serializedBody as RequestInit["body"];
         }
@@ -293,13 +302,9 @@ export class ElasticsearchTransport {
 
       try {
         const response = await this.fetchImpl(targetUrl.toString(), {
-          method: params.method.toUpperCase(),
+          method: methodUpper,
           headers,
-          body:
-            params.method.toUpperCase() === "GET" ||
-            params.method.toUpperCase() === "HEAD"
-              ? undefined
-              : finalBody,
+          body: canSendBody ? finalBody : undefined,
           signal,
         });
 
@@ -308,7 +313,7 @@ export class ElasticsearchTransport {
         const statusCode = response.status;
 
         let parsedBody: unknown;
-        if (params.method.toUpperCase() === "HEAD") {
+        if (methodUpper === "HEAD") {
           parsedBody = "";
         } else {
           const rawText = await response.text();
@@ -329,6 +334,17 @@ export class ElasticsearchTransport {
           const ct = (responseHeaders["content-type"] ?? "").toLowerCase();
           if (rawText.length === 0) {
             parsedBody = "";
+          } else if (
+            params.ndjsonResponse ||
+            options.ndjsonResponse ||
+            ct.includes("application/x-ndjson") ||
+            ct.includes("application/jsonl")
+          ) {
+            try {
+              parsedBody = this.serializer.deserializeNdjson(rawText);
+            } catch {
+              parsedBody = rawText;
+            }
           } else if (
             ct.includes("application/json") ||
             ct.includes("+json") ||

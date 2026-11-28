@@ -1,4 +1,5 @@
 import { Logger } from "@bunest/core";
+import { compareDesc } from "@bunest/core/common";
 import { OutboxTransactionRequiredError } from "../errors/outbox-transaction-required.error";
 import type {
   OutboxAttempt,
@@ -188,12 +189,12 @@ export class InMemoryOutboxStore
       if (leaseUntil !== null && leaseUntil > now) {
         leased++;
       }
-      const since =
-        message.attempts > 0
-          ? message.createdAt
-          : message.availableAt <= now
-            ? message.availableAt
-            : null;
+      let since: number | null = null;
+      if (message.attempts > 0) {
+        since = message.createdAt;
+      } else if (message.availableAt <= now) {
+        since = message.availableAt;
+      }
       if (since !== null && (oldestDueAt === null || since < oldestDueAt)) {
         oldestDueAt = since;
       }
@@ -221,10 +222,7 @@ export class InMemoryOutboxStore
           (topic === undefined || d.topic === topic) &&
           (key === undefined || d.key === key),
       )
-      .sort(
-        (a, b) =>
-          b.failedAt - a.failedAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
-      )
+      .sort((a, b) => b.failedAt - a.failedAt || compareDesc(a.id, b.id))
       .slice(offset, offset + limit)
       .map((d) => clone(d));
   }

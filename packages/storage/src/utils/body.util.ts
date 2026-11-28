@@ -1,5 +1,17 @@
+import { concatBytes } from "@bunest/core/common";
 import { StorageBodyLengthError } from "../errors";
 import type { StorageBody } from "../interfaces/storage-types";
+
+function toMergedBuffer(chunks: readonly Uint8Array[]): Buffer {
+  if (chunks.length === 0) {
+    return Buffer.alloc(0);
+  }
+  if (chunks.length === 1 && Buffer.isBuffer(chunks[0])) {
+    return chunks[0];
+  }
+  const merged = concatBytes(chunks);
+  return Buffer.from(merged.buffer, merged.byteOffset, merged.byteLength);
+}
 
 /** The byte length of a body that is already in memory, else `undefined`. */
 export function knownLength(body: StorageBody): number | undefined {
@@ -150,12 +162,12 @@ export async function readAll(
     } finally {
       reader.releaseLock();
     }
-    return Buffer.concat(chunks);
+    return toMergedBuffer(chunks);
   }
   for await (const chunk of stream) {
     chunks.push(toBuffer(chunk));
   }
-  return Buffer.concat(chunks);
+  return toMergedBuffer(chunks);
 }
 
 /** Wraps an in-memory byte slice (or empty body) as a Web `ReadableStream<Uint8Array>`. */

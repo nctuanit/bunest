@@ -6,6 +6,7 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from "@bunest/core";
+import { groupBy, isDefined, mapLimit } from "@bunest/core/common";
 import { NonRetryableWebhookError } from "../errors/non-retryable-webhook.error";
 import { WebhookDeliveryTimeoutError } from "../errors/webhook-delivery-timeout.error";
 import { WebhookDestinationBlockedError } from "../errors/webhook-destination-blocked.error";
@@ -229,10 +230,10 @@ export class WebhookWorker implements OnApplicationBootstrap, OnModuleDestroy {
     }
     result.claimed = claimed.length;
     const leaseUntil = claimedAt + this.config.worker.lease;
-    const groups = [
-      ...groupBy(claimed, (item) => item.delivery.endpointId).values(),
-    ];
-    await runPool(groups, this.config.worker.concurrency, async (group) => {
+    const groups = Object.values(
+      groupBy(claimed, (item) => item.delivery.endpointId),
+    ).filter(isDefined);
+    await mapLimit(groups, this.config.worker.concurrency, async (group) => {
       try {
         await this.deliverGroup(group, owner, leaseUntil, result);
       } catch (error) {
@@ -426,14 +427,17 @@ export class WebhookWorker implements OnApplicationBootstrap, OnModuleDestroy {
       !(failure instanceof NonRetryableWebhookError) &&
       this.retryIf(failure, attempt, delivery);
 
+    let disableIfFailingSince: number | null = null;
+    if (gone) {
+      disableIfFailingSince = now;
+    } else if (this.config.disableAfterMs !== null) {
+      disableIfFailingSince = now - this.config.disableAfterMs;
+    }
+
     const endpointDisabled = await this.safely("recordEndpointFailure", () =>
       this.endpoints.recordEndpointFailure(endpoint.id, {
         at: now,
-        disableIfFailingSince: gone
-          ? now
-          : this.config.disableAfterMs === null
-            ? null
-            : now - this.config.disableAfterMs,
+        disableIfFailingSince,
         reason: gone ? "gone" : "failing",
       }),
     );
@@ -714,29 +718,4 @@ export class WebhookWorker implements OnApplicationBootstrap, OnModuleDestroy {
       );
     }
   }
-}
-
-function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
-  const groups = new Map<K, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    groups.set(k, [...(groups.get(k) ?? []), item]);
-  }
-  return groups;
-}
-
-async function runPool<T>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      await fn(items[next++]!);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
 }

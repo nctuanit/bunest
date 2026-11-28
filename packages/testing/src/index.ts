@@ -17,6 +17,10 @@ export { TestingModuleBuilder } from "./testing-module.builder";
 export { ScopedTestingModule, TestingModule } from "./testing-module";
 export { CookieJar, TestAgent, TestClient, TestResponse } from "./test-client";
 export {
+  createContractTestClient,
+  type ContractTestClientOptions,
+} from "./contract-test-client";
+export {
   SupertestAgent,
   SupertestRequest,
   request,
@@ -32,6 +36,15 @@ export {
   type ReadSseEventsOptions,
   type SseEvent,
 } from "./sse-helper";
+export {
+  assertDeepMatch,
+  createWebViewHarness,
+  isWebViewAvailable,
+  matchShape,
+  type WebViewHarness,
+  type WebViewHarnessOptions,
+  type WebViewLike,
+} from "./bun-test-helpers";
 export {
   createNodeHttpServer,
   type BridgeAddressInfo,

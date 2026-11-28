@@ -1,3 +1,4 @@
+import { compareAsc, hmacSha256, sha256 } from "@bunest/core/common";
 import type { AwsCredentials } from "../interfaces/provider-transport-options.interface";
 
 export interface SigV4Request {
@@ -55,22 +56,20 @@ export function signV4(
     canonicalQuery(request.query ?? ""),
     [...headers].map(([name, value]) => `${name}:${value}\n`).join(""),
     signedHeaders,
-    sha256Hex(request.body),
+    sha256(request.body),
   ].join("\n");
   const scope = `${day}/${region}/${service}/aws4_request`;
   const stringToSign = [
     ALGORITHM,
     amzDate,
     scope,
-    sha256Hex(canonicalRequest),
+    sha256(canonicalRequest),
   ].join("\n");
   const key = [day, region, service, "aws4_request"].reduce<string | Buffer>(
     (k, part) => hmac(k, part),
     `AWS4${credentials.secretAccessKey}`,
   );
-  const signature = new Bun.CryptoHasher("sha256", key)
-    .update(stringToSign)
-    .digest("hex");
+  const signature = hmacSha256(key, stringToSign);
   return {
     canonicalRequest,
     stringToSign,
@@ -82,10 +81,6 @@ export function signV4(
 function hmac(key: string | Uint8Array, data: string): Buffer {
   const digest = new Bun.CryptoHasher("sha256", key).update(data).digest();
   return Buffer.from(digest.buffer, digest.byteOffset, digest.byteLength);
-}
-
-function sha256Hex(data: string | Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(data).digest("hex");
 }
 
 /** RFC 3986 unreserved characters stay; everything else is `%XX` of its UTF-8 bytes. */
@@ -130,9 +125,7 @@ function canonicalQuery(query: string): string {
         eq === -1 ? [pair, ""] : [pair.slice(0, eq), pair.slice(eq + 1)];
       return [uriEncode(decode(key), false), uriEncode(decode(value), false)];
     });
-  pairs.sort(([ak, av], [bk, bv]) =>
-    ak < bk ? -1 : ak > bk ? 1 : av < bv ? -1 : av > bv ? 1 : 0,
-  );
+  pairs.sort(([ak, av], [bk, bv]) => compareAsc(ak, bk) || compareAsc(av, bv));
   return pairs.map(([key, value]) => `${key}=${value}`).join("&");
 }
 

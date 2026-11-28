@@ -227,7 +227,12 @@ async function readCappedBody(
     reader.releaseLock();
   }
 
-  const bytes = Buffer.concat(chunks);
+  const bytes =
+    chunks.length === 0
+      ? new Uint8Array(0)
+      : chunks.length === 1
+        ? chunks[0]!
+        : new Uint8Array(Bun.concatArrayBuffers(chunks));
   // A cut body may end mid-character: streaming TextDecoder drops incomplete trailing bytes instead of emitting U+FFFD.
   return cut
     ? new TextDecoder("utf-8").decode(bytes, { stream: true })

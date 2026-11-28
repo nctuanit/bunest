@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from "@bunest/core";
 import { DiscoveryService, type InstanceWrapper } from "@bunest/core";
+import { isPromiseLike } from "@bunest/core/common";
 import { LocksEvents } from "../events/locks-events.service";
 import type {
   LeaderElectionDefinition,
@@ -186,10 +187,8 @@ class Election {
       }
     };
     try {
-      const result = fn.call(participant, lock) as
-        | { then?: (onf?: unknown, onr?: (err: unknown) => void) => void }
-        | undefined;
-      if (result && typeof result.then === "function") {
+      const result = fn.call(participant, lock);
+      if (isPromiseLike(result)) {
         result.then(undefined, failed);
       }
     } catch (error) {

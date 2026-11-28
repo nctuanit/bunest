@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import { LocksError } from "./locks.error";
 
 /**
@@ -17,11 +18,19 @@ export class LockNotAcquiredError extends LocksError {
     reason: "taken" | "shutdown" = "taken",
   ) {
     super(
-      reason === "shutdown"
-        ? `Could not acquire the lock "${key}": the application is shutting down`
-        : waitMs > 0
-          ? `Could not acquire the lock "${key}" within ${waitMs}ms: another holder has it`
-          : `Could not acquire the lock "${key}": another holder has it`,
+      cond(
+        [
+          [
+            reason === "shutdown",
+            `Could not acquire the lock "${key}": the application is shutting down`,
+          ],
+          [
+            waitMs > 0,
+            `Could not acquire the lock "${key}" within ${waitMs}ms: another holder has it`,
+          ],
+        ],
+        `Could not acquire the lock "${key}": another holder has it`,
+      ),
     );
     this.key = key;
     this.waitMs = waitMs;

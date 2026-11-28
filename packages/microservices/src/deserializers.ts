@@ -93,12 +93,12 @@ export class IncomingResponseDeserializer implements ProducerDeserializer {
   }
 
   mapToSchema(value: unknown): IncomingResponse {
-    const id =
-      value && typeof value === "object"
-        ? (value as { id?: string }).id
-        : value
-          ? undefined
-          : (value as string);
+    let id: string | undefined;
+    if (value && typeof value === "object") {
+      id = (value as { id?: string }).id;
+    } else if (!value) {
+      id = value as string;
+    }
     return {
       id: id as string,
       response: value,

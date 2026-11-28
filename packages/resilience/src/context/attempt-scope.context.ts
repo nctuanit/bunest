@@ -1,4 +1,4 @@
-import { ContextStorage } from "@bunest/core";
+import { ContextStorage, isPromiseLike } from "@bunest/core/common";
 
 /** The attempt a piece of code runs in: set per attempt by entrypoints and `execute()`. */
 export interface AttemptScope {
@@ -61,12 +61,8 @@ export function runInAttempt<T>(
     throw error;
   }
 
-  if (
-    result !== null &&
-    (typeof result === "object" || typeof result === "function") &&
-    typeof (result as unknown as PromiseLike<unknown>).then === "function"
-  ) {
-    (result as unknown as PromiseLike<unknown>).then(end, end);
+  if (isPromiseLike(result)) {
+    result.then(end, end);
   } else {
     end();
   }

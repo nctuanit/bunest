@@ -9,6 +9,7 @@ import {
   type Type,
 } from "@bunest/core";
 import { ModuleRef, type InstanceWrapper } from "@bunest/core";
+import { isFunction } from "@bunest/core/common";
 import { CommandBus } from "./command-bus";
 import {
   InvalidEventsHandlerException,
@@ -334,12 +335,9 @@ export class EventBus<EventBase extends IEvent = IEvent>
   subscribe<TEvent extends EventBase = EventBase>(
     listenerOrObserver: StreamListener<TEvent>,
   ): SubscriptionHandle {
-    const fn: EventSubscriber<EventBase> =
-      typeof listenerOrObserver === "function"
-        ? (listenerOrObserver as EventSubscriber<EventBase>)
-        : listenerOrObserver.next
-          ? (e: EventBase) => listenerOrObserver.next!(e as TEvent)
-          : () => undefined;
+    const fn: EventSubscriber<EventBase> = isFunction(listenerOrObserver)
+      ? (listenerOrObserver as EventSubscriber<EventBase>)
+      : (e: EventBase) => listenerOrObserver.next?.(e as TEvent);
 
     this.subscribers.add(fn);
     let active = true;
@@ -530,29 +528,32 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
     if (this._publisher !== this.defaultPublisher) {
       return events.map((event) =>
-        dispatcherContext !== undefined && asyncContext !== undefined
-          ? this.publish(event, dispatcherContext, asyncContext)
-          : asyncContext !== undefined
-            ? this.publish(event, asyncContext)
-            : dispatcherContext !== undefined
-              ? this.publish(event, dispatcherContext)
-              : this.publish(event),
+        this.publishWithContext(event, dispatcherContext, asyncContext),
       );
     }
 
     return (async () => {
       for (const event of events) {
-        if (dispatcherContext !== undefined && asyncContext !== undefined) {
-          await this.publish(event, dispatcherContext, asyncContext);
-        } else if (asyncContext !== undefined) {
-          await this.publish(event, asyncContext);
-        } else if (dispatcherContext !== undefined) {
-          await this.publish(event, dispatcherContext);
-        } else {
-          await this.publish(event);
-        }
+        await this.publishWithContext(event, dispatcherContext, asyncContext);
       }
     })();
+  }
+
+  private publishWithContext<TEvent extends EventBase>(
+    event: TEvent,
+    dispatcherContext: unknown,
+    asyncContext: AsyncContext | undefined,
+  ): Promise<void> | any {
+    if (dispatcherContext !== undefined && asyncContext !== undefined) {
+      return this.publish(event, dispatcherContext, asyncContext);
+    }
+    if (asyncContext !== undefined) {
+      return this.publish(event, asyncContext);
+    }
+    if (dispatcherContext !== undefined) {
+      return this.publish(event, dispatcherContext);
+    }
+    return this.publish(event);
   }
 
   async waitForSagas(): Promise<void> {

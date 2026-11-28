@@ -1,4 +1,5 @@
 import { Injectable, uuidv7 } from "@bunest/core";
+import { isPromiseLike } from "@bunest/core/common";
 import { OutboxTransactionRequiredError } from "./errors/outbox-transaction-required.error";
 import type { Awaitable } from "./interfaces/awaitable.interface";
 import type {
@@ -41,7 +42,7 @@ export class Outbox<Tx = unknown> {
     const messages = (batch ? input : [input]).map((m) => build(m, now));
     const output = batch ? messages : messages[0]!;
     const written = this.storage.messages.add(tx, messages);
-    return isPromise(written) ? written.then(() => output) : output;
+    return isPromiseLike(written) ? written.then(() => output) : output;
   }
 
   /** Poll now. Call after your transaction commits to skip the poll interval. */
@@ -128,12 +129,4 @@ function isBatch<P>(
   input: NewOutboxMessage<P> | readonly NewOutboxMessage<P>[],
 ): input is readonly NewOutboxMessage<P>[] {
   return Array.isArray(input);
-}
-
-function isPromise(value: unknown): value is Promise<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
 }

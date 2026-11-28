@@ -17,6 +17,7 @@ import {
   type InstanceWrapper,
   type ParamsFactory,
 } from "@bunest/core";
+import { ensureError, isFunction, isObject } from "@bunest/core/common";
 import {
   DEFAULT_LISTENER_PRIORITY,
   EVENT_EMITTER_OPTIONS,
@@ -118,9 +119,7 @@ export class EventEmitterExplorer
       this.loadEventListeners();
       this.readinessWatcher?.setReady();
     } catch (error) {
-      this.readinessWatcher?.setErrored(
-        error instanceof Error ? error : new Error(String(error)),
-      );
+      this.readinessWatcher?.setErrored(ensureError(error));
     }
   }
 
@@ -174,13 +173,13 @@ export class EventEmitterExplorer
         continue;
       }
 
-      const ctor =
-        typeof wrapper.metatype === "function"
-          ? wrapper.metatype
-          : wrapper.instance && typeof wrapper.instance === "object"
-            ? wrapper.instance.constructor
-            : undefined;
-      if (typeof ctor !== "function" || ctor === Object) {
+      let ctor: unknown = isFunction(wrapper.metatype)
+        ? wrapper.metatype
+        : undefined;
+      if (!ctor && isObject(wrapper.instance)) {
+        ctor = (wrapper.instance as { constructor?: unknown }).constructor;
+      }
+      if (!isFunction(ctor) || ctor === Object) {
         continue;
       }
 

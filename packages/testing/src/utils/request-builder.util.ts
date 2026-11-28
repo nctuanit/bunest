@@ -1,3 +1,4 @@
+import { deepEqual, ensurePrefix } from "@bunest/core/common";
 import type { TestRequestOptions } from "../interfaces/testing.interface";
 
 export const DEFAULT_TEST_BASE_URL = "http://bunest.test";
@@ -20,7 +21,7 @@ export function buildRequestUrl(
     const base = new URL(baseUrl);
     const basePath = base.pathname.replace(/\/+$/, "");
     const relative = new URL(
-      path.startsWith("/") ? path : `/${path}`,
+      ensurePrefix(path, "/"),
       "http://bunest.placeholder",
     );
     base.pathname = `${basePath}${relative.pathname}` || "/";
@@ -146,8 +147,6 @@ export function buildTestRequest(
 }
 
 /**
- * Bun-native Zig structural deep equality helper for JSON/body assertions.
+ * Structural deep equality helper for JSON/body assertions.
  */
-export function deepEqual(a: unknown, b: unknown): boolean {
-  return Bun.deepEquals(a, b, true);
-}
+export { deepEqual };

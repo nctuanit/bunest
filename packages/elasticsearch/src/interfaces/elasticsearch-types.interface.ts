@@ -109,7 +109,7 @@ export interface ClientOptions {
   sniffEndpoint?: string;
   sniffOnConnectionFault?: boolean;
   resurrectStrategy?: "ping" | "optimistic" | "none";
-  compression?: boolean;
+  compression?: boolean | "gzip" | "zstd";
   tls?: TlsConnectionOptions;
   agent?: false | HttpAgentOptions | UndiciAgentOptions | AgentFn;
   nodeFilter?: NodeFilterFn;
@@ -140,6 +140,8 @@ export interface TransportRequestParams {
   querystring?: Record<string, unknown> | string;
   body?: unknown;
   ndjson?: boolean;
+  /** Force parsing the response payload as NDJSON / JSONL via `Bun.JSONL.parse()`. */
+  ndjsonResponse?: boolean;
   headers?: Record<string, string | string[] | number | undefined>;
 }
 
@@ -152,7 +154,9 @@ export interface TransportRequestOptions {
   context?: Context;
   opaqueId?: string;
   meta?: boolean;
-  compression?: boolean;
+  compression?: boolean | "gzip" | "zstd";
+  /** Force parsing the response payload as NDJSON / JSONL via `Bun.JSONL.parse()`. */
+  ndjsonResponse?: boolean;
   signal?: AbortSignal;
 }
 

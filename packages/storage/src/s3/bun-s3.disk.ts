@@ -1,3 +1,4 @@
+import { ensureSuffix, isDate } from "@bunest/core/common";
 import { StorageDisk } from "../disks/storage.disk";
 import { StorageFileNotFoundError } from "../errors";
 import type {
@@ -17,9 +18,22 @@ import { bytesToReadableStream, readAll } from "../utils/body.util";
 import { DEFAULT_CONTENT_TYPE } from "../utils/content-type.util";
 import { assertValidPrefix } from "../utils/keys.util";
 
+export interface BunS3FileWriterLike {
+  write(chunk: Uint8Array | ArrayBuffer | string): unknown;
+  flush?(): Promise<unknown> | unknown;
+  end(error?: unknown): Promise<unknown> | unknown;
+  close?(): Promise<unknown> | unknown;
+}
+
 export interface BunS3FileLike {
   stream?(): ReadableStream<Uint8Array>;
   slice?(start?: number, end?: number): BunS3FileLike;
+  writer?(options?: {
+    type?: string;
+    partSize?: number;
+    queueSize?: number;
+    retry?: number;
+  }): BunS3FileWriterLike;
   arrayBuffer(): Promise<ArrayBuffer>;
   bytes?(): Promise<Uint8Array>;
   exists(): Promise<boolean>;
@@ -135,7 +149,7 @@ export class BunS3Disk extends StorageDisk {
     if (prefix) {
       assertValidPrefix(prefix);
     }
-    this.prefix = prefix && !prefix.endsWith("/") ? `${prefix}/` : prefix;
+    this.prefix = prefix ? ensureSuffix(prefix, "/") : "";
   }
 
   private fullKey(key: string): string {
@@ -148,11 +162,45 @@ export class BunS3Disk extends StorageDisk {
     file: StorageObjectWrite,
   ): Promise<StorageWriteResult> {
     file.signal?.throwIfAborted();
-    const data = await readAll(body);
     const full = this.fullKey(key);
-    await this.client.write(full, new Uint8Array(data), {
-      type: file.contentType,
-    });
+    const s3File = this.client.file(full);
+    let size = 0;
+
+    if (typeof s3File.writer === "function") {
+      // Stream directly via Bun's native S3 `NetworkSink` (multipart upload without buffering into RAM)
+      const writer = s3File.writer({ type: file.contentType });
+      try {
+        for await (const chunk of body) {
+          file.signal?.throwIfAborted();
+          if (chunk.byteLength > 0) {
+            const written = writer.write(chunk);
+            if (written instanceof Promise) {
+              await written;
+            }
+            size += chunk.byteLength;
+          }
+        }
+        await writer.end();
+      } catch (err) {
+        try {
+          if (typeof writer.close === "function") {
+            await writer.close();
+          } else {
+            await writer.end(err);
+          }
+        } catch {
+          // Ignore sink teardown error to preserve original stream/abort error
+        }
+        throw err;
+      }
+    } else {
+      const data = await readAll(body);
+      size = data.byteLength;
+      await this.client.write(full, new Uint8Array(data), {
+        type: file.contentType,
+      });
+    }
+
     let etag: string | undefined;
     try {
       const st = await this.statFull(full);
@@ -162,7 +210,7 @@ export class BunS3Disk extends StorageDisk {
     }
     return {
       key,
-      size: data.byteLength,
+      size,
       contentType: file.contentType,
       ...(etag !== undefined ? { etag } : {}),
     };
@@ -176,7 +224,55 @@ export class BunS3Disk extends StorageDisk {
     options?.signal?.throwIfAborted();
     const srcInfo = await this.headObject(from, options);
     const s3File = this.client.file(this.fullKey(from));
-    const buf = new Uint8Array(await s3File.arrayBuffer());
+    const destFile = this.client.file(this.fullKey(to));
+
+    if (
+      typeof s3File.stream === "function" &&
+      typeof destFile.writer === "function"
+    ) {
+      const writer = destFile.writer({ type: srcInfo.contentType });
+      let size = 0;
+      const reader = s3File.stream().getReader();
+      try {
+        for (;;) {
+          options?.signal?.throwIfAborted();
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength > 0) {
+            const written = writer.write(value);
+            if (written instanceof Promise) {
+              await written;
+            }
+            size += value.byteLength;
+          }
+        }
+        await writer.end();
+      } catch (err) {
+        await reader.cancel(err).catch(() => {});
+        try {
+          if (typeof writer.close === "function") {
+            await writer.close();
+          } else {
+            await writer.end(err);
+          }
+        } catch {
+          // Ignore sink teardown error to preserve original stream/abort error
+        }
+        throw err;
+      } finally {
+        reader.releaseLock();
+      }
+      return {
+        key: to,
+        size,
+        contentType: srcInfo.contentType,
+      };
+    }
+
+    const buf =
+      typeof s3File.bytes === "function"
+        ? await s3File.bytes()
+        : new Uint8Array(await s3File.arrayBuffer());
     await this.client.write(this.fullKey(to), buf, {
       type: srcInfo.contentType,
     });
@@ -223,14 +319,13 @@ export class BunS3Disk extends StorageDisk {
     let resolvedRange: { start: number; end: number } | undefined;
     let targetFile = s3File;
     if (range !== undefined) {
+      const maxEnd = Math.max(0, info.size - 1);
       const start =
         "suffix" in range ? Math.max(0, info.size - range.suffix) : range.start;
       const end =
-        "suffix" in range
-          ? Math.max(0, info.size - 1)
-          : range.end !== undefined
-            ? Math.min(range.end, Math.max(0, info.size - 1))
-            : Math.max(0, info.size - 1);
+        "suffix" in range || range.end === undefined
+          ? maxEnd
+          : Math.min(range.end, maxEnd);
       resolvedRange = { start, end };
       if (typeof s3File.slice === "function") {
         targetFile = s3File.slice(start, end + 1);
@@ -305,12 +400,9 @@ export class BunS3Disk extends StorageDisk {
       entries.push({
         key,
         size: item.size ?? 0,
-        lastModified:
-          item.lastModified instanceof Date
-            ? item.lastModified
-            : item.lastModified
-              ? new Date(item.lastModified)
-              : new Date(),
+        lastModified: isDate(item.lastModified)
+          ? item.lastModified
+          : new Date(item.lastModified || Date.now()),
         ...(etag !== undefined ? { etag } : {}),
       });
     }

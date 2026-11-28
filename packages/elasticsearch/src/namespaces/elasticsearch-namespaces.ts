@@ -1,3 +1,4 @@
+import { ensurePrefix } from "@bunest/core/common";
 import type {
   AcknowledgedResponse,
   BulkResponse,
@@ -1284,11 +1285,7 @@ export class RestNamespaceApi {
     params?: EsParams,
     options?: TOptions,
   ): Promise<EsResponse<T, TOptions>> {
-    const normalizedSub = subPath
-      ? subPath.startsWith("/")
-        ? subPath
-        : `/${subPath}`
-      : "";
+    const normalizedSub = subPath ? ensurePrefix(subPath, "/") : "";
     const { querystring, body } = splitParams(params, []);
     return dispatchRequest<T, TOptions>(
       this.transport,

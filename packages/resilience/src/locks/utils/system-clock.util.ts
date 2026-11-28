@@ -1,3 +1,4 @@
+import { clamp } from "@bunest/core/common";
 import type {
   LockClock,
   LockTimerOptions,
@@ -18,7 +19,7 @@ export const systemClock: LockClock = {
     ms: number,
     options?: LockTimerOptions,
   ) => {
-    const timer = setTimeout(callback, Math.min(Math.max(0, ms), MAX_TIMEOUT));
+    const timer = setTimeout(callback, clamp(ms, 0, MAX_TIMEOUT));
     if (!options?.ref) {
       timer.unref?.();
     }

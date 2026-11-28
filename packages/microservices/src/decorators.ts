@@ -5,6 +5,12 @@ import {
   type StandardSchemaV1,
 } from "@bunest/core";
 import {
+  isEventContract,
+  isMessageContract,
+  type EventContract,
+  type MessageContract,
+} from "./contracts";
+import {
   normalizePattern,
   type ClientOptions,
   type PatternHandlerMetadata,
@@ -59,7 +65,10 @@ function parsePatternArgs(
  * Inheritance-safe (copy-on-write on target constructor).
  */
 export function MessagePattern(
-  pattern: PatternInput | readonly PatternInput[],
+  pattern:
+    | PatternInput
+    | MessageContract<PatternInput, any, any>
+    | readonly (PatternInput | MessageContract<PatternInput, any, any>)[],
   transportOrExtras?: Transport | symbol | Record<string, unknown>,
   maybeExtras?: Record<string, unknown>,
 ): MethodDecorator {
@@ -67,9 +76,15 @@ export function MessagePattern(
     transportOrExtras,
     maybeExtras,
   );
-  const patterns: readonly PatternInput[] = Array.isArray(pattern)
-    ? (pattern as readonly PatternInput[])
-    : [pattern as PatternInput];
+  const rawList = Array.isArray(pattern) ? pattern : [pattern];
+  const patterns: readonly PatternInput[] = rawList.map((item) => {
+    if (isEventContract(item)) {
+      throw new Error(
+        "@MessagePattern() received an EventContract. Use @EventPattern() or defineMessageContract() instead.",
+      );
+    }
+    return isMessageContract(item) ? item.pattern : (item as PatternInput);
+  });
 
   return (
     target: object,
@@ -128,7 +143,10 @@ export function MessagePattern(
  * Inheritance-safe (copy-on-write on target constructor).
  */
 export function EventPattern(
-  pattern: PatternInput | readonly PatternInput[],
+  pattern:
+    | PatternInput
+    | EventContract<PatternInput, any>
+    | readonly (PatternInput | EventContract<PatternInput, any>)[],
   transportOrExtras?: Transport | symbol | Record<string, unknown>,
   maybeExtras?: Record<string, unknown>,
 ): MethodDecorator;
@@ -149,7 +167,11 @@ export function EventPattern<TEventTypes extends Record<string, unknown>>(
   extras: Record<string, unknown>,
 ): EventDataMethodDecorator<TEventTypes, typeof topic>;
 export function EventPattern(
-  pattern: PatternInput | readonly PatternInput[] | PropertyKey,
+  pattern:
+    | PatternInput
+    | EventContract<PatternInput, any>
+    | readonly (PatternInput | EventContract<PatternInput, any>)[]
+    | PropertyKey,
   transportOrExtras?: Transport | symbol | Record<string, unknown>,
   maybeExtras?: Record<string, unknown>,
 ): MethodDecorator {
@@ -157,9 +179,15 @@ export function EventPattern(
     transportOrExtras,
     maybeExtras,
   );
-  const patterns: readonly PatternInput[] = Array.isArray(pattern)
-    ? (pattern as readonly PatternInput[])
-    : [pattern as PatternInput];
+  const rawList = Array.isArray(pattern) ? pattern : [pattern];
+  const patterns: readonly PatternInput[] = rawList.map((item) => {
+    if (isMessageContract(item)) {
+      throw new Error(
+        "@EventPattern() received a MessageContract. Use @MessagePattern() or defineEventContract() instead.",
+      );
+    }
+    return isEventContract(item) ? item.pattern : (item as PatternInput);
+  });
 
   return (
     target: object,

@@ -1,5 +1,12 @@
 import type { AgentErrorTrace } from "@bunest/core";
 import {
+  clamp,
+  ensurePrefix,
+  escapeHtml,
+  isFiniteNumber,
+  trimSuffix,
+} from "@bunest/core/common";
+import {
   detectGraphCycles,
   type DevtoolsDependencyCycle,
 } from "./cycle-detector";
@@ -55,14 +62,18 @@ interface BootProfileEntry {
   readonly initTimeMs: number;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+const EDGE_MARKERS: Record<PositionedEdge["type"], string> = {
+  import: "url(#arrow-import)",
+  "re-export": "url(#arrow-reexport)",
+  "provider-dependency": "url(#arrow-inject)",
+  provides: "url(#arrow-owns)",
+  controller: "url(#arrow-owns)",
+};
+
+const SCOPE_CLASSES: Record<string, string> = {
+  REQUEST: " dg-scope-request",
+  TRANSIENT: " dg-scope-transient",
+};
 
 function safeJsonEmbed(data: unknown): string {
   return JSON.stringify(data)
@@ -87,8 +98,7 @@ function normalizeBasePath(raw?: string): string {
   if (!raw) return "/_devtools";
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "/") return "";
-  const leading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  return leading.endsWith("/") ? leading.slice(0, -1) : leading;
+  return trimSuffix(ensurePrefix(trimmed, "/"), "/");
 }
 
 function extractSerializedInitTime(
@@ -356,12 +366,7 @@ function buildLayout(
         initTimeMs?: unknown;
         initTime?: unknown;
       };
-      const ms =
-        typeof meta.initTimeMs === "number" && Number.isFinite(meta.initTimeMs)
-          ? meta.initTimeMs
-          : typeof meta.initTime === "number" && Number.isFinite(meta.initTime)
-            ? meta.initTime
-            : undefined;
+      const ms = [meta.initTimeMs, meta.initTime].find(isFiniteNumber);
       if (ms !== undefined) {
         const kind =
           meta.type === "module" ||
@@ -432,12 +437,13 @@ function buildLayout(
       const tgtNode = graph.serializedGraph.nodes[sEdge.target];
       if (!srcNode || !tgtNode) continue;
 
-      const srcId =
-        srcNode.metadata.type === "controller" && srcNode.parent
-          ? `ctrl:${srcNode.parent}::${srcNode.label}`
-          : srcNode.parent
-            ? `prov:${srcNode.parent}::${srcNode.metadata.token ?? srcNode.label}`
-            : undefined;
+      let srcId: string | undefined;
+      if (srcNode.parent) {
+        srcId =
+          srcNode.metadata.type === "controller"
+            ? `ctrl:${srcNode.parent}::${srcNode.label}`
+            : `prov:${srcNode.parent}::${srcNode.metadata.token ?? srcNode.label}`;
+      }
       const tgtToken = tgtNode.metadata.token ?? tgtNode.label;
       const tgtId =
         (tgtNode.parent ? `prov:${tgtNode.parent}::${tgtToken}` : undefined) ??
@@ -553,7 +559,7 @@ function renderBootProfileSection(
 
   const rows = entries
     .map((entry) => {
-      const pct = Math.max(2, Math.min(100, (entry.initTimeMs / maxMs) * 100));
+      const pct = clamp((entry.initTimeMs / maxMs) * 100, 2, 100);
       return `<tr>
         <td><span class="kind-pill kind-${escapeHtml(entry.kind)}">${escapeHtml(entry.kind)}</span></td>
         <td class="mono">${escapeHtml(entry.label)}</td>
@@ -691,13 +697,7 @@ export function renderDevtoolsHtml(
       const d = buildEdgePath(from, to);
       const marker = edge.inCycle
         ? "url(#arrow-cycle)"
-        : edge.type === "import"
-          ? "url(#arrow-import)"
-          : edge.type === "re-export"
-            ? "url(#arrow-reexport)"
-            : edge.type === "provider-dependency"
-              ? "url(#arrow-inject)"
-              : "url(#arrow-owns)";
+        : EDGE_MARKERS[edge.type];
       const cycleClass = edge.inCycle ? " dg-edge-cycle" : "";
       const cycleAttr = edge.inCycle ? ' data-cycle="true"' : "";
       return `<path class="dg-edge dg-edge-${escapeHtml(edge.type)}${cycleClass}" data-edge-id="${escapeHtml(edge.id)}" data-edge-type="${escapeHtml(edge.type)}" data-from="${escapeHtml(edge.from)}" data-to="${escapeHtml(edge.to)}"${cycleAttr} d="${d}" marker-end="${marker}" />`;
@@ -706,12 +706,7 @@ export function renderDevtoolsHtml(
 
   const svgNodes = layout.nodes
     .map((node) => {
-      const scopeClass =
-        node.scope === "REQUEST"
-          ? " dg-scope-request"
-          : node.scope === "TRANSIENT"
-            ? " dg-scope-transient"
-            : "";
+      const scopeClass = (node.scope && SCOPE_CLASSES[node.scope]) || "";
       const cycleClass = node.inCycle ? " dg-cycle" : "";
       const cycleAttr = node.inCycle ? ' data-cycle="true"' : "";
       const initAttr =

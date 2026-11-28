@@ -14,7 +14,7 @@
  * Each case throws (an `AssertionError`) on failure. The cases use their own random keys, so
  * they may share one store and one table.
  */
-import { strictAssert as assert } from "@bunest/core";
+import { strictAssert as assert } from "@bunest/core/common";
 import type {
   LockAcquireResult,
   LockStore,
@@ -68,12 +68,12 @@ export function lockStoreContract(
   const advance = async (ms: number): Promise<void> => {
     await advanceTime(ms);
   };
-  const callers =
-    options.concurrent === true
-      ? 16
-      : options.concurrent
-        ? (options.concurrent.callers ?? 16)
-        : 0;
+  let callers = 0;
+  if (options.concurrent === true) {
+    callers = 16;
+  } else if (options.concurrent) {
+    callers = options.concurrent.callers ?? 16;
+  }
   if (options.concurrent && (!Number.isInteger(callers) || callers < 2)) {
     throw new RangeError(
       `lockStoreContract(): concurrent.callers must be an integer of at least 2, got ${callers}`,

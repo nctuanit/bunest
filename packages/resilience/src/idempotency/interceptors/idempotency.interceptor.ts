@@ -13,6 +13,13 @@ import {
 } from "@bunest/core";
 import { ApplicationConfig, HttpAdapterHost } from "@bunest/core";
 import {
+  clamp,
+  cond,
+  isNull,
+  isUndefined,
+  mergeDefined,
+} from "@bunest/core/common";
+import {
   Unreplayable,
   type Capture,
   type DeclarativeKeySource,
@@ -587,7 +594,7 @@ export class IdempotencyInterceptor
       }
     };
 
-    const every = Math.min(Math.max(1, Math.floor(lockTtl / 3)), MAX_TIMEOUT);
+    const every = clamp(Math.floor(lockTtl / 3), 1, MAX_TIMEOUT);
     const timer = setInterval(() => void beat(), every);
     timer.unref();
 
@@ -742,26 +749,24 @@ export class IdempotencyInterceptor
     classOptions?: IdempotentOptions,
     handlerOptions?: IdempotentOptions,
   ): ResolvedOptions {
-    const merged: Record<string, unknown> = {
-      ...definedOnly(this.defaults),
-      ...definedOnly(classOptions),
-      ...definedOnly(handlerOptions),
-    };
+    const merged = mergeDefined<IdempotencyModuleOptions & IdempotentOptions>(
+      {},
+      this.defaults,
+      classOptions,
+      handlerOptions,
+    );
     return {
-      required: (merged.required as boolean | undefined) ?? false,
+      required: merged.required ?? false,
       ttl: (merged.ttl as number | undefined) ?? DEFAULT_TTL,
       lockTtl: (merged.lockTtl as number | undefined) ?? DEFAULT_LOCK_TTL,
       maxLockHold:
         (merged.maxLockHold as number | undefined) ?? DEFAULT_MAX_LOCK_HOLD,
       retryAfter:
         (merged.retryAfter as number | undefined) ?? DEFAULT_RETRY_AFTER,
-      storeIf:
-        (merged.storeIf as
-          ((status: number, error?: unknown) => boolean) | undefined) ??
-        ((status) => status < 500),
-      scope: merged.scope as ResolvedOptions["scope"],
-      fingerprint: merged.fingerprint as ResolvedOptions["fingerprint"],
-      keyFrom: merged.keyFrom as ResolvedOptions["keyFrom"],
+      storeIf: merged.storeIf ?? ((status) => status < 500),
+      scope: merged.scope,
+      fingerprint: merged.fingerprint,
+      keyFrom: merged.keyFrom,
     };
   }
 }
@@ -843,12 +848,13 @@ function normalizeScope(raw: unknown, handler: string): string | undefined {
   ) {
     return String(raw);
   }
-  const what =
-    typeof raw === "number"
-      ? String(raw)
-      : typeof raw === "object"
-        ? "an object"
-        : `a ${typeof raw}`;
+  const what = cond(
+    [
+      [typeof raw === "number", String(raw)],
+      [typeof raw === "object", "an object"],
+    ],
+    `a ${typeof raw}`,
+  );
   throw new TypeError(
     `IdempotencyModule: \`scope\` returned ${what} for ${handler}. Return a string or a ` +
       `number that identifies the caller, such as the user's id: \`scope: (req) => req.user.id\`.`,
@@ -878,12 +884,13 @@ function assertOptions(
   options: unknown,
 ): asserts options is IdempotencyModuleOptions {
   if (options === null || typeof options !== "object") {
-    const what =
-      options === null
-        ? "null"
-        : options === undefined
-          ? "undefined"
-          : `a ${typeof options}`;
+    const what = cond(
+      [
+        [isNull(options), "null"],
+        [isUndefined(options), "undefined"],
+      ],
+      `a ${typeof options}`,
+    );
     throw new TypeError(
       `IdempotencyModule: the options factory returned ${what}; return an object (\`{}\` for the defaults).`,
     );
@@ -917,14 +924,4 @@ function assertReplayHeaders(headers: readonly string[]): void {
       );
     }
   }
-}
-
-/** Drops `undefined` values, so `{ ttl: undefined }` doesn't erase a default. */
-function definedOnly(options: object | undefined): Record<string, unknown> {
-  if (!options) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(options).filter(([, value]) => value !== undefined),
-  );
 }

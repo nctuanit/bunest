@@ -1,3 +1,5 @@
+import { isFunction, isObject } from "@bunest/core/common";
+
 export interface ObserverLike<T> {
   next?: (value: T) => void | Promise<void>;
   error?: (err: unknown) => void;
@@ -110,17 +112,15 @@ export class SubscribableStream<T> implements SubjectLike<T> {
   }
 
   subscribe(listenerOrObserver: StreamListener<T>): SubscriptionHandle {
-    const fn =
-      typeof listenerOrObserver === "function"
-        ? listenerOrObserver
-        : listenerOrObserver.next
-          ? (v: T) => listenerOrObserver.next!(v)
-          : () => undefined;
+    const fn: (value: T) => void | Promise<void> = isFunction(
+      listenerOrObserver,
+    )
+      ? listenerOrObserver
+      : (v: T) => listenerOrObserver.next?.(v);
 
-    const onComplete =
-      typeof listenerOrObserver === "object" && listenerOrObserver !== null
-        ? listenerOrObserver.complete
-        : undefined;
+    const onComplete = isObject(listenerOrObserver)
+      ? (listenerOrObserver as Partial<ObserverLike<T>>).complete
+      : undefined;
 
     if (this.completed) {
       onComplete?.();

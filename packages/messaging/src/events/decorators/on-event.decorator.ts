@@ -6,6 +6,7 @@ import type {
   OnEventOptions,
   OnEventType,
 } from "../interfaces/event-emitter.interface";
+import { isAppEvent, type AppEvent } from "../app-event";
 import type { EventNameInput } from "../interfaces/event-registry.interface";
 
 /**
@@ -14,16 +15,20 @@ import type { EventNameInput } from "../interfaces/event-registry.interface";
  * Copy-on-write: never mutates parent class metadata.
  */
 export function OnEvent(
-  event: EventNameInput | readonly EventNameInput[] | OnEventType,
+  event:
+    | EventNameInput
+    | AppEvent<string, any>
+    | readonly (EventNameInput | AppEvent<string, any>)[]
+    | OnEventType,
   options: OnEventOptions = {},
 ): MethodDecorator {
   const isArr = Array.isArray(event);
+  const unwrap = (item: unknown): EventName =>
+    isAppEvent(item) ? item.name : (item as EventName);
   const events: readonly EventName[] = isArr
-    ? [...(event as readonly EventName[])]
-    : [event as EventName];
-  const normalizedEvent: OnEventType = isArr
-    ? [...(event as readonly EventName[])]
-    : (event as EventName);
+    ? (event as readonly unknown[]).map(unwrap)
+    : [unwrap(event)];
+  const normalizedEvent: OnEventType = isArr ? [...events] : events[0]!;
 
   const decorator = (
     target: object,
@@ -119,13 +124,16 @@ export function getOnEventMetadata(target: Function): OnEventMetadata[] {
           continue;
         }
         const isArr = Array.isArray(item.event);
+        const unwrap = (ev: unknown): EventName =>
+          isAppEvent(ev) ? ev.name : (ev as EventName);
         const events: readonly EventName[] =
           item.events ??
           (isArr
-            ? [...(item.event as readonly EventName[])]
-            : [item.event as EventName]);
+            ? (item.event as readonly unknown[]).map(unwrap)
+            : [unwrap(item.event)]);
+        const normalizedEvent: OnEventType = isArr ? [...events] : events[0]!;
         extra.push({
-          event: item.event,
+          event: normalizedEvent,
           events,
           methodName: key,
           options: item.options ? { ...item.options } : {},

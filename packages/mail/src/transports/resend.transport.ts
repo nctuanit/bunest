@@ -1,3 +1,4 @@
+import { sha256 } from "@bunest/core/common";
 import { MailMessageError } from "../errors/mail-message.error";
 import { MailProviderError } from "../errors/mail-provider.error";
 import type {
@@ -95,12 +96,7 @@ export class ResendTransport extends HttpProviderTransport {
     const name = field(body, "name");
     // A concurrent request with the same key is still running: try again later. The same
     // key with a different body is a mistake that won't go away.
-    const permanent =
-      name === "concurrent_idempotent_requests"
-        ? false
-        : name === "invalid_idempotent_request"
-          ? true
-          : undefined;
+    const permanent = name ? RESEND_PERMANENT_ERRORS[name] : undefined;
     return new MailProviderError({
       provider: "resend",
       status,
@@ -113,9 +109,12 @@ export class ResendTransport extends HttpProviderTransport {
   }
 }
 
+const RESEND_PERMANENT_ERRORS: Record<string, boolean> = {
+  concurrent_idempotent_requests: false,
+  invalid_idempotent_request: true,
+};
+
 /** Resend accepts keys of 1-256 characters; a longer one is hashed to fit. */
 export function providerKey(key: string): string {
-  return key.length <= 256
-    ? key
-    : new Bun.CryptoHasher("sha256").update(key).digest("hex");
+  return key.length <= 256 ? key : sha256(key);
 }

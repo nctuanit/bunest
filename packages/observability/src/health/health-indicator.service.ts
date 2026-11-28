@@ -5,6 +5,7 @@ import {
   Optional,
   type LoggerService,
 } from "@bunest/core";
+import { definedOnly, isObject } from "@bunest/core/common";
 import {
   HealthIndicatorStatus,
   TERMINUS_LOGGER,
@@ -108,16 +109,6 @@ function assertDuration(ms: number, name: string): void {
   }
 }
 
-function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) {
-      out[k] = v;
-    }
-  }
-  return out as T;
-}
-
 async function runAttemptWithTimeout<T>(
   timeoutMs: number | undefined,
   fn: (signal: AbortSignal) => Promise<T> | T,
@@ -186,12 +177,10 @@ function sanitizeAttemptData(
   value: unknown,
   logger?: LoggerService,
 ): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value)) {
     return {};
   }
-  const data: Record<string, unknown> = {
-    ...(value as Record<string, unknown>),
-  };
+  const data: Record<string, unknown> = { ...value };
   const ignored = RESERVED_ATTEMPT_KEYS.filter((k) => k in data);
   for (const k of ignored) {
     delete data[k];
@@ -389,7 +378,7 @@ export class HealthCheckAttempt<
       status: this.toStatus(outcome),
     };
     return {
-      [this.key]: omitUndefined(detail),
+      [this.key]: definedOnly(detail),
     } as HealthCheckAttemptResult<TKey, TStatic, TSuccess, TFailure>;
   }
 
@@ -407,12 +396,7 @@ export class HealthCheckAttempt<
       }
       return data;
     }
-    if (
-      result !== null &&
-      typeof result === "object" &&
-      !Array.isArray(result) &&
-      Object.keys(result as Record<string, unknown>).length > 0
-    ) {
+    if (isObject(result) && Object.keys(result).length > 0) {
       warnOnce(
         this.logger,
         `deprecated-return:${this.key}`,

@@ -1,3 +1,4 @@
+import { cond, definedOnly, trimPrefix, trimSuffix } from "@bunest/core/common";
 import type {
   EmbeddingModel,
   EmbeddingModelCallOptions,
@@ -242,12 +243,7 @@ function headersRecord(headers: Headers): Record<string, string> {
 function cleanHeaders(
   input?: Record<string, string | undefined>,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!input) return out;
-  for (const [k, v] of Object.entries(input)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out;
+  return input ? (definedOnly(input) as Record<string, string>) : {};
 }
 
 function extractTextContent(content: unknown): string {
@@ -267,52 +263,183 @@ async function* parseSseEvents(
 ): AsyncGenerator<{ event?: string; data: string }> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const bunIndexOfLine = (
+    Bun as unknown as {
+      indexOfLine(bytes: Uint8Array, offset?: number): number;
+    }
+  ).indexOfLine;
+  let partialLine = "";
+  let eventName: string | undefined;
+  let dataLines: string[] = [];
 
   const onAbort = () => {
     reader.cancel(signal?.reason).catch(() => {});
   };
   signal?.addEventListener("abort", onAbort, { once: true });
 
+  const consumeLine = (rawLine: string): { event?: string; data: string } | undefined => {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line.length === 0) {
+      if (dataLines.length > 0) {
+        const frame = { event: eventName, data: dataLines.join("\n") };
+        eventName = undefined;
+        dataLines = [];
+        return frame;
+      }
+      eventName = undefined;
+      return undefined;
+    }
+    if (line.startsWith(":")) return undefined;
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(trimPrefix(line.slice(5), " "));
+    }
+    return undefined;
+  };
+
+  let streamDone = false;
   try {
     for (;;) {
       signal?.throwIfAborted();
       const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split(/\r?\n\r?\n/);
-      buffer = frames.pop() ?? "";
-      for (const frame of frames) {
-        let eventName: string | undefined;
-        const dataLines: string[] = [];
-        for (const line of frame.split(/\r?\n/)) {
-          if (line.startsWith(":")) continue;
-          if (line.startsWith("event:")) {
-            eventName = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            dataLines.push(line.slice(5).trimStart());
-          }
+      signal?.throwIfAborted();
+      if (done) {
+        streamDone = true;
+        break;
+      }
+      if (!value || value.byteLength === 0) continue;
+
+      let offset = 0;
+      const len = value.byteLength;
+      while (offset < len) {
+        const nlIdx = bunIndexOfLine(value, offset);
+        if (nlIdx === -1) {
+          partialLine += decoder.decode(value.subarray(offset), {
+            stream: true,
+          });
+          break;
         }
-        if (dataLines.length > 0) {
-          yield { event: eventName, data: dataLines.join("\n") };
+        const chunkStr = decoder.decode(value.subarray(offset, nlIdx));
+        const fullLine = partialLine.length > 0 ? partialLine + chunkStr : chunkStr;
+        partialLine = "";
+        offset = nlIdx + 1;
+        const frame = consumeLine(fullLine);
+        if (frame) {
+          yield frame;
         }
       }
     }
-    const tail = buffer + decoder.decode();
-    if (tail.trim()) {
-      let eventName: string | undefined;
-      const dataLines: string[] = [];
+    const tail = partialLine + decoder.decode();
+    if (tail.length > 0) {
       for (const line of tail.split(/\r?\n/)) {
-        if (line.startsWith("event:")) eventName = line.slice(6).trim();
-        else if (line.startsWith("data:"))
-          dataLines.push(line.slice(5).trimStart());
+        const frame = consumeLine(line);
+        if (frame) yield frame;
       }
-      if (dataLines.length > 0) {
-        yield { event: eventName, data: dataLines.join("\n") };
+    }
+    if (dataLines.length > 0) {
+      yield { event: eventName, data: dataLines.join("\n") };
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (!streamDone) {
+      await reader.cancel().catch(() => {});
+    }
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Streams parsed NDJSON / JSONL objects incrementally from a Web `ReadableStream<Uint8Array>`
+ * using Bun's Zig-native `Bun.JSONL.parseChunk()`.
+ */
+export async function* parseJsonlStream<T = unknown>(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<T> {
+  const reader = body.getReader();
+  const bunApi = Bun as unknown as {
+    JSONL: {
+      parseChunk(
+        input: Uint8Array,
+        start?: number,
+        end?: number,
+      ): {
+        values: unknown[];
+        read: number;
+        done: boolean;
+        error: SyntaxError | null;
+      };
+    };
+  };
+  let pending: Uint8Array = new Uint8Array(0);
+
+  const onAbort = () => {
+    reader.cancel(signal?.reason).catch(() => {});
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  let streamDone = false;
+  try {
+    for (;;) {
+      signal?.throwIfAborted();
+      const { done, value } = await reader.read();
+      signal?.throwIfAborted();
+      if (done) {
+        streamDone = true;
+        break;
+      }
+      if (!value || value.byteLength === 0) continue;
+
+      pending =
+        pending.byteLength === 0
+          ? value
+          : new Uint8Array(Bun.concatArrayBuffers([pending, value]));
+      const chunk = bunApi.JSONL.parseChunk(pending, 0, pending.byteLength);
+      for (let i = 0; i < chunk.values.length; i++) {
+        yield chunk.values[i] as T;
+      }
+      if (chunk.error) {
+        throw chunk.error;
+      }
+      if (chunk.read > 0) {
+        pending =
+          chunk.read >= pending.byteLength
+            ? new Uint8Array(0)
+            : pending.subarray(chunk.read);
+      }
+    }
+
+    if (pending.byteLength > 0) {
+      const finalChunk = bunApi.JSONL.parseChunk(
+        pending,
+        0,
+        pending.byteLength,
+      );
+      for (let i = 0; i < finalChunk.values.length; i++) {
+        yield finalChunk.values[i] as T;
+      }
+      if (finalChunk.error) {
+        throw finalChunk.error;
+      }
+      const leftover =
+        finalChunk.read >= pending.byteLength
+          ? new Uint8Array(0)
+          : pending.subarray(finalChunk.read);
+      if (!finalChunk.done && leftover.byteLength > 0) {
+        const trailingText = new TextDecoder().decode(leftover).trim();
+        if (trailingText.length > 0) {
+          throw new SyntaxError(
+            `Unexpected end of JSONL stream: incomplete trailing JSON (${trailingText.slice(0, 64)})`,
+          );
+        }
       }
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
+    if (!streamDone) {
+      await reader.cancel().catch(() => {});
+    }
     reader.releaseLock();
   }
 }
@@ -363,13 +490,7 @@ function toOpenAiMessages(
       out.push({ role: "user", content: extractTextContent(msg.content) });
     } else if (msg.role === "assistant") {
       const parts = Array.isArray(msg.content) ? msg.content : [];
-      const text =
-        typeof msg.content === "string"
-          ? msg.content
-          : parts
-              .filter(isTextPart)
-              .map((p) => p.text)
-              .join("");
+      const text = extractTextContent(msg.content);
       const rawCalls: LanguageModelToolCallInput[] =
         msg.toolCalls ?? parts.filter(isToolCallPart);
       const toolCalls = rawCalls.map((tc) => ({
@@ -445,12 +566,13 @@ function createOpenAiLanguageModel(
     const providerOpts =
       options.providerOptions?.[providerName] ??
       options.providerOptions?.openai;
-    const baseUrl = (
+    const baseUrl = trimSuffix(
       providerOpts?.baseURL ??
-      process.env["AI_GATEWAY_URL"] ??
-      process.env["OPENAI_BASE_URL"] ??
-      "https://api.openai.com/v1"
-    ).replace(/\/$/, "");
+        process.env["AI_GATEWAY_URL"] ??
+        process.env["OPENAI_BASE_URL"] ??
+        "https://api.openai.com/v1",
+      "/",
+    );
     const apiKey =
       providerOpts?.apiKey ??
       process.env["AI_GATEWAY_API_KEY"] ??
@@ -466,21 +588,13 @@ function createOpenAiLanguageModel(
       model: modelId,
       messages: toOpenAiMessages(options.prompt),
       ...(stream && { stream: true, stream_options: { include_usage: true } }),
-      ...(options.maxOutputTokens !== undefined && {
+      ...definedOnly({
         max_tokens: options.maxOutputTokens,
-      }),
-      ...(options.temperature !== undefined && {
         temperature: options.temperature,
-      }),
-      ...(options.topP !== undefined && { top_p: options.topP }),
-      ...(options.seed !== undefined && { seed: options.seed }),
-      ...(options.stopSequences !== undefined && {
+        top_p: options.topP,
+        seed: options.seed,
         stop: options.stopSequences,
-      }),
-      ...(options.presencePenalty !== undefined && {
         presence_penalty: options.presencePenalty,
-      }),
-      ...(options.frequencyPenalty !== undefined && {
         frequency_penalty: options.frequencyPenalty,
       }),
     };
@@ -806,12 +920,10 @@ function createAnthropicLanguageModel(modelId: string): LanguageModelLike {
       messages,
       ...(systemParts.length > 0 && { system: systemParts.join("\n") }),
       ...(stream && { stream: true }),
-      ...(options.temperature !== undefined && {
+      ...definedOnly({
         temperature: options.temperature,
-      }),
-      ...(options.topP !== undefined && { top_p: options.topP }),
-      ...(options.topK !== undefined && { top_k: options.topK }),
-      ...(options.stopSequences !== undefined && {
+        top_p: options.topP,
+        top_k: options.topK,
         stop_sequences: options.stopSequences,
       }),
     };
@@ -1116,19 +1228,13 @@ function createGoogleLanguageModel(modelId: string): LanguageModelLike {
       }
     }
 
-    const generationConfig: Record<string, unknown> = {
-      ...(options.temperature !== undefined && {
-        temperature: options.temperature,
-      }),
-      ...(options.maxOutputTokens !== undefined && {
-        maxOutputTokens: options.maxOutputTokens,
-      }),
-      ...(options.topP !== undefined && { topP: options.topP }),
-      ...(options.topK !== undefined && { topK: options.topK }),
-      ...(options.stopSequences !== undefined && {
-        stopSequences: options.stopSequences,
-      }),
-    };
+    const generationConfig: Record<string, unknown> = definedOnly({
+      temperature: options.temperature,
+      maxOutputTokens: options.maxOutputTokens,
+      topP: options.topP,
+      topK: options.topK,
+      stopSequences: options.stopSequences,
+    });
 
     if (
       options.responseFormat?.type === "json" ||
@@ -1198,11 +1304,13 @@ function createGoogleLanguageModel(modelId: string): LanguageModelLike {
         }
       }
       const hasCalls = content.some((p) => p.type === "tool-call");
-      const unified = hasCalls
-        ? "tool-calls"
-        : candidate?.finishReason === "MAX_TOKENS"
-          ? "length"
-          : "stop";
+      const unified = cond(
+        [
+          [hasCalls, "tool-calls"],
+          [candidate?.finishReason === "MAX_TOKENS", "length"],
+        ],
+        "stop",
+      );
       const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
       const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
       const cached = data.usageMetadata?.cachedContentTokenCount ?? 0;

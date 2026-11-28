@@ -1,3 +1,9 @@
+import {
+  describeError as coreDescribeError,
+  isError,
+  isString,
+} from "@bunest/core/common";
+
 /** `https://hooks.example.com/…`: an error message never carries a URL's path or query (tokens live there). */
 export function redactUrl(url: string): string {
   try {
@@ -12,20 +18,14 @@ const MAX_ERROR_LENGTH = 1_000;
 
 /** A compact, storable description of whatever was thrown. Never throws. */
 export function describeError(error: unknown): string {
-  let text: string;
-  try {
-    if (error instanceof Error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      text = `${error.name}: ${error.message}${typeof code === "string" && !error.message.includes(code) ? ` (${code})` : ""}`;
-    } else if (typeof error === "string") {
-      text = error;
-    } else {
-      text = JSON.stringify(error) ?? String(error);
+  if (isError(error)) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (isString(code) && !error.message.includes(code)) {
+      return coreDescribeError(
+        `${error.name}: ${error.message} (${code})`,
+        MAX_ERROR_LENGTH,
+      );
     }
-  } catch {
-    text = Object.prototype.toString.call(error);
   }
-  return text.length > MAX_ERROR_LENGTH
-    ? `${text.slice(0, MAX_ERROR_LENGTH)}…`
-    : text;
+  return coreDescribeError(error, MAX_ERROR_LENGTH);
 }

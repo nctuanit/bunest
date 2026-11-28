@@ -1,1 +1,1 @@
-export { parseDuration as toMs } from "@bunest/core";
+export { parseDuration as toMs } from "@bunest/core/common";

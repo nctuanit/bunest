@@ -4,6 +4,7 @@ import {
   type ExecutionContext,
 } from "@bunest/core";
 import type { HttpAdapterHost } from "@bunest/core";
+import { cond } from "@bunest/core/common";
 import { BulkheadFullError } from "../errors/bulkhead-full.error";
 import { CircuitOpenError } from "../errors/circuit-open.error";
 import { OutboundRateLimitError } from "../errors/outbound-rate-limit.error";
@@ -44,14 +45,17 @@ export function describeResilienceError(
     error.retryAfterMs === undefined
       ? undefined
       : Math.max(1, Math.ceil(error.retryAfterMs / 1000));
-  const message =
-    error instanceof CircuitOpenError
-      ? "Service temporarily unavailable"
-      : error instanceof BulkheadFullError
-        ? "Server is at capacity"
-        : error instanceof OutboundRateLimitError
-          ? "Rate limit of a dependency exceeded"
-          : error.message;
+  const message = cond(
+    [
+      [error instanceof CircuitOpenError, "Service temporarily unavailable"],
+      [error instanceof BulkheadFullError, "Server is at capacity"],
+      [
+        error instanceof OutboundRateLimitError,
+        "Rate limit of a dependency exceeded",
+      ],
+    ],
+    error.message,
+  );
   return {
     code: error.code,
     statusCode: HttpStatus.SERVICE_UNAVAILABLE,

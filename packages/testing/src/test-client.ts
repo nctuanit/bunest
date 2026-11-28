@@ -1,4 +1,5 @@
 import type { RoutePathInput } from "@bunest/core";
+import { ensureSuffix } from "@bunest/core/common";
 import type {
   FetchCapable,
   TestClientOptions,
@@ -157,9 +158,7 @@ export class CookieJar {
       if (
         entry.path === "/" ||
         pathname === entry.path ||
-        pathname.startsWith(
-          entry.path.endsWith("/") ? entry.path : `${entry.path}/`,
-        )
+        pathname.startsWith(ensureSuffix(entry.path, "/"))
       ) {
         out[name] = entry.value;
       }
@@ -242,7 +241,7 @@ export class TestResponse {
 
   async bytes(): Promise<Uint8Array> {
     if (this.cachedBytes === undefined) {
-      this.cachedBytes = new Uint8Array(await this.raw.arrayBuffer());
+      this.cachedBytes = await this.raw.bytes();
     }
     return this.cachedBytes;
   }
@@ -592,13 +591,12 @@ export class TestClient {
     }
 
     const url = buildRequestUrl(this.baseUrl, input);
+    const initHeaders = Array.isArray(init?.headers)
+      ? new Headers(init.headers)
+      : (init?.headers as Headers | Record<string, string> | undefined);
     const headers = mergeRequestHeaders(
       this.defaultHeaders,
-      init?.headers instanceof Headers
-        ? init.headers
-        : Array.isArray(init?.headers)
-          ? new Headers(init.headers)
-          : (init?.headers as Record<string, string> | undefined),
+      initHeaders,
       Object.keys(this.defaultCookies).length > 0
         ? this.defaultCookies
         : undefined,

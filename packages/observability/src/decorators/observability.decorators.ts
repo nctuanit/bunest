@@ -5,6 +5,7 @@ import {
   type MethodAspectContext,
   type MethodAspectHandler,
 } from "@bunest/core";
+import { isPromiseLike } from "@bunest/core/common";
 import {
   Counter,
   Histogram,
@@ -60,6 +61,7 @@ export interface SpanConstructorAndDecorator {
     resource: Readonly<Record<string, SpanAttributeValue>>,
     onEnd?: (data: SpanData) => void,
     initialAttributes?: Readonly<Record<string, SpanAttributeValue>>,
+    startTimeMs?: number,
   ): TraceSpan;
   readonly prototype: TraceSpan;
   (
@@ -67,14 +69,6 @@ export interface SpanConstructorAndDecorator {
     options?: SpanDecoratorOptions,
   ): ClassDecorator & MethodDecorator;
   (options: SpanDecoratorOptions): ClassDecorator & MethodDecorator;
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
 }
 
 function toSnakeMetricSegment(raw: string): string {

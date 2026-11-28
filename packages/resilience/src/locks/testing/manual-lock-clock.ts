@@ -1,3 +1,4 @@
+import { isPromiseLike } from "@bunest/core/common";
 import type { Duration } from "../interfaces/duration.interface";
 import type {
   LockClock,
@@ -71,8 +72,8 @@ export class ManualLockClock implements LockClock {
       }
       this.timers.splice(this.timers.indexOf(next), 1);
       this.current = Math.max(this.current, next.due);
-      const result = next.callback() as PromiseLike<unknown> | undefined;
-      if (result && typeof result.then === "function") {
+      const result = next.callback();
+      if (isPromiseLike(result)) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         await Promise.race([
           result.then(undefined, () => undefined),

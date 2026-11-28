@@ -1,3 +1,4 @@
+import { base64UrlEncode } from "@bunest/core/common";
 import type { WebhookEncryptionOptions } from "../interfaces/webhooks-module-options.interface";
 
 export interface SecretCodec {
@@ -88,9 +89,9 @@ export class SecretCipher implements SecretCodec {
     return [
       PREFIX,
       id,
-      toBase64Url(iv),
-      toBase64Url(ciphertext),
-      toBase64Url(tag),
+      base64UrlEncode(iv),
+      base64UrlEncode(ciphertext),
+      base64UrlEncode(tag),
     ].join(".");
   }
 
@@ -196,7 +197,7 @@ async function deriveCryptoKey(
     rawKey = new Uint8Array(derived);
   }
   const digest = new Bun.CryptoHasher("sha256").update(rawKey).digest();
-  const id = toBase64Url(digest).slice(0, 8);
+  const id = base64UrlEncode(digest).slice(0, 8);
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
     rawKey,
@@ -205,12 +206,4 @@ async function deriveCryptoKey(
     ["encrypt", "decrypt"],
   );
   return { id, cryptoKey };
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  return Buffer.from(
-    bytes.buffer,
-    bytes.byteOffset,
-    bytes.byteLength,
-  ).toString("base64url");
 }

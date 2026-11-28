@@ -1,4 +1,10 @@
-import { computeBackoffDelay, parseRetryAfter } from "@bunest/core";
+import {
+  computeBackoffDelay,
+  isOneOf,
+  isTypeof,
+  parseRetryAfter,
+  ternaryFor,
+} from "@bunest/core/common";
 import type { Duration } from "../interfaces/duration.interface";
 import type { WebhookDelivery } from "../interfaces/webhook-delivery.interface";
 import type { WebhookRetryOptions } from "../interfaces/webhooks-module-options.interface";
@@ -49,12 +55,10 @@ const JITTERS: readonly ("full" | "equal" | "none")[] = [
 export function resolveRetry(
   retry: number | false | WebhookRetryOptions | undefined,
 ): ResolvedRetry {
-  const options: WebhookRetryOptions =
-    retry === false
-      ? { attempts: 1 }
-      : typeof retry === "number"
-        ? { attempts: retry }
-        : (retry ?? {});
+  const options: WebhookRetryOptions = ternaryFor(retry)
+    .when((v): v is false => v === false, { attempts: 1 })
+    .when(isTypeof("number"), (attempts) => ({ attempts }))
+    .elseEval((v) => v ?? {});
 
   const attempts = options.attempts ?? DEFAULT_ATTEMPTS;
   if (!Number.isInteger(attempts) || attempts < 1) {
@@ -89,7 +93,7 @@ export function resolveRetry(
     );
   }
   const jitter = backoff?.jitter ?? DEFAULT_BACKOFF.jitter;
-  if (!JITTERS.includes(jitter)) {
+  if (!isOneOf(JITTERS, jitter)) {
     throw new TypeError(
       `WebhooksModule: retry.backoff.jitter must be "full", "equal" or "none" (got ${JSON.stringify(jitter)})`,
     );

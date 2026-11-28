@@ -7,6 +7,7 @@ import {
   type OnModuleInit,
 } from "@bunest/core";
 import { HttpAdapterHost } from "@bunest/core";
+import { isString } from "@bunest/core/common";
 import { McpAuthGate } from "../auth/mcp-auth-gate";
 import type {
   McpAuthInfo,
@@ -436,12 +437,10 @@ export class McpHttpService implements OnModuleInit, OnApplicationShutdown {
     const url = req?.url?.startsWith("http")
       ? req.url
       : `http://localhost${req?.url ?? "/mcp"}`;
-    const body =
-      req?.body !== undefined && req.method?.toUpperCase() !== "GET"
-        ? typeof req.body === "string"
-          ? req.body
-          : JSON.stringify(req.body)
-        : undefined;
+    let body: string | undefined;
+    if (req?.body !== undefined && req.method?.toUpperCase() !== "GET") {
+      body = isString(req.body) ? req.body : JSON.stringify(req.body);
+    }
     return new Request(url, {
       method: req?.method ?? "POST",
       headers,

@@ -31,6 +31,7 @@ import {
   type NormalizedProvider,
   type SerializedGraphJson,
 } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import {
   detectGraphCycles,
   type DevtoolsDependencyCycle,
@@ -634,18 +635,12 @@ export class DevtoolsService {
           METADATA_KEYS.CONTROLLER,
           ctrl,
         );
-        const prefixes = ctrlMeta
-          ? Array.isArray(ctrlMeta.path)
-            ? ctrlMeta.path
-            : [ctrlMeta.path]
-          : ["/"];
+        const prefixes = ctrlMeta ? toArray(ctrlMeta.path) : ["/"];
         const routeMethods = MetadataRegistry.getControllerRoutes(ctrl);
 
         for (const prefix of prefixes) {
           for (const methodMeta of routeMethods) {
-            const subPaths = Array.isArray(methodMeta.path)
-              ? methodMeta.path
-              : [methodMeta.path];
+            const subPaths = toArray(methodMeta.path);
             for (const subPath of subPaths) {
               const fullPath = joinPaths(prefix, subPath);
               const params = MetadataRegistry.getRouteParameters(

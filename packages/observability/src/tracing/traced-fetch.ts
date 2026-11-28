@@ -1,3 +1,4 @@
+import { ternaryFor } from "@bunest/core/common";
 import type { SpanAttributeValue } from "./span";
 import {
   injectTraceContext,
@@ -64,12 +65,10 @@ function resolveRequestMeta(
   input: string | URL | Request,
   init?: RequestInit,
 ): { rawUrl: string; method: string; url: URL } {
-  const rawUrl =
-    input instanceof Request
-      ? input.url
-      : input instanceof URL
-        ? input.toString()
-        : String(input);
+  const rawUrl = ternaryFor(input)
+    .when((v): v is Request => v instanceof Request, (req) => req.url)
+    .when((v): v is URL => v instanceof URL, (u) => u.toString())
+    .elseEval((v) => String(v));
   const method = (
     init?.method ??
     (input instanceof Request ? input.method : "GET") ??

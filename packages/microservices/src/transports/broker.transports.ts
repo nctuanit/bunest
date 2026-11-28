@@ -1,3 +1,4 @@
+import { isNonEmptyString } from "@bunest/core/common";
 import { ClientProxy } from "../client-proxy";
 import { NatsContext, RedisContext, RmqContext } from "../ctx-host";
 import { NatsStatus, RedisStatus, RmqStatus } from "../enums";
@@ -1393,19 +1394,15 @@ export class RabbitMqTransportServer extends MicroserviceTransportServer {
     }
     this.inFlight++;
     try {
-      const rawRoutingKey =
-        typeof msg.fields?.routingKey === "string" &&
-        msg.fields.routingKey.length > 0
-          ? msg.fields.routingKey
-          : undefined;
+      const rawRoutingKey = isNonEmptyString(msg.fields?.routingKey, false)
+        ? msg.fields.routingKey
+        : undefined;
+      const headers = msg.properties?.headers;
+      const xPattern = headers?.["x-pattern"];
+      const pat = headers?.pattern;
       const headerPattern =
-        typeof msg.properties?.headers?.["x-pattern"] === "string" &&
-        (msg.properties.headers["x-pattern"] as string).length > 0
-          ? (msg.properties.headers["x-pattern"] as string)
-          : typeof msg.properties?.headers?.pattern === "string" &&
-              (msg.properties.headers.pattern as string).length > 0
-            ? (msg.properties.headers.pattern as string)
-            : undefined;
+        (isNonEmptyString(xPattern, false) ? xPattern : undefined) ??
+        (isNonEmptyString(pat, false) ? pat : undefined);
       const channelPattern = rawRoutingKey ?? headerPattern ?? this.queue;
 
       const decoded = await decodeInboundMessage({

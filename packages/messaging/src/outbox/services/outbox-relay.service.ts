@@ -5,6 +5,7 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from "@bunest/core";
+import { mapLimit } from "@bunest/core/common";
 import { NonRetryableMessageError } from "../errors/non-retryable-message.error";
 import { OutboxPublishTimeoutError } from "../errors/outbox-publish-timeout.error";
 import type { OutboxEvent } from "../events/outbox-events.interface";
@@ -237,7 +238,7 @@ export class OutboxRelay implements OnApplicationBootstrap, OnModuleDestroy {
     result.claimed = messages.length;
     const leaseUntil = claimedAt + this.lease;
     const groups = groupByKey(messages);
-    await runPool(groups, this.concurrency, async (group) => {
+    await mapLimit(groups, this.concurrency, async (group) => {
       try {
         await this.processGroup(group, owner, leaseUntil, result);
       } catch (error) {
@@ -489,22 +490,6 @@ export function groupByKey(messages: OutboxMessage[]): OutboxMessage[][] {
     group.push(message);
   }
   return groups;
-}
-
-async function runPool<T>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      await fn(items[next++]!);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
 }
 
 async function publishWithin(

@@ -4,6 +4,13 @@ import {
   type ConsoleLoggerOptions,
   type LogLevel,
 } from "@bunest/core";
+import {
+  definedOnly,
+  isError,
+  isFunction,
+  isPlainObject,
+  isString,
+} from "@bunest/core/common";
 
 /**
  * A log call recorded by `CapturingLogger` (NestJS v12 parity).
@@ -99,23 +106,15 @@ export interface CapturingLoggerOptions extends ConsoleLoggerOptions {
   levels?: readonly LogLevel[];
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 function looksLikeStackTrace(value: string): boolean {
   return /\n\s+at\s+/.test(value) || value.startsWith("Error:");
 }
 
 function formatMessageForSummary(message: unknown): string {
-  if (typeof message === "string") {
+  if (isString(message)) {
     return message;
   }
-  if (message instanceof Error) {
+  if (isError(message)) {
     return message.message;
   }
   try {
@@ -126,10 +125,10 @@ function formatMessageForSummary(message: unknown): string {
 }
 
 function matchesMessage(actual: unknown, expected: string | RegExp): boolean {
-  if (typeof actual !== "string") {
+  if (!isString(actual)) {
     return false;
   }
-  if (typeof expected === "string") {
+  if (isString(expected)) {
     return actual.includes(expected);
   }
   return expected.test(actual);
@@ -142,7 +141,7 @@ function matchesContext(
   if (actual === undefined) {
     return false;
   }
-  if (typeof expected === "string") {
+  if (isString(expected)) {
     return actual === expected;
   }
   return expected.test(actual);
@@ -203,10 +202,10 @@ function matchesFilter(entry: CapturedLog, filter: CapturedLogFilter): boolean {
 
 function describeMatcher(matcher: LogEntryMatcher, level?: LogLevel): string {
   const levelDesc = level ? ` at level "${level}"` : "";
-  if (typeof matcher === "function") {
+  if (isFunction(matcher)) {
     return `<predicate>${levelDesc}`;
   }
-  if (typeof matcher === "string" || matcher instanceof RegExp) {
+  if (isString(matcher) || matcher instanceof RegExp) {
     return `${String(matcher)}${levelDesc}`;
   }
   try {
@@ -229,11 +228,9 @@ export class CapturingLogger extends ConsoleLogger {
   private readonly shouldPrint: boolean;
 
   constructor(options: CapturingLoggerOptions = {}) {
-    const resolvedLevels: LogLevel[] = options.logLevels
-      ? [...options.logLevels]
-      : options.levels
-        ? [...options.levels]
-        : [...LOG_LEVELS];
+    const resolvedLevels: LogLevel[] = [
+      ...(options.logLevels ?? options.levels ?? LOG_LEVELS),
+    ];
     super({
       ...options,
       logLevels: resolvedLevels,
@@ -475,10 +472,12 @@ export class CapturingLogger extends ConsoleLogger {
     const entry: CapturedLog = {
       level,
       message,
-      ...(context !== undefined ? { context } : {}),
-      ...(mergedParams !== undefined ? { params: mergedParams } : {}),
-      ...(error !== undefined ? { error } : {}),
-      ...(stack !== undefined ? { stack } : {}),
+      ...definedOnly({
+        context,
+        params: mergedParams,
+        error,
+        stack,
+      }),
       args: rawArgs,
       optionalParams: [...optionalParams],
       timestamp: new Date(),

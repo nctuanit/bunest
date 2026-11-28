@@ -623,6 +623,13 @@ export class MicroserviceHost
       }
 
       for (const server of this.servers) {
+        if (
+          meta.transport !== undefined &&
+          server.transport !== meta.transport &&
+          server.transportId !== meta.transport
+        ) {
+          continue;
+        }
         if (meta.isEventHandler) {
           server.addEventHandler(meta.pattern, compiled);
         } else {
@@ -969,12 +976,13 @@ export class MicroserviceHost
         continue;
       }
 
-      let value: unknown =
-        param.property !== undefined
-          ? data !== null && typeof data === "object"
+      let value: unknown = data;
+      if (param.property !== undefined) {
+        value =
+          data !== null && typeof data === "object"
             ? (data as Record<string, unknown>)[param.property]
-            : undefined
-          : data;
+            : undefined;
+      }
 
       const argMeta: ArgumentMetadata = {
         type: "custom",

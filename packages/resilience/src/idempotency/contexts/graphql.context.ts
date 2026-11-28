@@ -1,4 +1,5 @@
 import type { ExecutionContext } from "@bunest/core";
+import { isNumber } from "@bunest/core/common";
 import { DEFAULT_KEY_FIELD } from "../idempotency.constants";
 import type { IdempotencyStoredResponse } from "../interfaces/idempotency-store.interface";
 import { decodeResult } from "../utils/result.util";
@@ -160,12 +161,10 @@ export class GraphqlContextAdapter implements IdempotencyContextAdapter {
       // A code other than INTERNAL_SERVER_ERROR marks a deliberate rejection.
       const deliberate =
         typeof ext.code === "string" && ext.code !== "INTERNAL_SERVER_ERROR";
-      const status: number =
-        typeof ext.http?.status === "number"
-          ? ext.http.status
-          : deliberate
-            ? 400
-            : 500;
+      const fallbackStatus = deliberate ? 400 : 500;
+      const status: number = isNumber(ext.http?.status)
+        ? ext.http.status
+        : fallbackStatus;
       if (!opts.storeIf(status, error)) {
         return null;
       }

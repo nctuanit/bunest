@@ -399,16 +399,16 @@ ORDER BY claimed.next_attempt_at, claimed.created_at, claimed.id`,
       `completed_at = ${ms(p, update.completedAt)}`,
       "lease_owner = NULL",
       "lease_until = NULL",
-      ...(attempt
-        ? [
-            `last_attempt_at = ${ms(p, attempt.at)}`,
-            `last_status_code = ${p.int(attempt.statusCode)}`,
-            `last_error = ${p.text(storable(attempt.error))}`,
-          ]
-        : update.error !== undefined
-          ? [`last_error = ${p.text(storable(update.error))}`]
-          : []),
     ];
+    if (attempt) {
+      set.push(
+        `last_attempt_at = ${ms(p, attempt.at)}`,
+        `last_status_code = ${p.int(attempt.statusCode)}`,
+        `last_error = ${p.text(storable(attempt.error))}`,
+      );
+    } else if (update.error !== undefined) {
+      set.push(`last_error = ${p.text(storable(update.error))}`);
+    }
     const recorded = `UPDATE ${this.t.deliveries} SET ${set.join(", ")} WHERE id = ${p.text(id)} AND lease_owner = ${p.text(owner)} RETURNING id`;
     const statement = attempt
       ? `WITH recorded AS (

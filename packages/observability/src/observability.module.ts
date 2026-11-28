@@ -297,12 +297,14 @@ export class ObservabilityModule {
       ...(options.extraProviders ?? []),
       {
         provide: TRACER_OPTIONS,
-        useFactory: (resolved: ObservabilityModuleOptions): TracingModuleOptions =>
-          resolved.tracing === false
-            ? { sampler: () => false }
-            : typeof resolved.tracing === "object"
-              ? resolved.tracing
-              : {},
+        useFactory: (
+          resolved: ObservabilityModuleOptions,
+        ): TracingModuleOptions => {
+          if (resolved.tracing === false) {
+            return { sampler: () => false };
+          }
+          return typeof resolved.tracing === "object" ? resolved.tracing : {};
+        },
         inject: [OBSERVABILITY_MODULE_OPTIONS],
       },
       Tracer,

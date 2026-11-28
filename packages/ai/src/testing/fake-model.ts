@@ -1,3 +1,4 @@
+import { isString, sleep } from "@bunest/core/common";
 import type {
   LanguageModelCallOptions,
   LanguageModelContentPart,
@@ -322,6 +323,19 @@ function isToolResultPart(part: unknown): part is LanguageModelToolResultPart {
   );
 }
 
+function extractMessageText(content: unknown): string {
+  if (isString(content)) {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .filter(isTextContentPart)
+      .map((part) => part.text)
+      .join("");
+  }
+  return "";
+}
+
 function describeCall(
   options: LanguageModelCallOptions,
   stream: boolean,
@@ -329,16 +343,7 @@ function describeCall(
   const prompt: LanguageModelPromptMessage[] = options.prompt ?? [];
   const system = prompt
     .filter((message) => message.role === "system")
-    .map((message) =>
-      typeof message.content === "string"
-        ? message.content
-        : Array.isArray(message.content)
-          ? message.content
-              .filter(isTextContentPart)
-              .map((p) => p.text)
-              .join("")
-          : "",
-    );
+    .map((message) => extractMessageText(message.content));
   const lastUser = [...prompt]
     .reverse()
     .find((message) => message.role === "user");
@@ -352,15 +357,7 @@ function describeCall(
     stream,
     ...(system.length > 0 && { instructions: system.join("\n") }),
     ...(lastUser && {
-      lastUserMessage:
-        typeof lastUser.content === "string"
-          ? lastUser.content
-          : Array.isArray(lastUser.content)
-            ? lastUser.content
-                .filter(isTextContentPart)
-                .map((part) => part.text)
-                .join("")
-            : "",
+      lastUserMessage: extractMessageText(lastUser.content),
     }),
     toolResults: trailingTools.flatMap((message) =>
       Array.isArray(message.content)
@@ -382,22 +379,4 @@ function describeCall(
     tools: toolsList.map((tool) => tool.name),
     options,
   };
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

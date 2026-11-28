@@ -3,7 +3,7 @@
  * test cases. Each case throws (`AssertionError`) on failure and uses random keys
  * so cases can safely share one store instance.
  */
-import { strictAssert as assert } from "@bunest/core";
+import { strictAssert as assert } from "@bunest/core/common";
 import type {
   IdempotencyAcquireResult,
   IdempotencyStore,
@@ -89,12 +89,12 @@ export function idempotencyStoreContract(
     );
   }
 
-  const callers =
-    options.concurrent === true
-      ? 16
-      : options.concurrent
-        ? (options.concurrent.callers ?? 16)
-        : 0;
+  let callers = 0;
+  if (options.concurrent === true) {
+    callers = 16;
+  } else if (options.concurrent) {
+    callers = options.concurrent.callers ?? 16;
+  }
   if (options.concurrent && (!Number.isInteger(callers) || callers < 2)) {
     throw new RangeError(
       `idempotencyStoreContract(): concurrent.callers must be an integer of at least 2, got ${callers}`,
@@ -694,16 +694,19 @@ function expectResult(
       ["acquired", "in-flight", "completed"].includes(actual.state),
     `${what}: acquire() must resolve { state: 'acquired' | 'in-flight' | 'completed' }, got ${JSON.stringify(actual)}`,
   );
-  const pickResult = (r: IdempotencyAcquireResult) =>
-    r.state === "acquired"
-      ? { state: r.state }
-      : r.state === "in-flight"
-        ? { state: r.state, fingerprint: r.fingerprint }
-        : {
-            state: r.state,
-            fingerprint: r.fingerprint,
-            response: r.response,
-          };
+  const pickResult = (r: IdempotencyAcquireResult) => {
+    if (r.state === "acquired") {
+      return { state: r.state };
+    }
+    if (r.state === "in-flight") {
+      return { state: r.state, fingerprint: r.fingerprint };
+    }
+    return {
+      state: r.state,
+      fingerprint: r.fingerprint,
+      response: r.response,
+    };
+  };
   assert.deepStrictEqual(pickResult(actual), pickResult(expected), what);
 }
 

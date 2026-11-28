@@ -19,10 +19,12 @@ import {
   type ResponseContext,
   type Type,
 } from "@bunest/core";
+import { first, toArray } from "@bunest/core/common";
 import {
   CountedAspectHandler,
   TimedAspectHandler,
 } from "../decorators/observability.decorators";
+import { BunRuntimeMetricsCollector } from "./bun-runtime-metrics";
 import {
   Counter,
   DEFAULT_HTTP_BUCKETS,
@@ -52,6 +54,11 @@ export interface MetricsModuleOptions {
    * and flushed gracefully on module destroy.
    */
   otlpExporter?: OtlpHttpMetricsExporter | OtlpHttpMetricsExporterOptions;
+  /**
+   * When `true`, collects Bun runtime gauges (`bun:jsc` memory/heap + `Bun.dns.getCacheStats()`)
+   * on every Prometheus `/metrics` scrape.
+   */
+  collectRuntimeMetrics?: boolean;
   global?: boolean;
 }
 
@@ -67,14 +74,8 @@ function resolveRouteLabel(context: ExecutionContext): string {
     handler,
   );
 
-  const prefix = ctrlMeta
-    ? Array.isArray(ctrlMeta.path)
-      ? (ctrlMeta.path[0] ?? "")
-      : ctrlMeta.path
-    : "";
-  const suffix = Array.isArray(methodPath)
-    ? (methodPath[0] ?? "")
-    : (methodPath ?? "");
+  const prefix = first(toArray(ctrlMeta?.path)) ?? "";
+  const suffix = first(toArray(methodPath)) ?? "";
 
   const combined = `/${prefix}/${suffix}`
     .replace(/\/+/g, "/")
@@ -174,10 +175,14 @@ function createMetricsController(
   class MetricsController {
     constructor(
       @Inject(MetricsRegistry) private readonly registry: MetricsRegistry,
+      @Optional()
+      @Inject(BunRuntimeMetricsCollector)
+      private readonly runtimeCollector?: BunRuntimeMetricsCollector,
     ) {}
 
     @Get()
     scrape(): Response {
+      this.runtimeCollector?.collect();
       return new Response(this.registry.toPrometheusText(), {
         status: 200,
         headers: {
@@ -223,6 +228,19 @@ export class MetricsModule {
       TimedAspectHandler,
       CountedAspectHandler,
     ];
+
+    if (options.collectRuntimeMetrics === true) {
+      providers.push({
+        provide: BunRuntimeMetricsCollector,
+        useFactory: (registry: MetricsRegistry) => {
+          const collector = new BunRuntimeMetricsCollector(registry);
+          collector.collect();
+          return collector;
+        },
+        inject: [MetricsRegistry],
+      });
+      exportsList.push(BunRuntimeMetricsCollector);
+    }
 
     if (options.otlpExporter) {
       const configuredExporter = options.otlpExporter;

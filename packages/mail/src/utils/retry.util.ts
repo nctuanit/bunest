@@ -1,4 +1,4 @@
-import { computeBackoffDelay } from "@bunest/core";
+import { computeBackoffDelay, sleep as coreSleep } from "@bunest/core/common";
 import type { Duration } from "../interfaces/duration.interface";
 import type {
   MailBackoffOptions,
@@ -38,12 +38,14 @@ export function resolveRetry(
   input: number | false | MailRetryOptions | undefined,
   where: string,
 ): ResolvedRetry {
-  const options: MailRetryOptions =
-    input === false
-      ? { attempts: 1 }
-      : typeof input === "number"
-        ? { attempts: input }
-        : (input ?? {});
+  let options: MailRetryOptions;
+  if (input === false) {
+    options = { attempts: 1 };
+  } else if (typeof input === "number") {
+    options = { attempts: input };
+  } else {
+    options = input ?? {};
+  }
   if (typeof options !== "object" || options === null) {
     throw new TypeError(
       `${where}: retry must be a number, false, or { attempts, backoff, retryIf }`,
@@ -165,19 +167,5 @@ export function durationOption(value: Duration, option: string): number {
 
 /** Resolves after `ms`, or rejects with the signal's reason when it aborts first. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+  return coreSleep(Math.max(0, ms), signal);
 }

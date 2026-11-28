@@ -1,3 +1,4 @@
+import { isString, toArray } from "@bunest/core/common";
 import type { ResiliencePolicy } from "@bunest/resilience";
 import type {
   AiCallOptions,
@@ -155,16 +156,15 @@ export function createCallPlan(
           options.resilience ??
           model.settings.resilience ??
           defaults.resilience;
-        policy =
-          own === undefined
-            ? modelPolicy(model, {
-                retry: options.retry ?? model.settings.retry ?? defaults.retry,
-                timeout:
-                  options.timeout ?? model.settings.timeout ?? defaults.timeout,
-              })
-            : typeof own === "string"
-              ? preset(own)
-              : own;
+        if (own === undefined) {
+          policy = modelPolicy(model, {
+            retry: options.retry ?? model.settings.retry ?? defaults.retry,
+            timeout:
+              options.timeout ?? model.settings.timeout ?? defaults.timeout,
+          });
+        } else {
+          policy = isString(own) ? preset(own) : own;
+        }
         policies.set(model, policy);
       }
       return policy;
@@ -204,9 +204,7 @@ function fallbacks(
   if (option === undefined) {
     return primary.fallback.map((name) => models.resolve(name));
   }
-  const references: AiModelReference[] = Array.isArray(option)
-    ? [...option]
-    : [option];
+  const references: AiModelReference[] = toArray(option);
   return references.map((reference) => models.resolve(reference));
 }
 

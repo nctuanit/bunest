@@ -1,4 +1,5 @@
 import { StreamableFile } from "@bunest/core";
+import { isFunction, isObject, isPromiseLike } from "@bunest/core/common";
 import { UnreplayableResult } from "../errors/unreplayable-result.error";
 
 /**
@@ -73,7 +74,7 @@ function encode(
   }
   if (
     isObject(value) &&
-    typeof (value as { toJSON?: unknown }).toJSON === "function"
+    isFunction((value as { toJSON?: unknown }).toJSON)
   ) {
     value = (value as { toJSON: () => unknown }).toJSON();
   }
@@ -103,10 +104,7 @@ function encode(
   }
 
   const object = value as Record<string, unknown>;
-  if (
-    strict &&
-    (typeof object.then === "function" || unreplayableReason(object))
-  ) {
+  if (strict && (isPromiseLike(object) || unreplayableReason(object))) {
     throw new UnreplayableResult(
       "its result holds a promise or a stream, which GraphQL awaits",
     );
@@ -250,8 +248,4 @@ function read(object: Record<string, unknown>, key: string): unknown {
       `its result has a getter that throws ("${key}")`,
     );
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

@@ -1,4 +1,11 @@
 export {
+  APP_EVENT_SYMBOL,
+  defineAppEvent,
+  isAppEvent,
+  type AppEvent,
+  type AppEventPayload,
+} from "./app-event";
+export {
   DEFAULT_LISTENER_PRIORITY,
   EVENT_EMITTER_OPTIONS,
   EVENT_LISTENER_METADATA,

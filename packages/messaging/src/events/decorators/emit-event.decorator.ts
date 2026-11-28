@@ -4,13 +4,17 @@ import {
   type MethodAspectContext,
   type MethodAspectHandler,
 } from "@bunest/core";
+import { isFunction, isPromiseLike } from "@bunest/core/common";
+import { isAppEvent, type AppEvent } from "../app-event";
 import { EventEmitterService } from "../event-emitter.service";
 import type { EventNameInput } from "../interfaces/event-registry.interface";
 
 export type EmitEventName =
-  EventNameInput | ((args: unknown[], result: unknown) => EventNameInput);
+  | EventNameInput
+  | AppEvent<string, any>
+  | ((args: unknown[], result: unknown) => EventNameInput | AppEvent<string, any>);
 
-export interface EmitEventOptions {
+export interface EmitEventOptions<TPayload = unknown> {
   /**
    * When true, awaits `EventEmitter2.emitAsync(...)` before resolving the
    * decorated method's return value. When false (default), calls `emit(...)`.
@@ -21,7 +25,7 @@ export interface EmitEventOptions {
    * Optional mapper deriving the emitted event payload from `(result, args)`.
    * Defaults to emitting `result`.
    */
-  readonly payload?: (result: unknown, args: unknown[]) => unknown;
+  readonly payload?: (result: unknown, args: unknown[]) => TPayload;
   /**
    * Optional predicate controlling whether the event should be emitted.
    * Receives `(result, args)`. Emission is skipped when it returns `false`.
@@ -32,14 +36,6 @@ export interface EmitEventOptions {
 export interface EmitEventAspectMetadata {
   readonly event: EmitEventName;
   readonly options?: EmitEventOptions;
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
 }
 
 /**
@@ -59,8 +55,10 @@ export class EmitEventAspect implements MethodAspectHandler<EmitEventAspectMetad
         return result;
       }
 
-      const eventName =
-        typeof event === "function" ? event(ctx.args, result) : event;
+      const resolvedEvent = isFunction(event) ? event(ctx.args, result) : event;
+      const eventName: EventNameInput = isAppEvent(resolvedEvent)
+        ? resolvedEvent.name
+        : (resolvedEvent as EventNameInput);
       const payload = options?.payload
         ? options.payload(result, ctx.args)
         : result;
@@ -74,7 +72,7 @@ export class EmitEventAspect implements MethodAspectHandler<EmitEventAspectMetad
     };
 
     const raw = ctx.proceed();
-    if (isThenable(raw)) {
+    if (isPromiseLike(raw)) {
       return Promise.resolve(raw).then(emitAfter);
     }
     return emitAfter(raw);
@@ -85,6 +83,14 @@ export class EmitEventAspect implements MethodAspectHandler<EmitEventAspectMetad
  * Declaratively emits an event via `EventEmitter2` after the decorated method
  * resolves, powered by Bunest's Core Method Aspect engine.
  */
+export function EmitEvent<TPayload>(
+  event: AppEvent<string, TPayload>,
+  options?: EmitEventOptions<TPayload>,
+): MethodDecorator;
+export function EmitEvent(
+  event: EmitEventName,
+  options?: EmitEventOptions,
+): MethodDecorator;
 export function EmitEvent(
   event: EmitEventName,
   options?: EmitEventOptions,

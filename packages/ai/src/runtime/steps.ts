@@ -1,3 +1,4 @@
+import { isError, isString } from "@bunest/core/common";
 import type {
   AiStep,
   AiToolCall,
@@ -101,6 +102,15 @@ function parseToolInput(raw: unknown): unknown {
   return raw ?? {};
 }
 
+function formatToolResultOutput(result: AiToolResult) {
+  if (result.error !== undefined) {
+    return { type: "error-text" as const, value: result.error };
+  }
+  return isString(result.output)
+    ? { type: "text" as const, value: result.output }
+    : { type: "json" as const, value: result.output ?? null };
+}
+
 function buildToolResultMessage(results: AiToolResult[]): ModelMessage {
   return {
     role: "tool",
@@ -108,12 +118,7 @@ function buildToolResultMessage(results: AiToolResult[]): ModelMessage {
       type: "tool-result",
       toolCallId: result.toolCallId,
       toolName: result.toolName,
-      output:
-        result.error !== undefined
-          ? { type: "error-text", value: result.error }
-          : typeof result.output === "string"
-            ? { type: "text", value: result.output }
-            : { type: "json", value: result.output ?? null },
+      output: formatToolResultOutput(result),
     })),
   };
 }
@@ -176,12 +181,7 @@ async function executeToolCalls(
         output,
       });
     } catch (error) {
-      const message =
-        error instanceof AiToolError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : String(error);
+      const message = isError(error) ? error.message : String(error);
       toolResults.push({ ...tc, error: message });
       emit?.({
         type: "tool-output-error",
@@ -499,13 +499,8 @@ async function streamAttempt(
         id: typeof part.id === "string" ? part.id : `text-${index}`,
       });
     } else if (part.type === "text-delta") {
-      const delta =
-        typeof part.delta === "string"
-          ? part.delta
-          : typeof part.textDelta === "string"
-            ? part.textDelta
-            : "";
-      const id = typeof part.id === "string" ? part.id : `text-${index}`;
+      const delta = [part.delta, part.textDelta].find(isString) ?? "";
+      const id = isString(part.id) ? part.id : `text-${index}`;
       if (!textStarted) {
         textStarted = true;
         emitContent({ type: "text-start", id });
@@ -527,17 +522,9 @@ async function streamAttempt(
     } else if (part.type === "tool-call") {
       const tc: AiToolCall = {
         toolCallId:
-          (typeof part.toolCallId === "string"
-            ? part.toolCallId
-            : typeof part.id === "string"
-              ? part.id
-              : undefined) ?? `call-${index}-${toolCalls.length + 1}`,
-        toolName:
-          typeof part.toolName === "string"
-            ? part.toolName
-            : typeof part.name === "string"
-              ? part.name
-              : "",
+          [part.toolCallId, part.id].find(isString) ??
+          `call-${index}-${toolCalls.length + 1}`,
+        toolName: [part.toolName, part.name].find(isString) ?? "",
         input: parseToolInput(part.input ?? part.args),
       };
       toolCalls.push(tc);

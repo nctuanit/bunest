@@ -5,6 +5,7 @@ import {
   type ModuleImport,
   type Provider,
 } from "@bunest/core";
+import { isPromiseLike } from "@bunest/core/common";
 import type {
   ClientProvider,
   ClientProviderOptions,
@@ -101,8 +102,8 @@ class CustomStrategyServerAdapter extends MicroserviceTransportServer {
           }
         };
         const result = this.strategy.listen(done);
-        if (result && typeof (result as Promise<void>).then === "function") {
-          (result as Promise<void>).then(done, reject);
+        if (isPromiseLike(result)) {
+          result.then(done, reject);
         } else if (this.strategy.listen.length === 0) {
           done();
         }
@@ -132,6 +133,20 @@ export type MicroserviceModuleOptions =
       readonly global?: boolean;
     } & ServerResilienceOptions);
 
+function resolveMicroserviceServer(
+  options: MicroserviceModuleOptions,
+): MicroserviceTransportServer {
+  if ("server" in options) {
+    return options.server;
+  }
+  if ("strategy" in options) {
+    return options.strategy instanceof MicroserviceTransportServer
+      ? options.strategy
+      : new CustomStrategyServerAdapter(options.strategy);
+  }
+  return createTransportServer(options);
+}
+
 /**
  * Registers a `MicroserviceTransportServer` and `MicroserviceHost` that auto-discovers
  * `@MessagePattern()` and `@EventPattern()` handlers on bootstrap and shuts down gracefully.
@@ -139,14 +154,7 @@ export type MicroserviceModuleOptions =
 @Module({})
 export class MicroserviceModule {
   static forRoot(options: MicroserviceModuleOptions): DynamicModule {
-    const server =
-      "server" in options
-        ? options.server
-        : "strategy" in options
-          ? options.strategy instanceof MicroserviceTransportServer
-            ? options.strategy
-            : new CustomStrategyServerAdapter(options.strategy)
-          : createTransportServer(options);
+    const server = resolveMicroserviceServer(options);
 
     const dlqHandler: MicroserviceDeadLetterHandler | undefined =
       options.deadLetterHandler;

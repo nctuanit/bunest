@@ -1,3 +1,4 @@
+import { definedOnly, indexOfLine, trimPrefix } from "@bunest/core/common";
 import type { TestResponse } from "./test-client";
 
 export interface SseEvent {
@@ -42,9 +43,7 @@ function flushEvent(acc: EventAccumulator): SseEvent | undefined {
     return undefined;
   }
   const event: SseEvent = {
-    ...(acc.id !== undefined ? { id: acc.id } : {}),
-    ...(acc.event !== undefined ? { event: acc.event } : {}),
-    ...(acc.retry !== undefined ? { retry: acc.retry } : {}),
+    ...definedOnly({ id: acc.id, event: acc.event, retry: acc.retry }),
     data: acc.dataLines.join("\n"),
   };
   return event;
@@ -67,9 +66,7 @@ function applyFieldLine(acc: EventAccumulator, line: string): void {
     field = line.slice(0, colonIdx);
     value = line.slice(colonIdx + 1);
     // Per W3C SSE spec, strip at most one leading U+0020 SPACE
-    if (value.startsWith(" ")) {
-      value = value.slice(1);
-    }
+    value = trimPrefix(value, " ");
   }
 
   switch (field) {
@@ -123,7 +120,7 @@ export async function readSseEvents(
   const reader = rawResponse.body.getReader();
   const decoder = new TextDecoder();
   const events: SseEvent[] = [];
-  let buffer = "";
+  let partialLine = "";
   let acc = createAccumulator();
   let stopped = false;
 
@@ -137,40 +134,95 @@ export async function readSseEvents(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let signalListenerAttached = false;
 
-  const processLines = (finalChunk: boolean): boolean => {
-    // Normalize CRLF and stray CR into LF while keeping a potential trailing CR for next chunk
-    if (!finalChunk && buffer.endsWith("\r")) {
-      const safe = buffer
-        .slice(0, -1)
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n");
-      buffer = `${safe}\r`;
-    } else {
-      buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    }
-
-    let nlIdx = buffer.indexOf("\n");
-    while (nlIdx !== -1) {
-      const line = buffer.slice(0, nlIdx);
-      buffer = buffer.slice(nlIdx + 1);
-
-      if (line === "") {
-        const evt = flushEvent(acc);
-        acc = createAccumulator();
-        if (evt) {
-          events.push(evt);
-          if (maxEvents !== undefined && events.length >= maxEvents) {
-            return true;
-          }
+  const consumeSingleLine = (line: string): boolean => {
+    if (line === "") {
+      const evt = flushEvent(acc);
+      acc = createAccumulator();
+      if (evt) {
+        events.push(evt);
+        if (maxEvents !== undefined && events.length >= maxEvents) {
+          return true;
         }
-      } else {
-        applyFieldLine(acc, line);
       }
-
-      nlIdx = buffer.indexOf("\n");
+    } else {
+      applyFieldLine(acc, line);
     }
-
     return false;
+  };
+
+  const consumeLfTerminatedLine = (rawLine: string): boolean => {
+    const withoutTrailingCr = rawLine.endsWith("\r")
+      ? rawLine.slice(0, -1)
+      : rawLine;
+    if (!withoutTrailingCr.includes("\r")) {
+      return consumeSingleLine(withoutTrailingCr);
+    }
+    // Handle embedded standalone CR line separators per W3C EventSource spec
+    const parts = withoutTrailingCr.split("\r");
+    for (let i = 0; i < parts.length; i++) {
+      if (consumeSingleLine(parts[i]!)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const flushStandaloneCrInPartial = (): boolean => {
+    const crIdx = partialLine.indexOf("\r");
+    if (crIdx === -1 || crIdx === partialLine.length - 1) {
+      return false;
+    }
+    const endsWithCr = partialLine.endsWith("\r");
+    const safePrefix = endsWithCr ? partialLine.slice(0, -1) : partialLine;
+    const parts = safePrefix.split("\r");
+    const lastPart = parts.pop()!;
+    partialLine = endsWithCr ? `${lastPart}\r` : lastPart;
+    for (let i = 0; i < parts.length; i++) {
+      if (consumeSingleLine(parts[i]!)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const processChunkBytes = (bytes: Uint8Array): boolean => {
+    let offset = 0;
+    const len = bytes.byteLength;
+    while (offset < len) {
+      const nlIdx = indexOfLine(bytes, offset);
+      if (nlIdx === -1) {
+        partialLine += decoder.decode(bytes.subarray(offset), {
+          stream: true,
+        });
+        return flushStandaloneCrInPartial();
+      }
+      const lineEnd =
+        nlIdx > offset && bytes[nlIdx - 1] === 0x0d ? nlIdx - 1 : nlIdx;
+      const decoded = decoder.decode(bytes.subarray(offset, lineEnd));
+      const fullLine = partialLine.length > 0 ? partialLine + decoded : decoded;
+      partialLine = "";
+      offset = nlIdx + 1;
+      if (consumeLfTerminatedLine(fullLine)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const flushEofTail = (): void => {
+    const tail = partialLine + decoder.decode();
+    partialLine = "";
+    if (!tail) return;
+    const normalized = tail.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    let nlIdx = normalized.indexOf("\n");
+    let start = 0;
+    while (nlIdx !== -1) {
+      if (consumeSingleLine(normalized.slice(start, nlIdx))) {
+        return;
+      }
+      start = nlIdx + 1;
+      nlIdx = normalized.indexOf("\n", start);
+    }
   };
 
   try {
@@ -192,14 +244,12 @@ export async function readSseEvents(
     while (!stopped) {
       const { value, done } = await reader.read();
       if (done) {
-        buffer += decoder.decode();
-        processLines(true);
+        flushEofTail();
         break;
       }
 
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-        const reachedLimit = processLines(false);
+      if (value && value.byteLength > 0) {
+        const reachedLimit = processChunkBytes(value);
         if (reachedLimit) {
           stopped = true;
           await reader.cancel().catch(() => {});

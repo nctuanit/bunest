@@ -1,4 +1,8 @@
 import { Logger } from "@bunest/core";
+import {
+  describeError as coreDescribeError,
+  isNumber,
+} from "@bunest/core/common";
 import type {
   Subscribable,
   SubscribableObserver,
@@ -336,12 +340,7 @@ export function isRetryable(error: unknown): boolean {
     const e = error as Record<string, any>;
     if (e["isRetryable"] === true) return true;
     if (e["isRetryable"] === false) return false;
-    const status =
-      typeof e["statusCode"] === "number"
-        ? e["statusCode"]
-        : typeof e["status"] === "number"
-          ? e["status"]
-          : undefined;
+    const status = [e["statusCode"], e["status"]].find(isNumber);
     if (status !== undefined) {
       return (
         status === 408 || status === 409 || status === 429 || status >= 500
@@ -480,17 +479,12 @@ function labelOf(model: PolicyModel): string {
 
 function describeError(error: unknown): string {
   if (!(error instanceof Error)) {
-    return String(error);
+    return coreDescribeError(error);
   }
   const { statusCode, status } = error as Error & {
     statusCode?: unknown;
     status?: unknown;
   };
-  const code =
-    typeof statusCode === "number"
-      ? statusCode
-      : typeof status === "number"
-        ? status
-        : undefined;
+  const code = [statusCode, status].find(isNumber);
   return `${error.constructor.name}${code !== undefined ? `, ${code}` : ""}: ${error.message}`;
 }

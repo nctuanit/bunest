@@ -1,3 +1,5 @@
+import { isString, parseJsonl, trimPrefix } from "@bunest/core/common";
+
 function stripDangerousKeys(
   value: unknown,
   mode: boolean | "proto" | "constructor",
@@ -33,10 +35,7 @@ export class ElasticsearchSerializer {
   }
 
   serialize(value: unknown): string {
-    if (typeof value === "string") {
-      return value;
-    }
-    return JSON.stringify(value);
+    return isString(value) ? value : JSON.stringify(value);
   }
 
   ndserialize(items: readonly unknown[]): string {
@@ -45,7 +44,7 @@ export class ElasticsearchSerializer {
     }
     return (
       items
-        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+        .map((item) => (isString(item) ? item : JSON.stringify(item)))
         .join("\n") + "\n"
     );
   }
@@ -58,10 +57,18 @@ export class ElasticsearchSerializer {
     return stripDangerousKeys(parsed, this.disableProtection) as T;
   }
 
+  deserializeNdjson<T = unknown[]>(text: string): T {
+    if (!text) {
+      return [] as unknown as T;
+    }
+    const parsed = parseJsonl(text);
+    return stripDangerousKeys(parsed, this.disableProtection) as T;
+  }
+
   qserialize(query?: Record<string, any> | string): string {
     if (!query) return "";
-    if (typeof query === "string") {
-      return query.replace(/^\?/, "");
+    if (isString(query)) {
+      return trimPrefix(query, "?");
     }
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) {

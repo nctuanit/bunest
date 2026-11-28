@@ -1,4 +1,5 @@
 import { HttpException, type LoggerService } from "@bunest/core";
+import { isObject } from "@bunest/core/common";
 import type {
   McpAuthInfo,
   McpAuthOptions,
@@ -11,7 +12,7 @@ function escapeHeaderParam(value: string): string {
 }
 
 function normalizeResourceUrl(value: string | URL): string {
-  const url = value instanceof URL ? new URL(value) : new URL(value);
+  const url = new URL(value);
   url.hash = "";
   const cleanedPath =
     url.pathname.length > 1 && url.pathname.endsWith("/")
@@ -132,16 +133,14 @@ export class McpAuthGate {
     try {
       info = await this.verify(token);
     } catch (err) {
-      const status =
-        err instanceof HttpException
-          ? err.getStatus()
-          : typeof err === "object" && err !== null && "status" in err
-            ? Number((err as { status?: unknown }).status)
-            : undefined;
+      let status: number | undefined;
+      if (err instanceof HttpException) {
+        status = err.getStatus();
+      } else if (isObject(err) && "status" in err) {
+        status = Number(err.status);
+      }
       const errCode =
-        typeof err === "object" && err !== null && "errorCode" in err
-          ? String((err as { errorCode?: unknown }).errorCode)
-          : undefined;
+        isObject(err) && "errorCode" in err ? String(err.errorCode) : undefined;
       if (status === 401 || errCode === "invalid_token") {
         return this.challengeResponse(
           401,

@@ -1,3 +1,4 @@
+import { isString } from "@bunest/core/common";
 import type { ResiliencePolicy } from "@bunest/resilience";
 import type {
   AiEmbeddingCallOptions,
@@ -57,16 +58,16 @@ export function createEmbeddingPlan(
   }
 
   const own = pick("resilience");
-  const policy =
-    own === undefined
-      ? modelPolicy(
-          model,
-          { retry: pick("retry"), timeout: pick("timeout") },
-          "ai:embedding",
-        )
-      : typeof own === "string"
-        ? preset(own)
-        : own;
+  let policy: ResiliencePolicy | undefined;
+  if (own === undefined) {
+    policy = modelPolicy(
+      model,
+      { retry: pick("retry"), timeout: pick("timeout") },
+      "ai:embedding",
+    );
+  } else {
+    policy = isString(own) ? preset(own) : own;
+  }
 
   return {
     model,

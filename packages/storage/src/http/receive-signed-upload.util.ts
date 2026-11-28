@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   PayloadTooLargeException,
 } from "@bunest/core";
+import { definedOnly } from "@bunest/core/common";
 import type { StorageDisk } from "../disks/storage.disk";
 import type {
   ReceiveSignedUploadOptions,
@@ -126,15 +127,15 @@ export async function receiveSignedUpload(
       : (options.req as { signal?: AbortSignal } | undefined)?.signal;
 
   try {
-    const result = await disk.put(claims.key, body, {
-      ...(claims.contentType !== undefined
-        ? { contentType: claims.contentType }
-        : {}),
-      ...(claims.contentLength !== undefined
-        ? { contentLength: claims.contentLength }
-        : {}),
-      ...(signal ? { signal } : {}),
-    });
+    const result = await disk.put(
+      claims.key,
+      body,
+      definedOnly({
+        contentType: claims.contentType,
+        contentLength: claims.contentLength,
+        signal,
+      }),
+    );
     if (options.res && result.etag) {
       setHeader(options.res, "ETag", result.etag);
     }

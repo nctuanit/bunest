@@ -1,4 +1,5 @@
 import { Logger } from "@bunest/core";
+import { clamp } from "@bunest/core/common";
 import { LockLostError } from "../errors/lock-lost.error";
 import type { LockClock } from "../interfaces/lock-clock.interface";
 import type { LockStore } from "../interfaces/lock-store.interface";
@@ -144,8 +145,8 @@ export class Lock {
     const every = Math.max(1, Math.floor(ttl / 3));
     const remaining = this.deadline - clock.now();
     const delay = this.renewing
-      ? Math.max(0, Math.min(every, remaining))
-      : Math.max(1, Math.min(every, remaining - every));
+      ? clamp(remaining, 0, every)
+      : clamp(remaining - every, 1, every);
     this.timer = clock.setTimeout(() => this.tick(), delay);
   }
 

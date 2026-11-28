@@ -1,4 +1,10 @@
-import { computeBackoffDelay, describeValue } from "@bunest/core";
+import {
+  computeBackoffDelay,
+  describeValue,
+  isOneOf,
+  isTypeof,
+  ternaryFor,
+} from "@bunest/core/common";
 import type { OutboxMessage } from "../interfaces/outbox-message.interface";
 import type {
   OutboxModuleOptions,
@@ -41,12 +47,10 @@ const JITTERS: readonly string[] = ["full", "equal", "none"];
 export function resolveRetry(
   retry: OutboxModuleOptions["retry"],
 ): ResolvedRetry {
-  const options: OutboxRetryOptions =
-    retry === false
-      ? { attempts: 1 }
-      : typeof retry === "number"
-        ? { attempts: retry }
-        : (retry ?? {});
+  const options: OutboxRetryOptions = ternaryFor(retry)
+    .when((v): v is false => v === false, { attempts: 1 })
+    .when(isTypeof("number"), (attempts) => ({ attempts }))
+    .elseEval((v) => v ?? {});
 
   const attempts = options.attempts ?? DEFAULT_ATTEMPTS;
   if (!Number.isInteger(attempts) || attempts < 1) {
@@ -85,7 +89,7 @@ export function resolveRetry(
   }
 
   const jitter = backoff?.jitter ?? DEFAULT_BACKOFF.jitter;
-  if (!JITTERS.includes(jitter)) {
+  if (!isOneOf(JITTERS, jitter)) {
     throw new TypeError(
       `OutboxModule: retry.backoff.jitter must be "full", "equal" or "none" (got ${JSON.stringify(jitter)})`,
     );

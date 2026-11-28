@@ -126,12 +126,9 @@ export function formatTraceParent(context: {
   traceFlags?: number;
   sampled?: boolean;
 }): string {
+  const defaultFlags = context.sampled === false ? 0x00 : 0x01;
   const flags =
-    context.traceFlags !== undefined
-      ? context.traceFlags & 0xff
-      : context.sampled === false
-        ? 0x00
-        : 0x01;
+    context.traceFlags !== undefined ? context.traceFlags & 0xff : defaultFlags;
   const flagsHex = flags.toString(16).padStart(2, "0");
   return `00-${context.traceId.toLowerCase()}-${context.spanId.toLowerCase()}-${flagsHex}`;
 }

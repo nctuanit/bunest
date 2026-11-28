@@ -1,4 +1,5 @@
 import type { OnModuleDestroy } from "@bunest/core";
+import { nowUnixNanoBigInt } from "@bunest/core/common";
 import {
   toOtlpAttributes,
   type OtlpKeyValue,
@@ -151,7 +152,7 @@ export class OtlpHttpMetricsExporter implements OnModuleDestroy {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.onError = options.onError;
     this.registry = options.registry;
-    this.startTimeUnixNano = nowUnixNanoString(Date.now());
+    this.startTimeUnixNano = nowUnixNanoBigInt().toString();
     this.resourceAttributes = {
       "service.name": options.serviceName ?? "bunest-service",
       ...(options.serviceVersion
@@ -190,9 +191,12 @@ export class OtlpHttpMetricsExporter implements OnModuleDestroy {
    */
   buildOtlpPayload(
     registry: MetricsRegistry | undefined = this.registry,
-    nowEpochMs: number = Date.now(),
+    nowEpochMs?: number,
   ): OtlpExportMetricsServiceRequest {
-    const timeUnixNano = nowUnixNanoString(nowEpochMs);
+    const timeUnixNano =
+      nowEpochMs !== undefined
+        ? nowUnixNanoString(nowEpochMs)
+        : nowUnixNanoBigInt().toString();
     const metrics: OtlpMetric[] = [];
 
     if (registry) {

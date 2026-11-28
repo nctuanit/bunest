@@ -90,6 +90,7 @@ export {
   OtelAutoInstrumentation,
   RPC_CLIENT_DIAGNOSTICS_CHANNEL,
   RPC_SERVER_DIAGNOSTICS_CHANNEL,
+  WORKERS_DISPATCH_DIAGNOSTICS_CHANNEL,
   enableAutoInstrumentation,
   type AutoInstrumentOptions,
 } from "./tracing/auto-instrumentation";
@@ -111,6 +112,19 @@ export {
   type MetricType,
   type PrometheusMetric,
 } from "./metrics/metrics.registry";
+export {
+  BunRuntimeMetricsCollector,
+  loadBunJsc,
+  readBunDnsCacheStats,
+  type BunDnsCacheStatsSnapshot,
+  type JscHeapStatsSnapshot,
+  type JscMemoryUsageSnapshot,
+} from "./metrics/bun-runtime-metrics";
+export {
+  UdpStatsdExporter,
+  type StatsdCounterMode,
+  type UdpStatsdExporterOptions,
+} from "./metrics/udp-statsd-exporter";
 export {
   HttpMetricsInterceptor,
   METRICS_MODULE_OPTIONS,
@@ -177,11 +191,13 @@ export { HEALTH_CHECK_METADATA, HealthCheck } from "./health/health.decorator";
 export {
   CustomHealthIndicator,
   DiskHealthIndicator,
+  DnsCacheHealthIndicator,
   EVENT_LOOP_HEALTH_MAX_DELAY,
   EventLoopHealthIndicator,
   FetchHealthIndicator,
   GRPCHealthIndicator,
   HttpHealthIndicator,
+  JscHeapHealthIndicator,
   MEMORY_HEALTH_HEAP_LIMIT,
   MEMORY_HEALTH_RSS_LIMIT,
   MemoryHealthIndicator,
@@ -190,6 +206,7 @@ export {
   PrismaHealthIndicator,
   QueueHealthIndicator,
   SqlHealthIndicator,
+  WorkerPoolHealthIndicator,
   defaultCheckDiskSpace,
   type CheckDiskSpace,
   type CheckGRPCServiceOptions,
@@ -198,6 +215,7 @@ export {
   type DiskOptionsWithThreshold,
   type DiskOptionsWithThresholdPercent,
   type DiskSpaceInfo,
+  type DnsCacheHealthOptions,
   type FetchCheckOptions,
   type FetchLike,
   type FetchLikeInit,
@@ -206,6 +224,7 @@ export {
   type HttpHealthCheckRequestOptions,
   type HttpHealthResponse,
   type HttpResponseLike,
+  type JscHeapHealthOptions,
   type MicroserviceHealthIndicatorOptions,
   type MicroserviceOptionsLike,
   type OrmHealthTarget,
@@ -216,6 +235,9 @@ export {
   type QueueHealthTarget,
   type QueueHealthThresholds,
   type SqlHealthTarget,
+  type WorkerPoolHealthSnapshotLike,
+  type WorkerPoolHealthTarget,
+  type WorkerPoolHealthThresholds,
 } from "./health/health.indicators";
 export {
   HealthCheckError,

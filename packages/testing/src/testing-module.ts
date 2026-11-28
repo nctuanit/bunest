@@ -15,6 +15,11 @@ import {
   type RequestContainer,
 } from "@bunest/core";
 import { BunHttpAdapter } from "@bunest/core/http";
+import type { ContractClient, ContractTree } from "@bunest/core/client";
+import {
+  createContractTestClient,
+  type ContractTestClientOptions,
+} from "./contract-test-client";
 import { createMockRequest } from "./fixtures";
 import type {
   CreateTestingAppOptions,
@@ -173,6 +178,52 @@ export class TestingModule extends BunestApplicationContext {
       appOrOptions ?? {};
     const app = this.createBunestApplication(appOptions);
     return TestClient.fromApp(app, { baseUrl, defaultHeaders, defaultCookies });
+  }
+
+  /**
+   * Creates an in-memory, zero-socket typed `ContractClient` backed directly by
+   * `BunestApplication.fetch()` for a shared `defineContract()` definition.
+   */
+  createContractClient<TRoutes extends ContractTree>(
+    contract: TRoutes,
+    app: BunestApplication,
+    options?: ContractTestClientOptions,
+  ): ContractClient<TRoutes>;
+  createContractClient<TRoutes extends ContractTree>(
+    contract: TRoutes,
+    options?: CreateTestingAppOptions & ContractTestClientOptions,
+  ): ContractClient<TRoutes>;
+  createContractClient<TRoutes extends ContractTree>(
+    contract: TRoutes,
+    appOrOptions?:
+      | BunestApplication
+      | (CreateTestingAppOptions & ContractTestClientOptions),
+    clientOptions?: ContractTestClientOptions,
+  ): ContractClient<TRoutes> {
+    if (appOrOptions instanceof BunestApplication) {
+      return createContractTestClient(appOrOptions, contract, clientOptions);
+    }
+
+    const {
+      baseUrl,
+      headers,
+      timeout,
+      retry,
+      interceptors,
+      validateInput,
+      validateResponse,
+      ...appOptions
+    } = appOrOptions ?? {};
+    const app = this.createBunestApplication(appOptions);
+    return createContractTestClient(app, contract, {
+      baseUrl,
+      headers,
+      timeout,
+      retry,
+      interceptors,
+      validateInput,
+      validateResponse,
+    });
   }
 
   /**

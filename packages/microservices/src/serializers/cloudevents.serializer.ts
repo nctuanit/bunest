@@ -1,3 +1,4 @@
+import { isNonEmptyString, isObject, isString } from "@bunest/core/common";
 import { normalizePattern, type PatternInput } from "../interfaces";
 import type {
   Deserializer,
@@ -87,19 +88,23 @@ const utf8Decoder = new TextDecoder();
  * Type guard checking whether `value` conforms to the CloudEvents v1.0
  * structured JSON format (`specversion: "1.0"`, `id`, `source`, `type`).
  */
+function asString(value: unknown): string | undefined {
+  return isString(value) ? value : undefined;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return isNonEmptyString(value, false) ? value : undefined;
+}
+
 export function isCloudEvent(value: unknown): value is CloudEvent {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value)) {
     return false;
   }
-  const rec = value as Record<string, unknown>;
   return (
-    rec.specversion === CLOUD_EVENTS_SPEC_VERSION &&
-    typeof rec.id === "string" &&
-    rec.id.length > 0 &&
-    typeof rec.source === "string" &&
-    rec.source.length > 0 &&
-    typeof rec.type === "string" &&
-    rec.type.length > 0
+    value.specversion === CLOUD_EVENTS_SPEC_VERSION &&
+    isNonEmptyString(value.id, false) &&
+    isNonEmptyString(value.source, false) &&
+    isNonEmptyString(value.type, false)
   );
 }
 
@@ -194,47 +199,28 @@ export class CloudEventsSerializer implements Serializer<unknown, CloudEvent> {
         ? rawPattern
         : normalizePattern(rawPattern as PatternInput);
 
-    const id =
-      typeof rec?.id === "string" && rec.id.length > 0
-        ? rec.id
-        : this.idGenerator();
+    const id = asNonEmptyString(rec?.id) ?? this.idGenerator();
 
     const source =
-      typeof options?.source === "string" && options.source.length > 0
-        ? options.source
-        : typeof rec?.source === "string" && rec.source.length > 0
-          ? rec.source
-          : this.source;
+      asNonEmptyString(options?.source) ??
+      asNonEmptyString(rec?.source) ??
+      this.source;
 
     const dataContentType =
-      typeof options?.datacontenttype === "string"
-        ? options.datacontenttype
-        : this.dataContentType;
+      asString(options?.datacontenttype) ?? this.dataContentType;
 
-    const data = isPacket
-      ? "data" in rec!
-        ? rec!.data
-        : rec!.response
-      : value;
+    let data: unknown = value;
+    if (isPacket) {
+      data = "data" in rec! ? rec!.data : rec!.response;
+    }
 
     const traceparent =
       extractTraceHeader("traceparent", rec, options) ??
       this.getTraceparent?.();
     const tracestate = extractTraceHeader("tracestate", rec, options);
 
-    const subject =
-      typeof options?.subject === "string"
-        ? options.subject
-        : typeof rec?.subject === "string"
-          ? rec.subject
-          : undefined;
-
-    const replyTo =
-      typeof rec?.replyTo === "string"
-        ? rec.replyTo
-        : typeof options?.replyTo === "string"
-          ? options.replyTo
-          : undefined;
+    const subject = asString(options?.subject) ?? asString(rec?.subject);
+    const replyTo = asString(rec?.replyTo) ?? asString(options?.replyTo);
 
     const errorVal = rec?.error ?? rec?.err;
 
@@ -326,12 +312,7 @@ export class CloudEventsDeserializer implements Deserializer<
         ? { data: ce.data, cloudEvent: ce }
         : ce.data;
 
-    const replyTo =
-      typeof ce.replyto === "string"
-        ? ce.replyto
-        : typeof ce.replyTo === "string"
-          ? ce.replyTo
-          : undefined;
+    const replyTo = asString(ce.replyto) ?? asString(ce.replyTo);
 
     return {
       id: ce.id,

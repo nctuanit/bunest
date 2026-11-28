@@ -1,4 +1,8 @@
-import { timingSafeEqualBytes } from "@bunest/core";
+import {
+  definedOnly,
+  isString,
+  timingSafeEqualBytes,
+} from "@bunest/core/common";
 import { StorageSignedUrlError } from "../errors";
 import type {
   StorageSignedUrlClaims,
@@ -19,12 +23,11 @@ const PARAMS = {
 } as const;
 
 function toUrl(value: unknown): URL | undefined {
+  if (!(value instanceof URL) && !isString(value)) {
+    return undefined;
+  }
   try {
-    return value instanceof URL
-      ? new URL(value)
-      : typeof value === "string"
-        ? new URL(value)
-        : undefined;
+    return new URL(value);
   } catch {
     return undefined;
   }
@@ -155,15 +158,11 @@ export class UrlSigner {
       key,
       method: signedMethod,
       expiresAt: new Date(expires * 1000),
-      ...(single(PARAMS.contentType) !== undefined
-        ? { contentType: single(PARAMS.contentType) }
-        : {}),
-      ...(lengthText !== undefined
-        ? { contentLength: Number(lengthText) }
-        : {}),
-      ...(single(PARAMS.contentDisposition) !== undefined
-        ? { contentDisposition: single(PARAMS.contentDisposition) }
-        : {}),
+      ...definedOnly({
+        contentType: single(PARAMS.contentType),
+        contentLength: lengthText !== undefined ? Number(lengthText) : undefined,
+        contentDisposition: single(PARAMS.contentDisposition),
+      }),
     };
 
     const given = Buffer.from(signature, "base64url");

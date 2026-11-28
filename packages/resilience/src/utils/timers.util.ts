@@ -1,3 +1,5 @@
+import { clamp, sleep as coreSleep } from "@bunest/core/common";
+
 /**
  * The longest delay `setTimeout` supports: 2^31 - 1 ms, about 24.8 days.
  */
@@ -30,19 +32,5 @@ export function linkSignal(
 
 /** @internal `setTimeout` as a promise that rejects with `signal.reason` on abort. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimer(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+  return coreSleep(clamp(ms, 0, MAX_TIMER_DELAY), signal);
 }

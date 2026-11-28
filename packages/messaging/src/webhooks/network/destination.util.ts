@@ -1,4 +1,4 @@
-import { isIp as isIP } from "@bunest/core";
+import { isIp as isIP } from "@bunest/core/common";
 import type { AddressPolicy } from "./address.policy";
 
 const MAX_URL_LENGTH = 2_048;
@@ -60,11 +60,12 @@ export function checkDestination(
   if (host === "") {
     return { reason: "the URL has no host" };
   }
-  const literal = isIP(host)
-    ? host
-    : isLocalhostName(host)
-      ? "127.0.0.1"
-      : undefined;
+  let literal: string | undefined;
+  if (isIP(host)) {
+    literal = host;
+  } else if (isLocalhostName(host)) {
+    literal = "127.0.0.1";
+  }
   if (literal) {
     const verdict = policy.check(literal);
     if (!verdict.allowed) {

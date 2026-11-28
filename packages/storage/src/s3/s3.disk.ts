@@ -1,3 +1,4 @@
+import { concatBytes } from "@bunest/core/common";
 import { StorageDisk } from "../disks/storage.disk";
 import {
   StorageError,
@@ -128,11 +129,9 @@ export class S3Disk extends StorageDisk {
       process.env.AWS_DEFAULT_REGION ??
       "us-east-1";
 
-    this.endpoint = options.endpoint
-      ? options.endpoint instanceof URL
-        ? new URL(options.endpoint)
-        : new URL(options.endpoint)
-      : new URL(`https://s3.${this.region}.amazonaws.com`);
+    this.endpoint = new URL(
+      options.endpoint ?? `https://s3.${this.region}.amazonaws.com`,
+    );
 
     this.pathStyle =
       options.forcePathStyle === true ||
@@ -254,7 +253,12 @@ export class S3Disk extends StorageDisk {
     }
 
     if (done && bufferedBytes <= this.partSize) {
-      const data = Buffer.concat(buffered);
+      const merged = concatBytes(buffered);
+      const data = Buffer.from(
+        merged.buffer,
+        merged.byteOffset,
+        merged.byteLength,
+      );
       const url = this.objectUrl(key);
       const headers = this.writeHeaders(file);
       headers["content-length"] = String(data.byteLength);
@@ -345,7 +349,12 @@ export class S3Disk extends StorageDisk {
 
       const drainFullParts = async () => {
         while (pendingSize >= this.partSize) {
-          const combined = Buffer.concat(pendingChunks);
+          const merged = concatBytes(pendingChunks);
+          const combined = Buffer.from(
+            merged.buffer,
+            merged.byteOffset,
+            merged.byteLength,
+          );
           const partData = combined.subarray(0, this.partSize);
           const rest = combined.subarray(this.partSize);
           pendingChunks.length = 0;
@@ -366,7 +375,10 @@ export class S3Disk extends StorageDisk {
         await drainFullParts();
       }
       if (pendingSize > 0) {
-        await flushPart(Buffer.concat(pendingChunks));
+        const merged = concatBytes(pendingChunks);
+        await flushPart(
+          Buffer.from(merged.buffer, merged.byteOffset, merged.byteLength),
+        );
       }
       await Promise.all(inFlight);
 
