@@ -1,4 +1,5 @@
 import { Logger } from "@bunest/core";
+import { compareAsc as compare } from "@bunest/core/common";
 import type { RateWindowState } from "../core/interfaces/limits.interface";
 import { rateWindowRoom, takeRateWindow } from "../core/limits/limits";
 import { InMemoryScheduleStore } from "../core/scheduling/in-memory-schedule.store";
@@ -597,10 +598,6 @@ export class InMemoryWorkflowStore implements WorkflowStore {
 
 function copy<T>(value: T): T {
   return value === undefined ? value : structuredClone(value);
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 function slot(workflow: string, key?: string): string {

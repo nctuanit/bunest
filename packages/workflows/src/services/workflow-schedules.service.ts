@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@bunest/core";
+import { isDate } from "@bunest/core/common";
 import type { ScheduleRecord } from "../core/interfaces/schedule-store.interface";
 import {
   assertScheduleId,
@@ -213,12 +214,9 @@ export class WorkflowSchedules {
         `schedules.preview(): count (${count}) must be an integer from 1 to 1000.`,
       );
     }
-    const from =
-      options.from === undefined
-        ? this.clock.now()
-        : options.from instanceof Date
-          ? options.from.getTime()
-          : options.from;
+    const rawFrom =
+      options.from === undefined ? this.clock.now() : options.from;
+    const from = isDate(rawFrom) ? rawFrom.getTime() : rawFrom;
     if (typeof from !== "number" || !Number.isFinite(from)) {
       throw new TypeError(
         `schedules.preview(): invalid from ${String(options.from)}. Pass a valid Date or a timestamp in milliseconds.`,

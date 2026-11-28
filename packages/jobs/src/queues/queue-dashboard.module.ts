@@ -16,6 +16,7 @@ import {
   type DynamicModule,
   type Type,
 } from "@bunest/core";
+import { clamp, ensurePrefix, escapeHtml } from "@bunest/core/common";
 import type { Job, JobStatus, QueueCounts } from "./interfaces";
 import type { Queue } from "./queue";
 import { QueueRegistry } from "./queue.module";
@@ -111,8 +112,7 @@ function normalizeDashboardPath(path?: string): string {
   if (!raw || raw === "/") {
     return "/";
   }
-  const withLeading = raw.startsWith("/") ? raw : `/${raw}`;
-  return withLeading.replace(/\/+$/, "") || "/";
+  return ensurePrefix(raw, "/").replace(/\/+$/, "") || "/";
 }
 
 function safeDecodeURIComponent(value: string): string {
@@ -121,15 +121,6 @@ function safeDecodeURIComponent(value: string): string {
   } catch {
     return value;
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function serializeJob(job: Job<any, any>): QueueDashboardJobRecord {
@@ -524,7 +515,9 @@ export function renderQueueDashboardHtml(options: {
             nameEl.className = "queue-name";
             nameEl.textContent = q.name;
             const badge = document.createElement("span");
-            const state = q.isClosed ? "closed" : q.isPaused ? "paused" : "running";
+            let state = "running";
+            if (q.isClosed) state = "closed";
+            else if (q.isPaused) state = "paused";
             badge.className = "badge badge-" + state;
             badge.textContent = state;
             head.append(nameEl, badge);
@@ -803,7 +796,7 @@ function createQueueDashboardController(
       const parsedLimit =
         rawLimit !== undefined && rawLimit !== "" ? Number(rawLimit) : 50;
       const limit = Number.isFinite(parsedLimit)
-        ? Math.min(500, Math.max(0, Math.floor(parsedLimit)))
+        ? clamp(Math.floor(parsedLimit), 0, 500)
         : 50;
 
       const parsedOffset =

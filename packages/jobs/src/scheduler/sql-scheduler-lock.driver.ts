@@ -1,3 +1,4 @@
+import { isFiniteNumber } from "@bunest/core/common";
 import type { SchedulerLockDriver } from "./scheduler-lock";
 
 export type SchedulerLockSqlDialect = "postgres" | "mysql" | "sqlite";
@@ -258,13 +259,10 @@ interface NormalizedSqlResult<T = Record<string, unknown>> {
   readonly affectedRows: number;
 }
 
-function firstFiniteNumber(...values: ReadonlyArray<number | null | undefined>): number | undefined {
-  for (const v of values) {
-    if (typeof v === "number" && Number.isFinite(v)) {
-      return v;
-    }
-  }
-  return undefined;
+function firstFiniteNumber(
+  ...values: ReadonlyArray<number | null | undefined>
+): number | undefined {
+  return values.find(isFiniteNumber);
 }
 
 function normalizeSqlResult<T = Record<string, unknown>>(

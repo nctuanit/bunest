@@ -19,6 +19,17 @@ const CRON_PRESETS: Readonly<Record<string, string>> = {
   "@every_second": "* * * * * *",
 };
 
+const NATIVE_CRON_PRESETS: Readonly<Record<string, string>> = {
+  "@yearly": "@yearly",
+  "@annually": "@annually",
+  "@monthly": "@monthly",
+  "@weekly": "@weekly",
+  "@daily": "@daily",
+  "@midnight": "@midnight",
+  "@hourly": "@hourly",
+  "@every_minute": "* * * * *",
+};
+
 const MONTH_NAMES: Readonly<Record<string, number>> = {
   JAN: 1,
   FEB: 2,
@@ -84,6 +95,7 @@ function parseField(
 ): {
   values: number[];
   isWildcard: boolean;
+  hasWrapAround: boolean;
 } {
   const trimmed = rawField.trim();
   if (trimmed.length === 0) {
@@ -91,6 +103,7 @@ function parseField(
   }
 
   const isWildcard = trimmed === "*";
+  let hasWrapAround = false;
   const resultSet = new Set<number>();
 
   const parts = trimmed.split(",");
@@ -147,6 +160,7 @@ function parseField(
         }
       } else {
         // Wrap-around range (e.g. 22-2 for hours, FRI-MON for days of week)
+        hasWrapAround = true;
         const wrapStart = spec.allowSevenAsZero && start === 7 ? 0 : start;
         const wrapEnd = spec.allowSevenAsZero && end === 7 ? 0 : end;
         for (let v = wrapStart; v <= spec.max; v += 1) {
@@ -181,7 +195,7 @@ function parseField(
     );
   }
 
-  return { values, isWildcard };
+  return { values, isWildcard, hasWrapAround };
 }
 
 /**
@@ -195,7 +209,8 @@ export function parseCronExpression(expression: string): ParsedCronExpression {
     throw new CronExpressionError("Cron expression cannot be empty.");
   }
 
-  const preset = CRON_PRESETS[trimmed.toLowerCase()];
+  const lower = trimmed.toLowerCase();
+  const preset = CRON_PRESETS[lower];
   const normalized = preset ?? trimmed;
   const parts = normalized.split(/\s+/);
 
@@ -232,9 +247,26 @@ export function parseCronExpression(expression: string): ParsedCronExpression {
     allowSevenAsZero: true,
   });
 
+  const hasWrapAround =
+    seconds.hasWrapAround ||
+    minutes.hasWrapAround ||
+    hours.hasWrapAround ||
+    daysOfMonth.hasWrapAround ||
+    months.hasWrapAround ||
+    daysOfWeek.hasWrapAround;
+
+  let nativeExpression: string | undefined;
+  const nativePreset = NATIVE_CRON_PRESETS[lower];
+  if (nativePreset !== undefined) {
+    nativeExpression = nativePreset;
+  } else if (!hasSeconds && !hasWrapAround) {
+    nativeExpression = parts.join(" ");
+  }
+
   return {
     expression: trimmed,
     hasSeconds,
+    ...(nativeExpression !== undefined ? { nativeExpression } : {}),
     seconds: seconds.values,
     minutes: minutes.values,
     hours: hours.values,
@@ -244,6 +276,19 @@ export function parseCronExpression(expression: string): ParsedCronExpression {
     dayOfMonthWildcard: daysOfMonth.isWildcard,
     dayOfWeekWildcard: daysOfWeek.isWildcard,
   };
+}
+
+/**
+ * Returns `true` when `expression` can be evaluated and scheduled natively by
+ * Bun 1.4.5 `Bun.cron` / `Bun.cron.parse` (standard 5-field expressions without
+ * wrap-around ranges, or supported `@` nicknames).
+ */
+export function isNativeCronExpression(expression: string): boolean {
+  try {
+    return parseCronExpression(expression).nativeExpression !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 export function validateTimeZone(timeZone: string): void {
@@ -371,6 +416,12 @@ function daysInMonth(year: number, month: number): number {
 /**
  * Computes the next `Date` strictly after `fromDate` that matches the given
  * cron expression (optionally evaluated in an IANA `timeZone` or fixed `utcOffset`).
+ *
+ * Uses Bun 1.4.5's native `Bun.cron.parse(expr, fromDate, { tz })` fast-path for
+ * both `string` and `ParsedCronExpression` inputs whenever the expression is
+ * 5-field / native-nickname compatible (local timezone, IANA `timeZone`, or
+ * `utcOffset: 0`), falling back to the pure-TS evaluator for 6-field seconds,
+ * wrap-around ranges, and non-zero fixed `utcOffset`.
  */
 export function getNextCronDate(
   expressionOrParsed: string | ParsedCronExpression,
@@ -389,31 +440,59 @@ export function getNextCronDate(
     );
   }
 
+  let offsetMinutes: number | undefined;
   if (utcOffset !== undefined) {
-    const offsetMinutes = validateUtcOffset(utcOffset);
+    offsetMinutes = validateUtcOffset(utcOffset);
+  }
+  if (timeZone !== undefined) {
+    validateTimeZone(timeZone);
+  }
+
+  // Native Bun 1.4.5 fast-path for 5-field & nickname expressions (local, IANA tz, or UTC)
+  const nativeExpr = parsed.nativeExpression;
+  const canUseNative =
+    nativeExpr !== undefined &&
+    (offsetMinutes === undefined || offsetMinutes === 0) &&
+    typeof Bun !== "undefined" &&
+    typeof Bun.cron?.parse === "function";
+
+  if (canUseNative) {
+    const effectiveTz = timeZone ?? (offsetMinutes === 0 ? "UTC" : undefined);
+    let nativeResult: Date | null | undefined;
+    let nativeThrew = false;
+    try {
+      nativeResult =
+        effectiveTz !== undefined
+          ? Bun.cron.parse(nativeExpr, fromDate, { tz: effectiveTz })
+          : Bun.cron.parse(nativeExpr, fromDate);
+    } catch {
+      nativeThrew = true;
+    }
+
+    if (!nativeThrew) {
+      if (nativeResult === null) {
+        const tzSuffix =
+          timeZone !== undefined
+            ? ` in timeZone "${timeZone}"`
+            : offsetMinutes !== undefined
+              ? ` at utcOffset ${offsetMinutes}m`
+              : "";
+        throw new CronExpressionError(
+          `Cron expression "${parsed.expression}" has no matching date within 8 years${tzSuffix}.`,
+        );
+      }
+      if (nativeResult && nativeResult.getTime() > fromDate.getTime()) {
+        return nativeResult;
+      }
+    }
+  }
+
+  if (offsetMinutes !== undefined) {
     return getNextCronDateWithUtcOffset(parsed, fromDate, offsetMinutes);
   }
 
   if (timeZone !== undefined) {
-    validateTimeZone(timeZone);
     return getNextCronDateInTimeZone(parsed, fromDate, timeZone);
-  }
-
-  // Native Bun 1.4.5 fast-path for standard 5-field local-timezone cron expressions
-  if (
-    typeof expressionOrParsed === "string" &&
-    parsed.seconds.length === 1 &&
-    parsed.seconds[0] === 0 &&
-    expressionOrParsed.trim().split(/\s+/).length === 5
-  ) {
-    try {
-      const nativeNext = Bun.cron.parse(expressionOrParsed.trim(), fromDate);
-      if (nativeNext && nativeNext.getTime() > fromDate.getTime()) {
-        return nativeNext;
-      }
-    } catch {
-      // Fall through to pure-TS cron evaluator for extended syntax
-    }
   }
 
   const maxYear = fromDate.getFullYear() + 8;
@@ -482,6 +561,50 @@ export function getNextCronDate(
   throw new CronExpressionError(
     `Cron expression "${parsed.expression}" has no matching date within 8 years.`,
   );
+}
+
+/**
+ * Computes the next `count` upcoming `Date`s matching `expressionOrParsed`
+ * strictly after `fromDate` by chaining `getNextCronDate()` (powered by
+ * `Bun.cron.parse` for native-compatible expressions).
+ */
+export function getNextCronDates(
+  expressionOrParsed: string | ParsedCronExpression,
+  count: number,
+  fromDate: Date = new Date(),
+  timeZone?: string,
+  utcOffset?: number,
+): Date[] {
+  if (!Number.isInteger(count) || count < 0) {
+    throw new CronExpressionError(
+      `Invalid count "${String(count)}": expected a non-negative integer.`,
+    );
+  }
+  const parsed =
+    typeof expressionOrParsed === "string"
+      ? parseCronExpression(expressionOrParsed)
+      : expressionOrParsed;
+
+  if (timeZone !== undefined && utcOffset !== undefined) {
+    throw new CronExpressionError(
+      'Cannot specify both "timeZone" and "utcOffset" when computing next cron dates.',
+    );
+  }
+  if (timeZone !== undefined) {
+    validateTimeZone(timeZone);
+  }
+  if (utcOffset !== undefined) {
+    validateUtcOffset(utcOffset);
+  }
+
+  const dates: Date[] = [];
+  let cursor = fromDate;
+  for (let i = 0; i < count; i += 1) {
+    const next = getNextCronDate(parsed, cursor, timeZone, utcOffset);
+    dates.push(next);
+    cursor = next;
+  }
+  return dates;
 }
 
 function getNextCronDateWithUtcOffset(

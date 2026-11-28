@@ -4,6 +4,7 @@ import type {
   SubscribableObserver,
   Unsubscribable,
 } from "@bunest/core";
+import { isFunction } from "@bunest/core/common";
 import type { WorkflowEvent } from "./workflow-events.interface";
 import { channelFor } from "./workflows.channels";
 
@@ -63,20 +64,20 @@ class ZeroRxEventStream<T> implements Subscribable<T>, AsyncIterable<T> {
     error?: ((err: unknown) => void) | null,
     complete?: (() => void) | null,
   ): Unsubscribable {
-    const observer: SubscribableObserver<T> =
-      typeof observerOrNext === "function"
-        ? {
-            next: observerOrNext,
-            error: error ?? undefined,
-            complete: complete ?? undefined,
-          }
-        : observerOrNext
-          ? {
-              next: observerOrNext.next?.bind(observerOrNext),
-              error: observerOrNext.error?.bind(observerOrNext),
-              complete: observerOrNext.complete?.bind(observerOrNext),
-            }
-          : {};
+    let observer: SubscribableObserver<T> = {};
+    if (isFunction(observerOrNext)) {
+      observer = {
+        next: observerOrNext,
+        error: error ?? undefined,
+        complete: complete ?? undefined,
+      };
+    } else if (observerOrNext) {
+      observer = {
+        next: observerOrNext.next?.bind(observerOrNext),
+        error: observerOrNext.error?.bind(observerOrNext),
+        complete: observerOrNext.complete?.bind(observerOrNext),
+      };
+    }
 
     if (this.completed) {
       observer.complete?.();

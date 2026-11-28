@@ -1,5 +1,6 @@
 import { Logger } from "@bunest/core";
 import type {
+  CronEngine,
   CronOptions,
   CronTime,
   ParsedCronExpression,
@@ -13,6 +14,7 @@ import {
 import {
   CronExpressionError,
   getNextCronDate,
+  getNextCronDates,
   parseCronExpression,
   validateTimeZone,
   validateUtcOffset,
@@ -22,14 +24,19 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 const DEFAULT_THRESHOLD_MS = 250;
 
 /**
- * Scheduled cron job backed by self-rescheduling timers, supporting overlap
- * protection (`waitForCompletion`), distributed locking (`lock` in `"skip"` or
- * `"leader"` mode), IANA timezones, fixed `utcOffset`, `Date` one-shot
- * schedules, missed-deadline `threshold`, `unrefTimeout`, `initialDelay`,
- * and clean teardown.
+ * Scheduled cron job powered by Bun 1.4.5's native in-process `Bun.cron()`
+ * engine for 5-field / nickname schedules (with automatic fallback to
+ * self-rescheduling timers for 6-field seconds, wrap-around ranges, one-shot
+ * `Date` schedules, and non-zero fixed `utcOffset`).
+ *
+ * Supports overlap protection (`waitForCompletion`), distributed locking
+ * (`lock` in `"skip"` or `"leader"` mode), IANA timezones, fixed `utcOffset`,
+ * `Date` one-shot schedules, missed-deadline `threshold`, `unrefTimeout`,
+ * `ref()`/`unref()`, `Symbol.dispose`, `initialDelay`, and clean teardown.
  */
-export class CronJob {
+export class CronJob implements Disposable {
   public readonly name: string;
+  public readonly engine: "native" | "timer";
   public readonly parsed?: ParsedCronExpression;
   public readonly targetDate?: Date;
   public readonly timeZone?: string;
@@ -49,6 +56,9 @@ export class CronJob {
   private readonly logger = new Logger("CronJob");
 
   private timer?: ReturnType<typeof setTimeout>;
+  private nativeJob?: Bun.CronJob;
+  private expectedNativeFireMs?: number;
+  private currentUnref: boolean;
   private running = false;
   private inFlight = false;
   private activeTickPromise?: Promise<void>;
@@ -99,11 +109,14 @@ export class CronJob {
     this.utcOffset = options.utcOffset;
     this.waitForCompletion = options.waitForCompletion ?? false;
     this.unrefTimeout = options.unrefTimeout ?? options.unref ?? true;
+    this.currentUnref = this.unrefTimeout;
     this.threshold = options.threshold ?? DEFAULT_THRESHOLD_MS;
     this.initialDelay = options.initialDelay;
     this.disabled = options.disabled ?? false;
     this.onError = options.onError;
     this.onComplete = options.onComplete;
+
+    this.engine = this.resolveEngine(options.engine ?? "auto");
 
     if (options.lock && typeof options.lock === "object") {
       if (
@@ -130,6 +143,46 @@ export class CronJob {
     }
   }
 
+  private resolveEngine(requested: CronEngine): "native" | "timer" {
+    if (requested === "timer") {
+      return "timer";
+    }
+
+    const hasNativeApi =
+      typeof Bun !== "undefined" &&
+      typeof Bun.cron === "function" &&
+      typeof Bun.cron.parse === "function";
+    const nativeCompatible =
+      hasNativeApi &&
+      this.targetDate === undefined &&
+      this.parsed?.nativeExpression !== undefined &&
+      (this.utcOffset === undefined || this.utcOffset === 0);
+
+    if (nativeCompatible) {
+      return "native";
+    }
+
+    if (requested === "native") {
+      let reason = "unsupported schedule";
+      if (!hasNativeApi) {
+        reason = "Bun.cron is unavailable in this runtime";
+      } else if (this.targetDate !== undefined) {
+        reason = "one-shot Date schedules are not supported by Bun.cron";
+      } else if (this.utcOffset !== undefined && this.utcOffset !== 0) {
+        reason = `non-zero utcOffset (${this.utcOffset}) is not supported by Bun.cron (use an IANA timeZone instead)`;
+      } else if (this.parsed?.hasSeconds) {
+        reason = `6-field second-precision expression "${this.parsed.expression}" is not supported by Bun.cron`;
+      } else if (this.parsed) {
+        reason = `expression "${this.parsed.expression}" uses wrap-around syntax not supported by Bun.cron`;
+      }
+      throw new CronExpressionError(
+        `CronJob "${this.name}" requested engine="native", but ${reason}. Use engine="auto" or engine="timer", or switch to a standard 5-field expression.`,
+      );
+    }
+
+    return "timer";
+  }
+
   start(): void {
     if (this.running) {
       return;
@@ -142,12 +195,21 @@ export class CronJob {
       this.scheduleOneShotDate();
       return;
     }
+    if (this.engine === "native") {
+      this.startNative();
+      return;
+    }
     this.scheduleNext(new Date());
   }
 
   stop(): void {
     const wasRunning = this.running;
     this.running = false;
+    if (this.nativeJob !== undefined) {
+      this.nativeJob.stop();
+      this.nativeJob = undefined;
+      this.expectedNativeFireMs = undefined;
+    }
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
       this.timer = undefined;
@@ -160,6 +222,34 @@ export class CronJob {
     if (wasRunning && this.onComplete) {
       this.onComplete();
     }
+  }
+
+  /**
+   * Keeps the process event loop alive while this cron job is scheduled.
+   * Mirrors Bun's native `CronJob.ref()`.
+   */
+  ref(): this {
+    this.currentUnref = false;
+    this.nativeJob?.ref();
+    this.timer?.ref?.();
+    this.leaderRenewTimer?.ref?.();
+    return this;
+  }
+
+  /**
+   * Allows the process to exit naturally even while this cron job is scheduled.
+   * Mirrors Bun's native `CronJob.unref()`.
+   */
+  unref(): this {
+    this.currentUnref = true;
+    this.nativeJob?.unref();
+    this.timer?.unref?.();
+    this.leaderRenewTimer?.unref?.();
+    return this;
+  }
+
+  [Symbol.dispose](): void {
+    this.stop();
   }
 
   isRunning(): boolean {
@@ -195,6 +285,30 @@ export class CronJob {
       return new Date(this.targetDate.getTime());
     }
     return getNextCronDate(this.parsed!, from, this.timeZone, this.utcOffset);
+  }
+
+  /**
+   * Computes the next `count` upcoming fire dates for this cron job.
+   */
+  nextDates(count: number, from: Date = new Date()): Date[] {
+    if (this.targetDate !== undefined) {
+      if (!Number.isInteger(count) || count < 0) {
+        throw new CronExpressionError(
+          `Invalid count "${String(count)}": expected a non-negative integer.`,
+        );
+      }
+      if (count === 0 || this.targetDate.getTime() <= from.getTime()) {
+        return [];
+      }
+      return [new Date(this.targetDate.getTime())];
+    }
+    return getNextCronDates(
+      this.parsed!,
+      count,
+      from,
+      this.timeZone,
+      this.utcOffset,
+    );
   }
 
   fireOnce(): Promise<void> {
@@ -465,9 +579,83 @@ export class CronJob {
       }, diffMs);
     }
 
-    if (this.unrefTimeout) {
+    if (this.currentUnref) {
       this.timer.unref?.();
     }
+  }
+
+  private startNative(): void {
+    if (!this.running || !this.parsed?.nativeExpression) {
+      return;
+    }
+
+    const nativeExpr = this.parsed.nativeExpression;
+    const effectiveTz =
+      this.timeZone ?? (this.utcOffset === 0 ? "UTC" : undefined);
+    const nativeOpts = effectiveTz !== undefined ? { tz: effectiveTz } : undefined;
+
+    const firstNext = nativeOpts
+      ? Bun.cron.parse(nativeExpr, new Date(), nativeOpts)
+      : Bun.cron.parse(nativeExpr, new Date());
+
+    if (!firstNext) {
+      this.running = false;
+      this.stopLeadershipAndRelease();
+      throw new CronExpressionError(
+        `Cron expression "${this.parsed.expression}" has no matching date within 8 years${effectiveTz ? ` in timeZone "${effectiveTz}"` : ""}.`,
+      );
+    }
+
+    this.expectedNativeFireMs = firstNext.getTime();
+
+    let handle: Bun.CronJob;
+    try {
+      handle = Bun.cron(
+        nativeExpr,
+        () => {
+          if (!this.running) {
+            return;
+          }
+          const nowMs = Date.now();
+          const expectedMs = this.expectedNativeFireMs;
+          const nextRef = new Date(
+            expectedMs !== undefined ? Math.max(expectedMs, nowMs) : nowMs,
+          );
+          const nextFire = nativeOpts
+            ? Bun.cron.parse(nativeExpr, nextRef, nativeOpts)
+            : Bun.cron.parse(nativeExpr, nextRef);
+          this.expectedNativeFireMs = nextFire?.getTime();
+
+          if (expectedMs !== undefined) {
+            const missedBy = nowMs - expectedMs;
+            if (missedBy > this.threshold) {
+              this.skippedTicksCount += 1;
+              this.logger.warn(
+                `CronJob "${this.name}" (${this.parsed!.expression}) missed deadline by ${missedBy}ms (threshold=${this.threshold}ms); skipping tick.`,
+              );
+              return;
+            }
+          }
+
+          void this.fireOnce();
+        },
+        nativeOpts,
+      );
+    } catch (error) {
+      this.running = false;
+      this.expectedNativeFireMs = undefined;
+      this.stopLeadershipAndRelease();
+      throw new CronExpressionError(
+        `Failed to start native Bun.cron job "${this.name}" (${this.parsed.expression}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (this.currentUnref) {
+      handle.unref();
+    } else {
+      handle.ref();
+    }
+    this.nativeJob = handle;
   }
 
   private scheduleNext(reference: Date): void {
@@ -509,7 +697,7 @@ export class CronJob {
       }, delayMs);
     }
 
-    if (this.unrefTimeout) {
+    if (this.currentUnref) {
       this.timer.unref?.();
     }
   }

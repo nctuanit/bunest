@@ -264,14 +264,16 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     const runs =
       retimed && previous.buffered !== null ? previous.runs - 1 : previous.runs;
     const ended = limitReached(next.spec, runs);
+    let nextAt: number | null = null;
+    if (!ended) {
+      nextAt = retimed
+        ? nextOccurrence(next.spec, now)
+        : (previous.next ?? nextOccurrence(next.spec, now));
+    }
     const state: ScheduleState = {
       ...previous,
       runs,
-      next: ended
-        ? null
-        : retimed
-          ? nextOccurrence(next.spec, now)
-          : (previous.next ?? nextOccurrence(next.spec, now)),
+      next: nextAt,
       buffered: retimed ? null : previous.buffered,
     };
     return {
@@ -473,13 +475,11 @@ export class Scheduler<S extends ScheduleSpec = ScheduleSpec> {
     // code that starts takes the others over, and a running process one that no process confirms any more (the code
     // that declared it is gone) or an older version's.
     const by = stored.declaredBy ?? 0;
+    const versionBeats = at.startup
+      ? by <= schedule.version
+      : by < schedule.version;
     const takeOver =
-      !confirmed(current, at.now) ||
-      (sameTarget
-        ? at.startup
-          ? by <= schedule.version
-          : by < schedule.version
-        : at.startup);
+      !confirmed(current, at.now) || (sameTarget ? versionBeats : at.startup);
     return takeOver
       ? this.changed(current, {
           target: schedule.target,

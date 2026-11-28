@@ -1,10 +1,11 @@
 import { Module, type DynamicModule, type Provider } from "@bunest/core";
-import { SCHEDULE_MODULE_OPTIONS } from "./constants";
+import { OS_CRON_ADAPTER, SCHEDULE_MODULE_OPTIONS } from "./constants";
 import type {
   ScheduleModuleAsyncOptions,
   ScheduleModuleOptions,
   ScheduleModuleOptionsFactory,
 } from "./interfaces/scheduler.interface";
+import { createDefaultOsCronAdapter, OsCronService } from "./os-cron";
 import {
   InMemorySchedulerLockDriver,
   SCHEDULER_LOCK_DRIVER,
@@ -29,6 +30,8 @@ export class ScheduleModule {
     const resolvedOptions = withDefaultScheduleOptions(options);
     const lockDriver =
       resolvedOptions.lockDriver ?? new InMemorySchedulerLockDriver();
+    const osCronAdapter =
+      resolvedOptions.osCronAdapter ?? createDefaultOsCronAdapter();
     return {
       module: ScheduleModule,
       global: options.global ?? true,
@@ -41,13 +44,20 @@ export class ScheduleModule {
           provide: SCHEDULER_LOCK_DRIVER,
           useValue: lockDriver,
         },
+        {
+          provide: OS_CRON_ADAPTER,
+          useValue: osCronAdapter,
+        },
         SchedulerRegistry,
         SchedulerExplorer,
+        OsCronService,
       ],
       exports: [
         SCHEDULE_MODULE_OPTIONS,
         SCHEDULER_LOCK_DRIVER,
+        OS_CRON_ADAPTER,
         SchedulerRegistry,
+        OsCronService,
       ],
     };
   }
@@ -66,13 +76,22 @@ export class ScheduleModule {
             opts?.lockDriver ?? new InMemorySchedulerLockDriver(),
           inject: [SCHEDULE_MODULE_OPTIONS],
         },
+        {
+          provide: OS_CRON_ADAPTER,
+          useFactory: (opts: ScheduleModuleOptions) =>
+            opts?.osCronAdapter ?? createDefaultOsCronAdapter(),
+          inject: [SCHEDULE_MODULE_OPTIONS],
+        },
         SchedulerRegistry,
         SchedulerExplorer,
+        OsCronService,
       ],
       exports: [
         SCHEDULE_MODULE_OPTIONS,
         SCHEDULER_LOCK_DRIVER,
+        OS_CRON_ADAPTER,
         SchedulerRegistry,
+        OsCronService,
       ],
     };
   }

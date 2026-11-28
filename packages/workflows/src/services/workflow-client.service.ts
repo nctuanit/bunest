@@ -4,6 +4,7 @@ import {
   type BeforeApplicationShutdown,
   type Type,
 } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import type { ResultOutcome } from "../core/interfaces/result-waiter-options.interface";
 import { ResultWaiter } from "../core/results/result-waiter";
 import { systemClock } from "../core/time/clock";
@@ -271,11 +272,7 @@ export class WorkflowClient implements BeforeApplicationShutdown {
       );
     }
     const status =
-      filter.status === undefined
-        ? undefined
-        : Array.isArray(filter.status)
-          ? filter.status
-          : [filter.status];
+      filter.status === undefined ? undefined : toArray(filter.status);
     if (status?.length === 0 || limit === 0) {
       return [];
     }
@@ -519,11 +516,7 @@ export class WorkflowClient implements BeforeApplicationShutdown {
   async purge(options: WorkflowPurgeOptions): Promise<WorkflowPurgeResult> {
     const olderThan = parseDuration(options.olderThan);
     const statuses =
-      options.status === undefined
-        ? DEFAULT_PURGE
-        : Array.isArray(options.status)
-          ? options.status
-          : [options.status];
+      options.status === undefined ? DEFAULT_PURGE : toArray(options.status);
     const unfinished = statuses.filter((status) => !FINISHED.includes(status));
     if (statuses.length === 0 || unfinished.length > 0) {
       throw new TypeError(

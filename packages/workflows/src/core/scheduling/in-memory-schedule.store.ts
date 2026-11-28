@@ -1,3 +1,4 @@
+import { compareAsc as compare } from "@bunest/core/common";
 import type {
   ScheduleClaimRequest,
   ScheduleQuery,
@@ -132,8 +133,4 @@ export class InMemoryScheduleStore implements ScheduleStore {
 
 function copy<T>(value: T): T {
   return value === undefined ? value : structuredClone(value);
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }

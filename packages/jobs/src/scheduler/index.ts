@@ -2,6 +2,8 @@
 export {
   CRON_METADATA,
   INTERVAL_METADATA,
+  OS_CRON_ADAPTER,
+  OS_CRON_METADATA,
   SCHEDULE_MODULE_OPTIONS,
   TIMEOUT_METADATA,
 } from "./constants";
@@ -9,6 +11,8 @@ export { CronExpression } from "./enums/cron-expression.enum";
 export {
   CronExpressionError,
   getNextCronDate,
+  getNextCronDates,
+  isNativeCronExpression,
   parseCronExpression,
   validateTimeZone,
   validateUtcOffset,
@@ -17,11 +21,30 @@ export { CronJob } from "./cron/cron-job";
 export {
   Cron,
   Interval,
+  OsCron,
   Timeout,
   getCronMetadata,
   getIntervalMetadata,
+  getOsCronMetadata,
   getTimeoutMetadata,
 } from "./decorators/schedule.decorators";
+export {
+  OS_CRON_TITLE_PATTERN,
+  OsCronService,
+  bootstrapCronApplication,
+  createDefaultOsCronAdapter,
+  defineOsCronJob,
+  registerOsCronJob,
+  removeOsCronJob,
+  syncOsCronJobs,
+  validateOsCronSchedule,
+  validateOsCronTitle,
+  type DefineOsCronJobOptions,
+  type OsCronBootstrapOptions,
+  type OsCronBootstrapTarget,
+  type OsCronSyncOptions,
+  type OsCronSyncResult,
+} from "./os-cron";
 export { SchedulerRegistry, type SchedulerJobKind } from "./scheduler.registry";
 export {
   SchedulerExplorer,
@@ -57,11 +80,19 @@ export {
   type SqlSchedulerLockMigrationOptions,
 } from "./sql-scheduler-lock.driver";
 export type {
+  CronEngine,
   CronMetadata,
   CronOptions,
   CronTime,
   IntervalMetadata,
   IntervalOptions,
+  OsCronController,
+  OsCronHandler,
+  OsCronJobDefinition,
+  OsCronMetadata,
+  OsCronModuleExport,
+  OsCronOptions,
+  OsCronRuntimeAdapter,
   ParsedCronExpression,
   ScheduleModuleAsyncOptions,
   ScheduleModuleOptions,

@@ -1,3 +1,10 @@
+import {
+  base64UrlEncode,
+  isNull,
+  isTypeof,
+  isUndefined,
+  ternaryFor,
+} from "@bunest/core/common";
 import type {
   PayloadCodec,
   PayloadContext,
@@ -137,7 +144,7 @@ export class AesGcmPayloadCodec implements PayloadCodec {
     const out = new Uint8Array(header.byteLength + encrypted.byteLength);
     out.set(header, 0);
     out.set(encrypted, header.byteLength);
-    return `${this.current}.${Buffer.from(out.buffer, out.byteOffset, out.byteLength).toString("base64url")}`;
+    return `${this.current}.${base64UrlEncode(out)}`;
   }
 
   async decode(data: string, context: PayloadContext): Promise<unknown> {
@@ -206,14 +213,11 @@ function keyBytes(id: string, key: unknown): Uint8Array<ArrayBuffer> {
     }
     bytes = new Uint8Array(Buffer.from(text, "base64"));
   } else {
-    const what =
-      key === undefined
-        ? "undefined (an environment variable that isn't set?)"
-        : key === null
-          ? "null"
-          : typeof key === "object"
-            ? "an object"
-            : `a ${typeof key}`;
+    const what = ternaryFor(key)
+      .when(isUndefined, "undefined (an environment variable that isn't set?)")
+      .when(isNull, "null")
+      .when(isTypeof("object"), "an object")
+      .elseEval((v) => `a ${typeof v}`);
     throw new TypeError(
       `AesGcmPayloadCodec: key "${id}" is ${what}. ${advice}`,
     );

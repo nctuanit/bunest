@@ -1,3 +1,4 @@
+import { capitalize, toArray } from "@bunest/core/common";
 import type {
   ConcurrencyLimit,
   RateLimit,
@@ -59,10 +60,10 @@ export function resolveConcurrency<I = any>(
   owner: string,
   concurrency: ConcurrencyLimit<I> | ConcurrencyLimit<I>[],
 ): ResolvedConcurrency<I> {
-  const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
+  const limits = toArray(concurrency);
   if (limits.length === 0 || limits.length > 2) {
     throw new TypeError(
-      `${capitalized(owner)} has ${limits.length} concurrency limits. Give it one, or two: one without a key and one with.`,
+      `${capitalize(owner)} has ${limits.length} concurrency limits. Give it one, or two: one without a key and one with.`,
     );
   }
   const resolved: ResolvedConcurrency<I> = { limit: null, perKey: null };
@@ -80,7 +81,7 @@ export function resolveConcurrency<I = any>(
     const slot = key === undefined ? "limit" : "perKey";
     if (resolved[slot] !== null) {
       throw new TypeError(
-        `${capitalized(owner)} has two concurrency limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
+        `${capitalize(owner)} has two concurrency limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
       );
     }
     resolved[slot] = limit;
@@ -104,10 +105,10 @@ export function resolveRateLimit<I = any>(
   owner: string,
   rateLimit: RateLimit<I> | RateLimit<I>[],
 ): ResolvedRateLimit<I> {
-  const limits = Array.isArray(rateLimit) ? rateLimit : [rateLimit];
+  const limits = toArray(rateLimit);
   if (limits.length === 0 || limits.length > 2) {
     throw new TypeError(
-      `${capitalized(owner)} has ${limits.length} rate limits. Give it one, or two: one without a key and one with.`,
+      `${capitalize(owner)} has ${limits.length} rate limits. Give it one, or two: one without a key and one with.`,
     );
   }
   const resolved: ResolvedRateLimit<I> = { limit: null, perKey: null };
@@ -136,7 +137,7 @@ export function resolveRateLimit<I = any>(
     const slot = key === undefined ? "limit" : "perKey";
     if (resolved[slot] !== null) {
       throw new TypeError(
-        `${capitalized(owner)} has two rate limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
+        `${capitalize(owner)} has two rate limits ${key === undefined ? "without" : "with"} a key. Give it at most one of each.`,
       );
     }
     resolved[slot] = { max, duration: ms };
@@ -182,8 +183,4 @@ export function takeRateWindow(
   return window && window.windowEnd > now
     ? { windowEnd: window.windowEnd, count: window.count + count }
     : { windowEnd: now + duration, count };
-}
-
-function capitalized(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

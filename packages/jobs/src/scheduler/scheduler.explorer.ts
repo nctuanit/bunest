@@ -12,6 +12,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from "@bunest/core";
+import { isFunction, isObject } from "@bunest/core/common";
 import { SCHEDULE_MODULE_OPTIONS } from "./constants";
 import { CronJob } from "./cron/cron-job";
 import {
@@ -114,13 +115,13 @@ export class SchedulerExplorer
         continue;
       }
 
-      const ctor =
-        typeof wrapper.metatype === "function"
-          ? wrapper.metatype
-          : wrapper.instance && typeof wrapper.instance === "object"
-            ? wrapper.instance.constructor
-            : undefined;
-      if (typeof ctor !== "function" || ctor === Object) {
+      let ctor: unknown = isFunction(wrapper.metatype)
+        ? wrapper.metatype
+        : undefined;
+      if (!ctor && isObject(wrapper.instance)) {
+        ctor = (wrapper.instance as { constructor?: unknown }).constructor;
+      }
+      if (!isFunction(ctor) || ctor === Object) {
         continue;
       }
 
@@ -178,14 +179,13 @@ export class SchedulerExplorer
           cronMeta.options.lockDriver ??
           this.lockDriver ??
           this.moduleOptions.lockDriver;
+        const defaultLock = isObject(this.moduleOptions.defaultLock)
+          ? this.moduleOptions.defaultLock
+          : undefined;
         const effectiveLockConfig =
           cronMeta.options.lock === false
             ? undefined
-            : cronMeta.options.lock ??
-              (this.moduleOptions.defaultLock &&
-              typeof this.moduleOptions.defaultLock === "object"
-                ? this.moduleOptions.defaultLock
-                : undefined);
+            : (cronMeta.options.lock ?? defaultLock);
         const resolvedLock = effectiveLockConfig
           ? {
               ...effectiveLockConfig,
@@ -195,6 +195,8 @@ export class SchedulerExplorer
                 `${className}.${String(cronMeta.methodName)}`,
             }
           : undefined;
+        const resolvedEngine =
+          cronMeta.options.engine ?? this.moduleOptions.defaultEngine;
         const job = new CronJob(
           cronMeta.expression,
           this.wrapWithCleanCls("cron", name, () =>
@@ -203,6 +205,7 @@ export class SchedulerExplorer
           {
             ...cronMeta.options,
             name,
+            ...(resolvedEngine !== undefined ? { engine: resolvedEngine } : {}),
             lock: resolvedLock,
             ...(resolvedLockDriver ? { lockDriver: resolvedLockDriver } : {}),
           },

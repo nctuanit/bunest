@@ -1,4 +1,5 @@
 import { ContextStorage, Logger, type Type } from "@bunest/core";
+import { cond } from "@bunest/core/common";
 
 const nextMacrotask = () => Bun.sleep(0);
 const randomUUID = () => crypto.randomUUID();
@@ -620,11 +621,12 @@ export class WorkflowExecution {
     }
     this.assertAlive();
     this.checkWait(wait);
-    const deadline = entry
-      ? (entry.wakeAt ?? null)
-      : options.timeout !== undefined
-        ? this.deps.clock.now() + parseDuration(options.timeout)
-        : null;
+    let deadline: number | null = null;
+    if (entry) {
+      deadline = entry.wakeAt ?? null;
+    } else if (options.timeout !== undefined) {
+      deadline = this.deps.clock.now() + parseDuration(options.timeout);
+    }
     if (!entry) {
       this.stage({
         name,
@@ -1661,13 +1663,14 @@ export class WorkflowExecution {
   }
 
   private abortInterrupt(): WorkflowInterrupt {
-    return this.interrupt(
-      this.leaseLost
-        ? "lease-lost"
-        : this.storeError
-          ? "store-error"
-          : "shutdown",
+    const reason: InterruptReason = cond(
+      [
+        [this.leaseLost, "lease-lost" as const],
+        [Boolean(this.storeError), "store-error" as const],
+      ],
+      "shutdown" as const,
     );
+    return this.interrupt(reason);
   }
 
   private interrupt(reason: InterruptReason): WorkflowInterrupt {

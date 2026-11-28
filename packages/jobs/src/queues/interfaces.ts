@@ -6,6 +6,10 @@ import type {
   Scope,
   Type,
 } from "@bunest/core";
+import type {
+  SandboxedQueueWorkerOptions,
+  WorkerScriptTarget,
+} from "../workers/interfaces";
 
 export type JobStatus =
   "waiting" | "delayed" | "active" | "completed" | "failed" | "dead-letter";
@@ -817,6 +821,15 @@ export interface ProcessorOptions {
    * Optional concurrency override (Bunest shorthand).
    */
   readonly concurrency?: number;
+  /**
+   * Optional Bun Worker script path/URL to execute queue jobs off the main thread
+   * in a dedicated sandboxed `WorkerPool` (Bun-native BullMQ sandboxed processor parity).
+   */
+  readonly workerFile?: WorkerScriptTarget;
+  /**
+   * Optional tuning for the sandboxed `WorkerPool` spawned when `workerFile` is set.
+   */
+  readonly workerPool?: SandboxedQueueWorkerOptions;
 }
 
 export interface ProcessorMetadata {
@@ -826,6 +839,8 @@ export interface ProcessorMetadata {
   readonly configKey?: string;
   readonly concurrency?: number;
   readonly workerOptions?: NestWorkerOptions;
+  readonly workerFile?: WorkerScriptTarget;
+  readonly workerPool?: SandboxedQueueWorkerOptions;
 }
 
 export interface ProcessMethodMetadata {

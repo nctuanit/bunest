@@ -2,6 +2,7 @@ import { MetadataRegistry } from "@bunest/core";
 import {
   CRON_METADATA,
   INTERVAL_METADATA,
+  OS_CRON_METADATA,
   TIMEOUT_METADATA,
 } from "../constants";
 import type {
@@ -10,6 +11,8 @@ import type {
   CronTime,
   IntervalMetadata,
   IntervalOptions,
+  OsCronMetadata,
+  OsCronOptions,
   TimeoutMetadata,
   TimeoutOptions,
 } from "../interfaces/scheduler.interface";
@@ -196,6 +199,44 @@ function readMergedMethodMetadata<
   return out;
 }
 
+/**
+ * Declares an OS-level cron handler (`Bun.cron(path, schedule, title)`) on a
+ * provider method so `OsCronService.discoverDecoratedJobs()` and
+ * `bootstrapCronApplication(AppModule, { osCronTitle })` can discover and
+ * invoke it cleanly.
+ */
+export function OsCron(
+  schedule: string,
+  options: OsCronOptions = {},
+): MethodDecorator {
+  if (
+    options.title !== undefined &&
+    !/^[A-Za-z0-9_-]+$/.test(options.title.trim())
+  ) {
+    throw new Error(
+      `@OsCron() title "${options.title}" must contain only alphanumeric characters, hyphens, and underscores (/^[A-Za-z0-9_-]+$/).`,
+    );
+  }
+
+  return (
+    target: object,
+    propertyKey: string | symbol,
+    descriptor: PropertyDescriptor,
+  ) => {
+    const entry: OsCronMetadata = {
+      schedule,
+      methodName: propertyKey,
+      options: { ...options },
+    };
+    MetadataRegistry.prependOwnArray<OsCronMetadata>(
+      OS_CRON_METADATA,
+      [entry],
+      target.constructor,
+    );
+    return descriptor;
+  };
+}
+
 export function getCronMetadata(target: Function): CronMetadata[] {
   return readMergedMethodMetadata<CronMetadata>(CRON_METADATA, target);
 }
@@ -206,4 +247,8 @@ export function getIntervalMetadata(target: Function): IntervalMetadata[] {
 
 export function getTimeoutMetadata(target: Function): TimeoutMetadata[] {
   return readMergedMethodMetadata<TimeoutMetadata>(TIMEOUT_METADATA, target);
+}
+
+export function getOsCronMetadata(target: Function): OsCronMetadata[] {
+  return readMergedMethodMetadata<OsCronMetadata>(OS_CRON_METADATA, target);
 }

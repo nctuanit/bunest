@@ -1,3 +1,8 @@
+import {
+  computeBackoffDelay,
+  isFunction,
+  isOneOf,
+} from "@bunest/core/common";
 import type {
   BackoffSettings,
   ResolvedBackoff,
@@ -38,6 +43,24 @@ const DEFAULT_RETRY: ResolvedRetry = {
   backoff: DEFAULT_BACKOFF,
 };
 
+const JITTERS = ["full", "equal", "none"] as const;
+
+function resolveRetryBackoff(
+  backoff: RetrySettings["backoff"],
+  baseBackoff: ResolvedRetry["backoff"],
+): ResolvedRetry["backoff"] {
+  if (isFunction(backoff)) {
+    return (attempt, error) => parseDuration(backoff(attempt, error));
+  }
+  if (!backoff) {
+    return baseBackoff;
+  }
+  return resolveBackoff(
+    backoff,
+    isFunction(baseBackoff) ? DEFAULT_BACKOFF : baseBackoff,
+  );
+}
+
 /**
  * Checks `retry` (a count, `false` or `RetrySettings`) and resolves it over `base`, field by field: `undefined` is
  * `base`, `false` one attempt, a number the attempts. `base` defaults to the family's default: 3 attempts, 1s doubling
@@ -62,21 +85,10 @@ export function resolveRetry(
   if (typeof retry === "number") {
     return { ...base, attempts: attempts(retry) };
   }
-  const { backoff } = retry;
   return {
     attempts:
       retry.attempts === undefined ? base.attempts : attempts(retry.attempts),
-    backoff:
-      typeof backoff === "function"
-        ? (attempt, error) => parseDuration(backoff(attempt, error))
-        : backoff
-          ? resolveBackoff(
-              backoff,
-              typeof base.backoff === "function"
-                ? DEFAULT_BACKOFF
-                : base.backoff,
-            )
-          : base.backoff,
+    backoff: resolveRetryBackoff(retry.backoff, base.backoff),
     retryIf: retry.retryIf ?? base.retryIf,
   };
 }
@@ -95,18 +107,7 @@ export function backoffDelay(
   attempt: number,
   random: () => number = Math.random,
 ): number {
-  const wait = Math.min(
-    backoff.maxDelay,
-    backoff.delay * backoff.factor ** (attempt - 1),
-  );
-  switch (backoff.jitter) {
-    case "full":
-      return Math.floor(random() * wait);
-    case "equal":
-      return Math.floor(wait / 2 + random() * (wait / 2));
-    default:
-      return wait;
-  }
+  return computeBackoffDelay(backoff, attempt, random);
 }
 
 /**
@@ -156,7 +157,7 @@ function resolveBackoff(
     );
   }
   const jitter = backoff.jitter ?? base.jitter;
-  if (!(["full", "equal", "none"] as const).includes(jitter)) {
+  if (!isOneOf(JITTERS, jitter)) {
     throw new TypeError(
       `Invalid backoff jitter "${jitter}". Use "full", "equal" or "none".`,
     );

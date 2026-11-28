@@ -781,6 +781,30 @@ describe("core/scheduling/schedule-spec", () => {
         count: 2,
       }),
     ).toEqual([Date.UTC(2026, 9, 25, 0, 30), Date.UTC(2026, 9, 26, 1, 30)]);
+
+    // Every-minute cron in fall-back repeated hour skips the second pass (falls back to pure-TS)
+    const fallWildcard = parseSchedule({
+      cron: "* 2 * * *",
+      tz: "Europe/Warsaw",
+    });
+    expect(
+      nextOccurrences(fallWildcard, {
+        from: Date.UTC(2026, 9, 25, 0, 59), // 02:59 CEST (last minute of first 02:xx pass)
+        count: 1,
+      }),
+    ).toEqual([Date.UTC(2026, 9, 26, 1, 0)]); // skips 02:00 CET repeat, goes to next day 02:00 CET
+
+    // Vixie DOM_STAR step rule (`0 0 */2 * 1`: odd days that are Mondays) is preserved accurately
+    const domStarStep = parseSchedule({ cron: "0 0 */2 * 1" });
+    expect(
+      nextOccurrences(domStarStep, {
+        from: Date.UTC(2026, 5, 14, 0, 0),
+        count: 2,
+      }),
+    ).toEqual([
+      Date.UTC(2026, 5, 15, 0, 0), // Mon Jun 15 (odd)
+      Date.UTC(2026, 5, 29, 0, 0), // Mon Jun 29 (odd; skips Mon Jun 22 which is even)
+    ]);
   });
 
   it("validates schedule specs, ids, and occurrenceId formatting", () => {

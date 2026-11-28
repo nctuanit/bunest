@@ -1,3 +1,4 @@
+import { ensureError } from "@bunest/core/common";
 import { MemoryQueueDriver } from "./drivers/memory.driver";
 import type {
   FlowJob,
@@ -130,7 +131,7 @@ export class FlowProducer {
   }
 
   private emitError(err: unknown): void {
-    const error = err instanceof Error ? err : new Error(String(err));
+    const error = ensureError(err);
     const set = this.listeners.get("error");
     if (!set) return;
     for (const listener of [...set]) {

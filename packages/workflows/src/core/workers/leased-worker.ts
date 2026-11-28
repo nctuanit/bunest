@@ -1,4 +1,5 @@
 import { getHostname, Logger } from "@bunest/core";
+import { deferred } from "@bunest/core/common";
 import type { Clock } from "../interfaces/clock.interface";
 import type {
   LeasedRun,
@@ -8,6 +9,12 @@ import type {
 import { systemClock } from "../time/clock";
 import { parseDuration } from "../time/duration";
 import { setRepeatingTimer, setTimer } from "../utils/timer.util";
+
+const WORKER_STAGE_LABELS: Record<"claim" | "produce" | "execute", string> = {
+  claim: "Claiming",
+  produce: "Producing",
+  execute: "Executing",
+};
 
 /**
  * A claim-execute loop under leases, any number of processes sharing a store: it claims due items (as many as it has
@@ -181,10 +188,7 @@ export class LeasedWorker<T> {
    * reaction on its inputs until they settle, so a long-lived one would keep one per round.
    */
   private async untilStopped(work: Promise<unknown>): Promise<void> {
-    let stop!: () => void;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { promise: stopped, resolve: stop } = deferred<void>();
     if (this.stopped) {
       stop();
     }
@@ -296,7 +300,7 @@ export class LeasedWorker<T> {
       this.options.onError(error, stage);
     } else {
       this.logger.error(
-        `${stage === "claim" ? "Claiming" : stage === "produce" ? "Producing" : "Executing"} failed; the worker carries on.`,
+        `${WORKER_STAGE_LABELS[stage]} failed; the worker carries on.`,
         error,
       );
     }
@@ -377,10 +381,7 @@ class Run<T> implements LeasedRun {
   /** Asks for the renewal that goes out as soon as one can (`flush()`): its callers' answer. */
   private ask(): Promise<boolean> {
     if (!this.again) {
-      let resolve!: (held: boolean) => void;
-      const promise = new Promise<boolean>((resolved) => {
-        resolve = resolved;
-      });
+      const { promise, resolve } = deferred<boolean>();
       this.again = { promise, resolve };
     }
     return this.again.promise;

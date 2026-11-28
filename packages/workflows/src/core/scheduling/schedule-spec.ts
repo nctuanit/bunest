@@ -1,3 +1,4 @@
+import { isDate } from "@bunest/core/common";
 import type {
   ScheduleMissed,
   ScheduleOptions,
@@ -159,12 +160,8 @@ export function nextOccurrences(
       `${owner}: count (${count}) must be an integer from 1 to ${MAX_PREVIEW}.`,
     );
   }
-  const from =
-    options.from === undefined
-      ? Date.now()
-      : options.from instanceof Date
-        ? options.from.getTime()
-        : options.from;
+  const rawFrom = options.from === undefined ? Date.now() : options.from;
+  const from = isDate(rawFrom) ? rawFrom.getTime() : rawFrom;
   if (typeof from !== "number" || !Number.isFinite(from)) {
     throw new TypeError(
       `${owner}: invalid from ${String(options.from)}. Pass a valid Date or a timestamp in milliseconds.`,

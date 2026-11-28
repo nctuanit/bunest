@@ -1,6 +1,6 @@
 # @bunest/jobs
 
-Unified background job queues (native `QueueModule` + BullMQ-compatible `BullModule` / `WorkerHost` / `FlowProducer` + native `Bun.RedisClient` Lua driver) and hybrid cron/interval/timeout scheduler (`Bun.cron.parse` + DST-aware 6-field engine) for Bunest.
+Unified background job queues (native `QueueModule` + BullMQ-compatible `BullModule` / `WorkerHost` / `FlowProducer` + native `Bun.RedisClient` Lua driver), native Bun 1.4.5 cron/interval/timeout scheduler (`Bun.cron` in-process & OS-level + `Bun.cron.parse(..., { tz })` + DST-aware 6-field fallback engine), and multi-threaded Bun Workers pool for Bunest.
 
 Zero external runtime dependencies.
 
@@ -104,11 +104,70 @@ queue.on("error", (_job, err) => {
 - **Cooperative cancellation on lease loss:** When automatic lease renewal fails (`renewLease()` returns `false`), `Queue` emits `"lockRenewalFailed"` and aborts an `AbortSignal` passed as the optional 3rd argument `(job, token, signal)` (and also accessible as a non-enumerable `signal` property on `job`). Long-running handlers can check `signal?.aborted` or forward `signal` to `fetch()` / DB calls to stop work promptly.
 - **Transient outage recovery:** If Redis disconnects transiently, `pumpLoop()` emits `"error"` and retries with bounded exponential backoff (up to 5s) instead of permanently stalling the worker.
 
+## Multi-Threaded Bun Workers (`@bunest/jobs/workers`)
+
+Offload CPU-bound work onto native Bun Worker threads (zero `node:worker_threads`, zero external dependencies) with typed contracts, zero-copy `Transferable` payloads, CLS/`traceparent` propagation, declarative `@Offload()`, and sandboxed `@Processor({ workerFile })` queues:
+
+```ts
+// crypto.worker.ts
+import { defineWorker, defineWorkerContract, transferable } from "@bunest/jobs/workers";
+
+export const HashContract = defineWorkerContract<Uint8Array, Uint8Array>("sha256");
+
+export default defineWorker({
+  [HashContract.name]: (bytes) => {
+    const digest = new Bun.CryptoHasher("sha256").update(bytes).digest();
+    return transferable(digest, [digest.buffer]);
+  },
+});
+```
+
+```ts
+// app.module.ts
+import { Module } from "@bunest/core";
+import { WorkerModule } from "@bunest/jobs/workers";
+
+@Module({
+  imports: [
+    WorkerModule.forRoot({
+      defaultPoolOptions: { smol: false, unrefWhenIdle: true },
+    }),
+    WorkerModule.registerPool({
+      name: "crypto",
+      script: new URL("./crypto.worker.ts", import.meta.url),
+      maxThreads: 4,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+## Native Bun.cron Scheduler (`@bunest/jobs/scheduler`)
+
+`ScheduleModule` and `CronJob` integrate all three layers of Bun 1.4.5's `Bun.cron` API:
+
+- **`Bun.cron.parse(expr, from, { tz })`:** Automatic native fast-path for 5-field expressions, `@` nicknames, local timezone, IANA `timeZone`, and `utcOffset: 0` (plus `getNextCronDates()` / `job.nextDates()`).
+- **In-process `Bun.cron(expr, handler, { tz })`:** Used automatically when `engine: "auto"` (default) for 5-field / nickname jobs with `ref()`, `unref()`, `Symbol.dispose`, `waitForCompletion`, missed-deadline `threshold`, and distributed locks; automatically falls back to the pure-TS timer engine for 6-field seconds, wrap-around ranges, one-shot `Date` schedules, and non-zero `utcOffset`.
+- **OS-level `Bun.cron(path, schedule, title)` & `Bun.cron.remove(title)`:** Persistent `crontab` / `launchd` / Task Scheduler jobs via `defineOsCronJob()`, `bootstrapCronApplication()`, `@OsCron()`, `OsCronService`, `registerOsCronJob()`, `removeOsCronJob()`, `syncOsCronJobs()`, and the `bunest cron` CLI (`parse`, `register`, `remove`, `run`, `bunest generate cron`).
+
+```ts
+// src/jobs/weekly-report.cron.ts
+import { bootstrapCronApplication } from "@bunest/jobs/scheduler";
+import { AppModule } from "../app.module";
+import { ReportsService } from "../reports/reports.service";
+
+export default bootstrapCronApplication(AppModule, {
+  provider: ReportsService,
+  method: "generateWeekly",
+});
+```
+
 ## Subpath Exports
 
 | Subpath | Contents |
 | --- | --- |
-| `@bunest/jobs` | Re-exports queues + scheduler |
-| `@bunest/jobs/queues` | `Queue`, `QueueModule`, `BullModule`, `BullMQModule`, `WorkerHost`, `FlowProducer`, `MemoryQueueDriver`, `RedisQueueDriver`, decorators |
+| `@bunest/jobs` | Re-exports queues + scheduler + workers |
+| `@bunest/jobs/queues` | `Queue`, `QueueModule`, `BullModule`, `BullMQModule`, `WorkerHost`, `FlowProducer`, `MemoryQueueDriver`, `RedisQueueDriver`, decorators (including sandboxed `workerFile`) |
 | `@bunest/jobs/redis` | `RedisQueueDriver`, `createBunRedisQueueClient`, atomic Lua script constants |
-| `@bunest/jobs/scheduler` | `ScheduleModule`, `SchedulerRegistry`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression` |
+| `@bunest/jobs/scheduler` | `ScheduleModule`, `SchedulerRegistry`, `OsCronService`, `CronJob`, `@Cron`, `@OsCron`, `@Interval`, `@Timeout`, `CronExpression`, `defineOsCronJob`, `bootstrapCronApplication`, `registerOsCronJob`, `removeOsCronJob`, `syncOsCronJobs`, `getNextCronDate`, `getNextCronDates`, `isNativeCronExpression` |
+| `@bunest/jobs/workers` | `WorkerModule`, `WorkerPool`, `WorkerPoolRegistry`, `defineWorker`, `bootstrapWorkerApplication`, `defineWorkerContract`, `createInlineWorkerPool`, `InProcessWorkerPool`, `BunestWorkerCluster`, `@InjectWorkerPool`, `@WorkerHandler`, `@Offload`, `transferable` |

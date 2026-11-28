@@ -1,3 +1,4 @@
+import { compareAsc } from "@bunest/core/common";
 import type {
   WorkflowClaimRequest,
   WorkflowRateLimitRule,
@@ -43,16 +44,9 @@ export class RateWindowClaim {
     );
     this.windows = [...named.values()]
       .map(({ workflow, key }) => ({ workflow, key }))
-      .sort((a, b) =>
-        a.workflow < b.workflow
-          ? -1
-          : a.workflow > b.workflow
-            ? 1
-            : a.key < b.key
-              ? -1
-              : a.key > b.key
-                ? 1
-                : 0,
+      .sort(
+        (a, b) =>
+          compareAsc(a.workflow, b.workflow) || compareAsc(a.key, b.key),
       );
   }
 

@@ -21,6 +21,7 @@ import {
   getFlowProducerToken,
   getQueueToken,
 } from "./tokens";
+import { isJobContract, type JobContract } from "./job-contract";
 
 /**
  * Injects the `Queue` instance registered for `name` (defaults to `"default"`).
@@ -81,6 +82,12 @@ export function Processor(
       configKey: normalizedOptions.configKey,
       concurrency,
       workerOptions: maybeWorkerOptions,
+      ...(normalizedOptions.workerFile !== undefined
+        ? { workerFile: normalizedOptions.workerFile }
+        : {}),
+      ...(normalizedOptions.workerPool !== undefined
+        ? { workerPool: normalizedOptions.workerPool }
+        : {}),
     };
 
     MetadataRegistry.define<ProcessorMetadata>(
@@ -104,7 +111,21 @@ export function Processor(
  * (or the default catch-all handler when `jobName` is omitted).
  * Inheritance-safe (copy-on-write on target constructor).
  */
-export function Process(jobName?: string): MethodDecorator {
+export function Process(
+  jobNameOrContract?: string | JobContract<string, any, any>,
+): MethodDecorator {
+  let jobName: string | undefined;
+  if (jobNameOrContract === undefined) {
+    jobName = undefined;
+  } else if (typeof jobNameOrContract === "string") {
+    jobName = jobNameOrContract;
+  } else if (isJobContract(jobNameOrContract)) {
+    jobName = jobNameOrContract.name;
+  } else {
+    throw new Error(
+      "@Process() expects a job name string, a JobContract created with defineJobContract(), or no argument.",
+    );
+  }
   return (target: object, propertyKey: string | symbol) => {
     MetadataRegistry.appendOwnArray<ProcessMethodMetadata>(
       QUEUE_PROCESS_METADATA,

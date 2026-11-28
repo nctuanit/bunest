@@ -7,6 +7,13 @@ import {
   type ClsContextCarrier,
   type ClsServiceLike,
 } from "@bunest/core";
+import {
+  ensureError,
+  isNonEmptyString,
+  isObject,
+  isPlainObject,
+} from "@bunest/core/common";
+import { isJobContract, type JobContract } from "./job-contract";
 import { calculateBackoffDelay } from "./backoff";
 import { MemoryQueueDriver } from "./drivers/memory.driver";
 import type {
@@ -55,12 +62,8 @@ function getDefaultClsService(): ClsService {
   return sharedDefaultClsService;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+function asNonEmptyString(value: unknown): string | undefined {
+  return isNonEmptyString(value, false) ? value : undefined;
 }
 
 function extractJobClsCarrier(
@@ -72,21 +75,12 @@ function extractJobClsCarrier(
   }
 
   const rawCarrier = metadata[JOB_CLS_METADATA_KEY];
-  const topTraceparent =
-    typeof metadata.traceparent === "string" && metadata.traceparent.length > 0
-      ? metadata.traceparent
-      : undefined;
+  const topTraceparent = asNonEmptyString(metadata.traceparent);
 
   if (isPlainObject(rawCarrier) && isPlainObject(rawCarrier.values)) {
-    const clsId =
-      typeof rawCarrier.clsId === "string" && rawCarrier.clsId.length > 0
-        ? rawCarrier.clsId
-        : undefined;
+    const clsId = asNonEmptyString(rawCarrier.clsId);
     const carrierTraceparent =
-      typeof rawCarrier.traceparent === "string" &&
-      rawCarrier.traceparent.length > 0
-        ? rawCarrier.traceparent
-        : topTraceparent;
+      asNonEmptyString(rawCarrier.traceparent) ?? topTraceparent;
     return {
       ...(clsId !== undefined ? { clsId } : {}),
       ...(carrierTraceparent !== undefined
@@ -111,19 +105,13 @@ function extractJobTraceparent(job: Job<any, any>): string | undefined {
   if (!isPlainObject(metadata)) {
     return undefined;
   }
-  if (
-    typeof metadata.traceparent === "string" &&
-    metadata.traceparent.length > 0
-  ) {
-    return metadata.traceparent;
+  const direct = asNonEmptyString(metadata.traceparent);
+  if (direct !== undefined) {
+    return direct;
   }
   const rawCarrier = metadata[JOB_CLS_METADATA_KEY];
-  if (
-    isPlainObject(rawCarrier) &&
-    typeof rawCarrier.traceparent === "string" &&
-    rawCarrier.traceparent.length > 0
-  ) {
-    return rawCarrier.traceparent;
+  if (isPlainObject(rawCarrier)) {
+    return asNonEmptyString(rawCarrier.traceparent);
   }
   return undefined;
 }
@@ -298,6 +286,24 @@ export class Queue<TData = unknown, TResult = unknown> {
     this.triggerPump();
   }
 
+  /**
+   * Registers a strongly-typed job handler for a `JobContract` defined with `defineJobContract()`.
+   */
+  processContract<TPayload, TRes>(
+    contract: JobContract<string, TPayload, TRes>,
+    handler: JobHandler<TPayload, TRes>,
+  ): void {
+    if (!isJobContract(contract)) {
+      throw new Error(
+        `Queue "${this.name}" processContract() requires a JobContract created with defineJobContract().`,
+      );
+    }
+    this.process(
+      contract.name,
+      handler as unknown as JobHandler<TData, TResult>,
+    );
+  }
+
   on(
     event: BullMQQueueEventName,
     listener: QueueEventListener<TData, TResult>,
@@ -316,6 +322,80 @@ export class Queue<TData = unknown, TResult = unknown> {
     listener: QueueEventListener<TData, TResult>,
   ): void {
     this.listeners.get(event)?.delete(listener);
+  }
+
+  /**
+   * Enqueues a job using a strongly-typed `JobContract` defined with `defineJobContract()`.
+   * Validates `data` with `contract.schema` (Standard Schema v1) when provided and merges
+   * `contract.defaultOptions` with call-site `options`.
+   */
+  async addContract<TPayload, TRes>(
+    contract: JobContract<string, TPayload, TRes>,
+    data: TPayload,
+    options?: JobOptions,
+  ): Promise<Job<TPayload, TRes>> {
+    if (!isJobContract(contract)) {
+      throw new Error(
+        `Queue "${this.name}" addContract() requires a JobContract created with defineJobContract().`,
+      );
+    }
+
+    let validatedData = data;
+    if (contract.schema) {
+      const result = await contract.schema["~standard"].validate(data);
+      if (result.issues) {
+        const formatSegment = (seg: unknown): string =>
+          isObject(seg) && "key" in seg ? String(seg.key) : String(seg);
+        const summary =
+          result.issues.length === 0
+            ? "Validation failed"
+            : result.issues
+                .map((i) => {
+                  const path = i.path?.map(formatSegment).join(".");
+                  return path ? `${path}: ${i.message}` : i.message;
+                })
+                .join("; ");
+        throw new Error(
+          `Invalid payload for job contract "${contract.name}": ${summary}`,
+        );
+      }
+      validatedData = (result as { value: TPayload }).value;
+    }
+
+    let mergedOptions: JobOptions | undefined;
+    if (contract.defaultOptions || options) {
+      const base: Record<string, unknown> = contract.defaultOptions
+        ? { ...contract.defaultOptions }
+        : {};
+      if (options) {
+        for (const [key, value] of Object.entries(options)) {
+          if (value !== undefined) {
+            base[key] = value;
+          }
+        }
+        // Resolve alias precedence so call-site `delay` overrides default `delayMs`
+        // and call-site `tenantId` overrides default `groupId`.
+        if (options.delay !== undefined && options.delayMs === undefined) {
+          delete base.delayMs;
+        }
+        if (options.tenantId !== undefined && options.groupId === undefined) {
+          delete base.groupId;
+        }
+        if (contract.defaultOptions?.metadata || options.metadata) {
+          base.metadata = {
+            ...contract.defaultOptions?.metadata,
+            ...options.metadata,
+          };
+        }
+      }
+      mergedOptions = base as JobOptions;
+    }
+
+    return (await this.add(
+      contract.name,
+      validatedData as unknown as TData,
+      mergedOptions,
+    )) as unknown as Job<TPayload, TRes>;
   }
 
   /**
@@ -346,22 +426,14 @@ export class Queue<TData = unknown, TResult = unknown> {
         ? { ...options.childrenValues }
         : undefined;
 
-    const rawGroupId = options?.groupId ?? options?.tenantId;
-    const groupId =
-      typeof rawGroupId === "string" && rawGroupId.length > 0
-        ? rawGroupId
-        : undefined;
+    const groupId = asNonEmptyString(options?.groupId ?? options?.tenantId);
 
     const captureCls: ClsServiceLike | undefined =
       this.clsService ??
       (getAmbientClsStore() !== undefined ? getDefaultClsService() : undefined);
     const capturedCarrier = this.clsPropagator.capture(captureCls);
     const userMetadata = options?.metadata ? { ...options.metadata } : undefined;
-    const explicitTraceparent =
-      typeof userMetadata?.traceparent === "string" &&
-      userMetadata.traceparent.length > 0
-        ? userMetadata.traceparent
-        : undefined;
+    const explicitTraceparent = asNonEmptyString(userMetadata?.traceparent);
     const effectiveTraceparent =
       explicitTraceparent ??
       capturedCarrier.traceparent ??
@@ -369,18 +441,18 @@ export class Queue<TData = unknown, TResult = unknown> {
     const hasClsState =
       capturedCarrier.clsId !== undefined ||
       Object.keys(capturedCarrier.values).length > 0;
-    const effectiveCarrier: ClsContextCarrier | undefined =
-      hasClsState || effectiveTraceparent !== undefined
-        ? {
-            ...(capturedCarrier.clsId !== undefined
-              ? { clsId: capturedCarrier.clsId }
-              : {}),
-            ...(effectiveTraceparent !== undefined
-              ? { traceparent: effectiveTraceparent }
-              : {}),
-            values: capturedCarrier.values,
-          }
-        : undefined;
+    let effectiveCarrier: ClsContextCarrier | undefined;
+    if (hasClsState || effectiveTraceparent !== undefined) {
+      effectiveCarrier = {
+        ...(capturedCarrier.clsId !== undefined
+          ? { clsId: capturedCarrier.clsId }
+          : {}),
+        ...(effectiveTraceparent !== undefined
+          ? { traceparent: effectiveTraceparent }
+          : {}),
+        values: capturedCarrier.values,
+      };
+    }
 
     let metadata: Record<string, unknown> | undefined;
     if (userMetadata !== undefined || effectiveCarrier !== undefined) {
@@ -666,10 +738,12 @@ export class Queue<TData = unknown, TResult = unknown> {
           } catch (rawErr) {
             this.inFlightCount--;
             this.notifyDrainIfIdle();
-            const err =
-              rawErr instanceof Error ? rawErr : new Error(String(rawErr));
             this.pumpErrorCount++;
-            void this.emitEvent("error", this.createLifecycleJob(), err);
+            void this.emitEvent(
+              "error",
+              this.createLifecycleJob(),
+              ensureError(rawErr),
+            );
             this.schedulePumpRetry();
             break;
           }
@@ -680,10 +754,12 @@ export class Queue<TData = unknown, TResult = unknown> {
             try {
               await this.scheduleNextDelayedWakeup();
             } catch (rawErr) {
-              const err =
-                rawErr instanceof Error ? rawErr : new Error(String(rawErr));
               this.pumpErrorCount++;
-              void this.emitEvent("error", this.createLifecycleJob(), err);
+              void this.emitEvent(
+                "error",
+                this.createLifecycleJob(),
+                ensureError(rawErr),
+              );
               this.schedulePumpRetry();
               break;
             }
@@ -747,9 +823,7 @@ export class Queue<TData = unknown, TResult = unknown> {
             }
           })
           .catch((rawErr) => {
-            const err =
-              rawErr instanceof Error ? rawErr : new Error(String(rawErr));
-            void this.emitEvent("error", job, err);
+            void this.emitEvent("error", job, ensureError(rawErr));
           });
       }, renewEveryMs);
       if (typeof (leaseTimer as { unref?: () => void }).unref === "function") {
@@ -789,11 +863,7 @@ export class Queue<TData = unknown, TResult = unknown> {
           });
           await this.emitEvent("dead-letter", dlqJob, missingErr);
         } catch (dlqRawErr) {
-          const dlqErr =
-            dlqRawErr instanceof Error
-              ? dlqRawErr
-              : new Error(String(dlqRawErr));
-          await this.emitEvent("error", job, dlqErr);
+          await this.emitEvent("error", job, ensureError(dlqRawErr));
         }
         return;
       }
@@ -847,8 +917,7 @@ export class Queue<TData = unknown, TResult = unknown> {
           : await executeHandler();
       } catch (rawErr) {
         failed = true;
-        handlerErr =
-          rawErr instanceof Error ? rawErr : new Error(String(rawErr));
+        handlerErr = ensureError(rawErr);
       }
       const durationMs = Math.max(0, performance.now() - processStartMs);
 
@@ -877,11 +946,7 @@ export class Queue<TData = unknown, TResult = unknown> {
             await this.emitEvent("completed", completedJob, result);
           }
         } catch (ackRawErr) {
-          const ackErr =
-            ackRawErr instanceof Error
-              ? ackRawErr
-              : new Error(String(ackRawErr));
-          await this.emitEvent("error", job, ackErr);
+          await this.emitEvent("error", job, ensureError(ackRawErr));
         }
         return;
       }
@@ -920,20 +985,12 @@ export class Queue<TData = unknown, TResult = unknown> {
               try {
                 await this.scheduleNextDelayedWakeup();
               } catch (wakeupRawErr) {
-                const wakeupErr =
-                  wakeupRawErr instanceof Error
-                    ? wakeupRawErr
-                    : new Error(String(wakeupRawErr));
-                await this.emitEvent("error", job, wakeupErr);
+                await this.emitEvent("error", job, ensureError(wakeupRawErr));
               }
             }
           }
         } catch (nackRawErr) {
-          const nackErr =
-            nackRawErr instanceof Error
-              ? nackRawErr
-              : new Error(String(nackRawErr));
-          await this.emitEvent("error", job, nackErr);
+          await this.emitEvent("error", job, ensureError(nackRawErr));
         }
       } else {
         try {
@@ -962,11 +1019,7 @@ export class Queue<TData = unknown, TResult = unknown> {
             await this.emitEvent("dead-letter", dlqJob, err);
           }
         } catch (dlqRawErr) {
-          const dlqErr =
-            dlqRawErr instanceof Error
-              ? dlqRawErr
-              : new Error(String(dlqRawErr));
-          await this.emitEvent("error", job, dlqErr);
+          await this.emitEvent("error", job, ensureError(dlqRawErr));
         }
       }
     } finally {

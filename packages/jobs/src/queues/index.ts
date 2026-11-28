@@ -140,6 +140,17 @@ export {
 } from "./decorators";
 
 export {
+  JOB_CONTRACT_SYMBOL,
+  defineJobContract,
+  isJobContract,
+  type JobContract,
+  type JobContractOptions,
+  type JobOf,
+  type JobPayload,
+  type JobResult,
+} from "./job-contract";
+
+export {
   JOBS_ENQUEUE_CHANNEL,
   JOBS_PROCESS_CHANNEL,
   JOB_CLS_METADATA_KEY,

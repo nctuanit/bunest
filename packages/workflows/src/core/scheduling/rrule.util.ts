@@ -1,3 +1,4 @@
+import { cond, inRange } from "@bunest/core/common";
 import { fromWallTime, recentClockChange, toWallTime } from "./time-zone.util";
 
 const SECOND = 1_000;
@@ -611,9 +612,16 @@ function parseUntil(
       "UNTIL is a date, YYYYMMDD, or a date and time, YYYYMMDDTHHMMSS in the schedule's time zone or YYYYMMDDTHHMMSSZ in UTC",
     );
   }
+  const form: RRuleUntil["form"] = cond(
+    [
+      [match[4] === undefined, "date" as const],
+      [match[7] === "Z", "utc" as const],
+    ],
+    "local" as const,
+  );
   return {
     time: Date.UTC(year, month - 1, day, hour, minute, second),
-    form: match[4] === undefined ? "date" : match[7] === "Z" ? "utc" : "local",
+    form,
   };
 }
 
@@ -647,11 +655,10 @@ function numbers(
     return null;
   }
   const items = value.split(",");
-  const inRange = (item: string) =>
-    (signed ? /^[+-]?\d+$/ : /^\d+$/).test(item) &&
-    Math.abs(Number(item)) >= min &&
-    Math.abs(Number(item)) <= max;
-  if (!items.every(inRange)) {
+  const pattern = signed ? /^[+-]?\d+$/ : /^\d+$/;
+  const isValidItem = (item: string) =>
+    pattern.test(item) && inRange(Math.abs(Number(item)), min, max);
+  if (!items.every(isValidItem)) {
     fail(
       signed
         ? `use ${min} to ${max}, or -${max} to -${min} to count from the end`

@@ -16,10 +16,12 @@ import {
   type OnModuleDestroy,
   type Provider,
 } from "@bunest/core";
+import { isFunction, isObject } from "@bunest/core/common";
 import { MemoryQueueDriver } from "./drivers/memory.driver";
 import { QueueEvents, QueueEventsHost } from "./hosts/queue-events-host.class";
 import { WorkerHost } from "./hosts/worker-host.class";
 import { ProcessorDecoratorService } from "./instrument/processor-decorator.service";
+import { WorkerPool } from "../workers/worker-pool";
 import type {
   BullMQWorkerLike,
   Job,
@@ -94,13 +96,19 @@ function getAllLoadedWrappers(
 function resolveWrapperMetatype(
   wrapper: InstanceWrapper,
 ): Function | undefined {
-  if (wrapper.instance && typeof wrapper.instance === "object") {
-    const ctor = (wrapper.instance as { constructor?: Function }).constructor;
-    if (typeof ctor === "function") {
+  if (isObject(wrapper.instance)) {
+    const ctor = (wrapper.instance as { constructor?: unknown }).constructor;
+    if (isFunction(ctor)) {
       return ctor;
     }
   }
-  return typeof wrapper.metatype === "function" ? wrapper.metatype : undefined;
+  return isFunction(wrapper.metatype) ? wrapper.metatype : undefined;
+}
+
+function extractFailedReason(job: Job<any, any>, err: unknown): string {
+  return err instanceof Error
+    ? err.message
+    : (job.failedReason ?? String(err ?? ""));
 }
 
 function createQueueWorkerHandle(
@@ -176,13 +184,13 @@ function bindQueueToQueueEvents(
   );
   unbinders.push(
     queue.on("failed", (job, err) => {
-      const failedReason =
-        err instanceof Error
-          ? err.message
-          : (job.failedReason ?? String(err ?? ""));
       queueEvents.emit(
         "failed",
-        { jobId: job.id, failedReason, prev: "active" },
+        {
+          jobId: job.id,
+          failedReason: extractFailedReason(job, err),
+          prev: "active",
+        },
         nextId(),
       );
     }),
@@ -194,13 +202,9 @@ function bindQueueToQueueEvents(
   );
   unbinders.push(
     queue.on("dead-letter", (job, err) => {
-      const failedReason =
-        err instanceof Error
-          ? err.message
-          : (job.failedReason ?? String(err ?? ""));
       queueEvents.emit(
         "dead-letter",
-        { jobId: job.id, failedReason },
+        { jobId: job.id, failedReason: extractFailedReason(job, err) },
         nextId(),
       );
     }),
@@ -290,6 +294,7 @@ export class QueueRegistry {
 export class QueueExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly attachedUnbinders: Array<() => void> = [];
   private readonly queueEventsInstances: QueueEvents[] = [];
+  private readonly sandboxedPools: WorkerPool[] = [];
 
   constructor(
     @Optional() private readonly discoveryService: DiscoveryService | undefined,
@@ -460,6 +465,37 @@ export class QueueExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       }
     }
 
+    if (processorMeta.workerFile !== undefined) {
+      const poolOpts = processorMeta.workerPool ?? {};
+      const sandboxPool = new WorkerPool({
+        ...poolOpts,
+        name: `queue:${processorMeta.queueName}`,
+        script: processorMeta.workerFile,
+        maxThreads: poolOpts.maxThreads ?? concurrency ?? undefined,
+      });
+      this.sandboxedPools.push(sandboxPool);
+
+      const sandboxHandler = decorate(async (job: Job<any, any>) => {
+        const taskName = poolOpts.taskName ?? job.name;
+        return await sandboxPool.run(taskName, job.data, {
+          ...(job.timeoutMs !== undefined ? { timeoutMs: job.timeoutMs } : {}),
+        });
+      });
+
+      if (processMetas.length > 0) {
+        for (const meta of processMetas) {
+          if (meta.jobName !== undefined) {
+            queue.process(meta.jobName, sandboxHandler);
+          } else {
+            queue.process(sandboxHandler);
+          }
+        }
+      } else {
+        queue.process(sandboxHandler);
+      }
+      return;
+    }
+
     if (processMetas.length > 0) {
       for (const meta of processMetas) {
         const fn = (instance as Record<string | symbol, unknown>)[
@@ -530,6 +566,11 @@ export class QueueExplorer implements OnApplicationBootstrap, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     // Phase 1: drain active workers while queues remain open.
     await this.registry.closeAllWorkers();
+    if (this.sandboxedPools.length > 0) {
+      await Promise.allSettled(
+        this.sandboxedPools.splice(0).map((pool) => pool.close()),
+      );
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {

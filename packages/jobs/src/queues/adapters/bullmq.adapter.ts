@@ -21,6 +21,7 @@ import {
   type Provider,
   type Type,
 } from "@bunest/core";
+import { isFunction, isObject, isString } from "@bunest/core/common";
 import { MemoryQueueDriver } from "../drivers/memory.driver";
 import { FlowProducer } from "../flow-producer";
 import { QueueEvents, QueueEventsHost } from "../hosts/queue-events-host.class";
@@ -248,13 +249,69 @@ function getAllLoadedWrappers(
 function resolveWrapperMetatype(
   wrapper: InstanceWrapper,
 ): Function | undefined {
-  if (wrapper.instance && typeof wrapper.instance === "object") {
-    const ctor = (wrapper.instance as { constructor?: Function }).constructor;
-    if (typeof ctor === "function") {
+  if (isObject(wrapper.instance)) {
+    const ctor = (wrapper.instance as { constructor?: unknown }).constructor;
+    if (isFunction(ctor)) {
       return ctor;
     }
   }
-  return typeof wrapper.metatype === "function" ? wrapper.metatype : undefined;
+  return isFunction(wrapper.metatype) ? wrapper.metatype : undefined;
+}
+
+function extractBullJobId(rawJob: BullMQJobLike | string | undefined): string {
+  if (!rawJob) {
+    return "";
+  }
+  if (isString(rawJob)) {
+    return rawJob;
+  }
+  return String(rawJob.id ?? rawJob.opts?.jobId ?? "");
+}
+
+function toBullEventJob(
+  queueName: string,
+  event: QueueEventName | string,
+  rawJob: BullMQJobLike | string | undefined,
+): Job<unknown, unknown> {
+  if (rawJob && !isString(rawJob)) {
+    return normalizeBullJobSync(queueName, rawJob);
+  }
+  const now = Date.now();
+  return {
+    id: isString(rawJob) ? rawJob : "",
+    queueName,
+    name: "",
+    data: undefined,
+    priority: 0,
+    maxAttempts: 1,
+    attemptsMade: 0,
+    status: event === "completed" ? "completed" : "active",
+    removeOnComplete: false,
+    createdAt: now,
+    processAfter: now,
+    stacktrace: [],
+  };
+}
+
+function extractFailedReason(job: Job<unknown, unknown>, err: unknown): string {
+  return err instanceof Error
+    ? err.message
+    : (job.failedReason ?? String(err ?? ""));
+}
+
+function instantiateFlowProducer(
+  customClass: Type<unknown> | undefined,
+  merged: RegisterFlowProducerOptions,
+  registry: QueueRegistry | undefined,
+  rootDriver: QueueDriver | undefined,
+): unknown {
+  if (!customClass) {
+    return new FlowProducer(merged, registry, rootDriver);
+  }
+  const backendFactory = (merged as Record<string, unknown>).backendFactory;
+  return backendFactory !== undefined
+    ? new customClass(merged, backendFactory)
+    : new customClass(merged);
 }
 
 function isAdvancedProcessor(
@@ -342,13 +399,13 @@ function bridgeQueueToQueueEvents(
   );
   unbinders.push(
     queue.on("failed", (job, err) => {
-      const failedReason =
-        err instanceof Error
-          ? err.message
-          : (job.failedReason ?? String(err ?? ""));
       queueEvents.emit(
         "failed",
-        { jobId: job.id, failedReason, prev: "active" },
+        {
+          jobId: job.id,
+          failedReason: extractFailedReason(job, err),
+          prev: "active",
+        },
         nextId(),
       );
     }),
@@ -360,13 +417,9 @@ function bridgeQueueToQueueEvents(
   );
   unbinders.push(
     queue.on("dead-letter", (job, err) => {
-      const failedReason =
-        err instanceof Error
-          ? err.message
-          : (job.failedReason ?? String(err ?? ""));
       queueEvents.emit(
         "dead-letter",
-        { jobId: job.id, failedReason },
+        { jobId: job.id, failedReason: extractFailedReason(job, err) },
         nextId(),
       );
     }),
@@ -1235,23 +1288,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
       ) => {
         const listeners = eventHandlers.get(event);
         if (listeners && listeners.length > 0) {
-          const job: Job<unknown, unknown> =
-            rawJob && typeof rawJob === "object"
-              ? normalizeBullJobSync(queueName, rawJob)
-              : {
-                  id: typeof rawJob === "string" ? rawJob : "",
-                  queueName,
-                  name: "",
-                  data: undefined,
-                  priority: 0,
-                  maxAttempts: 1,
-                  attemptsMade: 0,
-                  status: event === "completed" ? "completed" : "active",
-                  removeOnComplete: false,
-                  createdAt: Date.now(),
-                  processAfter: Date.now(),
-                  stacktrace: [],
-                };
+          const job = toBullEventJob(queueName, event, rawJob);
 
           for (const listener of listeners) {
             try {
@@ -1263,12 +1300,7 @@ export class BullMQExplorer implements OnApplicationBootstrap, OnModuleDestroy {
         }
 
         // Also forward to any @QueueEventsListener for this queue
-        const jobId =
-          rawJob && typeof rawJob === "object"
-            ? String(rawJob.id ?? rawJob.opts?.jobId ?? "")
-            : typeof rawJob === "string"
-              ? rawJob
-              : "";
+        const jobId = extractBullJobId(rawJob);
         if (event === "completed") {
           this.emitToQueueEvents(queueName, "completed", {
             jobId,
@@ -2102,13 +2134,12 @@ export class BullModule {
             ...config,
             name: config.name ?? name,
           };
-          const backendFactory = (merged as Record<string, unknown>)
-            .backendFactory;
-          const producer: unknown = BullModule._flowProducerClass
-            ? backendFactory !== undefined
-              ? new BullModule._flowProducerClass(merged, backendFactory)
-              : new BullModule._flowProducerClass(merged)
-            : new FlowProducer(merged, registry, rootDriver);
+          const producer = instantiateFlowProducer(
+            BullModule._flowProducerClass,
+            merged,
+            registry,
+            rootDriver,
+          );
           if (
             typeof producer === "object" &&
             producer !== null &&
@@ -2202,13 +2233,12 @@ export class BullModule {
             ...resolvedOpts,
             name: resolvedOpts?.name ?? name,
           };
-          const backendFactory = (merged as Record<string, unknown>)
-            .backendFactory;
-          const producer: unknown = BullModule._flowProducerClass
-            ? backendFactory !== undefined
-              ? new BullModule._flowProducerClass(merged, backendFactory)
-              : new BullModule._flowProducerClass(merged)
-            : new FlowProducer(merged, registry, rootDriver);
+          const producer = instantiateFlowProducer(
+            BullModule._flowProducerClass,
+            merged,
+            registry,
+            rootDriver,
+          );
           if (
             typeof producer === "object" &&
             producer !== null &&

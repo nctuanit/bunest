@@ -5,6 +5,7 @@ import {
   type Type,
 } from "@bunest/core";
 import { DiscoveryModule, ModuleRef } from "@bunest/core";
+import { toArray } from "@bunest/core/common";
 import { WorkflowEvents } from "./events/workflow-events.service";
 import type { WorkflowPayloadCodec } from "./interfaces/workflow-payload-codec.interface";
 import type { WorkflowsModuleOptions } from "./interfaces/workflows-module-options.interface";
@@ -72,12 +73,7 @@ function payloadCodecs(
   options: WorkflowsModuleOptions,
   moduleRef: ModuleRef,
 ): Promise<WorkflowPayloadCodec[]> {
-  const codecs =
-    options.codec === undefined
-      ? []
-      : Array.isArray(options.codec)
-        ? options.codec
-        : [options.codec];
+  const codecs = toArray(options.codec);
   return Promise.all(
     codecs.map((codec) =>
       typeof codec === "function"

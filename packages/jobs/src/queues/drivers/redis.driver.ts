@@ -1,3 +1,4 @@
+import { ensureError, isString } from "@bunest/core/common";
 import type {
   Job,
   JobStatus,
@@ -74,7 +75,7 @@ function formatError(error: Error | string): {
   message: string;
   stack?: string;
 } {
-  if (typeof error === "string") {
+  if (isString(error)) {
     return { message: error };
   }
   return {
@@ -276,8 +277,7 @@ export class RedisQueueDriver implements QueueDriver {
       try {
         return await this.redis.evalsha(sha, keys.length, ...keys, ...args);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes("NOSCRIPT")) {
+        if (!ensureError(err).message.includes("NOSCRIPT")) {
           throw err;
         }
         this.scriptShas.delete(script);

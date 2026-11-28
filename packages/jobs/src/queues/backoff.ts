@@ -1,3 +1,4 @@
+import { clamp } from "@bunest/core/common";
 import type { BackoffOptions } from "./interfaces";
 
 /**
@@ -28,7 +29,7 @@ export function calculateBackoffDelay(
   if (backoff.jitter) {
     const ratio =
       typeof backoff.jitter === "number"
-        ? Math.min(1, Math.max(0, backoff.jitter))
+        ? clamp(backoff.jitter, 0, 1)
         : 0.25;
     const spread = delay * ratio;
     delay = delay - spread + randomFn() * spread * 2;

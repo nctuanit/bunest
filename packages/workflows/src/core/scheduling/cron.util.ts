@@ -101,6 +101,44 @@ const DAYS_OF_WEEK: FieldSpec = {
     "days of the week are 0-7 (0 and 7 are Sunday) or SUN-SAT, nL (5L is the last Friday) or n#k (1#1 is the first Monday)",
 };
 
+const NATIVE_CRON_EXPR = new WeakMap<CronExpression, string>();
+
+const UTC_ZONES = new Set(["UTC", "Etc/UTC", "Etc/GMT", "GMT"]);
+
+function toNativeWorkflowCronExpression(
+  trimmed: string,
+  fields: readonly string[],
+  cron: CronExpression,
+): string | undefined {
+  // Only 5-field expressions or Bun's 7 nicknames are natively supported
+  if (fields.length !== 5) {
+    return undefined;
+  }
+  if (
+    cron.lastDayOfMonth ||
+    cron.lastWeekdays.length > 0 ||
+    cron.nthWeekdays.length > 0
+  ) {
+    return undefined;
+  }
+  // Bun.cron.parse does not support `?` placeholders
+  if (fields.some((f) => f.includes("?"))) {
+    return undefined;
+  }
+  // Avoid Vixie DOM_STAR/DOW_STAR step discrepancy (`0 0 */2 * 1`) with POSIX OR
+  const [domField, , dowField] = [fields[2]!, fields[3]!, fields[4]!];
+  if (
+    (domField.startsWith("*/") && dowField !== "*") ||
+    (dowField.startsWith("*/") && domField !== "*")
+  ) {
+    return undefined;
+  }
+  if (trimmed.startsWith("@")) {
+    return trimmed.toLowerCase();
+  }
+  return fields.join(" ");
+}
+
 /**
  * Parses 5 fields (minute hour day-of-month month day-of-week) or 6 (second first), whitespace-separated, or a
  * nickname (`@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily`, `@midnight`, `@hourly`). A field is a list
@@ -163,6 +201,10 @@ export function parseCron(expression: string): CronExpression {
       `Invalid cron expression "${expression}": it never matches${neverReason(cron)}.`,
     );
   }
+  const nativeExpr = toNativeWorkflowCronExpression(trimmed, fields, cron);
+  if (nativeExpr !== undefined) {
+    NATIVE_CRON_EXPR.set(cron, nativeExpr);
+  }
   return cron;
 }
 
@@ -177,6 +219,26 @@ export function nextCron(
   after: number,
   tz: string,
 ): number | null {
+  // Native Bun 1.4.5 `Bun.cron.parse` fast-path where DST & field semantics are identical:
+  // UTC has no DST; in DST zones, fixed-time schedules (neither minute nor hour wildcard)
+  // match Bun's spring-forward shift and single fall-back pass identically.
+  const nativeExpr = NATIVE_CRON_EXPR.get(cron);
+  if (
+    nativeExpr !== undefined &&
+    typeof Bun !== "undefined" &&
+    typeof Bun.cron?.parse === "function" &&
+    (UTC_ZONES.has(tz) ||
+      (cron.minutes.length < 60 && cron.hours.length < 24))
+  ) {
+    try {
+      const nativeNext = Bun.cron.parse(nativeExpr, after, { tz });
+      if (nativeNext !== null && nativeNext.getTime() > after) {
+        return nativeNext.getTime();
+      }
+    } catch {
+      // Fall through to pure-TS 50-year evaluator
+    }
+  }
   // Right after clocks went forward, a skipped wall time that lands later is still ahead, though its wall time is
   // before `after`'s: search from as far back as they jumped.
   const from =
@@ -375,13 +437,14 @@ function parseList(
       fail("a step of 0 never moves; use a positive one, such as */15");
     }
     const from = any ? field.min : parseValue(low!, field, fail);
-    const to = any
-      ? field.max
-      : high !== undefined
-        ? parseValue(high, field, fail)
-        : step !== undefined
-          ? field.max
-          : from;
+    let to: number;
+    if (any || (high === undefined && step !== undefined)) {
+      to = field.max;
+    } else if (high !== undefined) {
+      to = parseValue(high, field, fail);
+    } else {
+      to = from;
+    }
     if (from > to) {
       fail(`the range ${low}-${high} is reversed; put the lower bound first`);
     }

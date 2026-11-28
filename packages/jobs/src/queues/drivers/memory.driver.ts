@@ -1,3 +1,4 @@
+import { isString } from "@bunest/core/common";
 import type {
   Job,
   JobStatus,
@@ -37,7 +38,7 @@ function formatError(error: Error | string): {
   message: string;
   stack?: string;
 } {
-  if (typeof error === "string") {
+  if (isString(error)) {
     return { message: error };
   }
   return {
