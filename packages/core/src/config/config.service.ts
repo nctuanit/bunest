@@ -1,4 +1,10 @@
-import { Inject, Injectable, Optional } from "../common/index";
+import {
+  Inject,
+  Injectable,
+  isFunction,
+  isPlainObject,
+  Optional,
+} from "../common/index";
 import { CONFIG_OPTIONS_TOKEN, CONFIG_STORE_TOKEN } from "./constants";
 import {
   expandSingleEnvValue,
@@ -53,14 +59,6 @@ const BUILTIN_PROTOTYPES = new Set<object>(
     typeof Buffer !== "undefined" ? Buffer.prototype : undefined,
   ].filter((p): p is object => p != null),
 );
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
 
 function hasSafeProperty(target: unknown, key: string): boolean {
   if (target === null || target === undefined || DANGEROUS_KEYS.has(key)) {
@@ -295,13 +293,9 @@ export class ConfigService<
           | ConfigObserver<ConfigChangeEvent<any, any>>
           | ((value: ConfigChangeEvent<any, any>) => void),
       ): ConfigSubscription => {
-        const listener =
-          typeof observerOrNext === "function"
-            ? observerOrNext
-            : observerOrNext?.next
-              ? (event: ConfigChangeEvent<any, any>) =>
-                  observerOrNext.next!(event)
-              : undefined;
+        const listener = isFunction(observerOrNext)
+          ? observerOrNext
+          : observerOrNext?.next?.bind(observerOrNext);
 
         if (!listener) {
           return { unsubscribe() {} };

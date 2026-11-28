@@ -70,6 +70,15 @@ import {
 } from "../router/router.module";
 import { BunestApplicationContext } from "./bunest-application-context";
 
+const ENHANCER_TOKEN_LABELS: Record<string, string> = {
+  APP_FILTER: "exception filter",
+  MODULE_FILTER: "exception filter",
+  APP_GUARD: "guard",
+  MODULE_GUARD: "guard",
+  APP_PIPE: "pipe",
+  MODULE_PIPE: "pipe",
+};
+
 export interface DevDiagnosticsOptions {
   /** URL prefix for dev diagnostics endpoints (default: `"/__bunest"`). */
   readonly prefix?: string;
@@ -1370,7 +1379,10 @@ export class BunestApplication extends BunestApplicationContext {
   ): Promise<InjectResponse> {
     const req = buildInjectRequest(input);
     const raw = await this.fetch(req);
-    const rawPayload = new Uint8Array(await raw.arrayBuffer());
+    const rawPayload =
+      typeof raw.bytes === "function"
+        ? await raw.bytes()
+        : new Uint8Array(await raw.arrayBuffer());
     const body = new TextDecoder().decode(rawPayload);
     const headers = extractInjectHeaders(raw);
 
@@ -1543,13 +1555,7 @@ export class BunestApplication extends BunestApplicationContext {
           ) {
             const valDesc = describeProviderValue(entry.instance);
             const enhancerType =
-              tokenLabel === "APP_FILTER" || tokenLabel === "MODULE_FILTER"
-                ? "exception filter"
-                : tokenLabel === "APP_GUARD" || tokenLabel === "MODULE_GUARD"
-                  ? "guard"
-                  : tokenLabel === "APP_PIPE" || tokenLabel === "MODULE_PIPE"
-                    ? "pipe"
-                    : "interceptor";
+              ENHANCER_TOKEN_LABELS[tokenLabel] ?? "interceptor";
             const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
             if (warnOnly) {
               enhancerLogger.warn(msg);
@@ -1622,13 +1628,7 @@ export class BunestApplication extends BunestApplicationContext {
           ) {
             const valDesc = describeProviderValue(entry.instance);
             const enhancerType =
-              tokenLabel === "MODULE_FILTER"
-                ? "exception filter"
-                : tokenLabel === "MODULE_GUARD"
-                  ? "guard"
-                  : tokenLabel === "MODULE_PIPE"
-                    ? "pipe"
-                    : "interceptor";
+              ENHANCER_TOKEN_LABELS[tokenLabel] ?? "interceptor";
             const msg = `The ${enhancerType} (${tokenLabel} provider (useValue) gives ${valDesc}) doesn't provide the "${methodName}" method.`;
             if (warnOnly) {
               enhancerLogger.warn(msg);

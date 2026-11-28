@@ -1,5 +1,12 @@
 import { TimeoutError } from "./async.util";
 import { type Duration, parseDuration } from "./duration.util";
+import {
+  isFunction,
+  isNotNull,
+  isNotUndefined,
+  isString,
+  isTypeof,
+} from "./type-guards.util";
 
 export interface TapAsyncIterableOptions {
   /**
@@ -47,9 +54,9 @@ export interface PromiseTimeoutOptions {
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
   return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+    isNotNull(value) &&
+    isTypeof(value, ["object", "function"]) &&
+    isFunction((value as AsyncIterable<T>)[Symbol.asyncIterator])
   );
 }
 
@@ -117,7 +124,7 @@ async function racePromiseWithTimeout<T>(
   try {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
-    if (timer !== undefined) {
+    if (isNotUndefined(timer)) {
       clearTimeout(timer);
     }
   }
@@ -160,7 +167,7 @@ async function* iterateWithTimeout<T>(
       try {
         result = await Promise.race([iterator.next(), timeoutPromise]);
       } finally {
-        if (timer !== undefined && !fired) {
+        if (isNotUndefined(timer) && !fired) {
           clearTimeout(timer);
         }
       }
@@ -171,7 +178,7 @@ async function* iterateWithTimeout<T>(
       yield result.value;
     }
   } finally {
-    if (typeof iterator.return === "function") {
+    if (isFunction(iterator.return)) {
       if (timedOut) {
         // Avoid deadlocking when an async generator is suspended on a hung `next()`.
         void Promise.resolve(iterator.return()).catch(() => {});
@@ -205,10 +212,9 @@ export function withTimeout<T>(
   messageOrOptions?: string | StreamTimeoutOptions,
 ): Promise<T> | AsyncGenerator<T, void, undefined> {
   const ms = parseDuration(duration);
-  const options: StreamTimeoutOptions =
-    typeof messageOrOptions === "string"
-      ? { message: messageOrOptions }
-      : (messageOrOptions ?? {});
+  const options: StreamTimeoutOptions = isString(messageOrOptions)
+    ? { message: messageOrOptions }
+    : (messageOrOptions ?? {});
 
   if (isAsyncIterable<T>(source)) {
     return iterateWithTimeout(source, ms, options);

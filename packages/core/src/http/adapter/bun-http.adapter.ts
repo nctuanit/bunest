@@ -5,10 +5,12 @@ import {
   type CorsOptions,
   type CsrfProtectionOptions,
   type ExceptionFilterLike,
+  first,
   type GuardLike,
   type HttpSecurityHeadersOptions,
   type HttpsOptions,
   type InterceptorLike,
+  isFunction,
   Logger,
   type LoggerService,
   type LogLevel,
@@ -30,6 +32,7 @@ import {
   ServiceUnavailableException,
   type StaticAssetsOptions,
   StreamableFile,
+  toArray,
   type Type,
   VERSION_NEUTRAL,
   type VersioningOptions,
@@ -636,12 +639,10 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
 
   enableCsrfProtection(options: CsrfProtectionOptions<Request> = {}): this {
     this.csrfOptions = options;
-    const prefix = Array.isArray(this.globalPrefix)
-      ? this.globalPrefix[0]
-      : typeof this.globalPrefix === "string"
-        ? this.globalPrefix
-        : undefined;
-    this.csrfProtection = compileCsrfProtection(options, prefix);
+    this.csrfProtection = compileCsrfProtection(
+      options,
+      first(toArray(this.globalPrefix)),
+    );
     return this;
   }
 
@@ -1218,9 +1219,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     const setCookies =
       response instanceof HttpResponseContext
         ? response.getSetCookies()
-        : typeof maybeWithCookies.getSetCookies === "function"
-          ? maybeWithCookies.getSetCookies()
-          : [];
+        : (isFunction(maybeWithCookies.getSetCookies)
+            ? maybeWithCookies.getSetCookies()
+            : []);
     for (const cookie of setCookies) {
       headers.append("Set-Cookie", cookie);
     }
@@ -1554,14 +1555,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     });
 
     if (this.csrfOptions) {
-      const prefix = Array.isArray(this.globalPrefix)
-        ? this.globalPrefix[0]
-        : typeof this.globalPrefix === "string"
-          ? this.globalPrefix
-          : undefined;
       this.csrfProtection = compileCsrfProtection(
         this.csrfOptions,
-        prefix,
+        first(toArray(this.globalPrefix)),
         this.globalPrefixOptions?.exclude,
         this.versioningOptions,
       );
@@ -1690,10 +1686,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
   }
 
   private createResponseContextForRaw(): HttpResponseContext {
+    const primarySecret = this.cookieSecrets?.[0];
     const signerFn = this.cookieSigner
       ? (val: string) => this.cookieSigner!.sign(val)
-      : this.cookieSecrets && this.cookieSecrets[0]
-        ? (val: string) => signCookieValue(val, this.cookieSecrets![0]!)
+      : primarySecret
+        ? (val: string) => signCookieValue(val, primarySecret)
         : undefined;
     return new HttpResponseContext(signerFn);
   }
@@ -2060,15 +2057,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       decodedPath = normPath;
     }
 
-    const globalPrefixes =
-      this.globalPrefix === undefined
-        ? []
-        : (Array.isArray(this.globalPrefix)
-            ? this.globalPrefix
-            : [this.globalPrefix]
-          )
-            .map((p) => normalizeRoutePath(p))
-            .filter((p) => p !== "/");
+    const globalPrefixes = toArray(this.globalPrefix)
+      .map((p) => normalizeRoutePath(p))
+      .filter((p) => p !== "/");
 
     const candidates: string[] = [normPath];
     for (const gp of globalPrefixes) {
@@ -2512,32 +2503,19 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     );
   }
 
-  override async listen(
-    portOrOptions: number | string | ListenOptions = 3000,
-    hostnameOrCallback?: string | (() => void),
-    callback?: () => void,
-  ): Promise<ListeningServerInfo> {
-    if (this.httpServer) {
-      await this.close();
-    }
-    this.isClosing = false;
-
-    const hostname =
-      typeof hostnameOrCallback === "string" ? hostnameOrCallback : undefined;
-    const onListen =
-      typeof hostnameOrCallback === "function" ? hostnameOrCallback : callback;
-
-    const opts: ListenOptions =
-      typeof portOrOptions === "number" || typeof portOrOptions === "string"
-        ? { port: Number(portOrOptions), hostname }
-        : portOrOptions;
-
-    if (opts.development !== undefined) {
-      this.development = opts.development;
-    }
-
-    const table = await this.ensureCompiled();
-
+  private buildServeRoutesAndFetch(table: CompiledRouteTable): {
+    readonly serveRoutes: Record<
+      string,
+      (
+        req: Request,
+        server: BunServerLike,
+      ) => Response | undefined | Promise<Response | undefined>
+    >;
+    readonly fallbackHandler: (
+      req: Request,
+      server: BunServerLike,
+    ) => Response | undefined | Promise<Response | undefined>;
+  } {
     // Wrap native routes that share a path with a WebSocket handler so WS upgrades succeed
     const serveRoutes: Record<
       string,
@@ -2565,10 +2543,11 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     };
 
     for (const [path, handler] of Object.entries(table.bunRoutes)) {
-      const safeHandler = async (req: Request, server: BunServerLike) => {
-        if (req.url.includes("#") || req.url.includes("%")) {
-          const pathname = extractPathname(req.url);
-          if (req.url.includes("#") || hasMalformedPercentEncoding(pathname)) {
+      const safeHandler = (req: Request, server: BunServerLike) => {
+        const rawUrl = req.url;
+        if (rawUrl.includes("#") || rawUrl.includes("%")) {
+          const pathname = extractPathname(rawUrl);
+          if (rawUrl.includes("#") || hasMalformedPercentEncoding(pathname)) {
             return this.fetch(req, server);
           }
         }
@@ -2576,20 +2555,29 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       };
       const wrappedHandler =
         this.rawRoutes.length > 0
-          ? async (req: Request, server: BunServerLike) => {
-              const res = await safeHandler(req, server);
-              if (res && res.status === 405 && this.rawRoutes.length > 0) {
-                const rawRes = await this.tryDispatchRawRoutes(
-                  table,
-                  extractPathname(req.url),
-                  req,
-                  server,
-                );
-                if (rawRes !== null) {
-                  return rawRes;
+          ? (req: Request, server: BunServerLike) => {
+              const res = safeHandler(req, server);
+              const handleResult = (
+                resolved: Response | undefined,
+              ): Response | undefined | Promise<Response | undefined> => {
+                if (
+                  resolved &&
+                  resolved.status === 405 &&
+                  this.rawRoutes.length > 0
+                ) {
+                  return this.tryDispatchRawRoutes(
+                    table,
+                    extractPathname(req.url),
+                    req,
+                    server,
+                  ).then((rawRes) => (rawRes !== null ? rawRes : resolved));
                 }
+                return resolved;
+              };
+              if (res instanceof Promise) {
+                return res.then(handleResult);
               }
-              return res;
+              return handleResult(res);
             }
           : safeHandler;
 
@@ -2630,13 +2618,48 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
         this.handleBunFallbackFetch(req, server),
     );
 
+    return { serveRoutes, fallbackHandler };
+  }
+
+  override async listen(
+    portOrOptions: number | string | ListenOptions = 3000,
+    hostnameOrCallback?: string | (() => void),
+    callback?: () => void,
+  ): Promise<ListeningServerInfo> {
+    if (this.httpServer) {
+      await this.close();
+    }
+    this.isClosing = false;
+
+    const hostname =
+      typeof hostnameOrCallback === "string" ? hostnameOrCallback : undefined;
+    const onListen =
+      typeof hostnameOrCallback === "function" ? hostnameOrCallback : callback;
+
+    const opts: ListenOptions =
+      typeof portOrOptions === "number" || typeof portOrOptions === "string"
+        ? { port: Number(portOrOptions), hostname }
+        : portOrOptions;
+
+    if (opts.development !== undefined) {
+      this.development = opts.development;
+    }
+
+    const table = await this.ensureCompiled();
+    const { serveRoutes, fallbackHandler } =
+      this.buildServeRoutesAndFetch(table);
+
     const serveOptions: Record<string, unknown> = {
-      port: opts.port ?? 3000,
       fetch: fallbackHandler,
     };
 
-    if (opts.hostname !== undefined) {
-      serveOptions.hostname = opts.hostname;
+    if (opts.unix !== undefined) {
+      serveOptions.unix = opts.unix;
+    } else {
+      serveOptions.port = opts.port ?? 3000;
+      if (opts.hostname !== undefined) {
+        serveOptions.hostname = opts.hostname;
+      }
     }
     if (opts.development !== undefined) {
       serveOptions.development = opts.development;
@@ -2646,6 +2669,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
     if (opts.idleTimeout !== undefined) {
       serveOptions.idleTimeout = opts.idleTimeout;
+    }
+    if (opts.reusePort !== undefined && opts.unix === undefined) {
+      serveOptions.reusePort = opts.reusePort;
     }
     if (opts.tls !== undefined) {
       serveOptions.tls = opts.tls;
@@ -2665,8 +2691,9 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
       ) as unknown as BunServerLike;
       this.httpServer = started;
 
-      const boundPort = started.port ?? opts.port ?? 0;
-      const boundHost = started.hostname ?? opts.hostname ?? "localhost";
+      const boundPort = started.port ?? (opts.unix ? 0 : (opts.port ?? 0));
+      const boundHost =
+        started.hostname ?? (opts.unix ? "" : (opts.hostname ?? "localhost"));
       const url = started.url.toString();
 
       if (onListen) {
@@ -2686,9 +2713,40 @@ export class BunHttpAdapter extends AbstractHttpAdapter<
     }
   }
 
+  /**
+   * Hot-reloads compiled routes, fallback fetch handler, and websocket config
+   * on the active `Bun.serve` instance via `server.reload()` without dropping
+   * existing connections, preserving WebSocket upgrade handlers, `rawRoutes`
+   * 405 fallback, and `return503OnClosing` / in-flight request tracking.
+   */
+  async reloadRoutes(): Promise<boolean> {
+    if (!this.httpServer || typeof this.httpServer.reload !== "function") {
+      return false;
+    }
+    this.compiledTable = undefined;
+    const table = await this.ensureCompiled();
+    const { serveRoutes, fallbackHandler } =
+      this.buildServeRoutesAndFetch(table);
+    // Always pass `routes` (even `{}`) so Bun clears previously registered routes when empty.
+    this.httpServer.reload({
+      fetch: fallbackHandler,
+      routes: serveRoutes,
+      ...(this.websocketConfig !== undefined
+        ? { websocket: this.websocketConfig }
+        : {}),
+    });
+    return true;
+  }
+
   async close(force?: boolean): Promise<void> {
     this.isClosing = true;
     const shouldForce = force ?? this.forceCloseConnections;
+    // Immediately close idle keep-alive connections so shutdown/drain completes faster
+    try {
+      this.httpServer?.closeIdleConnections?.();
+    } catch {
+      // ignore if server is already stopping
+    }
     if ((this.return503OnClosing || !shouldForce) && this.inFlightRequests > 0) {
       await new Promise<void>((resolve) => {
         if (this.inFlightRequests <= 0) {

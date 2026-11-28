@@ -19,6 +19,7 @@ import {
   type RequestMethod,
   type RouteDefinition,
   Scope,
+  getGuardCompositeMetadata,
   type SecurityRequestHook,
   VERSION_NEUTRAL,
   type VersioningOptions,
@@ -251,6 +252,12 @@ function collectClassTokens(
 function isTokenExplicitlyRequestScoped(token: unknown): boolean {
   if (typeof token !== "function") {
     return false;
+  }
+  const compositeMeta = getGuardCompositeMetadata(token);
+  if (compositeMeta) {
+    return compositeMeta.guards.some((child) =>
+      isTokenExplicitlyRequestScoped(child),
+    );
   }
   const meta = MetadataRegistry.get<InjectableMetadata>(
     METADATA_KEYS.INJECTABLE,

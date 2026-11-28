@@ -108,6 +108,13 @@ export interface SseOptions {
    * @default 4_194_304 (4 MiB)
    */
   maxPendingDataLength?: number;
+  /**
+   * Per-request idle timeout in seconds applied via `server.timeout(req, seconds)`.
+   * Defaults to `0` (disabled) so `Bun.serve`'s default 10s `idleTimeout` never
+   * drops long-lived SSE streams.
+   * @default 0
+   */
+  idleTimeoutSeconds?: number;
 }
 
 export interface ArgumentMetadata {

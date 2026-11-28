@@ -122,6 +122,29 @@ type InterceptorResolver = (
 interface TransportOptions {
   redirect?: "follow" | "error" | "manual" | undefined;
   dispatcher?: HttpDispatcher | undefined;
+  unix?: string | undefined;
+  proxy?: HttpClientOptions["proxy"];
+  tls?: Record<string, unknown> | undefined;
+  decompress?: boolean | undefined;
+  verbose?: boolean | "curl" | undefined;
+}
+
+interface BunFetchSessionConstructor {
+  new (options?: Record<string, unknown>): {
+    fetch: typeof globalThis.fetch;
+    close(): void;
+  };
+}
+
+function isFetchSessionInstance(
+  value: unknown,
+): value is { fetch: typeof globalThis.fetch; close(): void } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { fetch?: unknown }).fetch === "function" &&
+    typeof (value as { close?: unknown }).close === "function"
+  );
 }
 
 /**
@@ -143,6 +166,14 @@ export class HttpClient {
   private readonly baseHeaders: Headers;
   private readonly timeout: number | undefined;
   private readonly retry: HttpClientOptions["retry"];
+  private readonly ownedSession?: {
+    fetch: typeof globalThis.fetch;
+    close(): void;
+  };
+  private readonly activeSession?: {
+    fetch: typeof globalThis.fetch;
+    close(): void;
+  };
   /** Outside DI, class interceptors are created with `new`. */
   private resolveInterceptor: InterceptorResolver = (type) => new type();
   private interceptorFns?: Promise<HttpClientInterceptorFn[]>;
@@ -169,6 +200,74 @@ export class HttpClient {
     this.retry = options.retry;
     resolveRetry(options.retry);
     (options.interceptors ?? []).forEach(checkInterceptor);
+
+    if (options.session !== undefined && options.fetch === undefined) {
+      if (isFetchSessionInstance(options.session)) {
+        this.activeSession = options.session;
+      } else if (typeof Bun !== "undefined") {
+        const FetchSessionCtor = (
+          Bun as unknown as { FetchSession?: BunFetchSessionConstructor }
+        ).FetchSession;
+        if (typeof FetchSessionCtor === "function") {
+          const created = new FetchSessionCtor(
+            options.session as Record<string, unknown>,
+          );
+          this.ownedSession = created;
+          this.activeSession = created;
+        }
+      }
+    }
+  }
+
+  /**
+   * Warms DNS + TCP/TLS for `baseUrl` (or an explicit URL) via Bun's native
+   * `fetch.preconnect()` and `Bun.dns.prefetch()`. Safe no-op if unavailable.
+   */
+  preconnect(target?: string | URL): void {
+    const resolved =
+      target !== undefined
+        ? target instanceof URL
+          ? target
+          : new URL(target)
+        : this.baseUrl;
+    if (!resolved) {
+      return;
+    }
+    try {
+      const fetchWithPreconnect = globalThis.fetch as typeof globalThis.fetch & {
+        preconnect?: (url: string) => void;
+      };
+      fetchWithPreconnect.preconnect?.(resolved.origin);
+    } catch {
+      // Best-effort warmup
+    }
+    try {
+      const port = resolved.port
+        ? Number(resolved.port)
+        : resolved.protocol === "https:"
+          ? 443
+          : 80;
+      const dns = (
+        Bun as unknown as { dns?: { prefetch?: (host: string, p: number) => void } }
+      ).dns;
+      if (resolved.hostname && Number.isFinite(port)) {
+        dns?.prefetch?.(resolved.hostname, port);
+      }
+    } catch {
+      // Best-effort warmup
+    }
+  }
+
+  /**
+   * Closes any internally owned `Bun.FetchSession` keep-alive pool.
+   * Called automatically on `onModuleDestroy` when registered via `HttpClientModule`.
+   */
+  close(): void {
+    try {
+      this.ownedSession?.close();
+    } catch {
+      // ignore close errors during teardown
+    }
   }
 
   private verb(method: string): HttpMethodCall<HttpVerbOptions> {
@@ -253,6 +352,14 @@ export class HttpClient {
     const transport: TransportOptions = {
       redirect: options.redirect ?? config.redirect,
       dispatcher: options.dispatcher ?? config.dispatcher,
+      unix: options.unix ?? config.unix,
+      proxy: options.proxy !== undefined ? options.proxy : config.proxy,
+      tls: options.tls ?? config.tls,
+      decompress:
+        options.decompress !== undefined
+          ? options.decompress
+          : config.decompress,
+      verbose: options.verbose !== undefined ? options.verbose : config.verbose,
     };
     const retry = resolveRetry(mergeRetry(this.retry, options.retry));
     const retryable =
@@ -428,7 +535,13 @@ export class HttpClient {
     req: HttpRequest,
     transport: TransportOptions,
   ): Promise<Response> {
-    const fetchImpl = this.config.fetch ?? globalThis.fetch;
+    const activeSession = this.activeSession;
+    const fetchImpl: typeof globalThis.fetch =
+      this.config.fetch ??
+      (activeSession
+        ? (((input, init) =>
+            activeSession.fetch(input, init)) as typeof globalThis.fetch)
+        : globalThis.fetch);
     const init: ExtendedRequestInit = {
       method: req.method,
       headers: req.headers,
@@ -440,6 +553,21 @@ export class HttpClient {
     }
     if (transport.dispatcher) {
       init.dispatcher = transport.dispatcher;
+    }
+    if (transport.unix !== undefined) {
+      init.unix = transport.unix;
+    }
+    if (transport.proxy !== undefined) {
+      init.proxy = transport.proxy;
+    }
+    if (transport.tls !== undefined) {
+      init.tls = transport.tls;
+    }
+    if (transport.decompress !== undefined) {
+      init.decompress = transport.decompress;
+    }
+    if (transport.verbose !== undefined) {
+      init.verbose = transport.verbose;
     }
     if (!isReplayableBody(req.body)) {
       init.duplex = "half";
@@ -560,4 +688,8 @@ export async function initHttpClient(client: HttpClient): Promise<void> {
       resolveInterceptors(): Promise<HttpClientInterceptorFn[]>;
     }
   ).resolveInterceptors();
+  const cfg = (client as unknown as { config?: HttpClientOptions }).config;
+  if (cfg?.preconnect) {
+    client.preconnect();
+  }
 }

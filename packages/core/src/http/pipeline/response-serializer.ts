@@ -26,15 +26,22 @@ export interface RouteResponseMeta {
 
 const textEncoder = new TextEncoder();
 
-const STATUS_200_INIT = { status: 200 };
-const STATUS_201_INIT = { status: 201 };
-const TEXT_PLAIN_200_INIT = {
-  status: 200,
-  headers: { "content-type": "text/plain; charset=utf-8" },
+const STATUS_INIT_MAP: Record<number, { status: number }> = {
+  200: { status: 200 },
+  201: { status: 201 },
 };
-const TEXT_PLAIN_201_INIT = {
-  status: 201,
-  headers: { "content-type": "text/plain; charset=utf-8" },
+const TEXT_PLAIN_INIT_MAP: Record<
+  number,
+  { status: number; headers: { "content-type": string } }
+> = {
+  200: {
+    status: 200,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  },
+  201: {
+    status: 201,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  },
 };
 
 function isEmptyBodyStatus(status: number, requestMethod: string): boolean {
@@ -112,11 +119,7 @@ export function formatSseEvent(
   const hasData =
     normalized.data !== undefined || normalized.comment === undefined;
   const effectiveId =
-    normalized.id !== undefined
-      ? normalized.id
-      : autoId !== undefined && hasData
-        ? String(autoId)
-        : undefined;
+    normalized.id ?? (autoId !== undefined && hasData ? String(autoId) : undefined);
   if (effectiveId !== undefined) {
     output += `id: ${String(effectiveId).replace(/[\r\n]/g, "")}\n`;
   }
@@ -660,6 +663,9 @@ export function serializeResponse(
     if (isEmptyBodyStatus(status, reqMethod)) {
       return new Response(null, { status, headers });
     }
+    // Disable (or customize) Bun.serve's per-request idle timeout so long-lived SSE streams
+    // are not dropped after the default 10s idle period.
+    ctx.setIdleTimeout(route.sseOptions?.idleTimeoutSeconds ?? 0);
     const stream = createSseStream(
       value,
       ctx.signal,
@@ -669,7 +675,7 @@ export function serializeResponse(
     return new Response(stream, { status, headers });
   }
 
-  // Priority 3.5: StreamableFile (streams directly without buffering into RAM)
+  // Priority 3.5: StreamableFile (zero-copy BunFile/Blob sendfile or direct ReadableStream)
   if (value instanceof StreamableFile) {
     const fileHeaders = value.getHeaders();
     const extraDefaults: Record<string, string> = {};
@@ -699,6 +705,10 @@ export function serializeResponse(
       }
       return new Response(null, { status, headers });
     }
+    const source = value.getSource();
+    if (!forceChunked && source instanceof Blob) {
+      return new Response(source, { status, headers });
+    }
     const rawStream = value.getStream();
     if (forceChunked) {
       const reader = rawStream.getReader();
@@ -706,7 +716,7 @@ export function serializeResponse(
         async pull(controller) {
           const step = await reader.read();
           if (step.done) {
-            await new Promise((r) => setTimeout(r, 0));
+            await Bun.sleep(0);
             controller.close();
             return;
           }
@@ -772,14 +782,7 @@ export function serializeResponse(
   // Priority 7: null or undefined
   if (value === null || value === undefined) {
     if (!hasCustomHeaders) {
-      return new Response(
-        null,
-        status === 200
-          ? STATUS_200_INIT
-          : status === 201
-            ? STATUS_201_INIT
-            : { status },
-      );
+      return new Response(null, STATUS_INIT_MAP[status] ?? { status });
     }
     const headers = buildMergedHeaders(ctx, route.headers);
     return new Response(null, { status, headers });
@@ -788,15 +791,10 @@ export function serializeResponse(
   // Priority 8: string
   if (typeof value === "string") {
     if (!hasCustomHeaders) {
-      const init =
-        status === 200
-          ? TEXT_PLAIN_200_INIT
-          : status === 201
-            ? TEXT_PLAIN_201_INIT
-            : {
-                status,
-                headers: { "content-type": "text/plain; charset=utf-8" },
-              };
+      const init = TEXT_PLAIN_INIT_MAP[status] ?? {
+        status,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      };
       if (isEmptyBodyStatus(status, reqMethod)) {
         return new Response(null, init);
       }
@@ -816,14 +814,7 @@ export function serializeResponse(
   // Priority 9: number or boolean
   if (typeof value === "number" || typeof value === "boolean") {
     if (!hasCustomHeaders && !isEmptyBodyStatus(status, reqMethod)) {
-      return Response.json(
-        value,
-        status === 200
-          ? STATUS_200_INIT
-          : status === 201
-            ? STATUS_201_INIT
-            : { status },
-      );
+      return Response.json(value, STATUS_INIT_MAP[status] ?? { status });
     }
     const headers = buildMergedHeaders(
       ctx,
@@ -843,14 +834,7 @@ export function serializeResponse(
   // Priority 10: Plain object / Array / Class instance (JSON)
   if (!hasCustomHeaders && !isEmptyBodyStatus(status, reqMethod)) {
     try {
-      return Response.json(
-        value,
-        status === 200
-          ? STATUS_200_INIT
-          : status === 201
-            ? STATUS_201_INIT
-            : { status },
-      );
+      return Response.json(value, STATUS_INIT_MAP[status] ?? { status });
     } catch (err) {
       throw new InternalServerErrorException(
         "Failed to serialize response body",
@@ -901,7 +885,7 @@ function createBufferedOrChunkedResponse(
             controller.enqueue(bytes);
           }
         } else {
-          await new Promise((r) => setTimeout(r, 0));
+          await Bun.sleep(0);
           controller.close();
         }
       },
@@ -1179,7 +1163,7 @@ function createStreamableForwardingStream(
           if (step.done || cleanedUp || signal.aborted) {
             cleanup();
             if (options?.delayClose) {
-              await new Promise((r) => setTimeout(r, 0));
+              await Bun.sleep(0);
             }
             try {
               controller.close();
@@ -1197,7 +1181,7 @@ function createStreamableForwardingStream(
           signal.removeEventListener("abort", onAbort);
           void reader.cancel().catch(() => {});
           const action = options?.onError ? options.onError(err) : "error";
-          await new Promise((r) => setTimeout(r, 5));
+          await Bun.sleep(5);
           try {
             if (action === "close") {
               controller.close();
@@ -1279,7 +1263,7 @@ function createResumedReaderStream(
         if (step.done || cleanedUp || signal.aborted) {
           cleanup();
           if (options?.delayClose) {
-            await new Promise((r) => setTimeout(r, 0));
+            await Bun.sleep(0);
           }
           try {
             controller.close();
@@ -1298,7 +1282,7 @@ function createResumedReaderStream(
         void reader.cancel().catch(() => {});
         const action = options?.onError ? options.onError(err) : "error";
         // Allow Bun.serve to flush any already-enqueued first chunk before aborting the stream
-        await new Promise((r) => setTimeout(r, 5));
+        await Bun.sleep(5);
         try {
           if (action === "close") {
             controller.close();
@@ -1472,6 +1456,9 @@ export function serializeResponseMaybeAsync(
         },
       );
       headers.set("Content-Type", "text/event-stream; charset=utf-8");
+      // Disable (or customize) Bun.serve's per-request idle timeout so long-lived SSE streams
+      // are not dropped after the default 10s idle period.
+      ctx.setIdleTimeout(route.sseOptions?.idleTimeoutSeconds ?? 0);
 
       const iterator = value[Symbol.asyncIterator]();
       const firstStepPromise = iterator.next();

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  concatBytes as concatByteChunks,
   HttpStatus,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
@@ -73,42 +74,19 @@ export type MultipartStreamPart = MultipartFieldPart | MultipartFilePart;
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   if (a.byteLength === 0) return b;
   if (b.byteLength === 0) return a;
-  const out = new Uint8Array(a.byteLength + b.byteLength);
-  out.set(a, 0);
-  out.set(b, a.byteLength);
-  return out;
+  return concatByteChunks([a, b]);
 }
 
-/** Pure `Uint8Array` byte-sequence search (zero `Buffer` dependency). */
+/** SIMD-accelerated byte-sequence search via native Buffer `indexOf`. */
 function findBytes(haystack: Uint8Array, needle: Uint8Array): number {
-  const hLen = haystack.byteLength;
   const nLen = needle.byteLength;
   if (nLen === 0) return 0;
-  if (hLen < nLen) return -1;
-
-  const first = needle[0]!;
-  const maxStart = hLen - nLen;
-  let pos = 0;
-
-  while (pos <= maxStart) {
-    const idx = haystack.indexOf(first, pos);
-    if (idx === -1 || idx > maxStart) {
-      return -1;
-    }
-    let matched = true;
-    for (let j = 1; j < nLen; j++) {
-      if (haystack[idx + j] !== needle[j]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) {
-      return idx;
-    }
-    pos = idx + 1;
-  }
-
-  return -1;
+  if (haystack.byteLength < nLen) return -1;
+  return Buffer.from(
+    haystack.buffer,
+    haystack.byteOffset,
+    haystack.byteLength,
+  ).indexOf(needle);
 }
 
 export function extractMultipartStreamBoundary(
@@ -474,20 +452,12 @@ export async function* parseMultipartStream(
           }
         }
 
-        let merged: Uint8Array;
-        if (fieldChunks.length === 0) {
-          merged = EMPTY_BYTES;
-        } else if (fieldChunks.length === 1) {
-          merged = fieldChunks[0]!;
-        } else {
-          merged = new Uint8Array(fieldBytes);
-          let off = 0;
-          for (let i = 0; i < fieldChunks.length; i++) {
-            const chunk = fieldChunks[i]!;
-            merged.set(chunk, off);
-            off += chunk.byteLength;
-          }
-        }
+        const merged =
+          fieldChunks.length === 0
+            ? EMPTY_BYTES
+            : fieldChunks.length === 1
+              ? fieldChunks[0]!
+              : concatByteChunks(fieldChunks);
 
         yield {
           kind: "field",

@@ -11,6 +11,8 @@ import type {
 } from "../interfaces/http.interface";
 import { DecoratorRegistry } from "../metadata/decorator-registry";
 import { MetadataRegistry } from "../metadata/metadata-registry";
+import { ternaryFor } from "../utils/ternary.util";
+import { isArray } from "../utils/type-guards.util";
 import { attachAutoLogger } from "./core.decorators";
 
 /**
@@ -84,13 +86,9 @@ function registerRouteMetadata(
     propertyKey: string | symbol,
     descriptor: PropertyDescriptor,
   ) => {
-    const normalizedPath = Array.isArray(path)
-      ? path.length === 0
-        ? "/"
-        : [...path]
-      : isSse && path === ""
-        ? "/"
-        : path;
+    const normalizedPath = ternaryFor(path)
+      .when(isArray, (p) => (p.length === 0 ? "/" : [...p]))
+      .elseEval((p) => (isSse && p === "" ? "/" : p));
     const entry: RouteMethodMetadata = isSse
       ? {
           method,

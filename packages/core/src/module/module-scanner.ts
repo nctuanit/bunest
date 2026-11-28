@@ -16,6 +16,7 @@ import {
   isDynamicModule,
   isForwardReference,
   resolve,
+  ternary,
   type AutoDiscoverOptions,
   type ClassProvider,
   type DynamicModule,
@@ -88,10 +89,7 @@ function hashDynamicModuleDefinition(
     exports: (dynamicMeta.exports ?? []).map(tokenName),
     importsCount: (dynamicMeta.imports ?? []).length,
   });
-  return new Bun.CryptoHasher("sha256")
-    .update(payload)
-    .digest("hex")
-    .slice(0, 16);
+  return Bun.CryptoHasher.hash("sha256", payload, "hex").slice(0, 16);
 }
 
 export const MULTI_PROVIDER_TOKENS: ReadonlySet<InjectionToken> = new Set([
@@ -775,14 +773,19 @@ export class ModuleScanner {
       dynamicMeta?.global ||
       MetadataRegistry.get<boolean>(METADATA_KEYS.GLOBAL_MODULE, metatype),
     );
-    const id =
-      this.idAlgorithm === "deep-hash"
-        ? dynamicMeta
-          ? `${this.idPrefix}hash:${metatype.name || "Module"}:${hashDynamicModuleDefinition(metatype, dynamicMeta)}`
-          : `${this.idPrefix}hash:${metatype.name || "Module"}`
-        : dynamicMeta
-          ? `${this.idPrefix}dynamic:${metatype.name || "Module"}#${++this.dynamicCounter}`
-          : `${this.idPrefix}static:${metatype.name || "Module"}#${this.allNodes.size + 1}`;
+    const modName = metatype.name || "Module";
+    const id = ternary(this.idAlgorithm === "deep-hash")
+      .then(() =>
+        dynamicMeta
+          ? `${this.idPrefix}hash:${modName}:${hashDynamicModuleDefinition(metatype, dynamicMeta)}`
+          : `${this.idPrefix}hash:${modName}`,
+      )
+      .else(() =>
+        dynamicMeta
+          ? `${this.idPrefix}dynamic:${modName}#${++this.dynamicCounter}`
+          : `${this.idPrefix}static:${modName}#${this.allNodes.size + 1}`,
+      )
+      .eval();
 
     const node = new ModuleNode(id, metatype, isGlobal, Boolean(dynamicMeta));
     this.allNodes.set(id, node);

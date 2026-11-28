@@ -248,7 +248,17 @@ export function extractRequestCookies(req: Request): Record<string, string> {
       if (!rawName || isDangerousKey(rawName)) {
         continue;
       }
-      out[rawName] = rawValue;
+      let normalizedValue = rawValue;
+      if (
+        normalizedValue.length >= 2 &&
+        normalizedValue.charCodeAt(0) === 34 &&
+        normalizedValue.charCodeAt(normalizedValue.length - 1) === 34
+      ) {
+        normalizedValue = normalizedValue.slice(1, -1);
+      }
+      if (!Object.prototype.hasOwnProperty.call(out, rawName)) {
+        out[rawName] = normalizedValue;
+      }
     }
     if (hasEntries) {
       return out;
@@ -345,6 +355,32 @@ export function serializeCookie(
     if (!priority) {
       throw new TypeError(`Invalid cookie priority: "${options.priority}"`);
     }
+  }
+
+  // Delegate to Zig-native `Bun.Cookie` whenever its canonical attribute order matches
+  // NestJS/RFC 6265 serialization (Bun.Cookie defaults omitted `sameSite` to "lax",
+  // omits `Priority`, orders `Domain` before `Path`, `Expires` before `Max-Age`,
+  // and `Secure` before `HttpOnly`).
+  if (
+    sameSite !== undefined &&
+    priority === undefined &&
+    (options.domain === undefined || !path) &&
+    !(options.maxAge !== undefined && options.expires !== undefined) &&
+    !(options.httpOnly && options.secure) &&
+    typeof Bun !== "undefined" &&
+    typeof Bun.Cookie === "function"
+  ) {
+    const bunCookie = new Bun.Cookie(name, value, {
+      path,
+      ...(options.domain !== undefined ? { domain: options.domain } : {}),
+      ...(options.maxAge !== undefined ? { maxAge: options.maxAge } : {}),
+      ...(options.expires !== undefined ? { expires: options.expires } : {}),
+      httpOnly: Boolean(options.httpOnly),
+      secure: Boolean(options.secure),
+      partitioned: Boolean(options.partitioned),
+      sameSite: sameSite.toLowerCase() as "strict" | "lax" | "none",
+    });
+    return bunCookie.toString();
   }
 
   const parts: string[] = [`${name}=${encodedValue}`];

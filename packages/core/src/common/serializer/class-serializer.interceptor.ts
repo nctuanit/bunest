@@ -8,6 +8,7 @@ import type {
 } from "../interfaces/pipeline.interface";
 import type { TransformerPackageLike } from "../interfaces/validation.interface";
 import { Reflector } from "../metadata/reflector";
+import { isFunction } from "../utils/type-guards.util";
 import {
   loadDefaultTransformerPackage,
   resolveTransformerPackageForValue,
@@ -224,11 +225,9 @@ export class ClassSerializerInterceptor implements BunestInterceptor {
 
     if (type) {
       const instance =
-        value instanceof type
-          ? value
-          : typeof transformer.plainToInstance === "function"
-            ? transformer.plainToInstance(type, value, transformOptions)
-            : value;
+        !(value instanceof type) && isFunction(transformer.plainToInstance)
+          ? transformer.plainToInstance(type, value, transformOptions)
+          : value;
       return toPlainFn(instance, transformOptions);
     }
 

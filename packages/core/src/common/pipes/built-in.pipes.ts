@@ -8,6 +8,10 @@ import type {
 import type { Type } from "../interfaces/type.interface";
 import { MetadataRegistry } from "../metadata/metadata-registry";
 import {
+  isNullish as isNil,
+  isPlainObject,
+} from "../utils/type-guards.util";
+import {
   OMITTED_ERRORS_MESSAGE,
   resolveMaxErrorMessagesLength,
 } from "./validation-errors.constants";
@@ -108,18 +112,6 @@ function buildPipeExceptionFactory(
       >,
       status,
     );
-}
-
-function isNil(value: unknown): value is null | undefined {
-  return value === undefined || value === null;
-}
-
-function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 const STRICT_INT_REGEX = /^[+-]?\d+$/;

@@ -14,7 +14,12 @@ import {
   extractCallerDir,
   type AutoModuleManifestLoader,
 } from "../common/decorators/core.decorators";
-import { BunHttpAdapter, type BunServerLike } from "../http/index";
+import {
+  BunHttpAdapter,
+  FunctionalModule,
+  type BunServerLike,
+  type FunctionalRouteGroup,
+} from "../http/index";
 import { DIContainer } from "../di/di-container";
 import type {
   BunestApplicationContextOptions,
@@ -35,12 +40,20 @@ export interface BunestCreateAutoOptions extends BunestCreateOptions {
   readonly controllers?: Type<any>[];
   readonly providers?: Provider[];
   readonly exports?: ModuleExport[];
+  /** Optional `defineRoutes()` / `implementContract()` route groups mounted without a boilerplate `@Module` class. */
+  readonly routes?: FunctionalRouteGroup | readonly FunctionalRouteGroup[];
   readonly autoDiscover?: boolean | AutoDiscoverOptions;
   readonly scan?: string | readonly string[];
   readonly exclude?: readonly string[];
   readonly cwd?: string;
   readonly manifest?: readonly AutoModuleManifestLoader[];
   readonly filter?: (target: Type<unknown>) => boolean;
+}
+
+export interface BunestCreateRoutesOptions extends BunestCreateOptions {
+  readonly imports?: ModuleImport[];
+  readonly providers?: Provider[];
+  readonly exports?: ModuleExport[];
 }
 
 export interface BunestFetchHandlerOptions extends BunestCreateOptions {
@@ -259,6 +272,7 @@ export class BunestFactory {
       controllers,
       providers,
       exports: moduleExports,
+      routes,
       autoDiscover,
       scan,
       exclude,
@@ -269,14 +283,23 @@ export class BunestFactory {
     } = options;
 
     const resolvedCwd =
-      cwd !== undefined
-        ? cwd
-        : scan !== undefined
-          ? extractCallerDir()
-          : undefined;
+      cwd ?? (scan !== undefined ? extractCallerDir() : undefined);
+
+    const routeGroups =
+      routes === undefined
+        ? []
+        : Array.isArray(routes)
+          ? routes
+          : [routes];
+    const effectiveImports: ModuleImport[] = [
+      ...(imports ?? []),
+      ...(routeGroups.length > 0
+        ? [FunctionalModule.forRoutes(routeGroups)]
+        : []),
+    ];
 
     @AutoModule({
-      ...(imports !== undefined ? { imports } : {}),
+      ...(effectiveImports.length > 0 ? { imports: effectiveImports } : {}),
       ...(controllers !== undefined ? { controllers } : {}),
       ...(providers !== undefined ? { providers } : {}),
       ...(moduleExports !== undefined ? { exports: moduleExports } : {}),
@@ -290,6 +313,30 @@ export class BunestFactory {
     class AutoRootModule {}
 
     return BunestFactory.create(AutoRootModule, createOptions);
+  }
+
+  /**
+   * Zero-boilerplate functional/contract application bootstrap: mounts one or
+   * more `defineRoutes()` or `implementContract()` route groups with optional
+   * DI providers/imports directly into a ready `BunestApplication` without
+   * declaring an empty `@Module` class.
+   */
+  static async createRoutes(
+    routes: FunctionalRouteGroup | readonly FunctionalRouteGroup[],
+    options: BunestCreateRoutesOptions = {},
+  ): Promise<BunestApplication> {
+    const { imports, providers, exports: moduleExports, ...createOptions } =
+      options;
+    const routeGroups = Array.isArray(routes) ? routes : [routes];
+    return BunestFactory.create(
+      FunctionalModule.forRoutes({
+        routes: routeGroups,
+        ...(imports ? { imports } : {}),
+        ...(providers ? { providers } : {}),
+        ...(moduleExports ? { exports: moduleExports } : {}),
+      }),
+      createOptions,
+    );
   }
 
   static async createApplicationContext(

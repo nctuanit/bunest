@@ -48,6 +48,35 @@ export interface HttpDispatcher {
   dispatch(options: object, handler: object): boolean;
 }
 
+/** Bun-native `fetch` proxy configuration (`string`, `false`, or `{ url, headers, respectNoProxy }`). */
+export type HttpFetchProxyOption =
+  | string
+  | false
+  | {
+      readonly url: string;
+      readonly headers?: Record<string, string>;
+      readonly respectNoProxy?: boolean;
+    };
+
+/** Structural subset of Bun's `Bun.FetchSession` holding an isolated keep-alive pool and TLS/proxy/unix settings. */
+export interface BunFetchSessionLike {
+  fetch: typeof globalThis.fetch;
+  close(): void;
+}
+
+/** Configuration passed to `new Bun.FetchSession(options)`. */
+export interface HttpFetchSessionOptions {
+  readonly tls?: Record<string, unknown>;
+  readonly proxy?: HttpFetchProxyOption;
+  readonly keepAlive?:
+    | boolean
+    | {
+        readonly idleTimeout?: number;
+        readonly maxIdleSockets?: number;
+      };
+  readonly unix?: string;
+}
+
 /** Settings that `forRoot()`, a client and a single request can each set; the most specific wins. */
 export interface HttpSharedOptions {
   headers?: HttpHeadersInit | undefined;
@@ -68,6 +97,16 @@ export interface HttpSharedOptions {
   redirect?: "follow" | "error" | "manual" | undefined;
   /** Connection pool, proxy or TLS settings (an undici `Agent` or `ProxyAgent`). */
   dispatcher?: HttpDispatcher | undefined;
+  /** Bun-native Unix domain socket path for `fetch(..., { unix })`. */
+  unix?: string | undefined;
+  /** Bun-native proxy URL, `false` to bypass env proxies, or `{ url, headers, respectNoProxy }`. */
+  proxy?: HttpFetchProxyOption | undefined;
+  /** Bun-native TLS options (`ca`, `cert`, `key`, `rejectUnauthorized`, `serverName`, `checkServerIdentity`). */
+  tls?: Record<string, unknown> | undefined;
+  /** Bun-native automatic response decompression toggle (`fetch(..., { decompress })`). */
+  decompress?: boolean | undefined;
+  /** Bun-native verbose request logging (`true` or `"curl"`). */
+  verbose?: boolean | "curl" | undefined;
   /**
    * Automatically propagate active `ClsService` context keys as outgoing HTTP
    * headers (`x-request-id`, `x-tenant-id`, `x-user-id`, `x-correlation-id` when

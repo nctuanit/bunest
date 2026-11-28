@@ -7,6 +7,8 @@
  * the exact same context propagation primitives while preserving a strict package DAG.
  */
 
+import { isPlainObject as isPlainRecord } from "../common/utils/type-guards.util";
+
 const CLS_ID_SYMBOL = Symbol.for("bunest:core:cls_id");
 
 /**
@@ -87,14 +89,6 @@ export interface ClsContextPropagatorOptions {
    * @default DEFAULT_CLS_HEADER_MAP
    */
   readonly headerMap?: Readonly<Record<string, string>>;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 function isStructuredCarrier(
@@ -344,9 +338,7 @@ export function clsToHeaders(
   const structured = isStructuredCarrier(carrier);
   const values: Readonly<Record<string, unknown>> = structured
     ? carrier.values
-    : isPlainRecord(carrier)
-      ? carrier
-      : {};
+    : (isPlainRecord(carrier) ? carrier : {});
 
   for (const [clsKey, rawHeaderName] of Object.entries(headerMap)) {
     if (!clsKey || DANGEROUS_KEYS.has(clsKey)) continue;

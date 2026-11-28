@@ -5,7 +5,7 @@ import type {
 } from "../interfaces/http-client-interceptor.interface";
 import type { HttpClientOptions } from "../interfaces/http-client-options.interface";
 import { mergeHeaders } from "./headers.util";
-import { mergeRetry } from "./retry.util";
+import { definedOnly, mergeRetry } from "./retry.util";
 
 /**
  * `forRoot()` defaults under a client's own options: the client's values win,
@@ -28,12 +28,6 @@ export function mergeClientOptions(
       ...(options.interceptors ?? []),
     ],
   };
-}
-
-function definedOnly(value: object): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined),
-  );
 }
 
 /** A class to instantiate, as opposed to a function or an object with `intercept()`. */

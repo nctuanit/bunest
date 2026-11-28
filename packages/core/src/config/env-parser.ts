@@ -1,4 +1,11 @@
-import { existsSyncPath, readTextSync } from "../common/index";
+import {
+  existsSyncPath,
+  identity,
+  isObject,
+  readTextSync,
+  ternaryFor,
+  toArray,
+} from "../common/index";
 import type { ExpandVariablesOptions } from "./interfaces/config.interface";
 import type { Parser } from "./types/path.types";
 
@@ -556,9 +563,7 @@ export function loadEnvironmentSnapshot(
     const paths =
       options.envFilePath === undefined
         ? [".env"]
-        : typeof options.envFilePath === "string"
-          ? [options.envFilePath]
-          : [...options.envFilePath];
+        : toArray(options.envFilePath);
 
     // Load in forward order, keeping the first occurrence so earlier paths take precedence
     // AND key insertion order preserves the first env file's definition order.
@@ -598,12 +603,12 @@ export function loadEnvironmentSnapshot(
   }
 
   // Determine which keys in externalEnv were genuinely predefined before `.env` loading.
-  const expandOpts: ExpandVariablesOptions | undefined =
-    typeof options.expandVariables === "object"
-      ? options.expandVariables
-      : options.expandVariables
-        ? {}
-        : undefined;
+  const expandOpts: ExpandVariablesOptions | undefined = ternaryFor(
+    options.expandVariables,
+  )
+    .when(isObject, identity)
+    .when(Boolean, () => ({}))
+    .elseEval(undefined);
   const effectiveExternal = expandOpts?.processEnv ?? runtimeEnv;
   const predefinedKeys = new Set<string>();
   if (!options.override && !expandOpts?.ignoreProcessEnv) {
@@ -818,5 +823,47 @@ export function parseJsoncConfig(content: string): Record<string, unknown> {
   const parsed = Bun.JSONC.parse(content);
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
+    : {};
+}
+
+function sanitizeParsedConfigValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeParsedConfigValue);
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (DANGEROUS_KEYS.has(k)) {
+        continue;
+      }
+      Object.defineProperty(out, k, {
+        value: sanitizeParsedConfigValue(v),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Parses a JSON5 configuration string (unquoted keys, single quotes, comments, trailing commas,
+ * hex numbers, multiline strings) using Bun's native `Bun.JSON5.parse()`, stripping prototype-pollution keys.
+ */
+export function parseJson5Config(content: string): Record<string, unknown> {
+  if (typeof Bun === "undefined") {
+    throw new Error("parseJson5Config requires the Bun runtime (Bun.JSON5).");
+  }
+  const json5 = (
+    Bun as unknown as { JSON5?: { parse(input: string): unknown } }
+  ).JSON5;
+  if (!json5 || typeof json5.parse !== "function") {
+    throw new Error("Bun.JSON5 is unavailable in the current runtime.");
+  }
+  const parsed = json5.parse(content);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (sanitizeParsedConfigValue(parsed) as Record<string, unknown>)
     : {};
 }

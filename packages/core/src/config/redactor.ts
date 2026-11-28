@@ -1,4 +1,4 @@
-import { DEFAULT_REDACT_KEYS } from "../common/index";
+import { DEFAULT_REDACT_KEYS, isPlainObject } from "../common/index";
 import type { SecretRedactorOptions } from "./interfaces/config.interface";
 
 const EXTRA_CONFIG_SECRET_KEYS: readonly string[] = [
@@ -18,11 +18,6 @@ const EXTRA_CONFIG_SECRET_KEYS: readonly string[] = [
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[-_\s.]/g, "");
-}
-
-function isPlainObject(value: object): boolean {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 /**

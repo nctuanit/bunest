@@ -95,11 +95,21 @@ class NativeBunReplServer implements BunestReplServer {
   constructor(options: ReplOptions = {}) {
     this.promptText = options.prompt ?? "> ";
     this.ignoreUndefined = options.ignoreUndefined ?? true;
+    const bunAnsi =
+      typeof Bun !== "undefined"
+        ? (Bun as unknown as { enableANSIColors?: boolean }).enableANSIColors
+        : undefined;
     const useColors =
-      options.useColors ?? Boolean(process.stdout && process.stdout.isTTY);
+      options.useColors ??
+      (typeof bunAnsi === "boolean"
+        ? bunAnsi
+        : Boolean(process.stdout && process.stdout.isTTY));
     this.writerFn =
       options.writer ??
-      ((value: unknown) => Bun.inspect(value, { colors: useColors }));
+      ((value: unknown) =>
+        typeof Bun !== "undefined" && typeof Bun.inspect === "function"
+          ? Bun.inspect(value, { colors: useColors })
+          : String(value));
     this.evalFn = options.eval ?? defaultEvalInContext;
     this.output = options.output ?? process.stdout;
   }
@@ -329,27 +339,69 @@ export function createReplContext(
     const modules = app.getModules();
     const filterName =
       typeof moduleCls === "function" ? moduleCls.name : moduleCls;
+    const rows: Array<{
+      readonly module: string;
+      readonly kind: "controller" | "provider" | "module";
+      readonly token: string;
+    }> = [];
+
     for (const mod of modules.values()) {
       if (filterName && mod.name !== filterName) {
         continue;
       }
-      console.log(`\n${mod.name} (${mod.id}):`);
-      if (mod.controllers.length > 0) {
-        console.log("  - controllers:");
-        for (const ctrl of mod.controllers) {
-          console.log(`    ◻ ${ctrl.name || "<AnonymousController>"}`);
-        }
+      let addedEntry = false;
+      for (const ctrl of mod.controllers) {
+        addedEntry = true;
+        rows.push({
+          module: mod.name,
+          kind: "controller",
+          token: ctrl.name || "<AnonymousController>",
+        });
       }
-      if (mod.providers.size > 0) {
-        console.log("  - providers:");
-        for (const provider of mod.providers.values()) {
-          const label =
-            typeof provider.token === "function"
-              ? provider.token.name
-              : String(provider.token);
-          console.log(`    ◻ ${label}`);
-        }
+      for (const provider of mod.providers.values()) {
+        addedEntry = true;
+        const label =
+          typeof provider.token === "function"
+            ? provider.token.name || "<AnonymousProvider>"
+            : String(provider.token);
+        rows.push({
+          module: mod.name,
+          kind: "provider",
+          token: label,
+        });
       }
+      if (!addedEntry) {
+        rows.push({
+          module: mod.name,
+          kind: "module",
+          token: mod.id,
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const inspectTable =
+      typeof Bun !== "undefined"
+        ? (
+            Bun.inspect as unknown as {
+              table?: (
+                tabularData: readonly Record<string, unknown>[],
+                properties?: readonly string[],
+              ) => string;
+            }
+          )?.table
+        : undefined;
+
+    if (typeof inspectTable === "function") {
+      console.log(inspectTable(rows, ["module", "kind", "token"]));
+      return;
+    }
+
+    for (const row of rows) {
+      console.log(`${row.module} [${row.kind}] ${row.token}`);
     }
   };
 

@@ -153,6 +153,67 @@ export class ReportService {}`,
       "Ensure each handler parameter has exactly one binding decorator (`@Body`, `@Param`, `@Query`, ...).",
     ],
   },
+  BUNEST_E201: {
+    code: "BUNEST_E201",
+    name: "WorkerSpawnException",
+    title: "Worker failed to start",
+    summary:
+      "A Bun Worker thread failed to resolve, boot, or emit its READY handshake within the startup timeout.",
+    fixes: [
+      "Verify the worker script URL/path exists (prefer `new URL('./my.worker.ts', import.meta.url)`).",
+      "Ensure the worker entry calls `defineWorker(...)` or `bootstrapWorkerApplication(...)` synchronously before any top-level `await`.",
+      "Check any `preload` module specifiers and increase `startupTimeoutMs` if worker bootstrap performs slow I/O.",
+    ],
+    example: `WorkerModule.registerPool({
+  name: "crypto",
+  script: new URL("./crypto.worker.ts", import.meta.url),
+  startupTimeoutMs: 10_000,
+})`,
+  },
+  BUNEST_E202: {
+    code: "BUNEST_E202",
+    name: "WorkerTimeoutException",
+    title: "Worker task timed out",
+    summary:
+      "A task dispatched to a Bun Worker pool did not finish before its configured `timeoutMs` deadline.",
+    fixes: [
+      "Increase `timeoutMs` on `pool.run()` or `taskTimeoutMs` on the pool configuration for legitimately long workloads.",
+      "Inspect the worker task for infinite loops, unawaited promises, or blocking calls, and honor `ctx.signal` for cooperative cancellation.",
+    ],
+  },
+  BUNEST_E203: {
+    code: "BUNEST_E203",
+    name: "WorkerPoolSaturatedException",
+    title: "Worker pool queue saturated",
+    summary:
+      "The worker pool pending task queue reached `maxQueueSize` and rejected the new task to preserve backpressure.",
+    fixes: [
+      "Increase `maxThreads` or `maxQueueSize` if the host has spare CPU and memory capacity.",
+      "Apply upstream rate limiting or move bursty background work to a durable `@bunest/jobs/queues` queue.",
+    ],
+  },
+  BUNEST_E204: {
+    code: "BUNEST_E204",
+    name: "WorkerTerminatedException",
+    title: "Worker terminated unexpectedly",
+    summary:
+      "A Bun Worker thread crashed, exited, or the worker pool closed before an in-flight or queued task completed.",
+    fixes: [
+      "Check worker error logs for uncaught exceptions or out-of-memory exits (consider disabling `smol: true` for memory-heavy tasks).",
+      "Ensure `pool.close()` is only called during application shutdown after awaiting pending work.",
+    ],
+  },
+  BUNEST_E205: {
+    code: "BUNEST_E205",
+    name: "WorkerTaskNotFoundException",
+    title: "Worker task handler not found",
+    summary:
+      "No handler matching the requested task name is registered inside the target Bun Worker.",
+    fixes: [
+      "Register the task name in `defineWorker({ [taskName]: handler })` or decorate a method with `@WorkerHandler(taskName)`.",
+      "Share a typed `defineWorkerContract(taskName)` object between caller and worker to prevent typos.",
+    ],
+  },
 } as const satisfies Record<string, BunestErrorCatalogEntry>;
 
 export type BunestErrorCode = keyof typeof BUNEST_ERROR_CATALOG;

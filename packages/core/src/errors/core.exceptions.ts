@@ -1,4 +1,4 @@
-import { Scope } from "../common/index";
+import { Scope, isDefined, ternary } from "../common/index";
 import {
   toBunestErrorReport,
   type BunestErrorCode,
@@ -41,12 +41,15 @@ export class UnknownDependencyException extends CoreBootstrapException {
 
   constructor(details: UnknownDependencyDetails) {
     const tokenLabel = formatToken(details.token);
-    const location =
-      details.propertyKey !== undefined
-        ? `property "${String(details.propertyKey)}"`
-        : details.index !== undefined
-          ? `constructor parameter #${details.index}`
-          : "dependency";
+    const location = ternary(
+      isDefined(details.propertyKey),
+      () => `property "${String(details.propertyKey)}"`,
+    )
+      .elseIf(
+        isDefined(details.index),
+        () => `constructor parameter #${details.index}`,
+      )
+      .elseEval("dependency");
     const pathLine =
       details.resolutionPath && details.resolutionPath.length > 0
         ? `\nResolution path: ${details.resolutionPath.join(" -> ")}`

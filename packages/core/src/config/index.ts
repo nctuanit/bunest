@@ -49,12 +49,22 @@ export {
   loadEnvironmentVariables,
   parseEnvContent,
   parseEnvEntries,
+  parseJson5Config,
   parseJsoncConfig,
   parseTomlConfig,
   parseYamlConfig,
   type LoadEnvOptions,
   type ParsedEnvEntry,
 } from "./env-parser";
+
+export {
+  deleteKeychainSecret,
+  getKeychainSecret,
+  loadKeychainSecrets,
+  setKeychainSecret,
+  type BunSecretsBackend,
+  type LoadKeychainSecretsOptions,
+} from "./secrets.util";
 
 export { createSecretRedactor } from "./redactor";
 export {

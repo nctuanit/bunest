@@ -19,6 +19,8 @@ import type {
   ValidatorPackageLike,
 } from "../interfaces/validation.interface";
 import { stripProtoKeys as stripProtoKeysUtil } from "../utils/common.utils";
+import { ternaryFor } from "../utils/ternary.util";
+import { isFunction, isString } from "../utils/type-guards.util";
 import {
   OMITTED_ERRORS_MESSAGE,
   resolveMaxErrorMessagesLength,
@@ -1025,12 +1027,14 @@ export class ValidationPipe implements PipeTransform<unknown, unknown> {
           continue;
         }
 
-        const message =
-          typeof meta.message === "string"
-            ? meta.message.replace(/\$property/g, prop)
-            : typeof meta.message === "function"
-              ? meta.message({ property: prop, value: val })
-              : `nested property ${prop} must be either object or array`;
+        const message = ternaryFor(meta.message)
+          .when(isString, (m) => m.replace(/\$property/g, prop))
+          .when(
+            (m): m is (args: { property: string; value: unknown }) => string =>
+              isFunction(m),
+            (fn) => fn({ property: prop, value: val }),
+          )
+          .elseEval(`nested property ${prop} must be either object or array`);
 
         const err = checkValue(val, prop, message);
         if (err) {

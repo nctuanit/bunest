@@ -167,6 +167,20 @@ export interface StaticAssetsOptions {
    * Appends `, immutable` when `maxAge` is configured.
    */
   immutable?: boolean;
+  /**
+   * Optional streaming HTML transform powered by Bun's native `HTMLRewriter`.
+   */
+  rewriteHtml?: (
+    rewriter: HTMLRewriter,
+    req: Request,
+  ) => HTMLRewriter | void;
+  /**
+   * Enable fallback lookup in `Bun.embeddedFiles` (auto-enabled when running as
+   * a `bun build --compile` standalone executable).
+   */
+  embedded?: boolean;
+  /** Optional explicit embedded asset list (primarily for testing). */
+  embeddedFiles?: readonly Blob[];
 }
 
 export type RouteConflictPolicyLevel = "off" | "warn" | "error";

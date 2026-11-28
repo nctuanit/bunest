@@ -1,11 +1,16 @@
 import {
   DecoratorRegistry,
+  first,
+  identity,
   Inject,
   Injectable,
+  isArray,
+  isString,
   join,
   Module,
   Optional,
   resolve,
+  ternaryFor,
   type DynamicModule,
   type ModuleMetadata,
   type OnModuleInit,
@@ -57,6 +62,12 @@ export interface ServeStaticModuleOptions {
     indexHtml: string,
     req: unknown,
   ) => string | Promise<string>;
+  rewriteHtml?: (
+    rewriter: HTMLRewriter,
+    req: Request,
+  ) => HTMLRewriter | void;
+  embedded?: boolean;
+  embeddedFiles?: readonly Blob[];
   serveStaticOptions?: {
     acceptRanges?: boolean;
     cacheControl?: boolean;
@@ -71,6 +82,12 @@ export interface ServeStaticModuleOptions {
     redirect?: boolean;
     setHeaders?: (res: any, path: string, stat: any) => any;
     preCompressed?: boolean;
+    rewriteHtml?: (
+      rewriter: HTMLRewriter,
+      req: Request,
+    ) => HTMLRewriter | void;
+    embedded?: boolean;
+    embeddedFiles?: readonly Blob[];
     decorateReply?: boolean;
   };
 }
@@ -160,11 +177,13 @@ export class BunStaticLoader extends AbstractLoader {
           options.serveStaticOptions?.index !== false);
 
       const spaIndexFile =
-        typeof staticOpts.index === "string"
-          ? staticOpts.index
-          : Array.isArray(staticOpts.index) && staticOpts.index.length > 0
-            ? staticOpts.index[0]
-            : "index.html";
+        ternaryFor(staticOpts.index)
+          .when(isString, identity)
+          .when(
+            (v): v is string[] => isArray(v),
+            (arr) => first(arr),
+          )
+          .elseEval(undefined) ?? "index.html";
 
       const mountOptions: ExtendedStaticAssetsOptions = {
         prefix: effectivePrefix,
@@ -181,6 +200,9 @@ export class BunStaticLoader extends AbstractLoader {
         renderPath,
         spaFallback: spaEnabled ? spaIndexFile : undefined,
         transformIndexHtml: options.transformIndexHtml,
+        rewriteHtml: options.rewriteHtml ?? staticOpts.rewriteHtml,
+        embedded: options.embedded ?? staticOpts.embedded,
+        embeddedFiles: options.embeddedFiles ?? staticOpts.embeddedFiles,
         extensions: staticOpts.extensions,
         setHeaders: staticOpts.setHeaders,
         preCompressed: staticOpts.preCompressed,

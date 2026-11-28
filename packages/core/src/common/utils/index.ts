@@ -188,9 +188,11 @@ export {
   ensureSuffix,
   escapeHtml,
   escapeRegExp,
+  formatColor,
   kebabCase,
   maskSecret,
   pascalCase,
+  sliceAnsi,
   slugify,
   snakeCase,
   splitOnce,
@@ -200,6 +202,9 @@ export {
   trimSuffix,
   truncate,
   uncapitalize,
+  wrapAnsi,
+  type BunColorOutputFormat,
+  type WrapAnsiOptions,
 } from "./string.util";
 
 // Number & Math utilities
@@ -227,13 +232,22 @@ export {
   peekPromise,
   pollUntil,
   throttle,
-  withTimeout,
   type DebouncedFn,
   type Deferred,
   type PollUntilOptions,
   type SettledPartition,
   type ThrottledFn,
 } from "./async.util";
+
+// Async Stream Interceptor & Unified Timeout helpers
+export {
+  mapAsyncIterable,
+  tapAsyncIterable,
+  withTimeout,
+  type PromiseTimeoutOptions,
+  type StreamTimeoutOptions,
+  type TapAsyncIterableOptions,
+} from "./stream-helpers";
 
 // JSON & Serialization utilities
 export {
@@ -316,7 +330,34 @@ export {
 } from "./error.util";
 
 // UUID utilities
-export { isValidUuid, uuidv4, uuidv7 } from "./uuid.util";
+export {
+  UUID_NAMESPACE_DNS,
+  UUID_NAMESPACE_OID,
+  UUID_NAMESPACE_URL,
+  UUID_NAMESPACE_X500,
+  isValidUuid,
+  uuidv4,
+  uuidv5,
+  uuidv7,
+} from "./uuid.util";
+
+// Bun 1.4.5 Native Primitives (nanoseconds, deepMatch, semver, JSONL, indexOfLine, ArrayBufferSink)
+export {
+  createByteSink,
+  indexOfLine,
+  isDeepMatch,
+  matchesShape,
+  nanoseconds,
+  nowMonotonicAndUnixNano,
+  nowUnixNanoBigInt,
+  parseJsonl,
+  parseJsonlChunk,
+  semverOrder,
+  semverSatisfies,
+  type ByteSinkLike,
+  type JsonlChunkResult,
+  type MonotonicAndUnixNano,
+} from "./bun-native.util";
 
 // Comparison & Ordering utilities
 export {

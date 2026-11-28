@@ -1,9 +1,14 @@
 import {
   type DynamicModule,
   Global,
+  identity,
   type InjectionToken,
+  isDefined,
+  isObject,
   Module,
   type Provider,
+  ternaryFor,
+  toArray,
 } from "../common/index";
 import { ConfigService, readDotPath } from "./config.service";
 import { CONFIG_OPTIONS_TOKEN, CONFIG_STORE_TOKEN } from "./constants";
@@ -18,6 +23,7 @@ import type {
   ConfigObject,
   ConfigServiceInternalOptions,
   EnvExpansionContext,
+  ExpandVariablesOptions,
   NamespacedConfigFactory,
 } from "./interfaces/config.interface";
 import { isNamespacedConfigFactory } from "./register-as";
@@ -272,19 +278,16 @@ export class ConfigModule {
       }
     }
 
-    const normalizedPaths =
-      options.envFilePath === undefined
-        ? undefined
-        : typeof options.envFilePath === "string"
-          ? [options.envFilePath]
-          : [...options.envFilePath];
+    const normalizedPaths = isDefined(options.envFilePath)
+      ? toArray(options.envFilePath)
+      : undefined;
 
-    const expandOpts =
-      typeof options.expandVariables === "object"
-        ? options.expandVariables
-        : options.expandVariables
-          ? {}
-          : undefined;
+    const expandOpts: ExpandVariablesOptions | undefined = ternaryFor(
+      options.expandVariables,
+    )
+      .when((v): v is ExpandVariablesOptions => isObject(v), identity)
+      .when(Boolean, () => ({}))
+      .elseEval(undefined);
 
     const expansionContext: EnvExpansionContext | undefined =
       expandOpts && !options.ignoreEnvFile && snapshot.rawEntries.size > 0

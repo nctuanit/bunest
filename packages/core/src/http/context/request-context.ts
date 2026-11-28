@@ -1,4 +1,8 @@
-import { ContextStorage, type UploadedFileInfo } from "../../common/index";
+import {
+  ContextStorage,
+  registerLogContextProvider,
+  type UploadedFileInfo,
+} from "../../common/index";
 import type {
   BunServerLike,
   MultipartStorageOptions,
@@ -31,6 +35,21 @@ export const requestContextStorage = new ContextStorage<RequestContext>();
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
   return requestContextStorage.getStore();
+}
+
+const HTTP_LOG_CONTEXT_REGISTERED = Symbol.for(
+  "bunest:http:log-context-registered",
+);
+if (!(globalThis as Record<PropertyKey, unknown>)[HTTP_LOG_CONTEXT_REGISTERED]) {
+  (globalThis as Record<PropertyKey, unknown>)[HTTP_LOG_CONTEXT_REGISTERED] =
+    true;
+  registerLogContextProvider(() => {
+    const reqCtx = requestContextStorage.getStore();
+    if (!reqCtx) return undefined;
+    const reqId = reqCtx.requestId ?? reqCtx.request.headers.get("x-request-id");
+    if (!reqId) return undefined;
+    return { requestId: reqId };
+  });
 }
 
 export interface RequestContextOptions {
@@ -279,13 +298,31 @@ export class RequestContext {
       );
     }
     if (!this.cachedSignedCookies) {
-      const rawCookies = parseCookieHeader(this.request.headers.get("cookie"));
+      const bunCookies = (
+        this.request as Request & { cookies?: unknown }
+      ).cookies;
+      const canReuseCookies =
+        bunCookies === undefined ||
+        (typeof Bun !== "undefined" &&
+          typeof Bun.CookieMap === "function" &&
+          bunCookies instanceof Bun.CookieMap);
+      const rawCookies = canReuseCookies
+        ? this.cookies
+        : parseCookieHeader(this.request.headers.get("cookie"));
       this.cachedSignedCookies = extractSignedCookies(
         rawCookies,
         this.cookieSecrets,
       );
     }
     return this.cachedSignedCookies;
+  }
+
+  /**
+   * Adjusts Bun's per-request idle timeout (`server.timeout(req, seconds)`).
+   * Pass `0` to disable idle timeout for long-lived streams such as SSE.
+   */
+  setIdleTimeout(seconds: number): void {
+    this.server?.timeout?.(this.request, seconds);
   }
 
   get ip(): string {

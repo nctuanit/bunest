@@ -19,9 +19,12 @@ export {
   type HttpMethodCall,
 } from "./http-client";
 export type {
+  BunFetchSessionLike,
   HttpBackoffOptions,
   HttpClientModuleOptions,
   HttpClientOptions,
+  HttpFetchProxyOption,
+  HttpFetchSessionOptions,
   HttpHeadersInit,
   HttpQuery,
   HttpRequestBody,

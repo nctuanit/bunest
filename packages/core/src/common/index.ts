@@ -283,6 +283,16 @@ export {
 
 // Exceptions
 export {
+  DOMAIN_ERROR_HTTP_STATUS,
+  DomainException,
+  createDomainErrorFilter,
+  type DomainErrorKind,
+  type DomainErrorMapper,
+  type DomainErrorMappingEntry,
+  type DomainErrorMappingResult,
+  type DomainExceptionOptions,
+} from "./exceptions/domain.exception";
+export {
   HttpException,
   IntrinsicException,
   type DescriptionAndOptions,
@@ -392,7 +402,22 @@ export {
   Sse,
   Unlock,
 } from "./decorators/http.decorators";
+export {
+  DEPRECATED_ROUTE_METADATA,
+  DeprecatedRoute,
+  type DeprecatedRouteOptions,
+} from "./decorators/deprecated-route.decorator";
 export { Version } from "./decorators/version.decorator";
+export {
+  AllGuards,
+  AnyGuard,
+  GUARD_COMPOSITE_METADATA,
+  NotGuard,
+  createCompositeGuardInstance,
+  getGuardCompositeMetadata,
+  type GuardCompositeMetadata,
+  type GuardCompositeOperator,
+} from "./guards/guard-composition";
 export {
   InheritMethodEnhancers,
   UseFilters,
@@ -486,8 +511,10 @@ export {
   compareDesc,
   composeComparators,
   computeBackoffDelay,
+  concatBytes,
   cond,
   countBy,
+  crc32,
   createFakeClock,
   debounce,
   deepClone,
@@ -515,9 +542,11 @@ export {
   envNumber,
   envString,
   err,
+  escapeHtml,
   escapeRegExp,
   evalTernary,
   evalTernaryAsync,
+  fastHash,
   filterAsync,
   filterObject,
   first,
@@ -586,6 +615,7 @@ export {
   isOneOf,
   isPlainObject,
   isPrimitive,
+  isPromiseFulfilled,
   isPromiseLike,
   isRegExp,
   isSafeUrl,
@@ -619,6 +649,7 @@ export {
   match,
   matchResult,
   maxBy,
+  md5,
   memoize,
   mergeAsyncIterables,
   mergeDefined,
@@ -639,6 +670,7 @@ export {
   parseRetryAfter,
   partition,
   pascalCase,
+  peekPromise,
   pick,
   pickDefined,
   pipe,
@@ -656,6 +688,7 @@ export {
   safeJsonStringify,
   setNestedValue,
   sha256,
+  sha512,
   sleep,
   slugify,
   snakeCase,
@@ -664,6 +697,11 @@ export {
   splitOnce,
   stableStringify,
   startOfDay,
+  streamToBytes,
+  streamToJson,
+  streamToText,
+  stringWidth,
+  stripAnsi,
   stripProtoKeys,
   subDuration,
   sum,
@@ -870,13 +908,16 @@ export {
 export {
   FileTypeValidator,
   FileValidator,
+  ImageDimensionsValidator,
   MaxFileSizeValidator,
   detectMagicMimeType,
   type FileTypeValidatorContext,
   type FileTypeValidatorOptions,
   type FileValidatorContext,
+  type ImageDimensionsValidatorOptions,
   type MaxFileSizeValidatorContext,
   type MaxFileSizeValidatorOptions,
+  type SupportedBunImageFormat,
 } from "./pipes/file-validators";
 export {
   ParseFilePipe,
@@ -913,6 +954,11 @@ export {
   isColorAllowed,
   type ColorTextFn,
 } from "./logger/cli-colors";
+export {
+  getActiveLogContext,
+  registerLogContextProvider,
+  type LogContextProvider,
+} from "./logger/log-context";
 export {
   ALL_LOG_LEVELS,
   DEFAULT_REDACT_KEYS,
@@ -975,33 +1021,64 @@ export {
 // Pure-TS / Bun-native shared primitives (Path, Strict Assert, Net, Runtime Info, Crypto extensions)
 export {
   AssertionError,
+  UUID_NAMESPACE_DNS,
+  UUID_NAMESPACE_OID,
+  UUID_NAMESPACE_URL,
+  UUID_NAMESPACE_X500,
   basename,
+  createByteSink,
   dirname,
   extname,
+  formatColor,
   getArch,
   getCpuCount,
   getHostname,
   getPlatform,
+  indexOfLine,
   isAbsolute,
+  isDeepMatch,
   isIp,
   isIpv4,
   isIpv6,
   join,
+  matchesShape,
+  nanoseconds,
   normalize,
+  nowMonotonicAndUnixNano,
+  nowUnixNanoBigInt,
+  parseJsonl,
+  parseJsonlChunk,
   posixPath,
   randomInt,
   randomIntRange,
   relative,
   resolve,
+  semverOrder,
+  semverSatisfies,
   sep,
+  sliceAnsi,
   strictAssert,
   timingSafeEqualBytes,
+  uuidv5,
   win32Path,
+  wrapAnsi,
   type AssertPredicate,
   type AssertionErrorOptions,
+  type BunColorOutputFormat,
+  type ByteSinkLike,
+  type JsonlChunkResult,
+  type MonotonicAndUnixNano,
   type PlatformPath,
   type StrictAssert,
+  type WrapAnsiOptions,
 } from "./utils";
+
+// Standalone executable embedded files helpers (`Bun.embeddedFiles`, `Bun.isStandaloneExecutable`)
+export {
+  findEmbeddedFile,
+  isStandaloneExecutable,
+  listEmbeddedFiles,
+} from "./runtime/embedded-files.util";
 
 // Bunest Native Diagnostics Channel Bus
 export {

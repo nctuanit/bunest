@@ -22,6 +22,10 @@ import {
   type MultipartStreamOptions,
   type MultipartStreamPart,
 } from "../parsers/multipart-stream";
+import {
+  appendMultipartField,
+  parseMultipartJsonFieldValue,
+} from "../parsers/body-parser";
 import { isDangerousKey } from "../security/prototype-sanitizer";
 
 const EMPTY_BYTES = new Uint8Array(0);
@@ -128,24 +132,24 @@ export interface FileInterceptorOptions {
     req: Request,
     file: MultipartFilePart,
   ) => boolean | Promise<boolean>;
+  /**
+   * Automatically parses JSON-encoded multipart text fields (useful when sending
+   * nested DTOs alongside uploaded files):
+   * - `true`: best-effort `JSON.parse()` on any field whose trimmed text starts with `{` or `[`.
+   * - `string[]`: strictly parses only the listed field names (throws HTTP 400 on invalid JSON).
+   */
+  readonly parseJsonFields?: boolean | readonly string[];
 }
 
 function appendFormField(
   fields: Record<string, unknown>,
   key: string,
   value: string,
+  parseJsonFields?: boolean | readonly string[],
 ): void {
   if (!key || isDangerousKey(key)) return;
-  if (Object.prototype.hasOwnProperty.call(fields, key)) {
-    const existing = fields[key];
-    if (Array.isArray(existing)) {
-      existing.push(value);
-    } else {
-      fields[key] = [existing, value];
-    }
-  } else {
-    fields[key] = value;
-  }
+  const parsed = parseMultipartJsonFieldValue(key, value, parseJsonFields);
+  appendMultipartField(fields, key, parsed);
 }
 
 function markFieldsSanitized(fields: Record<string, unknown>): void {
@@ -387,7 +391,7 @@ function createUploadInterceptor(
         try {
           for await (const part of parseMultipartStream(req, streamOpts)) {
             if (part.kind === "field") {
-              appendFormField(fields, part.fieldname, part.value);
+              appendFormField(fields, part.fieldname, part.value, options.parseJsonFields);
               continue;
             }
             if (part.fieldname !== fieldName) {
@@ -465,7 +469,7 @@ function createUploadInterceptor(
         const memoryFiles: UploadedFileInfo[] = [];
         for await (const part of parseMultipartStream(req, streamOpts)) {
           if (part.kind === "field") {
-            appendFormField(fields, part.fieldname, part.value);
+            appendFormField(fields, part.fieldname, part.value, options.parseJsonFields);
             continue;
           }
           if (part.fieldname !== fieldName) {
@@ -508,7 +512,7 @@ function createUploadInterceptor(
         try {
           for await (const part of parseMultipartStream(req, streamOpts)) {
             if (part.kind === "field") {
-              appendFormField(fields, part.fieldname, part.value);
+              appendFormField(fields, part.fieldname, part.value, options.parseJsonFields);
               continue;
             }
             if (part.fieldname !== fieldName) {
@@ -558,7 +562,7 @@ function createUploadInterceptor(
             if (nextRes.done) break;
             const part: MultipartStreamPart = nextRes.value;
             if (part.kind === "field") {
-              appendFormField(fields, part.fieldname, part.value);
+              appendFormField(fields, part.fieldname, part.value, options.parseJsonFields);
               continue;
             }
             if (part.fieldname !== fieldName) {
@@ -588,17 +592,76 @@ function createUploadInterceptor(
         }
       }
 
-      // Multi-file live AsyncIterable stream (zero buffering across arbitrary file count)
+      // Multi-file live AsyncIterable stream (zero buffering across arbitrary file count).
+      // Advance through any leading text fields before `next.handle()` so `@Body()`
+      // receives DTO fields sent ahead of the first file part.
+      let firstMatchedPart: MultipartFilePart | undefined;
+      let streamExhausted = false;
+      try {
+        while (true) {
+          const nextRes = await iterator.next();
+          if (nextRes.done) {
+            streamExhausted = true;
+            break;
+          }
+          const part: MultipartStreamPart = nextRes.value;
+          if (part.kind === "field") {
+            appendFormField(
+              fields,
+              part.fieldname,
+              part.value,
+              options.parseJsonFields,
+            );
+            continue;
+          }
+          if (part.fieldname !== fieldName) {
+            await part.stream.cancel().catch(() => {});
+            continue;
+          }
+          if (options.fileFilter && !(await options.fileFilter(req, part))) {
+            await part.stream.cancel().catch(() => {});
+            continue;
+          }
+          firstMatchedPart = part;
+          break;
+        }
+      } catch (err) {
+        await iterator.return?.().catch(() => {});
+        throw err;
+      }
+
       let yieldedCount = 0;
+      let bufferedFirst: MultipartFilePart | undefined = firstMatchedPart;
       const liveFilesIterable: AsyncIterable<UploadedFileStream> = {
         async *[Symbol.asyncIterator]() {
           try {
+            if (bufferedFirst) {
+              const first = bufferedFirst;
+              bufferedFirst = undefined;
+              yieldedCount++;
+              if (yieldedCount > maxCount) {
+                await first.stream.cancel().catch(() => {});
+                throw new PayloadTooLargeException({
+                  statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+                  error: "Payload Too Large",
+                  message: `Too many files for field "${fieldName}" (max ${maxCount})`,
+                  limit: maxCount,
+                });
+              }
+              yield first;
+            }
+            if (streamExhausted) return;
             while (true) {
               const nextRes = await iterator.next();
               if (nextRes.done) break;
               const part: MultipartStreamPart = nextRes.value;
               if (part.kind === "field") {
-                appendFormField(fields, part.fieldname, part.value);
+                appendFormField(
+                  fields,
+                  part.fieldname,
+                  part.value,
+                  options.parseJsonFields,
+                );
                 continue;
               }
               if (part.fieldname !== fieldName) {
@@ -637,6 +700,9 @@ function createUploadInterceptor(
       try {
         return await next.handle();
       } finally {
+        if (bufferedFirst && !bufferedFirst.stream.locked) {
+          await bufferedFirst.stream.cancel().catch(() => {});
+        }
         await iterator.return?.().catch(() => {});
       }
     }

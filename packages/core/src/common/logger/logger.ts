@@ -10,6 +10,10 @@ import {
   isLogLevelEnabled,
 } from "./console-logger";
 import type { LogLevel, LoggerService } from "./logger.interface";
+import {
+  getActiveLogContext,
+  type LogContextProvider,
+} from "./log-context";
 
 export const ALL_LOG_LEVELS: readonly LogLevel[] = LOG_LEVELS;
 
@@ -63,6 +67,13 @@ export interface LoggerOptions {
   timestampDiff?: boolean;
   redactKeys?: string[];
   redactionMask?: string;
+  /**
+   * Automatically enrich JSON log entries with active ambient context
+   * (e.g. HTTP `requestId` and `ClsService` fields).
+   * Defaults to `true` when `json: true`. Pass `false` to disable or a custom
+   * `LogContextProvider` function.
+   */
+  enrichContext?: boolean | LogContextProvider;
   writer?: (line: string, level: LogLevel) => void;
 }
 
@@ -123,7 +134,8 @@ export class Logger implements LoggerService {
         options.prefix !== undefined ||
         options.pid !== undefined ||
         options.colors !== undefined ||
-        options.timestampDiff !== undefined,
+        options.timestampDiff !== undefined ||
+        options.enrichContext !== undefined,
     );
     this.levels = new Set(options.levels ?? ALL_LOG_LEVELS);
     this.json = options.json ?? false;
@@ -477,6 +489,30 @@ export class Logger implements LoggerService {
         ...(resolvedContext ? { context: resolvedContext } : {}),
         message: redactedMessage,
       };
+
+      if (this.options.enrichContext !== false) {
+        let ambient: Record<string, unknown> | undefined;
+        if (typeof this.options.enrichContext === "function") {
+          try {
+            ambient = this.options.enrichContext();
+          } catch {
+            ambient = undefined;
+          }
+        } else {
+          ambient = getActiveLogContext();
+        }
+        if (ambient && typeof ambient === "object" && !Array.isArray(ambient)) {
+          const redactedAmbient = this.redact(ambient) as Record<
+            string,
+            unknown
+          >;
+          for (const [k, v] of Object.entries(redactedAmbient)) {
+            if (v !== undefined && !(k in payload)) {
+              payload[k] = v;
+            }
+          }
+        }
+      }
 
       if (redactedParams.length === 1) {
         payload.meta = redactedParams[0];

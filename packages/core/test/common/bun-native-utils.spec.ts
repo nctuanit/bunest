@@ -16,7 +16,10 @@ import {
   streamToText,
   stringWidth,
   stripAnsi,
+  withTimeout,
 } from "../../src/common/utils/index";
+import * as commonExports from "../../src/common/index";
+import * as coreExports from "../../src/index";
 
 describe("Bun-native core utilities", () => {
   describe("crypto & fast hashing", () => {
@@ -121,5 +124,44 @@ describe("Bun-native core utilities", () => {
       expect(deepEqual(+0, -0)).toBe(true);
       expect(deepEqual(new Date(Number.NaN), new Date(Number.NaN))).toBe(true);
     });
+  });
+
+  it("re-exports all Bun-native utils and unified withTimeout identically from @bunest/core/common and @bunest/core", () => {
+    const names = [
+      "concatBytes",
+      "crc32",
+      "escapeHtml",
+      "fastHash",
+      "isPromiseFulfilled",
+      "md5",
+      "peekPromise",
+      "sha512",
+      "streamToBytes",
+      "streamToJson",
+      "streamToText",
+      "stringWidth",
+      "stripAnsi",
+      "withTimeout",
+    ] as const;
+    const expected: Record<(typeof names)[number], unknown> = {
+      concatBytes,
+      crc32,
+      escapeHtml,
+      fastHash,
+      isPromiseFulfilled,
+      md5,
+      peekPromise,
+      sha512,
+      streamToBytes,
+      streamToJson,
+      streamToText,
+      stringWidth,
+      stripAnsi,
+      withTimeout,
+    };
+    for (const name of names) {
+      expect<unknown>(commonExports[name]).toBe(expected[name]);
+      expect<unknown>(coreExports[name]).toBe(expected[name]);
+    }
   });
 });

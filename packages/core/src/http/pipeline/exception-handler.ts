@@ -1,14 +1,19 @@
 import {
   type ArgumentsHost,
+  DomainException,
   type ExceptionFilter,
   type ExceptionFilterLike,
   HttpException,
   HttpStatus,
   IntrinsicException,
+  isFunction,
+  isInstanceof,
+  isNumber,
   Logger,
   type LoggerService,
   METADATA_KEYS,
   MetadataRegistry,
+  ternaryFor,
   type Type,
 } from "../../common/index";
 import type { RequestContext } from "../context/request-context";
@@ -157,12 +162,7 @@ export function wrapHttpLikeMiddlewareError(err: unknown): unknown {
     message?: unknown;
     expose?: unknown;
   };
-  const rawStatus =
-    typeof obj.statusCode === "number"
-      ? obj.statusCode
-      : typeof obj.status === "number"
-        ? obj.status
-        : undefined;
+  const rawStatus = [obj.statusCode, obj.status].find(isNumber);
   if (
     rawStatus === undefined ||
     !Number.isInteger(rawStatus) ||
@@ -402,6 +402,44 @@ export class DefaultExceptionFilter implements ExceptionFilter {
       return new Response(JSON.stringify(body), { status, headers });
     }
 
+    if (exception instanceof DomainException) {
+      const status = exception.httpStatus;
+      if (exception.kind === "internal") {
+        const activeLogger = this.resolveLogger();
+        activeLogger.error(
+          exception.message,
+          formatErrorForInternalLog(exception),
+        );
+      }
+
+      const hideInternal = exception.kind === "internal" && isProd;
+      const body: Record<string, unknown> = {
+        statusCode: status,
+        error: HTTP_STATUS_PHRASES[status] ?? "Error",
+        code: exception.code,
+        message: hideInternal ? "Internal Server Error" : exception.message,
+        ...(!hideInternal && exception.details !== undefined
+          ? { details: exception.details }
+          : {}),
+        timestamp,
+        path,
+      };
+
+      const headers = reqCtx
+        ? buildErrorHeaders(reqCtx)
+        : new Headers({ "Content-Type": "application/json; charset=utf-8" });
+
+      if (
+        reqCtx?.request.method === "HEAD" ||
+        status === HttpStatus.NO_CONTENT ||
+        status === HttpStatus.NOT_MODIFIED
+      ) {
+        return new Response(null, { status, headers });
+      }
+
+      return new Response(JSON.stringify(body), { status, headers });
+    }
+
     // Unknown / non-HttpException error -> log internally (unless IntrinsicException), return safe 500
     if (!(exception instanceof IntrinsicException)) {
       const activeLogger = this.resolveLogger();
@@ -487,12 +525,13 @@ export async function executeExceptionFilters(
         catch?: (e: unknown, h: ArgumentsHost) => unknown;
         constructor?: { catch?: (e: unknown, h: ArgumentsHost) => unknown };
       };
-      const result =
-        typeof filterObj.catch === "function"
-          ? await filterObj.catch(error, host)
-          : typeof filterObj.constructor?.catch === "function"
-            ? await filterObj.constructor.catch(error, host)
-            : await entry.filter.catch(error, host);
+      const result = isFunction(filterObj.catch)
+        ? await filterObj.catch(error, host)
+        : await (
+            isFunction(filterObj.constructor?.catch)
+              ? filterObj.constructor.catch(error, host)
+              : entry.filter.catch(error, host)
+          );
 
       if (result instanceof Response) {
         return mergeHeadersOntoNativeResponse(result, ctx);
@@ -500,9 +539,10 @@ export async function executeExceptionFilters(
 
       const fallbackStatus =
         ctx.responseContext.getStatus() ??
-        (error instanceof HttpException
-          ? error.getStatus()
-          : HttpStatus.INTERNAL_SERVER_ERROR);
+        ternaryFor(error)
+          .when(isInstanceof(HttpException), (e) => e.getStatus())
+          .when(isInstanceof(DomainException), (e) => e.httpStatus)
+          .elseEval(HttpStatus.INTERNAL_SERVER_ERROR);
 
       if (result !== undefined) {
         return serializeResponse(

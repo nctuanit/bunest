@@ -9,6 +9,7 @@ import {
   Injectable,
   METADATA_KEYS,
   MetadataRegistry,
+  isPromiseLike as isThenable,
   type ArgumentMetadata,
   type ArgumentsHost,
   type BunestInterceptor,
@@ -171,14 +172,6 @@ class GenericExternalExecutionContext implements ExecutionContext {
   getType<TContext extends string = ContextType>(): TContext {
     return this.contextType as TContext;
   }
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
 }
 
 function isSubscribableLike(value: unknown): value is {
@@ -432,12 +425,7 @@ export class ExternalContextCreator {
         factory?: (data: ParamData, ctx: ExecutionContext) => unknown;
         index?: number;
       };
-      const rawType =
-        entry.type !== undefined
-          ? entry.type
-          : entry.source !== undefined
-            ? entry.source
-            : (key.split(":")[0] ?? key);
+      const rawType = entry.type ?? entry.source ?? key.split(":")[0] ?? key;
       let resolvedType: number | string = rawType;
       if (typeof rawType === "string") {
         const numericType = Number(rawType);

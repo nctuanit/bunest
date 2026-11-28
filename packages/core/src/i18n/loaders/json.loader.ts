@@ -1,11 +1,15 @@
 import {
   basename,
   extname,
+  isObject,
+  isStandaloneExecutable,
   join,
+  listEmbeddedFiles,
   Logger,
   readDirEntries,
   realpathOf as realpath,
   statPath as stat,
+  ternary,
   watchPath as fsWatch,
   type FsDirent as Dirent,
 } from "../../common/index";
@@ -39,17 +43,31 @@ export class JsonI18nLoader extends I18nLoader {
 
   override async load(): Promise<I18nCatalogs> {
     const catalogs: I18nCatalogs = {};
-    const root = await realpath(this.options.path).catch(
-      (err: NodeJS.ErrnoException) => {
-        if (err.code !== "ENOENT") {
-          throw err;
-        }
-        throw new Error(
-          `JsonI18nLoader: the catalog directory ${this.options.path} doesn't exist (ENOENT). ` +
-            "When it is in the build output, make sure the catalog files are copied alongside the bundle.",
+    let root: string | undefined;
+    try {
+      root = await realpath(this.options.path);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") {
+        throw err;
+      }
+      const embedded =
+        this.options.embeddedFiles ??
+        (isStandaloneExecutable() ? listEmbeddedFiles() : undefined);
+      if (embedded && embedded.length > 0) {
+        const result = await loadCatalogsFromEmbedded(
+          this.options.path,
+          embedded,
         );
-      },
-    );
+        if (result.matchedCount > 0) {
+          return result.catalogs;
+        }
+      }
+      throw new Error(
+        `JsonI18nLoader: the catalog directory ${this.options.path} doesn't exist (ENOENT). ` +
+          "When it is in the build output, make sure the catalog files are copied alongside the bundle.",
+      );
+    }
 
     for (const entry of await readDirEntries(this.options.path)) {
       const full = join(this.options.path, entry.name);
@@ -153,6 +171,7 @@ async function readTree(
       if (
         ext === ".json" ||
         ext === ".jsonc" ||
+        ext === ".json5" ||
         ext === ".yaml" ||
         ext === ".yml" ||
         ext === ".toml"
@@ -160,15 +179,7 @@ async function readTree(
         let content: unknown;
         try {
           const raw = await Bun.file(full).text();
-          if (ext === ".json") {
-            content = JSON.parse(raw);
-          } else if (ext === ".jsonc") {
-            content = Bun.JSONC.parse(raw);
-          } else if (ext === ".toml") {
-            content = Bun.TOML.parse(raw);
-          } else {
-            content = Bun.YAML.parse(raw);
-          }
+          content = parseCatalogContent(raw, ext);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           throw new Error(`${full}: ${message}`);
@@ -178,6 +189,140 @@ async function readTree(
     }
   }
   return tree;
+}
+
+function parseCatalogContent(raw: string, ext: string): unknown {
+  if (ext === ".json") {
+    return JSON.parse(raw);
+  }
+  if (ext === ".jsonc") {
+    return Bun.JSONC.parse(raw);
+  }
+  if (ext === ".json5") {
+    return (
+      Bun as unknown as { JSON5: { parse(input: string): unknown } }
+    ).JSON5.parse(raw);
+  }
+  if (ext === ".toml") {
+    return Bun.TOML.parse(raw);
+  }
+  return Bun.YAML.parse(raw);
+}
+
+async function loadCatalogsFromEmbedded(
+  basePath: string,
+  embeddedFiles: readonly Blob[],
+): Promise<{ readonly catalogs: I18nCatalogs; readonly matchedCount: number }> {
+  const catalogs: I18nCatalogs = {};
+  const normalizedBase = basePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((s) => s.length > 0 && s !== ".")
+    .join("/");
+  const fullPrefix = normalizedBase ? `${normalizedBase}/` : "";
+  const baseLeaf = normalizedBase ? basename(normalizedBase) : "";
+  const leafPrefix = baseLeaf ? `${baseLeaf}/` : "";
+
+  interface EmbeddedCandidate {
+    readonly blob: Blob;
+    readonly rawName: string;
+    readonly rel: string;
+  }
+
+  const fullMatches: EmbeddedCandidate[] = [];
+  const leafMatches: EmbeddedCandidate[] = [];
+
+  for (const blob of embeddedFiles) {
+    const rawName = (blob as Blob & { name?: string }).name;
+    if (typeof rawName !== "string" || rawName.length === 0) continue;
+    const rawSegments = rawName.replace(/\\/g, "/").split("/");
+    if (rawSegments.includes("..")) continue;
+    const normalized = rawSegments
+      .filter((s) => s.length > 0 && s !== ".")
+      .join("/");
+    if (!normalized) continue;
+
+    if (!fullPrefix) {
+      fullMatches.push({ blob, rawName, rel: normalized });
+    } else if (normalized.startsWith(fullPrefix)) {
+      fullMatches.push({
+        blob,
+        rawName,
+        rel: normalized.slice(fullPrefix.length),
+      });
+    } else if (normalized.includes(`/${fullPrefix}`)) {
+      const idx = normalized.indexOf(`/${fullPrefix}`);
+      fullMatches.push({
+        blob,
+        rawName,
+        rel: normalized.slice(idx + fullPrefix.length + 1),
+      });
+    } else if (leafPrefix && normalized.startsWith(leafPrefix)) {
+      leafMatches.push({
+        blob,
+        rawName,
+        rel: normalized.slice(leafPrefix.length),
+      });
+    } else if (leafPrefix && normalized.includes(`/${leafPrefix}`)) {
+      const idx = normalized.indexOf(`/${leafPrefix}`);
+      leafMatches.push({
+        blob,
+        rawName,
+        rel: normalized.slice(idx + leafPrefix.length + 1),
+      });
+    }
+  }
+
+  const candidates = fullMatches.length > 0 ? fullMatches : leafMatches;
+  let matchedCount = 0;
+
+  for (const { blob, rawName, rel } of candidates) {
+    const parts = rel.split("/").filter(Boolean);
+    if (parts.length < 2) continue;
+    if (parts.some((p) => p.startsWith("."))) continue;
+    const fileName = parts[parts.length - 1]!;
+    const ext = extname(fileName).toLowerCase();
+    if (
+      ext !== ".json" &&
+      ext !== ".jsonc" &&
+      ext !== ".json5" &&
+      ext !== ".yaml" &&
+      ext !== ".yml" &&
+      ext !== ".toml"
+    ) {
+      continue;
+    }
+    matchedCount++;
+    const locale = parts[0]!;
+    let content: unknown;
+    try {
+      const raw = await blob.text();
+      content = parseCatalogContent(raw, ext);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`${rawName}: ${message}`);
+    }
+    let current = catalogs[locale] as Record<string, unknown> | undefined;
+    if (!current) {
+      current = {};
+      define(catalogs, locale, current);
+    }
+    for (let i = 1; i < parts.length - 1; i++) {
+      const seg = parts[i]!;
+      if (!Object.hasOwn(current, seg)) {
+        define(current, seg, {});
+      } else if (!isObject(current[seg])) {
+        const conflictPath = parts.slice(1, i + 1).join(".");
+        throw new Error(
+          `${rawName}: ${JSON.stringify(conflictPath)} is defined twice`,
+        );
+      }
+      current = current[seg] as Record<string, unknown>;
+    }
+    merge(current, basename(fileName, ext), content, rawName);
+  }
+
+  return { catalogs, matchedCount };
 }
 
 /**
@@ -205,10 +350,6 @@ function merge(
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 /** What an entry is, following symbolic links. A dangling link is neither. */
 async function kindOf(
   entry: Dirent,
@@ -225,11 +366,9 @@ async function kindOf(
   }
   try {
     const target = await stat(full);
-    return target.isDirectory()
-      ? "directory"
-      : target.isFile()
-        ? "file"
-        : undefined;
+    return ternary(target.isDirectory(), "directory" as const)
+      .elseIf(target.isFile(), "file" as const)
+      .elseEval(undefined);
   } catch {
     return undefined;
   }

@@ -1,6 +1,11 @@
 import {
   formatStandardSchemaIssues,
+  identity,
+  isDefined,
+  isObject,
   isStandardSchema,
+  ternaryFor,
+  toArray,
   type StandardSchemaV1,
   type Type,
 } from "../common/index";
@@ -290,19 +295,14 @@ export async function loadConfig<T extends object = ConfigObject>(
     typedValues = { ...(store as Record<string, unknown>) } as T;
   }
 
-  const normalizedPaths =
-    options.envFilePath === undefined
-      ? undefined
-      : typeof options.envFilePath === "string"
-        ? [options.envFilePath]
-        : [...options.envFilePath];
+  const normalizedPaths = isDefined(options.envFilePath)
+    ? toArray(options.envFilePath)
+    : undefined;
 
-  const expandOpts =
-    typeof options.expandVariables === "object"
-      ? options.expandVariables
-      : options.expandVariables
-        ? {}
-        : undefined;
+  const expandOpts = ternaryFor(options.expandVariables)
+    .when(isObject, identity)
+    .when(Boolean, () => ({}))
+    .elseEval(undefined);
 
   const expansionContext: EnvExpansionContext | undefined =
     expandOpts && !options.ignoreEnvFile && snapshot.rawEntries.size > 0

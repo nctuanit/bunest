@@ -878,7 +878,7 @@ describe("Zero Circular Dependency Verification (runtime + type-only)", () => {
         .replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
       const edges: string[] = [];
       const fromRegex =
-        /(?:^|;|\n)\s*(?:import|export)\s+(?:type\s+)?[\s\S]*?\s+from\s+["'](\.[^"']+)["']/g;
+        /(?:^|;|\n)\s*(?:import|export)\s+(?:type\s+)?[^;(=]*?\s+from\s+["'](\.[^"']+)["']/g;
       for (const m of src.matchAll(fromRegex)) {
         const spec = m[1]!;
         const base = resolve(dirname(file), spec);

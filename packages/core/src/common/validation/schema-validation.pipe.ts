@@ -13,6 +13,8 @@ import type {
   SchemaValidator,
 } from "./schema-validator.interface";
 import { formatStandardSchemaIssues } from "../pipes/standard-schema-validation.pipe";
+import { ternaryFor } from "../utils/ternary.util";
+import { isError, isString } from "../utils/type-guards.util";
 import { flattenValidationErrors } from "./utils/error-formatter.util";
 import { createValidationHttpException } from "./utils/http-status.util";
 import {
@@ -97,12 +99,13 @@ function normalizeSchemaError(
 ): ValidationErrorDetail[] {
   const issues = extractSchemaIssues(error);
   if (!issues) {
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : typeof error === "string" && error.length > 0
-          ? error
-          : "Validation failed";
+    const message = ternaryFor(error)
+      .when(
+        (e): e is Error => isError(e) && e.message.length > 0,
+        (e) => e.message,
+      )
+      .when((e): e is string => isString(e) && e.length > 0, (e) => e)
+      .elseEval("Validation failed");
     return [
       {
         field: fallbackField,

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Optional,
+  registerLogContextProvider,
   type BunestInterceptor,
   type BunestMiddleware,
   type CallHandler,
@@ -119,6 +120,14 @@ export interface ClsModuleOptions {
    * Global `ClsInterceptor` auto-mounting and execution-context setup configuration.
    */
   readonly interceptor?: ClsInterceptorMountOptions;
+  /**
+   * Automatically enrich `Logger` / `ConsoleLogger` JSON logs with active CLS
+   * store entries:
+   * - `true`: includes all string-keyed entries (and `clsId` when `CLS_ID` is set).
+   * - `string[]`: includes only the listed string keys from the active CLS store.
+   * @default false
+   */
+  readonly enrichLogs?: boolean | readonly string[];
 }
 
 export interface ClsModuleAsyncOptions {
@@ -178,6 +187,7 @@ export class ClsService<TStore extends object = Record<string, unknown>> {
   private readonly storage: ContextStorageLike<ClsStore>;
   private readonly generateId: boolean;
   private readonly idGenerator: (req?: Request) => string;
+  private readonly unregisterLogProvider?: () => void;
 
   constructor(
     @Optional()
@@ -191,6 +201,48 @@ export class ClsService<TStore extends object = Record<string, unknown>> {
     this.idGenerator =
       options.idGenerator ??
       ((req) => req?.headers.get("x-request-id") || crypto.randomUUID());
+
+    if (options.enrichLogs) {
+      const allowedKeys = Array.isArray(options.enrichLogs)
+        ? options.enrichLogs
+        : undefined;
+      this.unregisterLogProvider = registerLogContextProvider(() => {
+        const store = this.storage.getStore();
+        if (!store || store.size === 0) return undefined;
+        const out: Record<string, unknown> = {};
+        let hasAny = false;
+        if (allowedKeys) {
+          for (let i = 0; i < allowedKeys.length; i++) {
+            const k = allowedKeys[i]!;
+            let v = store.get(k);
+            if (v === undefined && k === "clsId") {
+              v = store.get(CLS_ID);
+            }
+            if (v !== undefined) {
+              out[k] = v;
+              hasAny = true;
+            }
+          }
+        } else {
+          for (const [k, v] of store.entries()) {
+            if (typeof k === "string" && v !== undefined) {
+              out[k] = v;
+              hasAny = true;
+            }
+          }
+          const clsId = store.get(CLS_ID);
+          if (typeof clsId === "string" && !("clsId" in out)) {
+            out.clsId = clsId;
+            hasAny = true;
+          }
+        }
+        return hasAny ? out : undefined;
+      });
+    }
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterLogProvider?.();
   }
 
   /**
@@ -380,11 +432,10 @@ export class ClsMiddleware implements BunestMiddleware {
       mwOpts?.generateId ?? this.options.generateId ?? true;
     const store: ClsStore = new Map();
     if (shouldGenerateId) {
-      const id = mwOpts?.idGenerator
-        ? mwOpts.idGenerator(req)
-        : this.options.idGenerator
-          ? this.options.idGenerator(req)
-          : req.headers.get("x-request-id") || crypto.randomUUID();
+      const id =
+        mwOpts?.idGenerator?.(req) ??
+        this.options.idGenerator?.(req) ??
+        (req.headers.get("x-request-id") || crypto.randomUUID());
       store.set(CLS_ID, id);
     }
 
@@ -432,11 +483,10 @@ export class ClsInterceptor implements BunestInterceptor {
       intOpts?.generateId ?? this.options.generateId ?? true;
     const store: ClsStore = new Map();
     if (shouldGenerateId) {
-      const id = intOpts?.idGenerator
-        ? intOpts.idGenerator(context)
-        : this.options.idGenerator
-          ? this.options.idGenerator(req)
-          : req?.headers.get("x-request-id") || crypto.randomUUID();
+      const id =
+        intOpts?.idGenerator?.(context) ??
+        this.options.idGenerator?.(req) ??
+        (req?.headers.get("x-request-id") || crypto.randomUUID());
       store.set(CLS_ID, id);
     }
 

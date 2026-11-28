@@ -1,4 +1,6 @@
 import { Logger } from "../logger/logger";
+import { ternaryFor } from "../utils/ternary.util";
+import { isDefined, isInstanceof } from "../utils/type-guards.util";
 
 export interface StreamableFileOptions {
   /**
@@ -160,23 +162,18 @@ export class StreamableFile {
         ? this.source.type
         : "application/octet-stream";
 
-    const inferredLength =
-      this.source instanceof Uint8Array
-        ? this.source.byteLength
-        : this.source instanceof Blob
-          ? this.source.size
-          : undefined;
+    const inferredLength = ternaryFor(this.source)
+      .when(isInstanceof(Uint8Array), (s) => s.byteLength)
+      .when(isInstanceof(Blob), (s) => s.size)
+      .elseEval(undefined);
+    const length = this.options.length ?? inferredLength;
 
     return {
       type: this.options.type ?? inferredType,
-      ...(this.options.disposition !== undefined
+      ...(isDefined(this.options.disposition)
         ? { disposition: this.options.disposition }
         : {}),
-      ...(this.options.length !== undefined
-        ? { length: this.options.length }
-        : inferredLength !== undefined
-          ? { length: inferredLength }
-          : {}),
+      ...(isDefined(length) ? { length } : {}),
     };
   }
 }

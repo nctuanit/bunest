@@ -19,6 +19,7 @@ export type {
   OnGatewayAuthenticate,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayDrain,
   OnGatewayInit,
   WebSocketGatewayOptions,
   WebSocketModuleOptions,

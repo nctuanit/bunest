@@ -1,4 +1,4 @@
-import type { StandardSchemaV1Issue } from "../../common/index";
+import { isString, type StandardSchemaV1Issue } from "../../common/index";
 import { getI18nStore } from "../context/i18n.storage";
 import type {
   I18nKey,
@@ -54,12 +54,7 @@ export function defaultIssueKeys(issue: StandardSchemaV1Issue): string[] {
     "format",
     "origin",
   ].map((name) => readField(issue, name));
-  const code =
-    typeof rawCode === "string"
-      ? rawCode
-      : typeof type === "string"
-        ? type
-        : undefined;
+  const code = [rawCode, type].find(isString);
   if (!code) {
     return [];
   }

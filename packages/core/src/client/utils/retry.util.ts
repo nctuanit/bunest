@@ -1,3 +1,4 @@
+import { isPromiseLike } from "../../common/utils/type-guards.util";
 import { HttpNetworkError } from "../errors/http-network.error";
 import { HttpTimeoutError } from "../errors/http-timeout.error";
 import type { HttpRequest } from "../interfaces/http-request.interface";
@@ -10,7 +11,7 @@ import { durationOption } from "./duration.util";
 import { toResponseError } from "./response.util";
 import { parseRetryAfter } from "./retry-after.util";
 
-function definedOnly<T extends object>(obj: T): Partial<T> {
+export function definedOnly<T extends object>(obj: T): Partial<T> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
@@ -69,12 +70,8 @@ export function shouldRetry(
     return true;
   }
   const verdict = retry.retryIf(error, attempt) as unknown;
-  if (
-    verdict !== null &&
-    (typeof verdict === "object" || typeof verdict === "function") &&
-    typeof (verdict as PromiseLike<unknown>).then === "function"
-  ) {
-    (verdict as PromiseLike<unknown>).then(undefined, () => undefined);
+  if (isPromiseLike(verdict)) {
+    verdict.then(undefined, () => undefined);
     throw new TypeError(
       "HttpClient `retry.retryIf` must return a boolean, not a Promise",
     );

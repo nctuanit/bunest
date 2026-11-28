@@ -107,7 +107,6 @@ export {
 } from "./interceptors/file.interceptor";
 export {
   FUNCTIONAL_ROUTE_GROUP_MARKER,
-  FunctionalModule,
   defineRoutes,
   isFunctionalRouteGroup,
   type FunctionalModuleOptions,
@@ -119,6 +118,22 @@ export {
   type FunctionalRouteHandler,
   type FunctionalRouteOptions,
 } from "./functional/define-routes";
+export {
+  implementContract,
+  type ContractHandlers,
+  type ContractRouteHandler,
+  type ContractRouteHandlerConfig,
+  type ContractRouteImplementation,
+  type ImplementContractOptions,
+  type InferContractServerBody,
+  type InferContractServerParams,
+  type InferContractServerQuery,
+  type InferContractServerResponse,
+} from "./functional/implement-contract";
+export {
+  FunctionalModule,
+  type FunctionalContractModuleOptions,
+} from "./functional/functional.module";
 
 // Scanner, Path Normalization & API Versioning
 export {

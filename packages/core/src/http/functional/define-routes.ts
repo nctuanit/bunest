@@ -4,12 +4,10 @@ import {
   InternalServerErrorException,
   METADATA_KEYS,
   MetadataRegistry,
-  Module,
   StreamableFile,
   formatStandardSchemaIssues,
   invalidateControllerCache,
   type ControllerMetadata,
-  type DynamicModule,
   type ExceptionFilterLike,
   type ExecutionContext,
   type GuardLike,
@@ -35,6 +33,13 @@ import { getCurrentRequestContext } from "../context/request-context";
 
 export const FUNCTIONAL_ROUTE_GROUP_MARKER = Symbol.for(
   "bunest:http:functional_route_group",
+);
+
+// Zero-dep cross-package metadata bridges read by `@bunest/swagger` (preserves acyclic package DAG)
+const SWAGGER_API_TAGS_KEY = Symbol.for("bunest:swagger:api_tags");
+const SWAGGER_API_OPERATION_KEY = Symbol.for("bunest:swagger:api_operation");
+const STANDARD_SCHEMA_SERIALIZER_KEY = Symbol.for(
+  "bunest:validation:standard_schema_serializer",
 );
 
 /** Infers the validated output type of a Standard Schema v1 or falls back to `TFallback`. */
@@ -103,6 +108,21 @@ export interface FunctionalRouteOptions<
   readonly httpCode?: number;
   readonly headers?: Readonly<Record<string, string>>;
   readonly version?: VersionValue;
+  /** Optional OpenAPI operation summary emitted for `@bunest/swagger`. */
+  readonly summary?: string;
+  /** Optional OpenAPI operation description emitted for `@bunest/swagger`. */
+  readonly description?: string;
+  /** Optional OpenAPI operation tags overriding/supplementing group tags. */
+  readonly tags?: readonly string[];
+  /** Optional explicit OpenAPI `operationId`. */
+  readonly operationId?: string;
+  /** Marks the route as deprecated in OpenAPI metadata. */
+  readonly deprecated?: boolean;
+  /**
+   * Controls whether the HTTP pipeline parses a request body parameter for this route.
+   * Defaults to `true` when `bodySchema` is provided or method is not `GET`/`HEAD`.
+   */
+  readonly parseBody?: boolean;
 }
 
 /** Group-level options accepted as the first argument to `defineRoutes(options, builder)`. */
@@ -114,6 +134,8 @@ export interface FunctionalRouteGroupOptions {
   readonly filters?: readonly ExceptionFilterLike[];
   readonly version?: VersionValue;
   readonly host?: string | RegExp | Array<string | RegExp>;
+  /** Optional OpenAPI tags applied to every route in this group. */
+  readonly tags?: readonly string[];
 }
 
 /** Normalized single route entry stored inside a `FunctionalRouteGroup`. */
@@ -135,6 +157,7 @@ export interface FunctionalRouteGroup {
   readonly filters?: readonly ExceptionFilterLike[];
   readonly version?: VersionValue;
   readonly host?: string | RegExp | Array<string | RegExp>;
+  readonly tags?: readonly string[];
 }
 
 type VerbMethodFn = {
@@ -347,6 +370,9 @@ export function defineRoutes(
     ...(groupOpts.filters ? { filters: [...groupOpts.filters] } : {}),
     ...(groupOpts.version !== undefined ? { version: groupOpts.version } : {}),
     ...(groupOpts.host !== undefined ? { host: groupOpts.host } : {}),
+    ...(groupOpts.tags && groupOpts.tags.length > 0
+      ? { tags: [...groupOpts.tags] }
+      : {}),
   });
 }
 
@@ -359,7 +385,15 @@ function sanitizeControllerSuffix(prefix: string): string {
   return cleaned || "Root";
 }
 
-function compileFunctionalGroupToController(
+function defaultTagFromPrefix(prefix: string): string | undefined {
+  const segments = prefix
+    .split("/")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.startsWith(":") && !s.startsWith("*"));
+  return segments[segments.length - 1];
+}
+
+export function compileFunctionalGroupToController(
   group: FunctionalRouteGroup,
 ): Type<unknown> {
   const seq = ++functionalControllerSeq;
@@ -391,6 +425,21 @@ function compileFunctionalGroupToController(
     controllerMeta,
     DynamicFunctionalController,
   );
+
+  const resolvedGroupTags =
+    group.tags && group.tags.length > 0
+      ? [...group.tags]
+      : (() => {
+          const inferred = defaultTagFromPrefix(group.prefix);
+          return inferred ? [inferred] : undefined;
+        })();
+  if (resolvedGroupTags && resolvedGroupTags.length > 0) {
+    MetadataRegistry.define(
+      SWAGGER_API_TAGS_KEY,
+      resolvedGroupTags,
+      DynamicFunctionalController,
+    );
+  }
 
   if (group.guards && group.guards.length > 0) {
     MetadataRegistry.define(
@@ -428,8 +477,10 @@ function compileFunctionalGroupToController(
     const handlerKey = `route_${i}_${entry.method.toLowerCase()}`;
     const opts = entry.options;
     const includeBody =
-      opts.bodySchema !== undefined ||
-      (entry.method !== "GET" && entry.method !== "HEAD");
+      opts.parseBody !== undefined
+        ? opts.parseBody
+        : opts.bodySchema !== undefined ||
+          (entry.method !== "GET" && entry.method !== "HEAD");
 
     const handlerFn = async function (
       this: DynamicFunctionalController,
@@ -599,6 +650,41 @@ function compileFunctionalGroupToController(
       MetadataRegistry.define(METADATA_KEYS.VERSION, opts.version, handlerFn);
     }
 
+    // Bridge OpenAPI metadata & response Standard Schema to `@bunest/swagger` without runtime imports
+    if (opts.responseSchema !== undefined) {
+      MetadataRegistry.define(
+        STANDARD_SCHEMA_SERIALIZER_KEY,
+        { schema: opts.responseSchema },
+        handlerFn,
+      );
+    }
+    if (opts.tags && opts.tags.length > 0) {
+      MetadataRegistry.define(SWAGGER_API_TAGS_KEY, [...opts.tags], handlerFn);
+    }
+    if (
+      opts.summary !== undefined ||
+      opts.description !== undefined ||
+      opts.operationId !== undefined ||
+      opts.deprecated !== undefined
+    ) {
+      MetadataRegistry.define(
+        SWAGGER_API_OPERATION_KEY,
+        {
+          ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
+          ...(opts.description !== undefined
+            ? { description: opts.description }
+            : {}),
+          ...(opts.operationId !== undefined
+            ? { operationId: opts.operationId }
+            : {}),
+          ...(opts.deprecated !== undefined
+            ? { deprecated: opts.deprecated }
+            : {}),
+        },
+        handlerFn,
+      );
+    }
+
     MetadataRegistry.define(METADATA_KEYS.ROUTE_METHOD, entry.method, handlerFn);
     MetadataRegistry.define(METADATA_KEYS.ROUTE_PATH, entry.path, handlerFn);
 
@@ -617,78 +703,4 @@ function compileFunctionalGroupToController(
   invalidateControllerCache(DynamicFunctionalController);
 
   return DynamicFunctionalController;
-}
-
-/**
- * Dynamic module mounting one or more `defineRoutes()` functional route groups
- * directly into Bunest's native 11-stage HTTP pipeline & router with full DI support.
- */
-@Module({})
-export class FunctionalModule {
-  static forRoutes(
-    ...routeGroups: readonly (
-      | FunctionalRouteGroup
-      | readonly FunctionalRouteGroup[]
-      | FunctionalModuleOptions
-    )[]
-  ): DynamicModule {
-    const groups: FunctionalRouteGroup[] = [];
-    const imports: ModuleImport[] = [];
-    const providers: Provider[] = [];
-    const exportsList: ModuleExport[] = [];
-
-    for (const item of routeGroups) {
-      if (Array.isArray(item)) {
-        for (const sub of item) {
-          if (!isFunctionalRouteGroup(sub)) {
-            throw new TypeError(
-              "FunctionalModule.forRoutes() expects route groups created by defineRoutes().",
-            );
-          }
-          groups.push(sub);
-        }
-      } else if (isFunctionalRouteGroup(item)) {
-        groups.push(item);
-      } else if (
-        item &&
-        typeof item === "object" &&
-        "routes" in item &&
-        Array.isArray((item as FunctionalModuleOptions).routes)
-      ) {
-        const opts = item as FunctionalModuleOptions;
-        for (const sub of opts.routes) {
-          if (!isFunctionalRouteGroup(sub)) {
-            throw new TypeError(
-              "FunctionalModule.forRoutes({ routes }) expects route groups created by defineRoutes().",
-            );
-          }
-          groups.push(sub);
-        }
-        if (opts.imports) imports.push(...opts.imports);
-        if (opts.providers) providers.push(...opts.providers);
-        if (opts.exports) exportsList.push(...opts.exports);
-      } else {
-        throw new TypeError(
-          "FunctionalModule.forRoutes() expects route groups created by defineRoutes().",
-        );
-      }
-    }
-
-    const controllers = groups.map(compileFunctionalGroupToController);
-    const modSeq = ++functionalControllerSeq;
-    @Module({})
-    class DynamicFunctionalRoutesModule extends FunctionalModule {}
-    Object.defineProperty(DynamicFunctionalRoutesModule, "name", {
-      value: `FunctionalModule_${modSeq}`,
-      configurable: true,
-    });
-
-    return {
-      module: DynamicFunctionalRoutesModule,
-      ...(imports.length > 0 ? { imports } : {}),
-      controllers,
-      ...(providers.length > 0 ? { providers } : {}),
-      ...(exportsList.length > 0 ? { exports: exportsList } : {}),
-    };
-  }
 }

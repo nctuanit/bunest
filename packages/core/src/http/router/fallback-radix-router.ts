@@ -1,4 +1,5 @@
 import {
+  escapeRegExp as escapeRegexLiteral,
   type HttpMethod,
   type RouteHttpMethod,
   VERSION_NEUTRAL,
@@ -174,10 +175,6 @@ function safeDecodeSegment(segment: string): string {
   } catch {
     return segment;
   }
-}
-
-function escapeRegexLiteral(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function expandOptionalPathVariants(rawPath: string): string[] {
@@ -723,9 +720,7 @@ export class FallbackRadixRouter {
     const rawSegments =
       pathname === "/"
         ? []
-        : hasTrailingSlash
-          ? pathname.slice(1, -1).split("/")
-          : pathname.slice(1).split("/");
+        : pathname.slice(1, hasTrailingSlash ? -1 : undefined).split("/");
 
     let methodNotAllowedCandidate:
       { allowHeader: string; hostParams: Record<string, string> } | undefined;
@@ -1067,9 +1062,7 @@ export class NativePathMatcher<T> {
     const segments =
       pathname === "/"
         ? []
-        : hasTrailingSlash
-          ? pathname.slice(1, -1).split("/")
-          : pathname.slice(1).split("/");
+        : pathname.slice(1, hasTrailingSlash ? -1 : undefined).split("/");
 
     const values: string[] = [];
 

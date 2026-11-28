@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   BODY_SANITIZED_SYMBOL,
+  concatBytes,
   ensureDir,
   HttpStatus,
   join,
@@ -194,10 +195,57 @@ function decodeWhatwgDispositionValue(value: string): string {
     .replace(/%0D/gi, "\r");
 }
 
-function appendMultipartField(
+export function parseMultipartJsonFieldValue(
+  fieldname: string,
+  value: string,
+  parseJsonFields?: boolean | readonly string[],
+): unknown {
+  if (!parseJsonFields) return value;
+
+  if (Array.isArray(parseJsonFields)) {
+    if (!parseJsonFields.includes(fieldname)) return value;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed !== null && typeof parsed === "object"
+        ? sanitizeObject(parsed)
+        : parsed;
+    } catch {
+      throw new BadRequestException(
+        `Invalid JSON in multipart field "${fieldname}"`,
+      );
+    }
+  }
+
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      return parsed !== null && typeof parsed === "object"
+        ? sanitizeObject(parsed)
+        : parsed;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+const MAX_MULTIPART_BRACKET_DEPTH = 32;
+const MAX_MULTIPART_ARRAY_INDEX = 10_000;
+
+function isSafeArrayIndex(seg: string): boolean {
+  if (!/^\d+$/.test(seg)) return false;
+  const idx = Number(seg);
+  return Number.isSafeInteger(idx) && idx >= 0 && idx <= MAX_MULTIPART_ARRAY_INDEX;
+}
+
+export function appendMultipartField(
   fields: Record<string, unknown>,
   rawKey: string,
-  value: string,
+  value: unknown,
 ): void {
   const openIdx = rawKey.indexOf("[");
   if (openIdx <= 0 || !rawKey.endsWith("]")) {
@@ -225,6 +273,11 @@ function appendMultipartField(
     const seg = rest.slice(pos + 1, closeIdx);
     if (seg !== "" && isDangerousKey(seg)) return;
     tokens.push(seg);
+    if (tokens.length > MAX_MULTIPART_BRACKET_DEPTH) {
+      // Excessive nesting depth -> fall back to flat key to prevent stack/memory DoS
+      appendFieldValue(fields, rawKey, value);
+      return;
+    }
     pos = closeIdx + 1;
   }
 
@@ -232,16 +285,28 @@ function appendMultipartField(
   for (let i = 0; i < tokens.length - 1; i++) {
     const seg = tokens[i]!;
     const nextSeg = tokens[i + 1]!;
-    const nextIsArray = nextSeg === "" || /^\d+$/.test(nextSeg);
+    const nextIsArray = nextSeg === "" || isSafeArrayIndex(nextSeg);
 
     if (Array.isArray(current)) {
-      const idx = seg === "" ? current.length : Number(seg);
-      let next = current[idx];
-      if (next === null || typeof next !== "object") {
-        next = nextIsArray ? [] : {};
-        current[idx] = next;
+      if (seg === "" || isSafeArrayIndex(seg)) {
+        const idx = seg === "" ? current.length : Number(seg);
+        let next = current[idx];
+        if (next === null || typeof next !== "object") {
+          next = nextIsArray ? [] : {};
+          current[idx] = next;
+        }
+        current = next as Record<string, unknown> | unknown[];
+      } else {
+        const obj = current as unknown as Record<string, unknown>;
+        let next = Object.prototype.hasOwnProperty.call(obj, seg)
+          ? obj[seg]
+          : undefined;
+        if (next === null || typeof next !== "object") {
+          next = nextIsArray ? [] : {};
+          obj[seg] = next;
+        }
+        current = next as Record<string, unknown> | unknown[];
       }
-      current = next as Record<string, unknown> | unknown[];
     } else {
       let next = Object.prototype.hasOwnProperty.call(current, seg)
         ? current[seg]
@@ -258,10 +323,24 @@ function appendMultipartField(
   if (Array.isArray(current)) {
     if (lastSeg === "") {
       current.push(value);
-    } else if (/^\d+$/.test(lastSeg)) {
-      current[Number(lastSeg)] = value;
+    } else if (isSafeArrayIndex(lastSeg)) {
+      const idx = Number(lastSeg);
+      if (Object.prototype.hasOwnProperty.call(current, idx)) {
+        const existing = current[idx];
+        if (Array.isArray(existing)) {
+          existing.push(value);
+        } else {
+          current[idx] = [existing, value];
+        }
+      } else {
+        current[idx] = value;
+      }
     } else {
-      appendFieldValue(current as unknown as Record<string, unknown>, lastSeg, value);
+      appendFieldValue(
+        current as unknown as Record<string, unknown>,
+        lastSeg,
+        value,
+      );
     }
   } else {
     appendFieldValue(current, lastSeg, value);
@@ -451,22 +530,13 @@ async function readBoundedBytes(
     return { bytes: chunks[0], hadStream: true };
   }
 
-  const merged = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    if (chunk) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-  }
-  return { bytes: merged, hadStream: true };
+  return { bytes: concatBytes(chunks), hadStream: true };
 }
 
 function appendFieldValue(
   fields: Record<string, unknown>,
   key: string,
-  value: string,
+  value: unknown,
 ): void {
   if (isDangerousKey(key)) {
     return;
@@ -538,7 +608,10 @@ async function parseMultipartInMemory(
           maxFileSize,
         );
       }
-      const buffer = new Uint8Array(await entry.arrayBuffer());
+      const buffer =
+        typeof entry.bytes === "function"
+          ? await entry.bytes()
+          : new Uint8Array(await entry.arrayBuffer());
       if (maxFileSize !== undefined && buffer.byteLength > maxFileSize) {
         throw createPayloadTooLargeException(
           `Uploaded file "${originalname}" exceeds maximum allowed size of ${maxFileSize} bytes`,
@@ -661,10 +734,7 @@ function parsePartHeaders(headerText: string): {
 function concatUint8Arrays(a: Uint8Array, b: Uint8Array): Uint8Array {
   if (a.byteLength === 0) return b;
   if (b.byteLength === 0) return a;
-  const merged = new Uint8Array(a.byteLength + b.byteLength);
-  merged.set(a, 0);
-  merged.set(b, a.byteLength);
-  return merged;
+  return concatBytes([a, b]);
 }
 
 function findSequence(haystack: Uint8Array, needle: Uint8Array): number {
@@ -910,20 +980,12 @@ async function parseMultipartToDisk(
               }
               fieldChunks.push(pending.slice(0, boundaryIdx));
             }
-            let mergedField: Uint8Array;
-            if (fieldChunks.length === 0) {
-              mergedField = EMPTY_BYTES;
-            } else if (fieldChunks.length === 1) {
-              mergedField = fieldChunks[0]!;
-            } else {
-              mergedField = new Uint8Array(fieldBytes);
-              let off = 0;
-              for (let i = 0; i < fieldChunks.length; i++) {
-                const c = fieldChunks[i]!;
-                mergedField.set(c, off);
-                off += c.byteLength;
-              }
-            }
+            const mergedField =
+              fieldChunks.length === 0
+                ? EMPTY_BYTES
+                : fieldChunks.length === 1
+                  ? fieldChunks[0]!
+                  : concatBytes(fieldChunks);
             if (currentFieldname && currentOriginalname !== "") {
               // unreachable for non-empty originalname
             } else if (currentFieldname) {
@@ -970,19 +1032,12 @@ async function parseMultipartToDisk(
 
     let rawBody: Uint8Array | undefined;
     if (rawChunks) {
-      if (rawChunks.length === 0) {
-        rawBody = EMPTY_BYTES;
-      } else if (rawChunks.length === 1) {
-        rawBody = rawChunks[0];
-      } else {
-        rawBody = new Uint8Array(totalBytes);
-        let off = 0;
-        for (let i = 0; i < rawChunks.length; i++) {
-          const c = rawChunks[i]!;
-          rawBody.set(c, off);
-          off += c.byteLength;
-        }
-      }
+      rawBody =
+        rawChunks.length === 0
+          ? EMPTY_BYTES
+          : rawChunks.length === 1
+            ? rawChunks[0]
+            : concatBytes(rawChunks);
     }
 
     markBodySanitized(fields);

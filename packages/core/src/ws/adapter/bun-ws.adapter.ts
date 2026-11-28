@@ -7,10 +7,18 @@ import {
   formatStandardSchemaIssues,
   HttpException,
   HttpStatus,
+  identity,
+  isArray,
+  isFunction,
+  isInstanceof,
+  isNumber,
+  isRegExp,
+  isString,
   Logger,
   METADATA_KEYS,
   MetadataRegistry,
   Scope,
+  ternaryFor,
   type ArgumentMetadata,
   type BunestInterceptor,
   type CallHandler,
@@ -210,17 +218,29 @@ function matchesExceptionFilter(
   );
 }
 
+function resolveWsNamespace(
+  ns: string | RegExp | undefined,
+  fallback: string,
+): string {
+  return ternaryFor(ns)
+    .when(isString, identity)
+    .when(isRegExp, (re) => re.source)
+    .elseEval(fallback);
+}
+
 function defaultWsMessageParser(
   data: WsData,
 ): { event: string; data?: unknown; id?: string } | void {
-  const text =
-    typeof data === "string"
-      ? data
-      : Array.isArray(data)
-        ? Buffer.concat(data).toString("utf8")
-        : data instanceof ArrayBuffer
-          ? new TextDecoder().decode(new Uint8Array(data))
-          : Buffer.from(data).toString("utf8");
+  const text = ternaryFor(data)
+    .when(isString, identity)
+    .when(
+      (v): v is Buffer[] => isArray(v),
+      (chunks) => Buffer.concat(chunks).toString("utf8"),
+    )
+    .when(isInstanceof(ArrayBuffer), (buf) =>
+      new TextDecoder().decode(new Uint8Array(buf)),
+    )
+    .elseEval((raw) => Buffer.from(raw).toString("utf8"));
   const frame = parseWsFrame(text);
   if (!frame) return undefined;
   return { event: frame.event, data: frame.data, id: frame.id };
@@ -380,12 +400,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       return this;
     }
     const path = normalizePath(options?.path ?? "/ws");
-    const namespace =
-      typeof options?.namespace === "string"
-        ? options.namespace
-        : options?.namespace instanceof RegExp
-          ? options.namespace.source
-          : path;
+    const namespace = resolveWsNamespace(options?.namespace, path);
     const existing = this.gatewaysByPath.get(path);
     if (existing) {
       return existing.server;
@@ -414,12 +429,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       return options.server;
     }
     const path = normalizePath(options?.path ?? "/ws");
-    const namespace =
-      typeof options?.namespace === "string"
-        ? options.namespace
-        : options?.namespace instanceof RegExp
-          ? options.namespace.source
-          : path;
+    const namespace = resolveWsNamespace(options?.namespace, path);
     const server = new BunWsServerImpl(
       `ws_nolisten_${++this.gatewayCounter}`,
       path,
@@ -560,12 +570,11 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
         }
       | null
       | undefined;
-    const buffered =
-      typeof candidate?.bufferedAmount === "number"
-        ? candidate.bufferedAmount
-        : typeof candidate?.raw?.getBufferedAmount === "function"
+    const buffered = isNumber(candidate?.bufferedAmount)
+      ? candidate.bufferedAmount
+      : (isFunction(candidate?.raw?.getBufferedAmount)
           ? candidate.raw.getBufferedAmount()
-          : 0;
+          : 0);
     if (buffered > this.maxSendBufferSize) {
       this.closeClient(client);
       return false;
@@ -731,12 +740,7 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     }
 
     const path = normalizePath(gatewayMeta.path ?? "/ws");
-    const namespace =
-      typeof gatewayMeta.namespace === "string"
-        ? gatewayMeta.namespace
-        : gatewayMeta.namespace instanceof RegExp
-          ? gatewayMeta.namespace.source
-          : path;
+    const namespace = resolveWsNamespace(gatewayMeta.namespace, path);
 
     const existingPrimary = this.gatewaysByPath.get(path);
     const hasNewAuthenticate =
@@ -961,6 +965,10 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       this.moduleOptions.maxPayloadLength ?? this.moduleOptions.maxPayload;
     let idleTimeout = this.moduleOptions.idleTimeout;
     let perMessageDeflate = this.moduleOptions.perMessageDeflate;
+    let backpressureLimit = this.moduleOptions.backpressureLimit;
+    let closeOnBackpressureLimit = this.moduleOptions.closeOnBackpressureLimit;
+    let sendPings = this.moduleOptions.sendPings;
+    let publishToSelf = this.moduleOptions.publishToSelf;
 
     for (const gw of this.gatewaysById.values()) {
       const gwMaxPayload = gw.options.maxPayloadLength ?? gw.options.maxPayload;
@@ -978,6 +986,21 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       }
       if (gw.options.perMessageDeflate !== undefined) {
         perMessageDeflate = gw.options.perMessageDeflate;
+      }
+      if (gw.options.backpressureLimit !== undefined) {
+        backpressureLimit =
+          backpressureLimit === undefined
+            ? gw.options.backpressureLimit
+            : Math.max(backpressureLimit, gw.options.backpressureLimit);
+      }
+      if (gw.options.closeOnBackpressureLimit !== undefined) {
+        closeOnBackpressureLimit = gw.options.closeOnBackpressureLimit;
+      }
+      if (gw.options.sendPings !== undefined) {
+        sendPings = gw.options.sendPings;
+      }
+      if (gw.options.publishToSelf !== undefined) {
+        publishToSelf = gw.options.publishToSelf;
       }
     }
 
@@ -998,6 +1021,9 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       ) => {
         void this.handleClose(ws, code, reason);
       },
+      drain: (ws: BunServerWebSocketLike<BunWsSocketData>) => {
+        void this.handleDrain(ws);
+      },
     };
 
     if (maxPayloadLength !== undefined) {
@@ -1009,8 +1035,58 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     if (perMessageDeflate !== undefined) {
       handler.perMessageDeflate = perMessageDeflate;
     }
+    if (backpressureLimit !== undefined) {
+      handler.backpressureLimit = backpressureLimit;
+    }
+    if (closeOnBackpressureLimit !== undefined) {
+      handler.closeOnBackpressureLimit = closeOnBackpressureLimit;
+    }
+    if (sendPings !== undefined) {
+      handler.sendPings = sendPings;
+    }
+    if (publishToSelf !== undefined) {
+      handler.publishToSelf = publishToSelf;
+    }
 
     return handler;
+  }
+
+  private handleDrain(ws: BunServerWebSocketLike<BunWsSocketData>): void {
+    const socketData = ws.data;
+    const client = socketData?.client;
+    if (!client) return;
+    const group = this.getGatewayGroup(socketData);
+    const connState = this.connectionStates.get(client);
+    const cls = this.resolveClsService();
+    const clsCarrier = client.raw.data?.clsCarrier;
+    for (const gw of group) {
+      const resolvedInstance = gw.isRequestScoped
+        ? connState?.gatewayInstances.get(gw.id)
+        : gw.instance;
+      const instance = resolvedInstance as
+        | { handleDrain?: (c: unknown) => unknown }
+        | undefined;
+      if (instance && typeof instance.handleDrain === "function") {
+        restoreClsContext(cls, clsCarrier, () => {
+          try {
+            const out = instance.handleDrain!(client);
+            if (out instanceof Promise) {
+              void out.catch((err) => {
+                this.logger.error(
+                  `Unhandled error in WebSocket handleDrain for ${gw.id}`,
+                  err,
+                );
+              });
+            }
+          } catch (err) {
+            this.logger.error(
+              `Unhandled error in WebSocket handleDrain for ${gw.id}`,
+              err,
+            );
+          }
+        });
+      }
+    }
   }
 
   /**
@@ -1032,7 +1108,6 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
         : portOrOptions;
 
     const serveOptions: Record<string, unknown> = {
-      port: opts.port ?? 3000,
       fetch: async (req: Request, server: BunServerLike) => {
         const pathname = normalizePath(new URL(req.url).pathname);
         const matched = this.matchGatewayForPathname(pathname);
@@ -1044,8 +1119,22 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
       websocket: this.createBunWebSocketHandler(),
     };
 
-    if (opts.hostname !== undefined) {
-      serveOptions.hostname = opts.hostname;
+    if (opts.unix !== undefined) {
+      serveOptions.unix = opts.unix;
+    } else {
+      serveOptions.port = opts.port ?? 3000;
+      if (opts.hostname !== undefined) {
+        serveOptions.hostname = opts.hostname;
+      }
+      if (opts.reusePort !== undefined) {
+        serveOptions.reusePort = opts.reusePort;
+      }
+    }
+    if (opts.idleTimeout !== undefined) {
+      serveOptions.idleTimeout = opts.idleTimeout;
+    }
+    if (opts.tls !== undefined) {
+      serveOptions.tls = opts.tls;
     }
 
     const started = Bun.serve(
@@ -1055,8 +1144,8 @@ export class BunWebSocketAdapter extends AbstractWsAdapter {
     this.activeBunServer = started;
 
     return {
-      port: started.port ?? opts.port ?? 0,
-      hostname: started.hostname ?? opts.hostname ?? "localhost",
+      port: started.port ?? (opts.unix ? 0 : (opts.port ?? 0)),
+      hostname: started.hostname ?? (opts.unix ? "" : (opts.hostname ?? "localhost")),
       url: started.url.toString(),
     };
   }

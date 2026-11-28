@@ -4,6 +4,8 @@ import {
   Injectable,
   Optional,
   createMethodAspectDecorator,
+  isFunction,
+  isPromiseLike,
   type MethodAspectContext,
   type MethodAspectHandler,
 } from "../common/index";
@@ -32,14 +34,6 @@ export interface WithClsOptions {
   readonly setup?: (cls: ClsService, args: unknown[]) => void | Promise<void>;
 }
 
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
-}
-
 /**
  * Method aspect handler powering `@WithCls(options?)` on non-HTTP service methods,
  * background workers, cron jobs, event listeners, and standalone invocations.
@@ -59,21 +53,20 @@ export class WithClsAspect implements MethodAspectHandler<
   intercept(ctx: MethodAspectContext<WithClsOptions | undefined>): unknown {
     const cls = this.cls ?? new ClsService(this.moduleOptions);
     const opts = ctx.options;
-    const initial =
-      typeof opts?.initial === "function"
-        ? opts.initial(ctx.args)
-        : opts?.initial;
+    const initial = isFunction(opts?.initial)
+      ? opts.initial(ctx.args)
+      : opts?.initial;
 
     const execute = (): unknown => {
       const setupFn = opts?.setup;
       if (setupFn) {
         const setupResult = setupFn(cls, ctx.args);
-        if (isThenable(setupResult)) {
+        if (isPromiseLike(setupResult)) {
           return Promise.resolve(setupResult).then(() => ctx.proceed());
         }
       } else if (this.moduleOptions.setup) {
         const setupResult = this.moduleOptions.setup(cls, undefined);
-        if (isThenable(setupResult)) {
+        if (isPromiseLike(setupResult)) {
           return Promise.resolve(setupResult).then(() => ctx.proceed());
         }
       }

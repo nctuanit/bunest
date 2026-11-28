@@ -220,6 +220,8 @@ function createInitializer(token: string | typeof HttpClient): Provider {
     useFactory: (client: unknown) => ({
       onModuleInit: () =>
         client instanceof HttpClient ? initHttpClient(client) : undefined,
+      onModuleDestroy: () =>
+        client instanceof HttpClient ? client.close() : undefined,
     }),
   };
 }

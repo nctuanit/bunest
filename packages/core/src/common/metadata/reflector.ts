@@ -1,5 +1,7 @@
 import { METADATA_KEYS, type MetadataKey } from "../constants/metadata-keys";
 import { Scope } from "../enums/scope.enum";
+import { ternary } from "../utils/ternary.util";
+import { isPlainObject, isUndefined } from "../utils/type-guards.util";
 import { MetadataRegistry } from "./metadata-registry";
 
 export type CustomDecorator<TKey extends MetadataKey = string> =
@@ -30,14 +32,6 @@ function resolveKey(input: MetadataKeyInput): MetadataKey {
   return input.KEY;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 /**
  * Helper service for reading and merging custom metadata across
  * route handlers, controller classes, and other reflection targets.
@@ -52,11 +46,12 @@ export class Reflector {
     const decoratorFn = (
       metadataValue?: TParam,
     ): CustomDecorator<MetadataKey> => {
-      const value = options.transform
-        ? options.transform(metadataValue as TParam)
-        : metadataValue === undefined
-          ? ({} as TTransformed)
-          : metadataValue;
+      const value = ternary(
+        Boolean(options.transform),
+        () => options.transform!(metadataValue as TParam),
+      )
+        .elseIf(isUndefined(metadataValue), () => ({}) as TTransformed)
+        .elseEval(metadataValue as TTransformed);
 
       const decorator = (
         target: object,

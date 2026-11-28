@@ -1,4 +1,5 @@
 import {
+  escapeRegExp,
   type ExceptionFilterLike,
   type GuardLike,
   type HeaderMetadata,
@@ -15,6 +16,8 @@ import {
   type RouteResolutionStrategy,
   type Scope,
   type SseOptions,
+  ternary,
+  toArray,
   type Type,
   VERSION_NEUTRAL,
   type VersionValue,
@@ -220,10 +223,6 @@ function tokenizeSegment(seg: string): SegmentToken[] {
   return tokens;
 }
 
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function segmentMatchesLiteral(tokens: readonly SegmentToken[], literal: string): boolean {
   let re = "^";
   for (const t of tokens) {
@@ -399,10 +398,8 @@ function compareHostConstraints(
   hostA: string | RegExp | Array<string | RegExp> | undefined,
   hostB: string | RegExp | Array<string | RegExp> | undefined,
 ): { same: boolean; overlaps: boolean } {
-  const listA =
-    hostA === undefined ? [] : Array.isArray(hostA) ? hostA : [hostA];
-  const listB =
-    hostB === undefined ? [] : Array.isArray(hostB) ? hostB : [hostB];
+  const listA = toArray(hostA);
+  const listB = toArray(hostB);
 
   if (listA.length === 0 && listB.length === 0) {
     return { same: true, overlaps: true };
@@ -575,14 +572,9 @@ export function scanControllers(
   const versioning = options.versioning;
   const conflictLevels = normalizeConflictLevels(options.routeConflictPolicy);
   const resolutionStrategy = options.routeResolutionStrategy ?? "declaration";
-  const globalPrefixes: string[] = !options.globalPrefix
-    ? []
-    : (Array.isArray(options.globalPrefix)
-        ? options.globalPrefix
-        : [options.globalPrefix]
-      ).filter(
-        (p): p is string => typeof p === "string" && p.trim().length > 0,
-      );
+  const globalPrefixes: string[] = toArray(options.globalPrefix).filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
+  );
 
   for (const controller of controllers) {
     if (typeof controller !== "function") {
@@ -817,12 +809,12 @@ export function scanControllers(
                   renderTemplate,
                   isSse: isSse || undefined,
                   sseOptions,
-                  version:
-                    resolvedVersions && resolvedVersions.length === 1
-                      ? resolvedVersions[0]
-                      : resolvedVersions
-                        ? [...resolvedVersions]
-                        : undefined,
+                  version: ternary(!resolvedVersions, undefined)
+                    .elseIf(
+                      () => resolvedVersions!.length === 1,
+                      () => resolvedVersions![0],
+                    )
+                    .elseEval(() => [...resolvedVersions!]),
                   host: controllerMeta.host,
                   scope: controllerMeta.scope,
                   versions: resolvedVersions,

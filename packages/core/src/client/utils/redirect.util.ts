@@ -19,6 +19,11 @@ const REQUEST_BODY_HEADERS = [
 export type ExtendedRequestInit = Omit<RequestInit, "dispatcher"> & {
   dispatcher?: unknown;
   duplex?: "half";
+  unix?: string;
+  proxy?: unknown;
+  tls?: Record<string, unknown>;
+  decompress?: boolean;
+  verbose?: boolean | "curl";
 };
 
 /**

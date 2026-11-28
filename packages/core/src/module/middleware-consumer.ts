@@ -2,6 +2,7 @@ import {
   METADATA_KEYS,
   MetadataRegistry,
   RequestMethod,
+  toArray,
   type BunestMiddleware,
   type ControllerMetadata,
   type HttpServer,
@@ -78,11 +79,7 @@ function toRouteInfos(
                 methodPath,
               );
               const method = routeMeta.method as RequestMethod;
-              const versionKey = Array.isArray(version)
-                ? version.map((v) => String(v)).join(",")
-                : version !== undefined
-                  ? String(version)
-                  : "";
+              const versionKey = toArray(version).map(String).join(",");
               const dedupKey = `${String(method)}:${path}:${versionKey}`;
               if (seen.has(dedupKey)) {
                 continue;

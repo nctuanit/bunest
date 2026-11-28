@@ -46,31 +46,6 @@ export function isPromiseFulfilled(promise: Promise<unknown>): boolean {
 }
 
 /**
- * Races `promise` against a timeout duration, always clearing its timer on settlement.
- */
-export async function withTimeout<T>(
-  promise: Promise<T>,
-  duration: Duration,
-  message?: string,
-): Promise<T> {
-  const ms = parseDuration(duration);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      reject(new TimeoutError(ms, message));
-    }, ms);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (isNotUndefined(timer)) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-/**
  * Maps `items` asynchronously with bounded concurrency while preserving input order.
  */
 export async function mapLimit<T, R>(

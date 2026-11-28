@@ -1,7 +1,8 @@
-import type {
-  ContentSecurityPolicyDirectiveValue,
-  ContentSecurityPolicyOptions,
-  HttpSecurityHeadersOptions,
+import {
+  isObject as isPlainObject,
+  type ContentSecurityPolicyDirectiveValue,
+  type ContentSecurityPolicyOptions,
+  type HttpSecurityHeadersOptions,
 } from "../../common/index";
 
 const ALLOWED_OPTION_KEYS = new Set<string>([
@@ -139,10 +140,6 @@ const VALID_PERMITTED_POLICIES = new Set([
   "all",
 ]);
 
-function isPlainObject(value: unknown): boolean {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedKeys(
   obj: Record<string, unknown>,
   allowed: ReadonlySet<string>,
@@ -274,7 +271,7 @@ export interface CompiledSecurityHeaders {
 export function compileSecurityHeaders(
   options: HttpSecurityHeadersOptions = {},
 ): CompiledSecurityHeaders {
-  if (!isPlainObject(options)) {
+  if (!isPlainObject(options as unknown)) {
     throw new Error("Invalid security headers options: expected plain object.");
   }
 

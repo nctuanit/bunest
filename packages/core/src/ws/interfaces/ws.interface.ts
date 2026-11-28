@@ -45,6 +45,22 @@ export interface WsAdapterOptions {
    */
   maxPayload?: number;
   /**
+   * Maximum bytes buffered per WebSocket connection before backpressure triggers.
+   */
+  backpressureLimit?: number;
+  /**
+   * Automatically close a WebSocket connection when `backpressureLimit` is exceeded.
+   */
+  closeOnBackpressureLimit?: boolean;
+  /**
+   * Automatically send RFC 6455 ping frames to keep connections alive.
+   */
+  sendPings?: boolean;
+  /**
+   * Whether `ws.publish(topic, msg)` also delivers to the publishing socket.
+   */
+  publishToSelf?: boolean;
+  /**
    * Opt-in graceful shutdown: stop accepting new upgrades/messages during `close()`/`closeAll()`,
    * drain in-flight `@SubscribeMessage()` handlers and pending `@Ack()` replies up to `gracePeriod`,
    * send close frame `1001 Going Away`, and force-close any remaining connections after the deadline.
@@ -119,6 +135,26 @@ export interface WebSocketGatewayOptions extends GatewayMetadata {
    * Idle timeout in seconds (passed to Bun.serve websocket).
    */
   idleTimeout?: number;
+  /**
+   * Maximum bytes buffered per WebSocket connection before backpressure triggers
+   * (passed to `Bun.serve({ websocket: { backpressureLimit } })`).
+   */
+  backpressureLimit?: number;
+  /**
+   * Automatically close a WebSocket connection when `backpressureLimit` is exceeded
+   * (passed to `Bun.serve({ websocket: { closeOnBackpressureLimit } })`).
+   */
+  closeOnBackpressureLimit?: boolean;
+  /**
+   * Automatically send RFC 6455 ping frames to keep connections alive
+   * (passed to `Bun.serve({ websocket: { sendPings } })`).
+   */
+  sendPings?: boolean;
+  /**
+   * Whether `ws.publish(topic, msg)` also delivers to the publishing socket
+   * (passed to `Bun.serve({ websocket: { publishToSelf } })`).
+   */
+  publishToSelf?: boolean;
   /**
    * Optional DI scope for this gateway (`Scope.SINGLETON` / `Scope.DEFAULT` or `Scope.REQUEST`).
    */
@@ -245,6 +281,14 @@ export interface OnGatewayDisconnect<TClient = BunWsClient> {
   ): void | Promise<void>;
 }
 
+/**
+ * Lifecycle hook invoked when Bun's native WebSocket `drain(ws)` callback fires
+ * after socket backpressure subsides and the client is ready to receive more data.
+ */
+export interface OnGatewayDrain<TClient = BunWsClient> {
+  handleDrain(client: TClient): void | Promise<void>;
+}
+
 export interface OnGatewayAuthenticate {
   authenticate(
     request: Request,
@@ -322,6 +366,22 @@ export interface WebSocketModuleOptions {
    * Default `perMessageDeflate` flag applied to the Bun WebSocket handler.
    */
   perMessageDeflate?: boolean | Record<string, unknown>;
+  /**
+   * Default `backpressureLimit` (bytes) applied to the Bun WebSocket handler.
+   */
+  backpressureLimit?: number;
+  /**
+   * Default `closeOnBackpressureLimit` flag applied to the Bun WebSocket handler.
+   */
+  closeOnBackpressureLimit?: boolean;
+  /**
+   * Default `sendPings` flag applied to the Bun WebSocket handler.
+   */
+  sendPings?: boolean;
+  /**
+   * Default `publishToSelf` flag applied to the Bun WebSocket handler.
+   */
+  publishToSelf?: boolean;
   /**
    * Default per-connection concurrent message backpressure limit (NestJS v12.2).
    */

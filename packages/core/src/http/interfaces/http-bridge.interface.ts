@@ -87,10 +87,20 @@ export interface CompiledMiddlewareConfig {
 export interface ListenOptions {
   port?: number;
   hostname?: string;
+  /**
+   * Optional Unix domain socket path forwarded directly to `Bun.serve({ unix })`.
+   * When set, `port` and `hostname` are omitted so Bun binds the Unix socket cleanly.
+   */
+  unix?: string;
   development?: boolean;
   maxRequestBodySize?: number;
   idleTimeout?: number;
   tls?: unknown;
+  /**
+   * Enable OS-level `SO_REUSEPORT` socket sharing across multiple Bun Worker
+   * threads or processes listening on the same port (recommended on Linux).
+   */
+  reusePort?: boolean;
 }
 
 export interface ListeningServerInfo {
@@ -113,7 +123,12 @@ export interface BunServerLike {
   readonly port?: number;
   readonly hostname?: string;
   readonly url: URL;
+  readonly pendingRequests?: number;
+  readonly pendingWebSockets?: number;
   stop(closeActiveConnections?: boolean): void | Promise<void>;
+  closeIdleConnections?(): void;
+  timeout?(req: Request, seconds: number): void;
+  reload?(options: Record<string, unknown>): void;
   requestIP?(req: Request): BunSocketAddress | null;
   upgrade?(
     req: Request,

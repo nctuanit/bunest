@@ -2,6 +2,7 @@ import { METADATA_KEYS } from "../constants/metadata-keys";
 import type { Abstract, Type } from "../interfaces/type.interface";
 import { DecoratorRegistry } from "../metadata/decorator-registry";
 import { MetadataRegistry } from "../metadata/metadata-registry";
+import { ternary } from "../utils/ternary.util";
 
 export type ColumnDataType =
   | "integer"
@@ -226,12 +227,12 @@ function recordColumnMetadata(
     options.generated === true ||
     options.generated === "increment" ||
     options.generated === "uuid";
-  const generationStrategy: ColumnGenerationStrategy | undefined =
-    options.generated === "uuid" || (generatedFlag && options.type === "uuid")
-      ? "uuid"
-      : generatedFlag
-        ? "increment"
-        : undefined;
+  const generationStrategy: ColumnGenerationStrategy | undefined = ternary(
+    options.generated === "uuid" || (generatedFlag && options.type === "uuid"),
+    "uuid" as const,
+  )
+    .elseIf(generatedFlag, "increment" as const)
+    .elseEval(undefined);
 
   const resolvedType: ColumnDataType =
     options.type ??
@@ -240,7 +241,7 @@ function recordColumnMetadata(
       : inferColumnTypeFromDesignType(designType, fallbackType));
 
   const primary = options.primary === true;
-  const nullable = options.nullable ?? (primary ? false : false);
+  const nullable = options.nullable ?? false;
   const hasDefault = "default" in options && options.default !== undefined;
 
   const entry: StoredColumnMetadata = {

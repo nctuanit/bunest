@@ -2,6 +2,7 @@ import {
   METADATA_KEYS,
   MetadataRegistry,
   hasMethodAspects,
+  isPromiseLike,
   wrapMethodDescriptor,
   type Abstract,
   type InjectionToken,
@@ -111,14 +112,6 @@ export function isMethodAspectClass(
     (typeof (value as { prototype?: { intercept?: unknown } }).prototype
       ?.intercept === "function" ||
       MetadataRegistry.has(METADATA_KEYS.INJECTABLE, value))
-  );
-}
-
-function isPromiseLike<T = unknown>(value: unknown): value is PromiseLike<T> {
-  return (
-    (typeof value === "object" || typeof value === "function") &&
-    value !== null &&
-    typeof (value as PromiseLike<T>).then === "function"
   );
 }
 

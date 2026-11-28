@@ -1,5 +1,12 @@
 import type { ClsContextCarrier } from "../../cls/cls-context-carrier";
 import {
+  identity,
+  isNumber,
+  isObject,
+  isString,
+  ternaryFor,
+} from "../../common/index";
+import {
   isDangerousKey,
   sanitizeObject,
   type BunServerLike,
@@ -60,21 +67,19 @@ export function parseWsFrame(rawText: string): WsMessageFrame | null {
     return null;
   }
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  if (!isObject(parsed)) {
     return null;
   }
 
-  const record = parsed as Record<string, unknown>;
-  if (typeof record.event !== "string" || record.event.length === 0) {
+  const record = parsed;
+  if (!isString(record.event) || record.event.length === 0) {
     return null;
   }
 
-  const id =
-    typeof record.id === "string"
-      ? record.id
-      : typeof record.id === "number"
-        ? String(record.id)
-        : undefined;
+  const id = ternaryFor(record.id)
+    .when(isString, identity)
+    .when(isNumber, String)
+    .elseEval(undefined);
 
   const data = "data" in record ? sanitizeObject(record.data) : undefined;
 

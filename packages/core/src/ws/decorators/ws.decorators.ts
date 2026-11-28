@@ -118,6 +118,12 @@ export function SubscribeMessage<T = string>(event: T): MethodDecorator {
   };
 }
 
+const WS_PARAM_DECORATOR_NAMES: Record<string, string> = {
+  body: "MessageBody",
+  param: "WsParam",
+  ack: "Ack",
+};
+
 function registerWsParam(
   target: object,
   propertyKey: string | symbol | undefined,
@@ -125,13 +131,7 @@ function registerWsParam(
 ): void {
   if (propertyKey === undefined) {
     const decoratorName =
-      entry.source === "body"
-        ? "MessageBody"
-        : entry.source === "param"
-          ? "WsParam"
-          : entry.source === "ack"
-            ? "Ack"
-            : "ConnectedSocket";
+      WS_PARAM_DECORATOR_NAMES[entry.source] ?? "ConnectedSocket";
     throw new Error(
       `WebSocket parameter decorator (@${decoratorName}) can only be used on gateway methods, not constructor parameters.`,
     );

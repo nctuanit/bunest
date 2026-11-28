@@ -268,31 +268,21 @@ export async function runSubprocess(
       stdin: options.stdin !== undefined ? new Response(options.stdin) : "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      ...(timeoutMs !== undefined
+        ? { timeout: timeoutMs, killSignal: "SIGKILL" as const }
+        : {}),
     });
 
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (timeoutMs !== undefined) {
-      timer = setTimeout(() => {
-        timedOut = true;
-        try {
-          proc.kill();
-        } catch {
-          // ignore
-        }
-      }, timeoutMs);
-    }
-
-    try {
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-      return { exitCode, stdout, stderr, timedOut };
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    const timedOut =
+      timeoutMs !== undefined &&
+      proc.killed &&
+      (proc.signalCode === "SIGKILL" || proc.signalCode === "SIGTERM");
+    return { exitCode, stdout, stderr, timedOut };
   }
 
   return new Promise<SubprocessResult>((resolvePromise, rejectPromise) => {

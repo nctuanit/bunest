@@ -1,3 +1,4 @@
+import { isString } from "../../common/utils/type-guards.util";
 import { redactUrl } from "../utils/url.util";
 import { HttpClientError } from "./http-client.error";
 
@@ -11,11 +12,7 @@ export class HttpNetworkError extends HttpClientError {
     const detail = init.cause as
       { code?: unknown; message?: unknown } | null | undefined;
     const reason =
-      typeof detail?.code === "string"
-        ? detail.code
-        : typeof detail?.message === "string"
-          ? detail.message
-          : "network error";
+      [detail?.code, detail?.message].find(isString) ?? "network error";
     super(`${init.method} ${redactUrl(init.url)} failed: ${reason}`, init);
   }
 }

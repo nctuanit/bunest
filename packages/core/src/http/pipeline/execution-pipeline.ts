@@ -10,6 +10,7 @@ import {
   HttpStatus,
   type InterceptorLike,
   InternalServerErrorException,
+  isPromiseLike as isThenable,
   Logger,
   type MiddlewareFunction,
   type NextFunction,
@@ -158,16 +159,10 @@ function shouldEnforceBodyLimitHeader(
   return true;
 }
 
-const FAST_JSON_200 = { status: 200 };
-const FAST_JSON_201 = { status: 201 };
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
-}
+const FAST_JSON_STATUS: Record<number, { status: number }> = {
+  200: { status: 200 },
+  201: { status: 201 },
+};
 
 function isSimpleJsonObject(value: unknown): boolean {
   if (typeof value !== "object" || value === null) {
@@ -203,14 +198,7 @@ function serializeFastOrFull(
       (status < 100 || status >= 200)
     ) {
       try {
-        return Response.json(
-          value,
-          status === 200
-            ? FAST_JSON_200
-            : status === 201
-              ? FAST_JSON_201
-              : { status },
-        );
+        return Response.json(value, FAST_JSON_STATUS[status] ?? { status });
       } catch (err) {
         throw new InternalServerErrorException(
           "Failed to serialize response body",
@@ -376,6 +364,12 @@ export function executeFastSingletonRoute(
           compiled.singletonController,
         );
         if (isThenable(result)) {
+          if (
+            result instanceof Promise &&
+            Bun.peek.status(result) === "fulfilled"
+          ) {
+            return serializeFastOrFull(Bun.peek(result), compiled, ctx, runtime);
+          }
           return Promise.resolve(result)
             .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
             .catch((err) => handleFastError(err, compiled, ctx, runtime));
@@ -414,6 +408,17 @@ export function executeFastSingletonRoute(
             extracted,
           );
           if (isThenable(result)) {
+            if (
+              result instanceof Promise &&
+              Bun.peek.status(result) === "fulfilled"
+            ) {
+              return serializeFastOrFull(
+                Bun.peek(result),
+                compiled,
+                ctx,
+                runtime,
+              );
+            }
             return Promise.resolve(result)
               .then((val) => serializeFastOrFull(val, compiled, ctx, runtime))
               .catch((err) => handleFastError(err, compiled, ctx, runtime));

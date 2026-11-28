@@ -1,13 +1,10 @@
+import { isPlainObject } from "../../common/index";
+
 /**
  * Returns true if the property key could trigger prototype pollution.
  */
 export function isDangerousKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
-}
-
-function isPlainObject(value: object): boolean {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 /**

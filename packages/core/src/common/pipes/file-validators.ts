@@ -1,4 +1,6 @@
 import type { UploadedFileInfo } from "../interfaces/http.interface";
+import { escapeRegExp } from "../utils/string.util";
+import { isFunction, isNumber, isRegExp, isString } from "../utils/type-guards.util";
 
 /**
  * Abstract base class for uploaded file validators used by `ParseFilePipe`.
@@ -55,10 +57,9 @@ export class MaxFileSizeValidator extends FileValidator<
     ) {
       return false;
     }
-    const size =
-      typeof file.size === "number"
-        ? file.size
-        : (file.buffer?.byteLength ?? 0);
+    const size = isNumber(file.size)
+      ? file.size
+      : (file.buffer?.byteLength ?? 0);
     return size < this.validationOptions.maxSize;
   }
 
@@ -66,19 +67,18 @@ export class MaxFileSizeValidator extends FileValidator<
     const { maxSize, message, errorMessage, ...restConfig } =
       this.validationOptions;
     if (errorMessage !== undefined) {
-      return typeof errorMessage === "function"
+      return isFunction(errorMessage)
         ? errorMessage({ file, config: { maxSize, ...restConfig } })
         : errorMessage;
     }
-    if (typeof message === "function") {
+    if (isFunction(message)) {
       return message(maxSize, file);
     }
-    if (typeof message === "string") {
+    if (isString(message)) {
       return message;
     }
-    if (file && (typeof file.size === "number" || file.buffer !== undefined)) {
-      const actualSize =
-        typeof file.size === "number" ? file.size : file.buffer!.byteLength;
+    if (file && (isNumber(file.size) || file.buffer !== undefined)) {
+      const actualSize = isNumber(file.size) ? file.size : file.buffer!.byteLength;
       return `Validation failed (current file size is ${actualSize}, expected size is less than ${maxSize})`;
     }
     return `Validation failed (expected size is less than ${maxSize})`;
@@ -241,7 +241,54 @@ export function detectMagicMimeType(bytes: Uint8Array): string | undefined {
     return "application/gzip";
   }
 
-  // MP4 / ISO BMFF: ....ftyp
+  // BMP: 42 4D ("BM"), >= 14-byte BITMAPFILEHEADER with reserved bytes [6..9] == 0x00,
+  // and (when DIB header is present) a standard DIB header size in {12, 40, 52, 56, 64, 108, 124}.
+  if (
+    len >= 14 &&
+    bytes[0] === 0x42 &&
+    bytes[1] === 0x4d &&
+    bytes[6] === 0x00 &&
+    bytes[7] === 0x00 &&
+    bytes[8] === 0x00 &&
+    bytes[9] === 0x00
+  ) {
+    if (len < 18) {
+      return "image/bmp";
+    }
+    const dibSize =
+      bytes[14]! |
+      (bytes[15]! << 8) |
+      (bytes[16]! << 16) |
+      ((bytes[17]! << 24) >>> 0);
+    if (
+      dibSize === 12 ||
+      dibSize === 40 ||
+      dibSize === 52 ||
+      dibSize === 56 ||
+      dibSize === 64 ||
+      dibSize === 108 ||
+      dibSize === 124
+    ) {
+      return "image/bmp";
+    }
+  }
+
+  // TIFF: 49 49 2A 00 (little-endian) or 4D 4D 00 2A (big-endian)
+  if (
+    len >= 4 &&
+    ((bytes[0] === 0x49 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x2a &&
+      bytes[3] === 0x00) ||
+      (bytes[0] === 0x4d &&
+        bytes[1] === 0x4d &&
+        bytes[2] === 0x00 &&
+        bytes[3] === 0x2a))
+  ) {
+    return "image/tiff";
+  }
+
+  // ISO BMFF container: ....ftyp (AVIF / HEIC / MP4)
   if (
     len >= 12 &&
     bytes[4] === 0x66 &&
@@ -249,6 +296,25 @@ export function detectMagicMimeType(bytes: Uint8Array): string | undefined {
     bytes[6] === 0x79 &&
     bytes[7] === 0x70
   ) {
+    const brand = String.fromCharCode(
+      bytes[8]!,
+      bytes[9]!,
+      bytes[10]!,
+      bytes[11]!,
+    );
+    if (brand === "avif" || brand === "avis") {
+      return "image/avif";
+    }
+    if (
+      brand === "heic" ||
+      brand === "heix" ||
+      brand === "hevc" ||
+      brand === "hevx" ||
+      brand === "mif1" ||
+      brand === "msf1"
+    ) {
+      return "image/heic";
+    }
     return "video/mp4";
   }
 
@@ -295,10 +361,6 @@ function isTextBasedMimeType(mimetype: string): boolean {
   );
 }
 
-function escapeRegexLiteral(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function matchesExpectedFileType(
   actualMime: string,
   expected: string | RegExp,
@@ -307,7 +369,7 @@ function matchesExpectedFileType(
   if (!normalized) {
     return false;
   }
-  if (expected instanceof RegExp) {
+  if (isRegExp(expected)) {
     return new RegExp(expected.source, expected.flags).test(normalized);
   }
   if (normalized.toLowerCase() === expected.toLowerCase()) {
@@ -318,7 +380,7 @@ function matchesExpectedFileType(
       const prefix = expected.startsWith("/") ? "" : "(?:^|[/.+])";
       const suffix = expected.endsWith("/") ? "" : "(?:$|[/.+])";
       return new RegExp(
-        `${prefix}${escapeRegexLiteral(expected)}${suffix}`,
+        `${prefix}${escapeRegExp(expected)}${suffix}`,
         "i",
       ).test(normalized);
     }
@@ -375,7 +437,10 @@ export class FileTypeValidator extends FileValidator<
 
     let bytes = file.buffer;
     if ((!bytes || bytes.byteLength === 0) && file.file) {
-      bytes = new Uint8Array(await file.file.arrayBuffer());
+      bytes =
+        typeof file.file.bytes === "function"
+          ? await file.file.bytes()
+          : new Uint8Array(await file.file.arrayBuffer());
     }
 
     if (!bytes || bytes.byteLength === 0) {
@@ -435,14 +500,13 @@ export class FileTypeValidator extends FileValidator<
   buildErrorMessage(file: UploadedFileInfo): string {
     const { errorMessage, ...config } = this.validationOptions;
     if (errorMessage !== undefined) {
-      return typeof errorMessage === "function"
+      return isFunction(errorMessage)
         ? errorMessage({ file, config })
         : errorMessage;
     }
-    const expected =
-      this.validationOptions.fileType instanceof RegExp
-        ? this.validationOptions.fileType.toString()
-        : this.validationOptions.fileType;
+    const expected = isRegExp(this.validationOptions.fileType)
+      ? this.validationOptions.fileType.toString()
+      : this.validationOptions.fileType;
 
     if (!file) {
       return `Validation failed (expected type is ${expected})`;
@@ -471,5 +535,202 @@ export class FileTypeValidator extends FileValidator<
       return `${base} - magic number detection failed, used mimetype fallback`;
     }
     return base;
+  }
+}
+
+export type SupportedBunImageFormat =
+  | "jpeg"
+  | "png"
+  | "webp"
+  | "gif"
+  | "bmp"
+  | "tiff"
+  | "heic"
+  | "avif";
+
+export interface ImageDimensionsValidatorOptions {
+  /** Minimum image width in pixels (inclusive). */
+  readonly minWidth?: number;
+  /** Maximum image width in pixels (inclusive). */
+  readonly maxWidth?: number;
+  /** Minimum image height in pixels (inclusive). */
+  readonly minHeight?: number;
+  /** Maximum image height in pixels (inclusive). */
+  readonly maxHeight?: number;
+  /** Allowed decoded image formats (e.g. `["png", "jpeg", "webp", "avif"]`). */
+  readonly formats?: readonly SupportedBunImageFormat[];
+  /**
+   * Required aspect ratio (`width / height`). A number enforces exact ratio
+   * within `tolerance` (default `0.01`); an object constrains `[min, max]`.
+   */
+  readonly aspectRatio?:
+    | number
+    | {
+        readonly min?: number;
+        readonly max?: number;
+        readonly tolerance?: number;
+      };
+  /** Custom error message or factory receiving `{ file, config }`. */
+  readonly errorMessage?:
+    | string
+    | ((ctx: FileValidatorContext<ImageDimensionsValidatorOptions>) => string);
+}
+
+interface BunImageLike {
+  metadata(): Promise<{
+    readonly width: number;
+    readonly height: number;
+    readonly format: string;
+  }>;
+}
+
+type BunImageCtor = new (
+  input: Uint8Array | ArrayBuffer | Blob,
+) => BunImageLike;
+
+/**
+ * Validates uploaded image dimensions, aspect ratio, and decoded format natively
+ * using Bun 1.4.5's built-in `Bun.Image` (zero external dependencies).
+ */
+export class ImageDimensionsValidator extends FileValidator<
+  ImageDimensionsValidatorOptions,
+  UploadedFileInfo
+> {
+  private readonly failureReasons = new WeakMap<UploadedFileInfo, string>();
+
+  async isValid(file?: UploadedFileInfo): Promise<boolean> {
+    if (!this.validationOptions) {
+      return true;
+    }
+    if (!file) {
+      return false;
+    }
+    this.failureReasons.delete(file);
+
+    let bytes = file.buffer;
+    if ((!bytes || bytes.byteLength === 0) && file.file) {
+      bytes =
+        typeof file.file.bytes === "function"
+          ? await file.file.bytes()
+          : new Uint8Array(await file.file.arrayBuffer());
+    }
+    if (!bytes || bytes.byteLength === 0) {
+      this.failureReasons.set(file, "image buffer is empty or unavailable");
+      return false;
+    }
+
+    const ImageCtor =
+      typeof Bun !== "undefined"
+        ? (Bun as unknown as { Image?: BunImageCtor }).Image
+        : undefined;
+    if (typeof ImageCtor !== "function") {
+      this.failureReasons.set(
+        file,
+        "Bun.Image is unavailable in the current runtime",
+      );
+      return false;
+    }
+
+    let meta: { readonly width: number; readonly height: number; readonly format: string };
+    try {
+      meta = await new ImageCtor(bytes).metadata();
+    } catch {
+      this.failureReasons.set(file, "file is not a valid supported image");
+      return false;
+    }
+
+    const { width, height, format } = meta;
+    const normalizedFormat = format.toLowerCase();
+    const { minWidth, maxWidth, minHeight, maxHeight, formats, aspectRatio } =
+      this.validationOptions;
+
+    if (
+      formats &&
+      formats.length > 0 &&
+      !formats.some((f) => f.toLowerCase() === normalizedFormat)
+    ) {
+      this.failureReasons.set(
+        file,
+        `image format "${normalizedFormat}" is not in allowed formats [${formats.join(", ")}]`,
+      );
+      return false;
+    }
+    if (minWidth !== undefined && width < minWidth) {
+      this.failureReasons.set(
+        file,
+        `image width ${width}px is less than minimum ${minWidth}px`,
+      );
+      return false;
+    }
+    if (maxWidth !== undefined && width > maxWidth) {
+      this.failureReasons.set(
+        file,
+        `image width ${width}px exceeds maximum ${maxWidth}px`,
+      );
+      return false;
+    }
+    if (minHeight !== undefined && height < minHeight) {
+      this.failureReasons.set(
+        file,
+        `image height ${height}px is less than minimum ${minHeight}px`,
+      );
+      return false;
+    }
+    if (maxHeight !== undefined && height > maxHeight) {
+      this.failureReasons.set(
+        file,
+        `image height ${height}px exceeds maximum ${maxHeight}px`,
+      );
+      return false;
+    }
+    if (aspectRatio !== undefined && height > 0) {
+      const actualRatio = width / height;
+      if (typeof aspectRatio === "number") {
+        if (Math.abs(actualRatio - aspectRatio) > 0.01) {
+          this.failureReasons.set(
+            file,
+            `image aspect ratio ${actualRatio.toFixed(3)} does not match expected ${aspectRatio}`,
+          );
+          return false;
+        }
+      } else {
+        const tol = aspectRatio.tolerance ?? 0;
+        if (
+          aspectRatio.min !== undefined &&
+          actualRatio < aspectRatio.min - tol
+        ) {
+          this.failureReasons.set(
+            file,
+            `image aspect ratio ${actualRatio.toFixed(3)} is below minimum ${aspectRatio.min}`,
+          );
+          return false;
+        }
+        if (
+          aspectRatio.max !== undefined &&
+          actualRatio > aspectRatio.max + tol
+        ) {
+          this.failureReasons.set(
+            file,
+            `image aspect ratio ${actualRatio.toFixed(3)} exceeds maximum ${aspectRatio.max}`,
+          );
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  buildErrorMessage(file: UploadedFileInfo): string {
+    const { errorMessage, ...config } = this.validationOptions;
+    if (errorMessage !== undefined) {
+      return isFunction(errorMessage)
+        ? errorMessage({ file, config })
+        : errorMessage;
+    }
+    const reason = file ? this.failureReasons.get(file) : undefined;
+    return reason
+      ? `Validation failed (${reason})`
+      : "Validation failed (invalid image dimensions)";
   }
 }

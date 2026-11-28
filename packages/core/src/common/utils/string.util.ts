@@ -187,6 +187,93 @@ export function stringWidth(str: string): number {
   return Bun.stringWidth(str);
 }
 
+export interface WrapAnsiOptions {
+  readonly hard?: boolean;
+  readonly wordWrap?: boolean;
+  readonly trim?: boolean;
+  readonly ambiguousIsNarrow?: boolean;
+}
+
+/**
+ * Wraps `str` to `columns` visible terminal columns while preserving ANSI escape
+ * sequences via Bun's native `Bun.wrapAnsi()`.
+ */
+export function wrapAnsi(
+  str: string,
+  columns: number,
+  options?: WrapAnsiOptions,
+): string {
+  const fn = (
+    Bun as unknown as {
+      wrapAnsi: (
+        input: string,
+        cols: number,
+        opts?: WrapAnsiOptions,
+      ) => string;
+    }
+  ).wrapAnsi;
+  return options ? fn(str, columns, options) : fn(str, columns);
+}
+
+/**
+ * Slices `str` by visible terminal column indices `[start, end)` while preserving
+ * ANSI escape sequences via Bun's native `Bun.sliceAnsi()`.
+ */
+export function sliceAnsi(
+  str: string,
+  start?: number,
+  end?: number,
+  options?: { readonly ambiguousIsNarrow?: boolean },
+): string {
+  const fn = (
+    Bun as unknown as {
+      sliceAnsi: (
+        input: string,
+        begin?: number,
+        finish?: number,
+        opts?: { readonly ambiguousIsNarrow?: boolean },
+      ) => string;
+    }
+  ).sliceAnsi;
+  return options ? fn(str, start, end, options) : fn(str, start, end);
+}
+
+export type BunColorOutputFormat =
+  | "css"
+  | "ansi"
+  | "ansi-16"
+  | "ansi-256"
+  | "ansi-16m"
+  | "number"
+  | "rgb"
+  | "rgba"
+  | "hsl"
+  | "hex"
+  | "HEX"
+  | "{rgb}"
+  | "{rgba}"
+  | "[rgb]"
+  | "[rgba]";
+
+/**
+ * Parses and converts a CSS color value (hex, named color, rgb/hsl, number, object)
+ * to the target format (including ANSI escape sequences) via `Bun.color()`.
+ */
+export function formatColor(
+  input: string | number | Record<string, number> | readonly number[],
+  format: BunColorOutputFormat = "css",
+): string | number | Record<string, number> | number[] | null {
+  const fn = (
+    Bun as unknown as {
+      color: (
+        color: unknown,
+        fmt?: BunColorOutputFormat,
+      ) => string | number | Record<string, number> | number[] | null;
+    }
+  ).color;
+  return fn(input, format);
+}
+
 /**
  * Masks sensitive strings (API keys, tokens, emails) leaving `visibleStart` and `visibleEnd`
  * characters exposed.

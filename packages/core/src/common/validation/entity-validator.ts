@@ -5,6 +5,7 @@ import {
 } from "../decorators/entity-schema.decorators";
 import type { Abstract, Type } from "../interfaces/type.interface";
 import type { ValidationError } from "../interfaces/validation.interface";
+import { ternary } from "../utils/ternary.util";
 import {
   buildDangerousKeyValidationErrors,
   findDangerousKeys,
@@ -745,16 +746,17 @@ export function mergeValidationErrors(
 
     const existingChildren = existing.children ?? [];
     const incomingChildren = err.children ?? [];
-    const nextChildren =
-      existingChildren.length > 0 && incomingChildren.length > 0
-        ? mergeValidationErrors(
-            existingChildren,
-            incomingChildren,
-            stopAtFirstError,
-          )
-        : existingChildren.length > 0
-          ? existingChildren
-          : incomingChildren;
+    const nextChildren = ternary(
+      existingChildren.length > 0 && incomingChildren.length > 0,
+      () =>
+        mergeValidationErrors(
+          existingChildren,
+          incomingChildren,
+          stopAtFirstError,
+        ),
+    )
+      .elseIf(existingChildren.length > 0, existingChildren)
+      .elseEval(incomingChildren);
 
     mergedByProp.set(err.property, {
       ...existing,

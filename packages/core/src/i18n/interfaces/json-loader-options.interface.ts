@@ -7,4 +7,9 @@ export interface JsonI18nLoaderOptions {
    * last good catalogs. Default `false`.
    */
   watch?: boolean;
+  /**
+   * Optional list of embedded files (defaults to `Bun.embeddedFiles` when running
+   * as a standalone compiled executable) used as fallback when `path` is absent on disk.
+   */
+  embeddedFiles?: readonly Blob[];
 }

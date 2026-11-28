@@ -16,6 +16,13 @@ export interface CompressionOptions {
    */
   threshold?: number;
   /**
+   * Minimum byte size for offloading `zstd` compression to Bun's async thread pool
+   * (`Bun.zstdCompress`) instead of running synchronously on the event loop.
+   * Set to `0` to always use async `zstd`, or `Infinity` to always use sync.
+   * @default 16384 (16 KiB)
+   */
+  asyncThreshold?: number;
+  /**
    * Ordered server-preferred compression encodings.
    * @default ["gzip", "deflate"]
    */
@@ -122,8 +129,14 @@ function compressBytes(
   data: Uint8Array,
   encoding: SupportedCompressionEncoding,
   level?: number,
-): Uint8Array {
+  asyncThreshold = 16 * 1024,
+): Uint8Array | Promise<Uint8Array> {
   if (encoding === "zstd") {
+    if (data.byteLength >= asyncThreshold) {
+      return level !== undefined
+        ? Bun.zstdCompress(data, { level })
+        : Bun.zstdCompress(data);
+    }
     return level !== undefined
       ? Bun.zstdCompressSync(data, { level })
       : Bun.zstdCompressSync(data);
@@ -157,12 +170,14 @@ function appendVaryAcceptEncoding(headers: Headers): void {
 
 /**
  * Creates a Bun-native HTTP response compression middleware (`gzip`, `deflate`, `zstd`)
- * using `Bun.gzipSync` / `Bun.deflateSync` / `Bun.zstdCompressSync` with zero external deps.
+ * using `Bun.gzipSync` / `Bun.deflateSync` / `Bun.zstdCompress` (async off-thread for large payloads)
+ * and `Bun.zstdCompressSync` with zero external deps.
  */
 export function createCompressionMiddleware(
   options: CompressionOptions = {},
 ): MiddlewareFunction {
   const threshold = options.threshold ?? 1024;
+  const asyncThreshold = options.asyncThreshold ?? 16 * 1024;
   const encodings: readonly SupportedCompressionEncoding[] =
     options.encodings ?? ["gzip", "deflate"];
   const level = options.level;
@@ -217,7 +232,25 @@ export function createCompressionMiddleware(
       return response;
     }
 
-    const rawBytes = new Uint8Array(await response.arrayBuffer());
+    const contentLengthHeader = response.headers.get("content-length");
+    if (contentLengthHeader !== null) {
+      const declaredLength = Number(contentLengthHeader.trim());
+      if (
+        Number.isFinite(declaredLength) &&
+        declaredLength >= 0 &&
+        declaredLength < threshold
+      ) {
+        const headers = new Headers(response.headers);
+        appendVaryAcceptEncoding(headers);
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+    }
+
+    const rawBytes = await response.bytes();
     if (rawBytes.byteLength < threshold) {
       const headers = new Headers(response.headers);
       appendVaryAcceptEncoding(headers);
@@ -228,7 +261,12 @@ export function createCompressionMiddleware(
       });
     }
 
-    const compressed = compressBytes(rawBytes, encoding, level);
+    const compressed = await compressBytes(
+      rawBytes,
+      encoding,
+      level,
+      asyncThreshold,
+    );
     const headers = new Headers(response.headers);
     headers.set("Content-Encoding", encoding);
     headers.set("Content-Length", String(compressed.byteLength));

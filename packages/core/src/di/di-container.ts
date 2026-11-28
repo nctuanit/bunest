@@ -15,10 +15,13 @@ import {
   REQUEST_CONTEXT,
   Reflector,
   Scope,
+  createCompositeGuardInstance,
+  getGuardCompositeMetadata,
   hasMethodAspects,
   isDynamicModule,
   isForwardReference,
   type Abstract,
+  type CanActivate,
   type ControllerMetadata,
   type DynamicModule,
   type FactoryDependency,
@@ -1774,7 +1777,12 @@ export class DIContainer
           new Set(),
           allowRoot,
         );
-        if (effectiveScope === Scope.SINGLETON) {
+        const isCompositeGuardMulti =
+          (token === APP_GUARD || token === MODULE_GUARD) &&
+          provider.kind === "class" &&
+          provider.useClass !== undefined &&
+          getGuardCompositeMetadata(provider.useClass) !== undefined;
+        if (effectiveScope === Scope.SINGLETON && !isCompositeGuardMulti) {
           const instance =
             provider.kind === "existing" && provider.useExisting !== undefined
               ? await this.resolveDependencyToken(
@@ -2108,19 +2116,14 @@ export class DIContainer
     const hasExplicitPayload =
       ctxId.payload !== undefined || parentCtxId.payload !== undefined;
     const payload =
-      ctxId.payload !== undefined
-        ? ctxId.payload
-        : parentCtxId.payload !== undefined
-          ? parentCtxId.payload
-          : reqContainer.getRequestValue(REQUEST);
+      ctxId.payload ?? parentCtxId.payload ?? reqContainer.getRequestValue(REQUEST);
 
     if (!hasExplicitPayload && payload !== undefined) {
+      const labelSource = token ?? target;
       const targetLabel =
-        token !== undefined && token !== null
-          ? formatToken(token)
-          : target !== undefined && target !== null
-            ? formatToken(target)
-            : "unknown";
+        labelSource !== undefined && labelSource !== null
+          ? formatToken(labelSource)
+          : "unknown";
       if (!this.durableFallbackWarned.has(targetLabel)) {
         this.durableFallbackWarned.add(targetLabel);
         this.logger.warn(
@@ -2260,6 +2263,7 @@ export class DIContainer
     }
 
     const cls = enhancer as Type<unknown>;
+
     const ownerMod =
       (controllerToken
         ? this.controllerOwner.get(controllerToken)
@@ -2267,9 +2271,21 @@ export class DIContainer
       this.enhancerOwner.get(cls) ??
       this.graph.root;
 
-    // 1. Synthetic multi-provider enhancer
+    // 1. Synthetic multi-provider enhancer (APP_GUARD / MODULE_GUARD / etc.)
     const synth = this.syntheticEnhancers.get(cls);
     if (synth) {
+      if (
+        (kind === "guard" || kind === undefined) &&
+        synth.provider.kind === "class" &&
+        synth.provider.useClass &&
+        getGuardCompositeMetadata(synth.provider.useClass)
+      ) {
+        return this.requiresEnhancerRequestScope(
+          synth.provider.useClass,
+          "guard",
+          controllerToken,
+        );
+      }
       if (synth.precomputedInstance !== undefined) {
         return false;
       }
@@ -2284,7 +2300,7 @@ export class DIContainer
       );
     }
 
-    // 2. Kind-specific enhancer override (checked before original class metadata!)
+    // 2. Kind-specific enhancer override (checked before composite & original class metadata!)
     const override = this.getEnhancerOverride(cls, kind);
     if (override) {
       if (override.kind === "value") {
@@ -2301,6 +2317,17 @@ export class DIContainer
         effectiveScope === Scope.REQUEST ||
         this.providerDependsOnRequestScope(ownerMod, provider, new Set(), true)
       );
+    }
+
+    // 3. Composite guard (`AnyGuard`, `AllGuards`, `NotGuard`):
+    // request-scoped if any child guard requires request scope.
+    if (kind === "guard" || kind === undefined) {
+      const compositeMeta = getGuardCompositeMetadata(cls);
+      if (compositeMeta) {
+        return compositeMeta.guards.some((child) =>
+          this.requiresEnhancerRequestScope(child, "guard", controllerToken),
+        );
+      }
     }
 
     // 3. Registered provider (skip when kind-separated providerOverrides replaced this token)
@@ -2594,9 +2621,49 @@ export class DIContainer
 
     const cls = enhancer as Type<T>;
 
+    // Composite guard resolution (`AnyGuard`, `AllGuards`, `NotGuard`):
+    // resolve each child guard through DI (honoring `overrideGuard` and request scope).
+    const compositeMeta =
+      kind === "guard" || kind === undefined
+        ? getGuardCompositeMetadata(cls)
+        : undefined;
+    if (compositeMeta) {
+      const override = this.getEnhancerOverride(cls, kind);
+      if (override === undefined) {
+        const resolvedChildren: CanActivate[] = [];
+        for (let i = 0; i < compositeMeta.guards.length; i++) {
+          const child = compositeMeta.guards[i]!;
+          const resolvedChild = await this.resolveEnhancer<CanActivate>(
+            child as Type<CanActivate> | CanActivate,
+            requestContainer,
+            owningModule,
+            "guard",
+          );
+          resolvedChildren.push(resolvedChild);
+        }
+        return createCompositeGuardInstance(
+          compositeMeta.operator,
+          resolvedChildren,
+        ) as T;
+      }
+    }
+
     // Synthetic multi-provider enhancer (APP_GUARD/PIPE/INTERCEPTOR/FILTER)
     const synth = this.syntheticEnhancers.get(cls);
     if (synth) {
+      if (
+        (kind === "guard" || kind === undefined) &&
+        synth.provider.kind === "class" &&
+        synth.provider.useClass &&
+        getGuardCompositeMetadata(synth.provider.useClass)
+      ) {
+        return this.resolveEnhancer<T>(
+          synth.provider.useClass as Type<T>,
+          requestContainer,
+          synth.module,
+          "guard",
+        );
+      }
       if (synth.precomputedInstance !== undefined) {
         return synth.precomputedInstance as T;
       }

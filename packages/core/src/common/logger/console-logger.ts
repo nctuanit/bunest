@@ -6,6 +6,11 @@ import {
   isColorAllowed,
 } from "./cli-colors";
 import type { LogLevel, LoggerService } from "./logger.interface";
+import {
+  getActiveLogContext,
+  type LogContextProvider,
+} from "./log-context";
+import { isPlainObject } from "../utils/type-guards.util";
 
 export interface ConsoleInspectOptions {
   colors?: boolean;
@@ -55,14 +60,8 @@ function formatPropertyKey(key: string): string {
 }
 
 function inspect(value: unknown, options: ConsoleInspectOptions): string {
-  const maxDepth =
-    options.depth === null
-      ? Infinity
-      : options.depth === undefined
-        ? 5
-        : options.depth;
-  const maxArrayLen =
-    options.maxArrayLength === undefined ? 100 : options.maxArrayLength;
+  const maxDepth = options.depth === null ? Infinity : (options.depth ?? 5);
+  const maxArrayLen = options.maxArrayLength ?? 100;
   const compact = options.compact;
   const breakLength = options.breakLength ?? 80;
   const ancestors = new Set<object>();
@@ -415,6 +414,13 @@ export interface ConsoleLoggerOptions {
   breakLength?: number;
   structuredParams?: boolean;
   flattenParams?: boolean;
+  /**
+   * Automatically enrich JSON log entries with active ambient context
+   * (e.g. HTTP `requestId` and `ClsService` fields).
+   * Defaults to `true` when `json: true`. Pass `false` to disable or a custom
+   * `LogContextProvider` function to supply custom fields.
+   */
+  enrichContext?: boolean | LogContextProvider;
   redact?:
     | string[]
     | {
@@ -424,14 +430,6 @@ export interface ConsoleLoggerOptions {
 }
 
 const MAX_JSON_LENGTH = 1_000_000;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
 
 /**
  * Extensible console logger matching NestJS v12 `ConsoleLogger` (`json`, `colors`,
@@ -973,6 +971,28 @@ export class ConsoleLogger implements LoggerService {
         : {}),
       ...(errorObj ? { error: this.serializeError(errorObj) } : {}),
     };
+    if (this.options.enrichContext !== false) {
+      let ambient: Record<string, unknown> | undefined;
+      if (typeof this.options.enrichContext === "function") {
+        try {
+          ambient = this.options.enrichContext();
+        } catch {
+          ambient = undefined;
+        }
+      } else {
+        ambient = getActiveLogContext();
+      }
+      if (ambient && isPlainObject(ambient)) {
+        const redactedAmbient = this.redact(ambient);
+        if (isPlainObject(redactedAmbient)) {
+          for (const [k, v] of Object.entries(redactedAmbient)) {
+            if (v !== undefined && !(k in payload)) {
+              payload[k] = v;
+            }
+          }
+        }
+      }
+    }
     if (options.params) {
       const redactedParams = this.redact(options.params);
       if (this.options.flattenParams && isPlainObject(redactedParams)) {

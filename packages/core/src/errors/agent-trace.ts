@@ -1,4 +1,14 @@
-import { dirname, ensureDir, relative, resolve } from "../common/index";
+import {
+  dirname,
+  ensureDir,
+  hasOwn,
+  isError,
+  isObject,
+  relative,
+  resolve,
+  ternary,
+  ternaryFor,
+} from "../common/index";
 import { toBunestErrorReport } from "./error-catalog";
 
 export type PipelineTraceStage =
@@ -183,7 +193,13 @@ export function buildAgentErrorTrace(
   const catalogReport = toBunestErrorReport(err);
   const name =
     catalogReport?.name ??
-    (err instanceof Error ? err.name : typeof err === "object" && err !== null && "name" in err ? String((err as { name: unknown }).name) : "Error");
+    ternaryFor(err)
+      .when(isError, (e) => e.name)
+      .when(
+        (e): e is Record<string, unknown> => isObject(e) && hasOwn(e, "name"),
+        (e) => String(e.name),
+      )
+      .elseEval("Error");
   const message =
     catalogReport?.message ??
     (err instanceof Error ? err.message : String(err));
@@ -216,12 +232,12 @@ export function buildAgentErrorTrace(
  * Formats a single `AgentErrorTrace` into a compact, token-efficient block for AI agents.
  */
 export function formatAgentErrorTrace(trace: AgentErrorTrace): string {
-  const target =
-    trace.controller && trace.handler
-      ? `, ${trace.controller}.${trace.handler}`
-      : trace.controller
-        ? `, ${trace.controller}`
-        : "";
+  const target = ternary(
+    Boolean(trace.controller && trace.handler),
+    () => `, ${trace.controller}.${trace.handler}`,
+  )
+    .elseIf(Boolean(trace.controller), () => `, ${trace.controller}`)
+    .elseEval("");
   const codePrefix = trace.code ? `[${trace.code}] ` : "";
   const lines = [
     `[${trace.id}] ${trace.statusCode} ${trace.method} ${trace.path} (stage=${trace.stage}${target})`,
@@ -310,7 +326,8 @@ export class AgentErrorTraceStore {
 }
 
 /**
- * Reads the most recent `AgentErrorTrace` entries from a JSONL file (e.g. `.bunest/errors.jsonl`).
+ * Reads the most recent `AgentErrorTrace` entries from a JSONL file (e.g. `.bunest/errors.jsonl`)
+ * using Bun's Zig-native `Bun.JSONL.parseChunk()` with line-skip recovery for malformed lines.
  */
 export async function readAgentErrorTracesFromFile(
   filePath: string,
@@ -320,18 +337,63 @@ export async function readAgentErrorTracesFromFile(
   if (!(await file.exists())) {
     return [];
   }
-  const text = await file.text();
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const parsed: AgentErrorTrace[] = [];
-  for (let i = Math.max(0, lines.length - limit); i < lines.length; i++) {
-    try {
-      parsed.push(JSON.parse(lines[i]!) as AgentErrorTrace);
-    } catch {
-      // Skip malformed JSONL lines
-    }
+  const bytes = await file.bytes();
+  if (bytes.byteLength === 0) {
+    return [];
   }
-  return parsed.reverse();
+
+  const bunApi = Bun as unknown as {
+    JSONL: {
+      parseChunk(
+        input: Uint8Array,
+        start?: number,
+        end?: number,
+      ): {
+        values: unknown[];
+        read: number;
+        done: boolean;
+        error: SyntaxError | null;
+      };
+    };
+    indexOfLine(input: Uint8Array, offset?: number): number;
+  };
+
+  const all: AgentErrorTrace[] = [];
+  let offset = 0;
+  const total = bytes.byteLength;
+
+  while (offset < total) {
+    const chunk = bunApi.JSONL.parseChunk(bytes, offset, total);
+    for (let i = 0; i < chunk.values.length; i++) {
+      const entry = chunk.values[i];
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        all.push(entry as AgentErrorTrace);
+      }
+    }
+    if (chunk.error || (!chunk.done && chunk.read <= offset)) {
+      let skipFrom = Math.max(offset, chunk.read);
+      while (
+        skipFrom < total &&
+        (bytes[skipFrom] === 0x0a || bytes[skipFrom] === 0x0d)
+      ) {
+        skipFrom++;
+      }
+      if (skipFrom >= total) {
+        break;
+      }
+      const nextNl = bunApi.indexOfLine(bytes, skipFrom);
+      if (nextNl === -1) {
+        break;
+      }
+      offset = nextNl + 1;
+      continue;
+    }
+    if (chunk.read <= offset) {
+      break;
+    }
+    offset = chunk.read;
+  }
+
+  const startIdx = Math.max(0, all.length - limit);
+  return all.slice(startIdx).reverse();
 }

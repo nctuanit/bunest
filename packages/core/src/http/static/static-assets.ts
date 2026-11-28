@@ -1,11 +1,18 @@
 import {
+  basename,
   extname,
+  identity,
   isAbsolute,
+  isEqual,
+  isStandaloneExecutable,
+  isString,
+  listEmbeddedFiles,
   realpathOf as realpath,
   relative,
   resolve,
   sep,
   statPath as stat,
+  ternaryFor,
   type StaticAssetsOptions,
 } from "../../common/index";
 import { matchesPathPattern, normalizePath } from "../scanner/path-normalizer";
@@ -28,6 +35,23 @@ export interface ExtendedStaticAssetsOptions extends Omit<
     indexHtml: string,
     req: unknown,
   ) => string | Promise<string>;
+  /**
+   * Optional streaming HTML transform powered by Bun's native `HTMLRewriter`.
+   * Configure element/document handlers on the passed `HTMLRewriter` instance
+   * (or return a replacement `HTMLRewriter`) to rewrite `.html` responses without
+   * buffering the full document as a JS string.
+   */
+  rewriteHtml?: (
+    rewriter: HTMLRewriter,
+    req: Request,
+  ) => HTMLRewriter | void;
+  /**
+   * Enable fallback lookup in `Bun.embeddedFiles` (auto-enabled when running as
+   * a `bun build --compile` standalone executable).
+   */
+  embedded?: boolean;
+  /** Optional explicit embedded asset list (primarily for testing). */
+  embeddedFiles?: readonly Blob[];
   extensions?: string[];
   setHeaders?: (res: any, path: string, stat: any) => any;
   preCompressed?: boolean;
@@ -52,6 +76,12 @@ export interface StaticAssetsMount {
     indexHtml: string,
     req: unknown,
   ) => string | Promise<string>;
+  readonly rewriteHtml?: (
+    rewriter: HTMLRewriter,
+    req: Request,
+  ) => HTMLRewriter | void;
+  readonly embedded: boolean;
+  readonly embeddedFiles?: readonly Blob[];
   readonly extensions?: readonly string[];
   readonly setHeaders?: (res: any, path: string, stat: any) => any;
   readonly preCompressed: boolean;
@@ -325,15 +355,16 @@ export function createStaticAssetsMount(
     cacheControl: buildStaticCacheControl(ext),
     dotfiles: normalizedDotfiles,
     etag: ext.etag ?? true,
-    spaFallback:
-      ext.spaFallback === true
-        ? "index.html"
-        : typeof ext.spaFallback === "string"
-          ? ext.spaFallback
-          : undefined,
+    spaFallback: ternaryFor(ext.spaFallback)
+      .when(isEqual(true), "index.html")
+      .when(isString, identity)
+      .elseEval(undefined),
     exclude: Array.isArray(ext.exclude) ? [...ext.exclude] : ext.exclude,
     renderPath: ext.renderPath,
     transformIndexHtml: ext.transformIndexHtml,
+    rewriteHtml: ext.rewriteHtml,
+    embedded: ext.embedded ?? isStandaloneExecutable(),
+    embeddedFiles: ext.embeddedFiles,
     extensions:
       ext.extensions && ext.extensions.length > 0
         ? ext.extensions.map((e) => e.replace(/^\./, "")).filter(Boolean)
@@ -421,6 +452,140 @@ async function createStaticErrorResponse(
           error: status === 403 ? "Forbidden" : "Bad Request",
         });
   return new Response(body, { status, headers });
+}
+
+const EMBEDDED_MIME_BY_EXT: Readonly<Record<string, string>> = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".cjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+  ".wasm": "application/wasm",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".pdf": "application/pdf",
+};
+
+const embeddedEtagCache = new WeakMap<Blob, string>();
+
+function normalizeEmbeddedPath(raw: string): string | undefined {
+  if (raw.includes("\0")) return undefined;
+  const parts = raw.replace(/\\/g, "/").split("/");
+  const clean: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i]!;
+    if (seg.length === 0 || seg === ".") continue;
+    if (seg === "..") return undefined;
+    clean.push(seg);
+  }
+  return clean.join("/");
+}
+
+function findScopedEmbeddedFile(
+  mount: StaticAssetsMount,
+  rel: string,
+): { readonly blob: Blob; readonly matchedName: string } | undefined {
+  const normRel = normalizeEmbeddedPath(rel);
+  if (!normRel) return undefined;
+  const pool = mount.embeddedFiles ?? listEmbeddedFiles();
+  if (pool.length === 0) return undefined;
+
+  const rootNorm = normalizeEmbeddedPath(mount.rootDir) ?? "";
+  const rootLeaf = isAbsolute(mount.rootDir)
+    ? basename(mount.resolvedRoot)
+    : "";
+  const fullTarget = rootNorm ? `${rootNorm}/${normRel}` : normRel;
+  const fullSuffix = rootNorm ? `/${fullTarget}` : "";
+  const leafTarget =
+    rootLeaf && rootLeaf !== rootNorm ? `${rootLeaf}/${normRel}` : "";
+  const leafSuffix = leafTarget ? `/${leafTarget}` : "";
+
+  let fullSuffixMatch:
+    | { readonly blob: Blob; readonly matchedName: string }
+    | undefined;
+  let leafExactMatch:
+    | { readonly blob: Blob; readonly matchedName: string }
+    | undefined;
+  let leafSuffixMatch:
+    | { readonly blob: Blob; readonly matchedName: string }
+    | undefined;
+
+  for (let i = 0; i < pool.length; i++) {
+    const blob = pool[i];
+    if (!blob) continue;
+    const rawName = (blob as Blob & { name?: string }).name;
+    if (typeof rawName !== "string" || rawName.length === 0) continue;
+    const normalized = normalizeEmbeddedPath(rawName);
+    if (!normalized) continue;
+
+    if (normalized === fullTarget) {
+      return { blob, matchedName: normalized };
+    }
+    if (
+      fullSuffix &&
+      fullSuffixMatch === undefined &&
+      normalized.endsWith(fullSuffix)
+    ) {
+      fullSuffixMatch = { blob, matchedName: normalized };
+    }
+    if (leafTarget) {
+      if (leafExactMatch === undefined && normalized === leafTarget) {
+        leafExactMatch = { blob, matchedName: normalized };
+      } else if (
+        leafSuffix &&
+        leafSuffixMatch === undefined &&
+        normalized.endsWith(leafSuffix)
+      ) {
+        leafSuffixMatch = { blob, matchedName: normalized };
+      }
+    }
+  }
+
+  return fullSuffixMatch ?? leafExactMatch ?? leafSuffixMatch;
+}
+
+async function computeEmbeddedEtag(
+  blob: Blob,
+  matchedName: string,
+): Promise<string> {
+  const cached = embeddedEtagCache.get(blob);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const bytes =
+    typeof blob.bytes === "function"
+      ? await blob.bytes()
+      : new Uint8Array(await blob.arrayBuffer());
+  const hashHex =
+    typeof Bun !== "undefined" && typeof Bun.hash?.xxHash64 === "function"
+      ? Bun.hash.xxHash64(bytes).toString(16)
+      : matchedName;
+  const etag = `W/"emb-${blob.size.toString(16)}-${hashHex}"`;
+  embeddedEtagCache.set(blob, etag);
+  return etag;
+}
+
+function inferEmbeddedContentType(blob: Blob, relPath: string): string {
+  if (blob.type && blob.type.length > 0) {
+    return blob.type;
+  }
+  const ext = extname(relPath).toLowerCase();
+  return EMBEDDED_MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
 function isSafeFilename(name: string): boolean {
@@ -628,6 +793,216 @@ export async function tryServeStaticAsset(
       }
 
       if (!fileStat) {
+        // 5c. Standalone executable fallback: strictly scoped to `mount.rootDir` in `Bun.embeddedFiles`
+        if (mount.embedded || mount.embeddedFiles) {
+          const relCandidates: Array<{ rel: string; isIndexOrSpa: boolean }> =
+            [];
+          if (segments.length > 0) {
+            const joinedSegs = segments.join("/");
+            relCandidates.push({ rel: joinedSegs, isIndexOrSpa: false });
+            if (
+              mount.extensions &&
+              mount.extensions.length > 0 &&
+              extname(decoded) === ""
+            ) {
+              for (const ext of mount.extensions) {
+                if (isSafeFilename(ext)) {
+                  relCandidates.push({
+                    rel: `${joinedSegs}.${ext}`,
+                    isIndexOrSpa: false,
+                  });
+                }
+              }
+            }
+          } else if (mount.index !== false) {
+            for (const idx of mount.index) {
+              if (!isSafeFilename(idx)) continue;
+              if (idx.startsWith(".")) {
+                if (mount.dotfiles === "deny") {
+                  return createStaticErrorResponse(
+                    403,
+                    "Access to dotfiles is forbidden",
+                    req,
+                    cors,
+                  );
+                }
+                if (mount.dotfiles === "ignore") continue;
+              }
+              relCandidates.push({ rel: idx, isIndexOrSpa: true });
+            }
+          }
+          if (
+            mount.spaFallback &&
+            extname(decoded) === "" &&
+            (!mount.renderPath ||
+              matchesStaticPattern(mount.renderPath, decodedFullPath))
+          ) {
+            relCandidates.push({
+              rel: mount.spaFallback,
+              isIndexOrSpa: true,
+            });
+          }
+
+          let embeddedHit:
+            | { readonly blob: Blob; readonly matchedName: string }
+            | undefined;
+          let matchedRel = "";
+          let embeddedIsIndexOrSpa = false;
+          for (const cand of relCandidates) {
+            const hit = findScopedEmbeddedFile(mount, cand.rel);
+            if (hit) {
+              embeddedHit = hit;
+              matchedRel = cand.rel;
+              embeddedIsIndexOrSpa = cand.isIndexOrSpa;
+              break;
+            }
+          }
+
+          if (embeddedHit) {
+            const embeddedBlob = embeddedHit.blob;
+            const matchedName = embeddedHit.matchedName;
+            const embeddedSize = embeddedBlob.size;
+            const embeddedStatLike = {
+              size: embeddedSize,
+              isFile: () => true,
+              isDirectory: () => false,
+              isSymbolicLink: () => false,
+            };
+            const contentType = inferEmbeddedContentType(
+              embeddedBlob,
+              matchedRel,
+            );
+            const isHtml =
+              embeddedIsIndexOrSpa ||
+              extname(matchedRel).toLowerCase() === ".html" ||
+              contentType.toLowerCase().startsWith("text/html");
+
+            // Optional `transformIndexHtml` hook for embedded HTML
+            if (mount.transformIndexHtml && isHtml) {
+              const originalHtml = await embeddedBlob.text();
+              const transformedHtml = await mount.transformIndexHtml(
+                originalHtml,
+                req,
+              );
+              const encoded = new TextEncoder().encode(transformedHtml);
+              const headers = new Headers();
+              headers.set("Content-Type", "text/html; charset=utf-8");
+              if (mount.acceptRanges) {
+                headers.set("Accept-Ranges", "bytes");
+              }
+              headers.set("X-Content-Type-Options", "nosniff");
+              if (mount.cacheControl !== undefined) {
+                headers.set("Cache-Control", mount.cacheControl);
+              }
+              if (mount.setHeaders) {
+                mount.setHeaders(
+                  createHeadersAdapter(headers),
+                  matchedName,
+                  embeddedStatLike,
+                );
+              }
+              await attachCorsIfEnabled(headers, req, cors);
+              headers.set("Content-Length", String(encoded.byteLength));
+              if (method === "HEAD") {
+                return new Response(null, { status: 200, headers });
+              }
+              return new Response(encoded, { status: 200, headers });
+            }
+
+            // Optional streaming `HTMLRewriter` hook for embedded `.html` (no ETag / Content-Length)
+            if (
+              !mount.transformIndexHtml &&
+              mount.rewriteHtml &&
+              isHtml &&
+              typeof HTMLRewriter === "function"
+            ) {
+              const headers = new Headers();
+              headers.set("Content-Type", "text/html; charset=utf-8");
+              headers.set("X-Content-Type-Options", "nosniff");
+              if (mount.cacheControl !== undefined) {
+                headers.set("Cache-Control", mount.cacheControl);
+              }
+              if (mount.setHeaders) {
+                mount.setHeaders(
+                  createHeadersAdapter(headers),
+                  matchedName,
+                  embeddedStatLike,
+                );
+              }
+              await attachCorsIfEnabled(headers, req, cors);
+              if (method === "HEAD") {
+                return new Response(null, { status: 200, headers });
+              }
+              const rw = new HTMLRewriter();
+              const configured = mount.rewriteHtml(rw, req) ?? rw;
+              return configured.transform(
+                new Response(embeddedBlob, { status: 200, headers }),
+              );
+            }
+
+            const headers = new Headers();
+            headers.set("Content-Type", contentType);
+            if (mount.acceptRanges) {
+              headers.set("Accept-Ranges", "bytes");
+            }
+            headers.set("X-Content-Type-Options", "nosniff");
+            let etag: string | undefined;
+            if (mount.etag) {
+              etag = await computeEmbeddedEtag(embeddedBlob, matchedName);
+              headers.set("ETag", etag);
+            }
+            if (mount.cacheControl !== undefined) {
+              headers.set("Cache-Control", mount.cacheControl);
+            }
+            if (mount.setHeaders) {
+              mount.setHeaders(
+                createHeadersAdapter(headers),
+                matchedName,
+                embeddedStatLike,
+              );
+            }
+            await attachCorsIfEnabled(headers, req, cors);
+
+            if (
+              etag &&
+              matchesIfNoneMatch(req.headers.get("if-none-match"), etag)
+            ) {
+              return new Response(null, { status: 304, headers });
+            }
+
+            const rangeHeader = mount.acceptRanges
+              ? req.headers.get("range")
+              : null;
+            if (rangeHeader) {
+              const parsedRange = parseByteRange(rangeHeader, embeddedSize);
+              if (parsedRange === "invalid") {
+                headers.set("Content-Range", `bytes */${embeddedSize}`);
+                return new Response(null, { status: 416, headers });
+              }
+              if (parsedRange !== null) {
+                const { start, end } = parsedRange;
+                headers.set(
+                  "Content-Range",
+                  `bytes ${start}-${end}/${embeddedSize}`,
+                );
+                headers.set("Content-Length", String(end - start + 1));
+                if (method === "HEAD") {
+                  return new Response(null, { status: 206, headers });
+                }
+                return new Response(embeddedBlob.slice(start, end + 1), {
+                  status: 206,
+                  headers,
+                });
+              }
+            }
+
+            headers.set("Content-Length", String(embeddedSize));
+            if (method === "HEAD") {
+              return new Response(null, { status: 200, headers });
+            }
+            return new Response(embeddedBlob, { status: 200, headers });
+          }
+        }
         continue;
       }
     }
@@ -741,16 +1116,51 @@ export async function tryServeStaticAsset(
       return new Response(encoded, { status: 200, headers });
     }
 
-    // 7c. Optional pre-compressed sibling (`.br` / `.gz`) resolution
+    // 7b-2. Optional streaming `HTMLRewriter` hook for `.html` responses
+    if (
+      !mount.transformIndexHtml &&
+      mount.rewriteHtml &&
+      (isIndexOrSpaHtml || extname(realFile).toLowerCase() === ".html") &&
+      typeof HTMLRewriter === "function"
+    ) {
+      const headers = new Headers();
+      headers.set("Content-Type", "text/html; charset=utf-8");
+      if (mount.lastModified) {
+        headers.set(
+          "Last-Modified",
+          new Date(Math.floor(Number(fileStat.mtimeMs))).toUTCString(),
+        );
+      }
+      headers.set("X-Content-Type-Options", "nosniff");
+      if (mount.cacheControl !== undefined) {
+        headers.set("Cache-Control", mount.cacheControl);
+      }
+      if (mount.setHeaders) {
+        mount.setHeaders(createHeadersAdapter(headers), realFile, fileStat);
+      }
+      await attachCorsIfEnabled(headers, req, cors);
+      if (method === "HEAD") {
+        return new Response(null, { status: 200, headers });
+      }
+      const rewriter = new HTMLRewriter();
+      const configured = mount.rewriteHtml(rewriter, req) ?? rewriter;
+      return configured.transform(
+        new Response(Bun.file(realFile), { status: 200, headers }),
+      );
+    }
+
+    // 7c. Optional pre-compressed sibling (`.zst` / `.br` / `.gz`) resolution
     const originalFile = Bun.file(realFile);
     const originalContentType = originalFile.type || "application/octet-stream";
     let servedFilePath = realFile;
     let servedStat = fileStat;
-    let contentEncoding: "br" | "gzip" | undefined;
+    let contentEncoding: "zstd" | "br" | "gzip" | undefined;
 
     if (mount.preCompressed) {
       const accepted = parseAcceptedEncodings(req);
-      const candidates: Array<{ ext: string; enc: "br" | "gzip" }> = [];
+      const candidates: Array<{ ext: string; enc: "zstd" | "br" | "gzip" }> =
+        [];
+      if (accepted.has("zstd")) candidates.push({ ext: ".zst", enc: "zstd" });
       if (accepted.has("br")) candidates.push({ ext: ".br", enc: "br" });
       if (accepted.has("gzip")) candidates.push({ ext: ".gz", enc: "gzip" });
 
