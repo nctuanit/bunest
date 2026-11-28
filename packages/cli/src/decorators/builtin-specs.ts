@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   Node,
   SyntaxKind,
@@ -470,12 +471,14 @@ export function parseBaseEntityDecoratorAst(
     readStringLiteral(readObjProp(optsExpr, "table"));
 
   const camelExpr = readObjProp(optsExpr, "camelCaseMapping");
-  const camelCaseMapping =
-    camelExpr?.getKind() === SyntaxKind.FalseKeyword
-      ? false
-      : camelExpr?.getKind() === SyntaxKind.TrueKeyword
-        ? true
-        : undefined;
+  const camelKind = camelExpr?.getKind();
+  const camelCaseMapping = cond<boolean, undefined>(
+    [
+      [camelKind === SyntaxKind.FalseKeyword, false],
+      [camelKind === SyntaxKind.TrueKeyword, true],
+    ],
+    undefined,
+  );
 
   const idStrategyExpr = readObjProp(optsExpr, "idStrategy");
   let idStrategy: "increment" | "uuid" | "objectid" | false | undefined;
@@ -538,13 +541,10 @@ export function parseBaseEntityDecoratorAst(
   }
 
   const effectiveStrategy: "increment" | "uuid" | "objectid" | false =
-    idStrategy !== undefined
-      ? idStrategy
-      : idColType === "objectid"
-        ? "objectid"
-        : idColType === "uuid"
-          ? "uuid"
-          : "increment";
+    idStrategy ??
+    (idColType === "objectid" || idColType === "uuid"
+      ? idColType
+      : "increment");
 
   const idProperty =
     readStringLiteral(readObjProp(optsExpr, "idProperty")) ?? "id";

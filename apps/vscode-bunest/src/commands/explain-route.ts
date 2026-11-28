@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import { relative } from "@bunest/core";
 import * as vscode from "vscode";
 import {
@@ -103,6 +104,16 @@ function renderLocationLinkHtml(
   return `<a href="#" class="loc-link" data-loc="${idx}" title="Reveal ${escapeHtml(label)}">${escapeHtml(label)}</a>`;
 }
 
+const DEP_STATUS_CLASS: Readonly<Record<string, string>> = {
+  resolved: "ok",
+  "unknown-dynamic": "warn",
+};
+
+const CONFIRMATION_STATUS_CLASS: Readonly<Record<string, string>> = {
+  "runtime-confirmed": "ok",
+  mismatch: "err",
+};
+
 function renderDepTreeHtml(
   deps: readonly DiDependencyTrace[],
   cwd: string | undefined,
@@ -112,12 +123,7 @@ function renderDepTreeHtml(
     return '<div class="muted">No constructor dependencies.</div>';
   }
   const items = deps.map((dep) => {
-    const statusClass =
-      dep.status === "resolved"
-        ? "ok"
-        : dep.status === "unknown-dynamic"
-          ? "warn"
-          : "err";
+    const statusClass = DEP_STATUS_CLASS[dep.status] ?? "err";
     const locHtml = dep.location
       ? ` ${renderLocationLinkHtml(dep.location, cwd, locations)}`
       : "";
@@ -159,11 +165,22 @@ export function formatExplainReportMarkdown(
   lines.push("");
 
   if (report.runtime.attempted) {
-    const state = report.runtime.reachable
-      ? report.runtime.bootstrapFailed
-        ? `bootstrap failed (${report.runtime.error ?? "unknown error"}) — fell back to static-only`
-        : `reachable${report.runtime.buildVersion ? ` (build ${report.runtime.buildVersion})` : ""}`
-      : `unreachable (${report.runtime.error ?? "connection failed"}) — fell back to static-only`;
+    const buildSuffix = report.runtime.buildVersion
+      ? ` (build ${report.runtime.buildVersion})`
+      : "";
+    const state = cond(
+      [
+        [
+          !report.runtime.reachable,
+          `unreachable (${report.runtime.error ?? "connection failed"}) — fell back to static-only`,
+        ],
+        [
+          Boolean(report.runtime.bootstrapFailed),
+          `bootstrap failed (${report.runtime.error ?? "unknown error"}) — fell back to static-only`,
+        ],
+      ],
+      `reachable${buildSuffix}`,
+    );
     lines.push(`- **Runtime**: \`${report.runtime.serverUrl ?? ""}\` — ${state}`);
   } else {
     lines.push("- **Runtime**: not queried (`static-only`)");
@@ -255,23 +272,32 @@ export function buildExplainReportHtml(
   const locations: SourceLocation[] = [];
   const routeTitle = `${report.query.method ? `${report.query.method} ` : ""}${report.query.path}${report.query.version ? ` (v${report.query.version})` : ""}`;
   const statusClass =
-    report.confirmationStatus === "runtime-confirmed"
-      ? "ok"
-      : report.confirmationStatus === "mismatch"
-        ? "err"
-        : "warn";
+    CONFIRMATION_STATUS_CLASS[report.confirmationStatus] ?? "warn";
 
-  const runtimeSummary = report.runtime.attempted
-    ? report.runtime.reachable
-      ? report.runtime.bootstrapFailed
-        ? `Bootstrap failed (${report.runtime.error ?? "unknown error"}) — static-only fallback`
-        : `Reachable (${report.runtime.serverUrl ?? ""})${report.runtime.buildVersion ? ` · build ${report.runtime.buildVersion}` : ""}`
-      : `Unreachable (${report.runtime.serverUrl ?? ""}: ${report.runtime.error ?? "connection failed"}) — static-only fallback`
-    : "Not queried (static-only)";
+  const runtimeBuildSuffix = report.runtime.buildVersion
+    ? ` · build ${report.runtime.buildVersion}`
+    : "";
+  const runtimeSummary = cond(
+    [
+      [!report.runtime.attempted, "Not queried (static-only)"],
+      [
+        !report.runtime.reachable,
+        `Unreachable (${report.runtime.serverUrl ?? ""}: ${report.runtime.error ?? "connection failed"}) — static-only fallback`,
+      ],
+      [
+        Boolean(report.runtime.bootstrapFailed),
+        `Bootstrap failed (${report.runtime.error ?? "unknown error"}) — static-only fallback`,
+      ],
+    ],
+    `Reachable (${report.runtime.serverUrl ?? ""})${runtimeBuildSuffix}`,
+  );
 
   const renderMatch = (m: RouteExplainMatch): string => {
+    const exportsHtml = m.module?.exportsLocation
+      ? ` · exports ${renderLocationLinkHtml(m.module.exportsLocation, cwd, locations)}`
+      : "";
     const modHtml = m.module
-      ? `<div><strong>Module:</strong> <code>${escapeHtml(m.module.name)}</code> ${renderLocationLinkHtml(m.module.location, cwd, locations)}${m.module.exportsLocation ? ` · exports ${renderLocationLinkHtml(m.module.exportsLocation, cwd, locations)}` : ""}</div>`
+      ? `<div><strong>Module:</strong> <code>${escapeHtml(m.module.name)}</code> ${renderLocationLinkHtml(m.module.location, cwd, locations)}${exportsHtml}</div>`
       : `<div><strong>Module:</strong> <span class="muted">Not declared in any static @Module</span></div>`;
 
     const pipelineHtml =
@@ -294,8 +320,10 @@ export function buildExplainReportHtml(
             .join("")}</ul>`
         : "";
 
+    const matchBadgeClass =
+      CONFIRMATION_STATUS_CLASS[m.confirmationStatus] ?? "warn";
     return `<section class="card">
-      <h3><code>${escapeHtml(m.method)} ${escapeHtml(m.path)}</code> <span class="badge ${m.confirmationStatus === "runtime-confirmed" ? "ok" : m.confirmationStatus === "mismatch" ? "err" : "warn"}">${escapeHtml(m.confirmationStatus)}</span></h3>
+      <h3><code>${escapeHtml(m.method)} ${escapeHtml(m.path)}</code> <span class="badge ${matchBadgeClass}">${escapeHtml(m.confirmationStatus)}</span></h3>
       ${modHtml}
       <div><strong>Controller:</strong> <code>${escapeHtml(m.controller.name)}.${escapeHtml(m.controller.handlerName)}()</code> ${renderLocationLinkHtml(m.controller.handlerLocation ?? m.controller.location, cwd, locations)}</div>
       <h4>Execution Pipeline</h4>

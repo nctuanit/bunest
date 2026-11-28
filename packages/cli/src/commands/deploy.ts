@@ -94,6 +94,8 @@ export async function deployProject(
       cwd,
       minify: true,
       compile: useCompile,
+      bytecode: options.bytecode,
+      archive: options.archive,
       silent: options.silent,
       spawn: options.spawn,
     },
@@ -111,6 +113,7 @@ export async function deployProject(
     dryRun: false,
     target: useCompile ? "compile" : "bundle",
     outdir,
+    ...(buildResult.archivePath ? { archivePath: buildResult.archivePath } : {}),
     exitCode: buildResult.success ? 0 : 1,
   };
 }

@@ -6,9 +6,17 @@ import {
 } from "../workspace/workspace-index";
 import { findInlineSqlDiagnostics } from "./sql-intellisense.provider";
 
+function toVscodeSeverity(
+  severity: "error" | "warning" | "info" | string,
+): vscode.DiagnosticSeverity {
+  if (severity === "error") return vscode.DiagnosticSeverity.Error;
+  if (severity === "warning") return vscode.DiagnosticSeverity.Warning;
+  return vscode.DiagnosticSeverity.Information;
+}
+
 /**
  * Publishes all Bunest static diagnostics (`BUNEST001..007`,
- * `BUNEST_REPO001..007`, `BUNEST_MACRO001..005`, `BUNEST_DEC001..005`,
+ * `BUNEST_REPO001..007`, `BUNEST_MACRO001..005`, `BUNEST_DEC001..009`,
  * `BUNEST_ARCH001..002`, `BUNEST_SQL001..002`, and custom rules configured
  * in `bunest.config.ts`) into the VS Code Problems panel.
  */
@@ -35,12 +43,7 @@ export class BunestDiagnosticsProvider implements vscode.Disposable {
     const byFile = new Map<string, vscode.Diagnostic[]>();
     for (const snap of snapshots) {
       for (const diag of snap.diagnostics) {
-        const severity =
-          diag.severity === "error"
-            ? vscode.DiagnosticSeverity.Error
-            : diag.severity === "warning"
-              ? vscode.DiagnosticSeverity.Warning
-              : vscode.DiagnosticSeverity.Information;
+        const severity = toVscodeSeverity(diag.severity);
 
         const vDiag = new vscode.Diagnostic(
           sourceLocationToVscodeRange(diag.location),
@@ -69,12 +72,7 @@ export class BunestDiagnosticsProvider implements vscode.Disposable {
 
       const list = byFile.get(doc.uri.fsPath) ?? [];
       for (const d of sqlDiags) {
-        const severity =
-          d.severity === "error"
-            ? vscode.DiagnosticSeverity.Error
-            : d.severity === "warning"
-              ? vscode.DiagnosticSeverity.Warning
-              : vscode.DiagnosticSeverity.Information;
+        const severity = toVscodeSeverity(d.severity);
         const range = new vscode.Range(
           doc.positionAt(d.startOffset),
           doc.positionAt(d.endOffset),

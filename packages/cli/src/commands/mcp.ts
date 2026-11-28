@@ -3,6 +3,7 @@ import {
   formatAgentErrorTrace,
   getErrorCatalogEntry,
   getErrorDocsUrl,
+  indexOfLine,
   join,
   readAgentErrorTracesFromFile,
   resolve,
@@ -20,6 +21,8 @@ export interface McpServerOptions {
   readonly traceFile?: string;
   /** Optional running dev server base URL (e.g. `http://127.0.0.1:3000`). */
   readonly serverUrl?: string;
+  /** Optional input byte stream overriding `Bun.stdin.stream()` (primarily for testing). */
+  readonly input?: ReadableStream<Uint8Array>;
 }
 
 export interface JsonRpcRequest {
@@ -479,42 +482,61 @@ export async function runMcpServer(
     stderr: (msg) => console.error(msg),
   },
 ): Promise<{ exitCode: number }> {
-  const reader = Bun.stdin.stream().getReader();
+  const inputStream = options.input ?? Bun.stdin.stream();
+  const reader = inputStream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
+  const dispatchLine = async (rawLine: string): Promise<void> => {
+    const line = rawLine.trim();
+    if (!line) return;
+    try {
+      const parsed = JSON.parse(line) as JsonRpcRequest;
+      const response = await handleMcpRequest(parsed, options);
+      if (response) {
+        io.stdout(JSON.stringify(response));
+      }
+    } catch (parseErr) {
+      io.stdout(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32700,
+            message: `Parse error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+          },
+        }),
+      );
+    }
+  };
 
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      if (!value || value.byteLength === 0) continue;
 
-      let newlineIdx = buffer.indexOf("\n");
-      while (newlineIdx !== -1) {
-        const line = buffer.slice(0, newlineIdx).trim();
-        buffer = buffer.slice(newlineIdx + 1);
-        newlineIdx = buffer.indexOf("\n");
-
-        if (!line) continue;
-        try {
-          const parsed = JSON.parse(line) as JsonRpcRequest;
-          const response = await handleMcpRequest(parsed, options);
-          if (response) {
-            io.stdout(JSON.stringify(response));
-          }
-        } catch (parseErr) {
-          io.stdout(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: null,
-              error: {
-                code: -32700,
-                message: `Parse error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
-              },
-            }),
-          );
+      let offset = 0;
+      const len = value.byteLength;
+      while (offset < len) {
+        const nlIdx = indexOfLine(value, offset);
+        if (nlIdx === -1) {
+          buffer += decoder.decode(value.subarray(offset), { stream: true });
+          break;
         }
+        const segment = decoder.decode(value.subarray(offset, nlIdx));
+        const rawLine = buffer.length > 0 ? buffer + segment : segment;
+        buffer = "";
+        offset = nlIdx + 1;
+
+        await dispatchLine(rawLine);
       }
+    }
+
+    // Flush any final JSON-RPC message received before EOF without a trailing newline
+    const trailing = buffer + decoder.decode();
+    if (trailing.trim().length > 0) {
+      await dispatchLine(trailing);
     }
   } finally {
     reader.releaseLock();

@@ -3327,24 +3327,31 @@ class TypeScriptParser {
     if (this.peek().kind !== SyntaxKind.LessThanToken) return false;
     this.advance(); // <
     let depth = 1;
+    let braceDepth = 0;
     while (!this.atEnd() && depth > 0) {
       const k = this.peek().kind;
-      if (k === SyntaxKind.LessThanToken) {
+      if (k === SyntaxKind.OpenBraceToken) {
+        braceDepth++;
+        this.advance();
+      } else if (k === SyntaxKind.CloseBraceToken) {
+        if (braceDepth === 0) {
+          return false;
+        }
+        braceDepth--;
+        this.advance();
+      } else if (k === SyntaxKind.LessThanToken) {
         depth++;
         this.advance();
       } else if (this.isGreaterThanLike()) {
         this.consumeGreaterThan();
         depth--;
-      } else if (
-        k === SyntaxKind.SemicolonToken ||
-        k === SyntaxKind.OpenBraceToken && depth === 1 && !this.isInsideTypeConstraint()
-      ) {
+      } else if (k === SyntaxKind.SemicolonToken && braceDepth === 0) {
         return false;
       } else {
         this.advance();
       }
     }
-    return depth === 0;
+    return depth === 0 && braceDepth === 0;
   }
 
   private isInsideTypeConstraint(): boolean {

@@ -11,6 +11,8 @@ export const SCHEMATIC_ALIASES: Readonly<Record<string, SchematicType>> = {
   config: "configuration",
   controller: "controller",
   co: "controller",
+  cron: "cron",
+  cr: "cron",
   decorator: "decorator",
   d: "decorator",
   dto: "dto",
@@ -45,6 +47,8 @@ export const SCHEMATIC_ALIASES: Readonly<Record<string, SchematicType>> = {
   s: "service",
   "sub-app": "sub-app",
   app: "sub-app",
+  worker: "worker",
+  w: "worker",
 };
 
 export function resolveSchematicType(input: string): SchematicType {
@@ -56,6 +60,7 @@ export function resolveSchematicType(input: string): SchematicType {
       "class (cl)",
       "configuration (config)",
       "controller (co)",
+      "cron (cr)",
       "decorator (d)",
       "dto",
       "endpoint (ep)",
@@ -73,6 +78,7 @@ export function resolveSchematicType(input: string): SchematicType {
       "resource (res)",
       "service (s)",
       "sub-app (app)",
+      "worker (w)",
     ].join(", ");
     throw new Error(
       `Unknown schematic "${input}". Supported schematics: ${supported}.`,
@@ -1736,6 +1742,117 @@ describe("${pascal}Module CRUD", () => {
 `,
           });
         }
+      }
+      break;
+    }
+
+    case "cron": {
+      files.push({
+        relativePath: joinRel(folder, `${kebab}.cron.ts`),
+        content: `import {
+  defineOsCronJob,
+  type OsCronController,
+} from "@bunest/jobs/scheduler";
+
+export async function run${pascal}Cron(
+  controller: OsCronController,
+): Promise<void> {
+  // Replace with your scheduled job logic (or switch to bootstrapCronApplication(AppModule, ...) for DI).
+  console.log(
+    \`[${kebab}] Fired \${controller.cron} at \${new Date(controller.scheduledTime).toISOString()}\`,
+  );
+}
+
+export default defineOsCronJob(run${pascal}Cron);
+`,
+      });
+      if (spec) {
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.cron.${specSuffix}.ts`),
+          content: `import { describe, expect, it } from "bun:test";
+import ${camel}Cron from "./${kebab}.cron";
+
+describe("${pascal}Cron", () => {
+  it("executes scheduled(controller) cleanly", async () => {
+    await expect(
+      ${camel}Cron.scheduled({
+        type: "scheduled",
+        cron: "@daily",
+        scheduledTime: Date.now(),
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+`,
+        });
+      }
+      break;
+    }
+
+    case "worker": {
+      files.push({
+        relativePath: joinRel(folder, `${kebab}.worker.ts`),
+        content: `import {
+  defineWorker,
+  defineWorkerContract,
+  type WorkerTaskContext,
+} from "@bunest/jobs/workers";
+
+export interface ${pascal}WorkerInput {
+  readonly value: string;
+}
+
+export interface ${pascal}WorkerOutput {
+  readonly result: string;
+  readonly workerId: string;
+}
+
+export const ${pascal}TaskContract = defineWorkerContract<
+  ${pascal}WorkerInput,
+  ${pascal}WorkerOutput
+>("${kebab}");
+
+export const ${camel}WorkerHandlers = {
+  [${pascal}TaskContract.name]: async (
+    input: ${pascal}WorkerInput,
+    ctx: WorkerTaskContext,
+  ): Promise<${pascal}WorkerOutput> => {
+    return {
+      result: input.value,
+      workerId: ctx.workerId,
+    };
+  },
+};
+
+export default defineWorker(${camel}WorkerHandlers);
+`,
+      });
+      if (spec) {
+        files.push({
+          relativePath: joinRel(folder, `${kebab}.worker.${specSuffix}.ts`),
+          content: `import { describe, expect, it } from "bun:test";
+import { WorkerPool } from "@bunest/jobs/workers";
+import { ${pascal}TaskContract } from "./${kebab}.worker";
+
+describe("${pascal}Worker", () => {
+  it("executes ${kebab} task on a Bun Worker thread", async () => {
+    const pool = new WorkerPool({
+      name: "${kebab}-test",
+      script: new URL("./${kebab}.worker.ts", import.meta.url),
+      maxThreads: 1,
+    });
+
+    try {
+      const output = await pool.run(${pascal}TaskContract, { value: "hello" });
+      expect(output.result).toBe("hello");
+      expect(output.workerId).toContain("${kebab}-test");
+    } finally {
+      await pool.close();
+    }
+  });
+});
+`,
+        });
       }
       break;
     }

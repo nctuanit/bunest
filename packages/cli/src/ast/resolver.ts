@@ -1015,21 +1015,26 @@ export class TypeResolver {
     params: readonly BunestParameterDeclaration[],
     returnType: BunestType,
   ): BunestType {
-    const paramSyms = params.map(
-      (p) =>
-        new BunestSymbol({
-          name: p.getName(),
-          declarations: [p],
-          valueDeclaration: p,
-          optional: p.isOptional() || p.hasInitializer(),
-          resolver: this,
-          explicitType: p.getTypeNode()
-            ? this.resolveTypeNode(p.getTypeNode()!)
-            : p.getInitializer()
-              ? this.inferExpressionType(p.getInitializer()!)
-              : this.primitiveType("any"),
-        }),
-    );
+    const paramSyms = params.map((p) => {
+      const typeNode = p.getTypeNode();
+      const init = p.getInitializer();
+      let explicitType: BunestType;
+      if (typeNode) {
+        explicitType = this.resolveTypeNode(typeNode);
+      } else if (init) {
+        explicitType = this.inferExpressionType(init);
+      } else {
+        explicitType = this.primitiveType("any");
+      }
+      return new BunestSymbol({
+        name: p.getName(),
+        declarations: [p],
+        valueDeclaration: p,
+        optional: p.isOptional() || p.hasInitializer(),
+        resolver: this,
+        explicitType,
+      });
+    });
     return new BunestType(
       {
         kind: "function",

@@ -3,6 +3,13 @@ import { addLibrary } from "./commands/add";
 import { buildProject } from "./commands/build";
 import { runCheckCommand } from "./commands/check";
 import { runCodemodCommand, runDelombokCommand } from "./commands/codemod";
+import {
+  runCronParseCommand,
+  runCronRegisterCommand,
+  runCronRemoveCommand,
+  runCronRunCommand,
+  type CronCommandOutputFormat,
+} from "./commands/cron";
 import { deployProject } from "./commands/deploy";
 import { runDevServer } from "./commands/dev";
 import {
@@ -67,10 +74,10 @@ Commands:
   generate, g <schematic> <name>    Generate a Bunest schematic
     Schematics:
       application, class (cl), configuration (config), controller (co),
-      decorator (d), dto, endpoint (ep), filter (f), gateway (ga),
+      cron (cr), decorator (d), dto, endpoint (ep), filter (f), gateway (ga),
       guard (gu), interceptor (itc, in), interface (itf), library (lib),
       middleware (mi), module (mo), pipe (pi), provider (pr),
-      resolver (r), resource (res), service (s), sub-app (app)
+      resolver (r), resource (res), service (s), sub-app (app), worker (w)
     --dir <path>                    Base output directory (default: src)
     --sourceRoot <path>             Override source root directory
     -p, --project <name>            Target monorepo project from bunest.json
@@ -150,12 +157,13 @@ Commands:
     --format <pretty|json|agent>    Output format (default: pretty)
     --server-url <url>              Optional running dev server URL for runtime confirmation
     --version <ver>                 Optional route version filter (e.g. 1)
+    --open                          Open the primary matched handler in your editor (Bun.openInEditor)
     --sourceRoot <path>             Source root directory (default: src)
     --tsconfig <path>               Explicit path to tsconfig.json
     -c, --config <path>             Path to bunest.json / nest-cli.json
 
   explain error <CODE>              Explain a BUNEST_E* error code with ordered fixes and docs link
-    --format <pretty|json|agent>    Output format (default: pretty)
+    --format <pretty|json|agent|ansi> Output format (default: pretty; "ansi" renders terminal Markdown)
 
   routes [snapshot|diff]            List HTTP routes, snapshot manifests, or diff route & body contracts
     snapshot                        Emit a JSON route manifest (stdout or --out <file>)
@@ -204,6 +212,8 @@ Commands:
     --sourcemap [mode]              Emit sourcemap (linked|inline|external|none)
     --deleteOutDir                  Remove output directory before building
     --compile                       Compile standalone native executable
+    --bytecode                      Emit bytecode snapshot for faster cold start (with --compile)
+    --archive [path]                Pack build output into a .tar.gz archive via Bun.Archive
     -w, --watch                     Rebuild on file changes
     --silent                        Suppress build output logs
 
@@ -220,17 +230,36 @@ Commands:
   deploy                            Build/compile or execute deploy hook
     -c, --config <path>             Path to bunest.json / nest-cli.json
     --compile                       Compile standalone native executable
+    --bytecode                      Emit bytecode snapshot for faster cold start
+    --archive [path]                Pack deploy build output into a .tar.gz archive via Bun.Archive
     -d, --dry-run                   Preview deploy steps without executing
 
   repl                              Start interactive Bunest REPL
     --entry <file>                  REPL entrypoint file (default: src/repl.ts)
+
+  cron <parse|register|remove|run>  Manage and preview Bun-native cron schedules & OS cron jobs
+    parse "<expr>"                  Preview next fire times via Bun.cron.parse()
+      --tz <IANA>                   IANA time zone (e.g. UTC, Asia/Ho_Chi_Minh)
+      --from <ISO|ms>               Starting timestamp (default: now)
+      --count <n>                   Number of upcoming occurrences (default: 5)
+      --format <pretty|json>        Output format (default: pretty)
+    register <file> "<expr>" <title> Register persistent OS-level cron job (crontab/launchd/Task Scheduler)
+      --dry-run                     Validate without registering with the OS scheduler
+      --format <pretty|json>        Output format (default: pretty)
+    remove <title>                  Remove an OS-level cron job via Bun.cron.remove()
+      --dry-run                     Validate without removing from the OS scheduler
+      --format <pretty|json>        Output format (default: pretty)
+    run <file>                      Invoke a cron module's default.scheduled(controller) locally
+      --schedule "<expr>"           Cron expression passed to controller.cron (default: "* * * * *")
+      --time <ISO|ms>               Scheduled timestamp passed to controller.scheduledTime
+      --format <pretty|json>        Output format (default: pretty)
 
   mcp                               Start stdio MCP server for AI coding agents (verify, errors, routes, DI)
     --trace-file <path>             Path to runtime error JSONL file (default: .bunest/errors.jsonl)
     --server-url <url>              Running dev server URL (e.g. http://127.0.0.1:3000)
 
   info                              Display Bunest, Bun, OS, CPU, RAM, and resolved package info
-    --format <pretty|json>          Output format (default: pretty)
+    --format <pretty|json|table>    Output format (default: pretty; "table" uses Bun.inspect.table)
 
 Global Options:
   -h, --help                        Show this help message
@@ -261,6 +290,7 @@ const KNOWN_TOP_LEVEL_COMMANDS = [
   "update",
   "deploy",
   "repl",
+  "cron",
   "mcp",
   "info",
   "help",
@@ -481,29 +511,14 @@ export async function runCli(
         }
         const specFlag = getBoolFlag(flags, "spec");
         const noSpecFlag = getBoolFlag(flags, "no-spec");
-        const spec =
-          noSpecFlag === true
-            ? false
-            : specFlag !== undefined
-              ? specFlag
-              : undefined;
+        const spec = noSpecFlag === true ? false : specFlag;
         const flatFlag = getBoolFlag(flags, "flat");
         const noFlatFlag = getBoolFlag(flags, "no-flat");
-        const flat =
-          noFlatFlag === true
-            ? false
-            : flatFlag !== undefined
-              ? flatFlag
-              : undefined;
+        const flat = noFlatFlag === true ? false : flatFlag;
 
         const crudFlag = getBoolFlag(flags, "crud");
         const noCrudFlag = getBoolFlag(flags, "no-crud");
-        const crud =
-          noCrudFlag === true
-            ? false
-            : crudFlag !== undefined
-              ? crudFlag
-              : undefined;
+        const crud = noCrudFlag === true ? false : crudFlag;
         const rawType = getStringFlag(flags, "type");
         const resourceType =
           rawType === "rest" ||
@@ -745,10 +760,11 @@ export async function runCli(
             fmtRaw !== undefined &&
             fmtRaw !== "pretty" &&
             fmtRaw !== "json" &&
-            fmtRaw !== "agent"
+            fmtRaw !== "agent" &&
+            fmtRaw !== "ansi"
           ) {
             io.stderr(
-              `Invalid --format "${fmtRaw}". Expected one of: pretty, json, agent.`,
+              `Invalid --format "${fmtRaw}". Expected one of: pretty, json, agent, ansi.`,
             );
             return { exitCode: 1 };
           }
@@ -765,14 +781,14 @@ export async function runCli(
         }
         if (subcommand !== "route") {
           io.stderr(
-            'Missing or unknown explain subcommand.\nUsage:\n  bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]\n  bunest explain error <CODE> [--format pretty|json|agent]',
+            'Missing or unknown explain subcommand.\nUsage:\n  bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--open] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]\n  bunest explain error <CODE> [--format pretty|json|agent|ansi]',
           );
           return { exitCode: 1 };
         }
         const route = positionals.slice(1).join(" ").trim();
         if (!route) {
           io.stderr(
-            'Missing required argument: "<METHOD /path>".\nUsage: bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]',
+            'Missing required argument: "<METHOD /path>".\nUsage: bunest explain route "<METHOD /path>" [--format pretty|json|agent] [--open] [--server-url <url>] [--sourceRoot <dir>] [--tsconfig <path>] [--config <path>] [--version <ver>]',
           );
           return { exitCode: 1 };
         }
@@ -799,6 +815,7 @@ export async function runCli(
             serverUrl: getStringFlag(flags, "server-url"),
             version: getStringFlag(flags, "version"),
             format,
+            open: getBoolFlag(flags, "open") ?? false,
             silent: getBoolFlag(flags, "silent") ?? false,
           },
           io,
@@ -875,17 +892,19 @@ export async function runCli(
           tsconfig: getStringFlag(flags, "tsconfig"),
           config: getStringFlag(flags, "config"),
         });
-        const formatted =
-          format === "json"
-            ? JSON.stringify(scanned, null, 2)
-            : scanned.routes.length === 0
-              ? "No HTTP routes found."
-              : scanned.routes
-                  .map(
-                    (r) =>
-                      `${r.method.padEnd(7)} ${r.path}${r.version ? ` (v${r.version})` : ""}`,
-                  )
-                  .join("\n");
+        let formatted: string;
+        if (format === "json") {
+          formatted = JSON.stringify(scanned, null, 2);
+        } else if (scanned.routes.length === 0) {
+          formatted = "No HTTP routes found.";
+        } else {
+          formatted = scanned.routes
+            .map(
+              (r) =>
+                `${r.method.padEnd(7)} ${r.path}${r.version ? ` (v${r.version})` : ""}`,
+            )
+            .join("\n");
+        }
         if (!getBoolFlag(flags, "silent")) {
           io.stdout(formatted);
         }
@@ -1029,6 +1048,16 @@ export async function runCli(
             deleteOutDir: getBoolFlag(flags, "deleteOutDir"),
             emitDeclarations: getBoolFlag(flags, "emit-declarations") ?? false,
             compile: getBoolFlag(flags, "compile") ?? false,
+            bytecode: getBoolFlag(flags, "bytecode") ?? false,
+            archive:
+              getStringFlag(flags, "archive") ??
+              (getBoolFlag(flags, "archive") === true ? true : undefined),
+            workers: getStringArrayFlag(flags, "worker"),
+            autoDiscoverWorkers:
+              getBoolFlag(flags, "no-workers") === true ? false : undefined,
+            crons: getStringArrayFlag(flags, "cron"),
+            autoDiscoverCrons:
+              getBoolFlag(flags, "no-crons") === true ? false : undefined,
             silent: getBoolFlag(flags, "silent") ?? false,
           },
           io,
@@ -1081,6 +1110,10 @@ export async function runCli(
             outdir: getStringFlag(flags, "outdir"),
             config: getStringFlag(flags, "config"),
             compile: getBoolFlag(flags, "compile"),
+            bytecode: getBoolFlag(flags, "bytecode") ?? false,
+            archive:
+              getStringFlag(flags, "archive") ??
+              (getBoolFlag(flags, "archive") === true ? true : undefined),
             dryRun: getBoolFlag(flags, "dry-run") ?? false,
             silent: getBoolFlag(flags, "silent") ?? false,
             cwd: io.cwd,
@@ -1101,6 +1134,124 @@ export async function runCli(
         return { exitCode: result.exitCode, output: result };
       }
 
+      case "cron": {
+        const subcommand = positionals[0];
+        const fmtRaw = getStringFlag(flags, "format");
+        if (fmtRaw !== undefined && fmtRaw !== "pretty" && fmtRaw !== "json") {
+          io.stderr(
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, json.`,
+          );
+          return { exitCode: 1 };
+        }
+        const format: CronCommandOutputFormat = fmtRaw ?? "pretty";
+        const silent = getBoolFlag(flags, "silent") ?? false;
+
+        if (subcommand === "parse") {
+          const expression = positionals[1];
+          if (!expression) {
+            io.stderr(
+              'Missing required argument: "<expression>".\nUsage: bunest cron parse "<expression>" [--tz <IANA>] [--from <ISO|ms>] [--count <n>] [--format pretty|json]',
+            );
+            return { exitCode: 1 };
+          }
+          const rawCount = getStringFlag(flags, "count");
+          let count: number | undefined;
+          if (rawCount !== undefined) {
+            if (!/^\d+$/.test(rawCount)) {
+              io.stderr(
+                `Invalid --count value "${rawCount}": expected a positive integer.`,
+              );
+              return { exitCode: 1 };
+            }
+            count = Number.parseInt(rawCount, 10);
+          }
+          const result = await runCronParseCommand(
+            {
+              expression,
+              tz: getStringFlag(flags, "tz"),
+              from: getStringFlag(flags, "from"),
+              count,
+              format,
+              silent,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
+        if (subcommand === "register") {
+          const file = positionals[1];
+          const schedule = positionals[2];
+          const title = positionals[3];
+          if (!file || !schedule || !title) {
+            io.stderr(
+              'Missing required arguments: <file> "<schedule>" <title>.\nUsage: bunest cron register <file> "<schedule>" <title> [--dry-run] [--format pretty|json]',
+            );
+            return { exitCode: 1 };
+          }
+          const result = await runCronRegisterCommand(
+            {
+              file,
+              schedule,
+              title,
+              cwd: io.cwd,
+              dryRun: getBoolFlag(flags, "dry-run") ?? false,
+              format,
+              silent,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
+        if (subcommand === "remove") {
+          const title = positionals[1];
+          if (!title) {
+            io.stderr(
+              "Missing required argument: <title>.\nUsage: bunest cron remove <title> [--dry-run] [--format pretty|json]",
+            );
+            return { exitCode: 1 };
+          }
+          const result = await runCronRemoveCommand(
+            {
+              title,
+              dryRun: getBoolFlag(flags, "dry-run") ?? false,
+              format,
+              silent,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
+        if (subcommand === "run") {
+          const file = positionals[1];
+          if (!file) {
+            io.stderr(
+              'Missing required argument: <file>.\nUsage: bunest cron run <file> [--schedule "<expr>"] [--time <ISO|ms>] [--format pretty|json]',
+            );
+            return { exitCode: 1 };
+          }
+          const result = await runCronRunCommand(
+            {
+              file,
+              schedule: getStringFlag(flags, "schedule"),
+              scheduledTime: getStringFlag(flags, "time"),
+              cwd: io.cwd,
+              format,
+              silent,
+            },
+            io,
+          );
+          return { exitCode: result.exitCode, output: result };
+        }
+
+        io.stderr(
+          `Missing or unknown cron subcommand${subcommand ? ` "${subcommand}"` : ""}.\nUsage:\n  bunest cron parse "<expression>" [--tz <IANA>] [--from <ISO|ms>] [--count <n>] [--format pretty|json]\n  bunest cron register <file> "<schedule>" <title> [--dry-run] [--format pretty|json]\n  bunest cron remove <title> [--dry-run] [--format pretty|json]\n  bunest cron run <file> [--schedule "<expr>"] [--time <ISO|ms>] [--format pretty|json]`,
+        );
+        return { exitCode: 1 };
+      }
+
       case "mcp": {
         const result = await runMcpServer(
           {
@@ -1115,9 +1266,14 @@ export async function runCli(
 
       case "info": {
         const fmtRaw = getStringFlag(flags, "format");
-        if (fmtRaw !== undefined && fmtRaw !== "pretty" && fmtRaw !== "json") {
+        if (
+          fmtRaw !== undefined &&
+          fmtRaw !== "pretty" &&
+          fmtRaw !== "json" &&
+          fmtRaw !== "table"
+        ) {
           io.stderr(
-            `Invalid --format "${fmtRaw}". Expected one of: pretty, json.`,
+            `Invalid --format "${fmtRaw}". Expected one of: pretty, json, table.`,
           );
           return { exitCode: 1 };
         }

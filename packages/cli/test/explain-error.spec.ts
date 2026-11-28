@@ -174,7 +174,7 @@ describe("bunest explain error", () => {
     expect(notFound.code).toBe("BUNEST_E9999");
     expect(notFound.error).toContain("BUNEST_E9999");
     expect(notFound.availableCodes).toEqual(Object.keys(BUNEST_ERROR_CATALOG));
-    expect(notFound.availableRange).toBe("BUNEST_E001..BUNEST_E103");
+    expect(notFound.availableRange).toBe("BUNEST_E001..BUNEST_E205");
     expect(stdoutLines).toEqual([]);
     expect(stderrLines).toEqual([prettyRes.formatted]);
     expect(prettyRes.formatted).toContain("BUNEST_E9999");
@@ -202,7 +202,7 @@ describe("bunest explain error", () => {
     expect(agentRes.exitCode).toBe(1);
     expect(agentRes.formatted).toContain("error:");
     expect(agentRes.formatted).toContain("BUNEST_E9999");
-    expect(agentRes.formatted).toContain("BUNEST_E001..BUNEST_E103");
+    expect(agentRes.formatted).toContain("BUNEST_E001..BUNEST_E205");
   });
 
   test("runExplainRouteCommand continues to work cleanly alongside runExplainErrorCommand", async () => {

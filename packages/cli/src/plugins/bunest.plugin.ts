@@ -1461,11 +1461,9 @@ export async function transformBunestSourceAsync(
 
   const tsLoader: "ts" | "tsx" = filePath.endsWith(".tsx") ? "tsx" : "ts";
   if (merged.ormCircularSafe && (modified || code.includes("@"))) {
-    const transpiler = cachedTranspilers
-      ? tsLoader === "tsx"
-        ? cachedTranspilers.tsx
-        : cachedTranspilers.ts
-      : createStage5Transpiler(tsLoader, options.tsconfig);
+    const transpiler =
+      cachedTranspilers?.[tsLoader] ??
+      createStage5Transpiler(tsLoader, options.tsconfig);
     const js = transpiler.transformSync(code);
     const safeJs = transformCircularMetadataJs(js);
     stagesApplied.push("ormCircularSafe");

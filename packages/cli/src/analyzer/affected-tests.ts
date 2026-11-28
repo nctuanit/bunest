@@ -8,6 +8,7 @@ import {
   readTextSync,
   relative,
   resolve,
+  runSubprocess,
   statSyncPath,
 } from "@bunest/core";
 import {
@@ -227,17 +228,12 @@ async function runGitCommand(
   cwd: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   try {
-    const proc = Bun.spawn(["git", ...args], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { exitCode, stdout, stderr };
+    const res = await runSubprocess(["git", ...args], { cwd });
+    return {
+      exitCode: res.exitCode,
+      stdout: res.stdout,
+      stderr: res.stderr,
+    };
   } catch (err) {
     return {
       exitCode: 1,

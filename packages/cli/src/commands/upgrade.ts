@@ -1,4 +1,9 @@
-import { join, statPath } from "@bunest/core";
+import {
+  join,
+  semverOrder,
+  semverSatisfies,
+  statPath,
+} from "@bunest/core";
 import { loadCliConfiguration } from "../config/configuration.loader";
 import type {
   CliIO,
@@ -33,25 +38,57 @@ export async function upgradeProject(
   const pkgPath = join(cwd, "package.json");
 
   const packageSet = new Set<string>();
+  const declaredVersions = new Map<string, string>();
+  let requiredBunRange: string | undefined;
   try {
     const info = await statPath(pkgPath);
     if (info.isFile()) {
       const pkg = (await Bun.file(pkgPath).json()) as {
+        engines?: { bun?: string };
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
       };
-      const allDeps = new Set<string>([
-        ...Object.keys(pkg.dependencies ?? {}),
-        ...Object.keys(pkg.devDependencies ?? {}),
-      ]);
-      for (const name of allDeps) {
+      if (typeof pkg.engines?.bun === "string") {
+        requiredBunRange = pkg.engines.bun;
+      }
+      const mergedDeps: Record<string, string> = {
+        ...(pkg.devDependencies ?? {}),
+        ...(pkg.dependencies ?? {}),
+      };
+      for (const [name, spec] of Object.entries(mergedDeps)) {
         if (name.startsWith("@bunest/")) {
           packageSet.add(name);
+          declaredVersions.set(name, spec);
         }
       }
     }
   } catch {
     // No package.json in cwd; fall back to plain `bun update`
+  }
+
+  if (
+    io &&
+    requiredBunRange &&
+    typeof Bun !== "undefined" &&
+    !semverSatisfies(Bun.version, requiredBunRange)
+  ) {
+    io.stderr(
+      `Warning: current Bun v${Bun.version} does not satisfy engines.bun (${requiredBunRange}).`,
+    );
+  }
+
+  const concreteVersions = [...declaredVersions.values()]
+    .map((v) => v.replace(/^[~^=]+/, ""))
+    .filter((v) => /^\d+\.\d+\.\d+/.test(v));
+  if (io && concreteVersions.length > 1 && typeof Bun !== "undefined") {
+    const sortedVersions = [...new Set(concreteVersions)].sort((a, b) =>
+      semverOrder(a, b),
+    );
+    if (sortedVersions.length > 1) {
+      io.stdout(
+        `Note: detected mixed @bunest/* versions (${sortedVersions[0]} .. ${sortedVersions[sortedVersions.length - 1]}).`,
+      );
+    }
   }
 
   let effectiveCollection = options.collection?.trim();

@@ -1,9 +1,17 @@
+import { cond } from "@bunest/core/common";
 import * as vscode from "vscode";
 import type { StaticModuleGraph } from "@bunest/cli";
 import {
   sourceLocationToVscodeLocation,
   type BunestWorkspaceIndex,
 } from "../workspace/workspace-index";
+
+const NODE_FILL_BY_KIND: Readonly<Record<string, string>> = {
+  "global-module": "#7c3aed",
+  module: "#2563eb",
+  controller: "#0891b2",
+  repository: "#059669",
+};
 
 function escapeHtml(text: string): string {
   return text
@@ -26,7 +34,13 @@ function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string 
       label: m.name,
       kind: m.isGlobal ? "global-module" : "module",
       group: "module",
-      badge: m.isGlobal ? "@Global" : m.autoDiscover ? "@AutoModule" : "@Module",
+      badge: cond(
+        [
+          [m.isGlobal, "@Global"],
+          [m.autoDiscover, "@AutoModule"],
+        ],
+        "@Module",
+      ),
       x: 80 + (i % 4) * 235,
       y: 70 + Math.floor(i / 4) * 130,
       filePath: m.location.filePath,
@@ -56,6 +70,15 @@ function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string 
       }
     }
   }
+  for (const cycle of graph.moduleCycles) {
+    for (let i = 0; i < cycle.length; i++) {
+      cycleNodeIds.add(`mod:${cycle[i]}`);
+      if (i < cycle.length - 1) {
+        cycleEdges.add(`mod:${cycle[i]}->mod:${cycle[i + 1]}`);
+      }
+    }
+  }
+  const allCycles = [...graph.cycles, ...graph.moduleCycles];
 
   const edges: Array<{
     from: string;
@@ -67,10 +90,11 @@ function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string 
   for (const m of graph.modules) {
     for (const imp of m.imports) {
       if (nodeMap.has(`mod:${imp}`)) {
+        const key = `mod:${m.name}->mod:${imp}`;
         edges.push({
           from: `mod:${m.name}`,
           to: `mod:${imp}`,
-          isCycle: false,
+          isCycle: cycleEdges.has(key),
           label: "imports",
         });
       }
@@ -117,17 +141,7 @@ function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string 
   const svgNodes = nodes
     .map((n) => {
       const isCycle = cycleNodeIds.has(n.id);
-      const fill = isCycle
-        ? "#dc2626"
-        : n.kind === "global-module"
-          ? "#7c3aed"
-          : n.kind === "module"
-            ? "#2563eb"
-            : n.kind === "controller"
-              ? "#0891b2"
-              : n.kind === "repository"
-                ? "#059669"
-                : "#475569";
+      const fill = isCycle ? "#dc2626" : (NODE_FILL_BY_KIND[n.kind] ?? "#475569");
       return `<g class="node" data-id="${escapeHtml(n.id)}" data-group="${escapeHtml(n.group)}" data-cycle="${isCycle ? "1" : "0"}" data-label="${escapeHtml(n.label.toLowerCase())}" data-file="${escapeHtml(n.filePath)}" data-line="${n.line}" style="cursor:pointer">
         <rect x="${n.x}" y="${n.y}" width="180" height="50" rx="8" fill="${fill}" opacity="0.93" stroke="${isCycle ? "#fca5a5" : "transparent"}" stroke-width="2" />
         <text x="${n.x + 12}" y="${n.y + 22}" fill="#fff" font-size="12" font-weight="700">${escapeHtml(n.label)}</text>
@@ -163,15 +177,15 @@ function buildDiGraphHtml(graph: StaticModuleGraph, cspSource?: string): string 
     <button class="chip" data-filter="module">Modules (${graph.modules.length})</button>
     <button class="chip" data-filter="controller">Controllers</button>
     <button class="chip" data-filter="repository">Repositories</button>
-    <button class="chip" data-filter="cycle">Cycles (${graph.cycles.length})</button>
+    <button class="chip" data-filter="cycle">Cycles (${allCycles.length})</button>
     <button class="chip" data-zoom="1.15">Zoom +</button>
     <button class="chip" data-zoom="0.87">Zoom -</button>
     <button class="chip" data-zoom="reset">Reset</button>
     <span class="muted">Hover: trace dependencies · Double-click: open source</span>
   </div>
   ${
-    graph.cycles.length > 0
-      ? `<div class="warn-banner">Circular DI detected (${graph.cycles.length}): ${graph.cycles.map((c) => escapeHtml(c.join(" → "))).join(" | ")}</div>`
+    allCycles.length > 0
+      ? `<div class="warn-banner">Circular DI detected (${allCycles.length}): ${allCycles.map((c) => escapeHtml(c.join(" → "))).join(" | ")}</div>`
       : ""
   }
   <div class="canvas">
@@ -304,6 +318,7 @@ export class BunestDiGraphPanel {
       providerByName: new Map(providers.map((p) => [p.name, p])),
       providersByName,
       cycles: snapshots.flatMap((s) => s.moduleGraph.cycles),
+      moduleCycles: snapshots.flatMap((s) => s.moduleGraph.moduleCycles),
       unknownRegistrations: snapshots.flatMap(
         (s) => s.moduleGraph.unknownRegistrations,
       ),

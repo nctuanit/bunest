@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import * as vscode from "vscode";
 import type { StaticModuleNode, SourceLocation } from "@bunest/cli";
 import { bunestIcon } from "../ui/icons";
@@ -115,12 +116,16 @@ export class BunestModulesTreeProvider
         );
         if (prov) {
           item.description = prov.scope !== "SINGLETON" ? prov.scope : prov.kind;
-          item.iconPath =
-            prov.kind === "controller"
-              ? bunestIcon("controller", "globe")
-              : prov.kind === "repository"
-                ? bunestIcon("repository", "database")
-                : bunestIcon("service", "symbol-class");
+          item.iconPath = cond(
+            [
+              [prov.kind === "controller", () => bunestIcon("controller", "globe")],
+              [
+                prov.kind === "repository",
+                () => bunestIcon("repository", "database"),
+              ],
+            ],
+            () => bunestIcon("service", "symbol-class"),
+          );
         } else if (mod) {
           item.description = "module";
           item.iconPath = new vscode.ThemeIcon("package");

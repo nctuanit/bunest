@@ -12,13 +12,19 @@ const ALIASES: Record<string, string> = {
   ),
   "@bunest/cli": resolve(repoRoot, "packages/cli/src/index.ts"),
   "@bunest/core": resolve(repoRoot, "packages/core/src/index.ts"),
+  "@bunest/core/common": resolve(repoRoot, "packages/core/src/common/index.ts"),
+  "@bunest/core/http": resolve(repoRoot, "packages/core/src/http/index.ts"),
+  "@bunest/core/config": resolve(repoRoot, "packages/core/src/config/index.ts"),
+  "@bunest/core/client": resolve(repoRoot, "packages/core/src/client/index.ts"),
+  "@bunest/core/ws": resolve(repoRoot, "packages/core/src/ws/index.ts"),
+  "@bunest/core/i18n": resolve(repoRoot, "packages/core/src/i18n/index.ts"),
 };
 
 const aliasPlugin: BunPlugin = {
   name: "bunest-workspace-aliases",
   setup(build) {
     build.onResolve(
-      { filter: /^@bunest\/(cli(\/analyzer)?|core)$/ },
+      { filter: /^@bunest\/(cli(\/analyzer)?|core(\/(common|http|config|client|ws|i18n))?)$/ },
       (args) => {
         const target = ALIASES[args.path];
         return target ? { path: target } : undefined;

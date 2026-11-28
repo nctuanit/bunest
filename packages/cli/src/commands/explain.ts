@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   BUNEST_ERROR_CATALOG,
   getErrorCatalogEntry,
@@ -35,6 +36,16 @@ export interface ExplainRouteCommandOptions {
   readonly dirtyBuffers?: readonly string[];
   readonly silent?: boolean;
   readonly fetch?: typeof fetch;
+  /**
+   * When `true`, opens the primary matched controller handler location in the
+   * user's editor via `Bun.openInEditor(file, { line, column })`.
+   */
+  readonly open?: boolean;
+  /** Optional override for `Bun.openInEditor` (primarily for testing). */
+  readonly openInEditor?: (
+    file: string,
+    options?: { line?: number; column?: number },
+  ) => void;
 }
 
 export interface ExplainRouteCommandResult {
@@ -104,11 +115,22 @@ export function formatRouteExplainReport(
   );
 
   if (report.runtime.attempted) {
-    const rtState = report.runtime.reachable
-      ? report.runtime.bootstrapFailed
-        ? `bootstrap-failed (${report.runtime.error ?? "unknown error"})`
-        : `reachable${report.runtime.buildVersion ? ` build=${report.runtime.buildVersion}` : ""}`
-      : `unreachable (${report.runtime.error ?? "connection failed"})`;
+    const buildSuffix = report.runtime.buildVersion
+      ? ` build=${report.runtime.buildVersion}`
+      : "";
+    const rtState = cond(
+      [
+        [
+          !report.runtime.reachable,
+          `unreachable (${report.runtime.error ?? "connection failed"})`,
+        ],
+        [
+          Boolean(report.runtime.bootstrapFailed),
+          `bootstrap-failed (${report.runtime.error ?? "unknown error"})`,
+        ],
+      ],
+      `reachable${buildSuffix}`,
+    );
     lines.push(`runtime: ${report.runtime.serverUrl ?? ""} -> ${rtState}`);
   } else if (!compact) {
     lines.push("runtime: not queried (static-only)");
@@ -123,12 +145,13 @@ export function formatRouteExplainReport(
   } else {
     for (let i = 0; i < report.matches.length; i++) {
       const m = report.matches[i]!;
-      const src =
-        m.source.static && m.source.runtime
-          ? "static+runtime"
-          : m.source.runtime
-            ? "runtime"
-            : "static";
+      const src = cond(
+        [
+          [m.source.static && m.source.runtime, "static+runtime"],
+          [m.source.runtime, "runtime"],
+        ],
+        "static",
+      );
       lines.push(
         `match[${i + 1}]: ${m.method} ${m.path}${m.version ? ` v${m.version}` : ""} (${m.confirmationStatus}, ${src})`,
       );
@@ -229,6 +252,27 @@ export async function runExplainRouteCommand(
   const format = options.format ?? "pretty";
   const formatted = formatRouteExplainReport(report, format, cwd);
 
+  if (options.open) {
+    const loc =
+      report.matches[0]?.controller.handlerLocation ??
+      report.matches[0]?.module?.location;
+    if (loc?.filePath) {
+      const opener =
+        options.openInEditor ??
+        (typeof Bun !== "undefined"
+          ? (
+              Bun as unknown as {
+                openInEditor?: (
+                  file: string,
+                  opts?: { line?: number; column?: number },
+                ) => void;
+              }
+            ).openInEditor
+          : undefined);
+      opener?.(loc.filePath, { line: loc.line, column: loc.column });
+    }
+  }
+
   if (io && !options.silent) {
     io.stdout(formatted);
   }
@@ -240,7 +284,7 @@ export async function runExplainRouteCommand(
   };
 }
 
-export type ExplainErrorFormat = ExplainRouteFormat;
+export type ExplainErrorFormat = ExplainRouteFormat | "ansi";
 
 export type ErrorExplainCategory = "di" | "routing" | "general";
 
@@ -363,6 +407,37 @@ export function formatErrorExplainReport(
     }
     lines.push(`docsPath: ${report.docsPath}`, `docsUrl: ${report.docsUrl}`);
     return lines.join("\n");
+  }
+
+  if (format === "ansi") {
+    const mdLines = [
+      `# [${report.code}] ${report.name} — ${report.title}`,
+      "",
+      `**Category:** \`${report.category}\``,
+      "",
+      report.summary,
+      "",
+      "## First action",
+      "",
+      report.firstAction,
+      "",
+      "## Ordered fixes",
+      "",
+      ...report.fixes.map((fix, i) => `${i + 1}. ${fix}`),
+    ];
+    if (report.example) {
+      mdLines.push("", "## Example", "", "```ts", report.example, "```");
+    }
+    mdLines.push("", `**Docs:** ${report.docsPath} (${report.docsUrl})`);
+    const markdownApi =
+      typeof Bun !== "undefined"
+        ? (
+            Bun as unknown as { markdown?: { ansi?: (src: string) => string } }
+          ).markdown
+        : undefined;
+    return typeof markdownApi?.ansi === "function"
+      ? markdownApi.ansi(mdLines.join("\n"))
+      : mdLines.join("\n");
   }
 
   const lines = [

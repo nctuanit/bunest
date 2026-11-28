@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   existsSyncPath,
   join,
@@ -1029,11 +1030,12 @@ function collectClassPropertiesWithInheritance(
       (extExpr !== undefined && Node.isCallExpression(extExpr)) ||
       afterExtends.startsWith("(");
 
-    const rawCalleeText = extExpr
-      ? Node.isCallExpression(extExpr)
+    let rawCalleeText = "";
+    if (extExpr) {
+      rawCalleeText = Node.isCallExpression(extExpr)
         ? extExpr.getExpression().getText()
-        : extExpr.getText()
-      : "";
+        : extExpr.getText();
+    }
     const shortCallee = rawCalleeText.includes(".")
       ? rawCalleeText.slice(rawCalleeText.lastIndexOf(".") + 1)
       : rawCalleeText;
@@ -1312,11 +1314,17 @@ export async function scanRouteBodyContracts(
   options?: ScanBodyContractsOptions,
 ): Promise<ScanBodyContractsResult> {
   const projectRoot = resolve(projectDir);
-  const sourceRootDir = options?.sourceRoot
-    ? resolve(projectRoot, options.sourceRoot)
-    : existsSyncPath(resolve(projectRoot, "src"))
-      ? resolve(projectRoot, "src")
-      : projectRoot;
+  const defaultSrcDir = resolve(projectRoot, "src");
+  const sourceRootDir = cond(
+    [
+      [
+        Boolean(options?.sourceRoot),
+        () => resolve(projectRoot, options!.sourceRoot!),
+      ],
+      [() => existsSyncPath(defaultSrcDir), defaultSrcDir],
+    ],
+    projectRoot,
+  );
 
   const candidateTsconfig = resolve(projectRoot, "tsconfig.json");
   const project = new Project({

@@ -2306,7 +2306,11 @@ function loadTsConfigPaths(tsConfigFilePath?: string): TsConfigPaths {
   }
   try {
     const raw = readTextSync(tsConfigFilePath);
-    const parsed = JSON.parse(stripJsonComments(raw)) as {
+    const parsed = (
+      typeof Bun !== "undefined" && typeof Bun.JSONC?.parse === "function"
+        ? Bun.JSONC.parse(raw)
+        : JSON.parse(stripJsonComments(raw))
+    ) as {
       compilerOptions?: {
         baseUrl?: string;
         paths?: Record<string, string[]>;

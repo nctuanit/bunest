@@ -54,15 +54,17 @@ export class BunestRepositoryCompletionProvider
     );
     const replaceRange = new vscode.Range(replaceStart, position);
 
+    const COMPLETION_KIND_MAP: Readonly<
+      Record<string, vscode.CompletionItemKind>
+    > = {
+      fullMethod: vscode.CompletionItemKind.Method,
+      property: vscode.CompletionItemKind.Field,
+      operator: vscode.CompletionItemKind.Operator,
+    };
+
     return suggestions.map((s) => {
       const kind =
-        s.kind === "fullMethod"
-          ? vscode.CompletionItemKind.Method
-          : s.kind === "property"
-            ? vscode.CompletionItemKind.Field
-            : s.kind === "operator"
-              ? vscode.CompletionItemKind.Operator
-              : vscode.CompletionItemKind.Keyword;
+        COMPLETION_KIND_MAP[s.kind] ?? vscode.CompletionItemKind.Keyword;
 
       const item = new vscode.CompletionItem(s.label, kind);
       item.detail = s.detail;

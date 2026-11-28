@@ -290,7 +290,7 @@
         "bunest.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Bunest static & architecture diagnostics (BUNEST001..007, BUNEST_REPO001..007, BUNEST_MACRO001..005, BUNEST_DEC001..005, BUNEST_ARCH001..002, and custom rules from bunest.config.ts)."
+          "description": "Enable Bunest static & architecture diagnostics (BUNEST001..007, BUNEST_REPO001..007, BUNEST_MACRO001..005, BUNEST_DEC001..009, BUNEST_ARCH001..002, and custom rules from bunest.config.ts)."
         },
         "bunest.codelens.enabled": {
           "type": "boolean",

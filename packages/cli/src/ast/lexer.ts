@@ -1,5 +1,18 @@
 import { KEYWORD_MAP, SyntaxKind } from "./syntax-kind";
 
+const THREE_CHAR_TOKENS = new Map<string, SyntaxKind>([
+  ["...", SyntaxKind.DotDotDotToken],
+  ["===", SyntaxKind.EqualsEqualsEqualsToken],
+  ["!==", SyntaxKind.ExclamationEqualsEqualsToken],
+  [">>>", SyntaxKind.GreaterThanGreaterThanGreaterThanToken],
+  ["<<=", SyntaxKind.CompoundAssignmentToken],
+  [">>=", SyntaxKind.CompoundAssignmentToken],
+  ["**=", SyntaxKind.CompoundAssignmentToken],
+  ["&&=", SyntaxKind.CompoundAssignmentToken],
+  ["||=", SyntaxKind.CompoundAssignmentToken],
+  ["??=", SyntaxKind.CompoundAssignmentToken],
+]);
+
 export interface Token {
   readonly kind: SyntaxKind;
   readonly start: number;
@@ -644,30 +657,10 @@ export function lexTypeScript(source: string): LexResult {
       continue;
     }
 
-    if (
-      c3 === "..." ||
-      c3 === "===" ||
-      c3 === "!==" ||
-      c3 === ">>>" ||
-      c3 === "<<=" ||
-      c3 === ">>=" ||
-      c3 === "**=" ||
-      c3 === "&&=" ||
-      c3 === "||=" ||
-      c3 === "??="
-    ) {
+    const kind3 = THREE_CHAR_TOKENS.get(c3);
+    if (kind3 !== undefined) {
       pos += 3;
-      const kind =
-        c3 === "..."
-          ? SyntaxKind.DotDotDotToken
-          : c3 === "==="
-            ? SyntaxKind.EqualsEqualsEqualsToken
-            : c3 === "!=="
-              ? SyntaxKind.ExclamationEqualsEqualsToken
-              : c3 === ">>>"
-                ? SyntaxKind.GreaterThanGreaterThanGreaterThanToken
-                : SyntaxKind.CompoundAssignmentToken;
-      tokens.push({ kind, start, end: pos, text: c3, lineBreakBefore });
+      tokens.push({ kind: kind3, start, end: pos, text: c3, lineBreakBefore });
       continue;
     }
 

@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   existsSyncPath,
   join,
@@ -266,14 +267,17 @@ export async function runDevServer(
   };
 
   if (io && !options.silent) {
-    const targetPortMsg =
-      resolvedPort !== undefined
-        ? resolvedPort === 0
-          ? " (target port: ephemeral)"
-          : fellBackFromPort !== undefined
-            ? ` (target port: ${resolvedPort}; port ${fellBackFromPort} in use)`
-            : ` (target port: ${resolvedPort})`
-        : "";
+    const targetPortMsg = cond(
+      [
+        [resolvedPort === undefined, ""],
+        [resolvedPort === 0, " (target port: ephemeral)"],
+        [
+          fellBackFromPort !== undefined,
+          () => ` (target port: ${resolvedPort}; port ${fellBackFromPort} in use)`,
+        ],
+      ],
+      () => ` (target port: ${resolvedPort})`,
+    );
     io.stdout(`Starting Bunest dev server: bun --watch ${entry}${targetPortMsg}`);
     const sampleHttpFiles = await discoverSampleHttpFiles(
       cwd,

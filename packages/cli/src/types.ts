@@ -24,6 +24,7 @@ export type SchematicType =
   | "class"
   | "configuration"
   | "controller"
+  | "cron"
   | "decorator"
   | "dto"
   | "endpoint"
@@ -40,7 +41,8 @@ export type SchematicType =
   | "resolver"
   | "resource"
   | "service"
-  | "sub-app";
+  | "sub-app"
+  | "worker";
 
 export interface GeneratedFile {
   readonly path: string;
@@ -154,6 +156,38 @@ export interface BuildProjectOptions {
   readonly deleteOutDir?: boolean;
   readonly emitDeclarations?: boolean;
   readonly compile?: boolean;
+  /**
+   * Emit Bun bytecode snapshot (`--bytecode`) alongside `--compile` standalone
+   * executables for faster cold-start execution.
+   */
+  readonly bytecode?: boolean;
+  /**
+   * Pack the build output directory into a `.tar.gz` archive via `Bun.Archive`.
+   * Pass `true` for `<outdir>/../<outdir-basename>.tar.gz` or an explicit file path.
+   */
+  readonly archive?: boolean | string;
+  /**
+   * Additional Bun Worker entrypoints (file paths or globs relative to `cwd` / `sourceRoot`)
+   * bundled alongside the main entrypoint (and embedded in `bun build --compile`).
+   */
+  readonly workers?: readonly string[];
+  /**
+   * Automatically include `**\/*.worker.{ts,js,mts,mjs}` files under `sourceRoot`
+   * when bundling or compiling.
+   * @default true
+   */
+  readonly autoDiscoverWorkers?: boolean;
+  /**
+   * Additional OS-level Bun Cron entrypoints (file paths or globs relative to `cwd` / `sourceRoot`)
+   * bundled alongside the main entrypoint.
+   */
+  readonly crons?: readonly string[];
+  /**
+   * Automatically include `**\/*.cron.{ts,js,mts,mjs}` files under `sourceRoot`
+   * when bundling or compiling.
+   * @default true
+   */
+  readonly autoDiscoverCrons?: boolean;
   readonly silent?: boolean;
   readonly spawn?: SpawnFn;
 }
@@ -166,6 +200,9 @@ export interface BuildProjectResult {
   readonly durationMs: number;
   readonly logs: readonly string[];
   readonly compiledExecutable?: string;
+  readonly archivePath?: string;
+  readonly workerEntries?: readonly string[];
+  readonly cronEntries?: readonly string[];
 }
 
 export interface DevServerOptions {
@@ -285,6 +322,16 @@ export interface DeployProjectOptions {
   readonly outdir?: string;
   readonly config?: string;
   readonly compile?: boolean;
+  /**
+   * Emit Bun bytecode snapshot (`--bytecode`) alongside `--compile` standalone
+   * executables for faster cold-start execution.
+   */
+  readonly bytecode?: boolean;
+  /**
+   * Pack the build output directory into a `.tar.gz` archive via `Bun.Archive`.
+   * Pass `true` for `<outdir>/../<outdir-basename>.tar.gz` or an explicit file path.
+   */
+  readonly archive?: boolean | string;
   readonly dryRun?: boolean;
   readonly silent?: boolean;
   readonly cwd?: string;
@@ -297,6 +344,7 @@ export interface DeployProjectResult {
   readonly target: "bundle" | "compile" | "custom";
   readonly command?: readonly string[];
   readonly outdir: string;
+  readonly archivePath?: string;
   readonly exitCode: number;
 }
 

@@ -1,3 +1,5 @@
+import { cond, normalizePath } from "@bunest/core/common";
+
 export interface BodyFieldConstraints {
   readonly min?: number;
   readonly max?: number;
@@ -219,18 +221,17 @@ interface NormalizedRouteBody {
   readonly unsupportedReasons: readonly BodyUnsupportedReason[];
 }
 
+const REMOVED_FIELD_BEHAVIOR_LABELS: Readonly<
+  Record<UnknownPropertyBehavior, string>
+> = {
+  "silent-strip": "silent-strip (not HTTP 400)",
+  "reject-400": "HTTP 400 rejection",
+  "pass-through": "pass-through",
+  unknown: "pipe behavior unconfigured",
+};
+
 function normalizeMethod(method: string): string {
   return method.trim().toUpperCase();
-}
-
-function normalizePath(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed || trimmed === "/") return "/";
-  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  const collapsed = withLeading.replace(/\/+/g, "/");
-  return collapsed.length > 1 && collapsed.endsWith("/")
-    ? collapsed.slice(0, -1)
-    : collapsed;
 }
 
 function normalizeVersion(version?: string): string | undefined {
@@ -639,12 +640,16 @@ export function diffBodyContracts(
 
     // Rule 6: Legacy manifests missing body metadata
     if (!base.hasBodyMetadata || !head.hasBodyMetadata) {
-      const missingSide =
-        !base.hasBodyMetadata && !head.hasBodyMetadata
-          ? "base and head manifests"
-          : !base.hasBodyMetadata
-            ? "base manifest"
-            : "head manifest";
+      const missingSide = cond(
+        [
+          [
+            !base.hasBodyMetadata && !head.hasBodyMetadata,
+            "base and head manifests",
+          ],
+          [!base.hasBodyMetadata, "base manifest"],
+        ],
+        "head manifest",
+      );
       const src = resolveFieldSource(undefined, head.hasBodyMetadata ? head : base);
       staticFindings.push({
         id: findingId(
@@ -1231,14 +1236,9 @@ function formatFindingHeadline(finding: BodyContractDiffFinding): string {
     case "required-field-added":
       return `${route}   ${target}   required field added`;
     case "field-removed": {
-      const behaviorTag =
-        finding.unknownPropertyBehavior === "silent-strip"
-          ? "silent-strip (not HTTP 400)"
-          : finding.unknownPropertyBehavior === "reject-400"
-            ? "HTTP 400 rejection"
-            : finding.unknownPropertyBehavior === "pass-through"
-              ? "pass-through"
-              : "pipe behavior unconfigured";
+      const behaviorTag = finding.unknownPropertyBehavior
+        ? REMOVED_FIELD_BEHAVIOR_LABELS[finding.unknownPropertyBehavior]
+        : "pipe behavior unconfigured";
       return `${route}   ${target}   field removed (${behaviorTag})`;
     }
     case "ts-only-change":

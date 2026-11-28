@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import { join, resolve, statPath } from "@bunest/core";
 import {
   loadCliConfiguration,
@@ -73,11 +74,7 @@ export async function runStartCommand(
 
   const watch = options.watch === true;
   const debug = options.debug;
-  const envFiles = options.envFile
-    ? Array.isArray(options.envFile)
-      ? [...options.envFile]
-      : [options.envFile]
-    : [];
+  const envFiles = options.envFile ? toArray(options.envFile) : [];
   const execBinary = options.exec ?? config.exec;
 
   const args: string[] = [];
@@ -118,9 +115,7 @@ export async function runStartCommand(
   const { enabled: configTypegenEnabled, config: typegenCfg } =
     resolveTypegenConfig(config.typegen);
   const typegenEnabled = watch
-    ? options.typegen !== undefined
-      ? options.typegen
-      : configTypegenEnabled
+    ? (options.typegen ?? configTypegenEnabled)
     : options.typegen === true;
 
   let watcher: TypegenWatcherHandle | undefined;

@@ -921,9 +921,10 @@ export class BunestWorkspaceIndex implements vscode.Disposable {
     const liveOn = this.isLiveTypegenSettingEnabled();
     const icon = errors > 0 ? "$(warning)" : "$(check)";
     this.statusBarItem.text = `${icon} Bunest: ${routes} routes · ${repos} repos · ${macros} macros`;
+    const errCountText = `${errors} error${errors === 1 ? "" : "s"}`;
     this.statusBarItem.tooltip = liveOn
-      ? `Bunest Live Typegen Active (${errors} error${errors === 1 ? "" : "s"}). Auto-syncs .bunest/types/bunest.d.ts as you type (no save required) — click to force CLI typegen.`
-      : `Bunest AST Index (${errors} error${errors === 1 ? "" : "s"}). Live typegen disabled — click to run \`bunest typegen\` via CLI.`;
+      ? `Bunest Live Typegen Active (${errCountText}). Auto-syncs .bunest/types/bunest.d.ts as you type (no save required) — click to force CLI typegen.`
+      : `Bunest AST Index (${errCountText}). Live typegen disabled — click to run \`bunest typegen\` via CLI.`;
   }
 
   private emitUpdate(): void {

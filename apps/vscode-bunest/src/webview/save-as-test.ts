@@ -1,3 +1,4 @@
+import { isObject, isString, truncate } from "@bunest/core/common";
 import {
   dirname,
   existsSyncPath,
@@ -6,14 +7,14 @@ import {
   resolve,
 } from "@bunest/core";
 import * as vscode from "vscode";
-import type { ExtractedRouteEntry } from "@bunest/cli";
 import {
   planTestFromRequest,
+  type ExtractedRouteEntry,
   type PlanTestFromRequestOptions,
   type RequestScenarioRouteMeta,
   type RequestScenarioV1,
   type TestFromRequestPlan,
-} from "../../../../packages/cli/src/commands/test-from-request";
+} from "@bunest/cli";
 import type { BunestWorkspaceIndex } from "../workspace/workspace-index";
 
 const BINARY_OR_STREAM_PATTERNS: readonly RegExp[] = [
@@ -93,25 +94,18 @@ export function extractCandidateResponseFields(
   const results: CandidateResponseField[] = [];
 
   const visit = (value: unknown, prefix: string, depth: number): void => {
-    if (
-      depth > maxDepth ||
-      typeof value !== "object" ||
-      value === null ||
-      Array.isArray(value)
-    ) {
+    if (depth > maxDepth || !isObject(value)) {
       return;
     }
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, val] of Object.entries(value)) {
       const path = prefix ? `${prefix}.${key}` : key;
-      const isNestedObj =
-        typeof val === "object" && val !== null && !Array.isArray(val);
+      const isNestedObj = isObject(val);
       if (isNestedObj && depth < maxDepth) {
         visit(val, path, depth + 1);
       } else {
-        const preview =
-          typeof val === "string"
-            ? JSON.stringify(val.length > 40 ? `${val.slice(0, 37)}...` : val)
-            : JSON.stringify(val);
+        const preview = isString(val)
+          ? JSON.stringify(truncate(val, 40, "..."))
+          : JSON.stringify(val);
         results.push({
           path,
           valuePreview: preview ?? String(val),

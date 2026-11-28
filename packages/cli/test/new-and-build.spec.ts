@@ -333,4 +333,79 @@ describe("bunest new, bunest build, and bunest dev", () => {
     expect(stderr.trim()).toBe("");
     expect(stdout.trim()).toBe("A->B->C");
   });
+
+  it("preserves constructor DI metadata (aotDiMetadata: true by default) when bundling with bunest build", async () => {
+    const workdir = join(
+      import.meta.dir,
+      "..",
+      `.tmp-aot-di-${crypto.randomUUID().slice(0, 8)}`,
+    );
+    await ensureDir(workdir);
+    tempDirs.push(workdir);
+
+    await Bun.write(
+      join(workdir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          verbatimModuleSyntax: true,
+        },
+      }),
+    );
+    await Bun.write(
+      join(workdir, "src/greeter.service.ts"),
+      `import { Injectable } from "@bunest/core";
+@Injectable()
+export class GreeterService {
+  greet(name: string) { return \`AOT-DI:\${name}\`; }
+}
+`,
+    );
+    await Bun.write(
+      join(workdir, "src/app.controller.ts"),
+      `import { Controller, Get } from "@bunest/core";
+import { GreeterService } from "./greeter.service";
+@Controller("hello")
+export class AppController {
+  constructor(private readonly greeter: GreeterService) {}
+  @Get()
+  say() { return { msg: this.greeter.greet("Bun") }; }
+}
+`,
+    );
+    await Bun.write(
+      join(workdir, "src/main.ts"),
+      `import { BunestFactory, Module } from "@bunest/core";
+import { AppController } from "./app.controller";
+import { GreeterService } from "./greeter.service";
+@Module({ controllers: [AppController], providers: [GreeterService] })
+class AppModule {}
+const app = await BunestFactory.create(AppModule, { logger: false });
+await app.init();
+const res = await app.fetch(new Request("http://localhost/hello"));
+console.log(await res.text());
+await app.close();
+`,
+    );
+
+    const res = await buildProject({
+      entry: "src/main.ts",
+      outdir: "dist",
+      cwd: workdir,
+      silent: true,
+    });
+    expect(res.logs).toEqual([]);
+    expect(res.success).toBe(true);
+
+    const proc = Bun.spawn([process.execPath, join(workdir, "dist/main.js")], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    expect(await proc.exited).toBe(0);
+    expect(stderr.trim()).toBe("");
+    expect(JSON.parse(stdout.trim())).toEqual({ msg: "AOT-DI:Bun" });
+  });
 });

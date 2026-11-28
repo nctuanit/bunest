@@ -113,13 +113,13 @@ export async function generateRepositoryCommand(
   });
 
   if (io) {
+    const ACTION_TAGS: Readonly<Record<string, string>> = {
+      "dry-run": "DRY-RUN",
+      overwrite: "OVERWRITE",
+      create: "CREATE",
+    };
     for (const f of files) {
-      const tag =
-        f.action === "dry-run"
-          ? "DRY-RUN"
-          : f.action === "overwrite"
-            ? "OVERWRITE"
-            : "CREATE";
+      const tag = ACTION_TAGS[f.action] ?? "CREATE";
       const relOut = relative(cwd, f.path).replace(/\\/g, "/");
       io.stdout(`  ${tag} ${relOut}`);
     }

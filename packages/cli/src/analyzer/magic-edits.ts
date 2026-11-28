@@ -1,3 +1,4 @@
+import { capitalize } from "@bunest/core/common";
 import { Node, type ClassDeclaration, type SourceFile } from "../ast";
 import {
   collectCustomMacros,
@@ -29,9 +30,11 @@ export interface MagicEditResult {
   readonly edits: readonly TextEditSpan[];
 }
 
-function capitalize(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
-}
+const BASE_ENTITY_ID_DECORATORS: Readonly<Record<string, string>> = {
+  objectid: "@ObjectIdColumn()",
+  uuid: '@PrimaryGeneratedColumn("uuid")',
+  false: "@PrimaryColumn()",
+};
 
 function detectIndent(text: string, offset: number): string {
   const lineStart = text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
@@ -546,13 +549,8 @@ export function buildDelombokEdit(options: {
       if (macro.ownPropertyNames.includes(bf.name)) continue;
       if (bf.role === "id") {
         const decLine =
-          bf.strategy === "objectid"
-            ? "@ObjectIdColumn()"
-            : bf.strategy === "uuid"
-              ? '@PrimaryGeneratedColumn("uuid")'
-              : bf.strategy === false
-                ? "@PrimaryColumn()"
-                : "@PrimaryGeneratedColumn()";
+          BASE_ENTITY_ID_DECORATORS[String(bf.strategy)] ??
+          "@PrimaryGeneratedColumn()";
         generatedBlocks.push(
           `${memberIndent}${decLine}\n${memberIndent}${bf.name}!: ${bf.typeText};`,
         );

@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import * as vscode from "vscode";
 import type {
   AnalyzedEntity,
@@ -166,14 +167,22 @@ export class BunestDataModelsTreeProvider
           undefined,
           m.location,
         );
-        item.description = m.derived
-          ? "derived"
-          : m.customQuery
-            ? "@Query"
-            : m.kind;
+        item.description = cond(
+          [
+            [Boolean(m.derived), "derived"],
+            [Boolean(m.customQuery), "@Query"],
+          ],
+          m.kind,
+        );
         item.tooltip = m.derived?.sqlPreview ?? m.customQuery?.sql ?? m.name;
         item.iconPath = new vscode.ThemeIcon(
-          m.derived ? "search" : m.customQuery ? "code" : "symbol-method",
+          cond(
+            [
+              [Boolean(m.derived), "search"],
+              [Boolean(m.customQuery), "code"],
+            ],
+            "symbol-method",
+          ),
         );
         return item;
       });

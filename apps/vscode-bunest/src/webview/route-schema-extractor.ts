@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   dirname,
   existsSyncPath,
@@ -590,7 +591,14 @@ export function extractRouteSchema(
               type: paramType,
               required: !isOpt,
               defaultValue:
-                defVal ?? (/number/i.test(paramType) ? "1" : /boolean/i.test(paramType) ? "true" : ""),
+                defVal ??
+                cond(
+                  [
+                    [/number/i.test(paramType), "1"],
+                    [/boolean/i.test(paramType), "true"],
+                  ],
+                  "",
+                ),
             });
           } else if (paramType && /^[A-Z{]/.test(paramType)) {
             const dtoBody = paramType.startsWith("{")

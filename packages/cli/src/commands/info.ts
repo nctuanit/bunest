@@ -8,6 +8,7 @@ import {
   readTextSync,
   realpathSyncOf,
   resolve,
+  semverSatisfies,
 } from "@bunest/core";
 import type { EnvironmentInfo } from "../types";
 import { CLI_VERSION } from "../version";
@@ -22,7 +23,7 @@ export interface ResolvedPackageInfo {
   readonly resolvedPath?: string;
 }
 
-export type EnvironmentInfoFormat = "pretty" | "json";
+export type EnvironmentInfoFormat = "pretty" | "json" | "table";
 
 export interface FormatEnvironmentInfoOptions {
   readonly format?: EnvironmentInfoFormat;
@@ -30,6 +31,8 @@ export interface FormatEnvironmentInfoOptions {
 
 export interface ExtendedEnvironmentInfo extends EnvironmentInfo {
   readonly resolvedPackages?: readonly ResolvedPackageInfo[];
+  readonly requiredBunRange?: string;
+  readonly bunVersionSatisfied?: boolean;
 }
 
 function formatGiB(bytes: number): string {
@@ -315,6 +318,20 @@ export function resolveDeclaredBunestPackages(
     .map(([name, range]) => resolveSinglePackage(name, range, cwd));
 }
 
+function readProjectBunEngineRange(cwd?: string): string | undefined {
+  if (!cwd) return undefined;
+  const pkgPath = join(cwd, "package.json");
+  if (!existsSyncPath(pkgPath)) return undefined;
+  try {
+    const pkg = JSON.parse(readTextSync(pkgPath)) as {
+      engines?: { bun?: string };
+    };
+    return typeof pkg.engines?.bun === "string" ? pkg.engines.bun : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Collects Bunest, Bun runtime, OS, CPU, and memory environment metadata.
  */
@@ -325,10 +342,20 @@ export function getEnvironmentInfo(cwd?: string): ExtendedEnvironmentInfo {
   const resolvedPackages = packages
     ? resolveDeclaredBunestPackages(cwd, packages)
     : [];
+  const hasBun = typeof Bun !== "undefined";
+  const bunVersion = hasBun
+    ? Bun.version
+    : (process.versions?.bun ?? "unknown");
+  const bunRevision = hasBun ? Bun.revision : "";
+  const requiredBunRange = readProjectBunEngineRange(cwd);
+  const bunVersionSatisfied =
+    requiredBunRange !== undefined && hasBun
+      ? semverSatisfies(bunVersion, requiredBunRange)
+      : undefined;
   return {
     bunestVersion: CLI_VERSION,
-    bunVersion: Bun.version,
-    bunRevision: Bun.revision,
+    bunVersion,
+    bunRevision,
     platform: platform as NodeJS.Platform,
     osRelease: sys.osRelease,
     arch: getArch(),
@@ -338,6 +365,12 @@ export function getEnvironmentInfo(cwd?: string): ExtendedEnvironmentInfo {
     freeMemoryBytes: sys.freeMemoryBytes,
     ...(packages ? { packages } : {}),
     ...(resolvedPackages.length > 0 ? { resolvedPackages } : {}),
+    ...(requiredBunRange !== undefined
+      ? {
+          requiredBunRange,
+          ...(bunVersionSatisfied !== undefined ? { bunVersionSatisfied } : {}),
+        }
+      : {}),
   };
 }
 
@@ -365,6 +398,56 @@ export function formatEnvironmentInfo(
   if (options?.format === "json") {
     return JSON.stringify(info, null, 2);
   }
+  if (options?.format === "table") {
+    const inspectTable =
+      typeof Bun !== "undefined"
+        ? (
+            Bun.inspect as unknown as {
+              table?: (rows: readonly Record<string, unknown>[]) => string;
+            }
+          ).table
+        : undefined;
+    const rows: Record<string, unknown>[] = [
+      { Field: "Bunest CLI", Value: `v${info.bunestVersion}` },
+      {
+        Field: "Bun",
+        Value: `v${info.bunVersion} (${info.bunRevision.slice(0, 8)})`,
+      },
+      {
+        Field: "OS",
+        Value: `${info.platform} ${info.osRelease} (${info.arch})`,
+      },
+      { Field: "CPU", Value: `${info.cpuModel} (${info.cpuCores} cores)` },
+      {
+        Field: "Memory",
+        Value: `${formatGiB(info.freeMemoryBytes)} free / ${formatGiB(info.totalMemoryBytes)} total`,
+      },
+    ];
+    if (info.requiredBunRange !== undefined) {
+      rows.push({
+        Field: "engines.bun",
+        Value: `${info.requiredBunRange} (${info.bunVersionSatisfied ? "compatible" : "mismatch"})`,
+      });
+    }
+    const envTable =
+      typeof inspectTable === "function"
+        ? inspectTable(rows)
+        : rows.map((r) => `${r.Field}: ${r.Value}`).join("\n");
+    if (info.resolvedPackages && info.resolvedPackages.length > 0) {
+      const pkgRows = info.resolvedPackages.map((p) => ({
+        Package: p.name,
+        Declared: p.declared,
+        Resolved: p.resolved ?? "missing",
+        Status: p.status,
+      }));
+      const pkgTable =
+        typeof inspectTable === "function"
+          ? inspectTable(pkgRows)
+          : pkgRows.map((r) => `${r.Package}: ${r.Resolved}`).join("\n");
+      return `${envTable}\n${pkgTable}`;
+    }
+    return envTable;
+  }
 
   const lines = [
     "Bunest Environment Info",
@@ -375,6 +458,11 @@ export function formatEnvironmentInfo(
     `  CPU        : ${info.cpuModel} (${info.cpuCores} cores)`,
     `  Memory     : ${formatGiB(info.freeMemoryBytes)} free / ${formatGiB(info.totalMemoryBytes)} total`,
   ];
+  if (info.requiredBunRange && info.bunVersionSatisfied === false) {
+    lines.push(
+      `  Warning    : Bun v${info.bunVersion} does not satisfy engines.bun (${info.requiredBunRange})`,
+    );
+  }
 
   const resolvedMap = new Map<string, ResolvedPackageInfo>();
   if (info.resolvedPackages) {
@@ -383,14 +471,16 @@ export function formatEnvironmentInfo(
     }
   }
 
-  const packageEntries: Array<[string, string]> =
-    info.packages && Object.keys(info.packages).length > 0
-      ? Object.entries(info.packages).sort(([a], [b]) => a.localeCompare(b))
-      : info.resolvedPackages && info.resolvedPackages.length > 0
-        ? [...info.resolvedPackages]
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((pkg) => [pkg.name, pkg.declared] as [string, string])
-        : [];
+  let packageEntries: Array<[string, string]> = [];
+  if (info.packages && Object.keys(info.packages).length > 0) {
+    packageEntries = Object.entries(info.packages).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+  } else if (info.resolvedPackages && info.resolvedPackages.length > 0) {
+    packageEntries = [...info.resolvedPackages]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((pkg) => [pkg.name, pkg.declared] as [string, string]);
+  }
 
   if (packageEntries.length > 0) {
     lines.push("");

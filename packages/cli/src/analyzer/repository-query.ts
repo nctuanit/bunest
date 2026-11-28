@@ -1,4 +1,10 @@
 import {
+  capitalize,
+  cond,
+  isString,
+  uncapitalize,
+} from "@bunest/core/common";
+import {
   Node,
   SyntaxKind,
   type ClassDeclaration,
@@ -475,14 +481,6 @@ function camelToSnake(input: string): string {
     .toLowerCase();
 }
 
-function lowerFirst(input: string): string {
-  return input.length === 0 ? input : input[0]!.toLowerCase() + input.slice(1);
-}
-
-function capitalize(input: string): string {
-  return input.length === 0 ? input : input[0]!.toUpperCase() + input.slice(1);
-}
-
 function pluralizeTable(word: string): string {
   const cleaned = word.replace(/Entity$/i, "") || word;
   const snake = camelToSnake(cleaned);
@@ -716,11 +714,16 @@ export function analyzeEntityClass(cls: ClassDeclaration): AnalyzedEntity {
         bf.columnName ??
         (camelCaseMapping ? camelToSnake(bf.name) : bf.name);
       if (bf.role === "id") {
-        const keyCat: EntityFieldCategory = /\bstring\b/.test(bf.typeText)
-          ? "string"
-          : /\bnumber\b|\bbigint\b/.test(bf.typeText)
-            ? "number"
-            : "other";
+        const keyCat: EntityFieldCategory = cond<
+          EntityFieldCategory,
+          EntityFieldCategory
+        >(
+          [
+            [/\bstring\b/.test(bf.typeText), "string"],
+            [/\bnumber\b|\bbigint\b/.test(bf.typeText), "number"],
+          ],
+          "other",
+        );
         fields.unshift({
           propertyName: bf.name,
           columnName: colName,
@@ -877,7 +880,7 @@ function parseOrderByClause(
     const field = resolveEntityField(rawProp, entity);
     out.push({
       rawPropertySegment: rawProp,
-      propertyName: field?.propertyName ?? lowerFirst(rawProp),
+      propertyName: field?.propertyName ?? uncapitalize(rawProp),
       columnName: field?.columnName ?? camelToSnake(rawProp),
       field,
       direction: dir,
@@ -890,7 +893,7 @@ function parseOrderByClause(
     const field = resolveEntityField(orderPart, entity);
     out.push({
       rawPropertySegment: orderPart,
-      propertyName: field?.propertyName ?? lowerFirst(orderPart),
+      propertyName: field?.propertyName ?? uncapitalize(orderPart),
       columnName: field?.columnName ?? camelToSnake(orderPart),
       field,
       direction: "ASC",
@@ -907,7 +910,7 @@ function resolveEntityField(
   entity?: AnalyzedEntity,
 ): EntityFieldInfo | undefined {
   if (!entity) return undefined;
-  const lower = lowerFirst(pascalSegment);
+  const lower = uncapitalize(pascalSegment);
   const direct = entity.fields.find((f) => f.propertyName === lower);
   if (direct) return direct;
   const snake = camelToSnake(pascalSegment);
@@ -973,12 +976,12 @@ function renderSqlForDialect(
             quoteIdentifier: (ident: string) => quoteIdent(ident, dialect),
             serializeValue: (v: unknown) => v,
           });
-          const rawExpr =
-            typeof compiled === "string"
-              ? compiled
-              : typeof compiled?.sql === "string"
-                ? compiled.sql
-                : "";
+          let rawExpr = "";
+          if (isString(compiled)) {
+            rawExpr = compiled;
+          } else if (isString(compiled?.sql)) {
+            rawExpr = compiled.sql;
+          }
           if (rawExpr) {
             expr =
               allocatedCount === 0 && dialect === "postgres" && rawExpr.includes("?")
@@ -1104,14 +1107,20 @@ export function parseDerivedMethodName(
   const prefix = matchDerivedPrefix(methodName);
   if (!prefix) return undefined;
 
-  const effectiveKind: DerivedQueryKind =
-    options.trailingPaginationKind === "page" &&
-    (prefix.kind === "findAll" || prefix.kind === "findOne")
-      ? "findPage"
-      : options.trailingPaginationKind === "cursor" &&
-          (prefix.kind === "findAll" || prefix.kind === "findOne")
-        ? "findCursor"
-        : prefix.kind;
+  const isFindQuery = prefix.kind === "findAll" || prefix.kind === "findOne";
+  const effectiveKind: DerivedQueryKind = cond<
+    DerivedQueryKind,
+    DerivedQueryKind
+  >(
+    [
+      [isFindQuery && options.trailingPaginationKind === "page", "findPage"],
+      [
+        isFindQuery && options.trailingPaginationKind === "cursor",
+        "findCursor",
+      ],
+    ],
+    prefix.kind,
+  );
 
   const customOps = collectCustomQueryOperators(
     options.bunestConfig,
@@ -1182,13 +1191,18 @@ export function parseDerivedMethodName(
       const cleanBaseType = baseType.replace(/\s*\|\s*undefined/g, "").trim() || "unknown";
 
       const condParamTypes: string[] = [];
-      const baseName = field?.propertyName ?? lowerFirst(propSegment);
+      const baseName = field?.propertyName ?? uncapitalize(propSegment);
       if (paramCount === 1) {
-        const pt = matchedOp?.expectsArrayParam
-          ? `readonly (${cleanBaseType})[]`
-          : matchedOp?.isCustom
-            ? "unknown"
-            : cleanBaseType;
+        const pt = cond(
+          [
+            [
+              Boolean(matchedOp?.expectsArrayParam),
+              `readonly (${cleanBaseType})[]`,
+            ],
+            [Boolean(matchedOp?.isCustom), "unknown"],
+          ],
+          cleanBaseType,
+        );
         condParamTypes.push(pt);
         expectedParams.push({
           name: baseName,
@@ -1213,7 +1227,7 @@ export function parseDerivedMethodName(
 
       if (options.entity && !field && entityPropNames.length > 0) {
         const suggestion = findClosestMatch(
-          lowerFirst(propSegment),
+          uncapitalize(propSegment),
           entityPropNames,
         );
         unknownProperties.push({
@@ -1249,7 +1263,7 @@ export function parseDerivedMethodName(
 
       conditions.push({
         rawPropertySegment: propSegment,
-        propertyName: field?.propertyName ?? lowerFirst(propSegment),
+        propertyName: field?.propertyName ?? uncapitalize(propSegment),
         columnName: field?.columnName ?? camelToSnake(propSegment),
         field,
         operator: matchedOp?.suffix ?? "Equals",
@@ -1271,7 +1285,7 @@ export function parseDerivedMethodName(
     for (const o of orderBy) {
       if (!o.field) {
         const suggestion = findClosestMatch(
-          lowerFirst(o.rawPropertySegment),
+          uncapitalize(o.rawPropertySegment),
           entityPropNames,
         );
         unknownProperties.push({

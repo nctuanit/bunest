@@ -1,3 +1,9 @@
+import {
+  capitalize,
+  cond,
+  ensurePrefix,
+  uncapitalize,
+} from "@bunest/core/common";
 import type { SourceFile } from "../ast";
 import {
   collectCustomMacros,
@@ -41,10 +47,6 @@ export interface ClassMacroDiagnostic {
   };
 }
 
-function capitalize(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
-}
-
 function stripAccessorPrefix(
   fieldName: string,
   accessors?: ExtractedMacroAccessors,
@@ -55,8 +57,7 @@ function stripAccessorPrefix(
       fieldName.startsWith(prefix) &&
       fieldName.length > prefix.length
     ) {
-      const rest = fieldName.slice(prefix.length);
-      return rest[0]!.toLowerCase() + rest.slice(1);
+      return uncapitalize(fieldName.slice(prefix.length));
     }
   }
   return fieldName;
@@ -210,6 +211,14 @@ export function resolveClassMacroMembers(
   const fluent = entry.accessors.fluent === true;
   const chain = entry.accessors.chain !== false;
 
+  const primarySource = cond<string, undefined>(
+    [
+      [entry.isData, "@Data"],
+      [entry.isValue, "@Value"],
+    ],
+    undefined,
+  );
+
   for (const field of entry.fields) {
     const clean = stripAccessorPrefix(field.name, entry.accessors);
     const valType = field.optional
@@ -221,7 +230,7 @@ export function resolveClassMacroMembers(
       addInstance(
         gName,
         `${gName}(): ${valType}`,
-        entry.isData ? "@Data" : entry.isValue ? "@Value" : "@Getter",
+        primarySource ?? "@Getter",
       );
     }
     if (!entry.isValue && (wantsSetters || field.hasSetter)) {
@@ -237,7 +246,7 @@ export function resolveClassMacroMembers(
       addInstance(
         wName,
         `${wName}(value: ${valType}): ${entry.className}`,
-        entry.isData ? "@Data" : entry.isValue ? "@Value" : "@With",
+        primarySource ?? "@With",
       );
     }
     if (wantsWithBy || field.hasWithBy) {
@@ -254,15 +263,11 @@ export function resolveClassMacroMembers(
     addInstance(
       "with",
       `with(patch: Partial<${entry.className}>): ${entry.className}`,
-      entry.isData ? "@Data" : entry.isValue ? "@Value" : "@With",
+      primarySource ?? "@With",
     );
   }
   if (entry.isEqualsAndHashCode || entry.isData || entry.isValue) {
-    const src = entry.isData
-      ? "@Data"
-      : entry.isValue
-        ? "@Value"
-        : "@EqualsAndHashCode";
+    const src = primarySource ?? "@EqualsAndHashCode";
     addInstance("equals", "equals(other: unknown): boolean", src);
     addInstance("hashCode", "hashCode(): number", src);
   }
@@ -270,15 +275,11 @@ export function resolveClassMacroMembers(
     addInstance(
       "toString",
       "toString(): string",
-      entry.isData ? "@Data" : entry.isValue ? "@Value" : "@ToString",
+      primarySource ?? "@ToString",
     );
   }
   if (entry.isJsonSerializable || entry.isData || entry.isValue) {
-    const src = entry.isData
-      ? "@Data"
-      : entry.isValue
-        ? "@Value"
-        : "@JsonSerializable";
+    const src = primarySource ?? "@JsonSerializable";
     addInstance("toJSON", `toJSON(): Record<string, unknown>`, src);
     members.push({
       kind: "static",
@@ -405,9 +406,7 @@ export function resolveClassMacroMembers(
     } else if (kind === "static") {
       if (seenStatic.has(name)) return;
       seenStatic.add(name);
-      const sig = signature.startsWith("static ")
-        ? signature
-        : `static ${signature}`;
+      const sig = ensurePrefix(signature, "static ");
       members.push({ kind: "static", name, signature: sig, sourceDecorator });
     } else {
       if (seenBuilder.has(name)) return;

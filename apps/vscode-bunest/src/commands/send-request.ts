@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import * as vscode from "vscode";
 import type { ExtractedRouteEntry } from "@bunest/cli";
 
@@ -22,12 +23,13 @@ function renderResponseHtml(data: {
   readonly body: string;
   readonly curl: string;
 }): string {
-  const statusColor =
-    data.status >= 200 && data.status < 300
-      ? "#22c55e"
-      : data.status >= 400
-        ? "#ef4444"
-        : "#eab308";
+  const statusColor = cond(
+    [
+      [data.status >= 200 && data.status < 300, "#22c55e"],
+      [data.status >= 400, "#ef4444"],
+    ],
+    "#eab308",
+  );
 
   const headersRows = data.headers
     .map(

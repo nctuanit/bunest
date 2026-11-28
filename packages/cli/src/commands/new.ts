@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   basename,
   existsSyncPath,
@@ -45,13 +46,13 @@ export async function createProject(
 ): Promise<CreateProjectResult> {
   const cwd = options.cwd ?? io?.cwd ?? process.cwd();
   const isCurrentDir = options.projectName.trim() === ".";
-  const targetDir = isCurrentDir
-    ? options.dir
-      ? resolve(cwd, options.dir)
-      : resolve(cwd)
-    : options.dir
-      ? resolve(cwd, options.dir)
-      : resolve(cwd, validateProjectName(options.projectName));
+  const targetDir = cond(
+    [
+      [Boolean(options.dir), () => resolve(cwd, options.dir!)],
+      [isCurrentDir, () => resolve(cwd)],
+    ],
+    () => resolve(cwd, validateProjectName(options.projectName)),
+  );
   const projectName = isCurrentDir
     ? basename(targetDir) || "bunest-app"
     : validateProjectName(options.projectName);
@@ -128,13 +129,13 @@ export async function createProject(
   }
 
   if (io) {
+    const ACTION_TAGS: Readonly<Record<string, string>> = {
+      "dry-run": "DRY-RUN",
+      overwrite: "OVERWRITE",
+      create: "CREATE",
+    };
     for (const file of files) {
-      const tag =
-        file.action === "dry-run"
-          ? "DRY-RUN"
-          : file.action === "overwrite"
-            ? "OVERWRITE"
-            : "CREATE";
+      const tag = ACTION_TAGS[file.action] ?? "CREATE";
       io.stdout(`  ${tag} ${file.relativePath}`);
     }
     if (dryRun) {
@@ -179,11 +180,7 @@ export async function createProject(
         `\n[dry-run] Planned ${files.length + EXTRA_BOOTSTRAP_FILES.length} file(s) for "${projectName}" in ${targetDir}.`,
       );
     } else {
-      const cdTarget = options.dir
-        ? options.dir
-        : isCurrentDir
-          ? targetDir
-          : projectName;
+      const cdTarget = options.dir || (isCurrentDir ? targetDir : projectName);
       const quotedCdTarget = formatShellPath(cdTarget);
       io.stdout(
         `\nCreated Bunest project "${projectName}" in ${targetDir} (${files.length} files).`,

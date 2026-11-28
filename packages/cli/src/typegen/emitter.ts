@@ -1,4 +1,9 @@
 import {
+  capitalize,
+  escapeRegExp,
+  uncapitalize,
+} from "@bunest/core/common";
+import {
   dirname,
   ensureDir,
   existsSyncPath,
@@ -52,9 +57,12 @@ function formatPropKey(key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
 }
 
-function capitalize(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
-}
+const CLOSING_TO_OPENING_BRACKET: Readonly<Record<string, string>> = {
+  ")": "(",
+  "]": "[",
+  "}": "{",
+  ">": "<",
+};
 
 function stripAccessorPrefix(
   fieldName: string,
@@ -67,8 +75,7 @@ function stripAccessorPrefix(
       fieldName.startsWith(prefix) &&
       fieldName.length > prefix.length
     ) {
-      const rest = fieldName.slice(prefix.length);
-      return rest[0]!.toLowerCase() + rest.slice(1);
+      return uncapitalize(fieldName.slice(prefix.length));
     }
   }
   return fieldName;
@@ -175,8 +182,7 @@ export function sanitizeTypeText(
         i++;
         continue;
       }
-      const expected =
-        ch === ")" ? "(" : ch === "]" ? "[" : ch === "}" ? "{" : "<";
+      const expected = CLOSING_TO_OPENING_BRACKET[ch];
       if (top !== expected) {
         return fallback;
       }
@@ -280,8 +286,7 @@ export function validateGeneratedDeclaration(content: string): boolean {
         i++;
         continue;
       }
-      const expected =
-        ch === ")" ? "(" : ch === "]" ? "[" : ch === "}" ? "{" : "<";
+      const expected = CLOSING_TO_OPENING_BRACKET[ch];
       if (top !== expected) {
         return false;
       }
@@ -1196,10 +1201,6 @@ export async function writeTypegenOutput(
 
 function isBunestPackageSpecifier(filePath: string): boolean {
   return filePath === "@bunest/core" || filePath.startsWith("@bunest/");
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function sanitizeClientRouteTypeText(

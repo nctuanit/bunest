@@ -1,3 +1,4 @@
+import { escapeHtml, truncate } from "@bunest/core/common";
 import { relative, resolve } from "@bunest/core";
 import {
   BunestStaticAnalyzer,
@@ -89,6 +90,47 @@ export interface GraphCommandResult {
   readonly error?: string;
   readonly durationMs: number;
 }
+
+const PROVIDER_MERMAID_PREFIX: Readonly<
+  Record<StaticGraphProviderSummary["kind"], string>
+> = {
+  controller: "C",
+  repository: "R",
+  provider: "P",
+};
+
+const DOT_SHAPE_BY_KIND: Readonly<
+  Record<StaticGraphProviderSummary["kind"], string>
+> = {
+  controller: "component",
+  repository: "cylinder",
+  provider: "box",
+};
+
+const DOT_FILL_BY_STYLE: Readonly<Record<string, string>> = {
+  request: "#fef3c7",
+  controller: "#dcfce7",
+  repository: "#fce7f3",
+  provider: "#f1f5f9",
+};
+
+const DOT_STROKE_BY_STYLE: Readonly<Record<string, string>> = {
+  request: "#d97706",
+  controller: "#16a34a",
+  repository: "#db2777",
+  provider: "#64748b",
+};
+
+const EDGE_MARKER_BY_KIND: Readonly<Partial<Record<StaticGraphEdgeKind, string>>> = {
+  import: "url(#arrow-import)",
+  "re-export": "url(#arrow-reexport)",
+  injects: "url(#arrow-inject)",
+};
+
+const SCOPE_CLASS_BY_SCOPE: Readonly<Record<string, string>> = {
+  REQUEST: " dg-scope-request",
+  TRANSIENT: " dg-scope-transient",
+};
 
 function toRelPosix(cwd: string, filePath: string): string {
   const rel = relative(cwd, filePath).replace(/\\/g, "/");
@@ -427,23 +469,11 @@ export function formatStaticGraphMermaid(graph: StaticGraphJsonOutput): string {
   }
 
   for (const prov of graph.providers) {
-    const prefix =
-      prov.kind === "controller"
-        ? "C"
-        : prov.kind === "repository"
-          ? "R"
-          : "P";
+    const prefix = PROVIDER_MERMAID_PREFIX[prov.kind];
     const id = sanitizeMermaidId(prefix, prov.name);
     provIds.set(prov.name, id);
     const scopeLabel = prov.scope;
-    const styleClass =
-      prov.scope === "REQUEST"
-        ? "request"
-        : prov.kind === "controller"
-          ? "controller"
-          : prov.kind === "repository"
-            ? "repository"
-            : "provider";
+    const styleClass = prov.scope === "REQUEST" ? "request" : prov.kind;
     if (prov.kind === "controller") {
       lines.push(
         `  ${id}(["${escapeMermaidLabel(`${prov.name} (controller, ${scopeLabel})`)}"]):::${styleClass}`,
@@ -521,28 +551,10 @@ export function formatStaticGraphDot(graph: StaticGraphJsonOutput): string {
   }
 
   for (const prov of graph.providers) {
-    const shape =
-      prov.kind === "controller"
-        ? "component"
-        : prov.kind === "repository"
-          ? "cylinder"
-          : "box";
-    const fill =
-      prov.scope === "REQUEST"
-        ? "#fef3c7"
-        : prov.kind === "controller"
-          ? "#dcfce7"
-          : prov.kind === "repository"
-            ? "#fce7f3"
-            : "#f1f5f9";
-    const stroke =
-      prov.scope === "REQUEST"
-        ? "#d97706"
-        : prov.kind === "controller"
-          ? "#16a34a"
-          : prov.kind === "repository"
-            ? "#db2777"
-            : "#64748b";
+    const shape = DOT_SHAPE_BY_KIND[prov.kind];
+    const styleKey = prov.scope === "REQUEST" ? "request" : prov.kind;
+    const fill = DOT_FILL_BY_STYLE[styleKey] ?? "#f1f5f9";
+    const stroke = DOT_STROKE_BY_STYLE[styleKey] ?? "#64748b";
     const label = `${prov.name}\n(${prov.kind}, ${prov.scope})`;
     lines.push(
       `  "prov:${escapeDotString(prov.name)}" [label="${escapeDotString(label)}", shape=${shape}, style=filled, fillcolor="${fill}", color="${stroke}"];`,
@@ -574,26 +586,12 @@ export function formatStaticGraphJson(graph: StaticGraphJsonOutput): string {
   return JSON.stringify(graph, null, 2);
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function safeJsonEmbed(data: unknown): string {
   return JSON.stringify(data)
     .replace(/<\//g, "<\\/")
     .replace(/<!--/g, "<\\!--")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
-}
-
-function truncateLabel(value: string, maxLen: number): string {
-  if (value.length <= maxLen) return value;
-  return `${value.slice(0, Math.max(1, maxLen - 1))}…`;
 }
 
 interface HtmlGraphNode {
@@ -890,13 +888,7 @@ export function formatStaticGraphHtml(graph: StaticGraphJsonOutput): string {
       const d = buildHtmlEdgePath(from, to);
       const marker = edge.isCyclic
         ? "url(#arrow-cycle)"
-        : edge.kind === "import"
-          ? "url(#arrow-import)"
-          : edge.kind === "re-export"
-            ? "url(#arrow-reexport)"
-            : edge.kind === "injects"
-              ? "url(#arrow-inject)"
-              : "url(#arrow-owns)";
+        : (EDGE_MARKER_BY_KIND[edge.kind] ?? "url(#arrow-owns)");
       const cycleCls = edge.isCyclic ? " dg-edge-cycle" : "";
       return `<path class="dg-edge dg-edge-${escapeHtml(edge.kind)}${cycleCls}" data-edge-id="${escapeHtml(edge.id)}" data-edge-kind="${escapeHtml(edge.kind)}" data-from="${escapeHtml(edge.from)}" data-to="${escapeHtml(edge.to)}" data-cyclic="${edge.isCyclic ? "true" : "false"}" d="${d}" marker-end="${marker}" />`;
     })
@@ -904,12 +896,7 @@ export function formatStaticGraphHtml(graph: StaticGraphJsonOutput): string {
 
   const svgNodesMarkup = nodes
     .map((node) => {
-      const scopeCls =
-        node.scope === "REQUEST"
-          ? " dg-scope-request"
-          : node.scope === "TRANSIENT"
-            ? " dg-scope-transient"
-            : "";
+      const scopeCls = (node.scope && SCOPE_CLASS_BY_SCOPE[node.scope]) ?? "";
       const cycleCls = node.isCyclic ? " dg-cycle-node" : "";
       const cycleBadge = node.isCyclic
         ? `<rect class="dg-cycle-badge" x="${node.width - 56}" y="8" width="46" height="16" rx="4" /><text class="dg-cycle-badge-text" x="${node.width - 33}" y="19" text-anchor="middle">CYCLE</text>`
@@ -917,8 +904,8 @@ export function formatStaticGraphHtml(graph: StaticGraphJsonOutput): string {
       return `<g class="dg-node dg-kind-${escapeHtml(node.kind)}${scopeCls}${cycleCls}" data-node-id="${escapeHtml(node.id)}" data-kind="${escapeHtml(node.kind)}" data-name="${escapeHtml(node.name)}" data-modules="${escapeHtml(node.modules.join(","))}" data-cyclic="${node.isCyclic ? "true" : "false"}" transform="translate(${node.x}, ${node.y})" tabindex="0" role="button" aria-label="${escapeHtml(`${node.kind} ${node.name}`)}">
         <rect class="dg-node-box" width="${node.width}" height="${node.height}" rx="10" ry="10" />
         ${cycleBadge}
-        <text class="dg-node-title" x="14" y="27">${escapeHtml(truncateLabel(node.name, node.isCyclic ? 20 : 27))}</text>
-        <text class="dg-node-sub" x="14" y="48">${escapeHtml(truncateLabel(node.subtitle, 34))}</text>
+        <text class="dg-node-title" x="14" y="27">${escapeHtml(truncate(node.name, node.isCyclic ? 20 : 27))}</text>
+        <text class="dg-node-sub" x="14" y="48">${escapeHtml(truncate(node.subtitle, 34))}</text>
       </g>`;
     })
     .join("\n");
@@ -962,6 +949,11 @@ export function formatStaticGraphHtml(graph: StaticGraphJsonOutput): string {
   const title = graph.filterModule
     ? `Bunest DI Graph — ${graph.filterModule}`
     : "Bunest Static DI Graph";
+  const cycleCountText = `${totalCycles} cycle${totalCycles === 1 ? "" : "s"}`;
+  const cyclePillMarkup =
+    totalCycles > 0
+      ? `<span class="pill pill-cycle">${cycleCountText}</span>`
+      : '<span class="pill">0 cycles</span>';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1248,7 +1240,7 @@ export function formatStaticGraphHtml(graph: StaticGraphJsonOutput): string {
       <span class="pill">${controllers.length} controller${controllers.length === 1 ? "" : "s"}</span>
       <span class="pill">${serviceProviders.length} provider${serviceProviders.length === 1 ? "" : "s"}</span>
       <span class="pill">${routes.length} route${routes.length === 1 ? "" : "s"}</span>
-      ${totalCycles > 0 ? `<span class="pill pill-cycle">${totalCycles} cycle${totalCycles === 1 ? "" : "s"}</span>` : '<span class="pill">0 cycles</span>'}
+      ${cyclePillMarkup}
     </div>
   </header>
 
@@ -1606,14 +1598,15 @@ export async function runGraphCommand(
     };
   }
 
-  const output =
-    format === "json"
-      ? formatStaticGraphJson(graphOutput)
-      : format === "dot"
-        ? formatStaticGraphDot(graphOutput)
-        : format === "html"
-          ? formatStaticGraphHtml(graphOutput)
-          : formatStaticGraphMermaid(graphOutput);
+  const GRAPH_FORMATTERS: Readonly<
+    Record<GraphOutputFormat, (g: StaticGraphJsonOutput) => string>
+  > = {
+    json: formatStaticGraphJson,
+    dot: formatStaticGraphDot,
+    html: formatStaticGraphHtml,
+    mermaid: formatStaticGraphMermaid,
+  };
+  const output = GRAPH_FORMATTERS[format](graphOutput);
 
   const durationMs = Math.round((performance.now() - start) * 100) / 100;
 

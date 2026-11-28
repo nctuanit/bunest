@@ -170,6 +170,121 @@ async function emitTypeDeclarations(params: {
   await proc.exited;
 }
 
+function isWorkerTestFile(filePath: string): boolean {
+  return /\.(?:spec|test)\.[cm]?[jt]sx?$/i.test(filePath);
+}
+
+async function resolveAuxEntrypoints(params: {
+  readonly cwd: string;
+  readonly sourceRootDir: string;
+  readonly entry: string;
+  readonly explicitEntries?: readonly string[];
+  readonly autoDiscover: boolean;
+  readonly autoDiscoverGlob: string;
+}): Promise<string[]> {
+  const {
+    cwd,
+    sourceRootDir,
+    entry,
+    explicitEntries,
+    autoDiscover,
+    autoDiscoverGlob,
+  } = params;
+  const resolvedEntry = resolve(entry);
+  const found = new Set<string>();
+
+  if (explicitEntries && explicitEntries.length > 0) {
+    for (const rawSpec of explicitEntries) {
+      const trimmed = rawSpec.trim();
+      if (!trimmed) continue;
+      const normalized = trimmed.replace(/\\/g, "/").replace(/^\.\//, "");
+      const hasGlobMagic = /[*?[\]{}]/.test(normalized);
+      if (hasGlobMagic) {
+        const glob = new Bun.Glob(normalized);
+        const scanBase = existsSyncPath(sourceRootDir) ? sourceRootDir : cwd;
+        for await (const rel of glob.scan({ cwd: scanBase, onlyFiles: true })) {
+          const full = resolve(scanBase, rel);
+          if (full !== resolvedEntry && !isWorkerTestFile(full)) {
+            found.add(full);
+          }
+        }
+        if (scanBase !== cwd) {
+          for await (const rel of glob.scan({ cwd, onlyFiles: true })) {
+            const full = resolve(cwd, rel);
+            if (full !== resolvedEntry && !isWorkerTestFile(full)) {
+              found.add(full);
+            }
+          }
+        }
+      } else {
+        const fromCwd = resolve(cwd, trimmed);
+        const fromSrc = resolve(sourceRootDir, trimmed);
+        const target = existsSyncPath(fromCwd)
+          ? fromCwd
+          : existsSyncPath(fromSrc)
+            ? fromSrc
+            : undefined;
+        if (target && target !== resolvedEntry) {
+          found.add(target);
+        }
+      }
+    }
+  }
+
+  if (autoDiscover && existsSyncPath(sourceRootDir)) {
+    const glob = new Bun.Glob(autoDiscoverGlob);
+    for await (const rel of glob.scan({
+      cwd: sourceRootDir,
+      onlyFiles: true,
+    })) {
+      const full = resolve(sourceRootDir, rel);
+      if (full !== resolvedEntry && !isWorkerTestFile(full)) {
+        found.add(full);
+      }
+    }
+  }
+
+  return [...found].sort();
+}
+
+function isInsideDir(filePath: string, parentDir: string): boolean {
+  const rel = relative(parentDir, filePath);
+  return rel.length > 0 && !rel.startsWith("..") && !rel.startsWith("/");
+}
+
+async function archiveBuildOutput(
+  outdir: string,
+  cwd: string,
+  archiveOption: boolean | string,
+): Promise<string> {
+  const archivePath =
+    typeof archiveOption === "string" && archiveOption.trim().length > 0
+      ? resolve(cwd, archiveOption.trim())
+      : resolve(dirname(outdir), `${basename(outdir) || "dist"}.tar.gz`);
+
+  const entries: Record<string, Uint8Array> = {};
+  const glob = new Bun.Glob("**/*");
+  for await (const rel of glob.scan({ cwd: outdir, dot: true, onlyFiles: true })) {
+    const fullPath = join(outdir, rel);
+    if (fullPath === archivePath) continue;
+    const normalized = rel.replace(/\\/g, "/");
+    entries[normalized] = await Bun.file(fullPath).bytes();
+  }
+
+  const ArchiveCtor = (
+    Bun as unknown as {
+      Archive: new (
+        files: Record<string, Uint8Array>,
+        options?: { compress?: "gzip" },
+      ) => { bytes(): Promise<Uint8Array> };
+    }
+  ).Archive;
+  const bytes = await new ArchiveCtor(entries, { compress: "gzip" }).bytes();
+  await ensureDir(dirname(archivePath));
+  await Bun.write(archivePath, bytes);
+  return archivePath;
+}
+
 /**
  * Bundles a Bunest application using `Bun.build()` (or `bun build --compile`
  * standalone executable) with `bunest.json` / `nest-cli.json` integration.
@@ -251,6 +366,48 @@ export async function buildProject(
     }
   }
 
+  const sourceRootDir = resolve(
+    cwd,
+    effectiveSourceRoot ?? config.sourceRoot ?? "src",
+  );
+  const configuredWorkers = [
+    ...(config.compilerOptions?.workers ?? []),
+    ...(project?.compilerOptions?.workers ?? []),
+    ...(options.workers ?? []),
+  ];
+  const autoDiscoverWorkers =
+    options.autoDiscoverWorkers ??
+    project?.compilerOptions?.autoDiscoverWorkers ??
+    config.compilerOptions?.autoDiscoverWorkers ??
+    true;
+  const workerEntries = await resolveAuxEntrypoints({
+    cwd,
+    sourceRootDir,
+    entry,
+    explicitEntries: configuredWorkers,
+    autoDiscover: autoDiscoverWorkers,
+    autoDiscoverGlob: "**/*.worker.{ts,js,mts,mjs}",
+  });
+  const configuredCrons = [
+    ...(config.compilerOptions?.crons ?? []),
+    ...(project?.compilerOptions?.crons ?? []),
+    ...(options.crons ?? []),
+  ];
+  const autoDiscoverCrons =
+    options.autoDiscoverCrons ??
+    project?.compilerOptions?.autoDiscoverCrons ??
+    config.compilerOptions?.autoDiscoverCrons ??
+    true;
+  const cronEntries = await resolveAuxEntrypoints({
+    cwd,
+    sourceRootDir,
+    entry,
+    explicitEntries: configuredCrons,
+    autoDiscover: autoDiscoverCrons,
+    autoDiscoverGlob: "**/*.cron.{ts,js,mts,mjs}",
+  });
+  const auxEntries = [...new Set([...workerEntries, ...cronEntries])];
+
   // Standalone single-file executable via `bun build --compile`
   if (options.compile) {
     const startMs = performance.now();
@@ -258,17 +415,93 @@ export async function buildProject(
     const baseName = basename(entry).replace(/\.[cm]?[jt]sx?$/i, "");
     const ext = getPlatform() === "win32" ? ".exe" : "";
     const outfile = join(outdir, `${baseName}${ext}`);
+
+    const resolvedTsconfigPath = options.path
+      ? resolve(cwd, options.path)
+      : undefined;
+    const { config: bunestConfig } = await loadBunestConfig(cwd);
+
+    // When running real `bun build --compile` (no mocked spawn), pre-bundle through
+    // `createBunestPlugin({ aotDiMetadata: true, ... })` so constructor DI metadata,
+    // `@AutoModule` globs, Swagger metadata, and circular-safe ORM transforms survive compilation.
+    let compileEntrypoints = [entry, ...auxEntries];
+    let prebundleTmpDir: string | undefined;
+
+    if (!options.spawn) {
+      prebundleTmpDir = join(
+        outdir,
+        `.bunest-compile-${crypto.randomUUID().slice(0, 8)}`,
+      );
+      await ensureDir(prebundleTmpDir);
+      const preserveRoot =
+        auxEntries.length > 0 &&
+        compileEntrypoints.every((ep) => isInsideDir(ep, sourceRootDir))
+          ? sourceRootDir
+          : undefined;
+
+      const prebundle = await Bun.build({
+        entrypoints: compileEntrypoints,
+        ...(preserveRoot ? { root: preserveRoot } : {}),
+        outdir: prebundleTmpDir,
+        target: "bun",
+        format: "esm",
+        tsconfig: resolvedTsconfigPath,
+        plugins: [
+          createBunestPlugin({
+            config: bunestConfig,
+            classMacros: bunestConfig?.plugin?.classMacros ?? false,
+            aotDiMetadata: bunestConfig?.plugin?.aotDiMetadata ?? true,
+            expandAutoModuleGlobs: true,
+          }),
+        ],
+      });
+
+      if (!prebundle.success) {
+        await removePath(prebundleTmpDir, { recursive: true, force: true });
+        const durationMs = Math.round((performance.now() - startMs) * 100) / 100;
+        const preLogs = prebundle.logs.map((l) => `[${l.level}] ${l.message}`);
+        if (io && !silent) {
+          io.stderr(`Build failed for ${entry}:\n  ${preLogs.join("\n  ")}`);
+        }
+        return {
+          success: false,
+          entry,
+          outdir,
+          outputs: [],
+          durationMs,
+          logs: preLogs,
+          ...(workerEntries.length > 0 ? { workerEntries } : {}),
+          ...(cronEntries.length > 0 ? { cronEntries } : {}),
+        };
+      }
+
+      const prebundledEntries = prebundle.outputs
+        .filter((artifact) => artifact.kind === "entry-point")
+        .map((artifact) => artifact.path);
+      if (prebundledEntries.length > 0) {
+        compileEntrypoints = prebundledEntries;
+      }
+    }
+
     const compileArgs = [
       process.execPath,
       "build",
       "--compile",
+      ...(options.bytecode ? ["--bytecode"] : []),
       ...(minify ? ["--minify"] : []),
-      entry,
+      ...compileEntrypoints,
       "--outfile",
       outfile,
     ];
     const spawn = options.spawn ?? defaultSpawn;
-    const { exitCode } = await spawn(compileArgs, { cwd, env: Bun.env });
+    let exitCode: number;
+    try {
+      ({ exitCode } = await spawn(compileArgs, { cwd, env: Bun.env }));
+    } finally {
+      if (prebundleTmpDir) {
+        await removePath(prebundleTmpDir, { recursive: true, force: true });
+      }
+    }
     const durationMs = Math.round((performance.now() - startMs) * 100) / 100;
 
     if (exitCode !== 0) {
@@ -283,6 +516,8 @@ export async function buildProject(
         outputs: [],
         durationMs,
         logs: [msg],
+        ...(workerEntries.length > 0 ? { workerEntries } : {}),
+        ...(cronEntries.length > 0 ? { cronEntries } : {}),
       };
     }
 
@@ -302,10 +537,20 @@ export async function buildProject(
       },
     ];
 
+    let archivePath: string | undefined;
+    if (options.archive) {
+      archivePath = await archiveBuildOutput(outdir, cwd, options.archive);
+    }
+
     if (io && !silent) {
       io.stdout(
         `Compiled standalone executable in ${durationMs.toFixed(1)}ms: ${outputs[0]!.relativePath}`,
       );
+      if (archivePath) {
+        io.stdout(
+          `Archived build output: ${relative(cwd, archivePath).replace(/\\/g, "/")}`,
+        );
+      }
     }
 
     return {
@@ -316,6 +561,9 @@ export async function buildProject(
       durationMs,
       logs: [],
       compiledExecutable: outfile,
+      ...(archivePath ? { archivePath } : {}),
+      ...(workerEntries.length > 0 ? { workerEntries } : {}),
+      ...(cronEntries.length > 0 ? { cronEntries } : {}),
     };
   }
 
@@ -328,9 +576,23 @@ export async function buildProject(
     : undefined;
   const { config: bunestConfig } = await loadBunestConfig(cwd);
 
+  const entrypoints = [entry, ...auxEntries];
+  const preserveRoot =
+    auxEntries.length > 0 &&
+    entrypoints.every((ep) => isInsideDir(ep, sourceRootDir))
+      ? sourceRootDir
+      : undefined;
+
+  if (options.bytecode && io && !silent) {
+    io.stderr(
+      "Warning: --bytecode requires --compile for ESM bundles and was ignored for standard bundle output.",
+    );
+  }
+
   try {
     buildResult = await Bun.build({
-      entrypoints: [entry],
+      entrypoints,
+      ...(preserveRoot ? { root: preserveRoot } : {}),
       outdir,
       target,
       format: "esm",
@@ -342,6 +604,7 @@ export async function buildProject(
         createBunestPlugin({
           config: bunestConfig,
           classMacros: bunestConfig?.plugin?.classMacros ?? false,
+          aotDiMetadata: bunestConfig?.plugin?.aotDiMetadata ?? true,
         }),
       ],
     });
@@ -398,10 +661,6 @@ export async function buildProject(
     };
   }
 
-  const sourceRootDir = resolve(
-    cwd,
-    effectiveSourceRoot ?? config.sourceRoot ?? "src",
-  );
   const assets = [
     ...(config.compilerOptions?.assets ?? []),
     ...(project?.compilerOptions?.assets ?? []),
@@ -433,6 +692,11 @@ export async function buildProject(
     }),
   );
 
+  let archivePath: string | undefined;
+  if (options.archive) {
+    archivePath = await archiveBuildOutput(outdir, cwd, options.archive);
+  }
+
   if (io && !silent) {
     io.stdout(
       `Built ${outputs.length} artifact(s) in ${durationMs.toFixed(1)}ms (target=${target}, minify=${minify}, sourcemap=${sourcemap}):`,
@@ -440,6 +704,11 @@ export async function buildProject(
     for (const out of outputs) {
       io.stdout(
         `  ${out.relativePath}  ${formatBytes(out.size)} (${out.kind})`,
+      );
+    }
+    if (archivePath) {
+      io.stdout(
+        `  Archive: ${relative(cwd, archivePath).replace(/\\/g, "/")}`,
       );
     }
   }
@@ -467,5 +736,8 @@ export async function buildProject(
     outputs,
     durationMs,
     logs,
+    ...(archivePath ? { archivePath } : {}),
+    ...(workerEntries.length > 0 ? { workerEntries } : {}),
+    ...(cronEntries.length > 0 ? { cronEntries } : {}),
   };
 }

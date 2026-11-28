@@ -27,6 +27,12 @@ import type {
 // Extensible Typegen Plugin API
 // ============================================================================
 
+function getCalleeName(callee: Expression): string {
+  if (Node.isIdentifier(callee)) return callee.getText();
+  if (Node.isPropertyAccessExpression(callee)) return callee.getName();
+  return "";
+}
+
 export type {
   BunestTypegenPlugin,
   TypegenPluginEmitContext,
@@ -189,11 +195,18 @@ function extractInterpolationParams(template: string): string[] {
   return [...params];
 }
 
-const LOCALE_EXTENSIONS = new Set([".json", ".jsonc", ".yaml", ".yml", ".toml"]);
+const LOCALE_EXTENSIONS = new Set([
+  ".json",
+  ".jsonc",
+  ".json5",
+  ".yaml",
+  ".yml",
+  ".toml",
+]);
 
 function scanLocaleFilesInDir(rootDir: string): string[] {
   if (typeof Bun !== "undefined" && typeof Bun.Glob === "function") {
-    const glob = new Bun.Glob("**/*.{json,jsonc,yaml,yml,toml}");
+    const glob = new Bun.Glob("**/*.{json,jsonc,json5,yaml,yml,toml}");
     return [...glob.scanSync({ cwd: rootDir, onlyFiles: true })].sort();
   }
   const found: string[] = [];
@@ -224,6 +237,12 @@ function parseLocaleFile(filePath: string): unknown {
   if (ext === ".json") return JSON.parse(raw);
   if (typeof Bun === "undefined") return undefined;
   if (ext === ".jsonc") return Bun.JSONC.parse(raw);
+  if (ext === ".json5") {
+    const json5 = (
+      Bun as unknown as { JSON5?: { parse(input: string): unknown } }
+    ).JSON5;
+    return typeof json5?.parse === "function" ? json5.parse(raw) : undefined;
+  }
   if (ext === ".toml") return Bun.TOML.parse(raw);
   if (ext === ".yaml" || ext === ".yml") return Bun.YAML.parse(raw);
   return undefined;
@@ -519,12 +538,7 @@ export const workflowsTypegenPlugin: BunestTypegenPlugin<
 
       // 2. defineWorkflow({ name: "..." }) / defineWorkflow("...", ...)
       for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-        const callee = call.getExpression();
-        const calleeName = Node.isIdentifier(callee)
-          ? callee.getText()
-          : Node.isPropertyAccessExpression(callee)
-            ? callee.getName()
-            : "";
+        const calleeName = getCalleeName(call.getExpression());
         if (calleeName !== "defineWorkflow") continue;
 
         const arg0 = call.getArguments()[0] as Expression | undefined;
@@ -738,12 +752,7 @@ export const aiToolsTypegenPlugin: BunestTypegenPlugin<
 
       // 2. defineTool({ name: "..." }) / defineTool("...", ...)
       for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-        const callee = call.getExpression();
-        const calleeName = Node.isIdentifier(callee)
-          ? callee.getText()
-          : Node.isPropertyAccessExpression(callee)
-            ? callee.getName()
-            : "";
+        const calleeName = getCalleeName(call.getExpression());
         if (calleeName !== "defineTool") continue;
 
         const arg0 = call.getArguments()[0] as Expression | undefined;

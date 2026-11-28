@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import { resolve } from "@bunest/core";
 import { loadBunestConfig } from "../config/bunest-config.loader";
 import { loadCliConfiguration } from "../config/configuration.loader";
@@ -72,9 +73,7 @@ export async function runTypegenCommand(
     typegenCfg.tsconfigPath ??
     cliConfig.compilerOptions?.tsConfigPath;
   const envFiles = options.envFile
-    ? Array.isArray(options.envFile)
-      ? [...options.envFile]
-      : [options.envFile]
+    ? toArray(options.envFile)
     : (bunestTypegen?.envFiles ?? typegenCfg.envFiles);
   const include =
     (options.include as readonly TypegenIncludeTarget[] | undefined) ??

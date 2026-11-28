@@ -33,6 +33,8 @@ const BOOLEAN_FLAGS = new Set([
   "deleteOutDir",
   "emit-declarations",
   "compile",
+  "bytecode",
+  "open",
   "observe",
   "no-observe",
   "typegen",
@@ -43,6 +45,8 @@ const BOOLEAN_FLAGS = new Set([
   "with-scenario",
   "save-binary-fixture",
   "body",
+  "no-workers",
+  "no-crons",
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -88,15 +92,22 @@ const VALUE_FLAGS = new Set([
   "files",
   "evidence",
   "commit",
+  "tz",
+  "count",
+  "schedule",
+  "time",
+  "worker",
+  "cron",
 ]);
 
-const REPEATABLE_FLAGS = new Set(["env-file"]);
+const REPEATABLE_FLAGS = new Set(["env-file", "worker", "cron"]);
 
 const OPTIONAL_VALUE_FLAGS = new Set([
   "debug",
   "sourcemap",
   "format",
   "version",
+  "archive",
 ]);
 
 const DEFAULT_SHORT_FLAG_ALIASES: Readonly<Record<string, string>> = {
@@ -182,6 +193,11 @@ const COMMAND_SHORT_ALIASES: Readonly<
     o: "outdir",
     c: "config",
     d: "dry-run",
+  },
+  cron: {
+    d: "dry-run",
+    t: "tz",
+    n: "count",
   },
 };
 
@@ -312,12 +328,34 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
           (next === "pretty" ||
             next === "json" ||
             next === "agent" ||
-            next === "diff")
+            next === "diff" ||
+            next === "ansi" ||
+            next === "table" ||
+            next === "mermaid" ||
+            next === "dot" ||
+            next === "html")
         ) {
           setFlagValue(flags, "format", next);
           i += 1;
         } else {
           setFlagValue(flags, "format", true);
+        }
+        continue;
+      }
+
+      if (body === "archive") {
+        const next = argv[i + 1];
+        if (
+          next !== undefined &&
+          !next.startsWith("-") &&
+          (next.includes("/") ||
+            next.includes("\\") ||
+            /\.(?:tar\.gz|tgz|tar)$/i.test(next))
+        ) {
+          setFlagValue(flags, "archive", next);
+          i += 1;
+        } else {
+          setFlagValue(flags, "archive", true);
         }
         continue;
       }

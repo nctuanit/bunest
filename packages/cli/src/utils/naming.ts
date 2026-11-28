@@ -1,3 +1,4 @@
+import { capitalize, uncapitalize } from "@bunest/core/common";
 import {
   basename,
   dirname,
@@ -40,7 +41,7 @@ export function toPascalCase(input: string): string {
   return kebab
     .split(/[-.]+/)
     .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map(capitalize)
     .join("");
 }
 
@@ -48,11 +49,7 @@ export function toPascalCase(input: string): string {
  * Converts kebab-case, snake_case, or PascalCase strings into camelCase.
  */
 export function toCamelCase(input: string): string {
-  const pascal = toPascalCase(input);
-  if (pascal.length === 0) {
-    return "";
-  }
-  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+  return uncapitalize(toPascalCase(input));
 }
 
 /**

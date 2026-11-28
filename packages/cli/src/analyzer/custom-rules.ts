@@ -249,17 +249,18 @@ export function runCustomDiagnosticRules(
   for (const rule of rules) {
     const hits = rule.check(ctx) ?? [];
     for (const hit of hits) {
-      const fixData: Record<string, unknown> | undefined = hit.fix
-        ? {
-            ...(hit.fixData ?? {}),
-            kind: "customRuleFix",
-            description: hit.fix.description,
-            start: hit.fix.start,
-            end: hit.fix.end,
-            newText: hit.fix.newText,
-            ...(hit.fix.filePath ? { filePath: hit.fix.filePath } : {}),
-          }
-        : hit.fixData;
+      let fixData: Record<string, unknown> | undefined = hit.fixData;
+      if (hit.fix) {
+        fixData = {
+          ...(hit.fixData ?? {}),
+          kind: "customRuleFix",
+          description: hit.fix.description,
+          start: hit.fix.start,
+          end: hit.fix.end,
+          newText: hit.fix.newText,
+          ...(hit.fix.filePath ? { filePath: hit.fix.filePath } : {}),
+        };
+      }
 
       out.push({
         code: rule.code,

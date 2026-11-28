@@ -1,3 +1,4 @@
+import { toArray } from "@bunest/core/common";
 import {
   dirname,
   existsSyncPath,
@@ -2654,16 +2655,15 @@ export class BunestTypegenScanner {
           }
         }
 
-        const queryTypeText = wholeQueryType
-          ? wholeQueryType
-          : namedQuery.size > 0
-            ? `{ ${[...namedQuery.entries()]
-                .map(
-                  ([k, v]) =>
-                    `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}${v.optional ? "?" : ""}: ${v.type}`,
-                )
-                .join("; ")} }`
-            : "Record<string, unknown>";
+        let queryTypeText = wholeQueryType ?? "Record<string, unknown>";
+        if (!wholeQueryType && namedQuery.size > 0) {
+          queryTypeText = `{ ${[...namedQuery.entries()]
+            .map(
+              ([k, v]) =>
+                `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}${v.optional ? "?" : ""}: ${v.type}`,
+            )
+            .join("; ")} }`;
+        }
 
         const retType = unwrapPromiseType(method.getReturnType());
         const resPrinted = printer.printType(retType, this.project, "unknown");
@@ -2995,11 +2995,12 @@ export class BunestTypegenScanner {
       imports.push(...printed.imports);
     } else if (entry?.resolvedArgs[0]) {
       const arg0 = entry.resolvedArgs[0];
-      const entityExpr = Node.isIdentifier(arg0)
-        ? arg0
-        : Node.isObjectLiteralExpression(arg0)
-          ? getPropertyInitializer(arg0, "entity")
-          : undefined;
+      let entityExpr: Expression | undefined;
+      if (Node.isIdentifier(arg0)) {
+        entityExpr = arg0;
+      } else if (Node.isObjectLiteralExpression(arg0)) {
+        entityExpr = getPropertyInitializer(arg0, "entity");
+      }
       if (entityExpr && Node.isIdentifier(entityExpr)) {
         const identName = entityExpr.getText().trim();
         const ctorSigs = entityExpr.getType().getConstructSignatures();
@@ -3357,11 +3358,7 @@ export class BunestTypegenScanner {
         raw?: GlobalMacroDefaultsLike["accessors"],
       ): ExtractedMacroAccessors => {
         if (!raw) return {};
-        const prefix = raw.prefix
-          ? typeof raw.prefix === "string"
-            ? [raw.prefix]
-            : [...raw.prefix]
-          : undefined;
+        const prefix = raw.prefix ? toArray(raw.prefix) : undefined;
         return {
           ...(raw.fluent !== undefined ? { fluent: raw.fluent } : {}),
           ...(raw.chain !== undefined ? { chain: raw.chain } : {}),

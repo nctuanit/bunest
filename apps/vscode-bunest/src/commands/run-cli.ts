@@ -3,7 +3,7 @@ import { runCli, type CliIO, type CliResult } from "@bunest/cli";
 
 /**
  * Delegates all disk-writing generation & check operations (`typegen`, `check`,
- * `generate`, `generate repository`, `delombok`, `codemod`) through `@bunest/cli`'s
+ * `generate`, `generate repository`, `codemod`) through `@bunest/cli`'s
  * single-source-of-truth command dispatcher, streaming logs to the Bunest OutputChannel.
  */
 export async function runBunestCliCommand(

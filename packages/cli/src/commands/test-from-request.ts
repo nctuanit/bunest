@@ -1,3 +1,4 @@
+import { ensurePrefix, isObject } from "@bunest/core/common";
 import { basename, resolve, statPath } from "@bunest/core";
 import type { CliIO, GeneratedFile } from "../types";
 import { writePlannedFiles, type PlannedFile } from "../utils/fs-writer";
@@ -290,10 +291,6 @@ function normalizeKey(key: string): string {
   return key.replace(/[_-]/g, "").toLowerCase();
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function makeFixtureRef(name: string, prefix = ""): string {
   return `${prefix}${FIXTURE_REF_PREFIX}${name}${FIXTURE_REF_SUFFIX}`;
 }
@@ -368,7 +365,7 @@ function getValueAtPath(
   const parts = dotPath.split(".").filter((p) => p.length > 0);
   let current: unknown = root;
   for (const part of parts) {
-    if (!isPlainObject(current) || !(part in current)) {
+    if (!isObject(current) || !(part in current)) {
       return { found: false, value: undefined };
     }
     current = current[part];
@@ -477,10 +474,7 @@ function parseUrlPathAndQuery(rawUrl: string): {
   try {
     const parsed = /^https?:\/\//i.test(pathWithQuery)
       ? new URL(pathWithQuery)
-      : new URL(
-          pathWithQuery.startsWith("/") ? pathWithQuery : `/${pathWithQuery}`,
-          "http://bunest.local",
-        );
+      : new URL(ensurePrefix(pathWithQuery, "/"), "http://bunest.local");
     const query: Record<string, string | string[]> = {};
     let hasQuery = false;
     for (const [key, value] of parsed.searchParams.entries()) {
@@ -502,9 +496,7 @@ function parseUrlPathAndQuery(rawUrl: string): {
     const qIdx = pathWithQuery.indexOf("?");
     if (qIdx === -1) {
       return {
-        path: pathWithQuery.startsWith("/")
-          ? pathWithQuery
-          : `/${pathWithQuery}`,
+        path: ensurePrefix(pathWithQuery, "/"),
       };
     }
     return {
@@ -820,7 +812,7 @@ function sanitizeValueRecursive(
     );
   }
 
-  if (isPlainObject(value)) {
+  if (isObject(value)) {
     const out: Record<string, unknown> = {};
     for (const [key, fieldValue] of Object.entries(value)) {
       const nextPath = currentPath ? `${currentPath}.${key}` : key;
@@ -865,7 +857,7 @@ function stripFixtureMarkersForScenario(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(stripFixtureMarkersForScenario);
   }
-  if (isPlainObject(value)) {
+  if (isObject(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       out[k] = stripFixtureMarkersForScenario(v);
@@ -880,7 +872,7 @@ function buildResponseFieldAssertions(
   redactedResponsePaths: ReadonlySet<string>,
   explicitAllowFields: readonly string[] | undefined,
 ): ResponseFieldAssertionPlan[] {
-  if (!isPlainObject(sanitizedBody)) {
+  if (!isObject(sanitizedBody)) {
     return [];
   }
 
@@ -1223,7 +1215,7 @@ function serializeTsValue(value: unknown, indent = 0): string {
     return `[\n${items.join(",\n")},\n${pad}]`;
   }
 
-  if (isPlainObject(value)) {
+  if (isObject(value)) {
     const entries = Object.entries(value);
     if (entries.length === 0) return "{}";
     const lines = entries.map(([k, v]) => {
@@ -1683,7 +1675,7 @@ function parseRawScenarioInput(
 }
 
 function validateScenarioV1(value: unknown): asserts value is RequestScenarioV1 {
-  if (!isPlainObject(value)) {
+  if (!isObject(value)) {
     throw new Error("Invalid scenario: expected a JSON object.");
   }
   if (value.schemaVersion !== 1) {

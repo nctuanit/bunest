@@ -235,14 +235,14 @@ export async function runCheckCommand(
           `[check] ${options.dryRun ? "[dry-run] Would apply" : "Applied"} ${fixedCount} auto-fix(es) across ${fixedFiles.size} file(s).`,
         );
       }
+      const SEVERITY_TAGS: Readonly<Record<BunestDiagnostic["severity"], string>> = {
+        error: "ERROR",
+        warning: "WARN ",
+        info: "INFO ",
+      };
       for (const d of snapshot.diagnostics) {
         const rel = relative(cwd, d.location.filePath).replace(/\\/g, "/");
-        const tag =
-          d.severity === "error"
-            ? "ERROR"
-            : d.severity === "warning"
-              ? "WARN "
-              : "INFO ";
+        const tag = SEVERITY_TAGS[d.severity];
         const line = `  ${tag} [${d.code}] ${rel}:${d.location.line}:${d.location.column} — ${d.message}`;
         if (d.severity === "error") io.stderr(line);
         else io.stdout(line);

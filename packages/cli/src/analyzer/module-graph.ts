@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   Node,
   SyntaxKind,
@@ -819,11 +820,13 @@ export function buildStaticModuleGraph(
       if (isController || isRepository || isInjectable) {
         const provNode: StaticProviderNode = {
           name,
-          kind: isController
-            ? "controller"
-            : isRepository
-              ? "repository"
-              : "provider",
+          kind: cond<"controller" | "repository", "provider">(
+            [
+              [isController, "controller"],
+              [isRepository, "repository"],
+            ],
+            "provider",
+          ),
           scope: extractInjectableScope(cls),
           ...(cls.isAbstract() ? { isAbstract: true } : {}),
           sourceFile: filePath,

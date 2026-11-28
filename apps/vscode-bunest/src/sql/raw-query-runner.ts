@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import {
   existsSyncPath,
   join,
@@ -329,12 +330,13 @@ export function extractSqlPlaceholders(sql: string): ExtractedSqlPlaceholders {
   }
 
   const totalPositional = Math.max(positionalCount, maxDollarIndex);
-  const style =
-    named.length > 0
-      ? "named"
-      : totalPositional > 0
-        ? "positional"
-        : "none";
+  const style = cond<"named" | "positional", "none">(
+    [
+      [named.length > 0, "named"],
+      [totalPositional > 0, "positional"],
+    ],
+    "none",
+  );
 
   return {
     named,

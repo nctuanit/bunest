@@ -1,3 +1,4 @@
+import { cond } from "@bunest/core/common";
 import * as vscode from "vscode";
 import type { AnalyzedQueryMethod, AnalyzedRepository } from "@bunest/cli";
 import {
@@ -182,14 +183,17 @@ export async function pickDatabaseConnection(
       });
       if (authToken === undefined) return undefined;
     }
+    const authField: Partial<SqlConnectionConfig> = cond(
+      [
+        [!authToken, {}],
+        [dialect === "d1", { apiToken: authToken }],
+      ],
+      { authToken },
+    );
     chosen = {
       url: normalizedUrl,
       dialect,
-      ...(authToken
-        ? dialect === "d1"
-          ? { apiToken: authToken }
-          : { authToken }
-        : {}),
+      ...authField,
     };
   }
 
@@ -380,6 +384,25 @@ function renderSqlResultHtml(state: {
     compiledSql: result.compiledSql,
     csv: toCsv(result.columns, result.rows),
   }).replace(/</g, "\\u003c");
+
+  const rowPlural = result.rowCount === 1 ? "" : "s";
+  const affectedPart =
+    result.affectedRows !== undefined ? ` · ${result.affectedRows} affected` : "";
+  const truncatedPart = result.truncated ? " (truncated)" : "";
+  const metaText = result.ok
+    ? `${result.rowCount} row${rowPlural}${affectedPart}${truncatedPart} · ${result.elapsedMs.toFixed(1)} ms`
+    : `${result.elapsedMs.toFixed(1)} ms`;
+  const emptyAffectedPart =
+    result.affectedRows !== undefined ? ` (${result.affectedRows} affected)` : "";
+  let resultBodyHtml: string;
+  if (!result.ok) {
+    resultBodyHtml = `<div class="error-box"><strong>SQL Error:</strong>\n${escapeHtml(result.error ?? "Unknown error")}\n\n<strong>Compiled SQL:</strong>\n${escapeHtml(result.compiledSql)}</div>`;
+  } else if (result.rows.length === 0) {
+    resultBodyHtml = `<div class="empty-state">Query succeeded with 0 rows returned${emptyAffectedPart}.</div>`;
+  } else {
+    resultBodyHtml = `<div id="tableWrap" class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+           <pre id="jsonView" class="json-view hidden"></pre>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -590,11 +613,7 @@ function renderSqlResultHtml(state: {
       <button class="secondary" onclick="explainQuery()" title="Run EXPLAIN / Query Plan">Explain Plan</button>
       <span class="status-pill">${statusLabel}</span>
       <span class="meta">
-        ${
-          result.ok
-            ? `${result.rowCount} row${result.rowCount === 1 ? "" : "s"}${result.affectedRows !== undefined ? ` · ${result.affectedRows} affected` : ""}${result.truncated ? " (truncated)" : ""} · ${result.elapsedMs.toFixed(1)} ms`
-            : `${result.elapsedMs.toFixed(1)} ms`
-        }
+        ${metaText}
       </span>
     </div>
     <div class="toolbar-right">
@@ -609,14 +628,7 @@ function renderSqlResultHtml(state: {
     </div>
   </div>
 
-  ${
-    !result.ok
-      ? `<div class="error-box"><strong>SQL Error:</strong>\n${escapeHtml(result.error ?? "Unknown error")}\n\n<strong>Compiled SQL:</strong>\n${escapeHtml(result.compiledSql)}</div>`
-      : result.rows.length === 0
-        ? `<div class="empty-state">Query succeeded with 0 rows returned${result.affectedRows !== undefined ? ` (${result.affectedRows} affected)` : ""}.</div>`
-        : `<div id="tableWrap" class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
-           <pre id="jsonView" class="json-view hidden"></pre>`
-  }
+  ${resultBodyHtml}
 
   <script>
     const vscode = acquireVsCodeApi();
@@ -1008,13 +1020,20 @@ async function runAndDisplaySql(opts: {
           currentConn.url ?? "",
           currentConn.dialect,
         );
-        const explainSql = alreadyExplain
-          ? rawSql
-          : dialect === "postgres" || dialect === "cockroachdb"
-            ? `EXPLAIN (ANALYZE, BUFFERS) ${rawSql}`
-            : dialect === "sqlite" || dialect === "libsql" || dialect === "d1"
-              ? `EXPLAIN QUERY PLAN ${rawSql}`
-              : `EXPLAIN ${rawSql}`;
+        const explainSql = cond(
+          [
+            [alreadyExplain, rawSql],
+            [
+              dialect === "postgres" || dialect === "cockroachdb",
+              `EXPLAIN (ANALYZE, BUFFERS) ${rawSql}`,
+            ],
+            [
+              dialect === "sqlite" || dialect === "libsql" || dialect === "d1",
+              `EXPLAIN QUERY PLAN ${rawSql}`,
+            ],
+          ],
+          `EXPLAIN ${rawSql}`,
+        );
         const prevSql = currentSql;
         currentSql = explainSql;
         const planRes = await executeOnce();

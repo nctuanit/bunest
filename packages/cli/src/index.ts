@@ -1,4 +1,10 @@
 export { CLI_VERSION } from "./version";
+export {
+  CLI_SECRETS_SERVICE,
+  deleteCliSecret,
+  getCliSecret,
+  setCliSecret,
+} from "./utils/secrets.util";
 export { HELP_TEXT, runCli } from "./runner";
 export { parseCliArgs } from "./parser";
 export { createProject } from "./commands/new";
@@ -119,6 +125,21 @@ export { addLibrary } from "./commands/add";
 export { upgradeProject } from "./commands/upgrade";
 export { deployProject } from "./commands/deploy";
 export { runReplCommand } from "./commands/repl";
+export {
+  runCronParseCommand,
+  runCronRegisterCommand,
+  runCronRemoveCommand,
+  runCronRunCommand,
+  type CronCommandOutputFormat,
+  type CronParseCommandOptions,
+  type CronParseCommandResult,
+  type CronRegisterCommandOptions,
+  type CronRegisterCommandResult,
+  type CronRemoveCommandOptions,
+  type CronRemoveCommandResult,
+  type CronRunCommandOptions,
+  type CronRunCommandResult,
+} from "./commands/cron";
 export {
   BUNEST_MCP_TOOLS,
   handleMcpRequest,

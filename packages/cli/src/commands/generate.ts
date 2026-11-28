@@ -179,11 +179,8 @@ export async function generateSchematic(
   const explicitDir = options.dir ?? options.directory;
   const targetDir = resolve(cwd, explicitDir ?? defaultBaseDir);
   const configuredFlat =
-    project?.generateOptions?.flat !== undefined
-      ? project.generateOptions.flat
-      : loadedConfig.found
-        ? genOpts.flat
-        : undefined;
+    project?.generateOptions?.flat ??
+    (loadedConfig.found ? genOpts.flat : undefined);
   const appDirFlat =
     schematic === "application" &&
     explicitDir !== undefined &&
@@ -321,13 +318,13 @@ export async function generateSchematic(
   }
 
   if (io) {
+    const ACTION_TAGS: Readonly<Record<string, string>> = {
+      "dry-run": "DRY-RUN",
+      overwrite: "OVERWRITE",
+      create: "CREATE",
+    };
     for (const file of files) {
-      const tag =
-        file.action === "dry-run"
-          ? "DRY-RUN"
-          : file.action === "overwrite"
-            ? "OVERWRITE"
-            : "CREATE";
+      const tag = ACTION_TAGS[file.action] ?? "CREATE";
       io.stdout(`  ${tag} ${file.relativePath}`);
     }
     if (dryRun) {

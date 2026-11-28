@@ -1,3 +1,13 @@
+import {
+  ensurePrefix,
+  isError,
+  isFunction,
+  isObject,
+  isPlainObject,
+  isString,
+  trimSuffix,
+} from "@bunest/core/common";
+
 export type ReplayVerdict =
   | "confirmed-breaking"
   | "stripped-accepted"
@@ -112,19 +122,11 @@ const DEFAULT_IN_PROCESS_BASE_URL = "http://bunest.replay.local";
 const NON_WHITELISTED_MESSAGE_REGEX = /^property\s+([^\s]+)\s+should not exist/i;
 const FIELD_PREFIX_MESSAGE_REGEX = /^([A-Za-z_$][A-Za-z0-9_$.[\]]*)\s+/;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 function formatErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
+  if (isError(err)) {
     return err.message || err.name;
   }
-  if (typeof err === "string") {
+  if (isString(err)) {
     return err;
   }
   try {
@@ -142,16 +144,11 @@ function isValidationFailureStatus(status: number | null): boolean {
   return status === 400 || status === 422;
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-}
-
 function buildRequestUrl(baseUrl: string, path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${normalizeBaseUrl(baseUrl)}${normalizedPath}`;
+  return `${trimSuffix(baseUrl, "/")}${ensurePrefix(path, "/")}`;
 }
 
 function isTargetFactory(target: ReplayTargetApp): target is ReplayTargetFactory {
@@ -162,7 +159,7 @@ async function resolveTarget(target: ReplayTargetApp): Promise<ResolvedTarget> {
   if (typeof target === "string") {
     return {
       fetch: (req: Request) => fetch(req),
-      baseUrl: normalizeBaseUrl(target),
+      baseUrl: trimSuffix(target, "/"),
       ownsLifecycle: false,
     };
   }
@@ -177,8 +174,9 @@ async function resolveTarget(target: ReplayTargetApp): Promise<ResolvedTarget> {
       }
       return {
         fetch: instance.fetch,
-        baseUrl: normalizeBaseUrl(
+        baseUrl: trimSuffix(
           instance.baseUrl ?? DEFAULT_IN_PROCESS_BASE_URL,
+          "/",
         ),
         close: instance.close,
         ownsLifecycle: true,
@@ -201,8 +199,9 @@ async function resolveTarget(target: ReplayTargetApp): Promise<ResolvedTarget> {
     }
     return {
       fetch: instance.fetch,
-      baseUrl: normalizeBaseUrl(
+      baseUrl: trimSuffix(
         instance.baseUrl ?? DEFAULT_IN_PROCESS_BASE_URL,
+        "/",
       ),
       close: instance.close,
       ownsLifecycle: true,
@@ -212,8 +211,9 @@ async function resolveTarget(target: ReplayTargetApp): Promise<ResolvedTarget> {
   if ("fetch" in target && typeof target.fetch === "function") {
     return {
       fetch: target.fetch,
-      baseUrl: normalizeBaseUrl(
+      baseUrl: trimSuffix(
         target.baseUrl ?? DEFAULT_IN_PROCESS_BASE_URL,
+        "/",
       ),
       close: target.close,
       ownsLifecycle: false,
@@ -223,7 +223,7 @@ async function resolveTarget(target: ReplayTargetApp): Promise<ResolvedTarget> {
   if ("baseUrl" in target && typeof target.baseUrl === "string") {
     return {
       fetch: (req: Request) => fetch(req),
-      baseUrl: normalizeBaseUrl(target.baseUrl),
+      baseUrl: trimSuffix(target.baseUrl, "/"),
       close: target.close,
       ownsLifecycle: false,
     };
@@ -249,7 +249,7 @@ async function safeCloseTarget(target: ResolvedTarget | undefined): Promise<void
  * - `"list"` (NestJS default): `{ message: string[] }`
  */
 export function extractValidationErrorFields(body: unknown): string[] {
-  if (!isPlainRecord(body)) {
+  if (!isPlainObject(body)) {
     return [];
   }
 
@@ -260,7 +260,7 @@ export function extractValidationErrorFields(body: unknown): string[] {
   if (Array.isArray(details)) {
     for (const item of details) {
       if (
-        isPlainRecord(item) &&
+        isPlainObject(item) &&
         typeof item.field === "string" &&
         item.field.trim().length > 0
       ) {
@@ -271,7 +271,7 @@ export function extractValidationErrorFields(body: unknown): string[] {
 
   // 2. NestJS v12 grouped format: message: { [field]: string[] }
   const message = body.message;
-  if (isPlainRecord(message)) {
+  if (isPlainObject(message)) {
     for (const [key, value] of Object.entries(message)) {
       if (key === "..." || key.trim().length === 0) {
         continue;
@@ -317,15 +317,11 @@ function findFieldValueInResponse(
   field: string,
   maxDepth = 3,
 ): { readonly found: boolean; readonly value: unknown } {
-  if (maxDepth < 0 || typeof body !== "object" || body === null) {
+  if (maxDepth < 0 || !isObject(body)) {
     return { found: false, value: undefined };
   }
 
-  if (Array.isArray(body)) {
-    return { found: false, value: undefined };
-  }
-
-  const record = body as Record<string, unknown>;
+  const record = body;
   if (Object.hasOwn(record, field)) {
     return { found: true, value: record[field] };
   }
@@ -336,7 +332,7 @@ function findFieldValueInResponse(
 
   for (const key of Object.keys(record)) {
     const child = record[key];
-    if (isPlainRecord(child)) {
+    if (isPlainObject(child)) {
       const nested = findFieldValueInResponse(child, field, maxDepth - 1);
       if (nested.found) {
         return nested;
@@ -536,15 +532,10 @@ function classifyResponses(
 }
 
 function isFactoryApp(target: ReplayTargetApp): boolean {
-  if (typeof target === "function") {
+  if (isFunction(target)) {
     return target.length === 0;
   }
-  return (
-    typeof target === "object" &&
-    target !== null &&
-    "factory" in target &&
-    typeof target.factory === "function"
-  );
+  return isObject(target) && "factory" in target && isFunction(target.factory);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { cond, stripAnsi } from "@bunest/core/common";
 import { relative, resolve } from "@bunest/core";
 import {
   selectAffectedTests,
@@ -108,11 +109,11 @@ const defaultSpawn: VerifySpawn = async (cmd, { cwd }) => {
   return { exitCode, stdout, stderr };
 };
 
-const ANSI_RE = /\u001b\[[0-9;]*m/g;
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_RE, "");
-}
+const STEP_STATUS_ICONS: Readonly<Record<VerifyStepStatus, string>> = {
+  pass: "✓",
+  fail: "✗",
+  skip: "-",
+};
 
 function toRel(cwd: string, file: string): string {
   const abs = resolve(cwd, file);
@@ -575,13 +576,24 @@ export async function runVerifyCommand(
           });
         }
         const rerun = failed ? buildTestRerunPlan(parsed, testArgs) : {};
+        const outcome: VerifyTestOutcome = cond<
+          VerifyTestOutcome,
+          VerifyTestOutcome
+        >(
+          [
+            [!failed, "passed"],
+            [isRunnerError, "runner-error"],
+          ],
+          "failed",
+        );
+        const skipSuffix = parsed.skip ? `, ${parsed.skip} skip` : "";
         steps.push({
           name: "test",
           status: failed ? "fail" : "pass",
-          outcome: failed ? (isRunnerError ? "runner-error" : "failed") : "passed",
+          outcome,
           summary: isRunnerError
             ? `runner/bootstrap error (exit ${proc.exitCode})`
-            : `${parsed.pass} pass, ${parsed.fail} fail${parsed.skip ? `, ${parsed.skip} skip` : ""}`,
+            : `${parsed.pass} pass, ${parsed.fail} fail${skipSuffix}`,
           issues,
           durationMs: ms,
           ...(rerun.rerunCommand ? { rerunCommand: rerun.rerunCommand } : {}),
@@ -592,29 +604,22 @@ export async function runVerifyCommand(
   }
 
   const ok = steps.every((s) => s.status !== "fail");
-  const result: VerifyCommandResult = affectedPlan
-    ? {
-        exitCode: ok ? 0 : 1,
-        ok,
-        steps,
-        durationMs: performance.now() - startAll,
-        affected: affectedPlan,
-      }
-    : {
-        exitCode: ok ? 0 : 1,
-        ok,
-        steps,
-        durationMs: performance.now() - startAll,
-      };
+  const result: VerifyCommandResult = {
+    exitCode: ok ? 0 : 1,
+    ok,
+    steps,
+    durationMs: performance.now() - startAll,
+    ...(affectedPlan ? { affected: affectedPlan } : {}),
+  };
 
   if (io) io.stdout(formatVerifyResult(result, reporter, options.maxIssues));
   return result;
 }
 
 function formatIssue(issue: VerifyIssue): string {
-  const loc = issue.file
-    ? `${issue.file}${issue.line !== undefined ? `:${issue.line}:${issue.column ?? 1}` : ""} `
-    : "";
+  const lineCol =
+    issue.line !== undefined ? `:${issue.line}:${issue.column ?? 1}` : "";
+  const loc = issue.file ? `${issue.file}${lineCol} ` : "";
   const code = issue.code ? `[${issue.code}] ` : "";
   const msg = issue.message.includes("\n")
     ? issue.message.split("\n").map((l, i) => (i === 0 ? l : `      ${l}`)).join("\n")
@@ -689,7 +694,7 @@ export function formatVerifyResult(
     }
   }
   for (const step of result.steps) {
-    const icon = step.status === "pass" ? "✓" : step.status === "fail" ? "✗" : "-";
+    const icon = STEP_STATUS_ICONS[step.status];
     out.push(`${icon} ${step.name.padEnd(9)} ${step.summary} (${step.durationMs.toFixed(0)}ms)`);
     for (const issue of step.issues.slice(0, maxIssues)) out.push(formatIssue(issue));
   }

@@ -1,3 +1,4 @@
+import { cond, isArray, isString, toArray } from "@bunest/core/common";
 import {
   Node,
   SyntaxKind,
@@ -441,11 +442,7 @@ export function matchesRouteQuery(
     return false;
   }
 
-  const candVersions = Array.isArray(candidate.version)
-    ? candidate.version.map(String)
-    : candidate.version !== undefined
-      ? [String(candidate.version)]
-      : [];
+  const candVersions = toArray(candidate.version).map(String);
 
   if (query.version) {
     if (candVersions.length === 0 || !candVersions.includes(query.version)) {
@@ -1516,30 +1513,33 @@ export async function explainRoute(
               source: "runtime" as const,
             })),
           ];
-          const rtVer: string | undefined =
-            typeof rt.version === "string"
-              ? rt.version
-              : Array.isArray(rt.version)
-                ? rt.version.join(",")
-                : undefined;
+          const rtVer: string | undefined = cond<string, undefined>(
+            [
+              [isString(rt.version), () => rt.version as string],
+              [
+                isArray(rt.version),
+                () => (rt.version as readonly string[]).join(","),
+              ],
+            ],
+            undefined,
+          );
+          let modInfo: RouteExplainModuleInfo | undefined;
+          if (staticMod) {
+            modInfo = toModuleInfo(staticMod);
+          } else if (rtModName) {
+            modInfo = {
+              name: rtModName,
+              isGlobal: runtimeCtrlToMod.get(rtCtrl)?.isGlobal ?? false,
+              autoDiscover: false,
+            };
+          }
           reconciled.push({
             method: rt.method.toUpperCase(),
             path: normalizeRoutePath(rt.path),
             ...(rtVer ? { version: rtVer } : {}),
             confirmationStatus: "mismatch",
             source: { static: false, runtime: true },
-            ...(staticMod
-              ? { module: toModuleInfo(staticMod) }
-              : rtModName
-                ? {
-                    module: {
-                      name: rtModName,
-                      isGlobal:
-                        runtimeCtrlToMod.get(rtCtrl)?.isGlobal ?? false,
-                      autoDiscover: false,
-                    },
-                  }
-                : {}),
+            ...(modInfo ? { module: modInfo } : {}),
             controller: {
               name: rtCtrl,
               handlerName: rt.handler ?? "unknown",

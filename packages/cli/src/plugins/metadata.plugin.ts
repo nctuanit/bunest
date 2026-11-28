@@ -1,4 +1,5 @@
 import type { BunPlugin } from "bun";
+import { cond, escapeRegExp, toArray } from "@bunest/core/common";
 import {
   dirname,
   ensureDir,
@@ -234,18 +235,12 @@ function normalizeSuffixes(
   defaults: readonly string[],
 ): readonly string[] {
   if (input === undefined) return defaults;
-  const list = (typeof input === "string" ? [input] : [...input]).filter(
-    (s) => s.length > 0,
-  );
+  const list = toArray(input).filter((s) => s.length > 0);
   return list.length > 0 ? list : defaults;
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function buildSuffixFilter(suffixes: readonly string[]): RegExp {
-  return new RegExp(`(?:${suffixes.map(escapeRegex).join("|")})$`, "i");
+  return new RegExp(`(?:${suffixes.map(escapeRegExp).join("|")})$`, "i");
 }
 
 const REGEX_PRECEDING_KEYWORDS = new Set([
@@ -936,7 +931,13 @@ function analyzeTypeExpression(
           isArray: false,
           nullable,
           hasUndefined,
-          typeExpr: allStrings ? "String" : allNumbers ? "Number" : "Object",
+          typeExpr: cond(
+            [
+              [allStrings, "String"],
+              [allNumbers, "Number"],
+            ],
+            "Object",
+          ),
           enumLiterals: literals,
         };
       }
@@ -1842,18 +1843,19 @@ function buildGraphqlEntryCode(prop: ExtractedDtoProperty): string {
     `name: ${JSON.stringify(prop.aliasName ?? prop.name)}`,
   ];
 
-  const baseTypeExpr =
-    prop.enumExpr !== undefined
-      ? prop.enumExpr
-      : prop.genericWrapperExpr !== undefined
-        ? prop.genericWrapperExpr
-        : prop.unionTypeExprs !== undefined
-          ? "Object"
-          : prop.typeExpr?.startsWith("() => ")
-            ? prop.typeExpr.slice(6)
-            : prop.typeExpr === '"integer"'
-              ? "Number"
-              : (prop.typeExpr ?? "String");
+  const baseTypeExpr = cond<string, string>(
+    [
+      [prop.enumExpr !== undefined, () => prop.enumExpr!],
+      [prop.genericWrapperExpr !== undefined, () => prop.genericWrapperExpr!],
+      [prop.unionTypeExprs !== undefined, "Object"],
+      [
+        Boolean(prop.typeExpr?.startsWith("() => ")),
+        () => prop.typeExpr!.slice(6),
+      ],
+      [prop.typeExpr === '"integer"', "Number"],
+    ],
+    prop.typeExpr ?? "String",
+  );
 
   const typeFnBody = prop.isArray ? `[${baseTypeExpr}]` : baseTypeExpr;
   fields.push(`typeFn: () => ${typeFnBody}`);

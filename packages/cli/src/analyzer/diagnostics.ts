@@ -2,6 +2,7 @@ import { Node, SyntaxKind, type Expression, type SourceFile } from "../ast";
 import type { BunestConfigLike } from "../config/bunest-config.loader";
 import {
   BUILTIN_DI_CLASS_DECORATORS,
+  BUILTIN_ENTITY_DECORATOR_NAMES,
   BUILTIN_ORM_RELATION_DECORATOR_NAMES,
   BUILTIN_SERVICE_AOP_DECORATORS,
   CONFLICTING_CLASS_MACRO_PAIRS,
@@ -54,7 +55,11 @@ export type DecoratorDiagnosticCode =
   | "BUNEST_DEC002"
   | "BUNEST_DEC003"
   | "BUNEST_DEC004"
-  | "BUNEST_DEC005";
+  | "BUNEST_DEC005"
+  | "BUNEST_DEC006"
+  | "BUNEST_DEC007"
+  | "BUNEST_DEC008"
+  | "BUNEST_DEC009";
 
 export type BunestDiagnosticCode =
   | CoreDiagnosticCode
@@ -939,19 +944,300 @@ const TDZ_SAFE_WRAPPER_TYPES = new Set([
   "Record",
 ]);
 
+const DTO_STRING_VALIDATORS = new Set([
+  "IsString",
+  "IsEmail",
+  "IsUrl",
+  "IsUUID",
+  "MinLength",
+  "MaxLength",
+  "Matches",
+  "IsAlpha",
+  "IsAlphanumeric",
+  "IsAscii",
+  "IsLowercase",
+  "IsUppercase",
+  "IsDateString",
+  "IsISO8601",
+  "IsRFC3339",
+  "IsMilitaryTime",
+  "IsNumberString",
+  "IsBooleanString",
+  "IsDecimal",
+  "IsMongoId",
+  "IsJWT",
+  "IsJSON",
+  "IsSemVer",
+  "IsStrongPassword",
+  "IsPhoneNumber",
+  "IsIP",
+  "IsHexColor",
+  "IsBase64",
+  "IsCreditCard",
+  "IsIBAN",
+]);
+
+const DTO_NUMBER_VALIDATORS = new Set([
+  "IsNumber",
+  "IsInt",
+  "Min",
+  "Max",
+  "IsPositive",
+  "IsNegative",
+  "IsDivisibleBy",
+]);
+
+const DTO_BOOLEAN_VALIDATORS = new Set(["IsBoolean"]);
+
+const DTO_DATE_VALIDATORS = new Set(["IsDate", "MinDate", "MaxDate"]);
+
+const DTO_ALL_VALIDATORS = new Set([
+  ...DTO_STRING_VALIDATORS,
+  ...DTO_NUMBER_VALIDATORS,
+  ...DTO_BOOLEAN_VALIDATORS,
+  ...DTO_DATE_VALIDATORS,
+  "IsArray",
+  "IsObject",
+  "IsNotEmptyObject",
+  "IsInstance",
+  "IsEnum",
+  "IsIn",
+  "IsNotEmpty",
+  "IsDefined",
+  "ValidateNested",
+  "ArrayMinSize",
+  "ArrayMaxSize",
+  "ArrayNotEmpty",
+  "ArrayContains",
+  "ArrayNotContains",
+  "ArrayUnique",
+  "Prop",
+]);
+
+const NON_DTO_CLASS_DECORATORS = new Set([
+  ...BUILTIN_ENTITY_DECORATOR_NAMES,
+  "Schema",
+  "Embeddable",
+]);
+
+const CONFLICTING_FOR_STRING = new Set(["number", "boolean", "Date", "bigint"]);
+const CONFLICTING_FOR_NUMBER = new Set(["string", "boolean", "Date", "bigint"]);
+const CONFLICTING_FOR_BOOLEAN = new Set(["string", "number", "Date", "bigint"]);
+const CONFLICTING_FOR_DATE = new Set(["string", "number", "boolean", "bigint"]);
+
+function getDecoratorOptionProperty(
+  dec: ResolvedDecoratorEntry,
+  key: string,
+): Node | undefined {
+  for (const arg of dec.resolvedArgs) {
+    if (!Node.isObjectLiteralExpression(arg)) continue;
+    const prop = arg.getProperty(key);
+    if (prop) return prop;
+  }
+  return undefined;
+}
+
+function getOptionBooleanValue(
+  dec: ResolvedDecoratorEntry,
+  key: string,
+): boolean | undefined {
+  const prop = getDecoratorOptionProperty(dec, key);
+  if (!prop || !Node.isPropertyAssignment(prop)) return undefined;
+  const init = prop.getInitializer();
+  if (!init) return undefined;
+  if (init.getKind() === SyntaxKind.TrueKeyword) return true;
+  if (init.getKind() === SyntaxKind.FalseKeyword) return false;
+  return undefined;
+}
+
+function hasDefinedOption(dec: ResolvedDecoratorEntry, key: string): boolean {
+  const prop = getDecoratorOptionProperty(dec, key);
+  if (!prop) return false;
+  if (Node.isShorthandPropertyAssignment(prop)) return true;
+  if (Node.isPropertyAssignment(prop)) {
+    const init = prop.getInitializer();
+    if (!init) return false;
+    const text = init.getText().trim();
+    return (
+      init.getKind() !== SyntaxKind.UndefinedKeyword &&
+      init.getKind() !== SyntaxKind.FalseKeyword &&
+      text !== "undefined"
+    );
+  }
+  return true;
+}
+
+function stripOuterParens(text: string): string {
+  let s = text.trim();
+  while (s.startsWith("(") && s.endsWith(")")) {
+    let depth = 0;
+    let balanced = true;
+    for (let i = 0; i < s.length - 1; i++) {
+      const ch = s[i]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          balanced = false;
+          break;
+        }
+      }
+    }
+    if (!balanced) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+function splitTopLevelUnion(typeText: string): string[] {
+  const parts: string[] = [];
+  let cur = "";
+  let depth = 0;
+  for (let i = 0; i < typeText.length; i++) {
+    const ch = typeText[i]!;
+    if (ch === "<" || ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ">" || ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === "|" && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur.trim().length > 0) {
+    parts.push(cur);
+  }
+  return parts
+    .map((p) => stripOuterParens(p))
+    .filter((p) => p.length > 0 && p !== "null" && p !== "undefined");
+}
+
+function unwrapArrayElementType(typeBranch: string): string | undefined {
+  let s = stripOuterParens(typeBranch);
+  if (s.startsWith("readonly ")) {
+    s = s.slice("readonly ".length).trim();
+  }
+  if (s.endsWith("[]")) {
+    return stripOuterParens(s.slice(0, -2));
+  }
+  const genericMatch = /^(?:ReadonlyArray|Array)\s*<([\s\S]+)>$/.exec(s);
+  if (genericMatch) {
+    return stripOuterParens(genericMatch[1]!);
+  }
+  return undefined;
+}
+
+function findPrimitiveConflict(
+  typeBranches: readonly string[],
+  conflictSet: ReadonlySet<string>,
+): string | undefined {
+  if (typeBranches.length === 0) return undefined;
+  if (typeBranches.every((b) => conflictSet.has(b))) {
+    return typeBranches.join(" | ");
+  }
+  return undefined;
+}
+
 /**
- * Runs static decorator safety & semantics diagnostics (`BUNEST_DEC001`–`BUNEST_DEC005`):
+ * Runs static decorator safety & semantics diagnostics (`BUNEST_DEC001`–`BUNEST_DEC008`):
  * - `BUNEST_DEC001`: Conflicting class macros (e.g. `@Value()` + `@Setter()`, `@Value()` + `@Data()`, `@UtilityClass()` + `@Data()`/`@Builder()`).
  * - `BUNEST_DEC002`: `@SoftDelete()` incompatible with `@BaseEntity({ deletedAt: false })` or missing soft-delete column on entity.
  * - `BUNEST_DEC003`: Service-layer AOP decorator (`@Transactional`, `@Cacheable`, `@Retry`, etc.) on non-DI class.
  * - `BUNEST_DEC004`: `@UtilityClass()` combined with DI-managed decorators (`@Injectable`, `@Controller`, `@Module`, etc.).
  * - `BUNEST_DEC005`: Same-file forward-reference TDZ risk on `@ManyToOne`/`@OneToOne`/`@Embedded` property under `emitDecoratorMetadata`.
+ * - `BUNEST_DEC006`: Optional TypeScript DTO property (`prop?: T`) has validation decorator(s) without `@IsOptional()` / `@Prop({ optional: true })`.
+ * - `BUNEST_DEC007`: Validation decorator conflicts with the property's static TypeScript primitive type.
+ * - `BUNEST_DEC008`: `@ValidateNested({ each: true })` on an array property without `type: () => ElementDto` or `@Type(() => ElementDto)`.
  */
+const HTTP_ROUTE_DECORATORS = new Set([
+  "Get",
+  "Post",
+  "Put",
+  "Patch",
+  "Delete",
+  "All",
+  "Options",
+  "Head",
+  "Sse",
+  "RequestMapping",
+]);
+
+const AUTH_PROTECTION_DECORATORS = new Set([
+  "UseGuards",
+  "Authenticate",
+  "Auth",
+  "Roles",
+  "Can",
+  "RequirePermissions",
+  "RequireTenant",
+  "Authenticated",
+]);
+
+const CURRENT_USER_PARAM_DECORATORS = new Set(["CurrentUser", "AuthUser"]);
+
+function isNullableParamType(typeText: string | undefined): boolean {
+  if (!typeText) return false;
+  const unwrapped = stripOuterParens(typeText);
+  if (unwrapped === "any" || unwrapped === "unknown") return true;
+  // Split top-level union branches without splitting inside generics/parens
+  const parts: string[] = [];
+  let cur = "";
+  let depth = 0;
+  for (let i = 0; i < unwrapped.length; i++) {
+    const ch = unwrapped[i]!;
+    if (ch === "<" || ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ">" || ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === "|" && depth === 0) {
+      parts.push(stripOuterParens(cur));
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur.trim().length > 0) {
+    parts.push(stripOuterParens(cur));
+  }
+  return parts.includes("null") || parts.includes("undefined");
+}
+
+function stripCommentsStringsAndImports(code: string): string {
+  // Remove block comments, line comments, and string/template literals so
+  // mentions of APP_GUARD in comments/docs/strings don't suppress diagnostics.
+  const withoutLiterals = code
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/`(?:\\.|[^`\\])*`/g, "``");
+  // Remove import/export-from declarations so unused `import { APP_GUARD }` doesn't match.
+  return withoutLiterals.replace(
+    /^\s*(?:import|export)\s+[\s\S]*?\bfrom\s+(?:""|''|``)\s*;?/gm,
+    " ",
+  );
+}
+
+function isOptionalAuthDecorator(entry: ResolvedDecoratorEntry): boolean {
+  if (entry.name === "OptionalAuth") return true;
+  if (entry.name === "Authenticate") {
+    return getOptionBooleanValue(entry, "optional") === true;
+  }
+  return false;
+}
+
 export function runDecoratorDiagnostics(
   sourceFiles: readonly SourceFile[],
   repositories: readonly AnalyzedRepository[] = [],
 ): BunestDiagnostic[] {
   const diagnostics: BunestDiagnostic[] = [];
+  const hasGlobalAuthGuard = sourceFiles.some((sf) => {
+    const txt = stripCommentsStringsAndImports(sf.getFullText());
+    return (
+      /\bAPP_GUARD\b/.test(txt) ||
+      /\bAuthenticationModule\s*\.\s*forRoot/.test(txt) ||
+      /\bAuthorizationModule\s*\.\s*forRoot/.test(txt) ||
+      /\buseGlobalGuards\s*\(/.test(txt)
+    );
+  });
 
   for (const sf of sourceFiles) {
     const classes = sf.getClasses();
@@ -1156,6 +1442,369 @@ export function runDecoratorDiagnostics(
           });
         }
       }
+
+      // 6–8. DTO property diagnostics (BUNEST_DEC006, BUNEST_DEC007, BUNEST_DEC008)
+      const isSchemaClass = classDecByName.has("Schema");
+      const isNonDtoClass = [...classDecByName.keys()].some((name) =>
+        NON_DTO_CLASS_DECORATORS.has(name),
+      );
+      for (const prop of cls.getProperties()) {
+        if (prop.isStatic()) continue;
+        const propDecs = resolveComposedDecorators(prop);
+        if (propDecs.length === 0) continue;
+
+        const propName = prop.getName();
+        const propEntries = isSchemaClass
+          ? []
+          : propDecs.filter((d) => d.name === "Prop");
+        const propEntry = propEntries[0];
+        const hasValidationDec = propDecs.some(
+          (d) =>
+            DTO_ALL_VALIDATORS.has(d.name) &&
+            !(isSchemaClass && d.name === "Prop"),
+        );
+        const hasPropOptional = propEntries.some(
+          (entry) => getOptionBooleanValue(entry, "optional") === true,
+        );
+        const hasOptionalGuard =
+          hasPropOptional ||
+          propDecs.some(
+            (d) => d.name === "IsOptional" || d.name === "ValidateIf",
+          );
+        const propInitializer = prop.getInitializer();
+        const hasDefaultInitializer =
+          propInitializer !== undefined &&
+          propInitializer.getKind() !== SyntaxKind.UndefinedKeyword &&
+          propInitializer.getKind() !== SyntaxKind.NullKeyword &&
+          propInitializer.getText().trim() !== "undefined" &&
+          propInitializer.getText().trim() !== "null";
+        const hasPropCoerceOrTransform = propEntries.some(
+          (entry) =>
+            getOptionBooleanValue(entry, "coerce") === true ||
+            hasDefinedOption(entry, "type") ||
+            hasDefinedOption(entry, "transform"),
+        );
+        const hasTransformOrType =
+          propDecs.some((d) => d.name === "Type" || d.name === "Transform") ||
+          hasPropCoerceOrTransform;
+
+        // BUNEST_DEC006: Optional TS property (`foo?: T`) with validator(s) but missing @IsOptional()
+        if (
+          !isNonDtoClass &&
+          hasValidationDec &&
+          prop.hasQuestionToken() &&
+          !hasDefaultInitializer &&
+          !hasOptionalGuard
+        ) {
+          diagnostics.push({
+            code: "BUNEST_DEC006",
+            severity: "warning",
+            message: `Optional DTO property "${className}.${propName}?" has validation decorator(s) without @IsOptional() (or @Prop({ optional: true })). ValidationPipe will reject requests omitting "${propName}" with HTTP 400.`,
+            location: nodeToLocation(prop.getNameNode()),
+            suggestion: propEntry
+              ? `Add \`optional: true\` to @Prop({ ... }) on "${className}.${propName}".`
+              : `Add @IsOptional() to "${className}.${propName}".`,
+          });
+        }
+
+        // BUNEST_DEC007: Validator decorator conflicts with static TypeScript primitive/array type
+        const rawTypeText = prop.getTypeNode()?.getText().trim();
+        const nonNullParts = rawTypeText ? splitTopLevelUnion(rawTypeText) : [];
+        const isArrayType =
+          nonNullParts.length > 0 &&
+          nonNullParts.every((p) => unwrapArrayElementType(p) !== undefined);
+        const arrayElementBranches = isArrayType
+          ? nonNullParts.flatMap((p) => {
+              const inner = unwrapArrayElementType(p);
+              return inner ? splitTopLevelUnion(inner) : [];
+            })
+          : [];
+
+        const checkTypeConflict = (
+          dec: ResolvedDecoratorEntry,
+          decoratorLabel: string,
+          expectedKind: "string" | "number" | "boolean" | "Date",
+          conflictSet: ReadonlySet<string>,
+          isEach: boolean,
+        ): void => {
+          if (!rawTypeText || nonNullParts.length === 0) return;
+          if (hasTransformOrType) return;
+
+          if (isEach) {
+            if (!isArrayType) return;
+            const elemConflict = findPrimitiveConflict(
+              arrayElementBranches,
+              conflictSet,
+            );
+            if (elemConflict) {
+              diagnostics.push({
+                code: "BUNEST_DEC007",
+                severity: "error",
+                message: `Decorator ${decoratorLabel} on "${className}.${propName}: ${rawTypeText}" expects ${expectedKind} elements, which conflicts with array element type "${elemConflict}".`,
+                location: nodeToLocation(dec.sourceDecorator),
+                suggestion:
+                  expectedKind === "Date"
+                    ? `Change the array element type to \`Date\` (with @Type(() => Date) for JSON inputs) or use @IsDateString({ each: true }) for ISO strings.`
+                    : `Change the array element type to \`${expectedKind}\` or replace ${decoratorLabel} with a validator matching \`${elemConflict}\`.`,
+              });
+            }
+            return;
+          }
+
+          if (isArrayType) {
+            diagnostics.push({
+              code: "BUNEST_DEC007",
+              severity: "error",
+              message: `Decorator ${decoratorLabel} on "${className}.${propName}: ${rawTypeText}" expects a ${expectedKind}, which conflicts with array type "${rawTypeText}".`,
+              location: nodeToLocation(dec.sourceDecorator),
+              suggestion: `Pass \`{ each: true }\` to validate array elements, or change the property type to \`${expectedKind}\`.`,
+            });
+            return;
+          }
+
+          const conflict = findPrimitiveConflict(nonNullParts, conflictSet);
+          if (conflict) {
+            diagnostics.push({
+              code: "BUNEST_DEC007",
+              severity: "error",
+              message: `Decorator ${decoratorLabel} on "${className}.${propName}: ${rawTypeText}" expects a ${expectedKind}, which conflicts with TypeScript type "${conflict}".`,
+              location: nodeToLocation(dec.sourceDecorator),
+              suggestion:
+                expectedKind === "Date"
+                  ? `Change the property type to \`Date\` (with @Type(() => Date) for JSON inputs) or use @IsDateString() for ISO strings.`
+                  : `Change the property type to \`${expectedKind}\` or replace ${decoratorLabel} with a validator matching \`${conflict}\`.`,
+            });
+          }
+        };
+
+        if (rawTypeText && nonNullParts.length > 0) {
+          for (const dec of propDecs) {
+            if (dec.name === "Prop") {
+              if (isSchemaClass) continue;
+              const isEach = getOptionBooleanValue(dec, "each") === true;
+              const propExpectsString =
+                getOptionBooleanValue(dec, "string") === true ||
+                getOptionBooleanValue(dec, "email") === true ||
+                getOptionBooleanValue(dec, "url") === true ||
+                hasDefinedOption(dec, "uuid") ||
+                hasDefinedOption(dec, "minLength") ||
+                hasDefinedOption(dec, "maxLength") ||
+                hasDefinedOption(dec, "matches");
+              const propExpectsNumber =
+                getOptionBooleanValue(dec, "int") === true ||
+                getOptionBooleanValue(dec, "number") === true ||
+                hasDefinedOption(dec, "min") ||
+                hasDefinedOption(dec, "max") ||
+                getOptionBooleanValue(dec, "positive") === true ||
+                getOptionBooleanValue(dec, "negative") === true;
+              const propExpectsBoolean =
+                getOptionBooleanValue(dec, "boolean") === true;
+              const propExpectsDate =
+                getOptionBooleanValue(dec, "date") === true;
+
+              if (propExpectsString) {
+                checkTypeConflict(
+                  dec,
+                  "@Prop(...)",
+                  "string",
+                  CONFLICTING_FOR_STRING,
+                  isEach,
+                );
+              }
+              if (propExpectsNumber) {
+                checkTypeConflict(
+                  dec,
+                  "@Prop(...)",
+                  "number",
+                  CONFLICTING_FOR_NUMBER,
+                  isEach,
+                );
+              }
+              if (propExpectsBoolean) {
+                checkTypeConflict(
+                  dec,
+                  "@Prop(...)",
+                  "boolean",
+                  CONFLICTING_FOR_BOOLEAN,
+                  isEach,
+                );
+              }
+              if (propExpectsDate) {
+                checkTypeConflict(
+                  dec,
+                  "@Prop(...)",
+                  "Date",
+                  CONFLICTING_FOR_DATE,
+                  isEach,
+                );
+              }
+              continue;
+            }
+
+            const isEach = getOptionBooleanValue(dec, "each") === true;
+            if (DTO_STRING_VALIDATORS.has(dec.name)) {
+              checkTypeConflict(
+                dec,
+                `@${dec.name}()`,
+                "string",
+                CONFLICTING_FOR_STRING,
+                isEach,
+              );
+            } else if (DTO_NUMBER_VALIDATORS.has(dec.name)) {
+              checkTypeConflict(
+                dec,
+                `@${dec.name}()`,
+                "number",
+                CONFLICTING_FOR_NUMBER,
+                isEach,
+              );
+            } else if (DTO_BOOLEAN_VALIDATORS.has(dec.name)) {
+              checkTypeConflict(
+                dec,
+                `@${dec.name}()`,
+                "boolean",
+                CONFLICTING_FOR_BOOLEAN,
+                isEach,
+              );
+            } else if (DTO_DATE_VALIDATORS.has(dec.name)) {
+              checkTypeConflict(
+                dec,
+                `@${dec.name}()`,
+                "Date",
+                CONFLICTING_FOR_DATE,
+                isEach,
+              );
+            }
+          }
+        }
+
+        // BUNEST_DEC008: @ValidateNested({ each: true }) or @Prop({ nested: true, each: true }) missing element type resolver
+        const nestedDec = propDecs.find((d) => d.name === "ValidateNested");
+        if (nestedDec) {
+          const hasEachTrue = getOptionBooleanValue(nestedDec, "each") === true;
+          const hasInlineType = hasDefinedOption(nestedDec, "type");
+          if (
+            (hasEachTrue || isArrayType) &&
+            !hasInlineType &&
+            !hasTransformOrType
+          ) {
+            diagnostics.push({
+              code: "BUNEST_DEC008",
+              severity: "warning",
+              message: hasEachTrue
+                ? `Property "${className}.${propName}" uses @ValidateNested({ each: true }) without a nested element type resolver. TypeScript emits \`Array\` in \`design:type\`, so ValidationPipe cannot instantiate array elements into DTO classes.`
+                : `Array property "${className}.${propName}" uses @ValidateNested() without \`each: true\` and a nested element type resolver. TypeScript emits \`Array\` in \`design:type\`, so ValidationPipe cannot instantiate array elements into DTO classes.`,
+              location: nodeToLocation(nestedDec.sourceDecorator),
+              suggestion: `Pass \`type: () => ElementDto\` to @ValidateNested({ each: true, type: () => ElementDto }) or attach @Type(() => ElementDto).`,
+            });
+          }
+        } else if (propEntry) {
+          const nestedIsTrue =
+            getOptionBooleanValue(propEntry, "nested") === true;
+          const hasPropEachOrArray =
+            getOptionBooleanValue(propEntry, "each") === true ||
+            getOptionBooleanValue(propEntry, "array") === true ||
+            isArrayType;
+          const hasPropType = hasDefinedOption(propEntry, "type");
+          if (
+            nestedIsTrue &&
+            hasPropEachOrArray &&
+            !hasPropType &&
+            !hasTransformOrType
+          ) {
+            diagnostics.push({
+              code: "BUNEST_DEC008",
+              severity: "warning",
+              message: `Property "${className}.${propName}" uses @Prop({ nested: true }) on an array without a nested element type resolver. TypeScript emits \`Array\` in \`design:type\`, so ValidationPipe cannot instantiate array elements into DTO classes.`,
+              location: nodeToLocation(propEntry.sourceDecorator),
+              suggestion: `Pass \`nested: () => ElementDto\` or \`type: () => ElementDto\` to @Prop({ ... }), or attach @Type(() => ElementDto).`,
+            });
+          }
+        }
+      }
+
+      // 9. BUNEST_DEC009: Non-nullable @CurrentUser() on a @Public(), optional-auth, or unguarded HTTP route
+      if (classDecByName.has("Controller")) {
+        const classHasPublic = classDecByName.has("Public");
+        const classHasRequiredAuth = resolvedClassDecs.some(
+          (entry) =>
+            AUTH_PROTECTION_DECORATORS.has(entry.name) &&
+            !isOptionalAuthDecorator(entry),
+        );
+        const classHasOptionalAuth =
+          !classHasRequiredAuth &&
+          resolvedClassDecs.some((entry) => isOptionalAuthDecorator(entry));
+
+        for (const method of cls.getMethods()) {
+          const methodDecs = resolveComposedDecorators(method);
+          const methodDecNames = new Set(methodDecs.map((d) => d.name));
+          const isHttpRoute = [...methodDecNames].some((name) =>
+            HTTP_ROUTE_DECORATORS.has(name),
+          );
+          if (!isHttpRoute) continue;
+
+          const methodHasPublic = methodDecNames.has("Public");
+          const methodHasRequiredAuth = methodDecs.some(
+            (entry) =>
+              AUTH_PROTECTION_DECORATORS.has(entry.name) &&
+              !isOptionalAuthDecorator(entry),
+          );
+          const methodHasOptionalAuth =
+            !methodHasRequiredAuth &&
+            methodDecs.some((entry) => isOptionalAuthDecorator(entry));
+          const effectivelyPublic =
+            methodHasPublic || (classHasPublic && !methodHasRequiredAuth);
+          const effectivelyOptionalAuth =
+            methodHasOptionalAuth ||
+            (classHasOptionalAuth && !methodHasRequiredAuth);
+
+          for (const param of method.getParameters()) {
+            const userDec = param
+              .getDecorators()
+              .find((d) => CURRENT_USER_PARAM_DECORATORS.has(d.getName()));
+            if (!userDec) continue;
+
+            if (
+              param.hasQuestionToken() ||
+              param.hasInitializer() ||
+              isNullableParamType(param.getTypeNode()?.getText())
+            ) {
+              continue;
+            }
+
+            const paramName = param.getName();
+            if (effectivelyPublic) {
+              diagnostics.push({
+                code: "BUNEST_DEC009",
+                severity: "warning",
+                message: `Non-nullable @${userDec.getName()}() parameter "${paramName}" on @Public() route "${className}.${method.getName()}()" will receive \`null\`/\`undefined\` at runtime.`,
+                location: nodeToLocation(userDec),
+                suggestion: `Make "${paramName}" optional/nullable (\`${paramName}?: User | null\`) or remove @Public() from this route.`,
+              });
+            } else if (effectivelyOptionalAuth) {
+              diagnostics.push({
+                code: "BUNEST_DEC009",
+                severity: "warning",
+                message: `Non-nullable @${userDec.getName()}() parameter "${paramName}" on @Authenticate({ optional: true }) route "${className}.${method.getName()}()" will receive \`null\`/\`undefined\` for unauthenticated requests.`,
+                location: nodeToLocation(userDec),
+                suggestion: `Make "${paramName}" optional/nullable (\`${paramName}?: User | null\`) or require authentication on this route.`,
+              });
+            } else if (
+              !hasGlobalAuthGuard &&
+              !classHasRequiredAuth &&
+              !methodHasRequiredAuth
+            ) {
+              diagnostics.push({
+                code: "BUNEST_DEC009",
+                severity: "warning",
+                message: `@${userDec.getName()}() parameter "${paramName}" on "${className}.${method.getName()}()" has no @UseGuards(...) / @Authenticate() on the route or controller and no global APP_GUARD in the project.`,
+                location: nodeToLocation(userDec),
+                suggestion: `Add @UseGuards(JwtAuthGuard) / @Authenticate() to "${className}.${method.getName()}()", register a global APP_GUARD, or type "${paramName}" as nullable.`,
+              });
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1199,7 +1848,7 @@ export interface AnalyzeProjectDiagnosticsOptions {
  * - Core (`BUNEST001`–`BUNEST011`)
  * - Declarative Repositories (`BUNEST_REPO001`–`BUNEST_REPO007`)
  * - Class Macros (`BUNEST_MACRO001`–`BUNEST_MACRO005`)
- * - Decorator Semantics & Safety (`BUNEST_DEC001`–`BUNEST_DEC005`)
+ * - Decorator Semantics & Safety (`BUNEST_DEC001`–`BUNEST_DEC008`)
  * - Custom Architecture & Project Rules (`BUNEST_ARCH001`–`BUNEST_ARCH002`, user rules from `bunest.config.ts`)
  */
 export function runAllBunestDiagnostics(

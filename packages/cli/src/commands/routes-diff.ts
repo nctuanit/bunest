@@ -1,4 +1,11 @@
 import {
+  cond,
+  isArray,
+  isBoolean,
+  isObject,
+  isString,
+} from "@bunest/core/common";
+import {
   dirname,
   existsSyncPath,
   mkdirSyncPath,
@@ -561,34 +568,39 @@ export function diffRouteManifests(
   };
 }
 
+const firstString = (...values: unknown[]): string | undefined =>
+  values.find(isString);
+
+const firstBoolean = (...values: unknown[]): boolean | undefined =>
+  values.find(isBoolean);
+
 function extractBodyPayloadFromRawRoute(
   rec: Record<string, unknown>,
 ): BodyContractPayload | undefined {
   const rawBody = rec.body;
-  if (rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)) {
+  if (isObject(rawBody)) {
     return rawBody as BodyContractPayload;
   }
   if (
-    Array.isArray(rec.fields) ||
-    Array.isArray(rec.unsupportedReasons) ||
-    typeof rec.dtoName === "string"
+    isArray(rec.fields) ||
+    isArray(rec.unsupportedReasons) ||
+    isString(rec.dtoName)
   ) {
     return {
-      ...(typeof rec.dtoName === "string" ? { dtoName: rec.dtoName } : {}),
-      ...(typeof rec.dtoSourceFile === "string"
+      ...(isString(rec.dtoName) ? { dtoName: rec.dtoName } : {}),
+      ...(isString(rec.dtoSourceFile)
         ? { dtoSourceFile: rec.dtoSourceFile }
         : {}),
-      ...(rec.dtoLocation &&
-      typeof rec.dtoLocation === "object" &&
-      !Array.isArray(rec.dtoLocation)
+      ...(isObject(rec.dtoLocation)
         ? {
-            dtoLocation: rec.dtoLocation as BodyContractPayload["dtoLocation"],
+            dtoLocation:
+              rec.dtoLocation as unknown as BodyContractPayload["dtoLocation"],
           }
         : {}),
-      ...(Array.isArray(rec.fields)
+      ...(isArray(rec.fields)
         ? { fields: rec.fields as BodyContractPayload["fields"] }
         : {}),
-      ...(Array.isArray(rec.unsupportedReasons)
+      ...(isArray(rec.unsupportedReasons)
         ? {
             unsupportedReasons:
               rec.unsupportedReasons as BodyContractPayload["unsupportedReasons"],
@@ -608,13 +620,16 @@ interface ParsedRouteManifestDocument {
 function parseRouteManifestEntriesFromParsed(
   parsed: unknown,
 ): RouteManifestEntry[] {
-  const rawList = Array.isArray(parsed)
-    ? parsed
-    : parsed &&
-        typeof parsed === "object" &&
-        Array.isArray((parsed as { routes?: unknown }).routes)
-      ? (parsed as { routes: unknown[] }).routes
-      : null;
+  const rawList = cond<unknown[], null>(
+    [
+      [isArray(parsed), () => parsed as unknown[]],
+      [
+        isObject(parsed) && isArray(parsed.routes),
+        () => (parsed as { routes: unknown[] }).routes,
+      ],
+    ],
+    null,
+  );
 
   if (!rawList) {
     throw new Error(
@@ -629,25 +644,14 @@ function parseRouteManifestEntriesFromParsed(
       throw new Error(`Invalid route entry at index ${i}: expected an object.`);
     }
     const rec = item as Record<string, unknown>;
-    if (typeof rec.method !== "string" || typeof rec.path !== "string") {
+    if (!isString(rec.method) || !isString(rec.path)) {
       throw new Error(
         `Invalid route entry at index ${i}: "method" and "path" must be strings.`,
       );
     }
-    const controller =
-      typeof rec.controller === "string"
-        ? rec.controller
-        : typeof rec.controllerName === "string"
-          ? rec.controllerName
-          : undefined;
-    const handler =
-      typeof rec.handler === "string"
-        ? rec.handler
-        : typeof rec.handlerName === "string"
-          ? rec.handlerName
-          : undefined;
-    const sourceFile =
-      typeof rec.sourceFile === "string" ? rec.sourceFile : undefined;
+    const controller = firstString(rec.controller, rec.controllerName);
+    const handler = firstString(rec.handler, rec.handlerName);
+    const sourceFile = isString(rec.sourceFile) ? rec.sourceFile : undefined;
     const body = extractBodyPayloadFromRawRoute(rec);
 
     if (Array.isArray(rec.version)) {
@@ -839,29 +843,22 @@ function attachBodyContractsToRoutes(
 }
 
 function mapPipeProfile(raw: unknown): PipeProfileInfo | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isObject(raw)) {
     return undefined;
   }
-  const rec = raw as Record<string, unknown>;
-  const name =
-    typeof rec.name === "string"
-      ? rec.name
-      : typeof rec.label === "string"
-        ? rec.label
-        : undefined;
-  const validationPipeApplied =
-    typeof rec.validationPipeApplied === "boolean"
-      ? rec.validationPipeApplied
-      : typeof rec.applied === "boolean"
-        ? rec.applied
-        : undefined;
+  const rec = raw;
+  const name = firstString(rec.name, rec.label);
+  const validationPipeApplied = firstBoolean(
+    rec.validationPipeApplied,
+    rec.applied,
+  );
   return {
     ...(name !== undefined ? { name } : {}),
-    ...(typeof rec.whitelist === "boolean" ? { whitelist: rec.whitelist } : {}),
-    ...(typeof rec.forbidNonWhitelisted === "boolean"
+    ...(isBoolean(rec.whitelist) ? { whitelist: rec.whitelist } : {}),
+    ...(isBoolean(rec.forbidNonWhitelisted)
       ? { forbidNonWhitelisted: rec.forbidNonWhitelisted }
       : {}),
-    ...(typeof rec.transform === "boolean" ? { transform: rec.transform } : {}),
+    ...(isBoolean(rec.transform) ? { transform: rec.transform } : {}),
     ...(validationPipeApplied !== undefined ? { validationPipeApplied } : {}),
   };
 }
@@ -883,18 +880,16 @@ interface ParsedEvidenceFile {
 
 function parseReplayEvidenceJson(rawJson: string): ParsedEvidenceFile {
   const parsed: unknown = JSON.parse(rawJson);
-  const envelope =
-    parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined;
+  const envelope = isObject(parsed) ? parsed : undefined;
 
-  const rawList = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(envelope?.records)
-      ? envelope.records
-      : Array.isArray(envelope?.evidence)
-        ? envelope.evidence
-        : null;
+  const rawList = cond<unknown[], null>(
+    [
+      [isArray(parsed), () => parsed as unknown[]],
+      [isArray(envelope?.records), () => envelope!.records as unknown[]],
+      [isArray(envelope?.evidence), () => envelope!.evidence as unknown[]],
+    ],
+    null,
+  );
 
   if (!rawList) {
     throw new Error(
@@ -1013,12 +1008,16 @@ function parseReplayEvidenceJson(rawJson: string): ParsedEvidenceFile {
     });
   }
 
-  const mergedSamples =
-    envelopeSampleValues !== undefined
-      ? { ...inferredSamples, ...envelopeSampleValues }
-      : Object.keys(inferredSamples).length > 0
-        ? inferredSamples
-        : undefined;
+  const mergedSamples = cond<Record<string, unknown>, undefined>(
+    [
+      [
+        envelopeSampleValues !== undefined,
+        () => ({ ...inferredSamples, ...envelopeSampleValues }),
+      ],
+      [Object.keys(inferredSamples).length > 0, inferredSamples],
+    ],
+    undefined,
+  );
 
   return {
     records,
@@ -1180,9 +1179,13 @@ export function formatRoutesDiffReport(
     if (report.unknowns.length > 0) {
       lines.push("", `Unknown / Dynamic Routes (${report.unknowns.length}):`);
       for (const u of report.unknowns) {
-        const loc = u.location
-          ? ` (${(cwd ? relative(cwd, u.location.filePath) : u.location.filePath).replace(/\\/g, "/")}:${u.location.line}:${u.location.column})`
-          : "";
+        let loc = "";
+        if (u.location) {
+          const displayPath = (
+            cwd ? relative(cwd, u.location.filePath) : u.location.filePath
+          ).replace(/\\/g, "/");
+          loc = ` (${displayPath}:${u.location.line}:${u.location.column})`;
+        }
         lines.push(`  ? [${u.kind}] ${u.reason}${loc}`);
       }
     }

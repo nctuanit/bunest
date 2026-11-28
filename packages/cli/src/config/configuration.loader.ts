@@ -97,6 +97,24 @@ export interface CompilerOptions {
   emitDeclarations?: boolean;
   bundleDependencies?: boolean | BundleDependenciesOptions;
   includeLibraryAssets?: string[];
+  /**
+   * Additional Bun Worker entrypoint paths/globs included in `bunest build` & `--compile`.
+   */
+  workers?: string[];
+  /**
+   * Auto-discover `**\/*.worker.{ts,js,mts,mjs}` files under `sourceRoot`.
+   * @default true
+   */
+  autoDiscoverWorkers?: boolean;
+  /**
+   * Additional OS-level Bun Cron entrypoint paths/globs included in `bunest build` & `--compile`.
+   */
+  crons?: string[];
+  /**
+   * Auto-discover `**\/*.cron.{ts,js,mts,mjs}` files under `sourceRoot`.
+   * @default true
+   */
+  autoDiscoverCrons?: boolean;
 }
 
 export interface GenerateOptions {
