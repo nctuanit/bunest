@@ -1,10 +1,10 @@
 # Bunest Release & Operations Templates
 
-Ready-to-use operational templates aligned with [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) (Sections 8, 10, 11, and 12) and [`docs/production-preview.md`](./production-preview.md).
+Ready-to-use operational templates aligned with [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) (Sections 8, 10, 11, and 12) and [`docs/production-preview.md`](./production-preview.md).
 
 **Related references:**
 - Production runbook & Go/No-Go gates: [`docs/production-preview.md`](./production-preview.md)
-- 8-week & `1.0` development plan: [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md)
+- 8-week & `1.0` development plan: [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md)
 - Support tiers & versioning policy: [`docs/support-policy.md`](./support-policy.md)
 - 19-package public API inventory: [`docs/public-api-matrix.md`](./public-api-matrix.md)
 - `0.1.x` baseline report: [`docs/baseline-0.1.x-report.md`](./baseline-0.1.x-report.md)

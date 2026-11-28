@@ -72,13 +72,13 @@ Security vulnerabilities are handled privately per [`SECURITY.md`](../SECURITY.m
 | **Low** | `0.1 – 3.9` (e.g., defense-in-depth hardening, low-impact edge cases) | Within **5 business days** | Within **10 business days** | Next regular patch or minor release | Current major line; LTS evaluated case-by-case |
 
 - **Pre-`1.0` (`0.x`) backports**: Security fixes are released immediately as patches on the latest active `0.x` minor line (e.g., `0.1.x`, then `0.2.x`) and published to npm with `--provenance`. Older `0.x` minor lines do not receive backports.
-- **Non-security P0/P1 regressions**: Data-loss, transaction corruption, broken clean install, broken public imports, or failed in-place patch upgrades block release promotion until fixed, regression-tested, and re-verified on staging (see [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §5).
+- **Non-security P0/P1 regressions**: Data-loss, transaction corruption, broken clean install, broken public imports, or failed in-place patch upgrades block release promotion until fixed, regression-tested, and re-verified on staging (see [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §5).
 
 ---
 
 ## 5. 2-Consecutive-Version Upgrade Verification Policy
 
-To ensure real users can upgrade safely across releases without hidden export, metadata, validation, or migration regressions, every minor release (`0.2.0+`) and `1.0` Release Candidate must pass **2-consecutive-version upgrade verification** before release sign-off (aligned with [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §6, §9 Week 15, and §10).
+To ensure real users can upgrade safely across releases without hidden export, metadata, validation, or migration regressions, every minor release (`0.2.0+`) and `1.0` Release Candidate must pass **2-consecutive-version upgrade verification** before release sign-off (aligned with [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §6, §9 Week 15, and §10).
 
 ### 5.1 Required Upgrade Chains
 
@@ -87,7 +87,7 @@ To ensure real users can upgrade safely across releases without hidden export, m
 - **`1.0` GA Gate (`1.0.0`)**: Upgrade both Pilot A (greenfield REST API) and Pilot B (NestJS-migrated module) sequentially across two consecutive transitions, e.g.:
   `0.1.x` → `0.2.x` → `1.0.0-rc.*` (and `1.0.0-rc.*` → `1.0.0` upon final publish)
 
-### 5.2 Real-Published-Artifact Provenance Rule ([`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §10)
+### 5.2 Real-Published-Artifact Provenance Rule ([Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §10)
 
 > **Rule:** Same-checkout local tarball runs are **necessary for CI packaging checks, but never sufficient for release compatibility sign-off**.
 

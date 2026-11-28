@@ -261,7 +261,11 @@ export function extractPackageJsonFromTgz(
 ): Record<string, unknown> {
   let tarBytes: Uint8Array;
   try {
-    tarBytes = Bun.gunzipSync(tgzBytes);
+    const gunzipInput =
+      tgzBytes.buffer instanceof ArrayBuffer
+        ? (tgzBytes as Uint8Array<ArrayBuffer>)
+        : new Uint8Array(tgzBytes);
+    tarBytes = Bun.gunzipSync(gunzipInput);
   } catch (err) {
     throw new Error(
       `Failed to gunzip tarball "${tarballPath}": ${err instanceof Error ? err.message : String(err)}`,

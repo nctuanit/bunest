@@ -22,6 +22,13 @@ import {
   InvalidRouteException,
 } from "../packages/core/src/http";
 import {
+  WorkerPoolSaturatedException,
+  WorkerSpawnException,
+  WorkerTaskNotFoundException,
+  WorkerTerminatedException,
+  WorkerTimeoutException,
+} from "../packages/jobs/src/workers";
+import {
   parseTestOutput,
   parseTypecheckOutput,
   runVerifyCommand,
@@ -53,6 +60,11 @@ describe("AI-first: error catalog", () => {
     ],
     [new InvalidControllerException("C"), "BUNEST_E102"],
     [new InvalidRouteException("bad"), "BUNEST_E103"],
+    [new WorkerSpawnException("failed to spawn"), "BUNEST_E201"],
+    [new WorkerTimeoutException("hash", 5000, "crypto"), "BUNEST_E202"],
+    [new WorkerPoolSaturatedException("crypto", 1024), "BUNEST_E203"],
+    [new WorkerTerminatedException("terminated"), "BUNEST_E204"],
+    [new WorkerTaskNotFoundException("missing", ["hash"]), "BUNEST_E205"],
   ];
 
   it("every exception carries its stable code and the catalog names match", () => {

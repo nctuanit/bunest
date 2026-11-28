@@ -15,25 +15,28 @@ bunx @bunest/cli --help
 | Command                                    | Description                                                                                                                        |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `bunest new <name>`                        | Scaffold a new Bunest TypeScript project (`--preset default\|rest-sqlite`) with `tsconfig.json`, `@bunest/validation`, and `bun:test` |
-| `bunest generate <schematic> <name>` (`g`) | Generate controllers, services, modules, DTOs, guards, pipes, interceptors, filters, middleware, endpoints, or CRUD resources (`--with-scenario`) |
+| `bunest generate <schematic> <name>` (`g`) | Generate controllers, services, modules, workers (`worker`/`w`), DTOs, guards, pipes, interceptors, filters, middleware, endpoints, or CRUD resources (`--with-scenario`) |
 | `bunest dev`                               | Run your application in Bun watch mode (`--port`, `--entry`) with live `.d.ts` typegen                                             |
-| `bunest build`                             | Bundle your application (`Bun.build()` ESM or `--compile` standalone binary; `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
+| `bunest build`                             | Bundle your application (`Bun.build()` ESM or `--compile [--bytecode]` standalone binary; `--archive` `.tar.gz` via `Bun.Archive`, `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
+| `bunest deploy`                            | Package and deploy your build output (supports `--archive` `.tar.gz` bundle via `Bun.Archive`)                                     |
+| `bunest cron <parse\|register\|remove\|run>` | Preview schedules via `Bun.cron.parse()`, register/remove OS cron jobs (`Bun.cron`), or execute a scheduled module locally         |
 | `bunest typegen`                           | Scan routes, DI tokens, and ecosystem registries into `.bunest/types/bunest.d.ts`                                                  |
 | `bunest check`                             | Run static DI, ORM derived-query, and custom architecture diagnostics (`BUNEST_ARCH*`)                                             |
 | `bunest verify`                            | Run `typecheck -> static check -> test` in one compact report (`--reporter=agent\|pretty\|json`, `--affected`, `--require-tests`)  |
-| `bunest explain <route\|error>`            | Trace a route's module, pipeline, and DI graph (`explain route`), or look up any `BUNEST_E*` code (`explain error`)                |
+| `bunest explain <route\|error>`            | Trace a route's module, pipeline, and DI graph (`explain route --open` via `Bun.openInEditor`), or look up any `BUNEST_E*` code (`explain error --format ansi` via `Bun.markdown.ansi`) |
 | `bunest routes [snapshot\|diff]`           | List HTTP routes, emit route/DTO body contract snapshots (`--body`), and diff breaking changes (`diff --base`, `--evidence`)       |
 | `bunest test-from-request <file>`          | Generate sanitized regression tests from `.http` or scenario JSON files                                                            |
 | `bunest mcp`                               | Start a zero-dependency stdio MCP server exposing `bunest_verify`, `bunest_explain_error`, `bunest_recent_errors`, and diagnostics |
 | `bunest repl`                              | Start an interactive DI REPL against your compiled `AppModule`                                                                     |
-| `bunest info`                              | Print Bunest, Bun runtime, resolved `@bunest/*` versions, and OS environment diagnostics                                           |
+| `bunest info`                              | Print Bunest, Bun runtime (`Bun.semver` `engines.bun` check), resolved `@bunest/*` versions (`--format table` via `Bun.inspect.table`), and OS environment diagnostics |
 
 ## Build Modes (`bunest build`)
 
 | Mode | Command | Output |
 | --- | --- | --- |
 | **ESM Bundle (default)** | `bunest build --target bun\|node\|browser --sourcemap none\|linked\|inline\|external --minify` | Bundles `dist/*.js` via `Bun.build({ format: "esm" })`, copies configured `assets`, and optionally emits `.d.ts` declarations |
-| **Standalone Native Binary** | `bunest build --compile --minify` | Compiles a single self-contained executable (`dist/main` or `dist/main.exe`) via `bun build --compile` |
+| **Standalone Native Binary** | `bunest build --compile --minify --bytecode` | Compiles a single self-contained executable (`dist/main` or `dist/main.exe`) via `bun build --compile` with optional `--bytecode` pre-compilation for faster cold starts |
+| **Release Archive (`.tar.gz`)** | `bunest build --archive` (or `bunest deploy --archive`) | Packs the built output directory into a zero-dep `.tar.gz` archive via `Bun.Archive` |
 | **Watch Mode** | `bunest build --watch` | Rebuilds automatically on source changes |
 
 ## AI Agent Integration (`bunest mcp` & `bunest verify`)
@@ -147,7 +150,7 @@ Extend `bunest typegen` with **`defineTypegenPlugin()`** (`{ name, target?, scan
 
 | Plugin Export | Target | Scans | Emitted Ambient Registry |
 | --- | --- | --- | --- |
-| `i18nTypegenPlugin` | `i18n` | `locales/**/*` & `i18n/**/*` (`.json`, `.jsonc`, `.yaml`, `.yml`, `.toml`) via `Bun.Glob` + `Bun.JSONC`/`Bun.YAML`/`Bun.TOML` | `@bunest/core/i18n` → `BunestI18nRegistry` (dot-keys + `{{param}}` placeholders) |
+| `i18nTypegenPlugin` | `i18n` | `locales/**/*` & `i18n/**/*` (`.json`, `.jsonc`, `.json5`, `.yaml`, `.yml`, `.toml`) via `Bun.Glob` + `Bun.JSONC`/`Bun.JSON5`/`Bun.YAML`/`Bun.TOML` | `@bunest/core/i18n` → `BunestI18nRegistry` (dot-keys + `{{param}}` placeholders) |
 | `jobsTypegenPlugin` | `jobs` | `@Processor`, `@Queue`, `@Process` decorators | `@bunest/jobs` → `BunestQueueRegistry` |
 | `workflowsTypegenPlugin` | `workflows` | `@Workflow`, `defineWorkflow({ name })` | `@bunest/workflows` → `BunestWorkflowRegistry` |
 | `authzTypegenPlugin` | `authz` | `@CheckPolicies` | `@bunest/security/authz` → `BunestPermissionRegistry` |

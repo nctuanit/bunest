@@ -14,7 +14,7 @@ This directory contains the authoritative architectural contracts for **Bunest**
 
 | ADR                     | Decision                                                                                                                              | Status   | Date       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------- |
-| [ADR-001](./ADR-001.md) | Bun-Only Runtime (`>= 1.4.3`, zero Express/Fastify/Node HTTP in core)                                                                 | Accepted | 2026-11-20 |
+| [ADR-001](./ADR-001.md) | Bun-Only Runtime (`>= 1.4.3` initial baseline; raised to `>= 1.4.5` by [ADR-016](./ADR-016.md), zero Express/Fastify/Node HTTP in core) | Accepted | 2026-11-20 |
 | [ADR-002](./ADR-002.md) | Legacy TypeScript Decorators (`experimentalDecorators`, `emitDecoratorMetadata`, `verbatimModuleSyntax: true` + value-import classes) | Accepted | 2026-11-20 |
 
 ### Routing & Parameter Binding
@@ -47,6 +47,8 @@ This directory contains the authoritative architectural contracts for **Bunest**
 | [ADR-016](./ADR-016.md) | 37 → 19 Package Consolidation (6 Domains, ESM Subpath Exports) & Bun 1.4.5 Native API Alignment                                 | Accepted | 2026-11-22 |
 | [ADR-017](./ADR-017.md) | Zero External Runtime Dependencies (19/19 Packages) & Repo-Wide 2-Adapter `node:*` Kernel Quarantine                            | Accepted (Completed) | 2026-11-23 |
 | [ADR-018](./ADR-018.md) | Customizable Magic Architecture: Unified `Bun.plugin`, Extensible Macros, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, Conditional `@AutoModule` | Accepted | 2026-11-23 |
+| [ADR-019](./ADR-019.md) | Native Bun Workers Integration (`@bunest/jobs/workers`, Zero `node:worker_threads`, Sandboxed Queues, AOP `@Offload`, CLI Bundling & `reusePort` Clustering) | Accepted | 2026-11-28 |
+| [ADR-020](./ADR-020.md) | Full Bun 1.4.5 Native Runtime API Alignment (`Bun.serve` Hot Paths, `Bun.Cookie`, Async Zstd, `Bun.JSONL`/`JSON5`, `Bun.Image`, `Bun.Archive`, `Bun.markdown`, `Bun.FetchSession`, `bun:jsc`, `Bun.secrets`, `Bun.udpSocket`) | Accepted | 2026-11-28 |
 
 ---
 

@@ -15,25 +15,28 @@ bunx @bunest/cli --help
 | Lệnh | Mô tả |
 | --- | --- |
 | `bunest new <name>` | Khởi tạo dự án Bunest TypeScript mới (`--preset default\|rest-sqlite`) kèm `tsconfig.json`, `@bunest/validation` và `bun:test` |
-| `bunest generate <schematic> <name>` (`g`) | Sinh controller, service, module, DTO, guard, pipe, interceptor, filter, middleware, endpoint hoặc CRUD resource (`--with-scenario`) |
+| `bunest generate <schematic> <name>` (`g`) | Sinh controller, service, module, worker (`worker`/`w`), DTO, guard, pipe, interceptor, filter, middleware, endpoint hoặc CRUD resource (`--with-scenario`) |
 | `bunest dev` | Chạy ứng dụng ở chế độ watch của Bun (`--port`, `--entry`) kèm sinh kiểu `.d.ts` trực tiếp |
-| `bunest build` | Đóng gói ứng dụng (ESM bundle qua `Bun.build()` hoặc binary độc lập `--compile`; hỗ trợ `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
+| `bunest build` | Đóng gói ứng dụng (ESM bundle qua `Bun.build()` hoặc binary độc lập `--compile [--bytecode]`; `--archive` `.tar.gz` qua `Bun.Archive`, `--target`, `--sourcemap`, `--minify`, `--deleteOutDir`) |
+| `bunest deploy` | Đóng gói và triển khai đầu ra build (hỗ trợ `--archive` tạo `.tar.gz` qua `Bun.Archive`) |
+| `bunest cron <parse\|register\|remove\|run>` | Xem trước lịch chạy qua `Bun.cron.parse()`, đăng ký/gỡ OS cron job (`Bun.cron`) hoặc chạy cục bộ module định kỳ |
 | `bunest typegen` | Quét route, DI token và các registry hệ sinh thái vào `.bunest/types/bunest.d.ts` |
 | `bunest check` | Chạy phân tích tĩnh cho DI, derived-query của ORM và các quy tắc kiến trúc tùy chỉnh (`BUNEST_ARCH*`) |
 | `bunest verify` | Chạy gọn 1 vòng `typecheck -> static check -> test` (`--reporter=agent\|pretty\|json`, `--affected`, `--require-tests`) |
-| `bunest explain <route\|error>` | Truy vết module, pipeline, đồ thị DI của route (`explain route`) hoặc tra cứu mã lỗi `BUNEST_E*` (`explain error`) |
+| `bunest explain <route\|error>` | Truy vết module, pipeline, đồ thị DI của route (`explain route --open` qua `Bun.openInEditor`) hoặc tra cứu mã lỗi `BUNEST_E*` (`explain error --format ansi` qua `Bun.markdown.ansi`) |
 | `bunest routes [snapshot\|diff]` | Liệt kê HTTP routes, xuất snapshot hợp đồng route/DTO (`--body`) và so sánh thay đổi phá vỡ (`diff --base`, `--evidence`) |
 | `bunest test-from-request <file>` | Sinh bài test hồi quy đã lọc dữ liệu nhạy cảm từ file `.http` hoặc JSON kịch bản |
 | `bunest mcp` | Khởi chạy MCP server qua `stdio` cho AI coding agent (`bunest_verify`, `bunest_explain_error`, `bunest_recent_errors`, diagnostics) |
 | `bunest repl` | Khởi chạy DI REPL tương tác trên `AppModule` đã biên dịch của bạn |
-| `bunest info` | In thông tin chẩn đoán về Bunest, Bun runtime, phiên bản `@bunest/*` đã phân giải và hệ điều hành |
+| `bunest info` | In thông tin chẩn đoán về Bunest, Bun runtime (kiểm tra `engines.bun` bằng `Bun.semver`), phiên bản `@bunest/*` (`--format table` qua `Bun.inspect.table`) và hệ điều hành |
 
 ## Các chế độ Build (`bunest build`)
 
 | Chế độ | Lệnh | Đầu ra |
 | --- | --- | --- |
 | **ESM Bundle (mặc định)** | `bunest build --target bun\|node\|browser --sourcemap none\|linked\|inline\|external --minify` | Xuất `dist/*.js` qua `Bun.build({ format: "esm" })`, tự copy `assets` và tùy chọn sinh `.d.ts` |
-| **Standalone Native Binary** | `bunest build --compile --minify` | Biên dịch thành 1 file thực thi độc lập (`dist/main` hoặc `dist/main.exe`) qua `bun build --compile` |
+| **Standalone Native Binary** | `bunest build --compile --minify --bytecode` | Biên dịch thành 1 file thực thi độc lập (`dist/main` hoặc `dist/main.exe`) qua `bun build --compile` kèm tùy chọn `--bytecode` để giảm thời gian khởi động |
+| **Gói lưu trữ phát hành (`.tar.gz`)** | `bunest build --archive` (hoặc `bunest deploy --archive`) | Nén thư mục build đầu ra thành `.tar.gz` không phụ thuộc ngoài qua `Bun.Archive` |
 | **Watch Mode** | `bunest build --watch` | Tự động rebuild khi file nguồn thay đổi |
 
 ## Tích hợp AI Agent (`bunest mcp` & `bunest verify`)
@@ -147,7 +150,7 @@ Mở rộng `bunest typegen` bằng **`defineTypegenPlugin()`** (`{ name, target
 
 | Tên export Plugin | Target | Nguồn quét | Ambient Registry được sinh |
 | --- | --- | --- | --- |
-| `i18nTypegenPlugin` | `i18n` | `locales/**/*` & `i18n/**/*` (`.json`, `.jsonc`, `.yaml`, `.yml`, `.toml`) qua `Bun.Glob` + `Bun.JSONC`/`Bun.YAML`/`Bun.TOML` | `@bunest/core/i18n` → `BunestI18nRegistry` (khóa phân cấp dấu chấm + placeholder `{{param}}`) |
+| `i18nTypegenPlugin` | `i18n` | `locales/**/*` & `i18n/**/*` (`.json`, `.jsonc`, `.json5`, `.yaml`, `.yml`, `.toml`) qua `Bun.Glob` + `Bun.JSONC`/`Bun.JSON5`/`Bun.YAML`/`Bun.TOML` | `@bunest/core/i18n` → `BunestI18nRegistry` (khóa phân cấp dấu chấm + placeholder `{{param}}`) |
 | `jobsTypegenPlugin` | `jobs` | Các decorator `@Processor`, `@Queue`, `@Process` | `@bunest/jobs` → `BunestQueueRegistry` |
 | `workflowsTypegenPlugin` | `workflows` | `@Workflow`, `defineWorkflow({ name })` | `@bunest/workflows` → `BunestWorkflowRegistry` |
 | `authzTypegenPlugin` | `authz` | `@CheckPolicies` | `@bunest/security/authz` → `BunestPermissionRegistry` |

@@ -394,6 +394,20 @@ Never set `trustProxy: true` on a directly internet-exposed Bun server.
 
 ---
 
+## 10. Modern Auth Ecosystem Integrations (`@bunest/security/auth`)
+
+In addition to Bunest's built-in zero-dependency auth primitives (sessions, JWT/JWKS, refresh-token rotation, TOTP MFA, Passkeys/WebAuthn, OIDC PKCE, API keys), `@bunest/security/auth` provides first-class, zero-external-dependency adapters for modern TypeScript auth libraries and hosted identity providers:
+
+- **Better Auth (`BetterAuthModule.forRoot({ auth })` / `forRootAsync(...)`)**: Automatically mounts `auth.handler(req)` on `/api/auth` & `/api/auth/*` (preserving raw unread Web `Request` bodies, redirects, and multi-value `Set-Cookie` headers), registers `BetterAuthProvider` on `AuthenticationRegistry`, exposes `@InjectBetterAuth()`, and integrates directly with `@CurrentUser()`, `@CurrentSession()`, `@Authenticate({ mfa: true })`, and `@bunest/security/authz` (`@Policy()` / `@Can()`).
+- **Clerk (`ExternalJwtAuthModule.forClerk({ issuer, authorizedParties })`)**: Native WebCrypto RS256 JWKS verification supporting both `Authorization: Bearer` headers and Clerk's `__session` cookie plus `azp` (`authorizedParties`) validation.
+- **Supabase Auth (`ExternalJwtAuthModule.forSupabase({ projectUrl, jwtSecret? })`)**: Supports both modern Supabase asymmetric JWKS (`ES256`/`RS256` at `${projectUrl}/auth/v1/.well-known/jwks.json`) and legacy `HS256` JWT secrets.
+- **Auth0, Keycloak, WorkOS, Okta, Cognito & Firebase (`ExternalJwtAuthModule.forAuth0(...)` / `.forJwks(...)`)**: Native WebCrypto JWKS verification with strict `iss` & `aud` pinning and parsed `scope`/`permissions`.
+- **Auth.js (`@auth/core`) & Lucia (`WebAuthModule.forRoot({ handler?, getSession })`)**: Mounts Web-Standard `(request: Request) => Promise<Response>` handlers and resolves custom cookie/bearer sessions across HTTP, WebSocket, GraphQL, and MCP.
+
+See the full runnable example in [`examples/modern-auth-integrations`](../examples/modern-auth-integrations) and the bilingual docs guide at `apps/docs/content/security/modern-auth-integrations.md`.
+
+---
+
 ## Independent Security Review Scope (`1.0` RC)
 
 Before promoting a `1.0` Release Candidate (`1.0.0-rc.*`) to `1.0.0` General Availability, Bunest undergoes an independent third-party security review governed by the scope and release criteria below and the private triage workflow in [`SECURITY.md`](../SECURITY.md#10-rc-private-finding-triage--re-verification-workflow).

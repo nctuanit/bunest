@@ -19,7 +19,9 @@ Mọi chiến lược xác thực đều cắm vào `AuthenticationModule` thố
 | **Refresh Token Families** | Phiên dài hạn có phát hiện đánh cắp/tái sử dụng token | Store xoay vòng theo family (thu hồi cả family khi bị replay) |
 | **API Keys** | Tích hợp machine-to-machine & developer tokens | Kiểm tra prefix + secret đã băm |
 | **TOTP MFA & Magic Links** | Xác thực 2 lớp & đăng nhập không mật khẩu | TOTP chuẩn RFC 6238 & token dùng một lần có hạn |
-| **OIDC / OAuth2** | Đăng nhập mạng xã hội & SSO doanh nghiệp (Google, GitHub, Okta) | PKCE `S256` + xác thực state/nonce |
+| **Passkeys / WebAuthn (FIDO2)** | Đăng nhập sinh trắc học / khóa phần cứng chống phishing | `WebAuthnService` thuần Bun (CBOR/COSE `ES256`, `RS256`, `EdDSA`) |
+| **OIDC / OAuth2** | Đăng nhập mạng xã hội & SSO doanh nghiệp (Google, GitHub, Microsoft, Okta) | PKCE `S256` + xác thực state/nonce |
+| **Tích hợp Auth hiện đại** | Cắm trực tiếp Better Auth, Clerk, Supabase, Auth0, Auth.js, Lucia | `BetterAuthModule`, `ExternalJwtAuthModule`, `WebAuthModule` |
 
 ## Cấu hình Module
 
@@ -104,4 +106,4 @@ Mỗi lần làm mới token, Bunest xoay vòng token và theo dõi **family ID*
 
 Khi tự triển khai `SessionStore` hoặc `RefreshTokenStore` (PostgreSQL, Redis, DynamoDB), hãy chạy bộ contract test chính thức từ `@bunest/security/testing` để đảm bảo hết hạn, xoay vòng nguyên tử và thu hồi family hoạt động chính xác.
 
-> info **Bước tiếp theo** Kết hợp `@bunest/security/auth` với phân quyền theo chính sách tại [Phân quyền (Authorization)](/security/authorization) và cấu hình bảo mật tổng thể tại [Security Module](/security/security-module).
+> info **Bước tiếp theo** Xem hướng dẫn cắm trực tiếp Better Auth, Clerk, Supabase, Auth0, Auth.js và Lucia tại [Tích hợp Auth hiện đại](/security/modern-auth-integrations), kết hợp phân quyền ABAC tại [Phân quyền (Authorization)](/security/authorization) và cấu hình bảo mật tổng thể tại [Security Module](/security/security-module).

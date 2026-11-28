@@ -18,6 +18,11 @@ text rendering. Fixes are ordered: try the first one first.
 | [`BUNEST_E101`](#bunest_e101) | `DuplicateRouteException` | Duplicate route |
 | [`BUNEST_E102`](#bunest_e102) | `InvalidControllerException` | Invalid controller |
 | [`BUNEST_E103`](#bunest_e103) | `InvalidRouteException` | Invalid route |
+| [`BUNEST_E201`](#bunest_e201) | `WorkerSpawnException` | Worker failed to start |
+| [`BUNEST_E202`](#bunest_e202) | `WorkerTimeoutException` | Worker task timed out |
+| [`BUNEST_E203`](#bunest_e203) | `WorkerPoolSaturatedException` | Worker pool queue saturated |
+| [`BUNEST_E204`](#bunest_e204) | `WorkerTerminatedException` | Worker terminated unexpectedly |
+| [`BUNEST_E205`](#bunest_e205) | `WorkerTaskNotFoundException` | Worker task handler not found |
 
 ## BUNEST_E001
 
@@ -155,3 +160,67 @@ Fixes (in order):
 
 1. Read the message for the offending handler and fix its path or parameter decorators.
 2. Ensure each handler parameter has exactly one binding decorator (`@Body`, `@Param`, `@Query`, ...).
+
+## BUNEST_E201
+
+**`WorkerSpawnException` — Worker failed to start**
+
+A Bun Worker thread failed to resolve, boot, or emit its READY handshake within the startup timeout.
+
+Fixes (in order):
+
+1. Verify the worker script URL/path exists (prefer `new URL('./my.worker.ts', import.meta.url)`).
+2. Ensure the worker entry calls `defineWorker(...)` or `bootstrapWorkerApplication(...)` synchronously before any top-level `await`.
+3. Check any `preload` module specifiers and increase `startupTimeoutMs` if worker bootstrap performs slow I/O.
+
+```ts
+WorkerModule.registerPool({
+  name: "crypto",
+  script: new URL("./crypto.worker.ts", import.meta.url),
+  startupTimeoutMs: 10_000,
+})
+```
+
+## BUNEST_E202
+
+**`WorkerTimeoutException` — Worker task timed out**
+
+A task dispatched to a Bun Worker pool did not finish before its configured `timeoutMs` deadline.
+
+Fixes (in order):
+
+1. Increase `timeoutMs` on `pool.run()` or `taskTimeoutMs` on the pool configuration for legitimately long workloads.
+2. Inspect the worker task for infinite loops, unawaited promises, or blocking calls, and honor `ctx.signal` for cooperative cancellation.
+
+## BUNEST_E203
+
+**`WorkerPoolSaturatedException` — Worker pool queue saturated**
+
+The worker pool pending task queue reached `maxQueueSize` and rejected the new task to preserve backpressure.
+
+Fixes (in order):
+
+1. Increase `maxThreads` or `maxQueueSize` if the host has spare CPU and memory capacity.
+2. Apply upstream rate limiting or move bursty background work to a durable `@bunest/jobs/queues` queue.
+
+## BUNEST_E204
+
+**`WorkerTerminatedException` — Worker terminated unexpectedly**
+
+A Bun Worker thread crashed, exited, or the worker pool closed before an in-flight or queued task completed.
+
+Fixes (in order):
+
+1. Check worker error logs for uncaught exceptions or out-of-memory exits (consider disabling `smol: true` for memory-heavy tasks).
+2. Ensure `pool.close()` is only called during application shutdown after awaiting pending work.
+
+## BUNEST_E205
+
+**`WorkerTaskNotFoundException` — Worker task handler not found**
+
+No handler matching the requested task name is registered inside the target Bun Worker.
+
+Fixes (in order):
+
+1. Register the task name in `defineWorker({ [taskName]: handler })` or decorate a method with `@WorkerHandler(taskName)`.
+2. Share a typed `defineWorkerContract(taskName)` object between caller and worker to prevent typos.

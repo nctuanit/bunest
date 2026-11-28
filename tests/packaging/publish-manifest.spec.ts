@@ -60,8 +60,8 @@ describe("publish-manifest", () => {
       }
     }
 
-    expect(totalSubpaths).toBeGreaterThanOrEqual(87);
-    expect(totalDtsSubpaths).toBe(76);
+    expect(totalSubpaths).toBeGreaterThanOrEqual(100);
+    expect(totalDtsSubpaths).toBe(81);
   });
 
   it("falls back safely to original types path when pkgDir has no emitted .d.ts", async () => {

@@ -446,7 +446,7 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         {
           logger: false,
           routeResolutionStrategy: "specificity",
-          routeConflictPolicy: { duplicate: "error", shadow: "silent" },
+          routeConflictPolicy: { duplicate: "error", shadow: "off" },
         },
       );
       await app.init();
@@ -788,7 +788,10 @@ describe("NestJS v12.5.1 Full API Parity Suite (Phases 1-6)", () => {
         };
         expect(userSchema?.properties?.email).toBeDefined();
         expect(userSchema?.properties?.passwordHash).toBeUndefined();
-        const op = doc.paths?.["/docs-test"]?.get as Record<string, unknown>;
+        const op = doc.paths?.["/docs-test"]?.get as unknown as Record<
+          string,
+          unknown
+        >;
         expect(op?.["x-owner"]).toBe("platform");
       } finally {
         await app.close();

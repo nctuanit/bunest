@@ -19,7 +19,9 @@ Every authentication strategy plugs into a unified `AuthenticationModule` and re
 | **Refresh Token Families** | Long-lived sessions with theft/reuse detection | Rotating family store (revokes entire family on replay) |
 | **API Keys** | Machine-to-machine integrations & developer tokens | Prefix + hashed secret verification |
 | **TOTP MFA & Magic Links** | Step-up 2FA & passwordless sign-in | RFC 6238 TOTP & single-use expiring tokens |
-| **OIDC / OAuth2** | Social login & enterprise SSO (Google, GitHub, Okta) | PKCE `S256` + state/nonce verification |
+| **Passkeys / WebAuthn (FIDO2)** | Phishing-resistant biometric / hardware sign-in | Native CBOR/COSE `WebAuthnService` (`ES256`, `RS256`, `EdDSA`) |
+| **OIDC / OAuth2** | Social login & enterprise SSO (Google, GitHub, Microsoft, Okta) | PKCE `S256` + state/nonce verification |
+| **Modern Ecosystem Adapters** | Drop-in Better Auth, Clerk, Supabase, Auth0, Auth.js, Lucia | `BetterAuthModule`, `ExternalJwtAuthModule`, `WebAuthModule` |
 
 ## Module Configuration
 
@@ -104,4 +106,4 @@ When refresh tokens are rotated on every use, Bunest tracks each token's **famil
 
 If you implement a custom `SessionStore` or `RefreshTokenStore` (for PostgreSQL, Redis, or DynamoDB), verify it against the official store contract test suite exported from `@bunest/security/testing` so edge cases like expiration, atomic rotation, and family revocation are guaranteed to behave identically.
 
-> info **Next Steps** Combine `@bunest/security/auth` with policy-based access control in [Authorization](/security/authorization) and one-line security hardening in [Security Module](/security/security-module).
+> info **Next Steps** Integrate external modern providers in [Modern Auth Integrations (Better Auth, Clerk, Supabase, Auth0, Auth.js, Lucia)](/security/modern-auth-integrations), add policy-based access control in [Authorization](/security/authorization), or configure hardening headers & rate limits in [Security Module](/security/security-module).

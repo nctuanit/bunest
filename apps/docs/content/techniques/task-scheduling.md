@@ -1,6 +1,6 @@
 # Task Scheduling
 
-**`@bunest/jobs/scheduler`** provides declarative cron jobs, intervals, and one-shot timeouts using a pure-TypeScript 5- and 6-field DST-aware cron parser with zero external runtime dependencies and 83 built-in `CronExpression` presets.
+**`@bunest/jobs/scheduler`** provides declarative cron jobs, intervals, one-shot timeouts, and OS-level persistent cron jobs backed natively by Bun 1.4.5's `Bun.cron` API (`Bun.cron.parse`, in-process `Bun.cron()`, and OS-level `Bun.cron(path, schedule, title)` / `Bun.cron.remove()`), seamlessly falling back to a zero-dependency DST-aware 6-field TypeScript engine with 83 built-in `CronExpression` presets.
 
 ## Installation
 
@@ -83,9 +83,42 @@ export class JobsService {
   }
 
   addDynamicCron(name: string, expression: string, fn: () => void) {
-    const job = new CronJob(expression, fn);
+    const job = new CronJob(expression, fn, { engine: "auto" });
     this.registry.addCronJob(name, job);
     job.start();
   }
 }
+```
+
+## Native `Bun.cron` Execution Engine
+
+By default (`engine: "auto"`), `CronJob` and `@Cron()` automatically execute compatible 5-field expressions and `@` nicknames (`@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, `@annually`, `@midnight`, `@every_minute`) on Bun 1.4.5's native in-process `Bun.cron(expr, handler, { tz })` engine and compute upcoming runs with `Bun.cron.parse(expr, from, { tz })`. Schedules requiring 6-field second precision, wrap-around ranges (`22-2`, `FRI-MON`), one-shot `Date` targets, or non-zero `utcOffset` automatically use the pure-TypeScript timer engine.
+
+- Control the default engine module-wide via `ScheduleModule.forRoot({ defaultEngine: "auto" | "native" | "timer" })`, or per job via `@Cron(expr, { engine: "native" })`.
+- `CronJob` implements `Disposable` (`using job = new CronJob(...)`), chainable `.ref()` / `.unref()`, and `job.nextDates(count)` / `getNextCronDates(expr, count, from, timeZone)`.
+
+## OS-Level Persistent Cron Jobs (`Bun.cron`)
+
+For jobs that must survive process exit and system reboots (`crontab` on Linux, `launchd` on macOS, Task Scheduler on Windows), scaffold a cron module with `bunest generate cron weekly-report` or write one using `defineOsCronJob` (lightweight) or `bootstrapCronApplication` (full DI + CLS + graceful shutdown):
+
+@@filename(src/jobs/weekly-report.cron.ts)
+
+```ts
+import { bootstrapCronApplication } from "@bunest/jobs/scheduler";
+import { AppModule } from "../app.module";
+import { ReportsService } from "../reports/reports.service";
+
+export default bootstrapCronApplication(AppModule, {
+  provider: ReportsService,
+  method: "generateWeekly",
+});
+```
+
+Register, preview, run locally, or remove OS-level cron jobs via `OsCronService` or the CLI:
+
+```bash
+bunest cron parse "30 2 * * MON" --tz UTC --count 5
+bunest cron run ./src/jobs/weekly-report.cron.ts --schedule "30 2 * * MON"
+bunest cron register ./src/jobs/weekly-report.cron.ts "30 2 * * MON" weekly-report
+bunest cron remove weekly-report
 ```

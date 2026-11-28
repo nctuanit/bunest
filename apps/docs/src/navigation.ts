@@ -577,6 +577,28 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         ],
       },
       {
+        slug: "techniques/workers",
+        title: "Bun Workers",
+        file: "techniques/workers.md",
+        badge: "ADR-019",
+        description:
+          "Multi-threaded CPU offloading via native Bun Workers (@bunest/jobs/workers): defineWorker, WorkerModule, @Offload AOP, sandboxed queues, and reusePort clusters.",
+        keywords: [
+          "@bunest/jobs/workers",
+          "WorkerModule",
+          "WorkerPool",
+          "defineWorker",
+          "defineWorkerContract",
+          "bootstrapWorkerApplication",
+          "createInlineWorkerPool",
+          "@Offload",
+          "@WorkerHandler",
+          "createWorkerCluster",
+          "reusePort",
+          "ADR-019",
+        ],
+      },
+      {
         slug: "techniques/http-client",
         title: "HTTP client",
         file: "techniques/http-client.md",
@@ -806,13 +828,37 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Authentication",
         file: "security/authentication.md",
         description:
-          "Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, magic links, OIDC/OAuth2, and API keys via @bunest/security/auth.",
+          "Full identity suite: sessions, JWT/JWKS, refresh-token families, TOTP MFA, Passkeys/WebAuthn, magic links, OIDC/OAuth2, and API keys via @bunest/security/auth.",
         keywords: [
           "@bunest/security/auth",
           "AuthenticationModule",
           "AuthenticationGuard",
           "@Authenticate",
           "ApiKeyProvider",
+          "WebAuthnService",
+          "Passkeys",
+        ],
+      },
+      {
+        slug: "security/modern-auth-integrations",
+        title: "Modern Auth Integrations",
+        file: "security/modern-auth-integrations.md",
+        badge: "New",
+        description:
+          "First-class zero-dep integrations for Better Auth, Clerk, Supabase Auth, Auth0, Keycloak, WorkOS, Auth.js, and Lucia without Passport.js.",
+        keywords: [
+          "BetterAuthModule",
+          "better-auth",
+          "Clerk",
+          "Supabase",
+          "Auth0",
+          "Keycloak",
+          "WorkOS",
+          "Auth.js",
+          "Lucia",
+          "ExternalJwtAuthModule",
+          "WebAuthModule",
+          "InjectBetterAuth",
         ],
       },
       {
@@ -849,6 +895,24 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "@ApiTags",
           "@ApiProperty",
           "OpenAPI",
+        ],
+      },
+      {
+        slug: "apis/contracts-typed-client",
+        title: "Typed Contracts & RPC Client",
+        file: "apis/contracts-typed-client.md",
+        badge: "New",
+        description:
+          "Single-source defineContract(), implementContract(), automatic OpenAPI 3.1, typed createContractClient(), and zero-socket createContractTestClient().",
+        keywords: [
+          "defineContract",
+          "implementContract",
+          "FunctionalModule",
+          "createContractClient",
+          "createContractTestClient",
+          "Standard Schema",
+          "OpenAPI",
+          "RPC",
         ],
       },
       {
@@ -1121,7 +1185,7 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "ADR & RFC Index",
         file: "architecture/adrs.md",
         description:
-          "Complete index of Bunest Architecture Decision Records (ADR-001 through ADR-018) and RFC-001.",
+          "Complete index of Bunest Architecture Decision Records (ADR-001 through ADR-020) and RFC-001.",
         keywords: [
           "ADR-001",
           "ADR-002",
@@ -1141,6 +1205,8 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "ADR-016",
           "ADR-017",
           "ADR-018",
+          "ADR-019",
+          "ADR-020",
           "RFC-001",
         ],
       },
@@ -1160,6 +1226,23 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
           "comparison",
         ],
       },
+      {
+        slug: "architecture/why-bunest",
+        title: "Why Bunest? (Solving NestJS Pain Points)",
+        file: "architecture/why-bunest.md",
+        badge: "New",
+        description:
+          "How Bunest solves NestJS's top 10 community pain points with zero external deps, native Promises, contracts, and AOT binaries.",
+        keywords: [
+          "why bunest",
+          "nestjs pain points",
+          "zero dependencies",
+          "no rxjs",
+          "contracts",
+          "functional routes",
+          "aot di",
+        ],
+      },
     ],
   },
   {
@@ -1167,6 +1250,23 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
     title: "RECIPES",
     defaultOpen: false,
     pages: [
+      {
+        slug: "recipes/functional-routes",
+        title: "Functional Routes & Single Binaries",
+        file: "recipes/functional-routes.md",
+        badge: "New",
+        description:
+          "Zero-decorator defineRoutes(), BunestFactory.createRoutes(), createAuto({ routes }), createFetchHandler(), and bunest build --compile with AOT DI metadata.",
+        keywords: [
+          "defineRoutes",
+          "BunestFactory.createRoutes",
+          "createAuto",
+          "createFetchHandler",
+          "bunest build --compile",
+          "aotDiMetadata",
+          "functional",
+        ],
+      },
       {
         slug: "recipes/deployment",
         title: "Deployment & Production",
@@ -1255,17 +1355,23 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Error Catalog (BUNEST_E*)",
         file: "faq/common-errors.md",
         description:
-          "Complete troubleshooting reference for BUNEST_E001–BUNEST_E103 bootstrap, DI, scope-leak, and routing errors.",
+          "Complete troubleshooting reference for BUNEST_E001–BUNEST_E205 bootstrap, DI, scope-leak, routing, and Bun Workers errors.",
         keywords: [
           "BUNEST_E001",
           "BUNEST_E002",
           "BUNEST_E003",
           "BUNEST_E004",
           "BUNEST_E101",
+          "BUNEST_E201",
+          "BUNEST_E202",
+          "BUNEST_E203",
+          "BUNEST_E204",
+          "BUNEST_E205",
           "errors",
           "troubleshooting",
           "ScopeLeakException",
           "UnknownDependencyException",
+          "WorkerSpawnException",
         ],
       },
       {
@@ -1296,9 +1402,8 @@ export const NAV_CATEGORIES: readonly NavCategory[] = [
         title: "Packages & Monorepo",
         file: "ecosystem/packages.md",
         description:
-          "Explore @bunest/core, @bunest/core, @bunest/core/http, @bunest/validation, @bunest/testing, and the monorepo layout.",
+          "Explore @bunest/core, @bunest/core/http, @bunest/validation, @bunest/testing, and the 19-package monorepo layout.",
         keywords: [
-          "@bunest/core",
           "@bunest/core",
           "@bunest/core/http",
           "@bunest/validation",

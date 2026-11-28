@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "bun": ">=1.4.5"
+  },
   "description": "NestJS-style documentation portal for the Bunest framework",
   "scripts": {
     "dev": "bun --watch src/server.ts",

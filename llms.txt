@@ -31,7 +31,7 @@ Essentials for AI agents:
 - [@bunest/core](packages/core): Bun-native core DI container, module graph, common decorators/exceptions/pipes, Bun.serve HTTP engine, ConfigModule, fetch HTTP client, native WebSocket gateways, and I18n for Bunest. Imports: `@bunest/core`, `@bunest/core/common`, `@bunest/core/http`, `@bunest/core/config`, `@bunest/core/client`, `@bunest/core/typed-client`, `@bunest/core/ws`, `@bunest/core/i18n`
 - [@bunest/elasticsearch](packages/elasticsearch): NestJS v12-compatible Elasticsearch module and full native Bun fetch() REST client with zero external dependencies for Bunest. Imports: `@bunest/elasticsearch`
 - [@bunest/graphql](packages/graphql): Code-first & schema-first GraphQL module, Apollo Server, Federation v2 Subgraph & Gateway drivers, PubSub subscriptions, and GraphiQL explorer for Bunest. Imports: `@bunest/graphql`, `@bunest/graphql/apollo`
-- [@bunest/jobs](packages/jobs): Background job queues (BullMQ parity + native Bun.RedisClient driver) and cron/interval/timeout task scheduler for Bunest. Imports: `@bunest/jobs`, `@bunest/jobs/queues`, `@bunest/jobs/scheduler`, `@bunest/jobs/redis`
+- [@bunest/jobs](packages/jobs): Background job queues (BullMQ parity + native Bun.RedisClient driver), cron/interval/timeout task scheduler, and multi-threaded Bun Workers pool for Bunest. Imports: `@bunest/jobs`, `@bunest/jobs/queues`, `@bunest/jobs/scheduler`, `@bunest/jobs/redis`, `@bunest/jobs/workers`
 - [@bunest/mail](packages/mail): Transactional email for Bunest: typed mail classes, auto-escaped HTML templates, and SMTP, Resend, Postmark, SendGrid, and Amazon SES transports. Imports: `@bunest/mail`, `@bunest/mail/smtp`, `@bunest/mail/templates`
 - [@bunest/messaging](packages/messaging): EventEmitter, CQRS, Transactional Outbox/Inbox, and Outbound/Inbound Webhooks with PostgreSQL & MySQL stores for Bunest. Imports: `@bunest/messaging`, `@bunest/messaging/events`, `@bunest/messaging/cqrs`, `@bunest/messaging/outbox`, `@bunest/messaging/outbox/testing`, `@bunest/messaging/outbox/postgres`, `@bunest/messaging/outbox/mysql`, `@bunest/messaging/webhooks`, `@bunest/messaging/webhooks/testing`, `@bunest/messaging/webhooks/postgres`, `@bunest/messaging/webhooks/mysql`
 - [@bunest/microservices](packages/microservices): Bun-native TCP, in-memory, and broker (Redis, NATS, RabbitMQ) microservice transports, RPC patterns, and client proxies for Bunest. Imports: `@bunest/microservices`
@@ -48,4 +48,4 @@ Essentials for AI agents:
 ## Optional
 
 - [llms-full.txt](llms-full.txt): Full public value-export index per import path, AGENTS.md, quickstart and error catalog in one file
-- [Examples](examples): Runnable reference apps (hello-world, rest-crud, auth-jwt-sqlite, websocket-chat, distributed-worker)
+- [Examples](examples): Runnable reference apps (hello-world, rest-crud, starter, auth-jwt-sqlite, websocket-chat, distributed-worker, production-rest-postgres, vscode-extension-showcase)

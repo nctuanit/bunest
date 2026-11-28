@@ -139,7 +139,7 @@ export async function buildLlmsTxt(packages?: PackageMeta[]): Promise<string> {
     "## Optional",
     "",
     "- [llms-full.txt](llms-full.txt): Full public value-export index per import path, AGENTS.md, quickstart and error catalog in one file",
-    "- [Examples](examples): Runnable reference apps (hello-world, rest-crud, auth-jwt-sqlite, websocket-chat, distributed-worker)",
+    "- [Examples](examples): Runnable reference apps (hello-world, rest-crud, starter, auth-jwt-sqlite, websocket-chat, distributed-worker, production-rest-postgres, vscode-extension-showcase)",
     "",
   ];
   return out.join("\n");

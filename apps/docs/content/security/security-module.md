@@ -4,7 +4,8 @@
 
 - `SecurityModule.forRoot()`, `@Auth()`, `@Protected()`, `PasswordService` (`argon2id`), `RolesGuard`/`PoliciesGuard`, `CsrfGuard`, and `SecurityHeadersMiddleware`.
 - WebCrypto `JwtModule`/`JwtService`, `JwksModule`, and `OAuth2Module`/`OidcModule` (PKCE).
-- `PassportModule`, `AuthGuard`, and `PassportStrategy`.
+- Modern auth engine (`@bunest/security/auth`) with native sessions, rotating refresh tokens, TOTP MFA, Passkeys/WebAuthn, plus drop-in [Modern Auth Integrations](/security/modern-auth-integrations) (`BetterAuthModule`, `ExternalJwtAuthModule` for Clerk/Supabase/Auth0/JWKS, `WebAuthModule` for Auth.js/Lucia).
+- Legacy NestJS migration compatibility: `PassportModule`, `AuthGuard`, and `PassportStrategy` (for migrating existing NestJS apps; new projects should prefer `@bunest/security/auth` or [Modern Auth Integrations](/security/modern-auth-integrations)).
 - `ThrottlerModule`, `ThrottlerGuard`, `@Throttle`, and `@SkipThrottle`.
 
 ## Installation

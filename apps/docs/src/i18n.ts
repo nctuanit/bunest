@@ -345,6 +345,11 @@ export const VI_PAGE_META: Record<
     description:
       "Xử lý tác vụ nền, retry, delay và worker concurrency với @bunest/jobs (SQLite & Redis).",
   },
+  "techniques/workers": {
+    title: "Bun Workers (Đa luồng)",
+    description:
+      "Chạy tác vụ nặng CPU đa luồng với Bun Workers gốc (@bunest/jobs/workers): defineWorker, WorkerModule, @Offload AOP và reusePort cluster.",
+  },
   "techniques/http-client": {
     title: "HTTP client",
     description:
@@ -408,7 +413,12 @@ export const VI_PAGE_META: Record<
   "security/authentication": {
     title: "Xác thực (Authentication)",
     description:
-      "Xây dựng đăng nhập mật khẩu (Argon2/bcrypt), session, MFA TOTP và OAuth/OIDC với @bunest/security.",
+      "Hệ thống xác thực thuần Bun không phụ thuộc ngoài: Argon2id, sessions, JWT/JWKS, refresh rotation, TOTP MFA, Passkeys/WebAuthn và OIDC/OAuth2.",
+  },
+  "security/modern-auth-integrations": {
+    title: "Tích hợp Auth hiện đại (Better Auth, Clerk, Supabase...)",
+    description:
+      "Tích hợp trực tiếp Better Auth, Clerk, Supabase Auth, Auth0, Keycloak, WorkOS, Auth.js và Lucia vào Bunest không cần Passport.js.",
   },
   "security/authorization": {
     title: "Phân quyền (Authorization)",
@@ -419,6 +429,11 @@ export const VI_PAGE_META: Record<
     title: "OpenAPI (Swagger)",
     description:
       "Tự động sinh tài liệu OpenAPI 3.0/3.1 và giao diện Swagger UI từ decorators và DTO.",
+  },
+  "apis/contracts-typed-client": {
+    title: "Contracts & Typed RPC Client",
+    description:
+      "Chia sẻ một contract duy nhất giữa server (implementContract), OpenAPI 3.1 tự động, createContractClient và kiểm thử E2E không mở socket.",
   },
   "apis/graphql": {
     title: "GraphQL & Apollo",
@@ -480,6 +495,11 @@ export const VI_PAGE_META: Record<
     description:
       "Khởi tạo dự án, sinh code schematics, build, dev watch và bunest verify với @bunest/cli.",
   },
+  "recipes/functional-routes": {
+    title: "Functional Routes & Single Binary",
+    description:
+      "Xây dựng API tối giản không cần decorator với defineRoutes(), BunestFactory.createRoutes(), createFetchHandler() và bunest build --compile kèm AOT DI metadata.",
+  },
   "recipes/deployment": {
     title: "Triển khai & Production",
     description:
@@ -508,7 +528,7 @@ export const VI_PAGE_META: Record<
   "faq/common-errors": {
     title: "Danh mục lỗi (BUNEST_E*)",
     description:
-      "Tra cứu nguyên nhân và các bước sửa cho toàn bộ mã lỗi BUNEST_E001–BUNEST_E103 lúc khởi động và định tuyến.",
+      "Tra cứu nguyên nhân và các bước sửa cho toàn bộ mã lỗi BUNEST_E001–BUNEST_E205 lúc khởi động, định tuyến và chạy Bun Workers.",
   },
   "faq/faq": {
     title: "Câu hỏi thường gặp (FAQ)",
@@ -533,12 +553,17 @@ export const VI_PAGE_META: Record<
   "architecture/adrs": {
     title: "Danh mục ADR & RFC",
     description:
-      "Các quyết định kiến trúc cốt lõi (ADR-001..ADR-018) định hình thiết kế của Bunest.",
+      "Các quyết định kiến trúc cốt lõi (ADR-001..ADR-020) định hình thiết kế của Bunest.",
   },
   "architecture/migration-from-nestjs": {
     title: "Chuyển đổi từ NestJS",
     description:
       "Bảng ánh xạ import, khác biệt chính (không RxJS, thuần Bun) và lộ trình chuyển đổi từ NestJS.",
+  },
+  "architecture/why-bunest": {
+    title: "Vì sao chọn Bunest? (Giải quyết 10 nỗi đau NestJS)",
+    description:
+      "Cách Bunest giải quyết 10 điểm nghẽn phổ biến nhất của cộng đồng NestJS với 0 phụ thuộc ngoài, Promise thuần, contracts và single binary AOT.",
   },
   "ecosystem/packages": {
     title: "Gói & Monorepo",

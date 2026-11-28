@@ -45,6 +45,8 @@ Bunest's core architecture is governed by authoritative **Architecture Decision 
 | **ADR-016** | 37 → 19 Package Consolidation (6 Domains, ESM Subpath Exports) & Bun 1.4.5 Native API Alignment                                                                                            | Accepted | [Packages & Monorepo](/ecosystem/packages)                   |
 | **ADR-017** | Zero External Runtime Dependencies (19/19 Packages) & Repo-Wide 2-Adapter `node:*` Kernel Quarantine                                                                                      | Accepted (Completed) | [Packages & Monorepo](/ecosystem/packages)                   |
 | **ADR-018** | Customizable Magic Architecture: Unified `Bun.plugin`, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, `@AutoModule`                                     | Accepted | [CLI & `bunest.config.ts`](/observability/cli)               |
+| **ADR-019** | Native Bun Workers Integration (`@bunest/jobs/workers`, Zero `node:worker_threads`, Sandboxed Queues, AOP `@Offload`, CLI Bundling & `reusePort` Clustering)                              | Accepted | [Bun Workers](/techniques/workers)                           |
+| **ADR-020** | Full Bun 1.4.5 Native Runtime API Alignment (`Bun.serve` Hot Paths, `Bun.Cookie`, Async Zstd, `Bun.JSONL`/`JSON5`, `Bun.Image`, `Bun.Archive`, `Bun.markdown`, `Bun.FetchSession`, `bun:jsc`, `Bun.secrets`, `Bun.udpSocket`) | Accepted | [Packages & Monorepo](/ecosystem/packages) |
 
 ## Governance Rules
 

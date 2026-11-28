@@ -16,6 +16,11 @@ Every bootstrap, DI, and routing error thrown by `@bunest/core` carries a **stab
 | [`BUNEST_E101`](#bunest_e101-duplicate-route) | `DuplicateRouteException` | Two handlers resolve to the same HTTP method + canonical path (+ host/version) |
 | [`BUNEST_E102`](#bunest_e102-invalid-controller) | `InvalidControllerException` | Class in `controllers` array is missing `@Controller()` |
 | [`BUNEST_E103`](#bunest_e103-invalid-route) | `InvalidRouteException` | Invalid route path or conflicting parameter decorator metadata |
+| [`BUNEST_E201`](#bunest_e201-worker-failed-to-start) | `WorkerSpawnException` | Bun Worker thread failed to resolve, boot, or complete READY handshake |
+| [`BUNEST_E202`](#bunest_e202-worker-task-timed-out) | `WorkerTimeoutException` | Dispatched Bun Worker task exceeded its `timeoutMs` deadline |
+| [`BUNEST_E203`](#bunest_e203-worker-pool-queue-saturated) | `WorkerPoolSaturatedException` | Worker pool pending queue reached `maxQueueSize` backpressure limit |
+| [`BUNEST_E204`](#bunest_e204-worker-terminated-unexpectedly) | `WorkerTerminatedException` | Bun Worker thread crashed, exited, or pool closed mid-task |
+| [`BUNEST_E205`](#bunest_e205-worker-task-handler-not-found) | `WorkerTaskNotFoundException` | Requested task name is not registered in the target Bun Worker |
 
 ---
 
@@ -119,6 +124,57 @@ See [Injection scopes](/fundamentals/injection-scopes) for details.
 **Ordered fixes:**
 1. Check the error message for the exact controller class, method name, and parameter index.
 2. Ensure each handler parameter uses at most one binding decorator (`@Body`, `@Param`, `@Query`, etc.).
+
+## `BUNEST_E201` — Worker Failed to Start
+
+**`WorkerSpawnException`**: A Bun Worker thread failed to resolve, boot, or emit its READY handshake within the startup timeout.
+
+**Ordered fixes:**
+1. Verify the worker script URL/path exists (prefer `new URL('./my.worker.ts', import.meta.url)`).
+2. Ensure the worker entry calls `defineWorker(...)` or `bootstrapWorkerApplication(...)` synchronously before any top-level `await`.
+3. Check any `preload` module specifiers and increase `startupTimeoutMs` if worker bootstrap performs slow I/O.
+
+```ts
+WorkerModule.registerPool({
+  name: "crypto",
+  script: new URL("./crypto.worker.ts", import.meta.url),
+  startupTimeoutMs: 10_000,
+});
+```
+
+## `BUNEST_E202` — Worker Task Timed Out
+
+**`WorkerTimeoutException`**: A task dispatched to a Bun Worker pool did not finish before its configured `timeoutMs` deadline.
+
+**Ordered fixes:**
+1. Increase `timeoutMs` on `pool.run()` or `taskTimeoutMs` on the pool configuration for legitimately long workloads.
+2. Inspect the worker task for infinite loops, unawaited promises, or blocking calls, and honor `ctx.signal` for cooperative cancellation.
+
+## `BUNEST_E203` — Worker Pool Queue Saturated
+
+**`WorkerPoolSaturatedException`**: The worker pool pending task queue reached `maxQueueSize` and rejected the new task to preserve backpressure.
+
+**Ordered fixes:**
+1. Increase `maxThreads` or `maxQueueSize` if the host has spare CPU and memory capacity.
+2. Apply upstream rate limiting or move bursty background work to a durable `@bunest/jobs/queues` queue.
+
+## `BUNEST_E204` — Worker Terminated Unexpectedly
+
+**`WorkerTerminatedException`**: A Bun Worker thread crashed, exited, or the worker pool closed before an in-flight or queued task completed.
+
+**Ordered fixes:**
+1. Check worker error logs for uncaught exceptions or out-of-memory exits (consider disabling `smol: true` for memory-heavy tasks).
+2. Ensure `pool.close()` is only called during application shutdown after awaiting pending work.
+
+## `BUNEST_E205` — Worker Task Handler Not Found
+
+**`WorkerTaskNotFoundException`**: No handler matching the requested task name is registered inside the target Bun Worker.
+
+**Ordered fixes:**
+1. Register the task name in `defineWorker({ [taskName]: handler })` or decorate a method with `@WorkerHandler(taskName)`.
+2. Share a typed `defineWorkerContract(taskName)` object between caller and worker to prevent typos.
+
+See [Bun Workers](/techniques/workers) for setup and troubleshooting details.
 
 ---
 

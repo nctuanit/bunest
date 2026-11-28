@@ -130,8 +130,12 @@ Full bilingual (English / Vietnamese) guides, API references, and examples are a
 
 ## Examples
 
-- **Production Reference**: [`examples/production-rest-postgres`](./examples/production-rest-postgres) (PostgreSQL 17, Docker, Caddy, migrations, `/live` & `/ready`, graceful drain, zero-downtime rollback, load harness)
-- **Starter & Feature Examples**: [`examples/hello-world`](./examples/hello-world) · [`examples/rest-crud`](./examples/rest-crud) · [`examples/auth-jwt-sqlite`](./examples/auth-jwt-sqlite) · [`examples/websocket-chat`](./examples/websocket-chat) · [`examples/distributed-worker`](./examples/distributed-worker) · [`apps/playground`](./apps/playground)
+Browse the full [NestJS-to-Bunest Examples Catalog](./examples/README.md) (32 runnable examples with E2E tests):
+
+- **Production Reference & Beyond NestJS**: [`production-rest-postgres`](./examples/production-rest-postgres) · [`fullstack-contract-rpc`](./examples/fullstack-contract-rpc) · [`functional-minimal`](./examples/functional-minimal) · [`multi-auth-security`](./examples/multi-auth-security) · [`modern-auth-integrations`](./examples/modern-auth-integrations) · [`broker-microservices`](./examples/broker-microservices) · [`storage-signed-uploads`](./examples/storage-signed-uploads)
+- **Core & HTTP**: [`cats-app`](./examples/cats-app) · [`hello-world`](./examples/hello-world) · [`rest-crud`](./examples/rest-crud) · [`dynamic-modules`](./examples/dynamic-modules) · [`application-context`](./examples/application-context) · [`mvc`](./examples/mvc) · [`serve-static`](./examples/serve-static) · [`serializer`](./examples/serializer) · [`cache`](./examples/cache) · [`sse`](./examples/sse) · [`file-upload`](./examples/file-upload)
+- **Auth, Data & Real-Time**: [`auth-jwt-sqlite`](./examples/auth-jwt-sqlite) · [`starter`](./examples/starter) · [`websocket-chat`](./examples/websocket-chat)
+- **Async, Microservices & GraphQL**: [`event-emitter`](./examples/event-emitter) · [`queues`](./examples/queues) · [`scheduling`](./examples/scheduling) · [`cqrs`](./examples/cqrs) · [`microservices-tcp`](./examples/microservices-tcp) · [`grpc`](./examples/grpc) · [`graphql-code-first`](./examples/graphql-code-first) · [`graphql-schema-first`](./examples/graphql-schema-first) · [`graphql-federation`](./examples/graphql-federation) · [`distributed-worker`](./examples/distributed-worker) · [`apps/playground`](./apps/playground)
 
 ## Development
 

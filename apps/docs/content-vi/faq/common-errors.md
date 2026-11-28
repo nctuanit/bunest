@@ -16,6 +16,11 @@ Mọi lỗi khởi động (bootstrap), DI và định tuyến do `@bunest/core`
 | [`BUNEST_E101`](#bunest_e101-duplicate-route) | `DuplicateRouteException` | Hai handler trùng HTTP method + đường dẫn chuẩn (+ host/version) |
 | [`BUNEST_E102`](#bunest_e102-invalid-controller) | `InvalidControllerException` | Class nằm trong `controllers` nhưng thiếu `@Controller()` |
 | [`BUNEST_E103`](#bunest_e103-invalid-route) | `InvalidRouteException` | Metadata route hoặc parameter decorator không hợp lệ / xung đột |
+| [`BUNEST_E201`](#bunest_e201-worker-failed-to-start) | `WorkerSpawnException` | Luồng Bun Worker không thể phân giải, khởi động hoặc hoàn tất bắt tay READY |
+| [`BUNEST_E202`](#bunest_e202-worker-task-timed-out) | `WorkerTimeoutException` | Tác vụ gửi tới Bun Worker vượt quá giới hạn `timeoutMs` |
+| [`BUNEST_E203`](#bunest_e203-worker-pool-queue-saturated) | `WorkerPoolSaturatedException` | Hàng đợi tác vụ chờ của worker pool đạt ngưỡng backpressure `maxQueueSize` |
+| [`BUNEST_E204`](#bunest_e204-worker-terminated-unexpectedly) | `WorkerTerminatedException` | Luồng Bun Worker bị lỗi, thoát đột ngột hoặc pool đóng giữa chừng |
+| [`BUNEST_E205`](#bunest_e205-worker-task-handler-not-found) | `WorkerTaskNotFoundException` | Không tìm thấy handler khớp tên tác vụ trong Bun Worker đích |
 
 ---
 
@@ -119,6 +124,57 @@ Xem thêm tại [Phạm vi DI](/fundamentals/injection-scopes).
 **Cách khắc phục:**
 1. Đọc chi tiết thông báo lỗi để xác định đúng class, method và vị trí tham số.
 2. Đảm bảo mỗi tham số handler chỉ gắn tối đa một decorator trích xuất (`@Body`, `@Param`, `@Query`, ...).
+
+## `BUNEST_E201` — Worker Failed to Start
+
+**`WorkerSpawnException`**: Một luồng Bun Worker không thể phân giải script, khởi động hoặc gửi tín hiệu READY trong thời gian `startupTimeoutMs`.
+
+**Cách khắc phục:**
+1. Kiểm tra URL/đường dẫn tệp worker có tồn tại (ưu tiên dùng `new URL('./my.worker.ts', import.meta.url)`).
+2. Đảm bảo entry worker gọi `defineWorker(...)` hoặc `bootstrapWorkerApplication(...)` đồng bộ trước bất kỳ top-level `await` nào.
+3. Kiểm tra các module `preload` và tăng `startupTimeoutMs` nếu quá trình khởi động worker có I/O chậm.
+
+```ts
+WorkerModule.registerPool({
+  name: "crypto",
+  script: new URL("./crypto.worker.ts", import.meta.url),
+  startupTimeoutMs: 10_000,
+});
+```
+
+## `BUNEST_E202` — Worker Task Timed Out
+
+**`WorkerTimeoutException`**: Tác vụ gửi vào Bun Worker pool không hoàn tất trước thời hạn `timeoutMs` đã cấu hình.
+
+**Cách khắc phục:**
+1. Tăng `timeoutMs` ở `pool.run()` hoặc `taskTimeoutMs` trong cấu hình pool đối với tác vụ hợp lệ cần chạy lâu.
+2. Kiểm tra mã worker xem có vòng lặp vô hạn, promise không được `await` hay lời gọi chặn luồng, đồng thời tôn trọng `ctx.signal` để hủy hợp tác.
+
+## `BUNEST_E203` — Worker Pool Queue Saturated
+
+**`WorkerPoolSaturatedException`**: Hàng đợi tác vụ chờ của worker pool đã đạt `maxQueueSize` và từ chối tác vụ mới để duy trì backpressure.
+
+**Cách khắc phục:**
+1. Tăng `maxThreads` hoặc `maxQueueSize` nếu máy chủ còn dư CPU và bộ nhớ.
+2. Áp dụng rate limiting ở tầng trên hoặc chuyển các tác vụ nền tăng đột biến sang hàng đợi bền vững `@bunest/jobs/queues`.
+
+## `BUNEST_E204` — Worker Terminated Unexpectedly
+
+**`WorkerTerminatedException`**: Luồng Bun Worker gặp lỗi, tự thoát hoặc pool bị đóng trước khi tác vụ đang chạy/đang chờ hoàn thành.
+
+**Cách khắc phục:**
+1. Kiểm tra log lỗi của worker để tìm ngoại lệ chưa được bắt hoặc lỗi hết bộ nhớ (cân nhắc tắt `smol: true` cho tác vụ tốn RAM).
+2. Đảm bảo chỉ gọi `pool.close()` trong quá trình tắt ứng dụng sau khi đã chờ xong các tác vụ đang chạy.
+
+## `BUNEST_E205` — Worker Task Handler Not Found
+
+**`WorkerTaskNotFoundException`**: Không có handler nào khớp với tên tác vụ yêu cầu được đăng ký trong Bun Worker đích.
+
+**Cách khắc phục:**
+1. Đăng ký tên tác vụ trong `defineWorker({ [taskName]: handler })` hoặc gắn decorator `@WorkerHandler(taskName)`.
+2. Dùng chung đối tượng `defineWorkerContract(taskName)` có kiểu mạnh giữa bên gọi và worker để tránh gõ sai tên.
+
+Xem [Bun Workers (Đa luồng)](/techniques/workers) để biết hướng dẫn cấu hình và xử lý sự cố chi tiết.
 
 ---
 

@@ -4,7 +4,8 @@
 
 - `SecurityModule.forRoot()`, `@Auth()`, `@Protected()`, `PasswordService` (`argon2id`), `RolesGuard`/`PoliciesGuard`, `CsrfGuard` và `SecurityHeadersMiddleware`.
 - WebCrypto `JwtModule`/`JwtService`, `JwksModule` và `OAuth2Module`/`OidcModule` (PKCE).
-- `PassportModule`, `AuthGuard` và `PassportStrategy`.
+- Hệ thống Auth hiện đại (`@bunest/security/auth`): sessions, refresh token rotation, TOTP MFA, Passkeys/WebAuthn cùng các bộ [Tích hợp Auth hiện đại](/security/modern-auth-integrations) (`BetterAuthModule`, `ExternalJwtAuthModule` cho Clerk/Supabase/Auth0/JWKS, `WebAuthModule` cho Auth.js/Lucia).
+- Tương thích di chuyển từ NestJS cũ: `PassportModule`, `AuthGuard` và `PassportStrategy` (chỉ nên dùng khi chuyển dần app NestJS cũ; dự án mới nên ưu tiên `@bunest/security/auth` hoặc [Tích hợp Auth hiện đại](/security/modern-auth-integrations)).
 - `ThrottlerModule`, `ThrottlerGuard`, `@Throttle` và `@SkipThrottle`.
 
 ## Cài đặt

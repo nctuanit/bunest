@@ -1,7 +1,7 @@
 # Bunest `0.1.x` Baseline & Readiness Report
 
 **Date:** 2026-11-26  
-**Plan Reference:** [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) (Phase 1 Tickets 1–5, Phase 2 Weeks 3–6, and Phase 3 / Waves 1–4)  
+**Plan Reference:** [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) (Phase 1 Tickets 1–5, Phase 2 Weeks 3–6, and Phase 3 / Waves 1–4)  
 **Baseline Commit:** `790eb8786cd51ce1a382805031284406eb52989f`  
 **Phase 1 Merged Commit:** `8297204616efbce83b67f6242bebfb6113b9dec2`  
 **Phase 2 Merged Commits:** `2656677` (`docs/public-api-matrix.md`), `fbf4d54` (`.d.ts` emit & Dockerfile), `3ec57a3` (`verify:upgrade-pilots`)  
@@ -146,7 +146,7 @@ All 19 `@bunest/*` tarballs (`0.1.0`, zero `workspace:*` leaks) were packed via 
 ## 8. Phase 4 / `c49f8a7` Readiness Update
 
 1. **[DX P0.1–P0.3 — Clean-Install Orders SQLite Track (`a2adb23`)]**
-   - *Explicitly separated from PostgreSQL operations results per [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §1:* the Orders SQLite workflow measures developer experience (DX) only and does not substitute for Linux PostgreSQL 17 operational proof.
+   - *Explicitly separated from PostgreSQL operations results per [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §1:* the Orders SQLite workflow measures developer experience (DX) only and does not substitute for Linux PostgreSQL 17 operational proof.
    - Delivered the REST/SQLite starter preset, scenario-backed resource generator, route/DI explain diagnostics, default `ValidationPipe` wiring, and sanitized `test-from-request` regression test export (`packages/cli/test/dx-p03-req2test.spec.ts`), plus VS Code explain and Save-as-Test integration.
    - Clean-install Orders SQLite verification covers `201`/`400` DTO validation envelopes, missing-export DI guidance, and request-to-test generation; external-registry pilot sign-off remains tracked separately from PostgreSQL staging runs.
 2. **[All 11/11 Apps & Examples Audit & Fixes (`9e018f3`)]**
@@ -157,7 +157,7 @@ All 19 `@bunest/*` tarballs (`0.1.0`, zero `workspace:*` leaks) were packed via 
    - Updated EN/VI homepage, roadmap parity, and SPA base-path/hash-anchor tests (`0b4973b`, `c49f8a7`) and refreshed `llms-full.txt`.
 4. **[2-Consecutive-Version Upgrade Harness Readiness (`--two-step` + SHA-512 Provenance)]**
    - Extended [`scripts/verify-upgrade-and-pilots.ts`](../scripts/verify-upgrade-and-pilots.ts) with `--two-step`, `--mid-version=<ver>` (default `0.1.1-rc.0`, with `--to-version` defaulting to `0.2.0-rc.0` in `--two-step` mode), and `--mid-tarballs=<dir>` to upgrade both Pilot A and Pilot B sequentially across two consecutive versions (`fromVersion -> midVersion -> toVersion`), re-verifying health, CRUD, DTO validation, guards, interceptors, SQLite persistence across restarts, and transaction rollback after both transitions while keeping default single-step `bun run verify:upgrade-pilots` unchanged.
-   - Recorded per-version artifact provenance and deterministic SHA-512 digests (`integrityByPackage: Record<string, string>`) in `artifactSources` (`from`, optional `mid`, `to`) to satisfy [`docs/support-policy.md`](./support-policy.md) §5 and [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §1, backed by unit tests in [`tests/packaging/verify-upgrade-cli.spec.ts`](../tests/packaging/verify-upgrade-cli.spec.ts).
+   - Recorded per-version artifact provenance and deterministic SHA-512 digests (`integrityByPackage: Record<string, string>`) in `artifactSources` (`from`, optional `mid`, `to`) to satisfy [`docs/support-policy.md`](./support-policy.md) §5 and [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §1, backed by unit tests in [`tests/packaging/verify-upgrade-cli.spec.ts`](../tests/packaging/verify-upgrade-cli.spec.ts).
 
 ---
 

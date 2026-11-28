@@ -45,6 +45,8 @@ Kiến trúc lõi của Bunest được chi phối bởi các **Bản ghi Quyế
 | **ADR-016** | Hợp nhất 37 → 19 Package (6 Lĩnh vực, ESM Subpath Exports) & Đồng bộ API gốc Bun 1.4.5 | Accepted | [Packages & Monorepo](/ecosystem/packages) |
 | **ADR-017** | Không phụ thuộc runtime bên ngoài (19/19 Package) & Cách ly 2 Adapter `node:*` toàn repo | Accepted (Completed) | [Packages & Monorepo](/ecosystem/packages) |
 | **ADR-018** | Kiến trúc Magic tùy biến: `Bun.plugin` hợp nhất, Repository Scopes/Operators, AOP Phases/Pointcuts, Typegen & Diagnostic Plugins, `@AutoModule` | Accepted | [CLI & `bunest.config.ts`](/observability/cli) |
+| **ADR-019** | Tích hợp Bun Workers gốc (`@bunest/jobs/workers`, Không `node:worker_threads`, Sandboxed Queues, AOP `@Offload`, Đóng gói CLI & Cluster `reusePort`) | Accepted | [Bun Workers (Đa luồng)](/techniques/workers) |
+| **ADR-020** | Đồng bộ đầy đủ API Runtime gốc Bun 1.4.5 (Hot Paths `Bun.serve`, `Bun.Cookie`, Async Zstd, `Bun.JSONL`/`JSON5`, `Bun.Image`, `Bun.Archive`, `Bun.markdown`, `Bun.FetchSession`, `bun:jsc`, `Bun.secrets`, `Bun.udpSocket`) | Accepted | [Gói & Monorepo](/ecosystem/packages) |
 
 ## Quy tắc Quản trị
 

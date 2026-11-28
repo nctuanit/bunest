@@ -2,7 +2,7 @@
 
 This document is the authoritative inventory of every public package and `package.json#exports` entrypoint shipped by the Bunest monorepo (**19 lockstep-versioned `@bunest/*` packages**, **95 declared `exports` keys**: **76** runtime/type entrypoints — 19 root `.` + 57 named subpaths — plus **19** `./package.json` metadata exports).
 
-Every stability tier, owner assignment, and promotion/freeze gate below is aligned 1:1 with [`docs/support-policy.md`](./support-policy.md), [`docs/production-preview.md`](./production-preview.md), [`docs/security.md`](./security.md), and [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) (§4 & §9).
+Every stability tier, owner assignment, and promotion/freeze gate below is aligned 1:1 with [`docs/support-policy.md`](./support-policy.md), [`docs/production-preview.md`](./production-preview.md), [`docs/security.md`](./security.md), and [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) (§4 & §9).
 
 ---
 
@@ -23,7 +23,7 @@ Every stability tier, owner assignment, and promotion/freeze gate below is align
 | **Beta (Integration-Verified)** | Promoted per module in `0.2.x+` or `1.0` | `@bunest/cache`, `@bunest/jobs`, `@bunest/security`, `@bunest/swagger`, `@bunest/testing`, `@bunest/cli`, `@bunest/resilience` (+ `@bunest/orm` SQLite, non-preview subpaths of `@bunest/core` / `@bunest/observability`) — **7 packages** | Full unit & conformance coverage + real-service integration tests (Redis / SQLite) in CI. |
 | **Preview / Experimental** | Promoted on real-infrastructure verification | `@bunest/ai`, `@bunest/elasticsearch`, `@bunest/graphql`, `@bunest/mail`, `@bunest/messaging`, `@bunest/microservices`, `@bunest/storage`, `@bunest/workflows` (+ `@bunest/core/ws`, non-PostgreSQL `Bun.SQL` dialects) — **8 packages** | Functional with 100% conformance / unit tests; awaiting dedicated real-service fault-injection & soak verification before promotion. |
 
-### Ownership Key (Aligned with [`docs/ke-hoach-phat-trien-bunest.md`](./ke-hoach-phat-trien-bunest.md) §4 & §9)
+### Ownership Key (Aligned with [Bunest Roadmap](../apps/docs/content/ecosystem/roadmap.md) §4 & §9)
 
 | Owner Group | Maintainer Role | Primary Scope |
 | --- | --- | --- |
